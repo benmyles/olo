@@ -13,7 +13,7 @@ use std::{any::Any, fmt::Display, rc::Rc, sync::Arc};
 use smallvec::SmallVec;
 
 use crate::{
-    Bounds, ClickEvent, KeyDownEvent, KeyUpEvent, ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Painter, Pixels, ScrollWheelEvent, SharedString, Size,
+    Bounds, ClickEvent, KeyDownEvent, KeyUpEvent, ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Painter, Pixels, Point, ScrollWheelEvent, SharedString, Size,
     StyleRefinement, Styled, TextRun, WindowCx, tree::ViewId,
 };
 
@@ -230,10 +230,19 @@ pub(crate) struct Interactivity {
     pub(crate) occlude: bool,
     /// It can have the keyboard.
     pub(crate) focusable: bool,
+    /// A click on it gives it the keyboard.
+    pub(crate) click_focus: bool,
     /// Tab reaches it.
     pub(crate) tab_stop: bool,
     /// It counts as having the keyboard while anything it holds has it.
     pub(crate) focus_within: bool,
+    /// Its scroller, if a view keeps one for it (`track_scroll`).
+    pub(crate) scroll: Option<crate::ScrollHandle>,
+    /// It hears where it's scrolled to, when that changes.
+    pub(crate) scroll_listeners: SmallVec<[Listener<Point<Pixels>>; 1]>,
+    /// Scrollers it draws by (a scroll bar): it's drawn again when one
+    /// moves or its ends do.
+    pub(crate) watches: SmallVec<[u64; 1]>,
     /// It's drawn anew when the pointer comes over it, presses it or
     /// leaves, or the keyboard comes or goes.
     pub(crate) paints_by_state: bool,
@@ -536,17 +545,44 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// It can have the keyboard (a click gives it; `Cx::focus` too).
+    /// It can have the keyboard, and a click on it gives it (something
+    /// typed into; `Cx::focus` gives it too).
     fn focusable(mut self) -> Self {
-        self.interactivity().focusable = true;
+        let inter = self.interactivity();
+        inter.focusable = true;
+        inter.click_focus = true;
         self
     }
 
     /// In the window's tab order: Tab and ⇧Tab move the keyboard to it.
+    /// (A click doesn't, as BeOS's controls: pressing a button leaves
+    /// the keyboard where it was.)
     fn tab_stop(mut self) -> Self {
         let inter = self.interactivity();
         inter.focusable = true;
         inter.tab_stop = true;
+        self
+    }
+
+    /// The scroller this element is, when its style says it scrolls
+    /// (`overflow_y_scroll`): kept by its view, to know where it is and
+    /// to move it. (Without one it keeps its own.)
+    fn track_scroll(mut self, handle: &crate::ScrollHandle) -> Self {
+        self.interactivity().scroll = Some(handle.clone());
+        self
+    }
+
+    /// Hears where it's scrolled to (its offset) whenever that changes,
+    /// whoever moved it.
+    fn on_scroll(mut self, listener: impl Fn(&Point<Pixels>, &mut WindowCx) + 'static) -> Self {
+        self.interactivity().scroll_listeners.push(Rc::new(listener));
+        self
+    }
+
+    /// It's drawn again whenever `handle`'s scroller moves or its ends
+    /// do (a scroll bar's knob follows its view).
+    fn watch_scroll(mut self, handle: &crate::ScrollHandle) -> Self {
+        self.interactivity().watches.push(handle.id());
         self
     }
 

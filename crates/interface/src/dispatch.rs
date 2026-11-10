@@ -61,6 +61,15 @@ impl WindowCore {
             // (Nothing it holds shows there.)
             return;
         }
+        // What it holds is where it's laid out, shown from wherever
+        // it's scrolled to: the pointer is over what's that far on.
+        let (at, inner) = match &node.scroll {
+            Some(handle) => {
+                let shown = handle.0.shown.get();
+                (crate::point(at.x - shown.x, at.y - shown.y), Bounds { origin: crate::point(crate::px(-1.0e7), crate::px(-1.0e7)), size: crate::size(crate::px(2.0e7), crate::px(2.0e7)) })
+            }
+            None => (at, inner),
+        };
         for child in &node.children {
             self.gather(*child, at, inner, found);
         }
@@ -152,11 +161,16 @@ impl WindowCx<'_> {
             }
             PlatformInput::MouseDown(event) => self.mouse_down(event),
             PlatformInput::MouseUp(event) => self.mouse_up(event),
+            // (A wheel the stage left alone: something under the
+            // pointer takes it itself, or nothing there scrolls.)
             PlatformInput::ScrollWheel(event) => {
                 self.core.mouse = event.position;
                 self.core.modifiers = event.modifiers;
                 self.update_hover();
                 self.to_hovered(|i| i.scroll_wheel.iter().cloned().collect(), &event);
+                if self.core.propagate && !self.core.default_prevented && !matches!(event.touch_phase, crate::TouchPhase::Ended) {
+                    self.scroll_under_pointer(&event);
+                }
             }
             PlatformInput::MouseExited(_) => self.pointer_left(),
             PlatformInput::KeyDown(event) => self.key_down(event),
@@ -169,6 +183,24 @@ impl WindowCx<'_> {
                 self.to_focus_path(|i| i.modifiers_changed.iter().cloned().collect(), &event);
             }
             PlatformInput::Pinch(_) | PlatformInput::FileDrop(_) => {}
+        }
+    }
+
+    /// What took the wheel let it go on: the nearest thing round it
+    /// that scrolls that way scrolls (stopping at its ends).
+    fn scroll_under_pointer(&mut self, event: &ScrollWheelEvent) {
+        let delta = event.delta.pixel_delta(crate::px(20.));
+        let mut at = self.core.hovered.first().copied();
+        while let Some(id) = at {
+            let Some(node) = self.core.nodes.get(id) else { break };
+            at = node.parent;
+            let Some(handle) = node.scroll.clone() else { continue };
+            let max = handle.max_offset();
+            let by = crate::point(if max.width > crate::px(0.) { delta.x } else { crate::px(0.) }, if max.height > crate::px(0.) { delta.y } else { crate::px(0.) });
+            if by != Point::default() {
+                handle.scroll_by(self, by);
+                break;
+            }
         }
     }
 
@@ -203,7 +235,7 @@ impl WindowCx<'_> {
 
     /// Works out what the pointer is over now, and tells what it came
     /// over or left.
-    fn update_hover(&mut self) {
+    pub(crate) fn update_hover(&mut self) {
         let now = self.core.nodes_at(self.core.mouse);
         if now == self.core.hovered {
             return;
@@ -264,7 +296,7 @@ impl WindowCx<'_> {
         for id in &hovered {
             let Some(node) = self.core.nodes.get_mut(*id) else { continue };
             let Some(inter) = &node.inter else { continue };
-            if focus.is_none() && inter.focusable {
+            if focus.is_none() && inter.click_focus {
                 focus = Some(*id);
             }
             if event.button == MouseButton::Left && (inter.paints_by_state || inter.active_style.is_some() || !inter.click.is_empty()) {
@@ -409,7 +441,7 @@ impl WindowCx<'_> {
     /// on the window's default button). Whether it took the click.
     fn keyboard_click(&mut self, id: NodeId, button: KeyboardButton) -> bool {
         let (clicks, bounds): (SmallVec<[Listener<ClickEvent>; 1]>, _) = match self.core.nodes.get(id) {
-            Some(node) if !node.inter.as_ref().is_some_and(|i| i.disabled) => (node.inter.as_ref().map(|i| i.click.clone()).unwrap_or_default(), node.bounds),
+            Some(node) if !node.inter.as_ref().is_some_and(|i| i.disabled) => (node.inter.as_ref().map(|i| i.click.clone()).unwrap_or_default(), self.core.window_bounds(id)),
             _ => return false,
         };
         if clicks.is_empty() {

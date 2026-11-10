@@ -16,11 +16,13 @@ use std::{
     time::{Duration, Instant},
 };
 
+use collections::FxHashMap;
 use olo_app::{Latest, LooperHandle};
+use smallvec::SmallVec;
 
 use crate::{
-    Bounds, FrameRegion, FrameStats, GpuSpecs, ImeInput, Pixels, PlatformAtlas, PlatformInput, PlatformWindow, Point, RequestFrameOptions, ScaledPixels, Scene, Size, TextRendering, WindowId, point,
-    px, size,
+    Bounds, Elastic, FrameRegion, FrameStats, GpuSpecs, ImeInput, Pixels, PlatformAtlas, PlatformInput, PlatformWindow, Point, RequestFrameOptions, ScaledPixels, Scene, ScrollWheelEvent, Size,
+    TextRendering, TouchPhase, WindowId, point, px, size,
 };
 
 /// What a view drew, kept: its display list. Made on the window's
@@ -57,22 +59,53 @@ impl Item {
 }
 
 /// Something that scrolls: what's in it moves together, by an offset the
-/// display thread keeps (so it can move it without the looper).
+/// display thread keeps (so it can move it without the looper: the
+/// wheel and the touchpad scroll it here, and the looper hears where it
+/// got to).
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Layer {
-    /// The same from commit to commit for the same scroll view (0: the
+    /// The same from commit to commit for the same scroller (0: the
     /// window itself, which doesn't scroll).
     pub(crate) id: u64,
     /// The layer it's in.
     pub(crate) parent: u32,
-    /// Where it shows, in its parent's coordinates.
+    /// Where it shows, in its parent's coordinates (within everything
+    /// that clips it there).
     pub(crate) viewport: Bounds<ScaledPixels>,
-    /// How far its content reaches past the viewport, each way.
-    pub(crate) range: Size<ScaledPixels>,
-    /// Where the looper put it, if it moved it (a view scrolled to):
-    /// otherwise the display thread's own stands.
-    pub(crate) offset: Option<Point<ScaledPixels>>,
+    /// How far it scrolls each way (nothing, a way it doesn't), and how
+    /// big its view is, in points.
+    pub(crate) max: Size<Pixels>,
+    pub(crate) view: Size<Pixels>,
+    /// Which ways it scrolls: across, down.
+    pub(crate) axes: (bool, bool),
+    /// Where the looper put it, if it moved it (a view scrolled to, a
+    /// scroll bar dragged) and which of its moves this is: otherwise
+    /// the display thread's own stands.
+    pub(crate) set: Option<(Point<Pixels>, u32)>,
 }
+
+/// Where the wheel means something, in painting order (the last one
+/// under the pointer has it).
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct WheelRegion {
+    /// The layer it's in, and where in it.
+    pub(crate) layer: u32,
+    pub(crate) rect: Bounds<ScaledPixels>,
+    pub(crate) kind: WheelKind,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum WheelKind {
+    /// A scroller's view: the wheel scrolls that layer.
+    Scroller(u32),
+    /// Something that takes the wheel itself (its looper hears it), or
+    /// that nothing under it is to get the wheel through.
+    Taker,
+}
+
+/// Where a scroller is: (its layer's id, where it's scrolled to, where
+/// its content shows, which of the looper's own moves it has taken).
+pub(crate) type ScrollReport = (u64, Point<Pixels>, Point<Pixels>, u32);
 
 /// What a window shows now, from its looper.
 pub(crate) struct Commit {
@@ -82,6 +115,7 @@ pub(crate) struct Commit {
     /// Every recording that shows, in painting order.
     pub(crate) items: Vec<Item>,
     pub(crate) layers: Vec<Layer>,
+    pub(crate) wheel: Vec<WheelRegion>,
     /// When the looper took what led to this (input), and how long it
     /// worked on it: for the frame's times.
     pub(crate) started: Instant,
@@ -120,6 +154,9 @@ pub(crate) enum WindowEvent {
     Frame,
     /// The display it's on, in points.
     Display(Option<Bounds<Pixels>>),
+    /// Where what scrolls is now (the wheel or the touchpad moved it,
+    /// or an end let go of it).
+    Scrolled(Vec<ScrollReport>),
 }
 
 /// How the display thread reaches a window's looper.
@@ -152,10 +189,41 @@ pub(crate) struct Opened {
 /// window from following the person's hand).
 const SIZE_WAIT: Duration = Duration::from_millis(250);
 
+/// A scroller as the display thread keeps it.
+#[derive(Default)]
+struct Scroller {
+    /// Where it's scrolled to, within its ends: zero at its start, down
+    /// to minus how far it goes (as GPUI's), in points.
+    offset: Point<Pixels>,
+    /// Its ends' stretch (fingers pull past them, a glide bounces).
+    elastic: Elastic,
+    /// Where its content shows, as last drawn: `offset`, and past an
+    /// end as far as it's stretched.
+    shown: Point<Pixels>,
+    /// The last of the looper's own moves it took.
+    epoch: u32,
+}
+
+/// Whose a turn of the wheel is.
+#[derive(Clone, Copy, PartialEq)]
+enum Wheel {
+    /// Something here scrolls with it (if it isn't at its end).
+    Here,
+    /// Something takes it itself: its looper's.
+    Taker,
+    /// Nothing there does anything with it.
+    Nobody,
+}
+
 struct Showing {
     commit: Option<Commit>,
+    scrollers: FxHashMap<u64, Scroller>,
     /// Something changed since the last frame drawn.
     dirty: bool,
+    /// When what the next frame shows began (the looper took what led
+    /// to its commit, or the wheel turned here), and how long the looper
+    /// worked on it: the frame's times.
+    since: Option<(Instant, Duration)>,
     /// What changed, in device pixels (empty with `dirty`: all of it).
     damage: Vec<Bounds<ScaledPixels>>,
     /// The size the window is now, and since when the commit hasn't
@@ -167,6 +235,15 @@ struct Showing {
     scene: Scene,
 }
 
+/// A part of the window is to be drawn again.
+fn add_damage(dirty: &mut bool, damage: &mut Vec<Bounds<ScaledPixels>>, rect: Bounds<ScaledPixels>) {
+    // (Dirty with no damage: all of it already is.)
+    if !(*dirty && damage.is_empty()) && !rect.is_empty() {
+        damage.push(rect);
+        *dirty = true;
+    }
+}
+
 pub(crate) struct Stage {
     id: WindowId,
     window: RefCell<Option<Box<dyn PlatformWindow>>>,
@@ -176,6 +253,8 @@ pub(crate) struct Stage {
     /// Pointer motion not yet taken by the looper: the latest stands for
     /// all of it.
     motion: RefCell<Latest<PlatformInput>>,
+    /// Where the scrollers are, not yet taken by the looper.
+    scrolled: Latest<Vec<ScrollReport>>,
     closed: Cell<bool>,
 }
 
@@ -197,9 +276,21 @@ impl Stage {
             id,
             window: RefCell::new(None),
             link,
-            showing: RefCell::new(Showing { commit: None, dirty: false, damage: Vec::new(), size, scale, resized_at: Some(Instant::now()), stats: FrameStats::default(), scene: Scene::default() }),
+            showing: RefCell::new(Showing {
+                commit: None,
+                scrollers: FxHashMap::default(),
+                dirty: false,
+                since: None,
+                damage: Vec::new(),
+                size,
+                scale,
+                resized_at: Some(Instant::now()),
+                stats: FrameStats::default(),
+                scene: Scene::default(),
+            }),
             waker: RefCell::new(waker),
             motion: RefCell::new(Latest::new()),
+            scrolled: Latest::new(),
             closed: Cell::new(false),
         });
         let weak = Rc::downgrade(&stage);
@@ -334,11 +425,111 @@ impl Stage {
                 let motion = self.motion.borrow().clone();
                 motion.put(&self.link.looper, input, move |looper, input| crate::window::deliver(looper, id, WindowEvent::Input(input)));
             }
+            // The wheel and the touchpad scroll here, at once: the
+            // looper hears where things got to. What nothing here
+            // scrolls is the looper's (something takes the wheel
+            // itself).
+            PlatformInput::ScrollWheel(event) => {
+                let whose = self.scroll(&event);
+                if whose != Wheel::Here {
+                    if whose == Wheel::Taker {
+                        // (Its notches' ease isn't dropped for want of
+                        // a frame drawn now: the looper's answer draws.)
+                        if let Some(window) = self.window.borrow().as_ref() {
+                            window.hold_wheel();
+                        }
+                    }
+                    self.break_motion();
+                    self.link.send(WindowEvent::Input(PlatformInput::ScrollWheel(event)));
+                }
+            }
             other => {
                 self.break_motion();
                 self.link.send(WindowEvent::Input(other));
             }
         }
+    }
+
+    /// Scrolls what's under the pointer, if something there scrolls;
+    /// else says whose the wheel is.
+    fn scroll(&self, event: &ScrollWheelEvent) -> Wheel {
+        let mut showing = self.showing.borrow_mut();
+        let showing = &mut *showing;
+        let Some(commit) = &showing.commit else { return Wheel::Nobody };
+        let scale = commit.scale;
+        let places = layer_places(&commit.layers, &showing.scrollers, scale);
+        let mut moved: Option<Bounds<ScaledPixels>> = None;
+        let mut whose = Wheel::Nobody;
+        if matches!(event.touch_phase, TouchPhase::Ended) {
+            // The fingers lifted, or the glide stopped: every end they
+            // held lets go. (The looper hears too: what takes the wheel
+            // itself may be waiting for it.)
+            for (i, layer) in commit.layers.iter().enumerate().skip(1) {
+                let Some(scroller) = showing.scrollers.get_mut(&layer.id) else { continue };
+                if scroller.elastic.scroll(&mut scroller.offset, Point::default(), event.kind, event.touch_phase) {
+                    moved = Some(moved.map_or(places[i].1, |m| m.union(&places[i].1)));
+                }
+            }
+        } else {
+            let at = point(ScaledPixels(event.position.x.0 * scale), ScaledPixels(event.position.y.0 * scale));
+            let delta = event.delta.pixel_delta(px(20.));
+            for region in commit.wheel.iter().rev() {
+                let Some((shift, clip)) = places.get(region.layer as usize).copied() else { continue };
+                let rect = Bounds { origin: region.rect.origin + shift, size: region.rect.size }.intersect(&clip);
+                if !rect.contains(&at) {
+                    continue;
+                }
+                let WheelKind::Scroller(index) = region.kind else {
+                    whose = Wheel::Taker;
+                    break;
+                };
+                let Some(layer) = commit.layers.get(index as usize) else { continue };
+                let Some(scroller) = showing.scrollers.get_mut(&layer.id) else { continue };
+                // Which way: a wheel that only turns one way scrolls
+                // what only scrolls the other (a row of tabs), and never
+                // both at once.
+                let (across, down) = layer.axes;
+                let mut d = Point::default();
+                if across {
+                    d.x = if delta.x != px(0.) || down { delta.x } else { delta.y };
+                }
+                if down {
+                    d.y = if delta.y != px(0.) || across { delta.y } else { delta.x };
+                }
+                if d.x != px(0.) && d.y != px(0.) {
+                    if d.x.abs() > d.y.abs() {
+                        d.y = px(0.);
+                    } else {
+                        d.x = px(0.);
+                    }
+                }
+                // Nothing to scroll that way here: what holds it may
+                // have.
+                let room = (d.x != px(0.) && layer.max.width > px(0.)) || (d.y != px(0.) && layer.max.height > px(0.));
+                if !room && !scroller.elastic.stretched() {
+                    continue;
+                }
+                whose = Wheel::Here;
+                if scroller.elastic.scroll(&mut scroller.offset, d, event.kind, event.touch_phase) {
+                    moved = Some(places[index as usize].1);
+                }
+                break;
+            }
+        }
+        if let Some(rect) = moved {
+            add_damage(&mut showing.dirty, &mut showing.damage, rect);
+            showing.since.get_or_insert((Instant::now(), Duration::ZERO));
+            self.report(&showing.scrollers);
+            self.wake();
+        }
+        whose
+    }
+
+    /// Tells the looper where the scrollers are.
+    fn report(&self, scrollers: &FxHashMap<u64, Scroller>) {
+        let report: Vec<ScrollReport> = scrollers.iter().map(|(id, s)| (*id, s.offset, s.shown_now(), s.epoch)).collect();
+        let id = self.id;
+        self.scrolled.put(&self.link.looper, report, move |looper, report| crate::window::deliver(looper, id, WindowEvent::Scrolled(report)));
     }
 
     fn resized(&self, size: Size<Pixels>, scale: f32) {
@@ -363,13 +554,37 @@ impl Stage {
         {
             let mut showing = self.showing.borrow_mut();
             let showing = &mut *showing;
+            // What scrolls: each layer's scroller is kept from commit to
+            // commit (where it is is the display thread's), told its
+            // ends, and put where the looper moved it if it did.
+            let mut told = false;
+            for layer in commit.layers.iter().skip(1) {
+                let scroller = showing.scrollers.entry(layer.id).or_default();
+                scroller.elastic.set_extent(layer.max, layer.view);
+                let before = scroller.offset;
+                if let Some((to, epoch)) = layer.set {
+                    scroller.offset = to;
+                    scroller.epoch = epoch;
+                    told = true;
+                }
+                scroller.offset = point(scroller.offset.x.clamp(-layer.max.width, px(0.)), scroller.offset.y.clamp(-layer.max.height, px(0.)));
+                told |= scroller.offset != before;
+            }
+            if showing.scrollers.len() + 1 > commit.layers.len() {
+                showing.scrollers.retain(|id, _| commit.layers.iter().any(|l| l.id == *id));
+            }
+            if told {
+                self.report(&showing.scrollers);
+            }
             match (&showing.commit, commit.everything) {
                 (Some(before), false) if before.scale == commit.scale && before.size == commit.size => {
                     let all = showing.dirty && showing.damage.is_empty();
                     if !all {
-                        damage(before, &commit, &mut showing.damage);
+                        damage(before, &commit, &showing.scrollers, &mut showing.damage);
                         showing.dirty |= !showing.damage.is_empty();
                     }
+                    // (A scroller the looper moved: the next frame finds
+                    // where it shows now, and draws its view.)
                 }
                 _ => {
                     showing.dirty = true;
@@ -379,6 +594,10 @@ impl Stage {
             if commit.size == showing.size && commit.scale == showing.scale {
                 showing.resized_at = None;
             }
+            showing.since = Some(match showing.since {
+                Some((began, work)) => (began.min(commit.started), work + commit.work),
+                None => (commit.started, commit.work),
+            });
             showing.commit = Some(commit);
         }
         self.wake();
@@ -417,6 +636,35 @@ impl Stage {
             showing.damage.clear();
         }
         let animating = commit.animating;
+        // Where each scroller's content shows now: where it's scrolled
+        // to, and past an end as far as that's stretched (springing
+        // back: it moves by itself, frame by frame).
+        let mut springing = false;
+        if !showing.scrollers.is_empty() {
+            let mut moved: SmallVec<[Bounds<ScaledPixels>; 2]> = SmallVec::new();
+            let mut told = false;
+            let places = layer_places(&commit.layers, &showing.scrollers, commit.scale);
+            for (i, layer) in commit.layers.iter().enumerate().skip(1) {
+                let Some(scroller) = showing.scrollers.get_mut(&layer.id) else { continue };
+                let (shown, moving) = scroller.elastic.offset(scroller.offset);
+                springing |= moving;
+                // Its view: what it showed there, and what it shows now.
+                // (Drawn while it springs though it's moved less than a
+                // device pixel: the frames it's paced by are the ones
+                // drawn, and it's a handful at the end.)
+                if moving || device(shown, commit.scale) != device(scroller.shown, commit.scale) {
+                    moved.push(places[i].1);
+                }
+                told |= shown != scroller.shown;
+                scroller.shown = shown;
+            }
+            for rect in moved {
+                add_damage(&mut showing.dirty, &mut showing.damage, rect);
+            }
+            if told {
+                self.report(&showing.scrollers);
+            }
+        }
         if !showing.dirty {
             if animating {
                 self.link.send(WindowEvent::Frame);
@@ -428,8 +676,9 @@ impl Stage {
         // image keeps what it last held, so most frames draw a small
         // part of the window, and tell app_server only that changed.
         let changed = showing.damage.iter().copied().reduce(|a, b| a.union(&b));
-        let work = commit.work;
-        let began = commit.started;
+        // (A frame of the stage's own, an end springing back, began
+        // with itself.)
+        let (began, work) = showing.since.take().unwrap_or((started, Duration::ZERO));
         {
             let window = self.window.borrow();
             let Some(window) = window.as_ref() else { return false };
@@ -440,7 +689,7 @@ impl Stage {
             };
             let scene = &mut showing.scene;
             scene.clear();
-            assemble(commit, scene, part);
+            assemble(commit, &showing.scrollers, scene, part);
             scene.finish();
             let assembled = started.elapsed();
             window.draw(scene);
@@ -471,6 +720,13 @@ impl Stage {
         if animating {
             self.link.send(WindowEvent::Frame);
         }
+        if springing {
+            // (An end springing back: the next frame moves it on.)
+            let waker = self.waker.borrow().clone();
+            if let Some(waker) = waker {
+                waker();
+            }
+        }
         true
     }
 
@@ -486,32 +742,47 @@ impl Drop for Stage {
     }
 }
 
-/// Where each layer's content is now, and what clips it, in the
-/// window's device pixels.
-fn layer_places(layers: &[Layer]) -> Vec<(Point<ScaledPixels>, Bounds<ScaledPixels>)> {
-    let everything = Bounds { origin: point(ScaledPixels(-1.0e7), ScaledPixels(-1.0e7)), size: size(ScaledPixels(2.0e7), ScaledPixels(2.0e7)) };
+impl Scroller {
+    /// Where its content shows now.
+    fn shown_now(&self) -> Point<Pixels> {
+        self.elastic.clone().offset(self.offset).0
+    }
+}
+
+/// An offset in whole device pixels (what's drawn is moved by whole
+/// ones: nothing is drawn again for being scrolled).
+fn device(offset: Point<Pixels>, scale: f32) -> Point<ScaledPixels> {
+    point(ScaledPixels((offset.x.0 * scale).round()), ScaledPixels((offset.y.0 * scale).round()))
+}
+
+const EVERYTHING: Bounds<ScaledPixels> = Bounds { origin: Point { x: ScaledPixels(-1.0e7), y: ScaledPixels(-1.0e7) }, size: Size { width: ScaledPixels(2.0e7), height: ScaledPixels(2.0e7) } };
+
+/// Where each layer's content is now (how far from where it was
+/// painted), and what clips it, in the window's device pixels.
+fn layer_places(layers: &[Layer], scrollers: &FxHashMap<u64, Scroller>, scale: f32) -> Vec<(Point<ScaledPixels>, Bounds<ScaledPixels>)> {
+    let nowhere = point(ScaledPixels(0.0), ScaledPixels(0.0));
     let mut places: Vec<(Point<ScaledPixels>, Bounds<ScaledPixels>)> = Vec::with_capacity(layers.len().max(1));
     for (i, layer) in layers.iter().enumerate() {
         if i == 0 {
-            places.push((point(ScaledPixels(0.0), ScaledPixels(0.0)), everything));
+            places.push((nowhere, EVERYTHING));
             continue;
         }
         // (A layer comes after the one it's in.)
-        let (parent_shift, parent_clip) = places.get(layer.parent as usize).copied().unwrap_or((point(ScaledPixels(0.0), ScaledPixels(0.0)), everything));
+        let (parent_shift, parent_clip) = places.get(layer.parent as usize).copied().unwrap_or((nowhere, EVERYTHING));
         let viewport = Bounds { origin: layer.viewport.origin + parent_shift, size: layer.viewport.size };
-        let offset = layer.offset.unwrap_or_default();
-        places.push((point(parent_shift.x - offset.x, parent_shift.y - offset.y), viewport.intersect(&parent_clip)));
+        let offset = scrollers.get(&layer.id).map(|s| device(s.shown, scale)).unwrap_or_default();
+        places.push((parent_shift + offset, viewport.intersect(&parent_clip)));
     }
     if places.is_empty() {
-        places.push((point(ScaledPixels(0.0), ScaledPixels(0.0)), everything));
+        places.push((nowhere, EVERYTHING));
     }
     places
 }
 
 /// Puts a frame together from what's committed: all of it, or only
 /// what shows in `part`.
-fn assemble(commit: &Commit, scene: &mut Scene, part: Option<Bounds<ScaledPixels>>) {
-    let places = layer_places(&commit.layers);
+fn assemble(commit: &Commit, scrollers: &FxHashMap<u64, Scroller>, scene: &mut Scene, part: Option<Bounds<ScaledPixels>>) {
+    let places = layer_places(&commit.layers, scrollers, commit.scale);
     for item in &commit.items {
         let (shift, layer_clip) = places.get(item.layer as usize).copied().unwrap_or(places[0]);
         let by = item.by + shift;
@@ -532,12 +803,24 @@ fn assemble(commit: &Commit, scene: &mut Scene, part: Option<Bounds<ScaledPixels
 
 /// What differs between two commits of one size: where anything was or
 /// is that isn't the same drawing in the same place.
-fn damage(before: &Commit, now: &Commit, into: &mut Vec<Bounds<ScaledPixels>>) {
-    if before.layers != now.layers {
-        // (What scrolls changed: all of it, for now.)
+fn damage(before: &Commit, now: &Commit, scrollers: &FxHashMap<u64, Scroller>, into: &mut Vec<Bounds<ScaledPixels>>) {
+    let whole = Bounds { origin: point(ScaledPixels(0.0), ScaledPixels(0.0)), size: size(ScaledPixels(now.size.width.0 * now.scale), ScaledPixels(now.size.height.0 * now.scale)) };
+    let same_layers = before.layers.len() == now.layers.len() && before.layers.iter().zip(&now.layers).all(|(a, b)| a.id == b.id && a.parent == b.parent);
+    if !same_layers {
+        // (What scrolls changed: all of it.)
         into.clear();
-        into.push(Bounds { origin: point(ScaledPixels(0.0), ScaledPixels(0.0)), size: size(ScaledPixels(now.size.width.0 * now.scale), ScaledPixels(now.size.height.0 * now.scale)) });
+        into.push(whole);
         return;
+    }
+    let places = layer_places(&now.layers, scrollers, now.scale);
+    // A scroller's view moved or changed size: where it was and is.
+    if before.layers.iter().zip(&now.layers).any(|(a, b)| a.viewport != b.viewport) {
+        let was = layer_places(&before.layers, scrollers, before.scale);
+        for (i, (a, b)) in before.layers.iter().zip(&now.layers).enumerate() {
+            if a.viewport != b.viewport {
+                into.extend([was[i].1, places[i].1].into_iter().filter(|r| !r.is_empty()).map(|r| r.intersect(&whole)));
+            }
+        }
     }
     let (a, b) = (&before.items, &now.items);
     // Most of a window is the same from commit to commit, and in the
@@ -555,7 +838,6 @@ fn damage(before: &Commit, now: &Commit, into: &mut Vec<Bounds<ScaledPixels>>) {
     if a.is_empty() && b.is_empty() {
         return;
     }
-    let places = layer_places(&now.layers);
     let mut add = |item: &Item| {
         let (shift, clip) = places.get(item.layer as usize).copied().unwrap_or(places[0]);
         let shown = item.shown();
@@ -584,5 +866,4 @@ fn damage(before: &Commit, now: &Commit, into: &mut Vec<Bounds<ScaledPixels>>) {
         into.clear();
         into.push(all);
     }
-    let _ = px;
 }

@@ -459,6 +459,14 @@ impl<'a, 'b, V: View> Cx<'a, 'b, V> {
         self.window.view_has_focus(self.view)
     }
 
+    /// Where something this view drew is in the window now: `bounds`
+    /// as the view's drawing had it, moved as far as what holds the view
+    /// has scrolled.
+    pub fn to_window(&self, bounds: crate::Bounds<crate::Pixels>) -> crate::Bounds<crate::Pixels> {
+        let Some(root) = self.window.core.views.get(self.view).and_then(|v| v.root) else { return bounds };
+        crate::Bounds { origin: bounds.origin + self.window.core.shift_at(root), size: bounds.size }
+    }
+
     /// A drawing of this view's (an element for its `body`): `paint` is
     /// handed the view as it is when the drawing is wanted.
     pub fn canvas(&self, paint: impl Fn(&V, &mut crate::Painter, crate::Bounds<crate::Pixels>) + 'static) -> Element {

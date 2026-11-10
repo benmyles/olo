@@ -303,6 +303,9 @@ struct FrameLoop {
     signal: calloop::LoopSignal,
     /// A wheel's notches being eased in.
     wheel: RefCell<Option<WheelEase>>,
+    /// The step just handed out is with a looper: what's left isn't
+    /// dropped for nothing drawn in this frame (`hold_wheel`).
+    wheel_held: Cell<bool>,
     /// Olo: the window is gone (its surface destroyed): a frame queued
     /// before draws nothing.
     closed: Cell<bool>,
@@ -816,6 +819,7 @@ impl WaylandWindow {
                 handle: loop_handle,
                 signal,
                 wheel: RefCell::new(None),
+                wheel_held: Cell::new(false),
                 closed: Cell::new(false),
                 in_frame: Cell::new(false),
                 wanted: Cell::new(false),
@@ -1037,7 +1041,7 @@ impl WaylandWindowStatePtr {
         frames.in_frame.set(false);
         drop(cb);
         log::trace!(target: "olo_frames", "frame: drew {drew}, callback {:?}", frames.callback.get());
-        if wheel.is_some() && !drew {
+        if wheel.is_some() && !drew && !frames.wheel_held.take() {
             // Nothing moved (an edge): the rest goes.
             frames.wheel.take();
         }
@@ -1065,6 +1069,10 @@ impl WaylandWindowStatePtr {
     /// frames to come, scrolling what is at `position`.
     pub fn add_wheel(&self, delta: Point<f32>, position: Point<Pixels>, modifiers: Modifiers) {
         let mut wheel = self.frames.wheel.borrow_mut();
+        // (What a looper never drew the rest of is long done with.)
+        if wheel.as_ref().is_some_and(|w| w.last.is_some_and(|t| t.elapsed() > std::time::Duration::from_millis(150))) {
+            *wheel = None;
+        }
         match wheel.as_mut() {
             Some(w) => {
                 w.left = Point { x: w.left.x + delta.x, y: w.left.y + delta.y };
@@ -1082,8 +1090,13 @@ impl WaylandWindowStatePtr {
     /// and the last of it is under a device pixel rather than a jump.
     fn wheel_step(&self) -> Option<crate::ScrollWheelEvent> {
         let mut slot = self.frames.wheel.borrow_mut();
-        let w = slot.as_mut()?;
         let now = std::time::Instant::now();
+        // (Held for a looper that drew nothing for its last step: what
+        // was left of it then is no longer wanted.)
+        if slot.as_ref().is_some_and(|w| w.last.is_some_and(|t| now.duration_since(t) > std::time::Duration::from_millis(150))) {
+            *slot = None;
+        }
+        let w = slot.as_mut()?;
         let interval = self.frame_interval();
         let dt = w.last.map_or(interval, |t| (now - t).as_secs_f64().min(4.0 * interval));
         w.last = Some(now);
@@ -2204,6 +2217,10 @@ impl PlatformWindow for WaylandWindow {
         let mut state = self.borrow_mut();
         state.ime_area = Some(bounds);
         state.client.update_ime_position(bounds);
+    }
+
+    fn hold_wheel(&self) {
+        self.0.frames.wheel_held.set(true);
     }
 
     fn gpu_specs(&self) -> Option<GpuSpecs> {

@@ -373,6 +373,11 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn gpu_specs(&self) -> Option<GpuSpecs>;
 
     fn update_ime_position(&self, _bounds: Bounds<Pixels>);
+
+    /// Olo: the wheel's notches still easing in aren't dropped though
+    /// the step just handed out drew nothing in its frame: what took it
+    /// draws from another thread.
+    fn hold_wheel(&self) {}
 }
 
 /// Olo: data dragged out of a window to another app or a folder (the

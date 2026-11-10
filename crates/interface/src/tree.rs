@@ -15,8 +15,8 @@ use slotmap::new_key_type;
 use smallvec::SmallVec;
 
 use crate::{
-    AvailableSpace, Bounds, ContentMask, ControlState, Element, ElementId, Pixels, Point, SharedString, Size, Style, StyleRefinement, TextAlign, TextOverflow, TextRun, TextStyle, TextStyleRefinement,
-    WhiteSpace, WindowTextSystem, WrappedLine,
+    AvailableSpace, Bounds, ContentMask, ControlState, Element, ElementId, Overflow, Pixels, Point, SharedString, Size, Style, StyleRefinement, TextAlign, TextOverflow, TextRun, TextStyle,
+    TextStyleRefinement, WhiteSpace, WindowTextSystem, WrappedLine,
     element::{CanvasSpec, Interactivity, Kind},
     layout::LayoutId,
     painter::{Gfx, Notes, Painter},
@@ -100,6 +100,10 @@ pub(crate) struct Node {
     pub(crate) hovered: bool,
     pub(crate) pressed: bool,
     pub(crate) focused: bool,
+    /// Its scroller, if it scrolls what it holds.
+    pub(crate) scroll: Option<crate::ScrollHandle>,
+    /// What it keeps for itself (`Painter::node_state`).
+    pub(crate) state: Option<Box<dyn Any>>,
     /// What it drew behind what it holds (its ground and its own
     /// content), and over it (its border), where it was when it did.
     pub(crate) behind: Option<Arc<Recording>>,
@@ -225,6 +229,8 @@ impl WindowCore {
             hovered: false,
             pressed: false,
             focused: false,
+            scroll: None,
+            state: None,
             behind: None,
             over: None,
             painted_at: Point::default(),
@@ -238,6 +244,7 @@ impl WindowCore {
         if hears {
             self.window_listeners.push(id);
         }
+        self.follow_scroll(id);
         if !children.is_empty() {
             let made: Vec<NodeId> = children.into_iter().map(|child| self.create(child, owner, Some(id))).collect();
             let layouts: SmallVec<[LayoutId; 16]> = made.iter().map(|c| self.nodes[*c].layout).collect();
@@ -288,6 +295,8 @@ impl WindowCore {
             hovered: false,
             pressed: false,
             focused: false,
+            scroll: None,
+            state: None,
             behind: None,
             over: None,
             painted_at: Point::default(),
@@ -320,6 +329,23 @@ impl WindowCore {
         }
         self.forget(id);
         self.reshaped();
+    }
+
+    /// A node that scrolls (its style says its overflow does) has a
+    /// scroller: its view's, or one of its own, kept while it scrolls.
+    fn follow_scroll(&mut self, id: NodeId) {
+        let node = &mut self.nodes[id];
+        let scrolls = node.style.overflow.x == Overflow::Scroll || node.style.overflow.y == Overflow::Scroll;
+        let was = node.scroll.as_ref().map(|h| h.id());
+        let asked = node.inter.as_ref().and_then(|i| i.scroll.clone());
+        node.scroll = match (scrolls, asked, node.scroll.take()) {
+            (false, _, _) => None,
+            (true, Some(handle), _) => Some(handle),
+            (true, None, kept) => Some(kept.unwrap_or_default()),
+        };
+        if node.scroll.as_ref().map(|h| h.id()) != was {
+            self.reshaped();
+        }
     }
 
     /// A node is gone: nothing points at it any more.
@@ -431,6 +457,7 @@ impl WindowCore {
                 }
             }
         }
+        self.follow_scroll(id);
         if text_changed {
             let layout = self.nodes[id].layout;
             self.layout.mark_dirty(layout);
@@ -564,10 +591,11 @@ impl WindowCore {
         let node = &mut nodes[id];
         let own_opacity = node.style.opacity;
         let mut notes = Notes::default();
+        let mut kept = node.state.take();
         // Behind what it holds: its ground, and what it is.
         let mut scene = recycled.pop().unwrap_or_else(crate::Scene::recording);
         {
-            let mut p = Painter::new(gfx, &mut scene, &mut notes, visible, opacity, text_styles.clone());
+            let mut p = Painter::new(gfx, &mut scene, &mut notes, &mut kept, visible, opacity, text_styles.clone());
             p.with_element_opacity(own_opacity, |p| {
                 node.style.paint_behind(bounds, p);
                 match &node.kind {
@@ -589,30 +617,100 @@ impl WindowCore {
         if node.style.paints_over() {
             let mut scene = recycled.pop().unwrap_or_else(crate::Scene::recording);
             {
-                let mut p = Painter::new(gfx, &mut scene, &mut notes, visible, opacity, text_styles);
+                let mut p = Painter::new(gfx, &mut scene, &mut notes, &mut kept, visible, opacity, text_styles);
                 p.with_element_opacity(own_opacity, |p| node.style.paint_over(bounds, p));
             }
             node.over = keep(scene, recycled);
         }
+        node.state = kept;
         node.painted_at = bounds.origin;
         node.paint_dirty = false;
+        if notes.by_visible {
+            // (Drawn again when what can be seen of it changes.)
+            notes.visible = visible;
+            if !self.by_visible.contains(&id) {
+                self.by_visible.push(id);
+            }
+        }
         node.notes = (!notes.is_empty()).then(|| Box::new(notes));
     }
 
-    /// What can be seen of a node: its bounds within everything that
-    /// clips it.
+    /// What can be seen of a node, where it's drawn: the window, within
+    /// everything that clips it. Inside something that scrolls, that's
+    /// its view, wherever it's scrolled to, taken to the bands of a
+    /// grid with one to spare each way: what draws only what can be
+    /// seen draws again once in a while as it scrolls, not every frame.
     pub(crate) fn visible_at(&self, id: NodeId) -> Bounds<Pixels> {
-        let mut visible = Bounds { origin: point(px(0.), px(0.)), size: self.size };
+        let mut path: SmallVec<[NodeId; 16]> = SmallVec::new();
         let mut at = self.nodes.get(id).and_then(|n| n.parent);
-        while let Some(node) = at.and_then(|id| self.nodes.get(id)) {
+        while let Some(id) = at {
+            path.push(id);
+            at = self.nodes.get(id).and_then(|n| n.parent);
+        }
+        let mut visible = Bounds { origin: point(px(0.), px(0.)), size: self.size };
+        for id in path.iter().rev() {
+            let node = &self.nodes[*id];
             if let Some(mask) = node.style.overflow_mask(node.bounds, self.gfx.rem_size) {
                 visible = visible.intersect(&mask.bounds);
             }
-            at = node.parent;
+            if let Some(handle) = &node.scroll {
+                let offset = handle.offset();
+                let max = handle.max_offset();
+                let band = |from: Pixels, to: Pixels, by: Pixels, scrolls: bool| -> (Pixels, Pixels) {
+                    let (from, to) = (from - by, to - by);
+                    if !scrolls {
+                        return (from, to);
+                    }
+                    (px(((from.0 / VISIBLE_BAND).floor() - 1.0) * VISIBLE_BAND), px(((to.0 / VISIBLE_BAND).ceil() + 1.0) * VISIBLE_BAND))
+                };
+                let (left, right) = band(visible.left(), visible.right(), offset.x, max.width > px(0.));
+                let (top, bottom) = band(visible.top(), visible.bottom(), offset.y, max.height > px(0.));
+                visible = Bounds::from_corners(point(left, top), point(right, bottom));
+            }
         }
         visible
     }
+
+    /// What draws by what can be seen of it, and can now be seen
+    /// differently, is drawn again.
+    pub(crate) fn check_visible(&mut self) {
+        if self.by_visible.is_empty() {
+            return;
+        }
+        let mut list = std::mem::take(&mut self.by_visible);
+        list.retain(|id| self.nodes.get(*id).is_some_and(|n| n.notes.as_ref().is_some_and(|notes| notes.by_visible)));
+        for id in &list {
+            let seen = self.nodes[*id].notes.as_ref().map(|n| n.visible);
+            if seen != Some(self.visible_at(*id)) {
+                self.mark_paint(*id);
+            }
+        }
+        self.by_visible = list;
+    }
+
+    /// How far what's in a node shows from where it's laid out: by
+    /// everything round it that scrolls.
+    pub(crate) fn shift_at(&self, id: NodeId) -> Point<Pixels> {
+        let mut shift = Point::default();
+        let mut at = self.nodes.get(id).and_then(|n| n.parent);
+        while let Some(node) = at.and_then(|id| self.nodes.get(id)) {
+            if let Some(handle) = &node.scroll {
+                shift = shift + handle.0.shown.get();
+            }
+            at = node.parent;
+        }
+        shift
+    }
+
+    /// Where a node is in the window now.
+    pub(crate) fn window_bounds(&self, id: NodeId) -> Bounds<Pixels> {
+        let Some(node) = self.nodes.get(id) else { return Bounds::default() };
+        Bounds { origin: node.bounds.origin + self.shift_at(id), size: node.bounds.size }
+    }
 }
+
+/// The grid what can be seen inside a scroller is taken to (points).
+const VISIBLE_BAND: f32 = 256.0;
 
 /// How faded a control that can't be used now is drawn.
 pub const DISABLED_OPACITY: f32 = 0.5;

@@ -87,6 +87,8 @@ pub(crate) struct Notes {
     /// The drawing looked at what can be seen of it: it's drawn again
     /// when that changes.
     pub(crate) by_visible: bool,
+    /// What could be seen of it then.
+    pub(crate) visible: Bounds<Pixels>,
     pub(crate) agent: Vec<crate::agent::Node>,
     pub(crate) cursors: Vec<(Bounds<Pixels>, crate::CursorStyle)>,
     /// Texts that don't show in full (cut short to fit, or cut by what
@@ -100,6 +102,15 @@ impl Notes {
     }
 }
 
+/// An element's own state, of the type asked for (made if it isn't
+/// there, or is another's).
+pub(crate) fn node_state<T: Default + 'static>(slot: &mut Option<Box<dyn std::any::Any>>) -> &mut T {
+    if !slot.as_ref().is_some_and(|s| s.is::<T>()) {
+        *slot = Some(Box::new(T::default()));
+    }
+    slot.as_mut().and_then(|s| s.downcast_mut::<T>()).expect("made above")
+}
+
 /// What a view draws with: its drawing is recorded and kept until the
 /// view changes.
 pub struct Painter<'a> {
@@ -111,11 +122,30 @@ pub struct Painter<'a> {
     element_opacity: f32,
     /// What can be seen of the view being painted (in the window).
     visible: Bounds<Pixels>,
+    /// What the element being painted keeps (`node_state`).
+    state: &'a mut Option<Box<dyn std::any::Any>>,
 }
 
 impl<'a> Painter<'a> {
-    pub(crate) fn new(gfx: &'a mut Gfx, scene: &'a mut Scene, notes: &'a mut Notes, visible: Bounds<Pixels>, opacity: f32, text_style: Vec<TextStyleRefinement>) -> Self {
-        Painter { gfx, scene, notes, content_mask_stack: Vec::new(), text_style_stack: text_style, element_opacity: opacity, visible }
+    pub(crate) fn new(
+        gfx: &'a mut Gfx,
+        scene: &'a mut Scene,
+        notes: &'a mut Notes,
+        state: &'a mut Option<Box<dyn std::any::Any>>,
+        visible: Bounds<Pixels>,
+        opacity: f32,
+        text_style: Vec<TextStyleRefinement>,
+    ) -> Self {
+        Painter { gfx, scene, notes, content_mask_stack: Vec::new(), text_style_stack: text_style, element_opacity: opacity, visible, state }
+    }
+
+    /// What the element being painted keeps from one drawing to the
+    /// next and between its handlers (`WindowCx::node_state`): what a
+    /// control is in the middle of (a scroll bar's held arrow, a
+    /// slider's drag). Made the first time it's asked for; one type an
+    /// element.
+    pub fn node_state<T: Default + 'static>(&mut self) -> &mut T {
+        node_state(self.state)
     }
 
     /// Device pixels to a point on the window's display.

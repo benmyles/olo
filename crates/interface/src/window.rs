@@ -27,13 +27,23 @@ use crate::{
     layout::Layout,
     painter::Gfx,
     point, px, size,
-    stage::{Commit, Item, Layer, Opened, WindowEvent, WindowLink},
+    stage::{Commit, Item, Layer, Opened, ScrollReport, WheelKind, WheelRegion, WindowEvent, WindowLink},
     tree::{Node, NodeId, NodeKind, ViewId},
     view::{AnyView, Child, Cx, View, ViewSlot},
 };
 
 thread_local! {
     static TEXT: std::cell::RefCell<Option<Arc<WindowTextSystem>>> = const { std::cell::RefCell::new(None) };
+    static SCALE: std::cell::Cell<f32> = const { std::cell::Cell::new(1.0) };
+}
+
+/// The scale of the window that's being worked on now, on this thread
+/// (the one whose view is saying what it shows, or whose handler is
+/// running): device pixels to a point. For what's built without the
+/// window to hand (an element sized in whole device pixels). A window
+/// whose scale changes has every view say what it shows again.
+pub fn scale_factor() -> f32 {
+    SCALE.with(|s| s.get())
 }
 
 /// The calling thread's text system: the program's fonts and glyphs
@@ -89,6 +99,22 @@ pub(crate) struct WindowCore {
     /// only what something drew).
     pub(crate) items: Vec<Item>,
     pub(crate) items_stale: bool,
+    /// What scrolls, as last committed: the layers (the window first),
+    /// where the wheel means something, each scroller's node, and what
+    /// is drawn by a scroller (its bars).
+    pub(crate) layers: Vec<Layer>,
+    pub(crate) wheel: Vec<WheelRegion>,
+    pub(crate) scrollers: FxHashMap<u64, NodeId>,
+    pub(crate) watchers: Vec<(u64, NodeId)>,
+    /// Scrollers that moved, whose listeners and watchers haven't heard.
+    pub(crate) scroll_changed: Vec<u64>,
+    /// Scrollers asked to go somewhere once layout is done.
+    pub(crate) scroll_asks: Vec<crate::ScrollHandle>,
+    /// What the pointer is over may have changed under it (something
+    /// scrolled).
+    pub(crate) hover_stale: bool,
+    /// Nodes drawn by what can be seen of them.
+    pub(crate) by_visible: Vec<NodeId>,
     /// Layout is to be worked out again though nothing in the tree says
     /// so (the window's size changed).
     pub(crate) relayout: bool,
@@ -124,6 +150,18 @@ pub(crate) struct WindowCore {
     /// What the kit keeps with the window, one of each type.
     pub(crate) kept: HashMap<std::any::TypeId, Box<dyn std::any::Any>>,
 }
+
+/// What `list_items` makes.
+struct Listing {
+    items: Vec<Item>,
+    layers: Vec<Layer>,
+    wheel: Vec<WheelRegion>,
+    scrollers: FxHashMap<u64, NodeId>,
+    watchers: Vec<(u64, NodeId)>,
+}
+
+/// No clip at all, in device pixels.
+const EVERYWHERE: Bounds<ScaledPixels> = Bounds { origin: Point { x: ScaledPixels(-1.0e7), y: ScaledPixels(-1.0e7) }, size: Size { width: ScaledPixels(2.0e7), height: ScaledPixels(2.0e7) } };
 
 /// A window, as whatever is running on its looper is handed it: the
 /// window's own state and the looper.
@@ -191,7 +229,9 @@ impl<V: View> LocalWindow<V> {
 /// back).
 pub(crate) fn with_window<R>(looper: &mut Looper, id: WindowId, f: impl FnOnce(&mut WindowCx) -> R) -> Option<R> {
     let mut core = looper.state_mut::<Windows>()?.map.remove(&id)?;
+    let outer = SCALE.with(|s| s.replace(core.gfx.scale_factor));
     let result = f(&mut WindowCx { core: &mut core, looper });
+    SCALE.with(|s| s.set(outer));
     if core.closed {
         // Its own view hears it's going, while there's still a window
         // to hear it in.
@@ -316,6 +356,14 @@ impl WindowCore {
             needs_commit: true,
             items: Vec::new(),
             items_stale: true,
+            layers: Vec::new(),
+            wheel: Vec::new(),
+            scrollers: FxHashMap::default(),
+            watchers: Vec::new(),
+            scroll_changed: Vec::new(),
+            scroll_asks: Vec::new(),
+            hover_stale: false,
+            by_visible: Vec::new(),
             relayout: true,
             everything: true,
             started: Some(Instant::now()),
@@ -428,25 +476,101 @@ impl WindowCore {
                 reach = reach.union(&theirs);
             }
         }
+        if self.nodes[id].scroll.is_some() {
+            // (What it holds is under it, wherever it's scrolled to.)
+            reach = bounds;
+            self.measure_scroll(id);
+        }
         self.nodes[id].reach = reach;
         reach
     }
 
+    /// How far a scroller goes, from what it holds as just laid out
+    /// (GPUI's sum: its children's extent and its padding, less its own
+    /// size); kept within that if it shrank.
+    fn measure_scroll(&mut self, id: NodeId) {
+        let node = &self.nodes[id];
+        let Some(handle) = node.scroll.clone() else { return };
+        let bounds = node.bounds;
+        let mut children = handle.0.children.borrow_mut();
+        children.clear();
+        let (mut low, mut high) = (point(Pixels::MAX, Pixels::MAX), Point::default());
+        for child in &node.children {
+            let Some(child) = self.nodes.get(*child) else { continue };
+            low = low.min(&child.bounds.origin);
+            high = high.max(&child.bounds.bottom_right());
+            children.push(Bounds { origin: child.bounds.origin - bounds.origin, size: child.bounds.size });
+        }
+        drop(children);
+        let content: Size<Pixels> = if node.children.is_empty() { bounds.size } else { size(high.x - low.x, high.y - low.y) };
+        let padding = node.style.padding.to_pixels(bounds.size.into(), self.gfx.rem_size);
+        let round = |v: Pixels| px((v.0 * 100.0).round() / 100.0).max(px(0.));
+        let mut max = size(round(content.width + padding.left + padding.right - bounds.size.width), round(content.height + padding.top + padding.bottom - bounds.size.height));
+        if node.style.overflow.x != crate::Overflow::Scroll {
+            max.width = px(0.);
+        }
+        if node.style.overflow.y != crate::Overflow::Scroll {
+            max.height = px(0.);
+        }
+        let changed = handle.0.max.get() != max || handle.0.bounds.get() != bounds;
+        handle.0.max.set(max);
+        handle.0.bounds.set(bounds);
+        let at = handle.offset();
+        let within = point(at.x.clamp(-max.width, px(0.)), at.y.clamp(-max.height, px(0.)));
+        if within != at {
+            handle.put(within);
+        }
+        if changed || within != at {
+            self.scroll_moved(handle.id());
+        }
+    }
+
+    /// A scroller moved, or its ends did: the stage is told, and what
+    /// hears of it or draws by it does at the next flush.
+    pub(crate) fn scroll_moved(&mut self, id: u64) {
+        self.reshaped();
+        self.hover_stale = true;
+        if !self.scroll_changed.contains(&id) {
+            self.scroll_changed.push(id);
+        }
+    }
+
+    /// A scroller was asked to go somewhere once it's laid out.
+    pub(crate) fn scroll_asked(&mut self, handle: crate::ScrollHandle) {
+        self.needs_commit = true;
+        if !self.scroll_asks.contains(&handle) {
+            self.scroll_asks.push(handle);
+        }
+    }
+
     /// Makes the list of everything that shows, in painting order, for
-    /// the stage (and notes where each node's drawings are in it).
+    /// the stage (and notes where each node's drawings are in it), with
+    /// what scrolls: its layers, and where the wheel means something.
     fn list_items(&mut self) {
-        let mut items = std::mem::take(&mut self.items);
-        items.clear();
         let scale = self.gfx.scale_factor;
         let window = Bounds { origin: point(ScaledPixels(0.), ScaledPixels(0.)), size: size(ScaledPixels(self.size.width.0 * scale), ScaledPixels(self.size.height.0 * scale)) };
+        let mut listing = Listing {
+            items: std::mem::take(&mut self.items),
+            layers: std::mem::take(&mut self.layers),
+            wheel: std::mem::take(&mut self.wheel),
+            scrollers: std::mem::take(&mut self.scrollers),
+            watchers: std::mem::take(&mut self.watchers),
+        };
+        listing.items.clear();
+        listing.layers.clear();
+        listing.wheel.clear();
+        listing.scrollers.clear();
+        listing.watchers.clear();
+        listing.layers.push(Layer { id: 0, parent: 0, viewport: window, max: Size::default(), view: self.size, axes: (false, false), set: None });
         if let Some(root) = self.root {
-            self.collect(root, window, &mut items);
+            self.collect(root, window, 0, &mut listing);
         }
-        self.items = items;
+        let Listing { items, layers, wheel, scrollers, watchers } = listing;
+        (self.items, self.layers, self.wheel, self.scrollers, self.watchers) = (items, layers, wheel, scrollers, watchers);
         self.items_stale = false;
     }
 
-    fn collect(&mut self, id: NodeId, clip: Bounds<ScaledPixels>, items: &mut Vec<Item>) {
+    fn collect(&mut self, id: NodeId, clip: Bounds<ScaledPixels>, layer: u32, out: &mut Listing) {
         let scale = self.gfx.scale_factor;
         let rem = self.gfx.rem_size;
         let Some(node) = self.nodes.get_mut(id) else { return };
@@ -454,13 +578,24 @@ impl WindowCore {
         if node.style.visibility == crate::Visibility::Hidden {
             return;
         }
+        if let Some(inter) = &node.inter {
+            // What takes the wheel itself, or lets nothing under it
+            // have the pointer: the stage leaves the wheel there alone.
+            if !inter.scroll_wheel.is_empty() || inter.occlude {
+                let rect = node.bounds.scale(scale).intersect(&clip);
+                if !rect.is_empty() {
+                    out.wheel.push(WheelRegion { layer, rect, kind: WheelKind::Taker });
+                }
+            }
+            out.watchers.extend(inter.watches.iter().map(|watched| (*watched, id)));
+        }
         let by = point(ScaledPixels(((node.bounds.origin.x.0 - node.painted_at.x.0) * scale).round()), ScaledPixels(((node.bounds.origin.y.0 - node.painted_at.y.0) * scale).round()));
         let shows = |list: &Arc<crate::stage::Recording>| !Bounds { origin: list.bounds.origin + by, size: list.bounds.size }.intersect(&clip).is_empty();
         if let Some(list) = &node.behind
             && shows(list)
         {
-            node.slots[0] = items.len() as u32;
-            items.push(Item { list: list.clone(), by, clip, layer: 0 });
+            node.slots[0] = out.items.len() as u32;
+            out.items.push(Item { list: list.clone(), by, clip, layer });
         }
         let count = node.children.len();
         if count > 0 {
@@ -468,10 +603,25 @@ impl WindowCore {
                 Some(mask) => clip.intersect(&mask.scale(scale).bounds),
                 None => clip,
             };
+            // What scrolls is a layer of its own: everything in it is
+            // listed where it's laid out, all of it, and the stage shows
+            // it from wherever it's scrolled to.
+            let (inner, within) = match &node.scroll {
+                Some(handle) if !inner.is_empty() => {
+                    let index = out.layers.len() as u32;
+                    let scrolls = (node.style.overflow.x == crate::Overflow::Scroll, node.style.overflow.y == crate::Overflow::Scroll);
+                    let set = handle.0.set.take().then(|| (handle.offset(), handle.0.epoch.get()));
+                    out.layers.push(Layer { id: handle.id(), parent: layer, viewport: inner, max: handle.max_offset(), view: node.bounds.size, axes: scrolls, set });
+                    out.wheel.push(WheelRegion { layer, rect: inner, kind: WheelKind::Scroller(index) });
+                    out.scrollers.insert(handle.id(), id);
+                    (EVERYWHERE, index)
+                }
+                _ => (inner, layer),
+            };
             if !inner.is_empty() {
                 for i in 0..count {
                     let child = self.nodes[id].children[i];
-                    self.collect(child, inner, items);
+                    self.collect(child, inner, within, out);
                 }
             }
         }
@@ -479,8 +629,8 @@ impl WindowCore {
         if let Some(list) = &node.over
             && shows(list)
         {
-            node.slots[1] = items.len() as u32;
-            items.push(Item { list: list.clone(), by, clip, layer: 0 });
+            node.slots[1] = out.items.len() as u32;
+            out.items.push(Item { list: list.clone(), by, clip, layer });
         }
     }
 
@@ -505,11 +655,15 @@ impl WindowCore {
         true
     }
 
-    fn agent_nodes(&self, id: NodeId, clip: Bounds<Pixels>, out: &mut Vec<crate::agent::Node>) {
+    /// What agents read under a node: `shift` is how far it shows from
+    /// where it's laid out (what holds it scrolled), `clip` what can be
+    /// seen there, in the window.
+    fn agent_nodes(&self, id: NodeId, clip: Bounds<Pixels>, shift: Point<Pixels>, out: &mut Vec<crate::agent::Node>) {
         let Some(node) = self.nodes.get(id) else { return };
         if node.style.visibility == crate::Visibility::Hidden {
             return;
         }
+        let shown = |b: Bounds<Pixels>| Bounds { origin: b.origin + shift, size: b.size };
         // What it is itself, if it says.
         if let Some(inter) = &node.inter
             && let Some(agent) = &inter.agent
@@ -518,7 +672,7 @@ impl WindowCore {
                 role: agent.role,
                 name: agent.name.clone(),
                 value: agent.value.clone(),
-                bounds: node.bounds,
+                bounds: shown(node.bounds),
                 enabled: !inter.disabled,
                 clickable: !inter.disabled && agent.clickable.unwrap_or(!inter.click.is_empty() || !inter.mouse_down.is_empty()),
                 focused: node.focused,
@@ -530,7 +684,7 @@ impl WindowCore {
         }
         // What its drawing said it holds, moved as the drawing is.
         if let Some(notes) = &node.notes {
-            let moved = point(node.bounds.origin.x - node.painted_at.x, node.bounds.origin.y - node.painted_at.y);
+            let moved = point(node.bounds.origin.x - node.painted_at.x, node.bounds.origin.y - node.painted_at.y) + shift;
             for noted in &notes.agent {
                 let mut noted = noted.clone();
                 noted.bounds.origin = noted.bounds.origin + moved;
@@ -539,25 +693,33 @@ impl WindowCore {
             }
         }
         let inner = match node.style.overflow_mask(node.bounds, self.gfx.rem_size) {
-            Some(mask) => clip.intersect(&mask.bounds),
+            Some(mask) => clip.intersect(&shown(mask.bounds)),
             None => clip,
         };
+        let shift = match &node.scroll {
+            Some(handle) => shift + handle.0.shown.get(),
+            None => shift,
+        };
         for child in &node.children {
-            self.agent_nodes(*child, inner, out);
+            self.agent_nodes(*child, inner, shift, out);
         }
     }
 
-    fn cut_texts(&self, id: NodeId, out: &mut Vec<(Bounds<Pixels>, SharedString)>) {
+    fn cut_texts(&self, id: NodeId, shift: Point<Pixels>, out: &mut Vec<(Bounds<Pixels>, SharedString)>) {
         let Some(node) = self.nodes.get(id) else { return };
         if node.style.visibility == crate::Visibility::Hidden {
             return;
         }
         if let Some(notes) = &node.notes {
-            let moved = point(node.bounds.origin.x - node.painted_at.x, node.bounds.origin.y - node.painted_at.y);
+            let moved = point(node.bounds.origin.x - node.painted_at.x, node.bounds.origin.y - node.painted_at.y) + shift;
             out.extend(notes.cuts.iter().map(|(b, full)| (Bounds { origin: b.origin + moved, size: b.size }, full.clone())));
         }
+        let shift = match &node.scroll {
+            Some(handle) => shift + handle.0.shown.get(),
+            None => shift,
+        };
         for child in &node.children {
-            self.cut_texts(*child, out);
+            self.cut_texts(*child, shift, out);
         }
     }
 
@@ -624,6 +786,55 @@ impl<'a> WindowCx<'a> {
                     f(self);
                 }
             }
+            WindowEvent::Scrolled(report) => self.scrolled(report),
+        }
+    }
+
+    /// The stage says where the scrollers are (the wheel or the
+    /// touchpad moved one, or an end let go).
+    fn scrolled(&mut self, report: Vec<ScrollReport>) {
+        let mut any = false;
+        for (id, offset, shown, epoch) in report {
+            let Some(handle) = self.core.scrollers.get(&id).and_then(|node| self.core.nodes.get(*node)).and_then(|n| n.scroll.clone()) else { continue };
+            // (From before the looper last moved it itself: stale.)
+            if epoch != handle.0.epoch.get() {
+                continue;
+            }
+            any |= handle.0.shown.replace(shown) != shown;
+            if handle.0.offset.replace(offset) != offset {
+                any = true;
+                if !self.core.scroll_changed.contains(&id) {
+                    self.core.scroll_changed.push(id);
+                }
+            }
+        }
+        if any {
+            self.core.hover_stale = true;
+            self.tell_scrolled();
+            self.core.check_visible();
+            if std::mem::take(&mut self.core.hover_stale) {
+                self.update_hover();
+            }
+        }
+    }
+
+    /// What hears of a scroller that moved hears, and what's drawn by it
+    /// is drawn again.
+    fn tell_scrolled(&mut self) {
+        while !self.core.scroll_changed.is_empty() {
+            for id in std::mem::take(&mut self.core.scroll_changed) {
+                let watching: Vec<NodeId> = self.core.watchers.iter().filter(|(watched, _)| *watched == id).map(|(_, node)| *node).collect();
+                for node in watching {
+                    self.core.mark_paint(node);
+                }
+                let Some(node) = self.core.scrollers.get(&id).copied() else { continue };
+                let Some((offset, listeners)) = self.core.nodes.get(node).and_then(|n| Some((n.scroll.as_ref()?.offset(), n.inter.as_ref()?.scroll_listeners.clone()))) else { continue };
+                self.core.current = Some(node);
+                for listener in listeners {
+                    listener(&offset, self);
+                }
+                self.core.current = None;
+            }
         }
     }
 
@@ -687,60 +898,86 @@ impl<'a> WindowCx<'a> {
         }
         let flushing = Instant::now();
         let phases = crate::stats::frame_phases();
-        // What changed says what it shows now.
         let mut turns = 0;
-        while let Some(view) = self.core.dirty_views.pop() {
-            turns += 1;
-            if turns > 100_000 {
-                tracing::error!("a view invalidates itself in its own body, for ever");
-                break;
+        let mut rounds = 0;
+        let mut bodies_done = Duration::ZERO;
+        loop {
+            rounds += 1;
+            // What hears of scrolling hears (it may have more to show).
+            self.tell_scrolled();
+            if std::mem::take(&mut self.core.hover_stale) {
+                self.update_hover();
             }
-            let Some(slot) = self.core.views.get_mut(view) else { continue };
-            slot.dirty = false;
-            let Some(root) = slot.root else { continue };
-            if !self.core.is_attached(root) {
-                // (Not shown now: it says what it shows when it's placed
-                // again, `place_view`.)
-                continue;
-            }
-            let Some(mut boxed) = self.core.views[view].view.take() else { continue };
-            let mut element = boxed.body(view, self);
-            if let Some(slot) = self.core.views.get_mut(view) {
-                slot.view = Some(boxed);
-            }
-            if matches!(element.kind, crate::element::Kind::View(_)) {
-                // (A view that is only another view: held in a box of
-                // its own, as the node is this view's.)
-                use crate::{ParentElement as _, Styled as _};
-                element = crate::div().size_full().child(element);
-            }
-            if self.core.nodes.contains_key(root) {
-                self.core.reconcile(root, element, view);
-            }
-        }
-        // The keyboard to a view that asked for it before it was shown.
-        if let Some(view) = self.core.pending_focus.take() {
-            self.focus_view(view);
-        }
-        let core = &mut *self.core;
-        let bodies_done = flushing.elapsed();
-        // Where everything goes.
-        if let Some(root) = core.root {
-            let root_layout = core.nodes[root].layout;
-            if core.relayout || core.layout.is_dirty(root_layout) {
-                core.relayout = false;
-                let available = size(AvailableSpace::Definite(core.size.width), AvailableSpace::Definite(core.size.height));
-                let scale = core.gfx.scale_factor;
-                let mut layout = std::mem::replace(&mut core.layout, Layout::new());
-                layout.compute(root_layout, available, scale, |node, known, available| core.measure(node, known, available));
-                core.layout = layout;
-                core.place(root, Point::default());
-                for id in std::mem::take(&mut core.remeasured) {
-                    core.mark_paint(id);
+            // What changed says what it shows now.
+            let bodies = Instant::now();
+            while let Some(view) = self.core.dirty_views.pop() {
+                turns += 1;
+                if turns > 100_000 {
+                    tracing::error!("a view invalidates itself in its own body, for ever");
+                    break;
+                }
+                let Some(slot) = self.core.views.get_mut(view) else { continue };
+                slot.dirty = false;
+                let Some(root) = slot.root else { continue };
+                if !self.core.is_attached(root) {
+                    // (Not shown now: it says what it shows when it's
+                    // placed again, `place_view`.)
+                    continue;
+                }
+                let Some(mut boxed) = self.core.views[view].view.take() else { continue };
+                let mut element = boxed.body(view, self);
+                if let Some(slot) = self.core.views.get_mut(view) {
+                    slot.view = Some(boxed);
+                }
+                if matches!(element.kind, crate::element::Kind::View(_)) {
+                    // (A view that is only another view: held in a box
+                    // of its own, as the node is this view's.)
+                    use crate::{ParentElement as _, Styled as _};
+                    element = crate::div().size_full().child(element);
+                }
+                if self.core.nodes.contains_key(root) {
+                    self.core.reconcile(root, element, view);
                 }
             }
+            // The keyboard to a view that asked for it before it was
+            // shown.
+            if let Some(view) = self.core.pending_focus.take() {
+                self.focus_view(view);
+            }
+            bodies_done += bodies.elapsed();
+            let core = &mut *self.core;
+            // Where everything goes.
+            if let Some(root) = core.root {
+                let root_layout = core.nodes[root].layout;
+                if core.relayout || core.layout.is_dirty(root_layout) {
+                    core.relayout = false;
+                    let available = size(AvailableSpace::Definite(core.size.width), AvailableSpace::Definite(core.size.height));
+                    let scale = core.gfx.scale_factor;
+                    let mut layout = std::mem::replace(&mut core.layout, Layout::new());
+                    layout.compute(root_layout, available, scale, |node, known, available| core.measure(node, known, available));
+                    core.layout = layout;
+                    core.place(root, Point::default());
+                    for id in std::mem::take(&mut core.remeasured) {
+                        core.mark_paint(id);
+                    }
+                }
+            }
+            // What was asked to scroll somewhere once it was laid out.
+            for handle in std::mem::take(&mut core.scroll_asks) {
+                if handle.settle() {
+                    core.scroll_moved(handle.id());
+                }
+            }
+            // (Scrolling that something heard of may have changed what a
+            // view shows: round again, until it's all said.)
+            if (core.scroll_changed.is_empty() && core.dirty_views.is_empty() && !core.hover_stale) || rounds >= 8 {
+                break;
+            }
         }
+        let core = &mut *self.core;
+        core.check_visible();
         let layout_done = flushing.elapsed();
+        let bodies_done = bodies_done.min(layout_done);
         // What changed is drawn.
         let mut drew = 0;
         let mut recorded: Vec<NodeId> = Vec::new();
@@ -801,16 +1038,16 @@ impl<'a> WindowCx<'a> {
             );
         }
         let scale = core.gfx.scale_factor;
-        let layers = vec![Layer {
-            id: 0,
-            parent: 0,
-            viewport: Bounds { origin: point(ScaledPixels(0.), ScaledPixels(0.)), size: size(ScaledPixels(core.size.width.0 * scale), ScaledPixels(core.size.height.0 * scale)) },
-            range: Size::default(),
-            offset: None,
-        }];
+        let (layers, wheel) = (core.layers.clone(), core.wheel.clone());
+        // (Told once where the looper put a scroller: after that the
+        // stage's own word stands.)
+        for layer in &mut core.layers {
+            layer.set = None;
+        }
         core.commits += 1;
         let started = core.started.take().unwrap_or(flushing);
-        let commit = Commit { size: core.size, scale, items, layers, started, work: started.elapsed(), everything: std::mem::take(&mut core.everything), animating: !core.next_frame.is_empty() };
+        let commit =
+            Commit { size: core.size, scale, items, layers, wheel, started, work: started.elapsed(), everything: std::mem::take(&mut core.everything), animating: !core.next_frame.is_empty() };
         let id = core.id;
         display().post(move |on| {
             if let Some(stage) = on.stage(id) {
@@ -1000,7 +1237,7 @@ impl<'a> WindowCx<'a> {
         let mut out = Vec::new();
         if let Some(root) = self.core.root {
             let window = Bounds { origin: Point::default(), size: self.core.size };
-            self.core.agent_nodes(root, window, &mut out);
+            self.core.agent_nodes(root, window, Point::default(), &mut out);
         }
         out
     }
@@ -1016,7 +1253,7 @@ impl<'a> WindowCx<'a> {
     pub fn cut_texts(&self) -> Vec<(Bounds<Pixels>, SharedString)> {
         let mut out = Vec::new();
         if let Some(root) = self.core.root {
-            self.core.cut_texts(root, &mut out);
+            self.core.cut_texts(root, Point::default(), &mut out);
         }
         out
     }
@@ -1094,7 +1331,7 @@ impl<'a> WindowCx<'a> {
 
     /// Where the element whose handler is running now is, in the window.
     pub fn listener_bounds(&self) -> Bounds<Pixels> {
-        self.core.current.and_then(|id| self.core.nodes.get(id)).map(|n| n.bounds).unwrap_or_default()
+        self.core.current.map(|id| self.core.window_bounds(id)).unwrap_or_default()
     }
 
     /// The element whose handler is running now, to draw it again later
@@ -1102,6 +1339,49 @@ impl<'a> WindowCx<'a> {
     /// tree changes (a menu bar's open title, once its menu has gone).
     pub fn listener_node(&self) -> Option<NodeRef> {
         self.core.current.map(NodeRef)
+    }
+
+    /// What the element whose handler is running keeps for itself, from
+    /// one handler to the next and for its drawing
+    /// (`Painter::node_state`).
+    pub fn node_state<T: Default + 'static>(&mut self) -> &mut T {
+        let slot = match self.core.current.and_then(|id| self.core.nodes.get_mut(id)) {
+            Some(node) => &mut node.state,
+            // (No element: something to write to, kept nowhere.)
+            None => {
+                self.core.kept.entry(std::any::TypeId::of::<Option<Box<dyn std::any::Any>>>()).or_insert_with(|| Box::new(None::<Box<dyn std::any::Any>>)).downcast_mut().expect("kept by its type")
+            }
+        };
+        crate::painter::node_state(slot)
+    }
+
+    /// Does something as an element's handler would (its state and its
+    /// bounds are what `node_state` and `listener_bounds` give), later:
+    /// from a frame's step or a timer its handler set going. Nothing, if
+    /// the element has gone.
+    pub fn with_node(&mut self, node: NodeRef, f: impl FnOnce(&mut WindowCx)) {
+        if !self.core.nodes.contains_key(node.0) {
+            return;
+        }
+        let outer = self.core.current.replace(node.0);
+        f(self);
+        self.core.current = outer;
+    }
+
+    /// Draws the element whose handler is running again (what it keeps
+    /// for itself changed).
+    pub fn repaint(&mut self) {
+        if let Some(id) = self.core.current {
+            self.core.mark_paint(id);
+        }
+    }
+
+    /// Has the view that the element whose handler is running belongs
+    /// to say what it shows again.
+    pub fn invalidate_owner(&mut self) {
+        if let Some(owner) = self.core.current.and_then(|id| self.core.nodes.get(id)).map(|n| n.owner) {
+            self.core.invalidate_view(owner);
+        }
     }
 
     /// Draws an element again (if it's still there).

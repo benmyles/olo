@@ -876,6 +876,7 @@ impl TextField {
         // (The input method's window keeps beside the caret, as last
         // drawn.)
         if let Some(at) = self.caret_bounds() {
+            let at = cx.to_window(at);
             cx.set_ime_position(at);
         }
     }

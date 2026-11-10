@@ -83,6 +83,21 @@ pub fn disabled_text(p: &Palette) -> Hsla {
     c(olo_theme::mix(p.panel_text, p.panel_background, 0.55))
 }
 
+/// A key for what a drawing shows (`Element::paint_key`): everything
+/// its look depends on, hashed. While that's the same, the drawing is
+/// kept when the view that holds it says what it shows again.
+pub fn key(look: impl std::hash::Hash) -> u64 {
+    use std::hash::Hasher as _;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    look.hash(&mut hasher);
+    hasher.finish()
+}
+
+/// A colour as something to hash (in a [`key`]).
+pub fn ink_key(color: Option<Hsla>) -> Option<[u32; 4]> {
+    color.map(|c| [c.h.to_bits(), c.s.to_bits(), c.l.to_bits(), c.a.to_bits()])
+}
+
 /// A one-point line's width in device pixels at `scale`.
 pub fn line_pixels(scale: f32) -> f32 {
     scale.floor().max(1.0)

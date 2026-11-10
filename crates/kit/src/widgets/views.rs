@@ -108,18 +108,21 @@ impl IntoElement for StringView {
         let size = self.size;
         if self.cut {
             let (text, dim, color) = (self.text, self.dim, self.color);
+            let key = style::key((&text, dim, style::ink_key(color), size.to_bits(), self.bold));
             return canvas(move |g, b| {
                 let p = theme::palette();
                 let ink = color.unwrap_or_else(|| if dim { style::disabled_text(&p) } else { style::c(p.panel_text) });
                 let r = style::label_fit(g, b.left(), b.center().y, style::Align::Left, text.clone(), size, style::ui_font(weight), ink, b.size.width);
                 g.agent(agent::Node::label(text.clone(), r));
             })
+            .paint_key(key)
             .w_full()
             .min_w_0()
             .h(px(self.height));
         }
         let w = f32::from(style::text_width(self.text.clone(), size, style::ui_font(weight))).ceil();
         let (text, dim, color, height, beside) = (self.text, self.dim, self.color, self.height, self.beside);
+        let key = style::key((&text, dim, style::ink_key(color), size.to_bits(), self.bold, beside.map(f32::to_bits)));
         canvas(move |g, b| {
             let p = theme::palette();
             let ink = color.unwrap_or_else(|| if dim { style::disabled_text(&p) } else { style::c(p.panel_text) });
@@ -129,6 +132,7 @@ impl IntoElement for StringView {
             };
             g.agent(agent::Node::label(text.clone(), r));
         })
+        .paint_key(key)
         .w(px(w))
         .h(px(height))
         .flex_shrink_0()
@@ -157,6 +161,7 @@ impl IntoElement for Separator {
             style::hline_above(g, b.left(), b.right(), y, style::shade(&p, p.panel_background, 1.2));
             style::hline(g, b.left(), b.right(), y, style::c(p.shine));
         })
+        .paint_key(1)
         .w_full()
         .h(px(6.0))
         .flex_shrink_0()
@@ -240,6 +245,7 @@ impl IntoElement for BBox {
                 g.agent(crate::agent::Node { role: "Group", name: Some(l.clone()), bounds: b, enabled: true, ..Default::default() });
             }
         })
+        .paint_key(style::key((&self.label, label_w.map(f32::to_bits), action_w.map(f32::to_bits))))
         .absolute()
         .inset_0();
         let mut b = div().relative();
@@ -323,9 +329,13 @@ impl IntoElement for EmptyState {
         let mut col = div().flex().flex_col().items_center().max_w(px(320.0)).gap(px(m::TIGHT)).text_color(dim);
         if let Some(name) = icon {
             col = col.child(
-                canvas(move |g, b| {
-                    crate::icons::paint(g, b, &name);
+                canvas({
+                    let name = name.clone();
+                    move |g, b| {
+                        crate::icons::paint(g, b, &name);
+                    }
                 })
+                .paint_key(style::key(&name))
                 .w(px(32.0))
                 .h(px(32.0))
                 .mb(px(m::SPACING - m::TIGHT)),
