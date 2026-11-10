@@ -2,6 +2,10 @@ mod blade;
 mod keyboard;
 mod keystroke;
 mod linux;
+#[cfg(test)]
+mod test_dispatcher;
+#[cfg(test)]
+pub use test_dispatcher::TestDispatcher;
 
 use crate::{
     Bounds, DevicePixels, Font, FontId, FontMetrics, FontRun, GlyphId, LineLayout, Pixels, PlatformInput, Point, RenderGlyphParams, RenderImage, RenderImageParams, RenderSvgParams, Scene,
@@ -574,6 +578,10 @@ pub fn file_uri_path(uri: &str) -> Option<std::path::PathBuf> {
 /// be considered part of our public API.
 #[doc(hidden)]
 pub trait PlatformDispatcher: Send + Sync {
+    #[cfg(test)]
+    fn as_test(&self) -> Option<&TestDispatcher> {
+        None
+    }
     fn is_main_thread(&self) -> bool;
     fn dispatch(&self, runnable: Runnable, label: Option<TaskLabel>);
     fn dispatch_on_main_thread(&self, runnable: Runnable);

@@ -261,16 +261,14 @@ impl Boundary {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Font, FontFeatures, FontStyle, FontWeight, Hsla, TestAppContext, TestDispatcher, font};
+    use crate::{Font, FontFeatures, FontStyle, FontWeight, Hsla, NoopTextSystem, TextSystem, font};
     #[cfg(target_os = "macos")]
     use crate::{TextRun, WindowTextSystem, WrapBoundary};
-    use rand::prelude::*;
 
     fn build_wrapper() -> LineWrapper {
-        let dispatcher = TestDispatcher::new(StdRng::seed_from_u64(0));
-        let cx = TestAppContext::build(dispatcher, None);
-        let id = cx.text_system().resolve_font(&font(".ZedMono"));
-        LineWrapper::new(id, px(16.), cx.text_system().platform_text_system.clone())
+        let text = TextSystem::new(Arc::new(NoopTextSystem));
+        let id = text.resolve_font(&font(".ZedMono"));
+        LineWrapper::new(id, px(16.), text.platform_text_system.clone())
     }
 
     fn generate_test_runs(input_run_len: &[usize]) -> Vec<TextRun> {
