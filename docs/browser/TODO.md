@@ -233,6 +233,12 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
 - [ ] Selectors are compiled again with every compile of a page's sheets
   (11 ms of GitHub's 17): keep each sheet's compiled selectors with it,
   as its declarations are, relocated into the rule set's arenas.
+- [ ] Make background rule completion robust to shared-cache eviction and
+  multiple subscribers. The parallel paint suite intermittently wakes then
+  sees `Rules still compiling`; serial runs pass. `compile_in_background`
+  removes successful jobs before consumers take them and only keeps the
+  starting caller's waker. Add deterministic eviction/subscriber coverage;
+  preserve the observed failure in `measurements/2026-11-09-grid/tests-final.log`.
 - [x] A page's tiles were painted one after another on its thread: up to
   16 at a time are painted side by side on the CPU pool now (each pool
   thread a painter of its own), shown in order.
@@ -349,6 +355,11 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   alignment; areas, dense packing and column flow remain), column flex,
   atomic inlines (inline-block, inline-flex, inline-grid) laid out by
   fit-content inside their paragraph.
+- [x] Preserve fractional flexible/auto track shares and already-quantized
+  sizes through fractional-scale arithmetic. 1,440 independent Chrome
+  rectangles across 72 authored grids at five native scales match; size/gap
+  mutations match both independent references and fresh layout. This does
+  not complete Grid intrinsic sizing, placement, alignment or subgrid.
 - [x] Web fonts: `@font-face` descriptors, WOFF2/WOFF decoding in Rust,
   `unicode-range`, per-page font scopes; Stripe renders in Sohne.
   Remaining: `local()` sources, `font-display` timing (fonts load before
@@ -775,7 +786,8 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   colour clipping. Complete CSS paint/stacking and semantic DOM/hit actions.
   Counter-page font diagnosis: both select Liberation Sans, but all five
   native-scale pixel comparisons fail (19,674 / 31,922 / 31,027 / 47,464 /
-  56,056 pixels). Grid track rounding also differs. Shaped-face JSON and
+  56,056 pixels). The later grid fix matches all 180 original element
+  rectangles; font pixels remain unverified after that fix. Shaped-face JSON and
   repeat-verified native Chrome captures are in
   `measurements/2026-11-09-font-diagnostics`; emulated DPR is separate.
 - [ ] Retained GPU painting, clipping, compositing, scrolling, images,

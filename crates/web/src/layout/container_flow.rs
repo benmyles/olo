@@ -1214,6 +1214,8 @@ fn size_tracks(tracks: &[Track], items: &[(usize, usize, f64, f64)], available: 
         }
     }
     let gaps = gap * n.saturating_sub(1) as f64;
+    let mut flex_fraction = None;
+    let mut stretched_auto = false;
     if let Some(available) = available {
         // Maximize tracks: grow those below their limits, equally.
         let mut free = available - base.iter().sum::<f64>() - gaps;
@@ -1255,9 +1257,7 @@ fn size_tracks(tracks: &[Track], items: &[(usize, usize, f64, f64)], available: 
                     }
                 }
                 if !changed {
-                    for &i in &active {
-                        base[i] = base[i].max(flex[i].unwrap() * fr);
-                    }
+                    flex_fraction = Some(fr);
                     break;
                 }
                 active = next;
@@ -1269,6 +1269,7 @@ fn size_tracks(tracks: &[Track], items: &[(usize, usize, f64, f64)], available: 
             let free = available - base.iter().sum::<f64>() - gaps;
             let autos: Vec<usize> = (0..n).filter(|&i| matches!(tracks[i].max, Bound::Auto)).collect();
             if free > 0. && !autos.is_empty() {
+                stretched_auto = true;
                 for &i in &autos {
                     base[i] += free / autos.len() as f64;
                 }
@@ -1296,13 +1297,40 @@ fn size_tracks(tracks: &[Track], items: &[(usize, usize, f64, f64)], available: 
             let factors: f64 = (a..z).filter_map(|i| flex[i]).sum();
             fr = fr.max((max - others).max(0.) / factors.max(1.));
         }
-        for i in 0..n {
-            if let Some(f) = flex[i] {
-                base[i] = base[i].max(fr * f);
-            }
-        }
+        flex_fraction = Some(fr);
     }
-    base.iter().map(|v| used::grid(v.max(0.), scale)).collect()
+    // Distribute the discarded fractions to later tracks. Blink computes
+    // flexible shares as floats in layout units; preserving that precision
+    // matters when a sum ends just short of the next unit (100px / 3, e.g.).
+    // Fixed tracks and tracks frozen at their minimum contribute no remainder.
+    let unit = scale * 64.;
+    let mut flex_remainder = 0f32;
+    let mut auto_remainder = 0f64;
+    base.iter()
+        .enumerate()
+        .map(|(i, &minimum)| {
+            if let (Some(fr), Some(factor)) = (flex_fraction, flex[i]) {
+                let share = (fr * unit) as f32 * factor as f32 + flex_remainder;
+                if !share.is_finite() {
+                    // Keep the wide numeric path for factors outside float's
+                    // range; converting a tiny fraction and huge factor must
+                    // not turn a previously valid track into a zero-sized one.
+                    return used::grid(minimum.max(fr * factor).max(0.), scale);
+                }
+                let whole = (share + f32::EPSILON).floor();
+                if whole.is_finite() && f64::from(whole) >= minimum * unit {
+                    flex_remainder = (share - whole).max(0.);
+                    return f64::from(whole) / unit;
+                }
+            } else if stretched_auto && matches!(tracks[i].max, Bound::Auto) {
+                let share = minimum * unit + auto_remainder;
+                let whole = (share + f64::EPSILON * share.abs() * 4.).floor();
+                auto_remainder = (share - whole).max(0.);
+                return whole / unit;
+            }
+            used::grid(minimum.max(0.), scale)
+        })
+        .collect()
 }
 /// An axis's named lines (index from 0, name): its track list's, through
 /// an auto-repeat expanded to `tracks`, and its areas' edges (`a-start`,

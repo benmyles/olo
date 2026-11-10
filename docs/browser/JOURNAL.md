@@ -7818,3 +7818,84 @@ replace presentation checks. These are explicit nonpasses, preserved in
 `measurements/2026-11-09-font-diagnostics`, including images, JSON, scripts and
 provenance. Earlier 30 native Browser light/dark/night reviews remain in the
 counter checkpoint; no additional website or pixel-equivalence pass follows.
+
+### 2026-11-09 — fractional grid track distribution
+
+Flexible tracks now carry discarded layout-unit fractions to later flexible
+tracks; auto-track stretching carries its own remainder. Fixed tracks and
+tracks frozen at their minimum donate nothing. Flexible shares use float
+layout-unit arithmetic, matching independent Chrome observations: three 1fr
+tracks in 100 CSS px at native 1× intentionally remain slightly short, so
+assigning all leftover space to the final track would be wrong. A wide numeric
+fallback keeps extreme finite factors from collapsing during float conversion.
+
+The common layout quantizer also preserves a size already on its grid when
+fractional-scale division or subtraction of larger positions introduces
+round-off. A signed adjustment of one ten-millionth of a layout unit precedes
+truncation; it does not grow with coordinates. This replaces an initial
+round-and-compare version after its measured cost warranted reducing the
+arithmetic. No allocation, polling, thread or UI work was added.
+
+The initial 60-case Chrome capture produced 405 coordinate mismatches.
+Remainder distribution reduced these to 89; precision preservation removed
+the rest. The expanded 72-case fixture covers columns and rows, unequal,
+sub-unit, zero and extreme factors, fixed tracks among flexible tracks,
+minmax/frozen minima, auto stretching and fixed fractions. All 1,440 Chrome
+rectangles across 360 case/scale observations now match within 0.0001 CSS px
+(the allowance for Chrome's float DOMRect serialization, smaller than a
+layout unit at every scale). Capture changes the owned Wayland screen's real
+scale, checks DPR/fonts/frame readiness, and is byte-identical on repeat.
+Size/gap mutation tests match independent expected rectangles and fresh
+layout. Signed quantizer tests cover round trips and retained fractional
+truncation at seven scales.
+
+The final release suite passes 541 tests with two existing ignored tests,
+using one test thread; the release workspace build passes. A parallel run
+failed the existing `a_live_refresh_compiles_new_rules_in_the_background`
+test after its wakeup with "Rules still compiling". Shared-cache eviction
+between wake and consumption is a possible cause from code inspection, not
+an independently reproduced diagnosis. The failure is retained; background
+completion retention and subscriber notification are explicit TODOs. The
+preceding 540-test parallel run passed. Do not erase this intermittent failure
+or treat the grid tests as coverage of background compilation.
+
+All 30 paired native reviews are clean across light/dark/night and live
+1/1.25/1.5/1.75/2 scales, at window x=49. The final cheaper quantizer produces
+identical screenshots to the initial corrected version at all 15 combinations.
+The half-pixel-origin visual fixture changes 108 pixels at 1× in each theme;
+its other scale screenshots are unchanged despite corrected subpixel geometry.
+The screenshot journal records the endpoints before and after. This does not
+complete Grid, font rasterization, website acceptance or Chrome superiority.
+
+Rechecking the original counter-page geometry that exposed the issue now
+matches all 36 element boxes at every scale (180/180), versus 27/11/36/36/15
+before. `counter-geometry.json` retains the independent prior Chrome
+rectangles, current diagnostic output and hashes. This is geometry evidence;
+the font-pixel comparison has not been recaptured after the grid correction.
+
+Release measurements, including both quantizer versions, are retained in
+`measurements/2026-11-09-grid.json`. Final sweep: 1,000-row flexible, auto and
+ordinary fixtures; baseline/candidate/candidate/baseline, seven warm reloads
+per launch, two seconds idle, drag and wheel checks. Worker-ready is not
+presentation latency. Process CPU includes every Browser thread and the
+identical timing logging enabled on both binaries. Medians:
+
+| Measurement | Before | After |
+|---|---:|---:|
+| Flexible grid CPU / ready / layout | 51.43 / 38.5 / 11.7 ms | 49.29 / 39.5 / 12.2 ms |
+| Auto grid CPU / ready / layout | 47.14 / 37 / 11.2 ms | 41.43 / 33.5 / 10.75 ms |
+| Ordinary CPU / ready / layout | 32.86 / 24.5 / 2.4 ms | 33.57 / 25 / 2.5 ms |
+| Flexible drag / wheel first movement | 28.7 / 9.4 ms | 28.65 / 9.35 ms |
+| Auto drag / wheel first movement | 28.55 / 9.1 ms | 25.6 / 9.05 ms |
+| Ordinary drag / wheel first movement | 28.65 / 9.15 ms | 24.8 / 9.25 ms |
+
+Idle samples all have zero CPU, wakeups and frames. Final slowest draws for
+flex/auto/ordinary are 2.85/4.74/1.25 ms before and 2.17/2.12/7.17 ms after.
+Scroll hitches total 4/0/0 before and 0/0/1 after. The ordinary candidate hitch
+remains a nonpass for perfectly smooth scrolling. Other builds overlapped both
+sweeps (up to 15 compiler processes at final-sweep boundaries); no causal
+speedup or clean performance pass follows. The initial round/compare version
+measured higher CPU on flex (49.29→55.71 ms) and ordinary (34.29→40 ms), and
+included draw-budget failures. Do not discard it or attribute the difference
+between sweeps solely to the cheaper arithmetic. No Chrome performance claim
+or website acceptance is made.

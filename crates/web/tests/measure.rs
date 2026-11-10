@@ -106,6 +106,59 @@ fn measurer_for(source: &str) -> (page::Measurer, paint_host::Scaled, olo_web::d
     (measurer, host, prepared.into_document(), viewport)
 }
 #[test]
+fn grid_track_distribution_matches_native_chrome() {
+    use sha2::{Digest, Sha256};
+    let oracle: serde_json::Value = serde_json::from_str(include_str!("grid-fixtures/chrome.json")).unwrap();
+    assert_eq!(format!("{:x}", Sha256::digest(include_bytes!("grid-fixtures/tracks.html"))), oracle["source_sha256"]);
+    let (measurer, host, doc, mut viewport) = measurer_for(include_str!("grid-fixtures/tracks.html"));
+    let mut errors = Vec::new();
+    for row in oracle["rows"].as_array().unwrap() {
+        viewport.scale = row["scale"].as_f64().unwrap();
+        let host = paint_host::Scaled::new(host.0.0.clone(), viewport.scale);
+        let measured = measurer.measure(&doc, &host, &mut shaping::Engine::default(), viewport, None, None).unwrap();
+        for case in row["cases"].as_array().unwrap() {
+            for rect in case["rects"].as_array().unwrap() {
+                let id = rect["id"].as_str().unwrap();
+                let b = measured.border_box(find(&doc, id)).unwrap();
+                for (k, got) in [b.x, b.y, b.width, b.height].into_iter().enumerate() {
+                    let expected = rect["rect"][k].as_f64().unwrap();
+                    if (got - expected).abs() > 0.0001 {
+                        errors.push(format!("{} #{id} coordinate {k}: {got} != {expected}", viewport.scale));
+                    }
+                }
+            }
+        }
+    }
+    assert!(errors.is_empty(), "{}", errors.join("\n"));
+}
+#[test]
+fn grid_track_distribution_updates_after_size_and_gap_changes() {
+    let oracle: serde_json::Value = serde_json::from_str(include_str!("grid-fixtures/chrome.json")).unwrap();
+    let (measurer, host, mut doc, mut viewport) = measurer_for(include_str!("grid-fixtures/tracks.html"));
+    let grid = find(&doc, "columns-thirds-100");
+    for row in oracle["rows"].as_array().unwrap() {
+        viewport.scale = row["scale"].as_f64().unwrap();
+        let host = paint_host::Scaled::new(host.0.0.clone(), viewport.scale);
+        let mut shaper = shaping::Engine::default();
+        let mut previous = measurer.measure(&doc, &host, &mut shaper, viewport, None, None).unwrap();
+        for (width, gap) in [(960., 16.), (101.3, 1.2), (100., 0.)] {
+            doc.set_attribute(grid, "style", &format!("display:grid;width:{width}px;height:12px;grid-template-rows:12px;grid-template-columns:repeat(3,1fr);gap:{gap}px")).unwrap();
+            let next = measurer.measure(&doc, &host, &mut shaper, viewport, Some(previous), None).unwrap();
+            let fresh = measurer.measure(&doc, &host, &mut shaper, viewport, None, None).unwrap();
+            let reference = row["cases"].as_array().unwrap().iter().find(|c| c["id"] == format!("columns-thirds-{width}")).unwrap();
+            for i in 0..3 {
+                let node = find(&doc, &format!("columns-thirds-100-{i}"));
+                let b = next.border_box(node).unwrap();
+                assert_eq!(Some(b), fresh.border_box(node));
+                for (k, got) in [b.x, b.y, b.width, b.height].into_iter().enumerate() {
+                    assert!((got - reference["rects"][i + 1]["rect"][k].as_f64().unwrap()).abs() < 0.0001);
+                }
+            }
+            previous = next;
+        }
+    }
+}
+#[test]
 fn outside_markers_reserve_room_and_align_to_the_first_content_baseline() {
     let oracle: serde_json::Value = serde_json::from_str(include_str!("marker-fixtures/chrome.json")).unwrap();
     let (measurer, host, doc, mut viewport) = measurer_for(include_str!("marker-fixtures/markers.html"));

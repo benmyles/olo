@@ -1,0 +1,3986 @@
+[
+  {
+    "mode": "light",
+    "scale": 1,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.0,
+        "dark": false,
+        "findings": []
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-grid/review.html",
+            "x": 250.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-grid/review.html\",\"navigation\":2,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "repeat(3,1fr)",
+            "x": 71.92969,
+            "y": 159.85547,
+            "width": 75.23633,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "repeat(7,1fr)",
+            "x": 71.92969,
+            "y": 221.85547,
+            "width": 75.23633,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "1fr 2fr 3fr",
+            "x": 72.06641,
+            "y": 283.86914,
+            "width": 55.49414,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "1fr 13.3px 1fr",
+            "x": 72.06641,
+            "y": 345.86914,
+            "width": 81.19043,
+            "height": 13.036133,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Label",
+            "name": ".1fr .2fr .3fr",
+            "x": 72.27832,
+            "y": 407.86914,
+            "width": 66.95117,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "0fr 1fr 2fr",
+            "x": 71.546875,
+            "y": 469.86914,
+            "width": 56.01367,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "minmax(31px,1fr) minmax(0,2fr) minmax(0,1fr)",
+            "x": 71.92969,
+            "y": 531.85547,
+            "width": 287.5879,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 17,
+            "parent": 1,
+            "role": "Label",
+            "name": "minmax(70px,1fr) 1fr 1fr",
+            "x": 71.92969,
+            "y": 593.85547,
+            "width": 148.20996,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 18,
+            "parent": 1,
+            "role": "Label",
+            "name": "auto auto auto",
+            "x": 71.59473,
+            "y": 656.9492,
+            "width": 88.34082,
+            "height": 9.1875,
+            "enabled": true
+          },
+          {
+            "id": 19,
+            "parent": 1,
+            "role": "ScrollBar",
+            "name": "Scroll Bar",
+            "value": "0.00",
+            "x": 1042.0,
+            "y": 142.0,
+            "width": 12.0,
+            "height": 574.0,
+            "enabled": true
+          },
+          {
+            "id": 20,
+            "parent": 1,
+            "role": "Label",
+            "name": "Grid fractional track review",
+            "x": 70.0,
+            "y": 733.172,
+            "width": 151.14001,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 1.25,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.25,
+        "dark": false,
+        "findings": []
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-grid/review.html",
+            "x": 250.0,
+            "y": 104.4,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-grid/review.html\",\"navigation\":2,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.4,
+            "width": 1000.0,
+            "height": 577.6,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "repeat(3,1fr)",
+            "x": 71.72969,
+            "y": 159.85547,
+            "width": 75.23633,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "repeat(7,1fr)",
+            "x": 71.72969,
+            "y": 222.25546,
+            "width": 75.23633,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "1fr 2fr 3fr",
+            "x": 71.86641,
+            "y": 284.66913,
+            "width": 55.494144,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "1fr 13.3px 1fr",
+            "x": 71.86641,
+            "y": 347.06915,
+            "width": 81.19043,
+            "height": 13.036133,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Label",
+            "name": ".1fr .2fr .3fr",
+            "x": 72.07832,
+            "y": 409.46915,
+            "width": 66.95117,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "0fr 1fr 2fr",
+            "x": 71.34688,
+            "y": 471.86914,
+            "width": 56.013676,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "minmax(31px,1fr) minmax(0,2fr) minmax(0,1fr)",
+            "x": 71.72969,
+            "y": 534.2555,
+            "width": 287.5879,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 17,
+            "parent": 1,
+            "role": "Label",
+            "name": "minmax(70px,1fr) 1fr 1fr",
+            "x": 71.72969,
+            "y": 596.65546,
+            "width": 148.20996,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 18,
+            "parent": 1,
+            "role": "Label",
+            "name": "auto auto auto",
+            "x": 71.39473,
+            "y": 660.14923,
+            "width": 88.34082,
+            "height": 9.1875,
+            "enabled": true
+          },
+          {
+            "id": 19,
+            "parent": 1,
+            "role": "ScrollBar",
+            "name": "Scroll Bar",
+            "value": "0.00",
+            "x": 1042.0,
+            "y": 142.4,
+            "width": 12.0,
+            "height": 573.6,
+            "enabled": true
+          },
+          {
+            "id": 20,
+            "parent": 1,
+            "role": "Label",
+            "name": "Grid fractional track review",
+            "x": 70.0,
+            "y": 733.172,
+            "width": 151.14001,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 1.5,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.5,
+        "dark": false,
+        "findings": []
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-grid/review.html",
+            "x": 250.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-grid/review.html\",\"navigation\":2,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "repeat(3,1fr)",
+            "x": 71.59635,
+            "y": 159.18881,
+            "width": 75.23633,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "repeat(7,1fr)",
+            "x": 71.59635,
+            "y": 220.52213,
+            "width": 75.23633,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "1fr 2fr 3fr",
+            "x": 71.73307,
+            "y": 281.86914,
+            "width": 55.49414,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "1fr 13.3px 1fr",
+            "x": 71.73307,
+            "y": 343.20245,
+            "width": 81.19043,
+            "height": 13.036133,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Label",
+            "name": ".1fr .2fr .3fr",
+            "x": 71.944984,
+            "y": 404.5358,
+            "width": 66.95117,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "0fr 1fr 2fr",
+            "x": 71.21354,
+            "y": 465.86914,
+            "width": 56.01367,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "minmax(31px,1fr) minmax(0,2fr) minmax(0,1fr)",
+            "x": 71.59635,
+            "y": 527.18884,
+            "width": 287.5879,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 17,
+            "parent": 1,
+            "role": "Label",
+            "name": "minmax(70px,1fr) 1fr 1fr",
+            "x": 71.59635,
+            "y": 588.5221,
+            "width": 148.20996,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 18,
+            "parent": 1,
+            "role": "Label",
+            "name": "auto auto auto",
+            "x": 71.26139,
+            "y": 650.9492,
+            "width": 88.34082,
+            "height": 9.1875,
+            "enabled": true
+          },
+          {
+            "id": 19,
+            "parent": 1,
+            "role": "Label",
+            "name": "33.333px 33.333px 33.333px",
+            "x": 71.19987,
+            "y": 711.5579,
+            "width": 179.91504,
+            "height": 6.4420776,
+            "enabled": true
+          },
+          {
+            "id": 20,
+            "parent": 1,
+            "role": "ScrollBar",
+            "name": "Scroll Bar",
+            "value": "0.00",
+            "x": 1042.0,
+            "y": 142.0,
+            "width": 12.0,
+            "height": 574.0,
+            "enabled": true
+          },
+          {
+            "id": 21,
+            "parent": 1,
+            "role": "Label",
+            "name": "Grid fractional track review",
+            "x": 70.0,
+            "y": 733.172,
+            "width": 151.14001,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 1.75,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.75,
+        "dark": false,
+        "findings": []
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-grid/review.html",
+            "x": 250.0,
+            "y": 104.28571,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-grid/review.html\",\"navigation\":2,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.2857,
+            "width": 1000.0,
+            "height": 577.7143,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "repeat(3,1fr)",
+            "x": 71.501114,
+            "y": 159.28404,
+            "width": 75.23633,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "repeat(7,1fr)",
+            "x": 71.501114,
+            "y": 220.4269,
+            "width": 75.23633,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "1fr 2fr 3fr",
+            "x": 71.63783,
+            "y": 281.58344,
+            "width": 55.49414,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "1fr 13.3px 1fr",
+            "x": 71.63783,
+            "y": 342.7263,
+            "width": 81.19043,
+            "height": 13.036133,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Label",
+            "name": ".1fr .2fr .3fr",
+            "x": 71.84975,
+            "y": 403.86914,
+            "width": 66.95117,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "0fr 1fr 2fr",
+            "x": 71.1183,
+            "y": 465.012,
+            "width": 56.01367,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "minmax(31px,1fr) minmax(0,2fr) minmax(0,1fr)",
+            "x": 71.501114,
+            "y": 526.1412,
+            "width": 287.5879,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 17,
+            "parent": 1,
+            "role": "Label",
+            "name": "minmax(70px,1fr) 1fr 1fr",
+            "x": 71.501114,
+            "y": 587.28406,
+            "width": 148.20996,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 18,
+            "parent": 1,
+            "role": "Label",
+            "name": "auto auto auto",
+            "x": 71.16615,
+            "y": 649.5206,
+            "width": 88.34082,
+            "height": 9.1875,
+            "enabled": true
+          },
+          {
+            "id": 19,
+            "parent": 1,
+            "role": "Label",
+            "name": "33.333px 33.333px 33.333px",
+            "x": 71.10463,
+            "y": 709.9389,
+            "width": 179.91504,
+            "height": 8.061096,
+            "enabled": true
+          },
+          {
+            "id": 20,
+            "parent": 1,
+            "role": "ScrollBar",
+            "name": "Scroll Bar",
+            "value": "0.00",
+            "x": 1042.0,
+            "y": 142.2857,
+            "width": 12.0,
+            "height": 573.7143,
+            "enabled": true
+          },
+          {
+            "id": 21,
+            "parent": 1,
+            "role": "Label",
+            "name": "Grid fractional track review",
+            "x": 70.0,
+            "y": 733.172,
+            "width": 151.14001,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 2,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 2.0,
+        "dark": false,
+        "findings": []
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-grid/review.html",
+            "x": 250.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-grid/review.html\",\"navigation\":2,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "repeat(3,1fr)",
+            "x": 71.92969,
+            "y": 159.35547,
+            "width": 75.23633,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "repeat(7,1fr)",
+            "x": 71.92969,
+            "y": 221.35547,
+            "width": 75.23633,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "1fr 2fr 3fr",
+            "x": 72.06641,
+            "y": 283.36914,
+            "width": 55.49414,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "1fr 13.3px 1fr",
+            "x": 72.06641,
+            "y": 345.36914,
+            "width": 81.19043,
+            "height": 13.036133,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Label",
+            "name": ".1fr .2fr .3fr",
+            "x": 72.27832,
+            "y": 407.36914,
+            "width": 66.95117,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "0fr 1fr 2fr",
+            "x": 71.546875,
+            "y": 469.36914,
+            "width": 56.01367,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "minmax(31px,1fr) minmax(0,2fr) minmax(0,1fr)",
+            "x": 71.92969,
+            "y": 531.35547,
+            "width": 287.5879,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 17,
+            "parent": 1,
+            "role": "Label",
+            "name": "minmax(70px,1fr) 1fr 1fr",
+            "x": 71.92969,
+            "y": 593.35547,
+            "width": 148.20996,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 18,
+            "parent": 1,
+            "role": "Label",
+            "name": "auto auto auto",
+            "x": 71.59473,
+            "y": 656.4492,
+            "width": 88.34082,
+            "height": 9.1875,
+            "enabled": true
+          },
+          {
+            "id": 19,
+            "parent": 1,
+            "role": "Label",
+            "name": "33.333px 33.333px 33.333px",
+            "x": 71.5332,
+            "y": 717.7246,
+            "width": 179.91504,
+            "height": 0.27539062,
+            "enabled": true
+          },
+          {
+            "id": 20,
+            "parent": 1,
+            "role": "ScrollBar",
+            "name": "Scroll Bar",
+            "value": "0.00",
+            "x": 1042.0,
+            "y": 142.0,
+            "width": 12.0,
+            "height": 574.0,
+            "enabled": true
+          },
+          {
+            "id": 21,
+            "parent": 1,
+            "role": "Label",
+            "name": "Grid fractional track review",
+            "x": 70.0,
+            "y": 733.672,
+            "width": 151.14001,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.0,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-grid/review.html",
+            "x": 250.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-grid/review.html\",\"navigation\":2,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "repeat(3,1fr)",
+            "x": 71.92969,
+            "y": 159.85547,
+            "width": 75.23633,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "repeat(7,1fr)",
+            "x": 71.92969,
+            "y": 221.85547,
+            "width": 75.23633,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "1fr 2fr 3fr",
+            "x": 72.06641,
+            "y": 283.86914,
+            "width": 55.49414,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "1fr 13.3px 1fr",
+            "x": 72.06641,
+            "y": 345.86914,
+            "width": 81.19043,
+            "height": 13.036133,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Label",
+            "name": ".1fr .2fr .3fr",
+            "x": 72.27832,
+            "y": 407.86914,
+            "width": 66.95117,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "0fr 1fr 2fr",
+            "x": 71.546875,
+            "y": 469.86914,
+            "width": 56.01367,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "minmax(31px,1fr) minmax(0,2fr) minmax(0,1fr)",
+            "x": 71.92969,
+            "y": 531.85547,
+            "width": 287.5879,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 17,
+            "parent": 1,
+            "role": "Label",
+            "name": "minmax(70px,1fr) 1fr 1fr",
+            "x": 71.92969,
+            "y": 593.85547,
+            "width": 148.20996,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 18,
+            "parent": 1,
+            "role": "Label",
+            "name": "auto auto auto",
+            "x": 71.59473,
+            "y": 656.9492,
+            "width": 88.34082,
+            "height": 9.1875,
+            "enabled": true
+          },
+          {
+            "id": 19,
+            "parent": 1,
+            "role": "ScrollBar",
+            "name": "Scroll Bar",
+            "value": "0.00",
+            "x": 1042.0,
+            "y": 142.0,
+            "width": 12.0,
+            "height": 574.0,
+            "enabled": true
+          },
+          {
+            "id": 20,
+            "parent": 1,
+            "role": "Label",
+            "name": "Grid fractional track review",
+            "x": 70.0,
+            "y": 733.172,
+            "width": 151.14001,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1.25,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.25,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-grid/review.html",
+            "x": 250.0,
+            "y": 104.4,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-grid/review.html\",\"navigation\":2,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.4,
+            "width": 1000.0,
+            "height": 577.6,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "repeat(3,1fr)",
+            "x": 71.72969,
+            "y": 159.85547,
+            "width": 75.23633,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "repeat(7,1fr)",
+            "x": 71.72969,
+            "y": 222.25546,
+            "width": 75.23633,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "1fr 2fr 3fr",
+            "x": 71.86641,
+            "y": 284.66913,
+            "width": 55.494144,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "1fr 13.3px 1fr",
+            "x": 71.86641,
+            "y": 347.06915,
+            "width": 81.19043,
+            "height": 13.036133,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Label",
+            "name": ".1fr .2fr .3fr",
+            "x": 72.07832,
+            "y": 409.46915,
+            "width": 66.95117,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "0fr 1fr 2fr",
+            "x": 71.34688,
+            "y": 471.86914,
+            "width": 56.013676,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "minmax(31px,1fr) minmax(0,2fr) minmax(0,1fr)",
+            "x": 71.72969,
+            "y": 534.2555,
+            "width": 287.5879,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 17,
+            "parent": 1,
+            "role": "Label",
+            "name": "minmax(70px,1fr) 1fr 1fr",
+            "x": 71.72969,
+            "y": 596.65546,
+            "width": 148.20996,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 18,
+            "parent": 1,
+            "role": "Label",
+            "name": "auto auto auto",
+            "x": 71.39473,
+            "y": 660.14923,
+            "width": 88.34082,
+            "height": 9.1875,
+            "enabled": true
+          },
+          {
+            "id": 19,
+            "parent": 1,
+            "role": "ScrollBar",
+            "name": "Scroll Bar",
+            "value": "0.00",
+            "x": 1042.0,
+            "y": 142.4,
+            "width": 12.0,
+            "height": 573.6,
+            "enabled": true
+          },
+          {
+            "id": 20,
+            "parent": 1,
+            "role": "Label",
+            "name": "Grid fractional track review",
+            "x": 70.0,
+            "y": 733.172,
+            "width": 151.14001,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1.5,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.5,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-grid/review.html",
+            "x": 250.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-grid/review.html\",\"navigation\":2,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "repeat(3,1fr)",
+            "x": 71.59635,
+            "y": 159.18881,
+            "width": 75.23633,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "repeat(7,1fr)",
+            "x": 71.59635,
+            "y": 220.52213,
+            "width": 75.23633,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "1fr 2fr 3fr",
+            "x": 71.73307,
+            "y": 281.86914,
+            "width": 55.49414,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "1fr 13.3px 1fr",
+            "x": 71.73307,
+            "y": 343.20245,
+            "width": 81.19043,
+            "height": 13.036133,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Label",
+            "name": ".1fr .2fr .3fr",
+            "x": 71.944984,
+            "y": 404.5358,
+            "width": 66.95117,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "0fr 1fr 2fr",
+            "x": 71.21354,
+            "y": 465.86914,
+            "width": 56.01367,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "minmax(31px,1fr) minmax(0,2fr) minmax(0,1fr)",
+            "x": 71.59635,
+            "y": 527.18884,
+            "width": 287.5879,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 17,
+            "parent": 1,
+            "role": "Label",
+            "name": "minmax(70px,1fr) 1fr 1fr",
+            "x": 71.59635,
+            "y": 588.5221,
+            "width": 148.20996,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 18,
+            "parent": 1,
+            "role": "Label",
+            "name": "auto auto auto",
+            "x": 71.26139,
+            "y": 650.9492,
+            "width": 88.34082,
+            "height": 9.1875,
+            "enabled": true
+          },
+          {
+            "id": 19,
+            "parent": 1,
+            "role": "Label",
+            "name": "33.333px 33.333px 33.333px",
+            "x": 71.19987,
+            "y": 711.5579,
+            "width": 179.91504,
+            "height": 6.4420776,
+            "enabled": true
+          },
+          {
+            "id": 20,
+            "parent": 1,
+            "role": "ScrollBar",
+            "name": "Scroll Bar",
+            "value": "0.00",
+            "x": 1042.0,
+            "y": 142.0,
+            "width": 12.0,
+            "height": 574.0,
+            "enabled": true
+          },
+          {
+            "id": 21,
+            "parent": 1,
+            "role": "Label",
+            "name": "Grid fractional track review",
+            "x": 70.0,
+            "y": 733.172,
+            "width": 151.14001,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1.75,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.75,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-grid/review.html",
+            "x": 250.0,
+            "y": 104.28571,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-grid/review.html\",\"navigation\":2,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.2857,
+            "width": 1000.0,
+            "height": 577.7143,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "repeat(3,1fr)",
+            "x": 71.501114,
+            "y": 159.28404,
+            "width": 75.23633,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "repeat(7,1fr)",
+            "x": 71.501114,
+            "y": 220.4269,
+            "width": 75.23633,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "1fr 2fr 3fr",
+            "x": 71.63783,
+            "y": 281.58344,
+            "width": 55.49414,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "1fr 13.3px 1fr",
+            "x": 71.63783,
+            "y": 342.7263,
+            "width": 81.19043,
+            "height": 13.036133,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Label",
+            "name": ".1fr .2fr .3fr",
+            "x": 71.84975,
+            "y": 403.86914,
+            "width": 66.95117,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "0fr 1fr 2fr",
+            "x": 71.1183,
+            "y": 465.012,
+            "width": 56.01367,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "minmax(31px,1fr) minmax(0,2fr) minmax(0,1fr)",
+            "x": 71.501114,
+            "y": 526.1412,
+            "width": 287.5879,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 17,
+            "parent": 1,
+            "role": "Label",
+            "name": "minmax(70px,1fr) 1fr 1fr",
+            "x": 71.501114,
+            "y": 587.28406,
+            "width": 148.20996,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 18,
+            "parent": 1,
+            "role": "Label",
+            "name": "auto auto auto",
+            "x": 71.16615,
+            "y": 649.5206,
+            "width": 88.34082,
+            "height": 9.1875,
+            "enabled": true
+          },
+          {
+            "id": 19,
+            "parent": 1,
+            "role": "Label",
+            "name": "33.333px 33.333px 33.333px",
+            "x": 71.10463,
+            "y": 709.9389,
+            "width": 179.91504,
+            "height": 8.061096,
+            "enabled": true
+          },
+          {
+            "id": 20,
+            "parent": 1,
+            "role": "ScrollBar",
+            "name": "Scroll Bar",
+            "value": "0.00",
+            "x": 1042.0,
+            "y": 142.2857,
+            "width": 12.0,
+            "height": 573.7143,
+            "enabled": true
+          },
+          {
+            "id": 21,
+            "parent": 1,
+            "role": "Label",
+            "name": "Grid fractional track review",
+            "x": 70.0,
+            "y": 733.172,
+            "width": 151.14001,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 2,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 2.0,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-grid/review.html",
+            "x": 250.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-grid/review.html\",\"navigation\":2,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "repeat(3,1fr)",
+            "x": 71.92969,
+            "y": 159.35547,
+            "width": 75.23633,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "repeat(7,1fr)",
+            "x": 71.92969,
+            "y": 221.35547,
+            "width": 75.23633,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "1fr 2fr 3fr",
+            "x": 72.06641,
+            "y": 283.36914,
+            "width": 55.49414,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "1fr 13.3px 1fr",
+            "x": 72.06641,
+            "y": 345.36914,
+            "width": 81.19043,
+            "height": 13.036133,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Label",
+            "name": ".1fr .2fr .3fr",
+            "x": 72.27832,
+            "y": 407.36914,
+            "width": 66.95117,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "0fr 1fr 2fr",
+            "x": 71.546875,
+            "y": 469.36914,
+            "width": 56.01367,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "minmax(31px,1fr) minmax(0,2fr) minmax(0,1fr)",
+            "x": 71.92969,
+            "y": 531.35547,
+            "width": 287.5879,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 17,
+            "parent": 1,
+            "role": "Label",
+            "name": "minmax(70px,1fr) 1fr 1fr",
+            "x": 71.92969,
+            "y": 593.35547,
+            "width": 148.20996,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 18,
+            "parent": 1,
+            "role": "Label",
+            "name": "auto auto auto",
+            "x": 71.59473,
+            "y": 656.4492,
+            "width": 88.34082,
+            "height": 9.1875,
+            "enabled": true
+          },
+          {
+            "id": 19,
+            "parent": 1,
+            "role": "Label",
+            "name": "33.333px 33.333px 33.333px",
+            "x": 71.5332,
+            "y": 717.7246,
+            "width": 179.91504,
+            "height": 0.27539062,
+            "enabled": true
+          },
+          {
+            "id": 20,
+            "parent": 1,
+            "role": "ScrollBar",
+            "name": "Scroll Bar",
+            "value": "0.00",
+            "x": 1042.0,
+            "y": 142.0,
+            "width": 12.0,
+            "height": 574.0,
+            "enabled": true
+          },
+          {
+            "id": 21,
+            "parent": 1,
+            "role": "Label",
+            "name": "Grid fractional track review",
+            "x": 70.0,
+            "y": 733.672,
+            "width": 151.14001,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.0,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-grid/review.html",
+            "x": 250.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-grid/review.html\",\"navigation\":2,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "repeat(3,1fr)",
+            "x": 71.92969,
+            "y": 159.85547,
+            "width": 75.23633,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "repeat(7,1fr)",
+            "x": 71.92969,
+            "y": 221.85547,
+            "width": 75.23633,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "1fr 2fr 3fr",
+            "x": 72.06641,
+            "y": 283.86914,
+            "width": 55.49414,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "1fr 13.3px 1fr",
+            "x": 72.06641,
+            "y": 345.86914,
+            "width": 81.19043,
+            "height": 13.036133,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Label",
+            "name": ".1fr .2fr .3fr",
+            "x": 72.27832,
+            "y": 407.86914,
+            "width": 66.95117,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "0fr 1fr 2fr",
+            "x": 71.546875,
+            "y": 469.86914,
+            "width": 56.01367,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "minmax(31px,1fr) minmax(0,2fr) minmax(0,1fr)",
+            "x": 71.92969,
+            "y": 531.85547,
+            "width": 287.5879,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 17,
+            "parent": 1,
+            "role": "Label",
+            "name": "minmax(70px,1fr) 1fr 1fr",
+            "x": 71.92969,
+            "y": 593.85547,
+            "width": 148.20996,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 18,
+            "parent": 1,
+            "role": "Label",
+            "name": "auto auto auto",
+            "x": 71.59473,
+            "y": 656.9492,
+            "width": 88.34082,
+            "height": 9.1875,
+            "enabled": true
+          },
+          {
+            "id": 19,
+            "parent": 1,
+            "role": "ScrollBar",
+            "name": "Scroll Bar",
+            "value": "0.00",
+            "x": 1042.0,
+            "y": 142.0,
+            "width": 12.0,
+            "height": 574.0,
+            "enabled": true
+          },
+          {
+            "id": 20,
+            "parent": 1,
+            "role": "Label",
+            "name": "Grid fractional track review",
+            "x": 70.0,
+            "y": 733.172,
+            "width": 151.14001,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1.25,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.25,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-grid/review.html",
+            "x": 250.0,
+            "y": 104.4,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-grid/review.html\",\"navigation\":2,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.4,
+            "width": 1000.0,
+            "height": 577.6,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "repeat(3,1fr)",
+            "x": 71.72969,
+            "y": 159.85547,
+            "width": 75.23633,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "repeat(7,1fr)",
+            "x": 71.72969,
+            "y": 222.25546,
+            "width": 75.23633,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "1fr 2fr 3fr",
+            "x": 71.86641,
+            "y": 284.66913,
+            "width": 55.494144,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "1fr 13.3px 1fr",
+            "x": 71.86641,
+            "y": 347.06915,
+            "width": 81.19043,
+            "height": 13.036133,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Label",
+            "name": ".1fr .2fr .3fr",
+            "x": 72.07832,
+            "y": 409.46915,
+            "width": 66.95117,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "0fr 1fr 2fr",
+            "x": 71.34688,
+            "y": 471.86914,
+            "width": 56.013676,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "minmax(31px,1fr) minmax(0,2fr) minmax(0,1fr)",
+            "x": 71.72969,
+            "y": 534.2555,
+            "width": 287.5879,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 17,
+            "parent": 1,
+            "role": "Label",
+            "name": "minmax(70px,1fr) 1fr 1fr",
+            "x": 71.72969,
+            "y": 596.65546,
+            "width": 148.20996,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 18,
+            "parent": 1,
+            "role": "Label",
+            "name": "auto auto auto",
+            "x": 71.39473,
+            "y": 660.14923,
+            "width": 88.34082,
+            "height": 9.1875,
+            "enabled": true
+          },
+          {
+            "id": 19,
+            "parent": 1,
+            "role": "ScrollBar",
+            "name": "Scroll Bar",
+            "value": "0.00",
+            "x": 1042.0,
+            "y": 142.4,
+            "width": 12.0,
+            "height": 573.6,
+            "enabled": true
+          },
+          {
+            "id": 20,
+            "parent": 1,
+            "role": "Label",
+            "name": "Grid fractional track review",
+            "x": 70.0,
+            "y": 733.172,
+            "width": 151.14001,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1.5,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.5,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-grid/review.html",
+            "x": 250.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-grid/review.html\",\"navigation\":2,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "repeat(3,1fr)",
+            "x": 71.59635,
+            "y": 159.18881,
+            "width": 75.23633,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "repeat(7,1fr)",
+            "x": 71.59635,
+            "y": 220.52213,
+            "width": 75.23633,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "1fr 2fr 3fr",
+            "x": 71.73307,
+            "y": 281.86914,
+            "width": 55.49414,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "1fr 13.3px 1fr",
+            "x": 71.73307,
+            "y": 343.20245,
+            "width": 81.19043,
+            "height": 13.036133,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Label",
+            "name": ".1fr .2fr .3fr",
+            "x": 71.944984,
+            "y": 404.5358,
+            "width": 66.95117,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "0fr 1fr 2fr",
+            "x": 71.21354,
+            "y": 465.86914,
+            "width": 56.01367,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "minmax(31px,1fr) minmax(0,2fr) minmax(0,1fr)",
+            "x": 71.59635,
+            "y": 527.18884,
+            "width": 287.5879,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 17,
+            "parent": 1,
+            "role": "Label",
+            "name": "minmax(70px,1fr) 1fr 1fr",
+            "x": 71.59635,
+            "y": 588.5221,
+            "width": 148.20996,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 18,
+            "parent": 1,
+            "role": "Label",
+            "name": "auto auto auto",
+            "x": 71.26139,
+            "y": 650.9492,
+            "width": 88.34082,
+            "height": 9.1875,
+            "enabled": true
+          },
+          {
+            "id": 19,
+            "parent": 1,
+            "role": "Label",
+            "name": "33.333px 33.333px 33.333px",
+            "x": 71.19987,
+            "y": 711.5579,
+            "width": 179.91504,
+            "height": 6.4420776,
+            "enabled": true
+          },
+          {
+            "id": 20,
+            "parent": 1,
+            "role": "ScrollBar",
+            "name": "Scroll Bar",
+            "value": "0.00",
+            "x": 1042.0,
+            "y": 142.0,
+            "width": 12.0,
+            "height": 574.0,
+            "enabled": true
+          },
+          {
+            "id": 21,
+            "parent": 1,
+            "role": "Label",
+            "name": "Grid fractional track review",
+            "x": 70.0,
+            "y": 733.172,
+            "width": 151.14001,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1.75,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.75,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-grid/review.html",
+            "x": 250.0,
+            "y": 104.28571,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-grid/review.html\",\"navigation\":2,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.2857,
+            "width": 1000.0,
+            "height": 577.7143,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "repeat(3,1fr)",
+            "x": 71.501114,
+            "y": 159.28404,
+            "width": 75.23633,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "repeat(7,1fr)",
+            "x": 71.501114,
+            "y": 220.4269,
+            "width": 75.23633,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "1fr 2fr 3fr",
+            "x": 71.63783,
+            "y": 281.58344,
+            "width": 55.49414,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "1fr 13.3px 1fr",
+            "x": 71.63783,
+            "y": 342.7263,
+            "width": 81.19043,
+            "height": 13.036133,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Label",
+            "name": ".1fr .2fr .3fr",
+            "x": 71.84975,
+            "y": 403.86914,
+            "width": 66.95117,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "0fr 1fr 2fr",
+            "x": 71.1183,
+            "y": 465.012,
+            "width": 56.01367,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "minmax(31px,1fr) minmax(0,2fr) minmax(0,1fr)",
+            "x": 71.501114,
+            "y": 526.1412,
+            "width": 287.5879,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 17,
+            "parent": 1,
+            "role": "Label",
+            "name": "minmax(70px,1fr) 1fr 1fr",
+            "x": 71.501114,
+            "y": 587.28406,
+            "width": 148.20996,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 18,
+            "parent": 1,
+            "role": "Label",
+            "name": "auto auto auto",
+            "x": 71.16615,
+            "y": 649.5206,
+            "width": 88.34082,
+            "height": 9.1875,
+            "enabled": true
+          },
+          {
+            "id": 19,
+            "parent": 1,
+            "role": "Label",
+            "name": "33.333px 33.333px 33.333px",
+            "x": 71.10463,
+            "y": 709.9389,
+            "width": 179.91504,
+            "height": 8.061096,
+            "enabled": true
+          },
+          {
+            "id": 20,
+            "parent": 1,
+            "role": "ScrollBar",
+            "name": "Scroll Bar",
+            "value": "0.00",
+            "x": 1042.0,
+            "y": 142.2857,
+            "width": 12.0,
+            "height": 573.7143,
+            "enabled": true
+          },
+          {
+            "id": 21,
+            "parent": 1,
+            "role": "Label",
+            "name": "Grid fractional track review",
+            "x": 70.0,
+            "y": 733.172,
+            "width": 151.14001,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 2,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 2.0,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-grid/review.html",
+            "x": 250.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-grid/review.html\",\"navigation\":2,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "repeat(3,1fr)",
+            "x": 71.92969,
+            "y": 159.35547,
+            "width": 75.23633,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "repeat(7,1fr)",
+            "x": 71.92969,
+            "y": 221.35547,
+            "width": 75.23633,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "1fr 2fr 3fr",
+            "x": 72.06641,
+            "y": 283.36914,
+            "width": 55.49414,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "1fr 13.3px 1fr",
+            "x": 72.06641,
+            "y": 345.36914,
+            "width": 81.19043,
+            "height": 13.036133,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Label",
+            "name": ".1fr .2fr .3fr",
+            "x": 72.27832,
+            "y": 407.36914,
+            "width": 66.95117,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "0fr 1fr 2fr",
+            "x": 71.546875,
+            "y": 469.36914,
+            "width": 56.01367,
+            "height": 10.267578,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "minmax(31px,1fr) minmax(0,2fr) minmax(0,1fr)",
+            "x": 71.92969,
+            "y": 531.35547,
+            "width": 287.5879,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 17,
+            "parent": 1,
+            "role": "Label",
+            "name": "minmax(70px,1fr) 1fr 1fr",
+            "x": 71.92969,
+            "y": 593.35547,
+            "width": 148.20996,
+            "height": 13.049805,
+            "enabled": true
+          },
+          {
+            "id": 18,
+            "parent": 1,
+            "role": "Label",
+            "name": "auto auto auto",
+            "x": 71.59473,
+            "y": 656.4492,
+            "width": 88.34082,
+            "height": 9.1875,
+            "enabled": true
+          },
+          {
+            "id": 19,
+            "parent": 1,
+            "role": "Label",
+            "name": "33.333px 33.333px 33.333px",
+            "x": 71.5332,
+            "y": 717.7246,
+            "width": 179.91504,
+            "height": 0.27539062,
+            "enabled": true
+          },
+          {
+            "id": 20,
+            "parent": 1,
+            "role": "ScrollBar",
+            "name": "Scroll Bar",
+            "value": "0.00",
+            "x": 1042.0,
+            "y": 142.0,
+            "width": 12.0,
+            "height": 574.0,
+            "enabled": true
+          },
+          {
+            "id": 21,
+            "parent": 1,
+            "role": "Label",
+            "name": "Grid fractional track review",
+            "x": 70.0,
+            "y": 733.672,
+            "width": 151.14001,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  }
+]

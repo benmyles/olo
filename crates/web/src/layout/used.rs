@@ -6,7 +6,29 @@ use crate::css::{
     style::{Direction, Style, Value},
 };
 pub(super) fn grid(value: f64, scale: f64) -> f64 {
-    (value * scale * 64.).trunc() / (scale * 64.)
+    let unit = scale * 64.;
+    let units = value * unit;
+    // A value already on the layout grid can return just below its integer
+    // after division by a fractional scale or subtracting larger positions.
+    // Preserve it instead of losing another whole layout unit. An absolute
+    // tolerance of one ten-millionth of a unit never grows with coordinates.
+    (units + 1e-7_f64.copysign(units)).trunc() / unit
+}
+#[test]
+fn layout_grid_survives_fractional_scale_round_trips() {
+    for scale in [1., 1.25, 1.5, 1.75, 2., 2.5, 3.2] {
+        let unit = scale * 64.;
+        for integer in -10000..=10000 {
+            let value = f64::from(integer) / unit;
+            assert_eq!(grid(value, scale), value, "{integer} at {scale}");
+            // Authored fractions still truncate toward zero, including
+            // values close to (but distinguishable from) the next quantum.
+            for fraction in [0.125, 0.99999] {
+                let input = (f64::from(integer) + fraction) / unit;
+                assert_eq!(grid(input, scale), (f64::from(integer) + fraction).trunc() / unit);
+            }
+        }
+    }
 }
 struct Basis(Option<f64>, QueryBasis);
 impl math::Context for Basis {

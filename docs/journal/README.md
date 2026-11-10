@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-09
 
+### Browser: fractional grid tracks after
+
+*23:20* — Carry fractional flexible/auto shares and preserve already-quantized values across fractional-scale arithmetic. 1,440 independent Chrome rectangles match at five native scales; 30 native reviews are clean. This fixture changes 108 pixels at 1x; full font and website parity remain open.
+
+![Browser: fractional grid tracks after](2026-11-09/232038-browser-fractional-grid-tracks-after.png)
+
+### Browser: fractional grid tracks before
+
+*23:20* — Baseline af499e42: independently truncating track shares loses layout units. At a half-pixel origin, the coloured endpoints expose the lost space.
+
+![Browser: fractional grid tracks before](2026-11-09/232036-browser-fractional-grid-tracks-before.png)
+
 ### Browser CSS counters after
 
 *22:35* — Chrome-referenced generated text: operation order, nested and pseudo-element scopes, display:contents, and overflow. Suppressed display:none behavior is preserved. All five scales in light/dark/night reviewed; full counter/marker compatibility remains open.
