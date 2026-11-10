@@ -1,0 +1,24 @@
+{
+  "native": {
+    "handler": "()=>{A(a)}",
+    "props": [
+      "type",
+      "className",
+      "aria-label",
+      "data-analytics-label",
+      "onClick",
+      "children"
+    ]
+  },
+  "chrome": {
+    "handler": "()=>{A(a)}",
+    "props": [
+      "type",
+      "className",
+      "aria-label",
+      "data-analytics-label",
+      "onClick",
+      "children"
+    ]
+  }
+}

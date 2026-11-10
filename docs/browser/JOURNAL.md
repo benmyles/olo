@@ -8610,3 +8610,16 @@ do not establish a speedup. The 176104KiB candidate outlier remains unexplained.
 
 Evidence: `measurements/2026-11-10-fractional-fit/README.md`. Owned screen
 stopped; no personal session install/reload or delegation.
+
+### Testimonial activation follow-up
+
+After pushing 8abbff7d, traced both live React handlers on the owned screen:
+each runs and returns without an exception. Both call the Jobber card's
+`scrollIntoView({behavior:"smooth",block:"nearest"})`; native's method is
+still an empty stub. A diagnostic direct carousel scroll to951px moves the
+native card x968→17 and updates its active button from Mindbody to Jobber.
+The real button remains broken; this control does not pass the journey.
+Next implement general ancestor alignment and smooth scrolling with Chrome
+oracles, then the remaining events/footer layout differences. No engine
+source changed during the diagnosis. Screen stopped, corpus0/100 unchanged.
+Evidence: `measurements/2026-11-10-testimonial-activation/README.md`.

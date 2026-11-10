@@ -1,0 +1,40 @@
+{
+  "native": [
+    {
+      "method": "scrollIntoView",
+      "cls": "testimonial-card testimonial-carousel__card",
+      "tag": "DIV",
+      "args": [
+        {
+          "behavior": "smooth",
+          "block": "nearest"
+        }
+      ],
+      "rect": [
+        951,
+        951,
+        0
+      ],
+      "stack": "Error\n    at Element.<computed> [as scrollIntoView] (eval:1:424)\n    at A (https://b.stripecdn.com/mkt-ssr-statics/assets/_next/static/chunks/64353-1aa6e254b1813089.js:1:29951)\n    at onClick (https://b.stripecdn.com/mkt-ssr-statics/assets/_next/static/chunks/64353-1aa6e254b1813089.js:1:31510)\n    at p.onClick (eval:1:430)\n    at Object.eU (https://b.stripecdn.com/mkt-ssr-statics/assets/_next/static/chunks/framework-bfbcaa5a2903bc7d.js:1:15009)\n    at eH (https://b.stripecdn.com/mkt-ssr-statics/assets/_next/static/chunks/framework-bfbcaa5a2903bc7d.js:1:15163)\n    at https://b.stripecdn.com/mkt-ssr-statics/assets/_next/static/chunks/framework-bfbcaa5a2903bc7d.js:1:33499\n    at re (https://b.stripecdn.com/mkt-ssr-statics/assets/_next/static/chunks/framework-bfbcaa5a2903bc7d.js:1:33598)\n    at rn (https://b.stripecdn.com/mkt-ssr-statics/assets/_next/static/chunks/framework-bfbcaa5a2903bc7d.js:1:34012)\n    at https://b.stripecdn.com/mkt-ssr-statics/assets/_next/static/chunks/framework-bfbcaa5a2903bc7d.js:1:39468\n    at oP (https://b.stripecdn.com/mkt-ssr-statics/assets/_next/static/chunks/framework-bfbcaa5a2903bc7d.js:1:96383)\n    at eF (https://b.stripecdn.com/mkt-ssr-statics/assets/_next/static/chunks/framework-bfbcaa5a2903bc7d.js:1:14147)\n    at ro (https://b.stripecdn.com/mkt-ssr-statics/assets/_next/static/chunks/framework-bfbcaa5a2903bc7d.js:1:35303)\n    at nU (https://b.stripecdn.com/mkt-ssr-statics/assets/_next/static/chunks/framework-bfbcaa5a2903bc7d.js:1:20942)\n    at nD (https://b.stripecdn.com/mkt-ssr-statics/assets/_next/static/chunks/framework-bfbcaa5a2903bc7d.js:1:20726)\n    at eval:1:202\n    at eval:1:232\n    at eval:1:328"
+    }
+  ],
+  "chrome": [
+    {
+      "method": "scrollIntoView",
+      "cls": "testimonial-card testimonial-carousel__card",
+      "tag": "DIV",
+      "args": [
+        {
+          "behavior": "smooth",
+          "block": "nearest"
+        }
+      ],
+      "rect": [
+        951,
+        951,
+        0
+      ],
+      "stack": "Error\n    at Element.<computed> [as scrollIntoView] (<anonymous>:1:305)\n    at A (https://b.stripecdn.com/mkt-ssr-statics/assets/_next/static/chunks/64353-1aa6e254b1813089.js:1:29951)\n    at onClick (https://b.stripecdn.com/mkt-ssr-statics/assets/_next/static/chunks/64353-1aa6e254b1813089.js:1:31510)\n    at Object.eU (https://b.stripecdn.com/mkt-ssr-statics/assets/_next/static/chunks/framework-bfbcaa5a2903bc7d.js:1:15009)\n    at eH (https://b.stripecdn.com/mkt-ssr-statics/assets/_next/static/chunks/framework-bfbcaa5a2903bc7d.js:1:15163)\n    at https://b.stripecdn.com/mkt-ssr-statics/assets/_next/static/chunks/framework-bfbcaa5a2903bc7d.js:1:33499\n    at re (https://b.stripecdn.com/mkt-ssr-statics/assets/_next/static/chunks/framework-bfbcaa5a2903bc7d.js:1:33598)\n    at rn (https://b.stripecdn.com/mkt-ssr-statics/assets/_next/static/chunks/framework-bfbcaa5a2903bc7d.js:1:34012)\n    at https://b.stripecdn.com/mkt-ssr-statics/assets/_next/static/chunks/framework-bfbcaa5a2903bc7d.js:1:39468\n    at oP (https://b.stripecdn.com/mkt-ssr-statics/assets/_next/static/chunks/framework-bfbcaa5a2903bc7d.js:1:96383)\n    at eF (https://b.stripecdn.com/mkt-ssr-statics/assets/_next/static/chunks/framework-bfbcaa5a2903bc7d.js:1:14147)\n    at ro (https://b.stripecdn.com/mkt-ssr-statics/assets/_next/static/chunks/framework-bfbcaa5a2903bc7d.js:1:35303)\n    at nU (https://b.stripecdn.com/mkt-ssr-statics/assets/_next/static/chunks/framework-bfbcaa5a2903bc7d.js:1:20942)\n    at nD (https://b.stripecdn.com/mkt-ssr-statics/assets/_next/static/chunks/framework-bfbcaa5a2903bc7d.js:1:20726)\n    at <anonymous>:1:83\n    at <anonymous>:1:113"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "direct_native_scroll": {
+    "before": 0,
+    "after": 951,
+    "cardX": 17
+  },
+  "settled": {
+    "active": "Show testimonial from Jobber",
+    "offset": 951,
+    "cards": [
+      -934,
+      17,
+      968,
+      1919
+    ]
+  }
+}

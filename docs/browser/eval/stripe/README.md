@@ -22,7 +22,11 @@ Chrome observations pass. At1.75× business-section error falls25.36→0.16px;
 smaller rounding/pixel differences remain. All15 live native reviews pass.
 A settled full page still differs298.29px in main height, chiefly events and
 footer CTA. The Jobber testimonial button receives native clicks but does
-not switch cards; focused Chrome switches. That interaction is next to trace.
+not switch cards; focused Chrome switches. Follow-up tracing found both React
+handlers run correctly but native's `scrollIntoView` is an empty stub. A direct
+951px carousel scroll updates the native active state. General ancestor
+scrolling and smooth behavior are next; the actual journey still fails. See
+[activation diagnosis](../../measurements/2026-11-10-testimonial-activation/README.md).
 Release workspace after merging main:2,220 passed,0 failed. No acceptance
 counts change. See [evidence](../../measurements/2026-11-10-fractional-fit/README.md).
 

@@ -1,0 +1,74 @@
+{
+  "native": {
+    "trace": [
+      {
+        "phase": "handler",
+        "type": "click",
+        "target": "BUTTON"
+      },
+      {
+        "phase": "returned"
+      }
+    ],
+    "buttons": [
+      {
+        "label": "Show testimonial from Mindbody",
+        "cls": "hds-button testimonial-carousel__navigation-button testimonial-carousel__navigation-button--active hds-button--primary"
+      },
+      {
+        "label": "Show testimonial from Jobber",
+        "cls": "hds-button testimonial-carousel__navigation-button hds-button--primary"
+      },
+      {
+        "label": "Show testimonial from Substack",
+        "cls": "hds-button testimonial-carousel__navigation-button hds-button--primary"
+      },
+      {
+        "label": "Show testimonial from Lightspeed",
+        "cls": "hds-button testimonial-carousel__navigation-button hds-button--primary"
+      }
+    ],
+    "cards": [
+      17,
+      968,
+      1919,
+      2870
+    ]
+  },
+  "chrome": {
+    "trace": [
+      {
+        "phase": "handler",
+        "type": "click",
+        "target": "BUTTON"
+      },
+      {
+        "phase": "returned"
+      }
+    ],
+    "buttons": [
+      {
+        "label": "Show testimonial from Mindbody",
+        "cls": "hds-button testimonial-carousel__navigation-button testimonial-carousel__navigation-button--active hds-button--primary"
+      },
+      {
+        "label": "Show testimonial from Jobber",
+        "cls": "hds-button testimonial-carousel__navigation-button hds-button--primary"
+      },
+      {
+        "label": "Show testimonial from Substack",
+        "cls": "hds-button testimonial-carousel__navigation-button hds-button--primary"
+      },
+      {
+        "label": "Show testimonial from Lightspeed",
+        "cls": "hds-button testimonial-carousel__navigation-button hds-button--primary"
+      }
+    ],
+    "cards": [
+      -278,
+      673,
+      1624,
+      2575
+    ]
+  }
+}

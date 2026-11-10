@@ -48,9 +48,13 @@ quantization. All1,350 new component observations pass. The section error at
 1.75× falls25.36→0.16px; smaller rounding/pixel differences remain. A settled
 full-page check now finds298.29px main-height difference, concentrated in
 `.events-section-container` (116.43px) and `.footer-cta-section__grid` (181.19px).
-**Next: trace testimonial button activation**: Chrome switches to Jobber,
-native receives the click at the correct target but does not switch, including
-with `HTMLElement.click()`. Then investigate those events/footer layouts.
+**Next: implement general `scrollIntoView` and smooth scrolling**. Both React
+handlers run and return; Stripe asks the Jobber card to scroll into view with
+`{behavior:"smooth",block:"nearest"}`. Native's method is an empty stub.
+A diagnostic direct scroll of the carousel to951px moves the card and updates
+the active button correctly; the actual button remains broken. See
+[activation diagnosis](measurements/2026-11-10-testimonial-activation/README.md).
+Then investigate those events/footer layouts.
 See [fractional fitting evidence](measurements/2026-11-10-fractional-fit/README.md),
 [query measurement evidence](measurements/2026-11-10-query-measurement/README.md)
 and [inline spacing evidence](measurements/2026-11-10-inline-spacing/README.md).

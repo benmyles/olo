@@ -1,0 +1,838 @@
+{
+  "native": [
+    {
+      "tag": "DIV",
+      "cls": "testimonial-card testimonial-carousel__card",
+      "overflow": [
+        "visible",
+        "visible"
+      ],
+      "pos": [
+        968,
+        -68.10522275193216,
+        951,
+        306.68
+      ],
+      "client": [
+        951,
+        307,
+        0,
+        0
+      ],
+      "scroll": [
+        0,
+        0,
+        951,
+        307
+      ],
+      "scrollSettings": [
+        "auto",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "tag": "DIV",
+      "cls": "testimonial-carousel__cards",
+      "overflow": [
+        "auto",
+        "auto"
+      ],
+      "pos": [
+        17,
+        -68.10522275193216,
+        951,
+        378.68
+      ],
+      "client": [
+        951,
+        379,
+        0,
+        0
+      ],
+      "scroll": [
+        0,
+        0,
+        3804,
+        379
+      ],
+      "scrollSettings": [
+        "auto",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "tag": "DIV",
+      "cls": "",
+      "overflow": [
+        "visible",
+        "visible"
+      ],
+      "pos": [
+        17,
+        -68.10522275193216,
+        951,
+        378.68
+      ],
+      "client": [
+        951,
+        379,
+        0,
+        0
+      ],
+      "scroll": [
+        0,
+        0,
+        3804,
+        379
+      ],
+      "scrollSettings": [
+        "auto",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "tag": "DIV",
+      "cls": "testimonial-carousel-container",
+      "overflow": [
+        "clip",
+        "clip"
+      ],
+      "pos": [
+        17,
+        -68.10522275193216,
+        951,
+        478.68
+      ],
+      "client": [
+        951,
+        479,
+        0,
+        0
+      ],
+      "scroll": [
+        0,
+        0,
+        3804,
+        479
+      ],
+      "scrollSettings": [
+        "auto",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "tag": "SECTION",
+      "cls": "section-row section-row-gap",
+      "overflow": [
+        "visible",
+        "visible"
+      ],
+      "pos": [
+        33,
+        -1196.4645977519322,
+        919,
+        1607.039375
+      ],
+      "client": [
+        919,
+        1607,
+        0,
+        0
+      ],
+      "scroll": [
+        0,
+        0,
+        3788,
+        1607
+      ],
+      "scrollSettings": [
+        "auto",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "tag": "DIV",
+      "cls": "section-row section-row-gap",
+      "overflow": [
+        "visible",
+        "visible"
+      ],
+      "pos": [
+        33,
+        -3781.136472751932,
+        919,
+        4191.721385542169
+      ],
+      "client": [
+        919,
+        4192,
+        0,
+        0
+      ],
+      "scroll": [
+        0,
+        0,
+        3788,
+        4192
+      ],
+      "scrollSettings": [
+        "auto",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "tag": "DIV",
+      "cls": "section-container section-row section-row-gap",
+      "overflow": [
+        "visible",
+        "visible"
+      ],
+      "pos": [
+        16,
+        -4076.527097751932,
+        953,
+        4535.121385542168
+      ],
+      "client": [
+        951,
+        4535,
+        1,
+        0
+      ],
+      "scroll": [
+        0,
+        0,
+        3804,
+        4535
+      ],
+      "scrollSettings": [
+        "auto",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "tag": "SECTION",
+      "cls": "hds-color-mode business-sizes-section section section--white hds-mode--light",
+      "overflow": [
+        "visible",
+        "visible"
+      ],
+      "pos": [
+        0,
+        -4076.527097751932,
+        985,
+        4535.121385542168
+      ],
+      "client": [
+        985,
+        4535,
+        0,
+        0
+      ],
+      "scroll": [
+        0,
+        0,
+        3821,
+        4535
+      ],
+      "scrollSettings": [
+        "auto",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "tag": "MAIN",
+      "cls": "",
+      "overflow": [
+        "visible",
+        "visible"
+      ],
+      "pos": [
+        0,
+        -8124,
+        985,
+        13331.683662790236
+      ],
+      "client": [
+        985,
+        13332,
+        0,
+        0
+      ],
+      "scroll": [
+        0,
+        0,
+        7385,
+        13332
+      ],
+      "scrollSettings": [
+        "auto",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "tag": "DIV",
+      "cls": "",
+      "overflow": [
+        "visible",
+        "visible"
+      ],
+      "pos": [
+        0,
+        -8200,
+        985,
+        14730.274287790236
+      ],
+      "client": [
+        985,
+        14730,
+        0,
+        0
+      ],
+      "scroll": [
+        0,
+        0,
+        7385,
+        14730
+      ],
+      "scrollSettings": [
+        "auto",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "tag": "DIV",
+      "cls": "",
+      "overflow": [
+        "visible",
+        "visible"
+      ],
+      "pos": [
+        0,
+        -8200,
+        985,
+        14730.274287790236
+      ],
+      "client": [
+        985,
+        14730,
+        0,
+        0
+      ],
+      "scroll": [
+        0,
+        0,
+        7385,
+        14730
+      ],
+      "scrollSettings": [
+        "auto",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "tag": "BODY",
+      "cls": "",
+      "overflow": [
+        "visible",
+        "visible"
+      ],
+      "pos": [
+        0,
+        -8200,
+        985,
+        14730.274287790236
+      ],
+      "client": [
+        985,
+        14730,
+        0,
+        0
+      ],
+      "scroll": [
+        0,
+        8200,
+        985,
+        14730
+      ],
+      "scrollSettings": [
+        "auto",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "tag": "HTML",
+      "cls": "",
+      "overflow": [
+        "visible",
+        "visible"
+      ],
+      "pos": [
+        0,
+        -8200,
+        985,
+        14730.274287790236
+      ],
+      "client": [
+        985,
+        578,
+        0,
+        0
+      ],
+      "scroll": [
+        0,
+        8200,
+        985,
+        14730
+      ],
+      "scrollSettings": [
+        "auto",
+        "",
+        "",
+        ""
+      ]
+    }
+  ],
+  "chrome": [
+    {
+      "tag": "DIV",
+      "cls": "testimonial-card testimonial-carousel__card",
+      "overflow": [
+        "visible",
+        "visible"
+      ],
+      "pos": [
+        17,
+        -0.4375,
+        951,
+        306.625
+      ],
+      "client": [
+        951,
+        307,
+        0,
+        0
+      ],
+      "scroll": [
+        0,
+        0,
+        951,
+        307
+      ],
+      "scrollSettings": [
+        "auto",
+        "none",
+        "auto",
+        "0px"
+      ]
+    },
+    {
+      "tag": "DIV",
+      "cls": "testimonial-carousel__cards",
+      "overflow": [
+        "auto",
+        "auto"
+      ],
+      "pos": [
+        17,
+        -0.4375,
+        951,
+        378.625
+      ],
+      "client": [
+        951,
+        379,
+        0,
+        0
+      ],
+      "scroll": [
+        951,
+        0,
+        3804,
+        379
+      ],
+      "scrollSettings": [
+        "auto",
+        "x mandatory",
+        "auto",
+        "0px"
+      ]
+    },
+    {
+      "tag": "DIV",
+      "cls": "",
+      "overflow": [
+        "visible",
+        "visible"
+      ],
+      "pos": [
+        17,
+        -0.4375,
+        951,
+        378.625
+      ],
+      "client": [
+        951,
+        379,
+        0,
+        0
+      ],
+      "scroll": [
+        0,
+        0,
+        951,
+        379
+      ],
+      "scrollSettings": [
+        "auto",
+        "none",
+        "auto",
+        "0px"
+      ]
+    },
+    {
+      "tag": "DIV",
+      "cls": "testimonial-carousel-container",
+      "overflow": [
+        "clip",
+        "clip"
+      ],
+      "pos": [
+        17,
+        -0.4375,
+        951,
+        478.625
+      ],
+      "client": [
+        951,
+        479,
+        0,
+        0
+      ],
+      "scroll": [
+        0,
+        0,
+        951,
+        479
+      ],
+      "scrollSettings": [
+        "auto",
+        "none",
+        "auto",
+        "0px"
+      ]
+    },
+    {
+      "tag": "SECTION",
+      "cls": "section-row section-row-gap",
+      "overflow": [
+        "visible",
+        "visible"
+      ],
+      "pos": [
+        33,
+        -1128.71875,
+        919,
+        1606.90625
+      ],
+      "client": [
+        919,
+        1607,
+        0,
+        0
+      ],
+      "scroll": [
+        0,
+        0,
+        935,
+        1607
+      ],
+      "scrollSettings": [
+        "auto",
+        "none",
+        "auto",
+        "0px"
+      ]
+    },
+    {
+      "tag": "DIV",
+      "cls": "section-row section-row-gap",
+      "overflow": [
+        "visible",
+        "visible"
+      ],
+      "pos": [
+        33,
+        -3713.25,
+        919,
+        4191.4375
+      ],
+      "client": [
+        919,
+        4191,
+        0,
+        0
+      ],
+      "scroll": [
+        0,
+        0,
+        935,
+        4191
+      ],
+      "scrollSettings": [
+        "auto",
+        "none",
+        "auto",
+        "0px"
+      ]
+    },
+    {
+      "tag": "DIV",
+      "cls": "section-container section-row section-row-gap",
+      "overflow": [
+        "visible",
+        "visible"
+      ],
+      "pos": [
+        16,
+        -4008.625,
+        953,
+        4534.8125
+      ],
+      "client": [
+        951,
+        4535,
+        1,
+        0
+      ],
+      "scroll": [
+        0,
+        0,
+        951,
+        4535
+      ],
+      "scrollSettings": [
+        "auto",
+        "none",
+        "auto",
+        "0px"
+      ]
+    },
+    {
+      "tag": "SECTION",
+      "cls": "hds-color-mode business-sizes-section section section--white hds-mode--light",
+      "overflow": [
+        "visible",
+        "visible"
+      ],
+      "pos": [
+        0,
+        -4008.625,
+        985,
+        4534.8125
+      ],
+      "client": [
+        985,
+        4535,
+        0,
+        0
+      ],
+      "scroll": [
+        0,
+        0,
+        985,
+        4535
+      ],
+      "scrollSettings": [
+        "auto",
+        "none",
+        "auto",
+        "0px"
+      ]
+    },
+    {
+      "tag": "MAIN",
+      "cls": "",
+      "overflow": [
+        "visible",
+        "visible"
+      ],
+      "pos": [
+        0,
+        -8056,
+        985,
+        13033.5
+      ],
+      "client": [
+        985,
+        13034,
+        0,
+        0
+      ],
+      "scroll": [
+        0,
+        0,
+        985,
+        13034
+      ],
+      "scrollSettings": [
+        "auto",
+        "none",
+        "auto",
+        "0px"
+      ]
+    },
+    {
+      "tag": "DIV",
+      "cls": "",
+      "overflow": [
+        "visible",
+        "visible"
+      ],
+      "pos": [
+        0,
+        -8132,
+        985,
+        14428.046875
+      ],
+      "client": [
+        985,
+        14428,
+        0,
+        0
+      ],
+      "scroll": [
+        0,
+        0,
+        985,
+        14428
+      ],
+      "scrollSettings": [
+        "auto",
+        "none",
+        "auto",
+        "0px"
+      ]
+    },
+    {
+      "tag": "DIV",
+      "cls": "",
+      "overflow": [
+        "visible",
+        "visible"
+      ],
+      "pos": [
+        0,
+        -8132,
+        985,
+        14428.046875
+      ],
+      "client": [
+        985,
+        14428,
+        0,
+        0
+      ],
+      "scroll": [
+        0,
+        0,
+        985,
+        14428
+      ],
+      "scrollSettings": [
+        "auto",
+        "none",
+        "auto",
+        "0px"
+      ]
+    },
+    {
+      "tag": "BODY",
+      "cls": "",
+      "overflow": [
+        "visible",
+        "visible"
+      ],
+      "pos": [
+        0,
+        -8132,
+        985,
+        14428.046875
+      ],
+      "client": [
+        985,
+        14428,
+        0,
+        0
+      ],
+      "scroll": [
+        0,
+        0,
+        985,
+        14428
+      ],
+      "scrollSettings": [
+        "auto",
+        "none",
+        "auto",
+        "0px"
+      ]
+    },
+    {
+      "tag": "HTML",
+      "cls": "",
+      "overflow": [
+        "visible",
+        "visible"
+      ],
+      "pos": [
+        0,
+        -8132,
+        985,
+        14428.046875
+      ],
+      "client": [
+        985,
+        578,
+        0,
+        0
+      ],
+      "scroll": [
+        0,
+        8132,
+        985,
+        14428
+      ],
+      "scrollSettings": [
+        "auto",
+        "none",
+        "auto",
+        "0px"
+      ]
+    }
+  ]
+}
