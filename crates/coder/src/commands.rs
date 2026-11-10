@@ -3,7 +3,7 @@
 use crate::model::*;
 use anyhow::{Context, Result, bail};
 
-pub const HELP: &str = "Messages go to the agent. Enter sends; Escape stops.\n\n/new [workspace] · /sessions · /open ID · /status · /stop · /resume\n/model MODEL [EFFORT] · /provider codex|openai · /models · /endpoint JSON\n/goal OBJECTIVE · /todos JSON · /memory TEXT · /attach PATH\n/spec on|off · /spec TEXT · /accept [REVISION]\n/keep on|off · /approval ask|auto|allow · /guidance TEXT\n/agents on|off · /agent JSON · /readonly on|off · /compact\n/transcript [ID] · /transcript-search TEXT · /compactions [ID] · /restore-context ID\n/config [JSON] · /defaults [JSON] · /set KEY JSON · /fork [TITLE] · /history [QUERY] · /undo EDIT · /checkpoints · /event SEQUENCE\n/git OP [JSON] · /github OP JSON · /tool NAME JSON\n/pin [on|off] · /rename TITLE · /tags WORDS · /archive · /restore\n/interrupt TEXT · /after-tool TEXT · /queue TEXT · /inbox\n/cancel-message ID · /retry-message ID\n/message [PEER/]SESSION TEXT · /peers · /connect NAME STORE · /disconnect NAME · /peer-sessions NAME\n/api JSON (every command) · /help · /quit\n\nChanges to model and configuration require a stopped turn.\nApproval: /approve CALL_ID or /deny CALL_ID.\nFull configuration includes budgets, timeouts, model provider fields,\nMCP servers, hooks, subagent limits and review model.\nAn execute or MCP tool has host access when approved.";
+pub const HELP: &str = "Messages go to the agent. Enter sends; Escape stops.\n\n/new [workspace] · /sessions · /open ID · /status · /stop · /resume\n/model MODEL [EFFORT] · /provider codex|openai · /models · /endpoint JSON\n/goal OBJECTIVE · /todos JSON · /memory TEXT · /attach PATH\n/spec on|off · /spec TEXT · /accept [REVISION]\n/keep on|off · /approval ask|auto|allow · /guidance TEXT\n/profiles [ACTION JSON] · /supervisor [on|off|JSON] · /integrations [ACTION JSON]\n/agents on|off · /agent JSON · /readonly on|off · /compact\n/transcript [ID] · /transcript-search TEXT · /compactions [ID] · /restore-context ID\n/config [JSON] · /defaults [JSON] · /set KEY JSON · /fork [TITLE] · /history [QUERY] · /undo EDIT · /checkpoints · /event SEQUENCE\n/git OP [JSON] · /github OP JSON · /tool NAME JSON\n/pin [on|off] · /rename TITLE · /tags WORDS · /archive · /restore\n/interrupt TEXT · /after-tool TEXT · /queue TEXT · /inbox\n/cancel-message ID · /retry-message ID\n/message [PEER/]SESSION TEXT · /peers · /connect NAME STORE · /disconnect NAME · /peer-sessions NAME\n/api JSON (every command) · /help · /quit\n\nChanges to model and configuration require a stopped turn.\nApproval: /approve CALL_ID or /deny CALL_ID.\nFull configuration includes budgets, timeouts, model provider fields,\nMCP servers, hooks, subagent limits and review model.\nAn execute or MCP tool has host access when approved.";
 pub enum Input {
     Command(Command),
     Open(String),
@@ -21,6 +21,30 @@ pub fn parse(text: &str, s: &Session) -> Result<Input> {
     let session = s.id.clone();
     let mut config = s.config.clone();
     let command = match name {
+        "/profiles" => {
+            let (action, body) = arg.split_once(char::is_whitespace).unwrap_or((arg, "{}"));
+            let mut value: serde_json::Value = serde_json::from_str(body)?;
+            anyhow::ensure!(value.is_object(), "expected an object");
+            value["op"] = "model_profiles".into();
+            value["action"] = action.into();
+            value["session"] = session.into();
+            serde_json::from_value(value)?
+        }
+        "/supervisor" => {
+            let value = match arg {
+                "" => None,
+                "on" | "off" => {
+                    config.supervisor.enabled = arg == "on";
+                    Some(config.supervisor)
+                }
+                _ => Some(serde_json::from_str(arg)?),
+            };
+            Command::Supervisor { session, config: value }
+        }
+        "/integrations" | "/mcp" => {
+            let (action, args) = arg.split_once(char::is_whitespace).unwrap_or((arg, "{}"));
+            Command::Integrations { session, action: action.into(), arguments: serde_json::from_str(args)? }
+        }
         "/endpoint" => {
             let endpoint: EndpointConfig = serde_json::from_str(arg)?;
             if config.model.provider != Provider::Openai {
@@ -127,15 +151,10 @@ pub fn parse(text: &str, s: &Session) -> Result<Input> {
         "/defaults" => Command::Defaults { config: if arg.is_empty() { None } else { Some(serde_json::from_str(arg)?) } },
         "/set" => {
             let (key, value) = arg.split_once(char::is_whitespace).context("expected KEY JSON_VALUE")?;
-            let mut v = serde_json::to_value(config)?;
-            let keys = key.split('.').collect::<Vec<_>>();
-            let mut at = &mut v;
-            for k in &keys[..keys.len() - 1] {
-                at = at.get_mut(*k).context("unknown configuration key")?;
-            }
-            let target = at.get_mut(*keys.last().unwrap()).context("unknown configuration key")?;
-            *target = serde_json::from_str(value)?;
-            Command::Configure { session, config: serde_json::from_value(v)? }
+            let value: serde_json::Value = serde_json::from_str(value)?;
+            let config = serde_json::to_value(config)?;
+            anyhow::ensure!(config.pointer(&format!("/{}", key.replace('.', "/"))).is_some(), "unknown configuration key");
+            Command::ConfigureFields { session, values: std::collections::BTreeMap::from([(key.into(), value)]) }
         }
         "/config" => {
             if arg.is_empty() {

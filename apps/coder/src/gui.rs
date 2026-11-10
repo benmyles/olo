@@ -58,6 +58,7 @@ impl Coder {
     }
     fn update(&mut self, u: Update, cx: &mut Context<Self>) {
         match &u {
+            Update::Profiles(profiles) => crate::models::changed(cx, profiles),
             Update::Opened(id) if id != &self.view.id => {
                 if !self.view.id.is_empty() {
                     self.drafts.insert(self.view.id.clone(), self.composer.read(cx).text().into());
@@ -107,7 +108,17 @@ impl Coder {
         }
         let details = matches!(&u, Update::Session(_) | Update::Opened(_));
         let redraw = matches!(&u, Update::Event(e) if matches!(e.kind.as_str(), "compaction_progress" | "compaction_ready" | "compaction_applied" | "compaction_deferred"))
-            || matches!(&u, Update::Rendered(_) | Update::Session(_) | Update::Repository { .. } | Update::Models { .. } | Update::Opened(_) | Update::Catalog { .. } | Update::InputResult { .. });
+            || matches!(
+                &u,
+                Update::Profiles(_)
+                    | Update::Rendered(_)
+                    | Update::Session(_)
+                    | Update::Repository { .. }
+                    | Update::Models { .. }
+                    | Update::Opened(_)
+                    | Update::Catalog { .. }
+                    | Update::InputResult { .. }
+            );
         let repository = matches!(&u,Update::Repository{session,..} if session==&self.view.id) || matches!(&u, Update::Opened(_));
         self.view.apply(u);
         if repository {
@@ -210,6 +221,18 @@ impl Coder {
         let choices = models.iter().cloned().map(SharedString::from).collect();
         let guidance = cx.entity();
         let advanced = cx.entity();
+        let profiles = self.view.profiles.clone();
+        let choose_profile = self.client.clone();
+        let configure_profiles = cx.entity();
+        let mut profile_names = vec!["Current session model".into()];
+        profile_names.extend(profiles.iter().map(|p| p.name.clone().into()));
+        panel = panel
+            .child(MenuField::new("model-profile", profile_names, 0).label("Profile:").divider(80.0).enabled(editable).on_change(move |i, _, _| {
+                if i > 0 {
+                    choose_profile.submit(format!("/profiles apply {}", serde_json::json!({"id":profiles[i-1].id,"role":"primary"})));
+                }
+            }))
+            .child(Button::new("Model Profiles…").on_click(move |w, cx| configure_profiles.update(cx, |s, cx| s.command("model_profiles", w, cx))));
         panel = panel
             .child(div().ml(-inset).child(StringView::new("Model & reasoning").bold(true)))
             .child(
@@ -272,7 +295,12 @@ impl Coder {
             let client = self.client.clone();
             panel = panel.child(CheckBox::new(label, checked).enabled(editable).on_toggle(move |on, _, _| client.submit(format!("/set {key} {on}"))));
         }
-        panel.child(div().flex_1()).child(Button::new("All Settings…").enabled(editable).on_click(move |w, cx| advanced.update(cx, |s, cx| s.command("config", w, cx)))).into_any_element()
+        let supervisor = cx.entity();
+        let supervisor_toggle = self.client.clone();
+        panel = panel
+            .child(CheckBox::new("Supervisor", s.config.supervisor.enabled).on_toggle(move |on, _, _| supervisor_toggle.submit(format!("/supervisor {}", if on { "on" } else { "off" }))))
+            .child(Button::new("Supervisor Guidance…").on_click(move |w, cx| supervisor.update(cx, |s, cx| s.command("supervisor_settings", w, cx))));
+        panel.child(div().flex_1()).child(Button::new("Run Budgets…").enabled(editable).on_click(move |w, cx| advanced.update(cx, |s, cx| s.command("settings_budgets", w, cx)))).into_any_element()
     }
     fn sessions_panel(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let rows = self.view.catalog.clone();
@@ -427,7 +455,7 @@ impl Coder {
                                 "Save",
                                 vec![Field::new("Message:", &m.text).multiline(8)],
                                 edit_client.clone(),
-                                form::Submission::Coordination { operation: "edit".into(), session: session.clone(), message: Some(m.id.clone()) },
+                                form::Submission::Coordination { operation: "edit".into(), session: session.clone(), message: Some(m.id.clone()), recipients: vec![] },
                             );
                         }
                     }))
@@ -514,11 +542,47 @@ impl Coder {
                 .separator()
                 .item("GitHub Pull Requests…", "github_pulls")
                 .item("Draft Pull Request…", "github_draft"),
+            Menu::new("Integrations")
+                .item("Connections & Status", "integrations")
+                .item("Add Slack…", "setup_slack")
+                .enabled(!running)
+                .item("Connect Logfire (US)", "setup_logfire")
+                .enabled(!running)
+                .item("Connect Logfire (EU)", "setup_logfire_eu")
+                .enabled(!running)
+                .item("Add MCP Server…", "setup_mcp")
+                .enabled(!running)
+                .item("Manage Connection…", "manage_mcp")
+                .enabled(self.view.session.as_ref().is_some_and(|s| !s.config.mcp.is_empty()))
+                .separator()
+                .item("Enable Agent Screens", "olo_screens")
+                .enabled(!running)
+                .checked(self.view.session.as_ref().is_some_and(|s| s.config.olo.screens))
+                .item("Enable Terminal Titles", "olo_terminal")
+                .enabled(!running)
+                .checked(self.view.session.as_ref().is_some_and(|s| s.config.olo.terminal))
+                .item("Share Password Field…", "share_password")
+                .enabled(!running)
+                .item("Revoke Password Field…", "revoke_password")
+                .enabled(!running && self.view.session.as_ref().is_some_and(|s| !s.config.olo.secret_grants.is_empty())),
             Menu::new("Settings")
+                .item("Model Profiles…", "model_profiles")
+                .item("Supervisor", "supervisor_toggle")
+                .checked(self.view.session.as_ref().is_some_and(|s| s.config.supervisor.enabled))
+                .item("Supervisor Guidance & Limits…", "supervisor_settings")
                 .item("Custom Endpoint…", "endpoint")
                 .item("Model…", "model")
                 .item("Approval Guidance…", "guidance")
-                .item("Configuration…", "config")
+                .submenu(
+                    Menu::new("Session Settings")
+                        .item("Run Budgets…", "settings_budgets")
+                        .item("Timeouts & Retries…", "settings_timeouts")
+                        .item("Context & Compaction…", "settings_compaction")
+                        .item("Subagent Limits…", "settings_subagents")
+                        .item("Safety & Collaboration…", "settings_safety")
+                        .item("Supervisor Limits…", "settings_supervision")
+                        .item("Instructions…", "settings_instructions"),
+                )
                 .item("Subagents", "agents")
                 .checked(self.view.session.as_ref().is_some_and(|s| s.config.subagents)),
             Menu::new("View")
@@ -556,7 +620,19 @@ impl Coder {
                 self.tab = if cmd == "sessions" { 3 } else { 4 };
                 self.page = self.tab + 1;
             }
-            "rename" | "message" | "connect" => {
+            "message" => form::open(
+                cx,
+                "Message Another Session",
+                "Choose a Coder instance and search for a session by name.",
+                "Find Sessions",
+                vec![
+                    Field::new("Instance:", "This service").choices(std::iter::once("This service".to_owned()).chain(self.view.peers.iter().map(|p| p.name.clone()))),
+                    Field::new("Search:", "").optional(),
+                ],
+                self.client.clone(),
+                form::Submission::Recipient { dir: self.dir.clone(), session: self.view.id.clone(), peer: None, items: vec![] },
+            ),
+            "rename" | "connect" => {
                 let (title, description, action, fields) = match cmd {
                     "rename" => {
                         ("Rename Session", "Give this session a name you can find later.", "Save", vec![Field::new("Name:", self.view.session.as_ref().map(|s| s.title.as_str()).unwrap_or(""))])
@@ -564,14 +640,118 @@ impl Coder {
                     "connect" => {
                         ("Link Coder Instance", "Link another local service store; each side keeps its own sessions.", "Link", vec![Field::new("Alias:", ""), Field::new("Store folder:", "")])
                     }
+                    _ => unreachable!(),
+                };
+                form::open(
+                    cx,
+                    title,
+                    description,
+                    action,
+                    fields,
+                    self.client.clone(),
+                    form::Submission::Coordination { operation: cmd.into(), session: self.view.id.clone(), message: None, recipients: vec![] },
+                );
+            }
+            "supervisor_toggle" => self.client.submit(format!("/supervisor {}", if self.view.session.as_ref().is_some_and(|s| s.config.supervisor.enabled) { "off" } else { "on" })),
+            "supervisor_settings" => {
+                if let Some(s) = &self.view.session {
+                    let config = s.config.supervisor.clone();
+                    let models = crate::models::choices(&self.view, config.model.as_ref().map(|m| ("Current supervisor", m)));
+                    let labels = std::iter::once("Inherit primary".to_owned()).chain(models.iter().map(|(label, _)| label.clone())).collect::<Vec<_>>();
+                    form::open(
+                        cx,
+                        "Supervisor",
+                        "Reviews progress without approving actions. Choose a model profile or inherit the primary. More limits are in Settings → Session Settings.",
+                        "Save",
+                        vec![
+                            Field::new("Guidance:", config.guidance.clone()).multiline(5),
+                            Field::new("Model:", if config.model.is_some() { "Current supervisor" } else { "Inherit primary" }).choices(labels),
+                            Field::new("Reasoning:", "Use model settings").choices(std::iter::once("Use model settings").chain(crate::models::EFFORTS)),
+                            Field::new("Every turns:", config.every_turns.to_string()),
+                            Field::new("Interventions:", config.max_interventions.to_string()),
+                            Field::new("Token budget:", config.token_budget.to_string()),
+                        ],
+                        self.client.clone(),
+                        form::Submission::Supervisor { session: s.id.clone(), config, primary_model: s.config.model.clone(), models },
+                    );
+                }
+            }
+            "olo_screens" | "olo_terminal" => {
+                if let Some(s) = &self.view.session {
+                    let mut config = s.config.olo.clone();
+                    if cmd == "olo_screens" {
+                        config.screens = !config.screens;
+                    } else {
+                        config.terminal = !config.terminal;
+                    }
+                    self.client.submit(format!("/integrations olo {}", serde_json::to_string(&config).unwrap()));
+                }
+            }
+            "setup_logfire" | "setup_logfire_eu" => self.client.submit(format!("/integrations setup {}", serde_json::json!({"preset":if cmd=="setup_logfire"{"logfire"}else{"logfire-eu"}}))),
+            "share_password" => form::open(
+                cx,
+                "Share Password Field",
+                "Search Passwords, choose an item, then select the specific field to share. Browsing names does not read secret values.",
+                "Search",
+                vec![Field::new("Search:", "").optional()],
+                self.client.clone(),
+                form::Submission::Password { dir: self.dir.clone(), session: self.view.id.clone(), phase: 0, items: vec![] },
+            ),
+            "setup_slack" | "setup_mcp" | "manage_mcp" | "revoke_password" => {
+                let (title, description, action, fields, keys) = match cmd {
+                    "setup_slack" => (
+                        "Connect Slack",
+                        "Use your registered Slack app. Set its secret in the service environment; callback: http://127.0.0.1:8787/callback.",
+                        "setup_slack",
+                        vec![Field::new("Client ID:", ""), Field::new("Secret variable:", "SLACK_CLIENT_SECRET")],
+                        vec!["client_id", "client_secret_env"],
+                    ),
+                    "setup_mcp" => (
+                        "Add MCP Server",
+                        "Local: executable plus JSON arguments. Remote: HTTPS URL. Authentication: none, token, password, or oauth. Enter references, never secret values.",
+                        "configure_fields",
+                        vec![
+                            Field::new("Name:", ""),
+                            Field::new("Program or URL:", ""),
+                            Field::new("Arguments (JSON):", "[]"),
+                            Field::new("Authentication:", "none").choices(["none", "token", "password", "oauth"]),
+                            Field::new("Token reference:", "").optional(),
+                            Field::new("OAuth client ID:", "").optional(),
+                            Field::new("Secret variable:", "").optional(),
+                        ],
+                        vec!["name", "address", "args", "auth", "reference", "client_id", "client_secret_env"],
+                    ),
+                    "manage_mcp" => (
+                        "Manage Connection",
+                        "Choose a connection and the action to perform.",
+                        "manage",
+                        vec![
+                            Field::new("Connection:", self.view.session.as_ref().and_then(|s| s.config.mcp.first()).map(|m| m.name.clone()).unwrap_or_default())
+                                .choices(self.view.session.iter().flat_map(|s| s.config.mcp.iter().map(|m| m.name.clone()))),
+                            Field::new("Action:", "test").choices(["test", "inspect", "login", "logout", "remove"]),
+                        ],
+                        vec!["name", "action"],
+                    ),
                     _ => (
-                        "Message Another Session",
-                        "Use a session ID, optionally prefixed with a linked instance alias/.",
-                        "Send",
-                        vec![Field::new("Recipient:", ""), Field::new("Message:", "").multiline(6)],
+                        "Revoke Password Field",
+                        "Prevents future reads. Values already sent remain in the session transcript.",
+                        "revoke_secret",
+                        vec![
+                            Field::new("Agent-facing name:", self.view.session.as_ref().and_then(|s| s.config.olo.secret_grants.keys().next()).cloned().unwrap_or_default())
+                                .choices(self.view.session.iter().flat_map(|s| s.config.olo.secret_grants.keys().cloned())),
+                        ],
+                        vec!["name"],
                     ),
                 };
-                form::open(cx, title, description, action, fields, self.client.clone(), form::Submission::Coordination { operation: cmd.into(), session: self.view.id.clone(), message: None });
+                form::open(
+                    cx,
+                    title,
+                    description,
+                    "Continue",
+                    fields,
+                    self.client.clone(),
+                    form::Submission::Integration { session: self.view.id.clone(), action: action.into(), keys: keys.into_iter().map(str::to_owned).collect() },
+                );
             }
             "quit" => cx.quit(),
             "close" => window.remove_window(),
@@ -592,14 +772,22 @@ impl Coder {
                 let _ = self.client.tx.send(Action::Repository);
             }
             "start_agent" => {
+                let models = crate::models::choices(&self.view, None);
+                let labels = std::iter::once("Inherit primary".to_owned()).chain(models.iter().map(|(label, _)| label.clone())).collect::<Vec<_>>();
                 form::open(
                     cx,
                     "Start Subagent",
-                    "Read-only. Blank fields inherit this session’s settings.",
+                    "Choose a model and access level. The parent’s policy and approval rules still apply.",
                     "Start",
-                    vec![Field::new("Task:", "").multiline(5), Field::new("Subfolder:", "").optional(), Field::new("Model:", "").optional(), Field::new("Effort:", "").optional()],
+                    vec![
+                        Field::new("Task:", "").multiline(5),
+                        Field::new("Subfolder:", "").optional(),
+                        Field::new("Model:", "Inherit primary").choices(labels),
+                        Field::new("Effort:", "Use model settings").choices(std::iter::once("Use model settings").chain(crate::models::EFFORTS)),
+                        Field::new("Access:", "Read-only").choices(["Read-only", "Workspace writes"]),
+                    ],
                     self.client.clone(),
-                    form::Submission::Agent { session: self.view.id.clone() },
+                    form::Submission::Agent { session: self.view.id.clone(), models },
                 );
             }
             "git_init" => self.client.submit("/git init"),
@@ -612,10 +800,16 @@ impl Coder {
                 let head = self.view.repository.as_ref().and_then(|r| r["head"].as_str()).unwrap_or("").to_owned();
                 let repo = self.view.repository.as_ref().and_then(|r| r["github"].as_str()).unwrap_or("").to_owned();
                 let branch = self.view.repository.as_ref().and_then(|r| r["branch"].as_str()).unwrap_or("").to_owned();
+                let branches: Vec<String> = self.view.repository.as_ref().and_then(|r| r["branches"].as_array()).into_iter().flatten().filter_map(|v| v["name"].as_str().map(str::to_owned)).collect();
                 let (title, description, action, fields) = match cmd {
                     "git_commit" => ("Commit Staged Changes", "Record the staged changes on the current branch.", "Commit", vec![Field::new("Message:", "").multiline(5)]),
                     "git_branch" => ("Create Branch", "Create a branch at the current commit.", "Create", vec![Field::new("Branch:", "")]),
-                    "git_worktree" => ("Add Worktree", "Check out an existing branch in a workspace subfolder.", "Add", vec![Field::new("Branch:", ""), Field::new("Folder:", "")]),
+                    "git_worktree" => (
+                        "Add Worktree",
+                        "Check out an existing branch in a workspace subfolder.",
+                        "Add",
+                        vec![Field::new("Branch:", branch.clone()).choices(branches.clone()), Field::new("Folder:", "")],
+                    ),
                     _ => (
                         "Draft Pull Request",
                         "Create a draft from a branch already pushed to GitHub.",
@@ -623,8 +817,8 @@ impl Coder {
                         vec![
                             Field::new("Repository:", repo),
                             Field::new("Title:", ""),
-                            Field::new("Head branch:", branch),
-                            Field::new("Base branch:", "main"),
+                            Field::new("Head branch:", branch).choices(branches.clone()),
+                            Field::new("Base branch:", "main").choices(branches),
                             Field::new("Description:", "").multiline(6).optional(),
                         ],
                     ),
@@ -638,30 +832,13 @@ impl Coder {
                     self.prefill("/github pulls {\"repository\":\"owner/repo\"}", window, cx);
                 }
             }
-            "endpoint" => {
+            "model" => {
+                self.tab = 2;
+                self.page = 3;
+            }
+            "model_profiles" | "endpoint" => {
                 if let Some(s) = &self.view.session {
-                    let config = s.config.clone();
-                    let endpoint = config.model.endpoint.clone().unwrap_or_else(|| olo_coder_core::EndpointConfig {
-                        base_url: "https://api.fireworks.ai/inference/v1".into(),
-                        api_key_env: Some("FIREWORKS_API_KEY".into()),
-                        ..Default::default()
-                    });
-                    let model = if config.model.provider == olo_coder_core::Provider::Openai { config.model.model.clone() } else { String::new() };
-                    let effort = if config.model.provider == olo_coder_core::Provider::Openai { config.model.effort.clone() } else { String::new() };
-                    form::open(
-                        cx,
-                        "Custom Model Endpoint",
-                        "Use a Chat Completions API. Key names refer to the service environment.",
-                        "Save",
-                        vec![
-                            Field::new("API root:", endpoint.base_url),
-                            Field::new("Model ID:", model),
-                            Field::new("Key variable:", endpoint.api_key_env.unwrap_or_default()).optional(),
-                            Field::new("Effort:", effort).optional(),
-                        ],
-                        self.client.clone(),
-                        form::Submission::Endpoint { session: s.id.clone(), config },
-                    );
+                    crate::models::open(cx, self.dir.clone(), s.id.clone(), self.client.clone(), s.config.model.clone());
                 }
             }
             "guidance" => {
@@ -699,8 +876,26 @@ impl Coder {
             }
             "new" | "pin" | "archive" | "restore" | "peers" | "fork" | "compact" | "compactions" | "transcript" | "resume" | "accept" => self.client.submit(format!("/{cmd}")),
             "config" => {
-                let text = self.view.session.as_ref().map(|s| serde_json::to_string(&s.config).unwrap_or_default()).unwrap_or_default();
-                self.prefill(&format!("/config {text}"), window, cx);
+                self.tab = 2;
+                self.page = 3;
+            }
+            section if section.starts_with("settings_") => {
+                if let Some(s) = &self.view.session {
+                    let section = section.trim_start_matches("settings_");
+                    let specs = crate::options::section(section);
+                    let config = serde_json::to_value(&s.config).unwrap();
+                    let fields = crate::options::fields(&specs, &config);
+                    let title = crate::options::SECTIONS.iter().find(|(id, _)| *id == section).map(|(_, title)| *title).unwrap_or("Session Settings");
+                    form::open(
+                        cx,
+                        title,
+                        "Changes apply to this session. Model configurations are managed in Model Profiles.",
+                        "Save",
+                        fields,
+                        self.client.clone(),
+                        form::Submission::Settings { session: s.id.clone(), config: s.config.clone(), paths: specs.iter().map(|s| s.path.into()).collect() },
+                    );
+                }
             }
             _ => self.prefill(&format!("/{cmd} "), window, cx),
         }
@@ -926,7 +1121,7 @@ fn open_coder(cx: &mut gpui::App, dir: PathBuf, workspace: PathBuf, session: Opt
             restore_key: restore_key.clone(),
             _selection_subscriptions: selection_subscriptions,
             win: None,
-            dir,
+            dir: dir.clone(),
             workspace,
             drafts: serde_json::from_value(restore["drafts"].clone()).unwrap_or_default(),
             delivery: serde_json::from_value(restore["delivery"].clone()).unwrap_or_default(),
@@ -959,7 +1154,9 @@ fn open_coder(cx: &mut gpui::App, dir: PathBuf, workspace: PathBuf, session: Opt
     });
     view.update(cx, |s, _| s.win = win);
     let forms = serde_json::from_value(restore["forms"].clone()).unwrap_or_default();
-    form::restore(cx, forms, restored_client);
+    form::restore(cx, forms, restored_client.clone());
+    let profiles = serde_json::from_value(restore["model_windows"].clone()).unwrap_or_default();
+    crate::models::restore(cx, dir.clone(), restored_client, profiles);
 }
 pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) {
     olo_ui::run("olo.coder", move |cx| {
@@ -999,6 +1196,7 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) {
             let mut windows = windows;
             if let Some(first) = windows.first_mut() {
                 first["forms"] = serde_json::to_value(form::snapshots(cx)).unwrap_or_default();
+                first["model_windows"] = serde_json::to_value(crate::models::snapshots(cx)).unwrap_or_default();
             }
             Some(serde_json::json!({"windows":windows}).to_string())
         });

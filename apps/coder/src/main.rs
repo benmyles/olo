@@ -1,8 +1,11 @@
 mod client;
 mod form;
 mod gui;
+mod models;
+mod options;
 mod transcript;
 mod tui;
+mod tui_settings;
 use anyhow::{Context, Result};
 use olo_coder_core::{Command, rpc};
 use std::{io::Write, path::PathBuf};

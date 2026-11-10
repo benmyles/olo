@@ -13,8 +13,11 @@ struct Stdio {
 }
 impl Stdio {
     async fn start(server: &McpServer, cwd: &std::path::Path) -> Result<Self> {
+        let environment =
+            server.env.iter().map(|(key, source)| Ok((key.clone(), std::env::var(source).with_context(|| format!("missing MCP environment variable {source}"))?))).collect::<Result<Vec<_>>>()?;
         let mut child = tokio::process::Command::new(&server.program)
             .args(&server.args)
+            .envs(environment)
             .current_dir(cwd)
             .env_remove("DISPLAY")
             .env_remove("WAYLAND_DISPLAY")
@@ -195,9 +198,17 @@ pub struct Connection {
 }
 impl Connection {
     pub async fn start(server: &McpServer, cwd: &std::path::Path) -> Result<Self> {
+        let token = match &server.auth {
+            Some(crate::oauth::Auth::BearerEnv { variable }) => Some(std::env::var(variable)?),
+            None => None,
+            _ => bail!("use the service connection manager for OAuth or Passwords authentication"),
+        };
+        Self::start_authenticated(server, cwd, token.as_deref()).await
+    }
+    pub async fn start_authenticated(server: &McpServer, cwd: &std::path::Path, bearer: Option<&str>) -> Result<Self> {
         if let Some(url) = &server.url {
             ensure!(server.program.is_empty(), "MCP cannot have both program and url");
-            let parsed = reqwest::Url::parse(url)?;
+            let parsed = crate::oauth::secure_url(url)?;
             ensure!(matches!(parsed.scheme(), "http" | "https") && parsed.username().is_empty() && parsed.password().is_none(), "MCP requires an HTTP(S) URL without embedded credentials");
             let mut headers = reqwest::header::HeaderMap::new();
             for (header, env) in &server.header_env {
@@ -206,6 +217,12 @@ impl Connection {
                 let mut value = reqwest::header::HeaderValue::from_str(&value)?;
                 value.set_sensitive(true);
                 headers.insert(reqwest::header::HeaderName::from_bytes(header.as_bytes())?, value);
+            }
+            if let Some(token) = bearer {
+                ensure!(!headers.contains_key("authorization"), "duplicate MCP authorization");
+                let mut value = reqwest::header::HeaderValue::from_str(&format!("Bearer {token}"))?;
+                value.set_sensitive(true);
+                headers.insert(reqwest::header::AUTHORIZATION, value);
             }
             let client = reqwest::Client::builder().no_proxy().redirect(reqwest::redirect::Policy::none()).connect_timeout(std::time::Duration::from_secs(10)).user_agent("olo-coder").build()?;
             let mut h = Http { client, url: url.clone(), headers, session: None, version: String::new(), next: 0, cleanup: Vec::new() };
@@ -244,6 +261,23 @@ impl Connection {
         bail!("too many MCP tool pages")
     }
 
+    pub async fn read(&mut self, method: &str, params: Value, cancel: &CancellationToken, timeout: u64) -> Result<Value> {
+        ensure!(
+            matches!(method, "resources/list" | "resources/templates/list" | "resources/read" | "prompts/list" | "prompts/get" | "ping"),
+            "only MCP resources/prompts read methods are allowed here"
+        );
+        tokio::select! {_ = cancel.cancelled()=>bail!("cancelled"),v=tokio::time::timeout(std::time::Duration::from_secs(timeout),self.call(method,if params.is_null(){json!({})}else{params}))=>v.context("MCP read timed out")?}
+    }
+    pub fn bearer(&mut self, token: &str) -> Result<()> {
+        ensure!(!token.is_empty(), "empty MCP access token");
+        let Transport::Http(http) = &mut self.transport else {
+            bail!("bearer authentication requires HTTP");
+        };
+        let mut header = reqwest::header::HeaderValue::from_str(&format!("Bearer {token}"))?;
+        header.set_sensitive(true);
+        http.headers.insert(reqwest::header::AUTHORIZATION, header);
+        Ok(())
+    }
     pub async fn invoke(&mut self, name: &str, args: Value, cancel: &CancellationToken, timeout: u64) -> Result<Value> {
         ensure!(!cancel.is_cancelled(), "MCP cancelled before request dispatch");
         let request_id = match &self.transport {

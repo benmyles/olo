@@ -18,3 +18,9 @@ mod coordination;
 
 mod chat;
 pub mod compaction;
+
+pub mod integrations;
+pub mod oauth;
+pub mod supervisor;
+
+pub mod profiles;

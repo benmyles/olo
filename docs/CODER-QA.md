@@ -585,3 +585,61 @@ median latency **1.245 / 1.256 ms**. Request-manifest publication totaled
 SQLite commits. The earlier sequential sample and paired p95/max latencies are
 retained in `coder-compaction-qa.json`; shared-host samples do not establish a
 speed improvement or isolate the guard's CPU cost.
+
+## Selectable settings, supervision and native integrations — 2026-11-10
+
+Model configuration now has named, persistent profiles shared by a service.
+GUI menus and searchable TUI pickers choose profiles for the primary agent,
+supervisor, approval reviewer and compactor. Provider catalogs supply model
+identifiers; changing a connection invalidates its catalog. Session settings,
+MCP authentication, recipients, delivery and password fields use choice controls.
+Rejected submissions retain their drafts, with errors in the form. The kit's
+structured ComboBox nodes now report the selected value, too.
+
+The optional supervisor has bounded reviews and interventions, separate usage,
+custom guidance and read-only transcript retrieval. MCP supports stdio and
+Streamable HTTP, environment/Passwords tokens and OAuth with PKCE and sealed
+credentials. Slack and Logfire presets use their official endpoints. Olo
+Terminal titles and Agent Screens run through native protocols/libraries;
+Passwords offers item/field metadata before an explicit field grant.
+
+Functional checks cover profile discovery/save/application, all four model
+roles, invalid numeric values, rejected MCP forms, stale catalog invalidation,
+upgrade-restored drafts, compositor reconnect, local and linked-instance
+recipient selection, and attributed message delivery. A custom HTTP fixture
+advertised 100 models and selected a namespaced model without typed identifiers.
+A Passwords picker fixture recorded two metadata calls and no secret-value
+reads. PTY checks exercise settings search, catalog discovery, profile saves,
+MCP rejection retention and the separate transcript-links shortcut.
+
+A real Token Pool run completed with an enabled supervisor: the primary used
+2,404 input / 5 output tokens; its supervisor used 691 input / 35 output tokens,
+reviewed once, and correctly observed completion without an intervention.
+Native Agent Screens launch/tree/capture/stop and Terminal title calls passed.
+Slack/Logfire account sign-in was not performed against real accounts; OAuth,
+refresh, cancellation and credential handling use protocol fixtures. Slack
+requires an already registered app. No messages were sent to external services.
+
+Detailed test counts, visual reviews and release measurements are retained in
+[coder-integrations-qa.json](coder-integrations-qa.json). Shared-host timing
+samples include scheduling outliers and are not a speed-improvement claim.
+
+Validation: **190 targeted release tests passed, zero failures, 15 opt-in tests
+ignored** across Coder, its core, Agent Screens, Passwords and the keychain.
+The final change to preserve concurrent edits also passed all 17 Coder frontend
+tests. The release workspace build passed; Clippy completed with style and
+complexity warnings, no errors. Headless checks cover light/dark/night and
+1×, 1.25×, 1.5×, 1.75× and 2×. Two initial 1.75× alignment findings were
+reproduced and fixed; the final form reviews are clear. Live layout lint also
+passed at the 1280 × 800 minimum screen.
+
+Final paired 2× release runs: **120 / 121 frames**, ordinary-frame maxima
+**6.83 / 3.59 ms** before/after; typing p99 **1.17 / 1.28 ms**, resize p99
+**6.83 / 3.59 ms**. The baseline had two compositor failures (8.8 ms frame,
+39 ms loop stall) and a 9.51 ms launch transition; the final app passed every
+step. Both earlier serial runs also passed. A separate repeat during compilation
+had seven failures, retained in the evidence rather than discarded. Synthetic
+key dispatch to first frame start measured median **0.281 / 0.374 ms**, maximum
+**0.556 / 0.563 ms**, excluding render time and display scanout. Final app and
+service each recorded **0% CPU, zero wakeups** over three idle seconds; the
+app's main/settings windows drew **zero frames**.

@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-10
 
+### Coder: configurable supervision
+
+*12:56* — A bounded supervisor with editable guidance, inherited or saved model profiles and explicit review limits. Native settings share the same service API as agents.
+
+![Coder: configurable supervision](2026-11-10/125638-coder-configurable-supervision.png)
+
+### Coder: choose saved models
+
+*12:56* — Named model profiles, provider catalogs, model and reasoning selectors, and role selection. Both GUI and TUI preserve invalid drafts and use acknowledged saves.
+
+![Coder: choose saved models](2026-11-10/125635-coder-choose-saved-models.png)
+
 ### Coder custom model endpoints
 
 *09:15* — A native Chat Completions endpoint form stores environment variable names for credentials. Model and endpoint save together; unfinished form values survive an in-place upgrade. Reviewed at five scales in light, dark and night modes.

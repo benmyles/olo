@@ -119,7 +119,7 @@ impl RenderOnce for MenuField {
         .enabled(self.enabled)
         .shrinks()
         .focusable()
-        .agent("ComboBox", name, None)
+        .agent_value("ComboBox", name, current)
         .on_click(move |at, window, cx| {
             // Opened from the click: the choices, the current one over
             // the field.

@@ -1,0 +1,5288 @@
+{
+  "date": "2026-11-10",
+  "scope": "Selectable GUI/TUI settings and model profiles; bounded supervisor; MCP OAuth/token auth; native Olo integrations",
+  "release_tests": {
+    "passed": 190,
+    "failed": 0,
+    "ignored": 15
+  },
+  "final_frontend_recheck": {
+    "passed": 17,
+    "failed": 0
+  },
+  "release_workspace_build": "passed",
+  "clippy": "completed without errors; style/complexity warnings",
+  "functional": {
+    "gui": {
+      "profile_catalog": 2,
+      "profile_upgrade": true,
+      "password_metadata_requests": 2,
+      "password_values_read": false,
+      "recipient_selection": true
+    },
+    "settings": {
+      "numeric_validation": true,
+      "merged_save": true,
+      "server_error_draft": true
+    },
+    "concurrent_edits": {
+      "concurrent_same_section_edit_preserved": true
+    },
+    "linked_instance": {
+      "linked_instance_selector": true,
+      "attributed_delivery": true
+    },
+    "upgrade_and_accessibility": {
+      "combo_value": true,
+      "compositor_reconnect": true,
+      "compaction_alignment": [
+        {
+          "theme": "light",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "theme": "light",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "theme": "light",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "theme": "light",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "theme": "light",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "theme": "dark",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "theme": "dark",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "theme": "dark",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "theme": "dark",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "theme": "dark",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "theme": "night",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "theme": "night",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "theme": "night",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "theme": "night",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "theme": "night",
+          "scale": 2,
+          "findings": []
+        }
+      ]
+    },
+    "custom_catalog": {
+      "models": 100,
+      "selected": "accounts/test/models/flash-042",
+      "stale_catalog_invalidated_after_upgrade": true,
+      "visuals": [
+        {
+          "theme": "light",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "theme": "light",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "theme": "light",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "theme": "light",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "theme": "light",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "theme": "dark",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "theme": "dark",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "theme": "dark",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "theme": "dark",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "theme": "dark",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "theme": "night",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "theme": "night",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "theme": "night",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "theme": "night",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "theme": "night",
+          "scale": 2,
+          "findings": []
+        }
+      ]
+    },
+    "tui": {
+      "settings_search": true,
+      "catalog_discovery": true,
+      "profile_save_acknowledged": true,
+      "rejected_mcp_draft_retained": true,
+      "links_shortcut": true
+    }
+  },
+  "live_supervisor": {
+    "primary_usage": {
+      "input": 2404,
+      "output": 5,
+      "cached": 0,
+      "cache_write": 0,
+      "context": 2409,
+      "requests": 1
+    },
+    "supervisor": {
+      "reviews": 1,
+      "interventions": 0,
+      "usage": {
+        "input": 691,
+        "output": 35,
+        "cached": 0,
+        "cache_write": 0,
+        "context": 726,
+        "requests": 1
+      },
+      "last_turn": 1,
+      "notes": "Validation task complete; no further action needed.",
+      "last_action": "observe",
+      "last_reason": "The assistant answered 4, exactly as requested."
+    },
+    "status": "idle",
+    "error": null
+  },
+  "live_native": {
+    "agent_screen_launch_tree_capture_stop": true,
+    "capture_png_bytes": 107607,
+    "terminal_title": true
+  },
+  "not_live_tested": [
+    "Slack/Logfire real-account OAuth (protocol fixtures used)",
+    "Remote commercial custom-provider inference (local HTTP fixtures used)"
+  ],
+  "visual_reviews": [
+    {
+      "suite": "visual-selectors.json",
+      "phase": "initial sweep",
+      "checks": 195,
+      "findings": 0,
+      "results": [
+        {
+          "command": "supervisor_settings",
+          "theme": "light",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "supervisor_settings",
+          "theme": "light",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "supervisor_settings",
+          "theme": "light",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "supervisor_settings",
+          "theme": "light",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "supervisor_settings",
+          "theme": "light",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "supervisor_settings",
+          "theme": "dark",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "supervisor_settings",
+          "theme": "dark",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "supervisor_settings",
+          "theme": "dark",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "supervisor_settings",
+          "theme": "dark",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "supervisor_settings",
+          "theme": "dark",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "supervisor_settings",
+          "theme": "night",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "supervisor_settings",
+          "theme": "night",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "supervisor_settings",
+          "theme": "night",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "supervisor_settings",
+          "theme": "night",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "supervisor_settings",
+          "theme": "night",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "setup_mcp",
+          "theme": "light",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "setup_mcp",
+          "theme": "light",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "setup_mcp",
+          "theme": "light",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "setup_mcp",
+          "theme": "light",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "setup_mcp",
+          "theme": "light",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "setup_mcp",
+          "theme": "dark",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "setup_mcp",
+          "theme": "dark",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "setup_mcp",
+          "theme": "dark",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "setup_mcp",
+          "theme": "dark",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "setup_mcp",
+          "theme": "dark",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "setup_mcp",
+          "theme": "night",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "setup_mcp",
+          "theme": "night",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "setup_mcp",
+          "theme": "night",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "setup_mcp",
+          "theme": "night",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "setup_mcp",
+          "theme": "night",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "setup_slack",
+          "theme": "light",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "setup_slack",
+          "theme": "light",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "setup_slack",
+          "theme": "light",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "setup_slack",
+          "theme": "light",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "setup_slack",
+          "theme": "light",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "setup_slack",
+          "theme": "dark",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "setup_slack",
+          "theme": "dark",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "setup_slack",
+          "theme": "dark",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "setup_slack",
+          "theme": "dark",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "setup_slack",
+          "theme": "dark",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "setup_slack",
+          "theme": "night",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "setup_slack",
+          "theme": "night",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "setup_slack",
+          "theme": "night",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "setup_slack",
+          "theme": "night",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "setup_slack",
+          "theme": "night",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "share_password",
+          "theme": "light",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "share_password",
+          "theme": "light",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "share_password",
+          "theme": "light",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "share_password",
+          "theme": "light",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "share_password",
+          "theme": "light",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "share_password",
+          "theme": "dark",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "share_password",
+          "theme": "dark",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "share_password",
+          "theme": "dark",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "share_password",
+          "theme": "dark",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "share_password",
+          "theme": "dark",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "share_password",
+          "theme": "night",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "share_password",
+          "theme": "night",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "share_password",
+          "theme": "night",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "share_password",
+          "theme": "night",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "share_password",
+          "theme": "night",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "message",
+          "theme": "light",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "message",
+          "theme": "light",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "message",
+          "theme": "light",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "message",
+          "theme": "light",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "message",
+          "theme": "light",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "message",
+          "theme": "dark",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "message",
+          "theme": "dark",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "message",
+          "theme": "dark",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "message",
+          "theme": "dark",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "message",
+          "theme": "dark",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "message",
+          "theme": "night",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "message",
+          "theme": "night",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "message",
+          "theme": "night",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "message",
+          "theme": "night",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "message",
+          "theme": "night",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_budgets",
+          "theme": "light",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_budgets",
+          "theme": "light",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_budgets",
+          "theme": "light",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_budgets",
+          "theme": "light",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_budgets",
+          "theme": "light",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_budgets",
+          "theme": "dark",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_budgets",
+          "theme": "dark",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_budgets",
+          "theme": "dark",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_budgets",
+          "theme": "dark",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_budgets",
+          "theme": "dark",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_budgets",
+          "theme": "night",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_budgets",
+          "theme": "night",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_budgets",
+          "theme": "night",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_budgets",
+          "theme": "night",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_budgets",
+          "theme": "night",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_timeouts",
+          "theme": "light",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_timeouts",
+          "theme": "light",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_timeouts",
+          "theme": "light",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_timeouts",
+          "theme": "light",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_timeouts",
+          "theme": "light",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_timeouts",
+          "theme": "dark",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_timeouts",
+          "theme": "dark",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_timeouts",
+          "theme": "dark",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_timeouts",
+          "theme": "dark",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_timeouts",
+          "theme": "dark",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_timeouts",
+          "theme": "night",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_timeouts",
+          "theme": "night",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_timeouts",
+          "theme": "night",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_timeouts",
+          "theme": "night",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_timeouts",
+          "theme": "night",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_compaction",
+          "theme": "light",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_compaction",
+          "theme": "light",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_compaction",
+          "theme": "light",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_compaction",
+          "theme": "light",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_compaction",
+          "theme": "light",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_compaction",
+          "theme": "dark",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_compaction",
+          "theme": "dark",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_compaction",
+          "theme": "dark",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_compaction",
+          "theme": "dark",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_compaction",
+          "theme": "dark",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_compaction",
+          "theme": "night",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_compaction",
+          "theme": "night",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_compaction",
+          "theme": "night",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_compaction",
+          "theme": "night",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_compaction",
+          "theme": "night",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_subagents",
+          "theme": "light",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_subagents",
+          "theme": "light",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_subagents",
+          "theme": "light",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_subagents",
+          "theme": "light",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_subagents",
+          "theme": "light",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_subagents",
+          "theme": "dark",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_subagents",
+          "theme": "dark",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_subagents",
+          "theme": "dark",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_subagents",
+          "theme": "dark",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_subagents",
+          "theme": "dark",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_subagents",
+          "theme": "night",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_subagents",
+          "theme": "night",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_subagents",
+          "theme": "night",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_subagents",
+          "theme": "night",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_subagents",
+          "theme": "night",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_safety",
+          "theme": "light",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_safety",
+          "theme": "light",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_safety",
+          "theme": "light",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_safety",
+          "theme": "light",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_safety",
+          "theme": "light",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_safety",
+          "theme": "dark",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_safety",
+          "theme": "dark",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_safety",
+          "theme": "dark",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_safety",
+          "theme": "dark",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_safety",
+          "theme": "dark",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_safety",
+          "theme": "night",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_safety",
+          "theme": "night",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_safety",
+          "theme": "night",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_safety",
+          "theme": "night",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_safety",
+          "theme": "night",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_supervision",
+          "theme": "light",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_supervision",
+          "theme": "light",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_supervision",
+          "theme": "light",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_supervision",
+          "theme": "light",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_supervision",
+          "theme": "light",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_supervision",
+          "theme": "dark",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_supervision",
+          "theme": "dark",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_supervision",
+          "theme": "dark",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_supervision",
+          "theme": "dark",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_supervision",
+          "theme": "dark",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_supervision",
+          "theme": "night",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_supervision",
+          "theme": "night",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_supervision",
+          "theme": "night",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_supervision",
+          "theme": "night",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_supervision",
+          "theme": "night",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_instructions",
+          "theme": "light",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_instructions",
+          "theme": "light",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_instructions",
+          "theme": "light",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_instructions",
+          "theme": "light",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_instructions",
+          "theme": "light",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_instructions",
+          "theme": "dark",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_instructions",
+          "theme": "dark",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_instructions",
+          "theme": "dark",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_instructions",
+          "theme": "dark",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_instructions",
+          "theme": "dark",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_instructions",
+          "theme": "night",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_instructions",
+          "theme": "night",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_instructions",
+          "theme": "night",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_instructions",
+          "theme": "night",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_instructions",
+          "theme": "night",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings",
+          "theme": "light",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings",
+          "theme": "light",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings",
+          "theme": "light",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings",
+          "theme": "light",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings",
+          "theme": "light",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings",
+          "theme": "dark",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings",
+          "theme": "dark",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings",
+          "theme": "dark",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings",
+          "theme": "dark",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings",
+          "theme": "dark",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings",
+          "theme": "night",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings",
+          "theme": "night",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings",
+          "theme": "night",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings",
+          "theme": "night",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings",
+          "theme": "night",
+          "scale": 2,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "suite": "visual-profiles.json",
+      "phase": "final review",
+      "checks": 45,
+      "findings": 0,
+      "results": [
+        {
+          "command": "model_profiles",
+          "theme": "light",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "model_profiles",
+          "theme": "light",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "model_profiles",
+          "theme": "light",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "model_profiles",
+          "theme": "light",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "model_profiles",
+          "theme": "light",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "model_profiles",
+          "theme": "dark",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "model_profiles",
+          "theme": "dark",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "model_profiles",
+          "theme": "dark",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "model_profiles",
+          "theme": "dark",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "model_profiles",
+          "theme": "dark",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "model_profiles",
+          "theme": "night",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "model_profiles",
+          "theme": "night",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "model_profiles",
+          "theme": "night",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "model_profiles",
+          "theme": "night",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "model_profiles",
+          "theme": "night",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "start_agent",
+          "theme": "light",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "start_agent",
+          "theme": "light",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "start_agent",
+          "theme": "light",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "start_agent",
+          "theme": "light",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "start_agent",
+          "theme": "light",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "start_agent",
+          "theme": "dark",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "start_agent",
+          "theme": "dark",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "start_agent",
+          "theme": "dark",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "start_agent",
+          "theme": "dark",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "start_agent",
+          "theme": "dark",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "start_agent",
+          "theme": "night",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "start_agent",
+          "theme": "night",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "start_agent",
+          "theme": "night",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "start_agent",
+          "theme": "night",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "start_agent",
+          "theme": "night",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "message",
+          "theme": "light",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "message",
+          "theme": "light",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "message",
+          "theme": "light",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "message",
+          "theme": "light",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "message",
+          "theme": "light",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "message",
+          "theme": "dark",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "message",
+          "theme": "dark",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "message",
+          "theme": "dark",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "message",
+          "theme": "dark",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "message",
+          "theme": "dark",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "message",
+          "theme": "night",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "message",
+          "theme": "night",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "message",
+          "theme": "night",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "message",
+          "theme": "night",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "message",
+          "theme": "night",
+          "scale": 2,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "suite": "visual-settings-final.json",
+      "phase": "final review",
+      "checks": 135,
+      "findings": 0,
+      "results": [
+        {
+          "command": "settings_budgets",
+          "theme": "light",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_budgets",
+          "theme": "light",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_budgets",
+          "theme": "light",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_budgets",
+          "theme": "light",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_budgets",
+          "theme": "light",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_budgets",
+          "theme": "dark",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_budgets",
+          "theme": "dark",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_budgets",
+          "theme": "dark",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_budgets",
+          "theme": "dark",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_budgets",
+          "theme": "dark",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_budgets",
+          "theme": "night",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_budgets",
+          "theme": "night",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_budgets",
+          "theme": "night",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_budgets",
+          "theme": "night",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_budgets",
+          "theme": "night",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_timeouts",
+          "theme": "light",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_timeouts",
+          "theme": "light",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_timeouts",
+          "theme": "light",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_timeouts",
+          "theme": "light",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_timeouts",
+          "theme": "light",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_timeouts",
+          "theme": "dark",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_timeouts",
+          "theme": "dark",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_timeouts",
+          "theme": "dark",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_timeouts",
+          "theme": "dark",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_timeouts",
+          "theme": "dark",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_timeouts",
+          "theme": "night",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_timeouts",
+          "theme": "night",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_timeouts",
+          "theme": "night",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_timeouts",
+          "theme": "night",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_timeouts",
+          "theme": "night",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_compaction",
+          "theme": "light",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_compaction",
+          "theme": "light",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_compaction",
+          "theme": "light",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_compaction",
+          "theme": "light",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_compaction",
+          "theme": "light",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_compaction",
+          "theme": "dark",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_compaction",
+          "theme": "dark",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_compaction",
+          "theme": "dark",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_compaction",
+          "theme": "dark",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_compaction",
+          "theme": "dark",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_compaction",
+          "theme": "night",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_compaction",
+          "theme": "night",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_compaction",
+          "theme": "night",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_compaction",
+          "theme": "night",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_compaction",
+          "theme": "night",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_subagents",
+          "theme": "light",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_subagents",
+          "theme": "light",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_subagents",
+          "theme": "light",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_subagents",
+          "theme": "light",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_subagents",
+          "theme": "light",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_subagents",
+          "theme": "dark",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_subagents",
+          "theme": "dark",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_subagents",
+          "theme": "dark",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_subagents",
+          "theme": "dark",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_subagents",
+          "theme": "dark",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_subagents",
+          "theme": "night",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_subagents",
+          "theme": "night",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_subagents",
+          "theme": "night",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_subagents",
+          "theme": "night",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_subagents",
+          "theme": "night",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_safety",
+          "theme": "light",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_safety",
+          "theme": "light",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_safety",
+          "theme": "light",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_safety",
+          "theme": "light",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_safety",
+          "theme": "light",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_safety",
+          "theme": "dark",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_safety",
+          "theme": "dark",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_safety",
+          "theme": "dark",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_safety",
+          "theme": "dark",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_safety",
+          "theme": "dark",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_safety",
+          "theme": "night",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_safety",
+          "theme": "night",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_safety",
+          "theme": "night",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_safety",
+          "theme": "night",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_safety",
+          "theme": "night",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_supervision",
+          "theme": "light",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_supervision",
+          "theme": "light",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_supervision",
+          "theme": "light",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_supervision",
+          "theme": "light",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_supervision",
+          "theme": "light",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_supervision",
+          "theme": "dark",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_supervision",
+          "theme": "dark",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_supervision",
+          "theme": "dark",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_supervision",
+          "theme": "dark",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_supervision",
+          "theme": "dark",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_supervision",
+          "theme": "night",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_supervision",
+          "theme": "night",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_supervision",
+          "theme": "night",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_supervision",
+          "theme": "night",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_supervision",
+          "theme": "night",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_instructions",
+          "theme": "light",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_instructions",
+          "theme": "light",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_instructions",
+          "theme": "light",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_instructions",
+          "theme": "light",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_instructions",
+          "theme": "light",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_instructions",
+          "theme": "dark",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_instructions",
+          "theme": "dark",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_instructions",
+          "theme": "dark",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_instructions",
+          "theme": "dark",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_instructions",
+          "theme": "dark",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "settings_instructions",
+          "theme": "night",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "settings_instructions",
+          "theme": "night",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "settings_instructions",
+          "theme": "night",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "settings_instructions",
+          "theme": "night",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "settings_instructions",
+          "theme": "night",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "git_worktree",
+          "theme": "light",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "git_worktree",
+          "theme": "light",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "git_worktree",
+          "theme": "light",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "git_worktree",
+          "theme": "light",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "git_worktree",
+          "theme": "light",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "git_worktree",
+          "theme": "dark",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "git_worktree",
+          "theme": "dark",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "git_worktree",
+          "theme": "dark",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "git_worktree",
+          "theme": "dark",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "git_worktree",
+          "theme": "dark",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "git_worktree",
+          "theme": "night",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "git_worktree",
+          "theme": "night",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "git_worktree",
+          "theme": "night",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "git_worktree",
+          "theme": "night",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "git_worktree",
+          "theme": "night",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "github_draft",
+          "theme": "light",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "github_draft",
+          "theme": "light",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "github_draft",
+          "theme": "light",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "github_draft",
+          "theme": "light",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "github_draft",
+          "theme": "light",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "github_draft",
+          "theme": "dark",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "github_draft",
+          "theme": "dark",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "github_draft",
+          "theme": "dark",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "github_draft",
+          "theme": "dark",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "github_draft",
+          "theme": "dark",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "github_draft",
+          "theme": "night",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "github_draft",
+          "theme": "night",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "github_draft",
+          "theme": "night",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "github_draft",
+          "theme": "night",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "github_draft",
+          "theme": "night",
+          "scale": 2,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "suite": "visual-existing-choices.json",
+      "phase": "final review",
+      "checks": 30,
+      "findings": 0,
+      "results": [
+        {
+          "command": "manage_mcp",
+          "theme": "light",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "manage_mcp",
+          "theme": "light",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "manage_mcp",
+          "theme": "light",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "manage_mcp",
+          "theme": "light",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "manage_mcp",
+          "theme": "light",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "manage_mcp",
+          "theme": "dark",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "manage_mcp",
+          "theme": "dark",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "manage_mcp",
+          "theme": "dark",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "manage_mcp",
+          "theme": "dark",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "manage_mcp",
+          "theme": "dark",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "manage_mcp",
+          "theme": "night",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "manage_mcp",
+          "theme": "night",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "manage_mcp",
+          "theme": "night",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "manage_mcp",
+          "theme": "night",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "manage_mcp",
+          "theme": "night",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "revoke_password",
+          "theme": "light",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "revoke_password",
+          "theme": "light",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "revoke_password",
+          "theme": "light",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "revoke_password",
+          "theme": "light",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "revoke_password",
+          "theme": "light",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "revoke_password",
+          "theme": "dark",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "revoke_password",
+          "theme": "dark",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "revoke_password",
+          "theme": "dark",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "revoke_password",
+          "theme": "dark",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "revoke_password",
+          "theme": "dark",
+          "scale": 2,
+          "findings": []
+        },
+        {
+          "command": "revoke_password",
+          "theme": "night",
+          "scale": 1,
+          "findings": []
+        },
+        {
+          "command": "revoke_password",
+          "theme": "night",
+          "scale": 1.25,
+          "findings": []
+        },
+        {
+          "command": "revoke_password",
+          "theme": "night",
+          "scale": 1.5,
+          "findings": []
+        },
+        {
+          "command": "revoke_password",
+          "theme": "night",
+          "scale": 1.75,
+          "findings": []
+        },
+        {
+          "command": "revoke_password",
+          "theme": "night",
+          "scale": 2,
+          "findings": []
+        }
+      ]
+    }
+  ],
+  "alignment_correction": "Two initial 1.75x warnings in the compaction form were reproduced and corrected by aligning the form divider to 164 points; the final matrix and explicit 15-case recheck are clear.",
+  "performance": {
+    "conditions": "Release builds on a shared host. Paired runs executed serially after our builds/tests finished. 2x scale. Empty transcript does not exercise scrolling.",
+    "paired_before": [
+      {
+        "app": "session",
+        "step": "scale to 2",
+        "transition": true,
+        "frames": 2,
+        "p50_ms": 0.57,
+        "p99_ms": 0.57,
+        "max_ms": 0.57,
+        "ui_max_ms": 0.36,
+        "server": {
+          "frame_max_ms": 0.58,
+          "loop_late_ms": 2.9,
+          "slowest": [
+            "request set_settings",
+            1802
+          ],
+          "frames": 10
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "launch and load",
+        "transition": true,
+        "frames": 9,
+        "p50_ms": 1.13,
+        "p99_ms": 9.51,
+        "max_ms": 9.51,
+        "ui_max_ms": 1.0,
+        "server": {
+          "frame_max_ms": 19.89,
+          "loop_late_ms": 18.3,
+          "slowest": [
+            "flushing to clients",
+            536
+          ],
+          "frames": 49
+        },
+        "notes": [
+          "slowest 9.5 ms: setup 0.0, ui 0.6, tessellate 0.0, acquire 0.0, submit 9.0"
+        ],
+        "failures": [],
+        "launch_ms": 245
+      },
+      {
+        "app": "coder",
+        "step": "idle 1 s",
+        "transition": false,
+        "frames": 3,
+        "p50_ms": 0.93,
+        "p99_ms": 0.96,
+        "max_ms": 0.96,
+        "ui_max_ms": 0.75,
+        "server": {
+          "frame_max_ms": 0.34,
+          "loop_late_ms": 2.0,
+          "slowest": [
+            "tick",
+            120
+          ],
+          "frames": 21
+        },
+        "notes": [],
+        "failures": [],
+        "idle_fps": 3
+      },
+      {
+        "app": "coder",
+        "step": "pointer over it",
+        "transition": false,
+        "frames": 30,
+        "p50_ms": 1.13,
+        "p99_ms": 3.18,
+        "max_ms": 3.18,
+        "ui_max_ms": 1.33,
+        "server": {
+          "frame_max_ms": 2.2,
+          "loop_late_ms": 2.8,
+          "slowest": [
+            "flushing to clients",
+            1562
+          ],
+          "frames": 177
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 1",
+        "transition": false,
+        "frames": 5,
+        "p50_ms": 1.14,
+        "p99_ms": 1.64,
+        "max_ms": 1.64,
+        "ui_max_ms": 0.99,
+        "server": {
+          "frame_max_ms": 8.8,
+          "loop_late_ms": 10.7,
+          "slowest": [
+            "flushing to clients",
+            2476
+          ],
+          "frames": 426
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": [
+          "app_server took 8.8 ms for a frame"
+        ]
+      },
+      {
+        "app": "coder",
+        "step": "scroll 2",
+        "transition": false,
+        "frames": 0,
+        "p50_ms": 0.0,
+        "p99_ms": 0.0,
+        "max_ms": 0,
+        "ui_max_ms": 0.0,
+        "server": {
+          "frame_max_ms": 2.01,
+          "loop_late_ms": 4.2,
+          "slowest": [
+            "tick",
+            898
+          ],
+          "frames": 421
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "5 menus",
+        "transition": false,
+        "frames": 15,
+        "p50_ms": 1.03,
+        "p99_ms": 2.94,
+        "max_ms": 2.94,
+        "ui_max_ms": 0.93,
+        "server": {
+          "frame_max_ms": 1.74,
+          "loop_late_ms": 4.5,
+          "slowest": [
+            "flushing to clients",
+            2834
+          ],
+          "frames": 508
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "typing",
+        "transition": false,
+        "frames": 13,
+        "p50_ms": 0.97,
+        "p99_ms": 1.17,
+        "max_ms": 1.17,
+        "ui_max_ms": 0.81,
+        "server": {
+          "frame_max_ms": 0.41,
+          "loop_late_ms": 2.5,
+          "slowest": [
+            "flushing to clients",
+            1123
+          ],
+          "frames": 66
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "live resize",
+        "transition": false,
+        "frames": 38,
+        "p50_ms": 0.85,
+        "p99_ms": 6.83,
+        "max_ms": 6.83,
+        "ui_max_ms": 6.68,
+        "server": {
+          "frame_max_ms": 1.68,
+          "loop_late_ms": 39.1,
+          "slowest": [
+            "flushing to clients",
+            1159
+          ],
+          "frames": 119
+        },
+        "notes": [],
+        "failures": [
+          "app_server's loop stalled 39 ms (['flushing to clients', 1159])"
+        ]
+      },
+      {
+        "app": "coder",
+        "step": "theme light, dark",
+        "transition": true,
+        "frames": 5,
+        "p50_ms": 0.98,
+        "p99_ms": 1.06,
+        "max_ms": 1.06,
+        "ui_max_ms": 0.9,
+        "server": {
+          "frame_max_ms": 39.56,
+          "loop_late_ms": 39.7,
+          "slowest": [
+            "request set_settings",
+            1108
+          ],
+          "frames": 47
+        },
+        "notes": [],
+        "failures": []
+      }
+    ],
+    "paired_after": [
+      {
+        "app": "session",
+        "step": "scale to 2",
+        "transition": true,
+        "frames": 1,
+        "p50_ms": 0.54,
+        "p99_ms": 0.54,
+        "max_ms": 0.54,
+        "ui_max_ms": 0.34,
+        "server": {
+          "frame_max_ms": 0.51,
+          "loop_late_ms": 3.7,
+          "slowest": [
+            "request set_settings",
+            704
+          ],
+          "frames": 7
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "launch and load",
+        "transition": true,
+        "frames": 8,
+        "p50_ms": 1.13,
+        "p99_ms": 2.81,
+        "max_ms": 2.81,
+        "ui_max_ms": 2.22,
+        "server": {
+          "frame_max_ms": 17.66,
+          "loop_late_ms": 16.2,
+          "slowest": [
+            "flushing to clients",
+            2855
+          ],
+          "frames": 52
+        },
+        "notes": [],
+        "failures": [],
+        "launch_ms": 227
+      },
+      {
+        "app": "coder",
+        "step": "idle 1 s",
+        "transition": false,
+        "frames": 2,
+        "p50_ms": 0.83,
+        "p99_ms": 0.83,
+        "max_ms": 0.83,
+        "ui_max_ms": 0.65,
+        "server": {
+          "frame_max_ms": 0.36,
+          "loop_late_ms": 2.3,
+          "slowest": [
+            "tick",
+            540
+          ],
+          "frames": 17
+        },
+        "notes": [],
+        "failures": [],
+        "idle_fps": 2
+      },
+      {
+        "app": "coder",
+        "step": "pointer over it",
+        "transition": false,
+        "frames": 31,
+        "p50_ms": 0.93,
+        "p99_ms": 1.58,
+        "max_ms": 1.58,
+        "ui_max_ms": 1.05,
+        "server": {
+          "frame_max_ms": 0.35,
+          "loop_late_ms": 2.8,
+          "slowest": [
+            "flushing to clients",
+            1262
+          ],
+          "frames": 184
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 1",
+        "transition": false,
+        "frames": 4,
+        "p50_ms": 0.99,
+        "p99_ms": 1.03,
+        "max_ms": 1.03,
+        "ui_max_ms": 0.8,
+        "server": {
+          "frame_max_ms": 2.25,
+          "loop_late_ms": 2.8,
+          "slowest": [
+            "tick",
+            970
+          ],
+          "frames": 434
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 2",
+        "transition": false,
+        "frames": 0,
+        "p50_ms": 0.0,
+        "p99_ms": 0.0,
+        "max_ms": 0,
+        "ui_max_ms": 0.0,
+        "server": {
+          "frame_max_ms": 1.8,
+          "loop_late_ms": 3.4,
+          "slowest": [
+            "tick",
+            997
+          ],
+          "frames": 417
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "6 menus",
+        "transition": false,
+        "frames": 18,
+        "p50_ms": 0.98,
+        "p99_ms": 1.82,
+        "max_ms": 1.82,
+        "ui_max_ms": 1.6,
+        "server": {
+          "frame_max_ms": 0.47,
+          "loop_late_ms": 2.8,
+          "slowest": [
+            "flushing to clients",
+            1111
+          ],
+          "frames": 608
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "typing",
+        "transition": false,
+        "frames": 13,
+        "p50_ms": 1.08,
+        "p99_ms": 1.28,
+        "max_ms": 1.28,
+        "ui_max_ms": 0.92,
+        "server": {
+          "frame_max_ms": 1.75,
+          "loop_late_ms": 1.7,
+          "slowest": [
+            "flushing to clients",
+            1303
+          ],
+          "frames": 70
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "live resize",
+        "transition": false,
+        "frames": 38,
+        "p50_ms": 1.1,
+        "p99_ms": 3.59,
+        "max_ms": 3.59,
+        "ui_max_ms": 3.32,
+        "server": {
+          "frame_max_ms": 0.51,
+          "loop_late_ms": 2.7,
+          "slowest": [
+            "flushing to clients",
+            1563
+          ],
+          "frames": 124
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "theme light, dark",
+        "transition": true,
+        "frames": 6,
+        "p50_ms": 0.82,
+        "p99_ms": 0.85,
+        "max_ms": 0.85,
+        "ui_max_ms": 0.69,
+        "server": {
+          "frame_max_ms": 27.25,
+          "loop_late_ms": 23.6,
+          "slowest": [
+            "request set_settings",
+            556
+          ],
+          "frames": 55
+        },
+        "notes": [],
+        "failures": []
+      }
+    ],
+    "input_response": {
+      "before": {
+        "samples_ms": [
+          0.324,
+          0.37,
+          0.242,
+          0.243,
+          0.362,
+          0.246,
+          0.266,
+          0.379,
+          0.261,
+          0.208,
+          0.556,
+          0.296,
+          0.434,
+          0.429,
+          0.245,
+          0.249
+        ],
+        "median_ms": 0.281,
+        "max_ms": 0.556,
+        "measurement": "Synthetic key dispatch to first recorded frame start; excludes render time and display scanout."
+      },
+      "after": {
+        "samples_ms": [
+          0.277,
+          0.563,
+          0.391,
+          0.272,
+          0.431,
+          0.244,
+          0.265,
+          0.389,
+          0.414,
+          0.27,
+          0.372,
+          0.328,
+          0.387,
+          0.376,
+          0.266,
+          0.376
+        ],
+        "median_ms": 0.374,
+        "max_ms": 0.563,
+        "measurement": "Synthetic key dispatch to first recorded frame start; excludes render time and display scanout."
+      }
+    },
+    "idle_earlier_build": {
+      "seconds": 3.0,
+      "total": {
+        "cpu": 0.0,
+        "wakeups": 0
+      },
+      "windows": [
+        {
+          "title": "New session \u2014 Olo Coder",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "idle_final": {
+      "seconds": 3.0,
+      "total": {
+        "cpu": 0.0,
+        "wakeups": 0
+      },
+      "windows": [
+        {
+          "title": "New session \u2014 Olo Coder",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        },
+        {
+          "title": "Supervisor",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "service_idle_final": {
+      "seconds": 3.0,
+      "total": {
+        "cpu": 0.0,
+        "wakeups": 0
+      },
+      "windows": []
+    },
+    "earlier_multiscale_samples": {
+      "before": [
+        {
+          "app": "session",
+          "step": "scale to 1",
+          "transition": true,
+          "frames": 4,
+          "p50_ms": 0.46,
+          "p99_ms": 1.7,
+          "max_ms": 1.7,
+          "ui_max_ms": 1.5,
+          "server": {
+            "frame_max_ms": 0.42,
+            "loop_late_ms": 24.2,
+            "slowest": [
+              "request set_settings",
+              969
+            ],
+            "frames": 20
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "launch and load",
+          "transition": true,
+          "frames": 8,
+          "p50_ms": 0.9,
+          "p99_ms": 3.18,
+          "max_ms": 3.18,
+          "ui_max_ms": 2.27,
+          "server": {
+            "frame_max_ms": 1.3,
+            "loop_late_ms": 22.5,
+            "slowest": [
+              "tick",
+              342
+            ],
+            "frames": 48
+          },
+          "notes": [],
+          "failures": [],
+          "launch_ms": 241
+        },
+        {
+          "app": "coder",
+          "step": "idle 1 s",
+          "transition": false,
+          "frames": 2,
+          "p50_ms": 4.97,
+          "p99_ms": 4.97,
+          "max_ms": 4.97,
+          "ui_max_ms": 0.94,
+          "server": {
+            "frame_max_ms": 0.66,
+            "loop_late_ms": 3.0,
+            "slowest": [
+              "request timings",
+              109
+            ],
+            "frames": 13
+          },
+          "notes": [],
+          "failures": [],
+          "idle_fps": 2
+        },
+        {
+          "app": "coder",
+          "step": "pointer over it",
+          "transition": false,
+          "frames": 11,
+          "p50_ms": 1.12,
+          "p99_ms": 1.95,
+          "max_ms": 1.95,
+          "ui_max_ms": 1.1,
+          "server": {
+            "frame_max_ms": 2.9,
+            "loop_late_ms": 40.6,
+            "slowest": [
+              "tick",
+              2457
+            ],
+            "frames": 169
+          },
+          "notes": [],
+          "failures": [
+            "app_server's loop stalled 41 ms (['tick', 2457])"
+          ]
+        },
+        {
+          "app": "coder",
+          "step": "scroll 1",
+          "transition": false,
+          "frames": 4,
+          "p50_ms": 1.34,
+          "p99_ms": 1.56,
+          "max_ms": 1.56,
+          "ui_max_ms": 0.93,
+          "server": {
+            "frame_max_ms": 2.4,
+            "loop_late_ms": 57.3,
+            "slowest": [
+              "flushing to clients",
+              6338
+            ],
+            "frames": 424
+          },
+          "notes": [
+            "drag: didn't scroll",
+            "flick: didn't scroll",
+            "wheel: didn't scroll"
+          ],
+          "failures": [
+            "app_server's loop stalled 57 ms (['flushing to clients', 6338])"
+          ]
+        },
+        {
+          "app": "coder",
+          "step": "scroll 2",
+          "transition": false,
+          "frames": 0,
+          "p50_ms": 0.0,
+          "p99_ms": 0.0,
+          "max_ms": 0,
+          "ui_max_ms": 0.0,
+          "server": {
+            "frame_max_ms": 3.45,
+            "loop_late_ms": 22.2,
+            "slowest": [
+              "flushing to clients",
+              6144
+            ],
+            "frames": 434
+          },
+          "notes": [
+            "drag: didn't scroll",
+            "flick: didn't scroll",
+            "wheel: didn't scroll"
+          ],
+          "failures": [
+            "app_server's loop stalled 22 ms (['flushing to clients', 6144])"
+          ]
+        },
+        {
+          "app": "coder",
+          "step": "5 menus",
+          "transition": false,
+          "frames": 15,
+          "p50_ms": 1.31,
+          "p99_ms": 6.53,
+          "max_ms": 6.53,
+          "ui_max_ms": 2.06,
+          "server": {
+            "frame_max_ms": 6.09,
+            "loop_late_ms": 9.2,
+            "slowest": [
+              "flushing to clients",
+              9570
+            ],
+            "frames": 510
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "typing",
+          "transition": false,
+          "frames": 13,
+          "p50_ms": 1.04,
+          "p99_ms": 5.28,
+          "max_ms": 5.28,
+          "ui_max_ms": 4.41,
+          "server": {
+            "frame_max_ms": 6.22,
+            "loop_late_ms": 4.9,
+            "slowest": [
+              "flushing to clients",
+              3052
+            ],
+            "frames": 65
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "live resize",
+          "transition": false,
+          "frames": 38,
+          "p50_ms": 1.16,
+          "p99_ms": 8.69,
+          "max_ms": 8.69,
+          "ui_max_ms": 2.43,
+          "server": {
+            "frame_max_ms": 13.62,
+            "loop_late_ms": 19.1,
+            "slowest": [
+              "flushing to clients",
+              3080
+            ],
+            "frames": 127
+          },
+          "notes": [],
+          "failures": [
+            "1 of 38 frames over 8.3 ms (slowest 8.7 ms: setup 0.0, ui 0.9, tessellate 0.0, acquire 0.0, submit 7.7)",
+            "app_server took 13.6 ms for a frame",
+            "app_server's loop stalled 19 ms (['flushing to clients', 3080])"
+          ]
+        },
+        {
+          "app": "coder",
+          "step": "theme light, dark",
+          "transition": true,
+          "frames": 6,
+          "p50_ms": 1.2,
+          "p99_ms": 3.3,
+          "max_ms": 3.3,
+          "ui_max_ms": 2.13,
+          "server": {
+            "frame_max_ms": 4.72,
+            "loop_late_ms": 14.1,
+            "slowest": [
+              "tick",
+              1341
+            ],
+            "frames": 59
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "session",
+          "step": "scale to 1.5",
+          "transition": true,
+          "frames": 3,
+          "p50_ms": 2.46,
+          "p99_ms": 3.52,
+          "max_ms": 3.52,
+          "ui_max_ms": 2.23,
+          "server": {
+            "frame_max_ms": 0.38,
+            "loop_late_ms": 17.6,
+            "slowest": [
+              "request set_settings",
+              17240
+            ],
+            "frames": 17
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "launch and load",
+          "transition": true,
+          "frames": 9,
+          "p50_ms": 1.01,
+          "p99_ms": 2.99,
+          "max_ms": 2.99,
+          "ui_max_ms": 0.89,
+          "server": {
+            "frame_max_ms": 5.19,
+            "loop_late_ms": 5.3,
+            "slowest": [
+              "tick",
+              231
+            ],
+            "frames": 56
+          },
+          "notes": [],
+          "failures": [],
+          "launch_ms": 155
+        },
+        {
+          "app": "coder",
+          "step": "idle 1 s",
+          "transition": false,
+          "frames": 2,
+          "p50_ms": 0.8,
+          "p99_ms": 0.8,
+          "max_ms": 0.8,
+          "ui_max_ms": 0.64,
+          "server": {
+            "frame_max_ms": 0.83,
+            "loop_late_ms": 1.3,
+            "slowest": [
+              "tick",
+              223
+            ],
+            "frames": 14
+          },
+          "notes": [],
+          "failures": [],
+          "idle_fps": 2
+        },
+        {
+          "app": "coder",
+          "step": "pointer over it",
+          "transition": false,
+          "frames": 17,
+          "p50_ms": 1.04,
+          "p99_ms": 2.0,
+          "max_ms": 2.0,
+          "ui_max_ms": 1.03,
+          "server": {
+            "frame_max_ms": 3.49,
+            "loop_late_ms": 4.8,
+            "slowest": [
+              "flushing to clients",
+              1142
+            ],
+            "frames": 183
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "scroll 1",
+          "transition": false,
+          "frames": 4,
+          "p50_ms": 1.45,
+          "p99_ms": 2.35,
+          "max_ms": 2.35,
+          "ui_max_ms": 2.19,
+          "server": {
+            "frame_max_ms": 2.45,
+            "loop_late_ms": 7.9,
+            "slowest": [
+              "flushing to clients",
+              10755
+            ],
+            "frames": 429
+          },
+          "notes": [
+            "drag: didn't scroll",
+            "flick: didn't scroll",
+            "wheel: didn't scroll"
+          ],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "scroll 2",
+          "transition": false,
+          "frames": 0,
+          "p50_ms": 0.0,
+          "p99_ms": 0.0,
+          "max_ms": 0,
+          "ui_max_ms": 0.0,
+          "server": {
+            "frame_max_ms": 0.52,
+            "loop_late_ms": 1.6,
+            "slowest": [
+              "tick",
+              227
+            ],
+            "frames": 420
+          },
+          "notes": [
+            "drag: didn't scroll",
+            "flick: didn't scroll",
+            "wheel: didn't scroll"
+          ],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "5 menus",
+          "transition": false,
+          "frames": 15,
+          "p50_ms": 0.74,
+          "p99_ms": 1.27,
+          "max_ms": 1.27,
+          "ui_max_ms": 1.07,
+          "server": {
+            "frame_max_ms": 0.53,
+            "loop_late_ms": 1.8,
+            "slowest": [
+              "clients' requests",
+              1150
+            ],
+            "frames": 500
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "typing",
+          "transition": false,
+          "frames": 13,
+          "p50_ms": 0.75,
+          "p99_ms": 0.8,
+          "max_ms": 0.8,
+          "ui_max_ms": 0.64,
+          "server": {
+            "frame_max_ms": 0.39,
+            "loop_late_ms": 0.2,
+            "slowest": [
+              "tick",
+              285
+            ],
+            "frames": 65
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "live resize",
+          "transition": false,
+          "frames": 38,
+          "p50_ms": 0.81,
+          "p99_ms": 0.99,
+          "max_ms": 0.99,
+          "ui_max_ms": 0.8,
+          "server": {
+            "frame_max_ms": 0.49,
+            "loop_late_ms": 0.4,
+            "slowest": [
+              "tick",
+              217
+            ],
+            "frames": 116
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "theme light, dark",
+          "transition": true,
+          "frames": 5,
+          "p50_ms": 0.81,
+          "p99_ms": 0.9,
+          "max_ms": 0.9,
+          "ui_max_ms": 0.77,
+          "server": {
+            "frame_max_ms": 3.84,
+            "loop_late_ms": 3.7,
+            "slowest": [
+              "wallpaper ready",
+              818
+            ],
+            "frames": 47
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "session",
+          "step": "scale to 2",
+          "transition": true,
+          "frames": 3,
+          "p50_ms": 0.41,
+          "p99_ms": 0.59,
+          "max_ms": 0.59,
+          "ui_max_ms": 0.49,
+          "server": {
+            "frame_max_ms": 0.69,
+            "loop_late_ms": 0.2,
+            "slowest": [
+              "request set_settings",
+              426
+            ],
+            "frames": 9
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "launch and load",
+          "transition": true,
+          "frames": 8,
+          "p50_ms": 0.77,
+          "p99_ms": 0.79,
+          "max_ms": 0.79,
+          "ui_max_ms": 0.67,
+          "server": {
+            "frame_max_ms": 2.69,
+            "loop_late_ms": 0.8,
+            "slowest": [
+              "tick",
+              223
+            ],
+            "frames": 37
+          },
+          "notes": [],
+          "failures": [],
+          "launch_ms": 97
+        },
+        {
+          "app": "coder",
+          "step": "idle 1 s",
+          "transition": false,
+          "frames": 2,
+          "p50_ms": 0.86,
+          "p99_ms": 0.86,
+          "max_ms": 0.86,
+          "ui_max_ms": 0.71,
+          "server": {
+            "frame_max_ms": 0.48,
+            "loop_late_ms": 0.1,
+            "slowest": [
+              "tick",
+              205
+            ],
+            "frames": 14
+          },
+          "notes": [],
+          "failures": [],
+          "idle_fps": 2
+        },
+        {
+          "app": "coder",
+          "step": "pointer over it",
+          "transition": false,
+          "frames": 29,
+          "p50_ms": 0.75,
+          "p99_ms": 1.02,
+          "max_ms": 1.02,
+          "ui_max_ms": 0.85,
+          "server": {
+            "frame_max_ms": 0.44,
+            "loop_late_ms": 0.2,
+            "slowest": [
+              "tick",
+              215
+            ],
+            "frames": 180
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "scroll 1",
+          "transition": false,
+          "frames": 4,
+          "p50_ms": 0.84,
+          "p99_ms": 0.87,
+          "max_ms": 0.87,
+          "ui_max_ms": 0.71,
+          "server": {
+            "frame_max_ms": 2.0,
+            "loop_late_ms": 2.8,
+            "slowest": [
+              "tick",
+              643
+            ],
+            "frames": 441
+          },
+          "notes": [
+            "drag: didn't scroll",
+            "flick: didn't scroll",
+            "wheel: didn't scroll"
+          ],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "scroll 2",
+          "transition": false,
+          "frames": 0,
+          "p50_ms": 0.0,
+          "p99_ms": 0.0,
+          "max_ms": 0,
+          "ui_max_ms": 0.0,
+          "server": {
+            "frame_max_ms": 0.7,
+            "loop_late_ms": 0.8,
+            "slowest": [
+              "tick",
+              610
+            ],
+            "frames": 417
+          },
+          "notes": [
+            "drag: didn't scroll",
+            "flick: didn't scroll",
+            "wheel: didn't scroll"
+          ],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "5 menus",
+          "transition": false,
+          "frames": 15,
+          "p50_ms": 0.75,
+          "p99_ms": 1.16,
+          "max_ms": 1.16,
+          "ui_max_ms": 0.95,
+          "server": {
+            "frame_max_ms": 0.59,
+            "loop_late_ms": 2.9,
+            "slowest": [
+              "clients' requests",
+              241
+            ],
+            "frames": 503
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "typing",
+          "transition": false,
+          "frames": 13,
+          "p50_ms": 0.78,
+          "p99_ms": 2.54,
+          "max_ms": 2.54,
+          "ui_max_ms": 2.39,
+          "server": {
+            "frame_max_ms": 0.46,
+            "loop_late_ms": 0.2,
+            "slowest": [
+              "tick",
+              222
+            ],
+            "frames": 68
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "live resize",
+          "transition": false,
+          "frames": 38,
+          "p50_ms": 0.79,
+          "p99_ms": 1.14,
+          "max_ms": 1.14,
+          "ui_max_ms": 0.92,
+          "server": {
+            "frame_max_ms": 0.65,
+            "loop_late_ms": 0.3,
+            "slowest": [
+              "tick",
+              227
+            ],
+            "frames": 115
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "theme light, dark",
+          "transition": true,
+          "frames": 5,
+          "p50_ms": 0.81,
+          "p99_ms": 1.1,
+          "max_ms": 1.1,
+          "ui_max_ms": 0.94,
+          "server": {
+            "frame_max_ms": 3.04,
+            "loop_late_ms": 2.6,
+            "slowest": [
+              "request set_settings",
+              423
+            ],
+            "frames": 46
+          },
+          "notes": [],
+          "failures": []
+        }
+      ],
+      "after": [
+        {
+          "app": "session",
+          "step": "scale to 1",
+          "transition": true,
+          "frames": 3,
+          "p50_ms": 1.25,
+          "p99_ms": 2.73,
+          "max_ms": 2.73,
+          "ui_max_ms": 2.35,
+          "server": {
+            "frame_max_ms": 0.57,
+            "loop_late_ms": 2.5,
+            "slowest": [
+              "request get_settings",
+              1981
+            ],
+            "frames": 15
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "launch and load",
+          "transition": true,
+          "frames": 8,
+          "p50_ms": 0.92,
+          "p99_ms": 2.38,
+          "max_ms": 2.38,
+          "ui_max_ms": 0.75,
+          "server": {
+            "frame_max_ms": 7.5,
+            "loop_late_ms": 6.3,
+            "slowest": [
+              "tick",
+              211
+            ],
+            "frames": 48
+          },
+          "notes": [],
+          "failures": [],
+          "launch_ms": 118
+        },
+        {
+          "app": "coder",
+          "step": "idle 1 s",
+          "transition": false,
+          "frames": 3,
+          "p50_ms": 0.86,
+          "p99_ms": 0.91,
+          "max_ms": 0.91,
+          "ui_max_ms": 0.71,
+          "server": {
+            "frame_max_ms": 0.37,
+            "loop_late_ms": 2.5,
+            "slowest": [
+              "flushing to clients",
+              371
+            ],
+            "frames": 18
+          },
+          "notes": [],
+          "failures": [],
+          "idle_fps": 3
+        },
+        {
+          "app": "coder",
+          "step": "pointer over it",
+          "transition": false,
+          "frames": 11,
+          "p50_ms": 0.78,
+          "p99_ms": 1.03,
+          "max_ms": 1.03,
+          "ui_max_ms": 0.84,
+          "server": {
+            "frame_max_ms": 2.2,
+            "loop_late_ms": 1.6,
+            "slowest": [
+              "tick",
+              208
+            ],
+            "frames": 183
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "scroll 1",
+          "transition": false,
+          "frames": 4,
+          "p50_ms": 0.85,
+          "p99_ms": 0.95,
+          "max_ms": 0.95,
+          "ui_max_ms": 0.79,
+          "server": {
+            "frame_max_ms": 0.52,
+            "loop_late_ms": 2.8,
+            "slowest": [
+              "request synthetic",
+              571
+            ],
+            "frames": 442
+          },
+          "notes": [
+            "drag: didn't scroll",
+            "flick: didn't scroll",
+            "wheel: didn't scroll"
+          ],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "scroll 2",
+          "transition": false,
+          "frames": 0,
+          "p50_ms": 0.0,
+          "p99_ms": 0.0,
+          "max_ms": 0,
+          "ui_max_ms": 0.0,
+          "server": {
+            "frame_max_ms": 0.55,
+            "loop_late_ms": 5.1,
+            "slowest": [
+              "flushing to clients",
+              1273
+            ],
+            "frames": 429
+          },
+          "notes": [
+            "drag: didn't scroll",
+            "flick: didn't scroll",
+            "wheel: didn't scroll"
+          ],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "6 menus",
+          "transition": false,
+          "frames": 18,
+          "p50_ms": 0.93,
+          "p99_ms": 1.26,
+          "max_ms": 1.26,
+          "ui_max_ms": 0.99,
+          "server": {
+            "frame_max_ms": 0.76,
+            "loop_late_ms": 3.2,
+            "slowest": [
+              "tick",
+              1312
+            ],
+            "frames": 602
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "typing",
+          "transition": false,
+          "frames": 13,
+          "p50_ms": 0.95,
+          "p99_ms": 1.03,
+          "max_ms": 1.03,
+          "ui_max_ms": 0.85,
+          "server": {
+            "frame_max_ms": 0.45,
+            "loop_late_ms": 0.2,
+            "slowest": [
+              "tick",
+              212
+            ],
+            "frames": 65
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "live resize",
+          "transition": false,
+          "frames": 38,
+          "p50_ms": 1.15,
+          "p99_ms": 3.13,
+          "max_ms": 3.13,
+          "ui_max_ms": 2.96,
+          "server": {
+            "frame_max_ms": 0.58,
+            "loop_late_ms": 2.8,
+            "slowest": [
+              "tick",
+              196
+            ],
+            "frames": 117
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "theme light, dark",
+          "transition": true,
+          "frames": 5,
+          "p50_ms": 0.89,
+          "p99_ms": 1.51,
+          "max_ms": 1.51,
+          "ui_max_ms": 1.05,
+          "server": {
+            "frame_max_ms": 5.03,
+            "loop_late_ms": 3.5,
+            "slowest": [
+              "tick",
+              689
+            ],
+            "frames": 52
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "session",
+          "step": "scale to 1.5",
+          "transition": true,
+          "frames": 2,
+          "p50_ms": 2.86,
+          "p99_ms": 2.86,
+          "max_ms": 2.86,
+          "ui_max_ms": 2.49,
+          "server": {
+            "frame_max_ms": 0.69,
+            "loop_late_ms": 13.0,
+            "slowest": [
+              "request set_settings",
+              730
+            ],
+            "frames": 12
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "launch and load",
+          "transition": true,
+          "frames": 11,
+          "p50_ms": 1.24,
+          "p99_ms": 4.82,
+          "max_ms": 4.82,
+          "ui_max_ms": 3.49,
+          "server": {
+            "frame_max_ms": 4.75,
+            "loop_late_ms": 19.3,
+            "slowest": [
+              "tick",
+              1027
+            ],
+            "frames": 49
+          },
+          "notes": [],
+          "failures": [],
+          "launch_ms": 148
+        },
+        {
+          "app": "coder",
+          "step": "idle 1 s",
+          "transition": false,
+          "frames": 2,
+          "p50_ms": 1.12,
+          "p99_ms": 1.12,
+          "max_ms": 1.12,
+          "ui_max_ms": 0.87,
+          "server": {
+            "frame_max_ms": 0.45,
+            "loop_late_ms": 9.7,
+            "slowest": [
+              "tick",
+              192
+            ],
+            "frames": 21
+          },
+          "notes": [],
+          "failures": [],
+          "idle_fps": 2
+        },
+        {
+          "app": "coder",
+          "step": "pointer over it",
+          "transition": false,
+          "frames": 17,
+          "p50_ms": 1.1,
+          "p99_ms": 3.11,
+          "max_ms": 3.11,
+          "ui_max_ms": 1.14,
+          "server": {
+            "frame_max_ms": 1.09,
+            "loop_late_ms": 6.0,
+            "slowest": [
+              "request synthetic",
+              2387
+            ],
+            "frames": 185
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "scroll 1",
+          "transition": false,
+          "frames": 4,
+          "p50_ms": 1.06,
+          "p99_ms": 1.29,
+          "max_ms": 1.29,
+          "ui_max_ms": 1.0,
+          "server": {
+            "frame_max_ms": 2.04,
+            "loop_late_ms": 25.9,
+            "slowest": [
+              "tick",
+              8107
+            ],
+            "frames": 422
+          },
+          "notes": [
+            "drag: didn't scroll",
+            "flick: didn't scroll",
+            "wheel: didn't scroll"
+          ],
+          "failures": [
+            "app_server's loop stalled 26 ms (['tick', 8107])"
+          ]
+        },
+        {
+          "app": "coder",
+          "step": "scroll 2",
+          "transition": false,
+          "frames": 0,
+          "p50_ms": 0.0,
+          "p99_ms": 0.0,
+          "max_ms": 0,
+          "ui_max_ms": 0.0,
+          "server": {
+            "frame_max_ms": 0.69,
+            "loop_late_ms": 4.5,
+            "slowest": [
+              "tick",
+              3055
+            ],
+            "frames": 418
+          },
+          "notes": [
+            "drag: didn't scroll",
+            "flick: didn't scroll",
+            "wheel: didn't scroll"
+          ],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "6 menus",
+          "transition": false,
+          "frames": 18,
+          "p50_ms": 0.95,
+          "p99_ms": 1.11,
+          "max_ms": 1.11,
+          "ui_max_ms": 0.88,
+          "server": {
+            "frame_max_ms": 0.57,
+            "loop_late_ms": 2.6,
+            "slowest": [
+              "tick",
+              1994
+            ],
+            "frames": 622
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "typing",
+          "transition": false,
+          "frames": 13,
+          "p50_ms": 0.89,
+          "p99_ms": 1.12,
+          "max_ms": 1.12,
+          "ui_max_ms": 0.89,
+          "server": {
+            "frame_max_ms": 0.55,
+            "loop_late_ms": 2.9,
+            "slowest": [
+              "flushing to clients",
+              1969
+            ],
+            "frames": 65
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "live resize",
+          "transition": false,
+          "frames": 38,
+          "p50_ms": 0.78,
+          "p99_ms": 1.11,
+          "max_ms": 1.11,
+          "ui_max_ms": 0.93,
+          "server": {
+            "frame_max_ms": 0.56,
+            "loop_late_ms": 1.4,
+            "slowest": [
+              "tick",
+              215
+            ],
+            "frames": 111
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "theme light, dark",
+          "transition": true,
+          "frames": 5,
+          "p50_ms": 0.83,
+          "p99_ms": 1.06,
+          "max_ms": 1.06,
+          "ui_max_ms": 0.9,
+          "server": {
+            "frame_max_ms": 9.74,
+            "loop_late_ms": 10.6,
+            "slowest": [
+              "request set_settings",
+              405
+            ],
+            "frames": 44
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "session",
+          "step": "scale to 2",
+          "transition": true,
+          "frames": 2,
+          "p50_ms": 0.43,
+          "p99_ms": 0.43,
+          "max_ms": 0.43,
+          "ui_max_ms": 0.3,
+          "server": {
+            "frame_max_ms": 0.83,
+            "loop_late_ms": 0.9,
+            "slowest": [
+              "request set_settings",
+              454
+            ],
+            "frames": 11
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "launch and load",
+          "transition": true,
+          "frames": 9,
+          "p50_ms": 0.81,
+          "p99_ms": 2.56,
+          "max_ms": 2.56,
+          "ui_max_ms": 0.73,
+          "server": {
+            "frame_max_ms": 2.56,
+            "loop_late_ms": 0.7,
+            "slowest": [
+              "clients' requests",
+              238
+            ],
+            "frames": 40
+          },
+          "notes": [],
+          "failures": [],
+          "launch_ms": 78
+        },
+        {
+          "app": "coder",
+          "step": "idle 1 s",
+          "transition": false,
+          "frames": 2,
+          "p50_ms": 1.22,
+          "p99_ms": 1.22,
+          "max_ms": 1.22,
+          "ui_max_ms": 0.93,
+          "server": {
+            "frame_max_ms": 0.53,
+            "loop_late_ms": 0.1,
+            "slowest": [
+              "tick",
+              228
+            ],
+            "frames": 10
+          },
+          "notes": [],
+          "failures": [],
+          "idle_fps": 2
+        },
+        {
+          "app": "coder",
+          "step": "pointer over it",
+          "transition": false,
+          "frames": 29,
+          "p50_ms": 0.79,
+          "p99_ms": 1.27,
+          "max_ms": 1.27,
+          "ui_max_ms": 1.03,
+          "server": {
+            "frame_max_ms": 0.37,
+            "loop_late_ms": 0.3,
+            "slowest": [
+              "tick",
+              205
+            ],
+            "frames": 180
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "scroll 1",
+          "transition": false,
+          "frames": 4,
+          "p50_ms": 0.97,
+          "p99_ms": 1.19,
+          "max_ms": 1.19,
+          "ui_max_ms": 0.89,
+          "server": {
+            "frame_max_ms": 0.61,
+            "loop_late_ms": 0.3,
+            "slowest": [
+              "tick",
+              223
+            ],
+            "frames": 432
+          },
+          "notes": [
+            "drag: didn't scroll",
+            "flick: didn't scroll",
+            "wheel: didn't scroll"
+          ],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "scroll 2",
+          "transition": false,
+          "frames": 0,
+          "p50_ms": 0.0,
+          "p99_ms": 0.0,
+          "max_ms": 0,
+          "ui_max_ms": 0.0,
+          "server": {
+            "frame_max_ms": 0.76,
+            "loop_late_ms": 0.4,
+            "slowest": [
+              "tick",
+              235
+            ],
+            "frames": 417
+          },
+          "notes": [
+            "drag: didn't scroll",
+            "flick: didn't scroll",
+            "wheel: didn't scroll"
+          ],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "6 menus",
+          "transition": false,
+          "frames": 18,
+          "p50_ms": 0.74,
+          "p99_ms": 0.97,
+          "max_ms": 0.97,
+          "ui_max_ms": 0.8,
+          "server": {
+            "frame_max_ms": 0.5,
+            "loop_late_ms": 0.7,
+            "slowest": [
+              "tick",
+              294
+            ],
+            "frames": 601
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "typing",
+          "transition": false,
+          "frames": 13,
+          "p50_ms": 0.8,
+          "p99_ms": 1.25,
+          "max_ms": 1.25,
+          "ui_max_ms": 1.03,
+          "server": {
+            "frame_max_ms": 0.47,
+            "loop_late_ms": 0.2,
+            "slowest": [
+              "tick",
+              213
+            ],
+            "frames": 68
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "live resize",
+          "transition": false,
+          "frames": 38,
+          "p50_ms": 0.8,
+          "p99_ms": 1.24,
+          "max_ms": 1.24,
+          "ui_max_ms": 0.97,
+          "server": {
+            "frame_max_ms": 0.58,
+            "loop_late_ms": 0.4,
+            "slowest": [
+              "tick",
+              220
+            ],
+            "frames": 111
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "theme light, dark",
+          "transition": true,
+          "frames": 5,
+          "p50_ms": 0.83,
+          "p99_ms": 1.17,
+          "max_ms": 1.17,
+          "ui_max_ms": 0.92,
+          "server": {
+            "frame_max_ms": 5.43,
+            "loop_late_ms": 3.4,
+            "slowest": [
+              "request set_settings",
+              349
+            ],
+            "frames": 44
+          },
+          "notes": [],
+          "failures": []
+        }
+      ],
+      "contended_repeat": [
+        {
+          "app": "session",
+          "step": "scale to 1",
+          "transition": true,
+          "frames": 2,
+          "p50_ms": 5.37,
+          "p99_ms": 5.37,
+          "max_ms": 5.37,
+          "ui_max_ms": 4.56,
+          "server": {
+            "frame_max_ms": 0.85,
+            "loop_late_ms": 4.1,
+            "slowest": [
+              "tick",
+              6821
+            ],
+            "frames": 14
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "launch and load",
+          "transition": true,
+          "frames": 8,
+          "p50_ms": 1.57,
+          "p99_ms": 22.71,
+          "max_ms": 22.71,
+          "ui_max_ms": 8.38,
+          "server": {
+            "frame_max_ms": 22.21,
+            "loop_late_ms": 21.5,
+            "slowest": [
+              "flushing to clients",
+              1403
+            ],
+            "frames": 46
+          },
+          "notes": [
+            "slowest 22.7 ms: setup 0.0, ui 4.3, tessellate 0.0, acquire 0.0, submit 18.5"
+          ],
+          "failures": [],
+          "launch_ms": 267
+        },
+        {
+          "app": "coder",
+          "step": "idle 1 s",
+          "transition": false,
+          "frames": 3,
+          "p50_ms": 1.76,
+          "p99_ms": 2.41,
+          "max_ms": 2.41,
+          "ui_max_ms": 2.11,
+          "server": {
+            "frame_max_ms": 0.57,
+            "loop_late_ms": 5.8,
+            "slowest": [
+              "tick",
+              475
+            ],
+            "frames": 23
+          },
+          "notes": [],
+          "failures": [],
+          "idle_fps": 3
+        },
+        {
+          "app": "coder",
+          "step": "pointer over it",
+          "transition": false,
+          "frames": 11,
+          "p50_ms": 1.79,
+          "p99_ms": 9.34,
+          "max_ms": 9.34,
+          "ui_max_ms": 8.99,
+          "server": {
+            "frame_max_ms": 1.49,
+            "loop_late_ms": 2.7,
+            "slowest": [
+              "tick",
+              2028
+            ],
+            "frames": 180
+          },
+          "notes": [],
+          "failures": [
+            "1 of 11 frames over 8.3 ms (slowest 9.3 ms: setup 0.0, ui 9.0, tessellate 0.0, acquire 0.0, submit 0.4)"
+          ]
+        },
+        {
+          "app": "coder",
+          "step": "scroll 1",
+          "transition": false,
+          "frames": 5,
+          "p50_ms": 1.11,
+          "p99_ms": 1.45,
+          "max_ms": 1.45,
+          "ui_max_ms": 1.17,
+          "server": {
+            "frame_max_ms": 1.19,
+            "loop_late_ms": 7.5,
+            "slowest": [
+              "flushing to clients",
+              1999
+            ],
+            "frames": 430
+          },
+          "notes": [
+            "drag: didn't scroll",
+            "flick: didn't scroll",
+            "wheel: didn't scroll"
+          ],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "scroll 2",
+          "transition": false,
+          "frames": 0,
+          "p50_ms": 0.0,
+          "p99_ms": 0.0,
+          "max_ms": 0,
+          "ui_max_ms": 0.0,
+          "server": {
+            "frame_max_ms": 1.49,
+            "loop_late_ms": 21.1,
+            "slowest": [
+              "tick",
+              1614
+            ],
+            "frames": 415
+          },
+          "notes": [
+            "drag: didn't scroll",
+            "flick: didn't scroll",
+            "wheel: didn't scroll"
+          ],
+          "failures": [
+            "app_server's loop stalled 21 ms (['tick', 1614])"
+          ]
+        },
+        {
+          "app": "coder",
+          "step": "6 menus",
+          "transition": false,
+          "frames": 18,
+          "p50_ms": 2.9,
+          "p99_ms": 16.21,
+          "max_ms": 16.21,
+          "ui_max_ms": 11.11,
+          "server": {
+            "frame_max_ms": 3.91,
+            "loop_late_ms": 4.7,
+            "slowest": [
+              "flushing to clients",
+              4632
+            ],
+            "frames": 625
+          },
+          "notes": [],
+          "failures": [
+            "2 of 18 frames over 8.3 ms (slowest 16.2 ms: setup 0.0, ui 11.1, tessellate 0.0, acquire 0.0, submit 5.1)"
+          ]
+        },
+        {
+          "app": "coder",
+          "step": "typing",
+          "transition": false,
+          "frames": 13,
+          "p50_ms": 1.42,
+          "p99_ms": 7.32,
+          "max_ms": 7.32,
+          "ui_max_ms": 2.82,
+          "server": {
+            "frame_max_ms": 0.65,
+            "loop_late_ms": 2.7,
+            "slowest": [
+              "flushing to clients",
+              2065
+            ],
+            "frames": 67
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "live resize",
+          "transition": false,
+          "frames": 37,
+          "p50_ms": 1.25,
+          "p99_ms": 2.93,
+          "max_ms": 2.93,
+          "ui_max_ms": 1.45,
+          "server": {
+            "frame_max_ms": 0.68,
+            "loop_late_ms": 6.0,
+            "slowest": [
+              "flushing to clients",
+              6812
+            ],
+            "frames": 128
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "theme light, dark",
+          "transition": true,
+          "frames": 6,
+          "p50_ms": 1.3,
+          "p99_ms": 4.19,
+          "max_ms": 4.19,
+          "ui_max_ms": 1.06,
+          "server": {
+            "frame_max_ms": 3.82,
+            "loop_late_ms": 5.7,
+            "slowest": [
+              "request set_settings",
+              3220
+            ],
+            "frames": 53
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "session",
+          "step": "scale to 1.5",
+          "transition": true,
+          "frames": 2,
+          "p50_ms": 2.65,
+          "p99_ms": 2.65,
+          "max_ms": 2.65,
+          "ui_max_ms": 2.24,
+          "server": {
+            "frame_max_ms": 0.75,
+            "loop_late_ms": 2.0,
+            "slowest": [
+              "request set_settings",
+              949
+            ],
+            "frames": 13
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "launch and load",
+          "transition": true,
+          "frames": 9,
+          "p50_ms": 1.66,
+          "p99_ms": 16.16,
+          "max_ms": 16.16,
+          "ui_max_ms": 3.1,
+          "server": {
+            "frame_max_ms": 8.67,
+            "loop_late_ms": 8.4,
+            "slowest": [
+              "tick",
+              810
+            ],
+            "frames": 39
+          },
+          "notes": [
+            "slowest 16.2 ms: setup 0.0, ui 0.7, tessellate 0.0, acquire 0.0, submit 15.4"
+          ],
+          "failures": [],
+          "launch_ms": 302
+        },
+        {
+          "app": "coder",
+          "step": "idle 1 s",
+          "transition": false,
+          "frames": 2,
+          "p50_ms": 8.75,
+          "p99_ms": 8.75,
+          "max_ms": 8.75,
+          "ui_max_ms": 2.49,
+          "server": {
+            "frame_max_ms": 0.6,
+            "loop_late_ms": 2.7,
+            "slowest": [
+              "tick",
+              121
+            ],
+            "frames": 13
+          },
+          "notes": [],
+          "failures": [
+            "1 of 2 frames over 8.3 ms (slowest 8.7 ms: setup 0.0, ui 2.5, tessellate 0.0, acquire 0.0, submit 6.3)"
+          ],
+          "idle_fps": 2
+        },
+        {
+          "app": "coder",
+          "step": "pointer over it",
+          "transition": false,
+          "frames": 17,
+          "p50_ms": 1.32,
+          "p99_ms": 7.94,
+          "max_ms": 7.94,
+          "ui_max_ms": 4.26,
+          "server": {
+            "frame_max_ms": 1.97,
+            "loop_late_ms": 2.8,
+            "slowest": [
+              "flushing to clients",
+              2166
+            ],
+            "frames": 185
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "scroll 1",
+          "transition": false,
+          "frames": 4,
+          "p50_ms": 1.38,
+          "p99_ms": 2.03,
+          "max_ms": 2.03,
+          "ui_max_ms": 1.33,
+          "server": {
+            "frame_max_ms": 2.55,
+            "loop_late_ms": 6.1,
+            "slowest": [
+              "request synthetic",
+              2847
+            ],
+            "frames": 429
+          },
+          "notes": [
+            "drag: didn't scroll",
+            "flick: didn't scroll",
+            "wheel: didn't scroll"
+          ],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "scroll 2",
+          "transition": false,
+          "frames": 0,
+          "p50_ms": 0.0,
+          "p99_ms": 0.0,
+          "max_ms": 0,
+          "ui_max_ms": 0.0,
+          "server": {
+            "frame_max_ms": 2.92,
+            "loop_late_ms": 4.1,
+            "slowest": [
+              "flushing to clients",
+              2865
+            ],
+            "frames": 418
+          },
+          "notes": [
+            "drag: didn't scroll",
+            "flick: didn't scroll",
+            "wheel: didn't scroll"
+          ],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "6 menus",
+          "transition": false,
+          "frames": 18,
+          "p50_ms": 1.17,
+          "p99_ms": 8.42,
+          "max_ms": 8.42,
+          "ui_max_ms": 1.66,
+          "server": {
+            "frame_max_ms": 1.82,
+            "loop_late_ms": 4.0,
+            "slowest": [
+              "flushing to clients",
+              2836
+            ],
+            "frames": 636
+          },
+          "notes": [],
+          "failures": [
+            "1 of 18 frames over 8.3 ms (slowest 8.4 ms: setup 0.0, ui 1.0, tessellate 0.0, acquire 0.0, submit 7.5)"
+          ]
+        },
+        {
+          "app": "coder",
+          "step": "typing",
+          "transition": false,
+          "frames": 13,
+          "p50_ms": 1.32,
+          "p99_ms": 2.25,
+          "max_ms": 2.25,
+          "ui_max_ms": 1.62,
+          "server": {
+            "frame_max_ms": 0.93,
+            "loop_late_ms": 3.0,
+            "slowest": [
+              "tick",
+              184
+            ],
+            "frames": 66
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "live resize",
+          "transition": false,
+          "frames": 37,
+          "p50_ms": 2.0,
+          "p99_ms": 9.93,
+          "max_ms": 9.93,
+          "ui_max_ms": 1.82,
+          "server": {
+            "frame_max_ms": 1.13,
+            "loop_late_ms": 7.0,
+            "slowest": [
+              "clients' requests",
+              3182
+            ],
+            "frames": 132
+          },
+          "notes": [],
+          "failures": [
+            "2 of 37 frames over 8.3 ms (slowest 9.9 ms: setup 0.0, ui 1.8, tessellate 0.0, acquire 0.0, submit 8.1)"
+          ]
+        },
+        {
+          "app": "coder",
+          "step": "theme light, dark",
+          "transition": true,
+          "frames": 6,
+          "p50_ms": 1.78,
+          "p99_ms": 8.65,
+          "max_ms": 8.65,
+          "ui_max_ms": 3.97,
+          "server": {
+            "frame_max_ms": 24.63,
+            "loop_late_ms": 39.7,
+            "slowest": [
+              "flushing to clients",
+              3282
+            ],
+            "frames": 61
+          },
+          "notes": [
+            "slowest 8.6 ms: setup 0.0, ui 1.1, tessellate 0.0, acquire 0.0, submit 7.5"
+          ],
+          "failures": []
+        },
+        {
+          "app": "session",
+          "step": "scale to 2",
+          "transition": true,
+          "frames": 3,
+          "p50_ms": 0.71,
+          "p99_ms": 0.79,
+          "max_ms": 0.79,
+          "ui_max_ms": 0.56,
+          "server": {
+            "frame_max_ms": 0.97,
+            "loop_late_ms": 14.9,
+            "slowest": [
+              "request set_settings",
+              651
+            ],
+            "frames": 16
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "launch and load",
+          "transition": true,
+          "frames": 8,
+          "p50_ms": 1.53,
+          "p99_ms": 8.88,
+          "max_ms": 8.88,
+          "ui_max_ms": 4.18,
+          "server": {
+            "frame_max_ms": 6.32,
+            "loop_late_ms": 5.2,
+            "slowest": [
+              "tick",
+              1637
+            ],
+            "frames": 47
+          },
+          "notes": [
+            "slowest 8.9 ms: setup 0.0, ui 4.2, tessellate 0.0, acquire 0.0, submit 4.7"
+          ],
+          "failures": [],
+          "launch_ms": 174
+        },
+        {
+          "app": "coder",
+          "step": "idle 1 s",
+          "transition": false,
+          "frames": 2,
+          "p50_ms": 1.67,
+          "p99_ms": 1.67,
+          "max_ms": 1.67,
+          "ui_max_ms": 1.17,
+          "server": {
+            "frame_max_ms": 0.71,
+            "loop_late_ms": 2.8,
+            "slowest": [
+              "tick",
+              267
+            ],
+            "frames": 9
+          },
+          "notes": [],
+          "failures": [],
+          "idle_fps": 2
+        },
+        {
+          "app": "coder",
+          "step": "pointer over it",
+          "transition": false,
+          "frames": 28,
+          "p50_ms": 1.33,
+          "p99_ms": 8.32,
+          "max_ms": 8.32,
+          "ui_max_ms": 6.29,
+          "server": {
+            "frame_max_ms": 1.39,
+            "loop_late_ms": 3.7,
+            "slowest": [
+              "flushing to clients",
+              1850
+            ],
+            "frames": 179
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "scroll 1",
+          "transition": false,
+          "frames": 5,
+          "p50_ms": 1.82,
+          "p99_ms": 2.88,
+          "max_ms": 2.88,
+          "ui_max_ms": 1.46,
+          "server": {
+            "frame_max_ms": 7.83,
+            "loop_late_ms": 7.5,
+            "slowest": [
+              "flushing to clients",
+              2952
+            ],
+            "frames": 432
+          },
+          "notes": [
+            "drag: didn't scroll",
+            "flick: didn't scroll",
+            "wheel: didn't scroll"
+          ],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "scroll 2",
+          "transition": false,
+          "frames": 0,
+          "p50_ms": 0.0,
+          "p99_ms": 0.0,
+          "max_ms": 0,
+          "ui_max_ms": 0.0,
+          "server": {
+            "frame_max_ms": 2.98,
+            "loop_late_ms": 5.1,
+            "slowest": [
+              "flushing to clients",
+              1827
+            ],
+            "frames": 426
+          },
+          "notes": [
+            "drag: didn't scroll",
+            "flick: didn't scroll",
+            "wheel: didn't scroll"
+          ],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "6 menus",
+          "transition": false,
+          "frames": 18,
+          "p50_ms": 2.3,
+          "p99_ms": 11.52,
+          "max_ms": 11.52,
+          "ui_max_ms": 10.73,
+          "server": {
+            "frame_max_ms": 7.79,
+            "loop_late_ms": 7.1,
+            "slowest": [
+              "flushing to clients",
+              2863
+            ],
+            "frames": 628
+          },
+          "notes": [],
+          "failures": [
+            "1 of 18 frames over 8.3 ms (slowest 11.5 ms: setup 0.0, ui 10.7, tessellate 0.0, acquire 0.0, submit 0.8)"
+          ]
+        },
+        {
+          "app": "coder",
+          "step": "typing",
+          "transition": false,
+          "frames": 13,
+          "p50_ms": 1.74,
+          "p99_ms": 6.27,
+          "max_ms": 6.27,
+          "ui_max_ms": 4.51,
+          "server": {
+            "frame_max_ms": 2.97,
+            "loop_late_ms": 1.8,
+            "slowest": [
+              "flushing to clients",
+              2346
+            ],
+            "frames": 67
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "live resize",
+          "transition": false,
+          "frames": 38,
+          "p50_ms": 1.95,
+          "p99_ms": 5.3,
+          "max_ms": 5.3,
+          "ui_max_ms": 1.92,
+          "server": {
+            "frame_max_ms": 2.97,
+            "loop_late_ms": 2.8,
+            "slowest": [
+              "tick",
+              2190
+            ],
+            "frames": 132
+          },
+          "notes": [],
+          "failures": []
+        },
+        {
+          "app": "coder",
+          "step": "theme light, dark",
+          "transition": true,
+          "frames": 6,
+          "p50_ms": 1.26,
+          "p99_ms": 1.56,
+          "max_ms": 1.56,
+          "ui_max_ms": 1.3,
+          "server": {
+            "frame_max_ms": 10.19,
+            "loop_late_ms": 7.8,
+            "slowest": [
+              "request set_settings",
+              1463
+            ],
+            "frames": 54
+          },
+          "notes": [],
+          "failures": []
+        }
+      ]
+    },
+    "caveat": "The contended repeat overlapped compilation and includes 7 failures and a 16.21ms ordinary frame. Earlier baseline had 4 failed steps; the initial selector run had one compositor scheduling failure. The earlier serial pair passed both runs (ordinary frame maxima 3.22ms before / 2.34ms after). The final serial pair passed after; its baseline had two compositor failures (8.8ms frame and 39ms loop stall), while both ordinary app frame maxima stayed below 8.3ms (baseline launch transition: 9.51ms). These samples do not establish a speed improvement."
+  }
+}

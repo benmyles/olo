@@ -216,6 +216,7 @@ impl Engine {
             tools::atomic_write(&self.directory.join("peers.json"), &serde_json::to_vec(&next)?)?;
             *peers = next;
         }
+        self.transient("", "peers_changed", json!({"peers":self.peers.lock().unwrap().clone()}));
         if reciprocal {
             self.peer_call(&name, Command::LinkPeer { name: format!("peer-{}", &self.instance[..8]), directory: self.directory.clone(), reciprocal: false }).await?;
         }
@@ -227,6 +228,9 @@ impl Engine {
         next.retain(|p| p.name != name);
         tools::atomic_write(&self.directory.join("peers.json"), &serde_json::to_vec(&next)?)?;
         *peers = next;
+        let changed = peers.clone();
+        drop(peers);
+        self.transient("", "peers_changed", json!({"peers":changed}));
         Ok(json!({"unlinked":name}))
     }
     pub(crate) fn receive_message(self: &Arc<Self>, message: Message) -> Result<Value> {

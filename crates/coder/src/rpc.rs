@@ -98,11 +98,15 @@ async fn connection(stream: UnixStream, e: Arc<Engine>) -> Result<()> {
         let mut live = e.events.subscribe();
         loop {
             let catalog = e.store.lock().unwrap().browse(&filter)?;
-            send(&mut write, &json!({"catalog":catalog})).await?;
+            let profiles = e.model_profiles.lock().unwrap().clone();
+            let peers = e.peers.lock().unwrap().clone();
+            send(&mut write, &json!({"catalog":catalog,"profiles":profiles,"peers":peers})).await?;
             loop {
                 tokio::select! {
                     _=e.shutdown.cancelled()=>return Ok(()), _=reader.read_u8()=>return Ok(()),
                     event=live.recv()=>match event {
+                        Ok(event) if event.kind=="peers_changed"=>{send(&mut write,&json!({"peers":event.data["peers"]})).await?;},
+                        Ok(event) if event.kind=="model_profiles_changed"=>{send(&mut write,&json!({"profiles":event.data["profiles"]})).await?;},
                         Ok(event) if event.seq>0 && matches!(event.kind.as_str(),"created"|"forked"|"organized"|"running"|"idle"|"approval"|"paused"|"error"|"stop"|"message_queued"|"message_cancelled"|"message_edited"|"message_moved"|"messages_delivered"|"configured") => break,
                         Err(_)=>break, _=>{}
                     }

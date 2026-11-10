@@ -281,6 +281,27 @@ pub fn main_field(i: &Item) -> Option<&ItemField> {
         .or_else(|| i.fields.iter().find(|f| !f.value.is_empty()))
 }
 
+/// Metadata for field pickers. Constructed without serializing any field values.
+fn field_metadata(i: &Item) -> Value {
+    let mut fields: Vec<Value> = i
+        .fields
+        .iter()
+        .map(|f| {
+            let section = f.section_id.as_ref().and_then(|id| i.sections.iter().find(|s| &s.id == id));
+            let label = if f.title.is_empty() { &f.id } else { &f.title };
+            let reference = match &f.section_id {
+                Some(section) => format!("op://{}/{}/{}/{}", i.vault_id, i.id, section, f.id),
+                None => format!("op://{}/{}/{}", i.vault_id, i.id, f.id),
+            };
+            json!({"id":f.id,"label":label,"section":section.map(|s| &s.title),"type":field_type(f.field_type),"reference":reference})
+        })
+        .collect();
+    if !i.notes.is_empty() || i.category == ItemCategory::SecureNote {
+        fields.push(json!({"id":"notesPlain","label":"Notes","type":"STRING","reference":format!("op://{}/{}/notesPlain",i.vault_id,i.id)}));
+    }
+    json!({"fields":fields})
+}
+
 /// An item as `op item get --format json` prints it, values included.
 pub fn full(data: &Data, e: &Entry) -> Value {
     let i = &e.item;
@@ -374,6 +395,7 @@ pub fn answer(data: &Data, query: &CliQuery) -> Response {
             list.sort_by_key(|e| std::cmp::Reverse(e.item.updated_at));
             Ok(Value::Array(list.into_iter().map(|e| overview(data, e)).collect()))
         })(),
+        CliQuery::Fields { vault, item: key } => item(data, Some(vault), key).map(|e| field_metadata(&e.item)),
         CliQuery::Item { vault: v, item: key } => item(data, v.as_deref(), key).map(|e| full(data, e)),
         CliQuery::Resolve { references } => references.iter().map(|r| resolve(data, r).map(Value::String)).collect::<Result<Vec<_>, _>>().map(Value::Array),
         CliQuery::Accounts | CliQuery::Signin => Err("unexpected".into()),
@@ -428,6 +450,23 @@ mod tests {
         data.vaults.push(vault);
         data.entries.push(Entry { item, state: ItemState::Active, remote: None, dirty: false, rev: 1 });
         data
+    }
+
+    #[test]
+    fn picker_metadata_never_contains_values_or_otp() {
+        let d = data();
+        let Response::Cli { ref json } = answer(&d, &CliQuery::Fields { vault: "v1".into(), item: "i1".into() }) else {
+            panic!("metadata reply");
+        };
+        for (f, original) in json["fields"].as_array().unwrap().iter().zip(&d.entries[0].item.fields) {
+            assert!(f.get("value").is_none());
+            assert!(f.get("totp").is_none());
+            assert_eq!(resolve(&d, f["reference"].as_str().unwrap()).unwrap(), original.value);
+        }
+        let text = json.to_string();
+        for secret in ["hunter2", "sk-1", "sk-2", "JBSWY3DPEHPK3PXP", "a note"] {
+            assert!(!text.contains(secret));
+        }
     }
 
     #[test]

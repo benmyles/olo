@@ -3922,5 +3922,17 @@
   "title": "Coder custom model endpoints",
   "caption": "A native Chat Completions endpoint form stores environment variable names for credentials. Model and endpoint save together; unfinished form values survive an in-place upgrade. Reviewed at five scales in light, dark and night modes.",
   "image": "2026-11-10/091549-coder-custom-model-endpoints.png"
+ },
+ {
+  "time": "2026-11-10T12:56:35",
+  "title": "Coder: choose saved models",
+  "caption": "Named model profiles, provider catalogs, model and reasoning selectors, and role selection. Both GUI and TUI preserve invalid drafts and use acknowledged saves.",
+  "image": "2026-11-10/125635-coder-choose-saved-models.png"
+ },
+ {
+  "time": "2026-11-10T12:56:38",
+  "title": "Coder: configurable supervision",
+  "caption": "A bounded supervisor with editable guidance, inherited or saved model profiles and explicit review limits. Native settings share the same service API as agents.",
+  "image": "2026-11-10/125638-coder-configurable-supervision.png"
  }
 ]

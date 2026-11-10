@@ -1818,7 +1818,8 @@ event reaches it.
   its label theirs and its choice on their values' line; `name`: its
   name for agents and the settings index with no label shown, a field in
   a grid named by its row and column; its menu opens with the current
-  choice over the field: `menu::popup_over`),
+  choice over the field: `menu::popup_over`; its structured ComboBox node
+  exposes the current choice as `value`, so agents can verify selections),
   `TextControl` (label, divider, `rows(N)` for a multiline field: height from
   its font and scale, extra text scrolls inside; the sunken well around a `TextField`), `StringView` (`dim`, `bold`),
   `BBox` (etched frame, bold label in its top line, `content_width`,
@@ -14643,6 +14644,16 @@ endpoints use their configured API root directly.
   are distinct from interrupted requests, and never trigger cancellation.
   Host reads and networking are available in the
   workspace sandbox: do not describe it as a container or secret boundary.
+* `supervisor` is an optional bounded reviewer at safe turn boundaries. Model,
+  guidance and budgets are independent; decisions and reads are journalled.
+  Stop and policy always win. `integrations` owns presets and password grants;
+  `oauth` implements discovery, PKCE, sealed credentials and serialized refresh.
+  See [Coder integrations](CODER-INTEGRATIONS.md).
+* Agent Screens exports `olo_screen::agent_command` for native callers to reuse
+  its structured output, history and takeover checks in process. Output capture
+  is thread-local. Takeover identifies the viewer independently of the caller.
+  Coder restricts the API to session-owned screens, and delivers captured images
+  after complete tool-result batches. Screenshot paths are service-owned.
 * `rpc` is the owner-only Unix socket, schema discovery, commands and replayable
   subscriptions. A slow consumer reconnects by sequence. `get` omits native
   provider context; `export` includes it. The GUI's worker does all socket work;
@@ -14655,6 +14666,16 @@ endpoints use their configured API root directly.
   snapshotted in its database. `--data` / `OLO_CODER_HOME` isolate the whole store,
   including its service socket and artifacts. Test with a directory in `/var/tmp`,
   never a person's live Coder store. Neither mode installs into the session.
+
+Named model profiles live in `model-profiles.json` beside the service journal;
+selecting one copies its configuration into a session role, never mutates an
+active run. The native profile editor and TUI settings use provider discovery
+and selectors. `options.rs` describes typed session settings for both clients;
+`configure_fields` merges changes under the journal lock. Profile broadcasts
+travel over the existing catalog subscription, without polling. Form drafts and
+profile editors participate in app upgrade restoration. Passwords' metadata-only
+`CliQuery::Fields` supplies stable field references to the sharing picker,
+without serializing values or generating OTPs.
 
 Checks: `cargo test -p olo-coder-core`; opt-in live tests in `tests/live.rs`
 (use real pool quota and a scratch workspace), `tools/dev/ui-lint coder`,

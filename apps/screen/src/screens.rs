@@ -100,8 +100,13 @@ pub fn controlled(name: &str) -> bool {
 
 fn controlled_in(dir: &Path, name: &str) -> bool {
     let Some(pid) = std::fs::read_to_string(control_file(dir, name)).ok().and_then(|s| s.trim().parse::<u32>().ok()) else { return false };
-    // (The viewer is this program, in its window.)
-    let ours = |exe: PathBuf| exe.file_name().is_some_and(|n| std::env::current_exe().ok().and_then(|me| me.file_name().map(|m| m == n)).unwrap_or(false));
+    // Native library callers are not the viewer executable.
+    let ours = |exe: PathBuf| {
+        exe.file_name().is_some_and(|n| {
+            matches!(n.to_str(), Some("olo-screen" | "olo-screen (deleted)" | "tabula-screen"))
+                || cfg!(test) && std::env::current_exe().ok().and_then(|me| me.file_name().map(|m| m == n)).unwrap_or(false)
+        })
+    };
     std::fs::read_link(format!("/proc/{pid}/exe")).is_ok_and(ours)
 }
 

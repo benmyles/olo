@@ -161,6 +161,10 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) -> Result<
     }
     let mut next = panes.len();
     let mut active = (restored["active"].as_u64().unwrap_or(0) as usize).min(panes.len() - 1);
+    let mut settings: Option<crate::tui_settings::Panel> = serde_json::from_value(restored["settings"].clone()).ok();
+    if let Some(panel) = &mut settings {
+        panel.resume();
+    }
     let mut picker: Option<Picker> = None;
     let mut links: Option<Vec<(String, String)>> = None;
     let mut selected_link = 0;
@@ -200,11 +204,13 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) -> Result<
                 Paragraph::new(input.get(top..).unwrap_or_default().join("\n")).block(Block::bordered().title(format!("{} · {} pending · Alt+M delivery", mode_name(pane.delivery), pending))),
                 rows[2],
             );
-            f.render_widget(Paragraph::new("Enter send · Ctrl+P sessions · Ctrl+T tile · Ctrl+N next · Esc stop · Ctrl+D detach"), rows[3]);
+            f.render_widget(Paragraph::new("Enter send · Ctrl+O settings · Ctrl+P sessions · Ctrl+T tile · Ctrl+N next · Esc stop · Ctrl+D detach"), rows[3]);
             if rows[2].width > 2 && rows[2].height > 2 {
                 f.set_cursor_position((rows[2].x + 1 + col as u16, rows[2].y + 1 + (row - top) as u16));
             }
-            if let Some(p) = &picker {
+            if let Some(settings) = &settings {
+                settings.draw(f, overlay(f.area()));
+            } else if let Some(p) = &picker {
                 let area = overlay(f.area());
                 f.render_widget(Clear, area);
                 let choices = matching(&pane.view, &p.query);
@@ -231,7 +237,7 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) -> Result<
             match input {
                 Input::Upgrade => {
                     use std::os::unix::process::CommandExt as _;
-                    let state = serde_json::json!({"active":active,"panes":panes.iter().map(Pane::snapshot).collect::<Vec<_>>()}).to_string();
+                    let state = serde_json::json!({"active":active,"settings":settings,"panes":panes.iter().map(Pane::snapshot).collect::<Vec<_>>()}).to_string();
                     let exe = std::env::current_exe()?;
                     let exe = PathBuf::from(exe.to_string_lossy().trim_end_matches(" (deleted)"));
                     let mut command = std::process::Command::new(exe);
@@ -242,6 +248,13 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) -> Result<
                 }
                 Input::Update { pane, update } => {
                     let focused = panes[active].key == pane;
+                    if focused {
+                        if let Some(panel) = &mut settings {
+                            if panel.update(&update) {
+                                settings = None;
+                            }
+                        }
+                    }
                     if let Some(p) = panes.iter_mut().find(|p| p.key == pane) {
                         let selected = picker.as_ref().filter(|_| focused).and_then(|pick| matching(&p.view, &pick.query).get(pick.selected).map(|r| r["id"].clone()));
                         p.update(update);
@@ -262,11 +275,23 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) -> Result<
                     }
                 }
                 Input::Key(Event::Paste(text)) => {
+                    if let Some(panel) = &mut settings {
+                        panel.paste(&text);
+                        continue;
+                    }
                     let p = &mut panes[active];
                     p.draft.insert_str(p.cursor, &text);
                     p.cursor += text.len();
                 }
                 Input::Key(Event::Key(k)) if k.kind != KeyEventKind::Release => {
+                    if let Some(panel) = &mut settings {
+                        if k.code == KeyCode::Char('c') && k.modifiers.contains(KeyModifiers::CONTROL) {
+                            let _ = panes[active].client.tx.send(Action::Stop);
+                        } else if panel.key(k, &panes[active].view, &panes[active].client) {
+                            settings = None;
+                        }
+                        continue;
+                    }
                     if let Some(p) = &mut picker {
                         let choices = matching(&panes[active].view, &p.query);
                         match k.code {
@@ -330,6 +355,11 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) -> Result<
                     }
                     if k.modifiers.contains(KeyModifiers::CONTROL) {
                         match k.code {
+                            KeyCode::Char('o') => {
+                                settings = Some(crate::tui_settings::Panel::settings(&panes[active].view));
+                                let _ = panes[active].client.tx.send(Action::Profiles);
+                                continue;
+                            }
                             KeyCode::Char('p') | KeyCode::Char('t') => {
                                 picker = Some(Picker { query: String::new(), selected: 0, tile: k.code == KeyCode::Char('t') });
                                 let _ = panes[active].client.tx.send(Action::Browse(Default::default()));
@@ -370,7 +400,7 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) -> Result<
                                 Interrupt => AfterTool,
                             };
                         }
-                        KeyCode::Char('o') if k.modifiers.contains(KeyModifiers::CONTROL) => {
+                        KeyCode::Char('l') if k.modifiers.contains(KeyModifiers::CONTROL) => {
                             let mut seen = std::collections::HashSet::new();
                             links = Some(
                                 p.view

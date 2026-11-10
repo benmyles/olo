@@ -14,7 +14,12 @@ use std::{
 
 #[derive(Clone, Debug)]
 pub enum Update {
+    SettingsSaved { key: String, result: Result<(), String> },
+    Peers(Vec<Peer>),
+    SettingsResult { key: String, result: Result<Value, String> },
     Session(Box<Session>),
+    Profiles(Vec<olo_coder_core::profiles::ModelProfile>),
+    ProfileModels { profile: Box<olo_coder_core::profiles::ModelProfile>, models: Result<Vec<String>, String> },
     Catalog { rows: Vec<Value>, next_offset: Option<usize> },
     InputResult { session: String, text: String, error: Option<String> },
     Repository { session: String, result: Value },
@@ -26,6 +31,9 @@ pub enum Update {
     Rendered(Arc<olo_ui::rich_text::Text>),
 }
 pub enum Action {
+    SubmitSettings { text: String, key: String },
+    SubmitForm { text: String, reply: tokio::sync::oneshot::Sender<Result<(), String>> },
+    SettingsRequest { key: String, command: Box<Command> },
     Submit(String),
     Steer(String, Delivery),
     Prompt { text: String, delivery: Option<Delivery>, session: String, generation: u64 },
@@ -33,6 +41,8 @@ pub enum Action {
     Refresh,
     Repository,
     Models,
+    Profiles,
+    DiscoverProfile(Box<olo_coder_core::profiles::ModelProfile>),
     Stop,
     Approve(bool),
     Quit,
@@ -165,6 +175,16 @@ fn follow(dir: &std::path::Path, session: &str, filter: SessionFilter, callback:
                 for line in std::io::BufReader::new(connected).lines() {
                     let Ok(line) = line else { break };
                     let Ok(v) = serde_json::from_str::<Value>(&line) else { continue };
+                    if let Some(peers) = v.get("peers") {
+                        if let Ok(peers) = serde_json::from_value(peers.clone()) {
+                            callback(Update::Peers(peers));
+                        }
+                    }
+                    if let Some(profiles) = v.get("profiles") {
+                        if let Ok(profiles) = serde_json::from_value(profiles.clone()) {
+                            callback(Update::Profiles(profiles));
+                        }
+                    }
                     if let Some(catalog) = v.get("catalog") {
                         if let Some(rows) = catalog["sessions"].as_array() {
                             callback(Update::Catalog { rows: rows.clone(), next_offset: catalog["next_offset"].as_u64().map(|v| v as usize) });
@@ -194,6 +214,14 @@ fn follow(dir: &std::path::Path, session: &str, filter: SessionFilter, callback:
                                     | "error"
                                     | "paused"
                                     | "configured"
+                                    | "supervisor_configured"
+                                    | "supervisor_review"
+                                    | "supervisor_usage"
+                                    | "integration_configured"
+                                    | "integration_removed"
+                                    | "integration_login"
+                                    | "olo_configured"
+                                    | "password_grant"
                                     | "spec"
                                     | "spec_mode"
                                     | "spec_accepted"
@@ -323,6 +351,12 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
                             attempt = attempt.saturating_add(1);
                             match rx.recv_timeout(std::time::Duration::from_secs(1u64 << attempt.min(3))) {
                                 Ok(Action::Quit) | Err(mpsc::RecvTimeoutError::Disconnected) => return Ok(()),
+                                Ok(Action::SubmitSettings { key, .. }) => callback(Update::SettingsSaved { key, result: Err(error) }),
+                                Ok(Action::SettingsRequest { key, .. }) => callback(Update::SettingsResult { key, result: Err(error) }),
+                                Ok(Action::DiscoverProfile(profile)) => callback(Update::ProfileModels { profile, models: Err(error) }),
+                                Ok(Action::SubmitForm { reply, .. }) => {
+                                    let _ = reply.send(Err(error));
+                                }
                                 Ok(Action::Prompt { text, session, .. }) => {
                                     callback(Update::InputResult { session, text, error: Some(error) });
                                 }
@@ -358,14 +392,40 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
                 let mut catalog = follow(&dir, "", Default::default(), callback.clone(), tx.clone())?;
                 while let Ok(action) = rx.recv() {
                     let Some(action) = control.admit(action, &s.id) else { continue };
+                    let (action, mut form_reply, mut form_key) = match action {
+                        Action::SubmitForm { text, reply } => (Action::Submit(text), Some(reply), None),
+                        Action::SubmitSettings { text, key } => (Action::Submit(text), None, Some(key)),
+                        action => (action, None, None),
+                    };
                     let mut submitted = match &action {
-                        Action::Submit(text) | Action::Steer(text, _) => Some((s.id.clone(), text.clone())),
+                        Action::Submit(text) | Action::Steer(text, _) if form_reply.is_none() && form_key.is_none() => Some((s.id.clone(), text.clone())),
                         _ => None,
                     };
                     let result = (|| -> Result<()> {
                         let input = match action {
-                            Action::Prompt { .. } => unreachable!("prompt admission unwraps queued input"),
+                            Action::SubmitSettings { .. } | Action::SubmitForm { .. } | Action::Prompt { .. } => unreachable!("prompt admission unwraps queued input"),
                             Action::Quit => return Err(anyhow::anyhow!("__quit")),
+                            Action::SettingsRequest { key, command } => {
+                                let dir = dir.clone();
+                                let callback = callback.clone();
+                                std::thread::spawn(move || callback(Update::SettingsResult { key, result: rpc::call(&dir, &command).map_err(|e| e.to_string()) }));
+                                return Ok(());
+                            }
+                            Action::DiscoverProfile(profile) => {
+                                let dir = dir.clone();
+                                let callback = callback.clone();
+                                std::thread::spawn(move || {
+                                    let command = Command::ModelProfiles { action: "discover".into(), profile: Some((*profile).clone()), id: None, session: None, role: String::new() };
+                                    let models = rpc::call(&dir, &command).and_then(|v| Ok(serde_json::from_value(v["models"].clone())?)).map_err(|e| e.to_string());
+                                    callback(Update::ProfileModels { profile, models });
+                                });
+                                return Ok(());
+                            }
+                            Action::Profiles => {
+                                let value = rpc::call(&dir, &Command::ModelProfiles { action: "list".into(), profile: None, id: None, session: None, role: String::new() })?;
+                                callback(Update::Profiles(serde_json::from_value(value["profiles"].clone())?));
+                                return Ok(());
+                            }
                             Action::Models => {
                                 let dir = dir.clone();
                                 let provider = s.config.model.provider;
@@ -389,8 +449,11 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
                                     let session = s.id.clone();
                                     let callback = callback.clone();
                                     std::thread::spawn(move || {
-                                        let result = rpc::call(&dir, &Command::Repository { session: session.clone(), arguments: json!({"operation":"status"}) })
+                                        let mut result = rpc::call(&dir, &Command::Repository { session: session.clone(), arguments: json!({"operation":"status"}) })
                                             .unwrap_or_else(|e| json!({"error":e.to_string()}));
+                                        if let Ok(branches) = rpc::call(&dir, &Command::Repository { session: session.clone(), arguments: json!({"operation":"branches"}) }) {
+                                            result["branches"] = branches["branches"].clone();
+                                        }
                                         callback(Update::Repository { session, result });
                                         inspecting.store(false, std::sync::atomic::Ordering::Relaxed);
                                     });
@@ -453,10 +516,28 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
                                         | Command::Tool { .. }
                                         | Command::Stop { .. }
                                         | Command::Resume { .. }
+                                        | Command::ConfigureFields { .. }
                                         | Command::Configure { .. }
                                         | Command::Approve { .. }
                                 );
                                 let value = rpc::call(&dir, &cmd)?;
+                                if let Some(key) = form_key.take() {
+                                    callback(Update::SettingsSaved { key, result: Ok(()) });
+                                }
+                                if let Some(reply) = form_reply.take() {
+                                    let _ = reply.send(Ok(()));
+                                }
+                                if matches!(&cmd, Command::Integrations { .. }) {
+                                    if let Some(url) = value["authorization_url"].as_str() {
+                                        let url = url.to_owned();
+                                        let callback = callback.clone();
+                                        std::thread::spawn(move || {
+                                            if let Err(e) = olo_xdg::open::open(&olo_xdg::open::Target::parse(&url)) {
+                                                callback(Update::Notice(format!("Open the sign-in link to continue: {e}")));
+                                            }
+                                        });
+                                    }
+                                }
                                 // The command was accepted. A later refresh failure
                                 // must never restore an already submitted message.
                                 if let Some((session, text)) = submitted.take() {
@@ -474,6 +555,12 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
                         }
                         Ok(())
                     })();
+                    if let Some(key) = form_key.take() {
+                        callback(Update::SettingsSaved { key, result: result.as_ref().map(|_| ()).map_err(|e| format!("{e:#}")) });
+                    }
+                    if let Some(reply) = form_reply.take() {
+                        let _ = reply.send(result.as_ref().map(|_| ()).map_err(|e| format!("{e:#}")));
+                    }
                     if let Some((session, text)) = submitted {
                         callback(Update::InputResult { session, text, error: result.as_ref().err().map(|e| format!("{e:#}")) });
                     }
@@ -497,12 +584,14 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
 }
 #[derive(Default)]
 pub struct View {
+    pub peers: Vec<Peer>,
     pub session: Option<Session>,
     pub catalog: Arc<Vec<Value>>,
     pub next_offset: Option<usize>,
     pub rich: Arc<olo_ui::rich_text::Text>,
     pub repository: Option<Value>,
     pub models: Vec<String>,
+    pub profiles: Vec<olo_coder_core::profiles::ModelProfile>,
     pub lines: std::collections::VecDeque<String>,
     pub live: String,
     pub live_code: bool,
@@ -523,6 +612,9 @@ impl View {
     }
     pub fn apply(&mut self, u: Update) {
         match u {
+            Update::Peers(peers) => self.peers = peers,
+            Update::ProfileModels { .. } | Update::SettingsResult { .. } | Update::SettingsSaved { .. } => {}
+            Update::Profiles(profiles) => self.profiles = profiles,
             Update::Catalog { rows, next_offset } => {
                 self.catalog = Arc::new(rows);
                 self.next_offset = next_offset;
@@ -571,6 +663,11 @@ impl View {
                     self.compaction_progress = None;
                 }
                 match e.kind.as_str() {
+                    "supervisor_started"=>self.push("\n> **Supervisor** · Reviewing progress…\n"),
+                    "supervisor_review"=>self.push(&format!("\n### Supervisor · {}\n\n{}\n\n{}\n",e.data["action"].as_str().unwrap_or("review"),e.data["reason"].as_str().unwrap_or(""),e.data["message"].as_str().unwrap_or(""))),
+                    "supervisor_error"=>self.push(&format!("\n> Supervisor review unavailable: {}\n",e.data["message"].as_str().unwrap_or(""))),
+                    "mcp_unavailable"=>self.push(&format!("\n> {} unavailable: {}\n",e.data["server"].as_str().unwrap_or("MCP"),e.data["message"].as_str().unwrap_or(""))),
+                    "integration_login"=>self.push(&format!("\n> **{}** · {} {}\n",e.data["server"].as_str().unwrap_or("Connection"),e.data["status"]["state"].as_str().unwrap_or(""),e.data["status"]["message"].as_str().unwrap_or(""))),
                     "compaction_progress" => self.compaction_progress = Some(format!("Compacting {}/{}", e.data["completed"], e.data["total"])),
                     "compaction_ready" => self.compaction_progress = Some("Checkpoint ready".into()),
                     "delta" => {
@@ -804,6 +901,26 @@ pub fn read_link(link: &str) -> Option<String> {
 fn command_result(command: &Command, value: &Value) -> Result<String> {
     let mut links = String::new();
     match command {
+        Command::Integrations { .. } => {
+            if let Some(url) = value["authorization_url"].as_str() {
+                links.push_str(&format!("Sign-in started. [Open authorization page]({url}).\n\n"));
+            }
+            if let Some(servers) = value["servers"].as_array() {
+                links.push_str("### Connections\n\n");
+                for server in servers {
+                    links.push_str(&format!("- **{}** · {}\n", server["name"].as_str().unwrap_or(""), server["url"].as_str().or(server["program"].as_str()).unwrap_or("")));
+                }
+            }
+        }
+        Command::Supervisor { .. } => {
+            links.push_str(&format!(
+                "### Supervisor · {}\n\n{} reviews · {} interventions\n\n{}\n\n",
+                if value["config"]["enabled"] == true { "On" } else { "Off" },
+                value["state"]["reviews"],
+                value["state"]["interventions"],
+                value["state"]["last_reason"].as_str().unwrap_or("")
+            ));
+        }
         Command::Compactions { .. } => {
             if let Some(rows) = value["checkpoints"].as_array() {
                 links.push_str("### Compaction checkpoints\n\n| Checkpoint | State | Sources | Summary tokens |\n| --- | --- | ---: | ---: |\n");

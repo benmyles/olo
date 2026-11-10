@@ -28,5 +28,11 @@ ignore = "0.4"
 similar = "2"
 libc = "0.2"
 
+olo-keychain.workspace = true
+olo-screen = { path = "../../apps/screen" }
+chacha20poly1305 = "0.11"
+getrandom = "0.3"
+zeroize = "1"
+
 [dev-dependencies]
 axum = "0.8"

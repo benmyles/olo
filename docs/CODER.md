@@ -21,6 +21,9 @@ filesystem. Codex requests go to the loopback Olo Token Pool, `OLO_POOL_PORT`
 (17891 by default). Custom OpenAI-compatible endpoints use environment-referenced
 credentials in the service; key values are never stored in session configuration.
 
+See [Supervisor and integrations](CODER-INTEGRATIONS.md) for supervisor controls,
+MCP OAuth/token setup, Slack, Logfire, Terminal, Agent Screens and Passwords.
+
 ## Workflows
 
 Type a request and press Enter. The delivery selector controls when new input
@@ -28,7 +31,7 @@ enters the running conversation: after the next tool, after the current response
 or immediately by interrupting current work. The default is after the next tool. Escape stops the TUI's
 turn; the GUI has Stop and Agent ▸ Stop. Closing a view leaves the turn running.
 TUI Ctrl+D detaches, PgUp/PgDn scroll, Alt+Enter inserts a newline, Up/Down recall
-input, Tab completes command names, and Ctrl+O opens transcript links (including action details). The GUI composer uses Shift+Enter for a newline. In the GUI, the transcript supports
+input, Tab completes command names, and Ctrl+O opens settings and Ctrl+L opens transcript links (including action details). The GUI composer uses Shift+Enter for a newline. In the GUI, the transcript supports
 selection and copy; View ▸ Toggle Follow Conversation lets you read earlier
 text without the next chunk scrolling it away.
 

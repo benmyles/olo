@@ -1975,3 +1975,213 @@ fn agent_shortcut_preserves_workspace_and_model_controls() {
         assert!(commands::parse(invalid, &s).is_err());
     }
 }
+
+fn assistant_text(text: &str) -> Value {
+    response(vec![json!({"type":"message","role":"assistant","content":[{"type":"output_text","text":text}]})])
+}
+#[tokio::test]
+async fn supervisor_recovers_early_completion_and_preserves_policy_and_audit() {
+    let dir = Scratch::new();
+    let (fake, base, server) = server().await;
+    let e = Engine::open_at(dir.0.join("state"), Some(base)).unwrap();
+    let config =
+        Config { supervisor: supervisor::Config { enabled: true, model: Some(ModelConfig { model: "supervisor-fixture".into(), ..Default::default() }), ..Default::default() }, ..Default::default() };
+    let s: Session = serde_json::from_value(e.command(Command::Create { workspace: dir.0.clone(), config: Some(config) }).await.unwrap()).unwrap();
+    fake.replies.lock().unwrap().extend([
+        assistant_text("I will stop before checking the result."),
+        assistant_text(r#"{"action":"steer","reason":"Requested verification is missing","message":"Run the requested verification","notes":"Check evidence"}"#),
+        assistant_text("Verification complete."),
+        assistant_text(r#"{"action":"observe","reason":"The requested verification is complete","notes":"Complete"}"#),
+    ]);
+    e.command(Command::Send { session: s.id.clone(), text: "Complete the work and verify it.".into() }).await.unwrap();
+    finish(&e).await;
+    let final_s = e.get(&s.id).unwrap();
+    assert_eq!(final_s.status, Status::Idle);
+    assert_eq!(final_s.supervisor.reviews, 2);
+    assert_eq!(final_s.supervisor.interventions, 1);
+    assert_eq!(final_s.config.approval, ApprovalMode::Ask);
+    assert_eq!(final_s.supervisor.usage.input, 20);
+    let requests = fake.requests.lock().unwrap();
+    assert_eq!(requests.len(), 4);
+    assert_eq!(requests[1].1["model"], "supervisor-fixture");
+    assert!(requests[2].1.to_string().contains("Supervisor advisory"));
+    assert!(requests[1].1["tools"].as_array().unwrap().iter().all(|t| matches!(t["name"].as_str(), Some("read_transcript" | "search_transcript" | "compaction_history" | "read_artifact"))));
+    drop(requests);
+    let events = e.command(Command::Events { session: s.id.clone(), after: 0, limit: 200 }).await.unwrap();
+    assert!(events.to_string().contains("supervisor_review"));
+    drop(e);
+    let reopened = Engine::open(dir.0.join("state")).unwrap();
+    assert_eq!(reopened.get(&s.id).unwrap().supervisor.notes, "Complete");
+    server.abort();
+}
+#[tokio::test]
+async fn supervisor_pause_and_intervention_limits_do_not_spin() {
+    for action in ["pause", "steer"] {
+        let dir = Scratch::new();
+        let (fake, base, server) = server().await;
+        let e = Engine::open_at(dir.0.join("state"), Some(base)).unwrap();
+        let config = Config { supervisor: supervisor::Config { enabled: true, max_interventions: 1, ..Default::default() }, ..Default::default() };
+        let s: Session = serde_json::from_value(e.command(Command::Create { workspace: dir.0.clone(), config: Some(config) }).await.unwrap()).unwrap();
+        fake.replies.lock().unwrap().extend([
+            assistant_text("Initial answer"),
+            assistant_text(&json!({"action":action,"reason":"fixture evidence","message":"next step"}).to_string()),
+            assistant_text("Final answer"),
+        ]);
+        e.command(Command::Send { session: s.id.clone(), text: "Task".into() }).await.unwrap();
+        finish(&e).await;
+        let s = e.get(&s.id).unwrap();
+        assert_eq!(s.status, if action == "pause" { Status::Paused } else { Status::Idle });
+        assert_eq!(s.supervisor.interventions, 1);
+        assert_eq!(fake.requests.lock().unwrap().len(), if action == "pause" { 2 } else { 3 });
+        server.abort();
+    }
+}
+#[tokio::test]
+async fn integrations_validate_grants_presets_and_local_auth_without_secret_access() {
+    let dir = Scratch::new();
+    let e = Engine::open(dir.0.join("state")).unwrap();
+    let s: Session = serde_json::from_value(e.command(Command::Create { workspace: dir.0.clone(), config: None }).await.unwrap()).unwrap();
+    for preset in ["slack", "logfire", "logfire-eu", "terminal"] {
+        let mut config = Config::default();
+        config.mcp.push(integrations::preset(preset).unwrap());
+        config.validate().unwrap();
+    }
+    e.command(Command::Integrations { session: s.id.clone(), action: "grant_secret".into(), arguments: json!({"name":"test","reference":"op://vault/item/password"}) }).await.unwrap();
+    assert_eq!(e.get(&s.id).unwrap().config.olo.secret_grants.len(), 1);
+    assert!(e.get(&s.id).unwrap().config.child(false, &json!({})).unwrap().olo.secret_grants.is_empty());
+    e.command(Command::Integrations { session: s.id.clone(), action: "revoke_secret".into(), arguments: json!({"name":"test"}) }).await.unwrap();
+    assert!(e.get(&s.id).unwrap().config.olo.secret_grants.is_empty());
+    let mut config = Config::default();
+    config.mcp = vec![McpServer { name: "bad".into(), program: "server".into(), auth: Some(oauth::Auth::BearerEnv { variable: "TOKEN".into() }), ..Default::default() }];
+    assert!(config.validate().is_err());
+}
+
+#[tokio::test]
+async fn stop_cancels_an_inflight_supervisor_without_steering() {
+    use axum::{Json, Router, response::IntoResponse, routing::post};
+    let waiting = Arc::new(tokio::sync::Notify::new());
+    let signal = waiting.clone();
+    let app = Router::new().fallback(post(move |Json(body): Json<Value>| {
+        let signal = signal.clone();
+        async move {
+            if body["instructions"].as_str().is_some_and(|s| s.starts_with("You supervise")) {
+                signal.notify_one();
+                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            }
+            let reply = assistant_text("Primary stopped early.");
+            ([("content-type", "text/event-stream")], format!("data: {}\n\n", json!({"type":"response.completed","response":reply}))).into_response()
+        }
+    }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let dir = Scratch::new();
+    let e = Engine::open_at(dir.0.join("state"), Some(base)).unwrap();
+    let config = Config { supervisor: supervisor::Config { enabled: true, ..Default::default() }, ..Default::default() };
+    let s: Session = serde_json::from_value(e.command(Command::Create { workspace: dir.0.clone(), config: Some(config) }).await.unwrap()).unwrap();
+    e.command(Command::Send { session: s.id.clone(), text: "Task".into() }).await.unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(3), waiting.notified()).await.unwrap();
+    let start = std::time::Instant::now();
+    e.command(Command::Stop { session: s.id.clone() }).await.unwrap();
+    finish(&e).await;
+    assert!(start.elapsed() < std::time::Duration::from_secs(1));
+    let s = e.get(&s.id).unwrap();
+    assert_eq!(s.status, Status::Paused);
+    assert_eq!(s.supervisor.interventions, 0);
+    assert!(!serde_json::to_string(&s.context).unwrap().contains("Supervisor advisory"));
+    server.abort();
+}
+#[tokio::test]
+async fn supervisor_cannot_write_or_override_primary_budget() {
+    let dir = Scratch::new();
+    let (fake, base, server) = server().await;
+    let e = Engine::open_at(dir.0.join("state"), Some(base)).unwrap();
+    let config = Config { supervisor: supervisor::Config { enabled: true, ..Default::default() }, ..Default::default() };
+    let s: Session = serde_json::from_value(e.command(Command::Create { workspace: dir.0.clone(), config: Some(config.clone()) }).await.unwrap()).unwrap();
+    fake.replies.lock().unwrap().extend([
+        assistant_text("Done"),
+        response(vec![tool("write_file", json!({"path":"forbidden","content":"bad"}))]),
+        assistant_text(r#"{"action":"observe","reason":"Cannot perform writes"}"#),
+    ]);
+    e.command(Command::Send { session: s.id.clone(), text: "Task".into() }).await.unwrap();
+    finish(&e).await;
+    assert!(!dir.0.join("forbidden").exists());
+    assert!(fake.requests.lock().unwrap()[2].1.to_string().contains("no permission"));
+    let mut config = config;
+    config.max_turns = 1;
+    let other: Session = serde_json::from_value(e.command(Command::Create { workspace: dir.0.clone(), config: Some(config) }).await.unwrap()).unwrap();
+    fake.replies.lock().unwrap().push_back(response(vec![tool("set_todos", json!({"todos":[]}))]));
+    e.command(Command::Send { session: other.id.clone(), text: "Task".into() }).await.unwrap();
+    finish(&e).await;
+    let other = e.get(&other.id).unwrap();
+    assert_eq!(other.status, Status::Failed);
+    assert!(other.error.unwrap().contains("budget reached"));
+    assert_eq!(other.supervisor.reviews, 0);
+    server.abort();
+}
+
+#[tokio::test]
+async fn model_profiles_are_durable_named_snapshots_for_every_role() {
+    let dir = Scratch::new();
+    let e = Engine::open(dir.0.clone()).unwrap();
+    let s: Session = serde_json::from_value(e.command(Command::Create { workspace: dir.0.clone(), config: None }).await.unwrap()).unwrap();
+    let profile = profiles::ModelProfile { id: id(), name: "  Fast custom  ".into(), model: ModelConfig { model: "custom-model".into(), ..ModelConfig::for_provider(Provider::Openai) } };
+    // API clients can create profiles without depending on a provider's discovery implementation.
+    let saved = e.command(Command::ModelProfiles { action: "save".into(), profile: Some(profile.clone()), id: None, session: None, role: "primary".into() }).await.unwrap();
+    assert!(saved["profiles"].as_array().unwrap().iter().any(|p| p["name"] == "Fast custom"));
+    let mut duplicate = profile.clone();
+    duplicate.id = id();
+    duplicate.name = "fast CUSTOM".into();
+    assert!(e.command(Command::ModelProfiles { action: "save".into(), profile: Some(duplicate), id: None, session: None, role: "primary".into() }).await.is_err());
+    for role in ["primary", "supervisor", "reviewer", "compaction"] {
+        e.command(Command::ModelProfiles { action: "apply".into(), profile: None, id: Some(profile.id.clone()), session: Some(s.id.clone()), role: role.into() }).await.unwrap();
+    }
+    let selected = e.get(&s.id).unwrap();
+    assert_eq!(selected.config.model, profile.model);
+    assert_eq!(selected.config.supervisor.model, Some(profile.model.clone()));
+    assert_eq!(selected.config.reviewer, profile.model);
+    assert_eq!(selected.config.compaction.model, Some(profile.model.clone()));
+    e.command(Command::ModelProfiles { action: "remove".into(), profile: None, id: Some(profile.id.clone()), session: None, role: "primary".into() }).await.unwrap();
+    assert_eq!(e.get(&s.id).unwrap().config.model, profile.model);
+    drop(e);
+    let restored = Engine::open(dir.0.clone()).unwrap();
+    assert_eq!(restored.get(&s.id).unwrap().config.model, profile.model);
+    let profiles = restored.command(Command::ModelProfiles { action: "list".into(), profile: None, id: None, session: None, role: "primary".into() }).await.unwrap();
+    assert!(!profiles["profiles"].as_array().unwrap().iter().any(|p| p["id"] == profile.id));
+}
+
+#[tokio::test]
+async fn field_settings_preserve_other_edits_and_reject_invalid_changes_atomically() {
+    let dir = Scratch::new();
+    let e = Engine::open(dir.0.clone()).unwrap();
+    let s: Session = serde_json::from_value(e.command(Command::Create { workspace: dir.0.clone(), config: None }).await.unwrap()).unwrap();
+    let edit = |pairs: Vec<(&str, Value)>| Command::ConfigureFields { session: s.id.clone(), values: pairs.into_iter().map(|(k, v)| (k.into(), v)).collect() };
+    e.command(edit(vec![("instructions", json!("Keep this edit"))])).await.unwrap();
+    e.command(edit(vec![("supervisor.enabled", json!(true))])).await.unwrap();
+    assert_eq!(e.get(&s.id).unwrap().config.instructions, "Keep this edit");
+    assert!(e.command(edit(vec![("instructions", json!("discard")), ("max_turns", json!(0))])).await.is_err());
+    assert!(e.command(edit(vec![("unknown", json!(true))])).await.is_err());
+    let s = e.get(&s.id).unwrap();
+    assert_eq!(s.config.instructions, "Keep this edit");
+    assert!(s.config.supervisor.enabled);
+}
+
+#[tokio::test]
+async fn model_discovery_normalizes_catalog_without_saving_drafts() {
+    let app = axum::Router::new().route("/v1/models", axum::routing::get(|| async { axum::Json(json!({"data":[{"id":"vendor/z"},{"id":"vendor/a"},{"id":"vendor/z"},"vendor/b",{"ignored":true}]})) }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}/v1", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let dir = Scratch::new();
+    let e = Engine::open(dir.0.clone()).unwrap();
+    let mut model = ModelConfig::for_provider(Provider::Openai);
+    model.endpoint.as_mut().unwrap().base_url = base;
+    let profile = profiles::ModelProfile { id: id(), name: "Draft".into(), model };
+    let result = e.command(Command::ModelProfiles { action: "discover".into(), profile: Some(profile), id: None, session: None, role: "primary".into() }).await.unwrap();
+    assert_eq!(result["models"], json!(["vendor/a", "vendor/b", "vendor/z"]));
+    let saved = e.command(Command::ModelProfiles { action: "list".into(), profile: None, id: None, session: None, role: "primary".into() }).await.unwrap();
+    assert!(!saved["profiles"].as_array().unwrap().iter().any(|p| p["name"] == "Draft"));
+    server.abort();
+}

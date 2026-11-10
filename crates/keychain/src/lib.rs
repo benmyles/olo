@@ -181,6 +181,11 @@ pub enum CliQuery {
     Items {
         vault: Option<String>,
     },
+    /// Field labels, types and stable references only; never values or OTPs.
+    Fields {
+        vault: String,
+        item: String,
+    },
     /// One item with its fields' values.
     Item {
         vault: Option<String>,
