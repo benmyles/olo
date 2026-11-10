@@ -10,6 +10,8 @@ pub mod agent;
 mod app;
 pub mod cut;
 pub mod icons;
+pub mod keys;
+pub mod menu;
 pub mod review;
 pub mod style;
 pub mod theme;
@@ -17,6 +19,7 @@ pub mod tip;
 pub mod widgets;
 
 pub use app::{Frame, WindowOptions, open_window, run};
+pub use menu::{Menu, MenuBar, MenuItem};
 pub use olo_app as app_kit;
 pub use olo_interface::*;
 pub use olo_kit_base::{Proxy, clipboard, clock, commands, files, instance, metrics, moving, notify, places, restore, settings, store, tracker, watch};

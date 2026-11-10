@@ -76,6 +76,8 @@ pub(crate) struct WindowCore {
     pub(crate) size: Size<Pixels>,
     pub(crate) title: SharedString,
     pub(crate) surface_id: Option<u32>,
+    /// The display it's on, in points, if that's known.
+    pub(crate) display: Option<Bounds<Pixels>>,
     pub(crate) dirty_views: Vec<ViewId>,
     pub(crate) paint_queue: Vec<NodeId>,
     /// Texts measured anew in the layout under way: drawn again.
@@ -128,6 +130,11 @@ pub struct WindowCx<'a> {
     pub(crate) looper: &'a mut Looper,
 }
 
+/// An element in a window's tree, by name: something to draw again
+/// (`WindowCx::repaint_node`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NodeRef(pub(crate) NodeId);
+
 /// A window on the calling looper, as another window there knows it
 /// (the owner of a menu or a tip): reached at once, not by a message.
 pub struct LocalWindow<V> {
@@ -145,6 +152,12 @@ impl<V> Copy for LocalWindow<V> {}
 impl<V: View> LocalWindow<V> {
     pub fn id(&self) -> WindowId {
         self.id
+    }
+
+    /// The window `cx` is, whose own view is a `V`: for it to hand to a
+    /// window it opens (a submenu, which closes its menu with it).
+    pub fn of(cx: &WindowCx) -> LocalWindow<V> {
+        LocalWindow { id: cx.core.id, _view: std::marker::PhantomData }
     }
 
     /// Does something with the window. None if it has closed.
@@ -178,6 +191,12 @@ pub(crate) fn with_window<R>(looper: &mut Looper, id: WindowId, f: impl FnOnce(&
     let mut core = looper.state_mut::<Windows>()?.map.remove(&id)?;
     let result = f(&mut WindowCx { core: &mut core, looper });
     if core.closed {
+        // Its own view hears it's going, while there's still a window
+        // to hear it in.
+        let mut cx = WindowCx { core: &mut core, looper };
+        for view in [cx.core.root_view, cx.core.main_view].into_iter().flatten() {
+            cx.with_any_view(view, |v, id, cx| v.window_closing(id, cx));
+        }
         core.end(looper);
     } else if let Some(windows) = looper.state_mut::<Windows>() {
         windows.map.insert(id, core);
@@ -288,6 +307,7 @@ impl WindowCore {
             size: opened.size,
             title,
             surface_id: opened.surface_id,
+            display: opened.display,
             dirty_views: Vec::new(),
             paint_queue: Vec::new(),
             remeasured: Vec::new(),
@@ -570,6 +590,7 @@ impl<'a> WindowCx<'a> {
                 }
             }
             WindowEvent::Moved => {}
+            WindowEvent::Display(display) => self.core.display = display,
             WindowEvent::CloseRequested => {
                 let may = match self.core.main_view.or(self.core.root_view) {
                     Some(view) => self.with_any_view(view, |v, id, cx| v.close_requested(id, cx)).unwrap_or(true),
@@ -962,6 +983,11 @@ impl<'a> WindowCx<'a> {
         self.core.modifiers
     }
 
+    /// The display the window is on, in points (None until it's known).
+    pub fn display_bounds(&self) -> Option<Bounds<Pixels>> {
+        self.core.display
+    }
+
     /// The window's `wl_surface` id, which app_server names it by.
     pub fn surface_id(&self) -> Option<u32> {
         self.core.surface_id
@@ -995,9 +1021,30 @@ impl<'a> WindowCx<'a> {
         self.core.closed = true;
     }
 
+    /// Asks to close the window as its tab's close box does: its own
+    /// view is asked first (`View::close_requested`).
+    pub fn request_close(&mut self) {
+        let id = self.core.id;
+        self.looper.defer(move |looper| deliver(looper, id, WindowEvent::CloseRequested));
+    }
+
     /// Where the element whose handler is running now is, in the window.
     pub fn listener_bounds(&self) -> Bounds<Pixels> {
         self.core.current.and_then(|id| self.core.nodes.get(id)).map(|n| n.bounds).unwrap_or_default()
+    }
+
+    /// The element whose handler is running now, to draw it again later
+    /// ([`Self::repaint_node`]) when something it shows from outside the
+    /// tree changes (a menu bar's open title, once its menu has gone).
+    pub fn listener_node(&self) -> Option<NodeRef> {
+        self.core.current.map(NodeRef)
+    }
+
+    /// Draws an element again (if it's still there).
+    pub fn repaint_node(&mut self, node: NodeRef) {
+        if self.core.nodes.contains_key(node.0) {
+            self.core.mark_paint(node.0);
+        }
     }
 
     /// What's being handed round stops here: nothing else gets it.

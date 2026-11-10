@@ -280,8 +280,12 @@ impl View for Frame {
         let p = theme::palette();
         let mut root = div()
             .size_full()
-            // A press anywhere in the window puts a cut text's tip away.
-            .on_window_mouse_down(|_, cx| crate::cut::left(cx, true))
+            // A press anywhere in the window puts away a menu open over it
+            // (and a cut text's tip).
+            .on_window_mouse_down(|e, cx| {
+                crate::cut::left(cx, true);
+                crate::menu::press_in(e.position, cx)
+            })
             // Text cut short: its whole in a tip (`cut`), at once with ⌘.
             // (Not while a button is held: a divider or a selection
             // dragged over cut text has no tip.)
@@ -300,6 +304,22 @@ impl View for Frame {
             .on_modifiers_changed(|e, cx| {
                 let at = cx.mouse_position();
                 crate::cut::modifiers(cx, at, crate::cut::command_held(&e.modifiers))
+            })
+            // The menu bar's keys, when nothing in the window took them
+            // (a text field's ⌘C is its own).
+            .on_key_down(|e, cx| {
+                if let Some((command, on_command)) = crate::menu::bar_shortcut(cx, &e.keystroke) {
+                    on_command(&command, cx);
+                    cx.stop_propagation();
+                    return;
+                }
+                // ⌘W (the profile's Close) on a window whose app has no
+                // Close of its own: closed as its tab's close button does,
+                // the app's confirmations first.
+                if crate::keys::pressed(&olo_kit_base::keys::Shortcut::command(crate::keys::evdev("w")), &e.keystroke) {
+                    cx.request_close();
+                    cx.stop_propagation();
+                }
             })
             .font_family(style::UI_FONT)
             .text_size(px(style::PLAIN_SIZE))

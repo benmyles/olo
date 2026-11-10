@@ -3,7 +3,7 @@
 //! for pixel (`tools/dev/kit-compare`).
 
 use olo_kit::{
-    Cx, Element, IntoElement as _, ParentElement as _, Styled as _, View, WindowOptions, div, metrics as m, px,
+    Cx, Element, InteractiveElement as _, IntoElement as _, Menu, MenuBar, MouseButton, ParentElement as _, Styled as _, View, WindowOptions, div, menu, metrics as m, px,
     widgets::{BBox, Button, CheckBox, LinkButton, RadioButton, StringView, heading, separator},
 };
 
@@ -35,7 +35,41 @@ impl View for Controls {
         cx.invalidate();
     }
 
+    fn command(&mut self, command: &str, cx: &mut Cx<Self>) -> bool {
+        match command {
+            "count" => self.clicks += 1,
+            "reset" => self.clicks = 0,
+            "quit" => olo_kit::quit(),
+            _ => return false,
+        }
+        cx.invalidate();
+        true
+    }
+
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        let content = self.content(cx);
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .on_mouse_down(MouseButton::Right, |e, cx| {
+                menu::context_menu(cx, menus().remove(1), e.position, menu::on_command);
+            })
+            .child(MenuBar::new(cx, menus()))
+            .child(content)
+    }
+}
+
+/// The window's menus.
+fn menus() -> Vec<Menu> {
+    vec![
+        Menu::new("File").item("Count", "count").key("k").separator().item("Quit", "quit").key("q"),
+        Menu::new("Edit").item("Reset", "reset").item("Disabled", "none").enabled(false).separator().submenu(Menu::new("More").item("One", "one").item("Two", "two").checked(true)),
+    ]
+}
+
+impl Controls {
+    fn content(&mut self, cx: &mut Cx<Self>) -> Element {
         div()
             .flex()
             .flex_col()
@@ -85,6 +119,6 @@ impl View for Controls {
 
 fn main() {
     olo_kit::run("olo.controls", |_| {
-        olo_kit::open_window(WindowOptions::new("Controls", 480.0, 460.0), |_| Controls { wrap: true, sound: false, radio: 0, clicks: 0 });
+        olo_kit::open_window(WindowOptions::new("Controls", 480.0, 490.0), |_| Controls { wrap: true, sound: false, radio: 0, clicks: 0 });
     });
 }

@@ -118,6 +118,8 @@ pub(crate) enum WindowEvent {
     TextRendering(TextRendering),
     /// A frame is starting: what animates takes its next step.
     Frame,
+    /// The display it's on, in points.
+    Display(Option<Bounds<Pixels>>),
 }
 
 /// How the display thread reaches a window's looper.
@@ -142,6 +144,7 @@ pub(crate) struct Opened {
     pub(crate) text_rendering: TextRendering,
     pub(crate) surface_id: Option<u32>,
     pub(crate) gpu: Option<GpuSpecs>,
+    pub(crate) display: Option<Bounds<Pixels>>,
 }
 
 /// How long a new size waits for the looper to lay out for it before
@@ -180,7 +183,15 @@ impl Stage {
     pub(crate) fn new(id: WindowId, window: Box<dyn PlatformWindow>, link: WindowLink) -> (Rc<Stage>, Opened) {
         let size = window.content_size();
         let scale = window.scale_factor();
-        let opened = Opened { size, scale, atlas: window.sprite_atlas(), text_rendering: window.text_rendering(), surface_id: window.surface_id(), gpu: window.gpu_specs() };
+        let opened = Opened {
+            size,
+            scale,
+            atlas: window.sprite_atlas(),
+            text_rendering: window.text_rendering(),
+            surface_id: window.surface_id(),
+            gpu: window.gpu_specs(),
+            display: window.display().map(|d| d.bounds()),
+        };
         let waker = window.frame_waker();
         let stage = Rc::new(Stage {
             id,
@@ -247,7 +258,13 @@ impl Stage {
                 }
             }
         }));
-        window.on_moved(on(|stage| stage.link.send(WindowEvent::Moved)));
+        window.on_moved(on(|stage| {
+            stage.link.send(WindowEvent::Moved);
+            let display = stage.window.borrow().as_ref().map(|w| w.display().map(|d| d.bounds()));
+            if let Some(display) = display {
+                stage.link.send(WindowEvent::Display(display));
+            }
+        }));
         window.on_should_close(Box::new({
             let weak = weak.clone();
             move || {

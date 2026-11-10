@@ -318,12 +318,15 @@ impl WindowCx<'_> {
         // Then up from it.
         for id in path.iter().rev() {
             let listeners: SmallVec<[Listener<KeyDownEvent>; 1]> = self.core.nodes.get(*id).and_then(|n| n.inter.as_ref()).map(|i| i.key_down.clone()).unwrap_or_default();
+            self.core.current = Some(*id);
             for listener in listeners {
                 listener(&event, self);
                 if !self.core.propagate {
+                    self.core.current = None;
                     return;
                 }
             }
+            self.core.current = None;
             // Space clicks what has the keyboard, if it takes clicks.
             if Some(*id) == self.core.focus && event.keystroke.key == "space" && !event.keystroke.modifiers.modified() && self.keyboard_click(*id, KeyboardButton::Space) {
                 return;
@@ -407,10 +410,13 @@ impl WindowCx<'_> {
     /// Hands something to every node that hears the pointer wherever it
     /// is in the window.
     fn to_window_listeners<E>(&mut self, pick: impl Fn(&Interactivity) -> &SmallVec<[Listener<E>; 1]>, event: &E) {
-        let listeners: Vec<Listener<E>> = self.core.window_listeners.iter().filter_map(|id| self.core.nodes.get(*id).and_then(|n| n.inter.as_ref())).flat_map(|i| pick(i).iter().cloned()).collect();
-        for listener in listeners {
+        let listeners: Vec<(NodeId, Listener<E>)> =
+            self.core.window_listeners.iter().filter_map(|id| Some((*id, self.core.nodes.get(*id)?.inter.as_ref()?))).flat_map(|(id, i)| pick(i).iter().cloned().map(move |l| (id, l))).collect();
+        for (id, listener) in listeners {
+            self.core.current = Some(id);
             listener(event, self);
         }
+        self.core.current = None;
     }
 
     /// Hands something up from what has the keyboard through what holds
@@ -419,6 +425,7 @@ impl WindowCx<'_> {
         let path = self.core.focus.map(|f| self.core.path_to(f)).unwrap_or_else(|| self.core.root.into_iter().collect());
         for id in path.iter().rev() {
             let listeners = self.core.nodes.get(*id).and_then(|n| n.inter.as_ref()).map(|i| pick(i)).unwrap_or_default();
+            self.core.current = Some(*id);
             for listener in listeners {
                 listener(event, self);
             }
@@ -426,6 +433,7 @@ impl WindowCx<'_> {
                 break;
             }
         }
+        self.core.current = None;
     }
 
     /// Gives the keyboard to a node (or to none).

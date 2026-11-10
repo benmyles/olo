@@ -4,7 +4,7 @@
 //! kit to that one.
 
 use olo_ui::{
-    WindowOptions,
+    Menu, MenuBar, WindowOptions,
     gpui::{AppContext as _, Context, IntoElement, ParentElement as _, Render, Styled as _, Window, div, px},
     metrics as m,
     widgets::{BBox, Button, CheckBox, LinkButton, RadioButton, StringView, heading, separator},
@@ -47,7 +47,11 @@ impl Render for Controls {
                 })
             }
         };
-        div()
+        let menus = vec![
+            Menu::new("File").item("Count", "count").key("k").separator().item("Quit", "quit").key("q"),
+            Menu::new("Edit").item("Reset", "reset").item("Disabled", "none").enabled(false).separator().submenu(Menu::new("More").item("One", "one").item("Two", "two").checked(true)),
+        ];
+        let content = div()
             .flex()
             .flex_col()
             .items_start()
@@ -90,12 +94,13 @@ impl Render for Controls {
             )
             .child(div().flex().gap(px(m::SPACING)).child(StringView::new(format!("Clicked {} times.", self.clicks))).child(LinkButton::new("Reset")))
             .child(div().w(px(300.0)).child(StringView::new("A paragraph of text that is long enough to wrap onto a second line in the three hundred points it is given here.").wrap(true)))
-            .child(div().w(px(160.0)).child(StringView::new("A long line cut short to fit the box it is in").cut(true)))
+            .child(div().w(px(160.0)).child(StringView::new("A long line cut short to fit the box it is in").cut(true)));
+        div().size_full().flex().flex_col().child(MenuBar::new(menus, |_, _, _| {})).child(content)
     }
 }
 
 fn main() {
     olo_ui::run("olo.controls", |cx| {
-        olo_ui::open_window(cx, WindowOptions::new("Controls", 480.0, 460.0), |_, cx| cx.new(|_| Controls { wrap: true, sound: false, radio: 0, clicks: 0 }));
+        olo_ui::open_window(cx, WindowOptions::new("Controls", 480.0, 490.0), |_, cx| cx.new(|_| Controls { wrap: true, sound: false, radio: 0, clicks: 0 }));
     });
 }

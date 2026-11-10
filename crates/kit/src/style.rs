@@ -952,3 +952,10 @@ pub fn check_mark(g: &mut Painter, r: Bounds<Pixels>, color: Hsla) {
         g.paint_path(path, color);
     }
 }
+
+/// `color` in a sunken well filling `b`: a colour well's look, and a
+/// colour's in a menu (`Menu::swatch`) or a tool bar's colour picker.
+pub fn paint_swatch(g: &mut Painter, b: Bounds<Pixels>, color: Hsla, p: &Palette) {
+    fill_rect(g, inset(g, b, 2.0), color);
+    sunken(g, b, p, false);
+}

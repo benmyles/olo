@@ -66,7 +66,7 @@ pub use text_system::*;
 pub use tree::{DISABLED_OPACITY, Measuring};
 pub use util::{FluentBuilder, arc_cow::ArcCow};
 pub use view::{AnyChild, Child, Cx, View, ViewRef};
-pub use window::{LocalWindow, WindowCx, thread_text_system, with_window_on};
+pub use window::{LocalWindow, NodeRef, WindowCx, thread_text_system, with_window_on};
 pub use yuv::{YuvFrame, YuvMatrix, YuvMemory};
 
 pub use olo_app as app_kit;

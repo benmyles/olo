@@ -65,6 +65,10 @@ pub trait View: Sized + 'static {
     /// The window got the keyboard, or lost it.
     fn window_activated(&mut self, _active: bool, _cx: &mut Cx<Self>) {}
 
+    /// The window is closing (for the window's own view): the last
+    /// thing it's told.
+    fn window_closing(&mut self, _cx: &mut Cx<Self>) {}
+
     /// What to keep of it across an upgrade in place or the display
     /// thread starting again (for the window's own view): handed back to
     /// the program as it starts again.
@@ -81,6 +85,7 @@ pub(crate) trait AnyView: 'static {
     fn command(&mut self, id: ViewId, command: &str, cx: &mut WindowCx) -> bool;
     fn close_requested(&mut self, id: ViewId, cx: &mut WindowCx) -> bool;
     fn window_activated(&mut self, id: ViewId, active: bool, cx: &mut WindowCx);
+    fn window_closing(&mut self, id: ViewId, cx: &mut WindowCx);
     fn save_state(&mut self, id: ViewId, cx: &mut WindowCx) -> Option<String>;
     fn type_name(&self) -> &'static str;
 }
@@ -112,6 +117,10 @@ impl<V: View> AnyView for V {
 
     fn save_state(&mut self, id: ViewId, cx: &mut WindowCx) -> Option<String> {
         View::save_state(self, &mut Cx::new(cx, id))
+    }
+
+    fn window_closing(&mut self, id: ViewId, cx: &mut WindowCx) {
+        View::window_closing(self, &mut Cx::new(cx, id))
     }
 
     fn type_name(&self) -> &'static str {
@@ -354,7 +363,7 @@ impl<'a, 'b, V: View> Cx<'a, 'b, V> {
     }
 
     /// A handler that hands what happened to this view.
-    pub fn listener<E: 'static>(&self, f: impl Fn(&mut V, &E, &mut Cx<V>) + 'static) -> impl Fn(&E, &mut WindowCx) + 'static {
+    pub fn listener<E: ?Sized + 'static>(&self, f: impl Fn(&mut V, &E, &mut Cx<V>) + 'static) -> impl Fn(&E, &mut WindowCx) + 'static {
         let view = self.view;
         move |event, cx| {
             cx.update_view::<V, _>(view, |this, cx| f(this, event, cx));
@@ -363,7 +372,7 @@ impl<'a, 'b, V: View> Cx<'a, 'b, V> {
 
     /// A handler that sends this view `message` whatever happened: a
     /// button's `on_click(cx.msg(Msg::Save))`.
-    pub fn msg<E: 'static>(&self, message: V::Message) -> impl Fn(&E, &mut WindowCx) + 'static
+    pub fn msg<E: ?Sized + 'static>(&self, message: V::Message) -> impl Fn(&E, &mut WindowCx) + 'static
     where
         V::Message: Clone,
     {
@@ -376,7 +385,7 @@ impl<'a, 'b, V: View> Cx<'a, 'b, V> {
 
     /// A handler that sends this view the message `f` makes of what
     /// happened.
-    pub fn msg_with<E: 'static>(&self, f: impl Fn(&E) -> V::Message + 'static) -> impl Fn(&E, &mut WindowCx) + 'static {
+    pub fn msg_with<E: ?Sized + 'static>(&self, f: impl Fn(&E) -> V::Message + 'static) -> impl Fn(&E, &mut WindowCx) + 'static {
         let view = self.view;
         move |event, cx| {
             let message = f(event);
