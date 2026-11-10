@@ -1,0 +1,8 @@
+baseline 0 {'user_s': 1.71, 'system_s': 0.05, 'wall_s': 1.93, 'max_rss_kib': 19408}
+candidate 0 {'user_s': 1.71, 'system_s': 0.04, 'wall_s': 1.85, 'max_rss_kib': 15624}
+candidate 0 {'user_s': 1.47, 'system_s': 0.04, 'wall_s': 2.19, 'max_rss_kib': 16572}
+baseline 0 {'user_s': 1.73, 'system_s': 0.05, 'wall_s': 2.52, 'max_rss_kib': 19472}
+baseline 8 {'user_s': 2.3, 'system_s': 0.05, 'wall_s': 3.44, 'max_rss_kib': 12624}
+candidate 8 {'user_s': 2.28, 'system_s': 0.05, 'wall_s': 3.33, 'max_rss_kib': 14584}
+candidate 8 {'user_s': 2.21, 'system_s': 0.05, 'wall_s': 2.99, 'max_rss_kib': 13168}
+baseline 8 {'user_s': 1.99, 'system_s': 0.05, 'wall_s': 2.87, 'max_rss_kib': 13108}

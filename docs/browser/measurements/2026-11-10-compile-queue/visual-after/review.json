@@ -1,0 +1,3077 @@
+[
+  {
+    "mode": "light",
+    "scale": 1,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.0,
+        "dark": false,
+        "findings": []
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-compile-queue/live.html",
+            "x": 250.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-compile-queue/live.html\",\"navigation\":1,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "Live stylesheet completion",
+            "x": 87.60547,
+            "y": 176.60938,
+            "width": 303.66797,
+            "height": 22.371094,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Changing a stylesheet compiles its rules on a worker, then updat es this page.",
+            "x": 86.8125,
+            "y": 221.40625,
+            "width": 545.60156,
+            "height": 14.9140625,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "Apply new stylesheet",
+            "x": 94.02605,
+            "y": 261.33856,
+            "width": 125.1299,
+            "height": 12.42836,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "New rules applied",
+            "x": 99.3125,
+            "y": 315.40625,
+            "width": 124.83594,
+            "height": 14.9140625,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Button",
+            "name": "Apply new stylesheet",
+            "x": 86.0,
+            "y": 256.07812,
+            "width": 141.21875,
+            "height": 21.0,
+            "enabled": true,
+            "clickable": true,
+            "focused": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Live stylesheet completion \u00b7 1 scripts \u00b7 0 stylesheet issues",
+            "x": 70.0,
+            "y": 733.172,
+            "width": 319.8119,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 1.25,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.25,
+        "dark": false,
+        "findings": []
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-compile-queue/live.html",
+            "x": 250.0,
+            "y": 104.4,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-compile-queue/live.html\",\"navigation\":1,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.4,
+            "width": 1000.0,
+            "height": 577.6,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "Live stylesheet completion",
+            "x": 87.60547,
+            "y": 176.60938,
+            "width": 303.66797,
+            "height": 22.371094,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Changing a stylesheet compiles its rules on a worker, then updat es this page.",
+            "x": 86.8125,
+            "y": 221.60626,
+            "width": 545.60156,
+            "height": 14.9140625,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "Apply new stylesheet",
+            "x": 93.62604,
+            "y": 260.33856,
+            "width": 125.1299,
+            "height": 12.42836,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "New rules applied",
+            "x": 99.3125,
+            "y": 316.00626,
+            "width": 124.83594,
+            "height": 14.9140625,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Button",
+            "name": "Apply new stylesheet",
+            "x": 86.0,
+            "y": 255.675,
+            "width": 140.3875,
+            "height": 21.199997,
+            "enabled": true,
+            "clickable": true,
+            "focused": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Live stylesheet completion \u00b7 1 scripts \u00b7 0 stylesheet issues",
+            "x": 70.0,
+            "y": 733.172,
+            "width": 319.8119,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 1.5,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.5,
+        "dark": false,
+        "findings": []
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-compile-queue/live.html",
+            "x": 250.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-compile-queue/live.html\",\"navigation\":1,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "Live stylesheet completion",
+            "x": 87.60547,
+            "y": 176.60938,
+            "width": 303.66797,
+            "height": 22.371094,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Changing a stylesheet compiles its rules on a worker, then updat es this page.",
+            "x": 86.8125,
+            "y": 221.7396,
+            "width": 545.60156,
+            "height": 14.9140625,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "Apply new stylesheet",
+            "x": 94.02605,
+            "y": 261.6719,
+            "width": 125.1299,
+            "height": 12.42836,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "New rules applied",
+            "x": 99.3125,
+            "y": 316.40625,
+            "width": 124.83594,
+            "height": 14.9140625,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Button",
+            "name": "Apply new stylesheet",
+            "x": 86.0,
+            "y": 256.0729,
+            "width": 141.15625,
+            "height": 21.333328,
+            "enabled": true,
+            "clickable": true,
+            "focused": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Live stylesheet completion \u00b7 1 scripts \u00b7 0 stylesheet issues",
+            "x": 70.0,
+            "y": 733.172,
+            "width": 319.8119,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 1.75,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.75,
+        "dark": false,
+        "findings": []
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-compile-queue/live.html",
+            "x": 250.0,
+            "y": 104.28571,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-compile-queue/live.html\",\"navigation\":1,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.2857,
+            "width": 1000.0,
+            "height": 577.7143,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "Live stylesheet completion",
+            "x": 87.60547,
+            "y": 176.60938,
+            "width": 303.66797,
+            "height": 22.371094,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Changing a stylesheet compiles its rules on a worker, then updat es this page.",
+            "x": 86.8125,
+            "y": 221.2634,
+            "width": 545.60156,
+            "height": 14.9140625,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "Apply new stylesheet",
+            "x": 93.740326,
+            "y": 260.91,
+            "width": 125.1299,
+            "height": 12.42836,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "New rules applied",
+            "x": 99.3125,
+            "y": 315.5491,
+            "width": 124.83594,
+            "height": 14.9140625,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Button",
+            "name": "Apply new stylesheet",
+            "x": 86.0,
+            "y": 255.7857,
+            "width": 140.66072,
+            "height": 20.857147,
+            "enabled": true,
+            "clickable": true,
+            "focused": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Live stylesheet completion \u00b7 1 scripts \u00b7 0 stylesheet issues",
+            "x": 70.0,
+            "y": 733.172,
+            "width": 319.8119,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 2,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 2.0,
+        "dark": false,
+        "findings": []
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-compile-queue/live.html",
+            "x": 250.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-compile-queue/live.html\",\"navigation\":1,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "Live stylesheet completion",
+            "x": 87.60547,
+            "y": 176.60938,
+            "width": 303.66797,
+            "height": 22.371094,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Changing a stylesheet compiles its rules on a worker, then updat es this page.",
+            "x": 86.8125,
+            "y": 221.40625,
+            "width": 545.60156,
+            "height": 14.9140625,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "Apply new stylesheet",
+            "x": 94.02605,
+            "y": 260.83856,
+            "width": 125.1299,
+            "height": 12.42836,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "New rules applied",
+            "x": 99.3125,
+            "y": 315.90625,
+            "width": 124.83594,
+            "height": 14.9140625,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Button",
+            "name": "Apply new stylesheet",
+            "x": 86.0,
+            "y": 255.57812,
+            "width": 141.21094,
+            "height": 21.5,
+            "enabled": true,
+            "clickable": true,
+            "focused": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Live stylesheet completion \u00b7 1 scripts \u00b7 0 stylesheet issues",
+            "x": 70.0,
+            "y": 733.672,
+            "width": 319.8119,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.0,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-compile-queue/live.html",
+            "x": 250.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-compile-queue/live.html\",\"navigation\":1,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "Live stylesheet completion",
+            "x": 87.60547,
+            "y": 176.60938,
+            "width": 303.66797,
+            "height": 22.371094,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Changing a stylesheet compiles its rules on a worker, then updat es this page.",
+            "x": 86.8125,
+            "y": 221.40625,
+            "width": 545.60156,
+            "height": 14.9140625,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "Apply new stylesheet",
+            "x": 94.02605,
+            "y": 261.33856,
+            "width": 125.1299,
+            "height": 12.42836,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "New rules applied",
+            "x": 99.3125,
+            "y": 315.40625,
+            "width": 124.83594,
+            "height": 14.9140625,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Button",
+            "name": "Apply new stylesheet",
+            "x": 86.0,
+            "y": 256.07812,
+            "width": 141.21875,
+            "height": 21.0,
+            "enabled": true,
+            "clickable": true,
+            "focused": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Live stylesheet completion \u00b7 1 scripts \u00b7 0 stylesheet issues",
+            "x": 70.0,
+            "y": 733.172,
+            "width": 319.8119,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1.25,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.25,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-compile-queue/live.html",
+            "x": 250.0,
+            "y": 104.4,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-compile-queue/live.html\",\"navigation\":1,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.4,
+            "width": 1000.0,
+            "height": 577.6,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "Live stylesheet completion",
+            "x": 87.60547,
+            "y": 176.60938,
+            "width": 303.66797,
+            "height": 22.371094,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Changing a stylesheet compiles its rules on a worker, then updat es this page.",
+            "x": 86.8125,
+            "y": 221.60626,
+            "width": 545.60156,
+            "height": 14.9140625,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "Apply new stylesheet",
+            "x": 93.62604,
+            "y": 260.33856,
+            "width": 125.1299,
+            "height": 12.42836,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "New rules applied",
+            "x": 99.3125,
+            "y": 316.00626,
+            "width": 124.83594,
+            "height": 14.9140625,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Button",
+            "name": "Apply new stylesheet",
+            "x": 86.0,
+            "y": 255.675,
+            "width": 140.3875,
+            "height": 21.199997,
+            "enabled": true,
+            "clickable": true,
+            "focused": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Live stylesheet completion \u00b7 1 scripts \u00b7 0 stylesheet issues",
+            "x": 70.0,
+            "y": 733.172,
+            "width": 319.8119,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1.5,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.5,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-compile-queue/live.html",
+            "x": 250.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-compile-queue/live.html\",\"navigation\":1,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "Live stylesheet completion",
+            "x": 87.60547,
+            "y": 176.60938,
+            "width": 303.66797,
+            "height": 22.371094,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Changing a stylesheet compiles its rules on a worker, then updat es this page.",
+            "x": 86.8125,
+            "y": 221.7396,
+            "width": 545.60156,
+            "height": 14.9140625,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "Apply new stylesheet",
+            "x": 94.02605,
+            "y": 261.6719,
+            "width": 125.1299,
+            "height": 12.42836,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "New rules applied",
+            "x": 99.3125,
+            "y": 316.40625,
+            "width": 124.83594,
+            "height": 14.9140625,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Button",
+            "name": "Apply new stylesheet",
+            "x": 86.0,
+            "y": 256.0729,
+            "width": 141.15625,
+            "height": 21.333328,
+            "enabled": true,
+            "clickable": true,
+            "focused": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Live stylesheet completion \u00b7 1 scripts \u00b7 0 stylesheet issues",
+            "x": 70.0,
+            "y": 733.172,
+            "width": 319.8119,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1.75,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.75,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-compile-queue/live.html",
+            "x": 250.0,
+            "y": 104.28571,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-compile-queue/live.html\",\"navigation\":1,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.2857,
+            "width": 1000.0,
+            "height": 577.7143,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "Live stylesheet completion",
+            "x": 87.60547,
+            "y": 176.60938,
+            "width": 303.66797,
+            "height": 22.371094,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Changing a stylesheet compiles its rules on a worker, then updat es this page.",
+            "x": 86.8125,
+            "y": 221.2634,
+            "width": 545.60156,
+            "height": 14.9140625,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "Apply new stylesheet",
+            "x": 93.740326,
+            "y": 260.91,
+            "width": 125.1299,
+            "height": 12.42836,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "New rules applied",
+            "x": 99.3125,
+            "y": 315.5491,
+            "width": 124.83594,
+            "height": 14.9140625,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Button",
+            "name": "Apply new stylesheet",
+            "x": 86.0,
+            "y": 255.7857,
+            "width": 140.66072,
+            "height": 20.857147,
+            "enabled": true,
+            "clickable": true,
+            "focused": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Live stylesheet completion \u00b7 1 scripts \u00b7 0 stylesheet issues",
+            "x": 70.0,
+            "y": 733.172,
+            "width": 319.8119,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 2,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 2.0,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-compile-queue/live.html",
+            "x": 250.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-compile-queue/live.html\",\"navigation\":1,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "Live stylesheet completion",
+            "x": 87.60547,
+            "y": 176.60938,
+            "width": 303.66797,
+            "height": 22.371094,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Changing a stylesheet compiles its rules on a worker, then updat es this page.",
+            "x": 86.8125,
+            "y": 221.40625,
+            "width": 545.60156,
+            "height": 14.9140625,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "Apply new stylesheet",
+            "x": 94.02605,
+            "y": 260.83856,
+            "width": 125.1299,
+            "height": 12.42836,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "New rules applied",
+            "x": 99.3125,
+            "y": 315.90625,
+            "width": 124.83594,
+            "height": 14.9140625,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Button",
+            "name": "Apply new stylesheet",
+            "x": 86.0,
+            "y": 255.57812,
+            "width": 141.21094,
+            "height": 21.5,
+            "enabled": true,
+            "clickable": true,
+            "focused": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Live stylesheet completion \u00b7 1 scripts \u00b7 0 stylesheet issues",
+            "x": 70.0,
+            "y": 733.672,
+            "width": 319.8119,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.0,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-compile-queue/live.html",
+            "x": 250.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-compile-queue/live.html\",\"navigation\":1,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "Live stylesheet completion",
+            "x": 87.60547,
+            "y": 176.60938,
+            "width": 303.66797,
+            "height": 22.371094,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Changing a stylesheet compiles its rules on a worker, then updat es this page.",
+            "x": 86.8125,
+            "y": 221.40625,
+            "width": 545.60156,
+            "height": 14.9140625,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "Apply new stylesheet",
+            "x": 94.02605,
+            "y": 261.33856,
+            "width": 125.1299,
+            "height": 12.42836,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "New rules applied",
+            "x": 99.3125,
+            "y": 315.40625,
+            "width": 124.83594,
+            "height": 14.9140625,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Button",
+            "name": "Apply new stylesheet",
+            "x": 86.0,
+            "y": 256.07812,
+            "width": 141.21875,
+            "height": 21.0,
+            "enabled": true,
+            "clickable": true,
+            "focused": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Live stylesheet completion \u00b7 1 scripts \u00b7 0 stylesheet issues",
+            "x": 70.0,
+            "y": 733.172,
+            "width": 319.8119,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1.25,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.25,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-compile-queue/live.html",
+            "x": 250.0,
+            "y": 104.4,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-compile-queue/live.html\",\"navigation\":1,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.4,
+            "width": 1000.0,
+            "height": 577.6,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "Live stylesheet completion",
+            "x": 87.60547,
+            "y": 176.60938,
+            "width": 303.66797,
+            "height": 22.371094,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Changing a stylesheet compiles its rules on a worker, then updat es this page.",
+            "x": 86.8125,
+            "y": 221.60626,
+            "width": 545.60156,
+            "height": 14.9140625,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "Apply new stylesheet",
+            "x": 93.62604,
+            "y": 260.33856,
+            "width": 125.1299,
+            "height": 12.42836,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "New rules applied",
+            "x": 99.3125,
+            "y": 316.00626,
+            "width": 124.83594,
+            "height": 14.9140625,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Button",
+            "name": "Apply new stylesheet",
+            "x": 86.0,
+            "y": 255.675,
+            "width": 140.3875,
+            "height": 21.199997,
+            "enabled": true,
+            "clickable": true,
+            "focused": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Live stylesheet completion \u00b7 1 scripts \u00b7 0 stylesheet issues",
+            "x": 70.0,
+            "y": 733.172,
+            "width": 319.8119,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1.5,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.5,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-compile-queue/live.html",
+            "x": 250.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-compile-queue/live.html\",\"navigation\":1,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "Live stylesheet completion",
+            "x": 87.60547,
+            "y": 176.60938,
+            "width": 303.66797,
+            "height": 22.371094,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Changing a stylesheet compiles its rules on a worker, then updat es this page.",
+            "x": 86.8125,
+            "y": 221.7396,
+            "width": 545.60156,
+            "height": 14.9140625,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "Apply new stylesheet",
+            "x": 94.02605,
+            "y": 261.6719,
+            "width": 125.1299,
+            "height": 12.42836,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "New rules applied",
+            "x": 99.3125,
+            "y": 316.40625,
+            "width": 124.83594,
+            "height": 14.9140625,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Button",
+            "name": "Apply new stylesheet",
+            "x": 86.0,
+            "y": 256.0729,
+            "width": 141.15625,
+            "height": 21.333328,
+            "enabled": true,
+            "clickable": true,
+            "focused": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Live stylesheet completion \u00b7 1 scripts \u00b7 0 stylesheet issues",
+            "x": 70.0,
+            "y": 733.172,
+            "width": 319.8119,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1.75,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.75,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-compile-queue/live.html",
+            "x": 250.0,
+            "y": 104.28571,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-compile-queue/live.html\",\"navigation\":1,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.2857,
+            "width": 1000.0,
+            "height": 577.7143,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "Live stylesheet completion",
+            "x": 87.60547,
+            "y": 176.60938,
+            "width": 303.66797,
+            "height": 22.371094,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Changing a stylesheet compiles its rules on a worker, then updat es this page.",
+            "x": 86.8125,
+            "y": 221.2634,
+            "width": 545.60156,
+            "height": 14.9140625,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "Apply new stylesheet",
+            "x": 93.740326,
+            "y": 260.91,
+            "width": 125.1299,
+            "height": 12.42836,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "New rules applied",
+            "x": 99.3125,
+            "y": 315.5491,
+            "width": 124.83594,
+            "height": 14.9140625,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Button",
+            "name": "Apply new stylesheet",
+            "x": 86.0,
+            "y": 255.7857,
+            "width": 140.66072,
+            "height": 20.857147,
+            "enabled": true,
+            "clickable": true,
+            "focused": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Live stylesheet completion \u00b7 1 scripts \u00b7 0 stylesheet issues",
+            "x": 70.0,
+            "y": 733.172,
+            "width": 319.8119,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 2,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 2.0,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-compile-queue/live.html",
+            "x": 250.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-compile-queue/live.html\",\"navigation\":1,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "Live stylesheet completion",
+            "x": 87.60547,
+            "y": 176.60938,
+            "width": 303.66797,
+            "height": 22.371094,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Changing a stylesheet compiles its rules on a worker, then updat es this page.",
+            "x": 86.8125,
+            "y": 221.40625,
+            "width": 545.60156,
+            "height": 14.9140625,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "Apply new stylesheet",
+            "x": 94.02605,
+            "y": 260.83856,
+            "width": 125.1299,
+            "height": 12.42836,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "New rules applied",
+            "x": 99.3125,
+            "y": 315.90625,
+            "width": 124.83594,
+            "height": 14.9140625,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Button",
+            "name": "Apply new stylesheet",
+            "x": 86.0,
+            "y": 255.57812,
+            "width": 141.21094,
+            "height": 21.5,
+            "enabled": true,
+            "clickable": true,
+            "focused": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Live stylesheet completion \u00b7 1 scripts \u00b7 0 stylesheet issues",
+            "x": 70.0,
+            "y": 733.672,
+            "width": 319.8119,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  }
+]

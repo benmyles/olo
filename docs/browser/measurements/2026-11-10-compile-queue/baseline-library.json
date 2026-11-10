@@ -1,0 +1,10 @@
+{
+  "commit": "19f1de36",
+  "library_original": "target/release/deps/libolo_web-cfdb84fba6ee2074.rlib",
+  "original_mtime_local": "2026-11-09 23:49",
+  "library_sha256": "c6c4c3b86f11a137a1e0fae994382f4896a694430f4c6fa9d54715c775ae509c",
+  "features": [],
+  "harness": "crates/web/examples/compile_queue_bench.rs",
+  "command": "CARGO_MANIFEST_DIR=/home/ben/worktrees/olo/browser/crates/web rustc --edition=2024 -C opt-level=3 -C debuginfo=1 -L dependency=target/release/deps --extern olo_web=/var/tmp/codex-browser-compile-queue/libolo_web_before.rlib crates/web/examples/compile_queue_bench.rs -o /var/tmp/codex-browser-compile-queue/burst-before",
+  "note": "Frozen prior release rlib linked into the new public-API benchmark. Initial smoke observed 64 style compiler threads; measurements taken separately after builds."
+}

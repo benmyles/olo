@@ -1,0 +1,191 @@
+[
+  {
+    "variant": "candidate",
+    "pid": 3407509,
+    "observed_workers": [
+      3407643
+    ],
+    "command_ms": 3.944272,
+    "stop_to_workers_exit_ms": 13.502672,
+    "cpu_after_stop_ms": 10.0,
+    "tree": [
+      {
+        "window": 3,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-compile-queue/stop.html",
+            "x": 250.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-compile-queue/stop.html\",\"navigation\":1,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "Stylesheet cancellation",
+            "x": 86.921875,
+            "y": 177.8125,
+            "width": 351.01562,
+            "height": 29.828125,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Compile large stylesheet",
+            "x": 94.67708,
+            "y": 235.33856,
+            "width": 145.221,
+            "height": 12.42836,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "Current page",
+            "x": 86.8125,
+            "y": 253.82812,
+            "width": 91.86719,
+            "height": 14.4921875,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Button",
+            "name": "Compile large stylesheet",
+            "x": 86.0,
+            "y": 230.4375,
+            "width": 161.95312,
+            "height": 21.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Label",
+            "name": "Stopped",
+            "x": 70.0,
+            "y": 733.172,
+            "width": 47.088005,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  }
+]

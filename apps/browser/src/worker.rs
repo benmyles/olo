@@ -61,6 +61,9 @@ pub struct Request {
 }
 pub enum Message {
     Render(Box<Request>),
+    /// Stop only this navigation's pending stylesheet work. An old stop
+    /// must not cancel a newer document's compilation.
+    CancelStylesheets(u64),
     /// What the live page's scripts asked for over the network, fetched
     /// (from the worker's own loads).
     Loaded(u64, Result<olo_js::Loaded, String>),
@@ -896,6 +899,7 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                                 eprintln!("Browser live: {error}");
                                 if let Some(c) = cached.as_mut() {
                                     c.live = None;
+                                    c.page.cancel_stylesheet_refresh();
                                 }
                             }
                         }
@@ -903,6 +907,14 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                     };
                     let mut r = match message {
                         Message::Render(r) => r,
+                        Message::CancelStylesheets(navigation) => {
+                            if last.as_ref().is_some_and(|r| r.navigation == navigation)
+                                && let Some(c) = cached.as_mut()
+                            {
+                                c.page.cancel_stylesheet_refresh();
+                            }
+                            continue;
+                        }
                         Message::Loaded(id, result) => {
                             // The live page's scripts hear of it now; what
                             // they draw renders at once.
@@ -1141,6 +1153,7 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                             Message::Loaded(id, result) => kept.push_back(Message::Loaded(id, result)),
                             Message::Wake => kept.push_back(Message::Wake),
                             Message::Arrived => kept.push_back(Message::Arrived),
+                            Message::CancelStylesheets(navigation) => kept.push_back(Message::CancelStylesheets(navigation)),
                             Message::Frame => kept.push_back(Message::Frame),
                             Message::Recycle(images) => drop(images),
                             Message::SharedTextures(list) => kept.push_back(Message::SharedTextures(list)),
@@ -1245,6 +1258,7 @@ fn render(
         if let Some(why) = live.realm.stopped() {
             proxy.send(Reply::Status(r.id, format!("This page's scripts were stopped: {why}.")));
             c.live = None;
+            c.page.cancel_stylesheet_refresh();
             return Ok(());
         }
         live.loads.dispatch(&mut live.realm);

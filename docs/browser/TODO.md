@@ -241,9 +241,15 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
   the full web/browser/JS release suites pass with normal parallelism (544
   passed, two existing ignored). See `measurements/2026-11-09-rule-completion.json`.
   The original intermittent failure remains in `measurements/2026-11-09-grid/tests-final.log`.
-- [ ] Bound background rule compilation concurrency and cancel work no page
-  still needs. Completion ownership is fixed, but each distinct job still
-  starts a thread and compilation receives no cancellation flag.
+- [x] Bound background rule compilation concurrency and cancel work no page
+  still needs. At most two workers drain a queue and exit when it is empty.
+  Dropped/superseded requests remove queued inputs and cancel active work at
+  compiler checks; synchronous consumers also retain ownership. Stop and
+  navigation release the matching document's request. Failures reach all
+  waiters without recompiling on the page loop. The 64-page burst observed
+  at most two workers, versus 64 before; all 548 release tests passed.
+  Timing controls were contended and scrolling still had hitches: see
+  `measurements/2026-11-10-compile-queue.json`, not a general performance pass.
 - [x] A page's tiles were painted one after another on its thread: up to
   16 at a time are painted side by side on the CPU pool now (each pool
   thread a painter of its own), shown in order.

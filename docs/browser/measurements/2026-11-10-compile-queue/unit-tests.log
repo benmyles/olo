@@ -1,0 +1,170 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/ben/worktrees/olo/browser/smithay/smithay/Cargo.toml
+workspace: /home/ben/worktrees/olo/browser/Cargo.toml
+   Compiling olo-web v0.1.0 (/home/ben/worktrees/olo/browser/crates/web)
+warning: unnecessary parentheses around closure body
+  --> crates/web/src/chunked.rs:55:143
+   |
+55 | ...e_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+   |                                                    ^                              ^
+   |
+   = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+   |
+55 -         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+55 +         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| i * CHUNK..i * CHUNK + c.len())
+   |
+
+warning: unused attribute `allow`
+  --> crates/web/src/paint/image.rs:44:1
+   |
+44 | #[allow(clippy::too_many_arguments)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: the built-in attribute `allow` will be ignored, since it's applied to the macro invocation `thread_local`
+  --> crates/web/src/paint/image.rs:45:1
+   |
+45 | thread_local! {
+   | ^^^^^^^^^^^^
+   = note: `#[warn(unused_attributes)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `size` is never read
+   --> crates/web/src/css/properties/font.rs:274:20
+    |
+274 |     let mut size = None;
+    |                    ^^^^ this value is reassigned later and never used
+...
+353 |     size = Some(super::parse::component(Property::FontSize.grammar(), c, limits, cancelled)?);
+    |     ---- `size` is overwritten here before the previous value is read
+    |
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `family` is never read
+   --> crates/web/src/css/properties/font.rs:276:22
+    |
+276 |     let mut family = None;
+    |                      ^^^^ this value is reassigned later and never used
+...
+363 |     family = Some(Families::parse(parts[i..].iter().copied(), cancelled)?);
+    |     ------ `family` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+   --> crates/web/src/css/style/job.rs:536:25
+    |
+536 |                     let mut walk = |root: NodeId, reach: &selectors::Reach, nodes: &mut crate::dom::NodeSet| {
+    |                         ----^^^^
+    |                         |
+    |                         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates/web/src/page/interaction.rs:38:13
+   |
+38 |         let mut differ = |a: Option<NodeId>, b: Option<NodeId>, state: State, out: &mut Vec<(NodeId, &'static str)>| {
+   |             ----^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: value assigned to `path` is never read
+   --> crates/web/src/page.rs:894:24
+    |
+894 |         let mut path = String::new();
+    |                        ^^^^^^^^^^^^^ this value is reassigned later and never used
+...
+904 |                             path = format!("patched in place, {} elements", nodes.len());
+    |                             ---- `path` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+    --> crates/web/src/page.rs:3924:13
+     |
+3924 |         let mut subject = |a: crate::dom::NodeId, reached: &mut Vec<crate::dom::NodeId>| {
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: value assigned to `skip` is never read
+    --> crates/web/src/svg/viewport.rs:949:24
+     |
+ 949 |         let mut skip = false;
+     |                        ^^^^^ this value is reassigned later and never used
+...
+1019 |             skip = true;
+     |             ----------- `skip` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+  --> crates/web/src/text/prepare.rs:79:23
+   |
+79 |         let single = |mut it: &mut dyn Iterator<Item = char>| {
+   |                       ----^^
+   |                       |
+   |                       help: remove this `mut`
+
+warning: method `get_mut` is never used
+  --> crates/web/src/chunked.rs:57:19
+   |
+22 | impl<T: Clone> Chunked<T> {
+   | ------------------------- method in this implementation
+...
+57 |     pub(crate) fn get_mut(&mut self, i: usize) -> Option<&mut T> {
+   |                   ^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated function `new` is never used
+  --> crates/web/src/paint/index.rs:16:12
+   |
+15 | impl Index {
+   | ---------- associated function in this implementation
+16 |     pub fn new(commands: &[Command], transforms: &[[f64; 6]], cancel: Option<&AtomicBool>) -> Result<Self> {
+   |            ^^^
+
+warning: variant `Quad` is never constructed
+   --> crates/web/src/svg/script.rs:258:5
+    |
+256 | enum Seg {
+    |      --- variant in this enum
+257 |     Line(F, F),
+258 |     Quad([F; 3]),
+    |     ^^^^
+    |
+    = note: `Seg` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: `olo-web` (lib test) generated 13 warnings (run `cargo fix --lib -p olo-web --tests` to apply 6 suggestions)
+    Finished `release` profile [optimized + debuginfo] target(s) in 14.37s
+     Running unittests src/lib.rs (target/release/deps/olo_web-3ba9e41798187565)
+
+running 30 tests
+test css::media::tests::widths_types_and_logic ... ok
+test css::animation::tests::values_interpolate_by_their_tokens ... ok
+test css::properties::animation::tests::the_shorthand_splits_by_kind_and_order ... ok
+test css::properties::decoration::filter_tests::backdrop_filters_keep_blur_and_saturate_in_order ... ok
+test css::properties::decoration::filter_tests::colour_filters_make_one_matrix ... ok
+test css::animation::tests::progress_follows_delay_count_direction_and_fill ... ok
+test css::properties::font::tests::a_generic_word_inside_an_unquoted_name_is_part_of_it ... ok
+test css::properties::transform::tests::matrices_compose_in_list_order ... ok
+test font::woff::tests::base128_and_255 ... ok
+test css::media::tests::supports_declarations ... ok
+test font::casefold::tests::every_normative_default_full_mapping ... ok
+test css::properties::animation::tests::easings_follow_their_curves ... ok
+test font::woff::tests::triplets_follow_the_specification_table ... ok
+test html::bytes::detection_tests::undeclared_utf8_is_utf8_and_other_bytes_windows_1252 ... ok
+test page::sheet_tests::background_rules_ready_before_subscription_are_taken_immediately ... ok
+test page::sheet_tests::background_rules_discard_a_superseded_request ... ok
+test page::sheet_tests::integrity_takes_the_strongest_digest_and_both_base64_forms ... ok
+test srcset::tests::sources_densities_and_widths_pick_as_html_says ... ok
+test text::layout::spacing::tests::edges_belong_to_the_correct_side_of_a_line_break ... ok
+test css::properties::inert_tests::inert_names_are_sorted ... ok
+test page::sheet_tests::background_rules_notify_each_live_request_once ... ok
+test css::properties::animation::tests::the_transition_shorthand_splits_by_kind_and_order ... ok
+test paint::decoration::bevel_tests::inset_and_outset_shade_as_chrome ... ok
+test paint::mipmap::tests::packed_reduction_matches_normalized_weighted_reference ... ok
+test page::background::tests::bounds_work_removes_queued_inputs_and_keeps_survivors ... ok
+test paint::mipmap::tests::budgets_eviction_weak_lifetimes_and_cancellation ... ok
+test layout::used::layout_grid_survives_fractional_scale_round_trips ... ok
+test paint::mipmap::tests::odd_axis_weights_are_explicit_and_checker_averages_floor ... ok
+test paint::raster::tests::upscale_matches_bilinear_drawing ... ok
+test paint::raster::tests::blur_matches_the_direct_box_blurs ... ok
+
+test result: ok. 30 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

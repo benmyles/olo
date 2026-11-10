@@ -1,0 +1,787 @@
+[
+  {
+    "compilers_before": "3422772      88 69.4\n3425279      38 67.3\n3425473      32 72.1\n3425509      32 35.2\n3425883      24 64.4\n3426036      23 71.5\n3426126      21 59.3\n3427199       8 66.4\n3427290       7 61.3\n",
+    "compilers_after": "3422772      89 69.3\n3425279      39 70.4\n3425473      34 74.0\n3425509      33 35.6\n3425883      26 71.0\n3426036      24 75.0\n3426126      23 59.2\n3427199      10 62.7\n3427290       9 60.5\n",
+    "load_before": [
+      47.00732421875,
+      45.31396484375,
+      39.58251953125
+    ],
+    "variant": "baseline",
+    "pid": 3428021,
+    "observed_workers": [
+      3428203
+    ],
+    "command_ms": 1.358237,
+    "stop_to_workers_exit_ms": 174.073791,
+    "cpu_after_stop_ms": 260.0,
+    "tree": [
+      {
+        "window": 4,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-compile-queue/stop.html",
+            "x": 250.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-compile-queue/stop.html\",\"navigation\":1,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "Stylesheet cancellation",
+            "x": 86.921875,
+            "y": 177.8125,
+            "width": 351.01562,
+            "height": 29.828125,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Compile large stylesheet",
+            "x": 94.67708,
+            "y": 235.33856,
+            "width": 145.221,
+            "height": 12.42836,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "Current page",
+            "x": 86.8125,
+            "y": 253.82812,
+            "width": 91.86719,
+            "height": 14.4921875,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Button",
+            "name": "Compile large stylesheet",
+            "x": 86.0,
+            "y": 230.4375,
+            "width": 161.95312,
+            "height": 21.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Label",
+            "name": "Stopped",
+            "x": 70.0,
+            "y": 733.172,
+            "width": 47.088005,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "compilers_before": "3422772      89 69.4\n3425279      39 70.6\n3425473      34 74.1\n3425509      33 35.6\n3425883      26 71.3\n3426036      24 75.2\n3426126      23 59.3\n3427199      10 62.3\n3427290       9 60.1\n",
+    "compilers_after": "3422772      90 68.9\n3425279      40 73.3\n3425473      35 77.9\n3425509      34 36.5\n3425883      27 75.5\n3426036      25 75.9\n3426126      24 57.8\n3427199      11 59.3\n3427290      10 57.4\n",
+    "load_before": [
+      47.00732421875,
+      45.31396484375,
+      39.58251953125
+    ],
+    "variant": "candidate",
+    "pid": 3428259,
+    "observed_workers": [
+      3428427
+    ],
+    "command_ms": 1.841462,
+    "stop_to_workers_exit_ms": 10.262359,
+    "cpu_after_stop_ms": 10.0,
+    "tree": [
+      {
+        "window": 5,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-compile-queue/stop.html",
+            "x": 250.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-compile-queue/stop.html\",\"navigation\":1,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "Stylesheet cancellation",
+            "x": 86.921875,
+            "y": 177.8125,
+            "width": 351.01562,
+            "height": 29.828125,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Compile large stylesheet",
+            "x": 94.67708,
+            "y": 235.33856,
+            "width": 145.221,
+            "height": 12.42836,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "Current page",
+            "x": 86.8125,
+            "y": 253.82812,
+            "width": 91.86719,
+            "height": 14.4921875,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Button",
+            "name": "Compile large stylesheet",
+            "x": 86.0,
+            "y": 230.4375,
+            "width": 161.95312,
+            "height": 21.0,
+            "enabled": true,
+            "clickable": true,
+            "focused": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Label",
+            "name": "Stopped",
+            "x": 70.0,
+            "y": 733.172,
+            "width": 47.088005,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "compilers_before": "3422772      90 68.9\n3425279      40 73.5\n3425473      35 78.0\n3425509      34 36.5\n3425883      27 75.7\n3426036      25 75.8\n3426126      24 57.7\n3427199      11 59.3\n3427290      10 57.3\n",
+    "compilers_after": "3422772      91 68.4\n3425279      41 75.1\n3425473      36 79.8\n3425509      35 37.4\n3425883      28 77.5\n3426036      26 75.0\n3426126      25 57.4\n3427199      12 61.7\n3427290      11 58.2\n",
+    "load_before": [
+      46.76611328125,
+      45.2919921875,
+      39.6064453125
+    ],
+    "variant": "candidate",
+    "pid": 3428489,
+    "observed_workers": [
+      3428592
+    ],
+    "command_ms": 1.312663,
+    "stop_to_workers_exit_ms": 12.491872,
+    "cpu_after_stop_ms": 20.0,
+    "tree": [
+      {
+        "window": 6,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-compile-queue/stop.html",
+            "x": 250.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-compile-queue/stop.html\",\"navigation\":1,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "Stylesheet cancellation",
+            "x": 86.921875,
+            "y": 177.8125,
+            "width": 351.01562,
+            "height": 29.828125,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Compile large stylesheet",
+            "x": 94.67708,
+            "y": 235.33856,
+            "width": 145.221,
+            "height": 12.42836,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "Current page",
+            "x": 86.8125,
+            "y": 253.82812,
+            "width": 91.86719,
+            "height": 14.4921875,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Button",
+            "name": "Compile large stylesheet",
+            "x": 86.0,
+            "y": 230.4375,
+            "width": 161.95312,
+            "height": 21.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Label",
+            "name": "Stopped",
+            "x": 70.0,
+            "y": 733.172,
+            "width": 47.088005,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "compilers_before": "3422772      91 68.4\n3425279      41 75.1\n3425473      36 79.9\n3425509      35 37.4\n3425883      28 77.5\n3426036      26 75.0\n3426126      25 57.4\n3427199      12 61.8\n3427290      11 58.2\n",
+    "compilers_after": "3422772      93 67.6\n3425279      42 75.7\n3425473      37 83.4\n3425509      37 39.7\n3425883      29 79.1\n3426036      27 76.0\n3426126      26 57.6\n3427199      13 60.4\n3427290      12 60.6\n",
+    "load_before": [
+      46.76611328125,
+      45.2919921875,
+      39.6064453125
+    ],
+    "variant": "baseline",
+    "pid": 3428609,
+    "observed_workers": [
+      3428731
+    ],
+    "command_ms": 2.395345,
+    "stop_to_workers_exit_ms": 261.565471,
+    "cpu_after_stop_ms": 310.0,
+    "tree": [
+      {
+        "window": 7,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 54,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 54.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 62.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 97.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 66.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 158.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/codex-browser-compile-queue/stop.html",
+            "x": 250.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 870.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 962.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/codex-browser-compile-queue/stop.html\",\"navigation\":1,\"document\":3,\"fallbacks\":\"\"}",
+            "x": 54.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "Stylesheet cancellation",
+            "x": 86.921875,
+            "y": 177.8125,
+            "width": 351.01562,
+            "height": 29.828125,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Compile large stylesheet",
+            "x": 94.67708,
+            "y": 235.33856,
+            "width": 145.221,
+            "height": 12.42836,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Label",
+            "name": "Current page",
+            "x": 86.8125,
+            "y": 253.82812,
+            "width": 91.86719,
+            "height": 14.4921875,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Button",
+            "name": "Compile large stylesheet",
+            "x": 86.0,
+            "y": 230.4375,
+            "width": 161.95312,
+            "height": 21.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Label",
+            "name": "Stopped",
+            "x": 70.0,
+            "y": 733.172,
+            "width": 47.088005,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  }
+]

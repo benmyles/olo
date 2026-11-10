@@ -1,0 +1,244 @@
+{
+  "baseline_commit": "19f1de36",
+  "release_tests": {
+    "passed": 548,
+    "failed": 0,
+    "existing_ignored": 2,
+    "parallel": true
+  },
+  "workspace_build": "passed",
+  "reviews": 30,
+  "review_findings": 0,
+  "paired_screenshots": 15,
+  "identical_png_pairs": 15,
+  "worker_limit": 2,
+  "visual_modes": [
+    "light",
+    "dark",
+    "night"
+  ],
+  "scales": [
+    1,
+    1.25,
+    1.5,
+    1.75,
+    2
+  ],
+  "baseline_library": {
+    "commit": "19f1de36",
+    "library_original": "target/release/deps/libolo_web-cfdb84fba6ee2074.rlib",
+    "original_mtime_local": "2026-11-09 23:49",
+    "library_sha256": "c6c4c3b86f11a137a1e0fae994382f4896a694430f4c6fa9d54715c775ae509c",
+    "features": [],
+    "harness": "crates/web/examples/compile_queue_bench.rs",
+    "command": "CARGO_MANIFEST_DIR=/home/ben/worktrees/olo/browser/crates/web rustc --edition=2024 -C opt-level=3 -C debuginfo=1 -L dependency=target/release/deps --extern olo_web=/var/tmp/codex-browser-compile-queue/libolo_web_before.rlib crates/web/examples/compile_queue_bench.rs -o /var/tmp/codex-browser-compile-queue/burst-before",
+    "note": "Frozen prior release rlib linked into the new public-API benchmark. Initial smoke observed 64 style compiler threads; measurements taken separately after builds."
+  },
+  "candidate_library_sha256": "595131f46d9dd3f2d500fd86497b03ea35d19580e9c8f37060249f512a26206f",
+  "limitations": [
+    "Other builds overlapped every benchmark condition; exact timing differences are not broad performance or Chrome superiority evidence.",
+    "Ordinary scrolling has hitches in both variants; candidate has more observed drag hitches. This is not a clean scrolling pass.",
+    "Serial cache-eviction control records higher candidate CPU and application time; contention prevents attributing the difference.",
+    "Burst sampling polls /proc at 1 ms only in the benchmark; production uses no polling.",
+    "Background compilation is bounded; explicit synchronous CSS measurement remains synchronous.",
+    "Website acceptance remains 0/100."
+  ],
+  "bursts": [
+    {
+      "kept": 0,
+      "requested": 64,
+      "rules_per_sheet": 10000,
+      "baseline": {
+        "median_ms": {
+          "submitted_ms": 27.535943500000002,
+          "ready_ms": 27.536247499999998,
+          "drained_ms": 490.524819
+        },
+        "peak_observed_workers": 64,
+        "median_cpu_ms": 1460.0,
+        "median_max_rss_kib": 256130.0
+      },
+      "candidate": {
+        "median_ms": {
+          "submitted_ms": 3.3094634999999997,
+          "ready_ms": 3.3096440000000005,
+          "drained_ms": 4.591863
+        },
+        "peak_observed_workers": 2,
+        "median_cpu_ms": 30.0,
+        "median_max_rss_kib": 14258.0
+      }
+    },
+    {
+      "kept": 4,
+      "requested": 64,
+      "rules_per_sheet": 10000,
+      "baseline": {
+        "median_ms": {
+          "submitted_ms": 33.6656245,
+          "ready_ms": 461.807502,
+          "drained_ms": 473.156408
+        },
+        "peak_observed_workers": 64,
+        "median_cpu_ms": 1975.0000000000005,
+        "median_max_rss_kib": 265308.0
+      },
+      "candidate": {
+        "median_ms": {
+          "submitted_ms": 4.2647055,
+          "ready_ms": 103.666559,
+          "drained_ms": 103.740742
+        },
+        "peak_observed_workers": 2,
+        "median_cpu_ms": 165.0,
+        "median_max_rss_kib": 36934.0
+      }
+    },
+    {
+      "kept": 64,
+      "requested": 64,
+      "rules_per_sheet": 10000,
+      "baseline": {
+        "median_ms": {
+          "submitted_ms": 14.99174,
+          "ready_ms": 848.1360964999999,
+          "drained_ms": 848.1825624999999
+        },
+        "peak_observed_workers": 64,
+        "median_cpu_ms": 2855.0,
+        "median_max_rss_kib": 276016.0
+      },
+      "candidate": {
+        "median_ms": {
+          "submitted_ms": 2.226785,
+          "ready_ms": 734.916339,
+          "drained_ms": 734.9544105
+        },
+        "peak_observed_workers": 2,
+        "median_cpu_ms": 1410.0,
+        "median_max_rss_kib": 185830.0
+      }
+    }
+  ],
+  "serial": [
+    {
+      "other_pages": 0,
+      "baseline": {
+        "median_ms": {
+          "request_us": 0.907717,
+          "ready_us": 5.7175139999999995,
+          "apply_us": 4.2839160000000005
+        },
+        "cpu_ms_per_revision": 8.762376237623762,
+        "retries": 0
+      },
+      "candidate": {
+        "median_ms": {
+          "request_us": 0.8303054999999999,
+          "ready_us": 4.497521499999999,
+          "apply_us": 4.0242309999999994
+        },
+        "cpu_ms_per_revision": 8.069306930693068,
+        "retries": 0
+      }
+    },
+    {
+      "other_pages": 8,
+      "baseline": {
+        "median_ms": {
+          "request_us": 0.7291635,
+          "ready_us": 5.4577955000000005,
+          "apply_us": 3.9463769999999996
+        },
+        "cpu_ms_per_revision": 10.866336633663366,
+        "retries": 0
+      },
+      "candidate": {
+        "median_ms": {
+          "request_us": 0.922172,
+          "ready_us": 5.3936335,
+          "apply_us": 4.9257615
+        },
+        "cpu_ms_per_revision": 11.361386138613861,
+        "retries": 0
+      }
+    }
+  ],
+  "ordinary": {
+    "baseline": {
+      "cpu_ms_per_reload": 45.0,
+      "ready_ms": 35.5,
+      "idle_cpu": [
+        0.0,
+        0.0
+      ],
+      "idle_wakeups": [
+        0,
+        0
+      ],
+      "idle_frames": [
+        0,
+        0
+      ],
+      "scroll_first_move_ms": {
+        "drag": 26.7,
+        "wheel": 13.649999999999999
+      },
+      "slowest_draw_ms": 10.91,
+      "hitches": 6
+    },
+    "candidate": {
+      "cpu_ms_per_reload": 40.714285714285715,
+      "ready_ms": 32.0,
+      "idle_cpu": [
+        0.0,
+        0.0
+      ],
+      "idle_wakeups": [
+        0,
+        0
+      ],
+      "idle_frames": [
+        0,
+        0
+      ],
+      "scroll_first_move_ms": {
+        "drag": 29.35,
+        "wheel": 9.350000000000001
+      },
+      "slowest_draw_ms": 4.0,
+      "hitches": 12
+    }
+  },
+  "stop": {
+    "baseline": {
+      "command_ms": [
+        1.358237,
+        2.395345
+      ],
+      "stop_to_workers_exit_ms": [
+        174.073791,
+        261.565471
+      ],
+      "cpu_after_stop_ms": [
+        260.0,
+        310.0
+      ]
+    },
+    "candidate": {
+      "command_ms": [
+        1.841462,
+        1.312663
+      ],
+      "stop_to_workers_exit_ms": [
+        10.262359,
+        12.491872
+      ],
+      "cpu_after_stop_ms": [
+        10.0,
+        20.0
+      ]
+    }
+  },
+  "strengthened_target_geometry_regression": "passed after full suite"
+}

@@ -1,5 +1,6 @@
 //! Initial static page pipeline. Run entirely on workers. Scripts are inert;
 //! network resources, complete UA defaults and browser runtime remain required.
+mod background;
 mod interaction;
 use crate::{
     css::{
@@ -222,22 +223,78 @@ static COMPILED: std::sync::Mutex<Vec<CompiledEntry>> = std::sync::Mutex::new(Ve
 struct Compiling {
     state: std::sync::Mutex<CompileState>,
     done: std::sync::Condvar,
+    cancel: AtomicBool,
+}
+#[derive(Clone, Debug)]
+struct CompileFailure(Arc<Error>);
+impl std::fmt::Display for CompileFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+impl std::error::Error for CompileFailure {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(self.0.as_ref().as_ref())
+    }
 }
 #[derive(Default)]
 struct CompileState {
-    result: Option<Option<Compiled>>,
+    result: Option<std::result::Result<Compiled, CompileFailure>>,
     wakes: Vec<std::sync::Weak<std::sync::Mutex<Wake>>>,
+    users: usize,
 }
 struct PendingCompile {
     key: CompileKey,
-    compiling: Arc<Compiling>,
+    compiling: CompileUse,
     wake: Arc<std::sync::Mutex<Wake>>,
 }
+/// Both asynchronous pages and synchronous waiters own a use. The last
+/// one leaving cancels unfinished work; the registry/queue are not users.
+struct CompileUse {
+    job: Arc<Compiling>,
+}
+impl std::ops::Deref for CompileUse {
+    type Target = Compiling;
+    fn deref(&self) -> &Compiling {
+        &self.job
+    }
+}
+impl Drop for CompileUse {
+    fn drop(&mut self) {
+        let abandoned = {
+            let mut state = self.state.lock().unwrap();
+            state.users -= 1;
+            let abandoned = state.users == 0 && state.result.is_none();
+            if abandoned {
+                self.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+            abandoned
+        };
+        if abandoned {
+            COMPILING.lock().unwrap().retain(|(_, c)| !Arc::ptr_eq(c, &self.job));
+            if let Some(queue) = COMPILE_QUEUE.get() {
+                queue.remove(Arc::as_ptr(&self.job) as usize);
+            }
+        }
+    }
+}
+static COMPILE_QUEUE: std::sync::OnceLock<Arc<background::Queue>> = std::sync::OnceLock::new();
 impl Compiling {
-    fn finish(self: &Arc<Self>, compiled: Option<Compiled>) {
+    fn claim(self: &Arc<Self>) -> Option<CompileUse> {
+        let mut state = self.state.lock().unwrap();
+        if self.cancel.load(std::sync::atomic::Ordering::Relaxed) {
+            return None;
+        }
+        state.users += 1;
+        Some(CompileUse { job: self.clone() })
+    }
+    fn result(&self) -> Option<Result<Compiled>> {
+        self.state.lock().unwrap().result.clone().map(|result| result.map_err(|e| e.into()))
+    }
+    fn finish(self: &Arc<Self>, compiled: Result<Compiled>) {
         let wakes = {
             let mut state = self.state.lock().unwrap();
-            state.result = Some(compiled);
+            state.result = Some(compiled.map_err(|e| CompileFailure(Arc::new(e))));
             std::mem::take(&mut state.wakes)
         };
         self.done.notify_all();
@@ -247,7 +304,8 @@ impl Compiling {
         // all locks: a callback may consume the result or request rules.
         for wake in wakes.into_iter().filter_map(|w| w.upgrade()) {
             let wake = wake.lock().unwrap().clone();
-            wake();
+            // An embedding callback failing cannot strand other pages.
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| wake()));
         }
     }
 }
@@ -301,7 +359,7 @@ fn compile(sheets: &[Sheet], media: css::media::Media, cancel: Option<&AtomicBoo
     if let Some(hit) = compiled_already(sheets, media) {
         return Ok(hit);
     }
-    let running = COMPILING.lock().unwrap().iter().find(|(k, _)| k.is(sheets, media)).map(|(_, c)| c.clone());
+    let running = COMPILING.lock().unwrap().iter().find_map(|(k, c)| k.is(sheets, media).then(|| c.claim()).flatten());
     if let Some(running) = running {
         let mut state = running.state.lock().unwrap();
         while state.result.is_none() {
@@ -310,25 +368,19 @@ fn compile(sheets: &[Sheet], media: css::media::Media, cancel: Option<&AtomicBoo
             }
             state = running.done.wait_timeout(state, std::time::Duration::from_millis(50)).unwrap().0;
         }
-        if let Some(Some(compiled)) = state.result.as_ref() {
-            return Ok(compiled.clone());
+        if let Some(result) = state.result.clone() {
+            return result.map_err(|e| e.into());
         }
     }
     compile_now(sheets, media, cancel)
 }
 /// The rules for these sheets when they are compiled already; else their
-/// compile started on a thread of its own (`wake` told when it is done)
+/// compile queued on a bounded worker (`wake` told when it is done)
 /// and `COMPILING_RULES` answered.
 fn compile_in_background(sheets: &[Sheet], media: css::media::Media, wake: &Wake, pending: &mut Option<PendingCompile>) -> Result<Compiled> {
     if let Some(request) = pending.as_ref().filter(|p| p.key.is(sheets, media)) {
         *request.wake.lock().unwrap() = wake.clone();
-        let result = request.compiling.state.lock().unwrap().result.clone();
-        return match result {
-            Some(Some(compiled)) => Ok(compiled),
-            // Failed there: compiled here, for its error.
-            Some(None) => compile_now(sheets, media, None),
-            None => Err(COMPILING_RULES.into()),
-        };
+        return request.compiling.result().unwrap_or_else(|| Err(COMPILING_RULES.into()));
     }
     *pending = None;
     if let Some(hit) = compiled_already(sheets, media) {
@@ -336,53 +388,61 @@ fn compile_in_background(sheets: &[Sheet], media: css::media::Media, wake: &Wake
     }
     let (compiling, start) = {
         let mut running = COMPILING.lock().unwrap();
-        if let Some((_, compiling)) = running.iter().find(|(k, _)| k.is(sheets, media)) {
-            (compiling.clone(), false)
+        if let Some(compiling) = running.iter().find_map(|(k, c)| k.is(sheets, media).then(|| c.claim()).flatten()) {
+            (compiling, false)
         } else {
             let compiling = Arc::new(Compiling::default());
             running.push((CompileKey::of(sheets, media), compiling.clone()));
-            (compiling, true)
+            (compiling.claim().unwrap(), true)
         }
     };
     let wake = Arc::new(std::sync::Mutex::new(wake.clone()));
-    *pending = Some(PendingCompile { key: CompileKey::of(sheets, media), compiling: compiling.clone(), wake: wake.clone() });
+    let mine = compiling.job.clone();
+    *pending = Some(PendingCompile { key: CompileKey::of(sheets, media), compiling, wake: wake.clone() });
     {
         // Subscribe and check completion under one lock: finishing
         // between the registry lookup and this point cannot lose a wake.
-        let mut state = compiling.state.lock().unwrap();
+        let mut state = mine.state.lock().unwrap();
         if let Some(result) = state.result.clone() {
             drop(state);
-            return match result {
-                Some(compiled) => Ok(compiled),
-                None => compile_now(sheets, media, None),
-            };
+            return result.map_err(|e| e.into());
         }
         state.wakes.push(Arc::downgrade(&wake));
     }
     if !start {
         return Err(COMPILING_RULES.into());
     }
-    let (owned, mine) = (sheets.to_vec(), compiling.clone());
-    let started = std::thread::Builder::new().name("olo-style-compile".into()).spawn(move || {
-        let compiled = compile_now(&owned, media, None).ok();
-        compiling.finish(compiled);
-    });
+    let (owned, compiling) = (sheets.to_vec(), mine.clone());
+    // Leave CPU for page scripts, layout and the desktop. A burst shares
+    // at most two workers; queued obsolete revisions are removed on drop.
+    let queue = COMPILE_QUEUE.get_or_init(|| background::Queue::new(std::thread::available_parallelism().map_or(1, |n| n.get().min(2))));
+    let started = queue.submit(
+        Arc::as_ptr(&mine) as usize,
+        Box::new(move || {
+            let compiled =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| compile_now(&owned, media, Some(&compiling.cancel)))).unwrap_or_else(|_| Err("Stylesheet compiler panicked".into()));
+            compiling.finish(compiled);
+        }),
+    );
     match started {
         Ok(_) => Err(COMPILING_RULES.into()),
-        // No thread to be had: compiled here.
-        Err(_) => {
-            let result = compile_now(sheets, media, None);
-            mine.finish(result.as_ref().ok().cloned());
-            result
+        // No worker can run this request: report the failure to every
+        // waiter, without moving expensive work onto the caller's loop.
+        Err(error) => {
+            mine.finish(Err(error.into()));
+            mine.result().unwrap()
         }
     }
 }
 fn compile_now(sheets: &[Sheet], media: css::media::Media, cancel: Option<&AtomicBool>) -> Result<Compiled> {
+    let check = || -> Result<()> { if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) { Err(paint::Error::Cancelled.into()) } else { Ok(()) } };
+    check()?;
     let mut builder = SheetBuilder::new(Default::default()).with_media(media);
     // Shadow trees with the same sheets in the same order (a component's
     // every instance): compiled once, the others' rules that tree's.
     let mut trees: Vec<(u64, Vec<usize>)> = Vec::new();
     for (i, (_, _, _, scope)) in sheets.iter().enumerate() {
+        check()?;
         let Some(scope) = scope else { continue };
         match trees.iter_mut().find(|(k, _)| k == scope) {
             Some((_, list)) => list.push(i),
@@ -392,6 +452,7 @@ fn compile_now(sheets: &[Sheet], media: css::media::Media, cancel: Option<&Atomi
     let mut first: std::collections::HashMap<Vec<(&str, u8, Option<&str>)>, u64> = std::collections::HashMap::new();
     let mut aliased = std::collections::HashSet::new();
     for (scope, list) in &trees {
+        check()?;
         let identity: Vec<(&str, u8, Option<&str>)> = list.iter().map(|&i| (sheets[i].0.source(), sheets[i].1 as u8, sheets[i].2.as_deref())).collect();
         if crate::env_on!("OLO_ALIAS_DEBUG") {
             eprintln!(
@@ -424,6 +485,7 @@ fn compile_now(sheets: &[Sheet], media: css::media::Media, cancel: Option<&Atomi
     let faces = builder.font_faces().to_vec();
     let backgrounds = builder.background_urls().to_vec();
     let compiled: Compiled = (Arc::new(builder.finish(cancel)?), dependent, faces, backgrounds);
+    check()?;
     let mut c = COMPILED.lock().unwrap();
     c.insert(0, CompiledEntry { key: CompileKey::of(sheets, media), compiled: compiled.clone() });
     c.truncate(COMPILED_SHARED);
@@ -3094,6 +3156,11 @@ impl Page {
         resource: &mut impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>,
         wake: Option<&Wake>,
     ) -> Result<bool> {
+        if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
+            self.cancel_stylesheet_refresh();
+            self.sheets_checked = None;
+            return Err(paint::Error::Cancelled.into());
+        }
         // Nothing that could change the sheets since the last look: no
         // walk of the document (it ran on every render while apple.com
         // loaded).
@@ -3139,6 +3206,15 @@ impl Page {
         self.base_href = base;
         self.pending_compile = None;
         Ok(true)
+    }
+    /// Release this page's pending stylesheet request, keeping its current
+    /// rules. Called when a host stops a load or leaves the document. Other
+    /// pages sharing the job keep it alive; a later refresh can request it
+    /// again. This also releases ready rules not yet applied by this page.
+    pub fn cancel_stylesheet_refresh(&mut self) {
+        if self.pending_compile.take().is_some() {
+            self.sheets_checked = None;
+        }
     }
     /// The style sheets it was styled with, parsed (with their compiled
     /// declarations): held, the next pass over the same document takes
@@ -4772,7 +4848,7 @@ mod sheet_tests {
             assert_eq!(compile_in_background(&sheets, media, &wake(4), &mut first).err().unwrap().to_string(), COMPILING_RULES);
         }
         let compiled = compile_now(&sheets, media, None).unwrap();
-        job.finish(Some(compiled.clone()));
+        job.finish(Ok(compiled.clone()));
         assert_eq!(rx.try_iter().collect::<Vec<_>>(), [4, 2]);
         for request in [&mut first, &mut second] {
             let result = compile_in_background(&sheets, media, &wake(5), request).unwrap();
@@ -4790,10 +4866,10 @@ mod sheet_tests {
         for sheets in [&old, &new] {
             assert_eq!(compile_in_background(sheets, media, &wake, &mut pending).err().unwrap().to_string(), COMPILING_RULES);
         }
-        old_job.finish(Some(compile_now(&old, media, None).unwrap()));
+        old_job.finish(compile_now(&old, media, None));
         assert!(rx.try_recv().is_err(), "a superseded request must not wake the page");
         let compiled = compile_now(&new, media, None).unwrap();
-        new_job.finish(Some(compiled.clone()));
+        new_job.finish(Ok(compiled.clone()));
         assert_eq!(rx.try_iter().count(), 1);
         assert!(Arc::ptr_eq(&compile_in_background(&new, media, &wake, &mut pending).unwrap().0, &compiled.0));
     }
@@ -4803,12 +4879,66 @@ mod sheet_tests {
         let compiled = compile_now(&sheets, media, None).unwrap();
         // The worker has published, but has not yet removed the registry
         // entry. Its cache entry may already have been evicted elsewhere.
-        job.state.lock().unwrap().result = Some(Some(compiled.clone()));
+        job.state.lock().unwrap().result = Some(Ok(compiled.clone()));
         COMPILED.lock().unwrap().retain(|entry| !entry.key.is(&sheets, media));
         let wake: Wake = Arc::new(|| panic!("a completed request needs no wake"));
         let result = compile_in_background(&sheets, media, &wake, &mut None).unwrap();
         assert!(Arc::ptr_eq(&result.0, &compiled.0));
-        job.finish(Some(compiled));
+        job.finish(Ok(compiled));
+    }
+    #[test]
+    fn background_rules_cancel_only_after_the_last_user_leaves() {
+        let (sheets, media, job) = held_compile("background_rules_cancel_only_after_the_last_user_leaves");
+        let wake: Wake = Arc::new(|| panic!("abandoned requests must not wake"));
+        let mut first = None;
+        let mut second = None;
+        for pending in [&mut first, &mut second] {
+            assert_eq!(compile_in_background(&sheets, media, &wake, pending).err().unwrap().to_string(), COMPILING_RULES);
+        }
+        // Synchronous measurement also owns a use while it waits.
+        let measurement = job.claim().unwrap();
+        drop(first);
+        drop(second);
+        assert!(!job.cancel.load(std::sync::atomic::Ordering::Relaxed));
+        drop(measurement);
+        assert!(job.cancel.load(std::sync::atomic::Ordering::Relaxed));
+        assert!(job.claim().is_none(), "an abandoned job cannot be revived halfway through cancellation");
+        assert!(!COMPILING.lock().unwrap().iter().any(|(_, c)| Arc::ptr_eq(c, &job)));
+        assert!(compile_now(&sheets, media, Some(&job.cancel)).err().unwrap().to_string().ends_with("Cancelled"));
+        assert!(compiled_already(&sheets, media).is_none(), "cancelled work must not populate the cache");
+        let (tx, rx) = std::sync::mpsc::channel();
+        let wake: Wake = Arc::new(move || drop(tx.send(())));
+        let mut fresh = None;
+        assert_eq!(compile_in_background(&sheets, media, &wake, &mut fresh).err().unwrap().to_string(), COMPILING_RULES);
+        assert!(!Arc::ptr_eq(&fresh.as_ref().unwrap().compiling.job, &job));
+        rx.recv_timeout(std::time::Duration::from_secs(10)).unwrap();
+        assert!(compile_in_background(&sheets, media, &wake, &mut fresh).is_ok());
+    }
+    #[test]
+    fn background_rules_share_failures_without_retrying_on_the_page() {
+        let (sheets, media, job) = held_compile("background_rules_share_failures_without_retrying_on_the_page");
+        let wake: Wake = Arc::new(|| {});
+        let mut pending = None;
+        assert!(compile_in_background(&sheets, media, &wake, &mut pending).is_err());
+        job.finish(Err("controlled compilation failure".into()));
+        for _ in 0..2 {
+            assert_eq!(compile_in_background(&sheets, media, &wake, &mut pending).err().unwrap().to_string(), "controlled compilation failure");
+        }
+        assert!(compiled_already(&sheets, media).is_none(), "valid sheets were not recompiled synchronously");
+    }
+    #[test]
+    fn a_failed_callback_does_not_strand_other_rule_waiters() {
+        let (sheets, media, job) = held_compile("a_failed_callback_does_not_strand_other_rule_waiters");
+        let bad: Wake = Arc::new(|| panic!("controlled embedding callback failure"));
+        let (tx, rx) = std::sync::mpsc::channel();
+        let good: Wake = Arc::new(move || drop(tx.send(())));
+        let mut first = None;
+        let mut second = None;
+        assert!(compile_in_background(&sheets, media, &bad, &mut first).is_err());
+        assert!(compile_in_background(&sheets, media, &good, &mut second).is_err());
+        job.finish(compile_now(&sheets, media, None));
+        rx.try_recv().unwrap();
+        assert!(compile_in_background(&sheets, media, &good, &mut second).is_ok());
     }
     #[test]
     fn integrity_takes_the_strongest_digest_and_both_base64_forms() {

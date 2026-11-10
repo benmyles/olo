@@ -260,6 +260,9 @@ impl Browser {
     fn begin_navigation(&mut self, entry: history::Entry, same: bool, seek: bool, window: &mut Window, cx: &mut Context<Self>) {
         window.focus(&self.focus);
         self.cancel.cancel();
+        if !same {
+            let _ = self.tx.send(worker::Message::CancelStylesheets(self.navigation));
+        }
         self.id += 1;
         self.navigation += 1;
         self.seek_anchor = seek;
@@ -516,6 +519,7 @@ impl Browser {
             }
             "stop" => {
                 self.cancel.cancel();
+                let _ = self.tx.send(worker::Message::CancelStylesheets(self.navigation));
                 self.id += 1;
                 self.status = "Stopped".into();
                 cx.notify();

@@ -2089,8 +2089,28 @@ fn a_live_refresh_compiles_new_rules_in_the_background() {
     assert!(page.refresh(&doc, None, &mut |_, _, _| Ok(None), Some(&wake)).unwrap(), "the rules taken");
     page.rerender(doc, Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
     let l = page.scene.layout();
-    let height = l.cache().tree().iter().filter_map(|(id, _)| l.bounds(id)).map(|b| b.height).fold(0f64, f64::max);
-    assert!(height >= 37., "the new rule holds: {height}");
+    let target = l.cache().tree().iter().find(|(_, b)| page.document.attribute(b.node, "id").ok().flatten() == Some("d")).unwrap().0;
+    assert_eq!(l.bounds(target).unwrap().height, 37., "the new rule holds on its target");
+    // Stop releases the request, without poisoning the shared syntax or
+    // preventing a later refresh from requesting the same rules again.
+    let mut doc = page.document.clone();
+    doc.set_value(text, "body{margin:0}#d{height:71px}/* cancelled live refresh */").unwrap();
+    assert_eq!(page.refresh(&doc, None, &mut |_, _, _| Ok(None), Some(&wake)).unwrap_err().to_string(), olo_web::page::COMPILING_RULES);
+    page.cancel_stylesheet_refresh();
+    let (tx, rx) = std::sync::mpsc::channel();
+    let resumed: olo_web::page::Wake = Arc::new(move || drop(tx.send(())));
+    match page.refresh(&doc, None, &mut |_, _, _| Ok(None), Some(&resumed)) {
+        Ok(changed) => assert!(changed),
+        Err(e) => {
+            assert_eq!(e.to_string(), olo_web::page::COMPILING_RULES);
+            rx.recv_timeout(std::time::Duration::from_secs(10)).unwrap();
+            assert!(page.refresh(&doc, None, &mut |_, _, _| Ok(None), Some(&resumed)).unwrap());
+        }
+    }
+    page.rerender(doc, Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+    let l = page.scene.layout();
+    let target = l.cache().tree().iter().find(|(_, b)| page.document.attribute(b.node, "id").ok().flatten() == Some("d")).unwrap().0;
+    assert_eq!(l.bounds(target).unwrap().height, 71., "the resumed rule holds on its target");
 }
 
 #[test]

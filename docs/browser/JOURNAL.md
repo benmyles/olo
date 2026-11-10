@@ -7969,3 +7969,106 @@ stopped afterward; the person's session was not installed into or reloaded.
 Raw measurements, harnesses, failure/pass logs and all screenshots are in
 `measurements/2026-11-09-rule-completion/`; the summary is
 `measurements/2026-11-09-rule-completion.json`. Acceptance remains **0/100**.
+
+## 2026-11-10 — bounded, cancellable background stylesheet work
+
+The completion handoff was reliable, but every distinct stylesheet job still
+started a thread and ran to completion after its page disappeared. A release
+burst of 64 pages, each requesting 10,000 rules, observed 64 compiler threads
+even when 60 pages were immediately discarded.
+
+Background compilation now uses a queue with at most two active workers
+(one where only one processor is available). Workers drain queued work and
+exit when empty; submit and exit are serialized so a request cannot be left
+without a worker. There are no timers, idle threads or polling. Cancelling a
+queued request removes its captured stylesheet inputs immediately. The last
+consumer leaving an active job sets the cancellation flag already checked by
+syntax/selector/rule compilation; the shadow-sheet preparation loops and
+cache publication check it too. Both asynchronous pages and synchronous
+measurement waiters count as consumers. An abandoned job cannot be revived
+mid-cancellation: a later request starts afresh or uses already completed
+cached rules. The shared-cache completion guarantees from yesterday remain.
+
+Browser's Stop command previously only set its render cancellation flag. It
+now sends a message releasing the matching navigation's stylesheet request;
+navigation to another document does likewise. The navigation ID prevents a
+late stop from cancelling a newer document. Same-document navigation keeps
+its pending work. A stopped script realm also releases its request. The
+engine exposes `Page::cancel_stylesheet_refresh()` for hosts; existing rules
+stay on screen, and a later refresh may request the rules again.
+
+Compiler errors are shared with their source error instead of being retried
+synchronously on the page loop. Thread-start failure is delivered to waiters
+without shifting compilation onto that loop. Panic containment prevents a
+failing compile or embedding callback from stranding other queued requests.
+
+Validation: the full release web/browser/JavaScript run passed **548 tests,
+zero failed, two existing ignored**, with normal parallelism. Controlled
+checks hold both workers busy, enqueue 100 jobs, remove half and verify the
+inputs are freed before workers resume; the surviving jobs complete with
+peak concurrency two. Ownership checks cover multiple asynchronous pages
+plus a synchronous consumer, cancellation by the last consumer, fresh
+requests after abandonment, shared errors without retries and a failing
+callback alongside a good subscriber. The public refresh regression now
+also stops and resumes a request. Its target's exact 37/71-pixel heights are
+checked, rather than an aggregate page-height lower bound; that strengthened
+assertion is rerun separately after the full suite. The final workspace
+release build passed. An intermediate build saw a caller edit after its
+library had compiled and reported the then-missing cancellation method; its
+log is retained alongside the successful final build.
+
+Release ABBA measurements use 64 pages and a shared preparsed 10,000-rule
+sheet, with different URLs requiring separate compiled rules. All but the
+specified retained pages are dropped immediately after requesting work.
+The baseline harness links the frozen `19f1de36` release library; the
+candidate harness uses the matching current release-library configuration,
+with the same rustc optimization/debug options. The library and executable
+hashes, build commands and raw samples are retained. A benchmark-only 1 ms
+`/proc` sampler observes compiler threads; production has no sampler.
+Medians (whole-process CPU includes fixture setup and that sampler):
+
+| Retained pages / measurement | Before | After |
+|---|---:|---:|
+| 0: all compiler threads exited | 490.53 ms | 4.59 ms |
+| 0: process CPU / peak RSS | 1460 ms / 256130 KiB | 30 ms / 14258 KiB |
+| 4: retained pages ready | 461.81 ms | 103.67 ms |
+| 4: process CPU / peak RSS | 1975 ms / 265308 KiB | 165 ms / 36934 KiB |
+| 64: all pages ready | 848.14 ms | 734.92 ms |
+| 64: process CPU / peak RSS | 2855 ms / 276016 KiB | 1410 ms / 185830 KiB |
+| Maximum observed compiler threads, all conditions | 64 | 2 |
+
+The live Stop fixture has 40,000 compound-selector rules. The harness first
+observes an active compiler, then invokes Browser's Stop command through its
+native command API. The status tree says `Stopped` in every run. Compiler
+thread exit after the command begins was 174.07/261.57 ms before and
+10.26/12.49 ms after; additional process CPU was 260/310 ms versus 10/20 ms.
+Command acknowledgement itself was 1.36/2.40 ms versus 1.84/1.31 ms. Thread
+exit includes cleanup after cancellation, not just cancellation-check latency.
+
+The serial 1,000-rule control uses 200 measured revisions and two warmups per
+process. With no cache eviction, request/ready/apply medians were
+0.908/5.718/4.284→0.830/4.498/4.024 ms; process CPU per revision
+8.762→8.069 ms. With eight other pages evicting the cache, they were
+0.729/5.458/3.946→0.922/5.394/4.926 ms, CPU 10.866→11.361 ms. That last
+control records a slower candidate; do not omit it. Neither variant needed
+an extra compile after notification in either condition.
+
+An ordinary 1,000-row page used release ABBA, seven reloads per run, two
+idle seconds, drag and wheel checks, 1×, odd x=49 and 1,000×700 content.
+CPU per reload was 45.00→40.71 ms; worker-ready median 35.5→32 ms.
+Drag/wheel first movement was 26.70/13.65→29.35/9.35 ms. All idle samples
+recorded zero CPU, wakeups and frames. Slowest draws were 10.91→4.00 ms;
+total drag hitches were 6→12, with wheel displacement irregularities in
+both variants. **This is not a smooth-scrolling pass.** Other builds overlapped
+all conditions. The exact timings, including apparent improvements and
+regressions, do not establish broad performance superiority or isolate every
+scheduler effect. The discarded-work and concurrency invariants are verified
+separately by controlled tests.
+
+The ordinary live stylesheet update was also checked before and after in
+light/dark/night at live 1/1.25/1.5/1.75/2 scales: 30 clean reviews and 15
+byte-identical PNG pairs. No appearance changed. The owned screen was stopped
+after testing; the person's desktop was not installed into or reloaded.
+Raw artifacts are in `measurements/2026-11-10-compile-queue/`, with the summary
+in `measurements/2026-11-10-compile-queue.json`. Website acceptance stays
+**0/100**; this work does not establish Chrome parity.
