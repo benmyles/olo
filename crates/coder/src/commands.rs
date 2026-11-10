@@ -3,7 +3,7 @@
 use crate::model::*;
 use anyhow::{Context, Result, bail};
 
-pub const HELP: &str = "Messages go to the agent. Enter sends; Escape stops.\n\n/new [workspace] · /sessions · /open ID · /status · /stop · /resume\n/model MODEL [EFFORT] · /provider codex|claude · /models\n/goal OBJECTIVE · /todos JSON · /memory TEXT · /attach PATH\n/spec on|off · /spec TEXT · /accept [REVISION]\n/keep on|off · /approval ask|auto|allow · /guidance TEXT\n/agents on|off · /readonly on|off · /compact\n/config [JSON] · /defaults [JSON] · /set KEY JSON · /fork [TITLE] · /history [QUERY] · /undo EDIT · /checkpoints · /event SEQUENCE\n/git OP [JSON] · /github OP JSON · /tool NAME JSON\n/pin [on|off] · /rename TITLE · /tags WORDS · /archive · /restore\n/interrupt TEXT · /after-tool TEXT · /queue TEXT · /inbox\n/cancel-message ID · /retry-message ID\n/message [PEER/]SESSION TEXT · /peers · /connect NAME STORE · /disconnect NAME · /peer-sessions NAME\n/api JSON (every command) · /help · /quit\n\nChanges to model and configuration require a stopped turn.\nApproval: /approve CALL_ID or /deny CALL_ID.\nFull configuration includes budgets, timeouts, model provider fields,\nMCP servers, hooks, subagent limits and review model.\nAn execute or MCP tool has host access when approved.";
+pub const HELP: &str = "Messages go to the agent. Enter sends; Escape stops.\n\n/new [workspace] · /sessions · /open ID · /status · /stop · /resume\n/model MODEL [EFFORT] · /provider codex|claude · /models\n/goal OBJECTIVE · /todos JSON · /memory TEXT · /attach PATH\n/spec on|off · /spec TEXT · /accept [REVISION]\n/keep on|off · /approval ask|auto|allow · /guidance TEXT\n/agents on|off · /agent JSON · /readonly on|off · /compact\n/config [JSON] · /defaults [JSON] · /set KEY JSON · /fork [TITLE] · /history [QUERY] · /undo EDIT · /checkpoints · /event SEQUENCE\n/git OP [JSON] · /github OP JSON · /tool NAME JSON\n/pin [on|off] · /rename TITLE · /tags WORDS · /archive · /restore\n/interrupt TEXT · /after-tool TEXT · /queue TEXT · /inbox\n/cancel-message ID · /retry-message ID\n/message [PEER/]SESSION TEXT · /peers · /connect NAME STORE · /disconnect NAME · /peer-sessions NAME\n/api JSON (every command) · /help · /quit\n\nChanges to model and configuration require a stopped turn.\nApproval: /approve CALL_ID or /deny CALL_ID.\nFull configuration includes budgets, timeouts, model provider fields,\nMCP servers, hooks, subagent limits and review model.\nAn execute or MCP tool has host access when approved.";
 pub enum Input {
     Command(Command),
     Open(String),
@@ -21,6 +21,11 @@ pub fn parse(text: &str, s: &Session) -> Result<Input> {
     let session = s.id.clone();
     let mut config = s.config.clone();
     let command = match name {
+        "/agent" => {
+            let arguments: serde_json::Value = serde_json::from_str(arg).context("expected a JSON object with task and optional workspace/model settings")?;
+            anyhow::ensure!(arguments.is_object(), "arguments must be a JSON object");
+            Command::Tool { session, name: "spawn_agent".into(), arguments }
+        }
         "/tool" => {
             let (name, args) = arg.split_once(char::is_whitespace).context("expected TOOL JSON_ARGUMENTS")?;
             Command::Tool { session, name: name.into(), arguments: serde_json::from_str(args)? }

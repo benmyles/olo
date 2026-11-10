@@ -14574,8 +14574,12 @@ Olo's own coding harness, Rust throughout: a durable service (`olo-coder-core`),
 Ratatui terminal and native kit window (`olo-coder --tui`, `--gui`). The clients
 share `commands` and a presentation worker; the typed `Command` API owns all
 session operations. See [CODER.md](CODER.md) for commands, configuration,
-protocol references, approvals and recovery guarantees. No Codex/Claude CLI is
-wrapped. Both providers go through the Token Pool's loopback gateway.
+protocol references, approvals and recovery guarantees. Native Coder windows
+and forms keep unique `restore_key`s in their saved state so a dialog cannot
+claim the main window's geometry after re-exec. Multiline form fields use
+`TextField::multiline(false)` (its argument controls whether Return sends);
+single-line fields use the unmodified field. No Codex/Claude CLI is wrapped.
+Both providers go through the Token Pool's loopback gateway.
 
 * `model` is serializable session/configuration/command state. `store` uses SQLite
   WAL, FULL synchronization, indexed events and conflict-checked edit checkpoints.
@@ -14587,7 +14591,12 @@ wrapped. Both providers go through the Token Pool's loopback gateway.
   store lock: commit and bounded live broadcast remain ordered. Do not release
   the lock between them; subscribers advance a monotonic cursor. Approval
   channels are consumed only after their decision commits. Reviewer usage is
-  charged separately from the coding model's active-context count.
+  charged separately from the coding model's active-context count. Child admission
+  holds the supervisor reservation lock across the capacity check, durable creation
+  and reservation. Count active reservations rather than persisted status; an
+  admitted child may not have been polled yet. `wait_agent` uses the same reservation
+  and completion notification, and wakes for approvals without polling. Optional
+  child workspaces pass native path confinement before creation.
 * `provider` preserves native Responses reasoning/compaction and Claude signed
   thinking/redacted content byte-for-byte as JSON values. Codex compaction uses
   a final `compaction_trigger` on Responses; Claude uses signed on-demand

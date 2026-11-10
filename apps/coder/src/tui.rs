@@ -443,6 +443,7 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) -> Result<
                                 "/accept",
                                 "/approval",
                                 "/guidance",
+                                "/agent",
                                 "/agents",
                                 "/compact",
                                 "/config",

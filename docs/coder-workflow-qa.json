@@ -1,0 +1,271 @@
+{
+  "date": "2026-11-10",
+  "baseline_commit": "1311bcdd",
+  "scope": "Child workspace selection, supervisor admission and waiting, native form keyboard handling and multi-window upgrade identities.",
+  "baseline_regressions": {
+    "failed": 2,
+    "tests": [
+      "child_concurrency_counts_admitted_work_before_it_runs",
+      "child_workspace_selects_a_native_worktree_and_keeps_parent_files_separate"
+    ],
+    "result": "Two children admitted under a one-child limit; explicit worktree ignored."
+  },
+  "checks": [
+    "Native Git branch/worktree fixture: writable child changes only selected worktree; reopened session keeps workspace.",
+    "Invalid paths, outside symlinks, missing folders, files, .git, malformed types and blank tasks reject without creating children.",
+    "Admission and resume count idle and cancelling reservations; forks retain their distinct semantics.",
+    "wait_agent waits for an admitted child before its first task poll.",
+    "GUI form and TUI /agent complete local provider fixtures with matching workspace, read-only policy, model and effort.",
+    "Native multiline Enter inserts a newline; single-line Enter and Command+Enter submit.",
+    "Binary re-exec preserves task fields and main/dialog geometry; two same-title main windows and two same-title forms also preserve their individual drafts and geometry.",
+    "Own Agent Screen compositor restart recovered the open form draft."
+  ],
+  "visual": {
+    "forms": 9,
+    "looks": [
+      "light",
+      "dark",
+      "night"
+    ],
+    "scales": [
+      1,
+      1.25,
+      1.5,
+      1.75,
+      2
+    ],
+    "cases": 135,
+    "findings": 0,
+    "screen_physical": [
+      2560,
+      1600
+    ],
+    "scale_changed_live": true,
+    "minimum_screen_layout_lint": "passed; 0 errors",
+    "journal": "docs/journal/2026-11-10/081504-coder-choose-a-child-workspace.png"
+  },
+  "gui_upgrade": {
+    "before": {
+      "New session \u2014 Olo Coder": {
+        "x": 53,
+        "y": 73,
+        "width": 1050,
+        "height": 731
+      },
+      "Start Subagent": {
+        "x": 113,
+        "y": 117,
+        "width": 590,
+        "height": 333
+      }
+    },
+    "after": {
+      "New session \u2014 Olo Coder": {
+        "x": 53,
+        "y": 73,
+        "width": 1050,
+        "height": 731
+      },
+      "Start Subagent": {
+        "x": 113,
+        "y": 117,
+        "width": 590,
+        "height": 333
+      }
+    },
+    "fields": {
+      "Task": "Review this worktree and report findings.\nKeep the parent workspace unchanged.",
+      "Subfolder": "worktrees/review",
+      "Model": "gpt-6.1-terra",
+      "Effort": "high"
+    }
+  },
+  "same_title_windows": {
+    "before": {
+      "Left draft": {
+        "x": 31,
+        "y": 61,
+        "width": 610,
+        "height": 551
+      },
+      "Right draft": {
+        "x": 639,
+        "y": 83,
+        "width": 610,
+        "height": 631
+      },
+      "Left rename": {
+        "x": 111,
+        "y": 151,
+        "width": 590,
+        "height": 231
+      },
+      "Right rename": {
+        "x": 651,
+        "y": 251,
+        "width": 590,
+        "height": 231
+      }
+    },
+    "after": {
+      "Left draft": {
+        "x": 31,
+        "y": 61,
+        "width": 610,
+        "height": 551
+      },
+      "Right draft": {
+        "x": 639,
+        "y": 83,
+        "width": 610,
+        "height": 631
+      },
+      "Left rename": {
+        "x": 111,
+        "y": 151,
+        "width": 590,
+        "height": 231
+      },
+      "Right rename": {
+        "x": 651,
+        "y": 251,
+        "width": 590,
+        "height": 231
+      }
+    }
+  },
+  "frontend_children": [
+    {
+      "title": "Terminal review fixture",
+      "workspace": "/var/tmp/olo-coder-workflows/repo/worktrees/review",
+      "status": "idle",
+      "read_only": true,
+      "model": "gpt-6.1-terra",
+      "effort": "high",
+      "requests": 1
+    },
+    {
+      "title": "Review this worktree and report findings.\nKeep the parent workspace unch",
+      "workspace": "/var/tmp/olo-coder-workflows/repo/worktrees/review",
+      "status": "idle",
+      "read_only": true,
+      "model": "gpt-6.1-terra",
+      "effort": "high",
+      "requests": 1
+    }
+  ],
+  "terminal": {
+    "idle_seconds": 3,
+    "idle_output_bytes": 0,
+    "completion_and_submission": "passed",
+    "status": "idle",
+    "workspace": "/var/tmp/olo-coder-workflows/repo/worktrees/review",
+    "observation_ms": 705.4119509994052
+  },
+  "performance": {
+    "command": "/usr/bin/python3 tools/dev/bench --apps coder",
+    "before": {
+      "steps": 30,
+      "frames": 322,
+      "failed_steps": 3,
+      "coder_max_nontransition_ms": 2.63,
+      "coder_max_transition_ms": 11.27,
+      "launch_ms": [
+        120,
+        95,
+        120
+      ],
+      "startup_idle_frames": [
+        2,
+        2,
+        2
+      ],
+      "failures": [
+        {
+          "step": "scroll 2",
+          "failures": [
+            "app_server's loop stalled 31 ms (['tick', 2964])"
+          ]
+        },
+        {
+          "step": "5 menus",
+          "failures": [
+            "app_server's loop stalled 19 ms (['flushing to clients', 3230])"
+          ]
+        },
+        {
+          "step": "typing",
+          "failures": [
+            "app_server's loop stalled 20 ms (['flushing to clients', 2366])"
+          ]
+        }
+      ]
+    },
+    "after": {
+      "steps": 30,
+      "frames": 322,
+      "failed_steps": 0,
+      "coder_max_nontransition_ms": 2.55,
+      "coder_max_transition_ms": 7.99,
+      "launch_ms": [
+        75,
+        74,
+        95
+      ],
+      "startup_idle_frames": [
+        2,
+        2,
+        2
+      ],
+      "failures": []
+    },
+    "gui_settled_idle": {
+      "seconds": 3.0,
+      "total": {
+        "cpu": 0.0,
+        "wakeups": 0
+      },
+      "windows": [
+        {
+          "title": "New session \u2014 Olo Coder",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "note": "Release builds on a shared host; frame budget 8.3 ms. The after benchmark covers all GUI/layout changes; later changes only distinguish fork reservations in core admission. Startup idle frames are deferred startup work; the separate settled idle sample had zero frames, CPU and wakeups. No causal speedup or worst-case latency claim."
+  },
+  "network_fixture": "An intermediate workspace run failed a_nudge_wakes_a_waiter because another test/the watcher changed process-wide generation during a zero-duration wait. Its assertion now permits the documented changed-generation result and still checks the deadline and wakeup.",
+  "limits": [
+    "Live Claude reasoning/compaction remain unverified after prior HTTP 429 responses; this pass used local deterministic providers.",
+    "No weeks-long live soak or claim of zero defects.",
+    "Child workspaces must already exist within the parent workspace; no automatic branch merge or discard.",
+    "Same-title multi-window verification used the full Agent Screen tree keyed by window ID: this installed olo-screen --window tree sometimes returned the first same-title form's text."
+  ],
+  "release_build": {
+    "command": "cargo build --release --workspace",
+    "exit_code": 0,
+    "sha256": "c585d2d434cd39844f9af17bfec41bfd30c5a694a1ee69ae02d2942ec196abe9"
+  },
+  "interface_tests": {
+    "command": "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER=/usr/bin/env cargo test --release -p olo-coder",
+    "passed": 8,
+    "failed": 0
+  },
+  "workspace_release_tests": {
+    "command": "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER=/usr/bin/env cargo test --release --workspace",
+    "exit_code": 0,
+    "suites": 204,
+    "passed": 1695,
+    "failed": 0,
+    "ignored": 141,
+    "coder_core_unit_passed": 9,
+    "coder_core_integration_passed": 72
+  },
+  "cleanup": "Owned Agent Screen stopped; scratch service and local provider fixture stopped; scratch directory removed after committing the retained QA report and journal."
+}

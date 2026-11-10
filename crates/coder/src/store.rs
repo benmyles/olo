@@ -51,6 +51,15 @@ impl Store {
         let body: String = self.db.query_row("SELECT body FROM sessions WHERE id=?", [id], |r| r.get(0)).context("session not found")?;
         Ok(serde_json::from_str(&body)?)
     }
+    pub(crate) fn active_children<'a>(&self, parent: &str, parent_depth: usize, active: impl Iterator<Item = &'a str>) -> Result<usize> {
+        // Query only supervisor reservations, independent of historical session count.
+        let ids = serde_json::to_string(&active.collect::<Vec<_>>())?;
+        Ok(self.db.query_row(
+            "SELECT count(*) FROM json_each(?) AS active JOIN sessions ON sessions.id=active.value WHERE json_extract(body,'$.parent')=? AND json_extract(body,'$.depth')>?",
+            params![ids, parent, i64::try_from(parent_depth)?],
+            |row| row.get::<_, i64>(0),
+        )? as usize)
+    }
     pub fn list(&self) -> Result<Vec<Value>> {
         let mut q = self.db.prepare("SELECT json_object('id',id,'title',json_extract(body,'$.title'),'workspace',json_extract(body,'$.workspace'),'status',json_extract(body,'$.status'),'updated',updated,'parent',json_extract(body,'$.parent'),'model',json_extract(body,'$.config.model.model'),'usage',json_extract(body,'$.usage')) FROM sessions ORDER BY updated DESC")?;
         let rows = q.query_map([], |r| r.get::<_, String>(0))?;

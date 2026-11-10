@@ -1977,3 +1977,98 @@ async fn capture_allocation_failure_precedes_process_effects() {
     assert!(!effect.exists());
     assert_eq!(std::fs::read(artifact_path).unwrap(), b"existing file");
 }
+
+#[tokio::test]
+async fn child_concurrency_counts_admitted_work_before_it_runs() {
+    let dir = Scratch::new();
+    let (fake, base, server) = server().await;
+    let e = Engine::open_at(dir.0.join("state"), Some(base)).unwrap();
+    let config = Config { subagents: true, max_subagents: 1, ..Default::default() };
+    let sid = e.command(Command::Create { workspace: dir.0.clone(), config: Some(config) }).await.unwrap()["id"].as_str().unwrap().to_owned();
+    let mut second = tool("spawn_agent", json!({"task":"Second review"}));
+    second["call_id"] = json!("call2");
+    fake.replies.lock().unwrap().push_back(response(vec![tool("spawn_agent", json!({"task":"First review"})), second]));
+    let began = std::time::Instant::now();
+    e.command(Command::Send { session: sid.clone(), text: "Review using at most one child at a time".into() }).await.unwrap();
+    finish(&e).await;
+    let children = e.store.lock().unwrap().list().unwrap().into_iter().filter(|v| v["parent"] == sid).collect::<Vec<_>>();
+    println!("Child admission batch: {:.3} ms; {} children", began.elapsed().as_secs_f64() * 1000.0, children.len());
+    server.abort();
+    assert_eq!(children.len(), 1, "admitted children must count immediately, before their run task is polled");
+    let events = e.store.lock().unwrap().events(&sid, 0, 100).unwrap();
+    assert!(events.iter().any(|v| v.kind == "tool_result" && v.data["call_id"] == "call2" && v.data["error"] == true));
+}
+
+#[tokio::test]
+async fn child_workspace_selects_a_native_worktree_and_keeps_parent_files_separate() {
+    use std::sync::atomic::AtomicBool;
+    let dir = Scratch::new();
+    let root = dir.0.join("repo");
+    std::fs::create_dir(&root).unwrap();
+    let repo = gix::init(&root).unwrap();
+    std::fs::write(repo.git_dir().join("config"), "[core]\nrepositoryformatversion = 0\nbare = false\n[user]\nname = Test Author\nemail = test@example.invalid\n").unwrap();
+    let run = |a: Value| git::run(&root, &call("repository_write", a), Arc::new(AtomicBool::new(false))).unwrap();
+    std::fs::write(root.join("base.txt"), "baseline").unwrap();
+    run(json!({"operation":"stage","paths":["base.txt"]}));
+    run(json!({"operation":"commit","message":"Base","expected_head":""}));
+    run(json!({"operation":"branch","branch":"child-review"}));
+    run(json!({"operation":"worktree_add","branch":"child-review","path":"worktrees/review"}));
+    let worktree = root.join("worktrees/review").canonicalize().unwrap();
+    let (fake, base, server) = server().await;
+    let e = Engine::open_at(dir.0.join("state"), Some(base)).unwrap();
+    let config = Config { subagents: true, approval: ApprovalMode::Allow, ..Default::default() };
+    let sid = e.command(Command::Create { workspace: root.clone(), config: Some(config) }).await.unwrap()["id"].as_str().unwrap().to_owned();
+    fake.replies.lock().unwrap().push_back(response(vec![tool("write_file", json!({"path":"child-only.txt","content":"isolated change"}))]));
+    e.command(Command::Tool { session: sid.clone(), name: "spawn_agent".into(), arguments: json!({"task":"Make the isolated fixture change","workspace":"worktrees/review","read_only":false}) })
+        .await
+        .unwrap();
+    finish(&e).await;
+    let child = e.store.lock().unwrap().list().unwrap().into_iter().find(|v| v["parent"] == sid).unwrap();
+    let id = child["id"].as_str().unwrap();
+    let s = e.get(id).unwrap();
+    server.abort();
+    assert_eq!(s.workspace, worktree);
+    assert_eq!(std::fs::read_to_string(worktree.join("child-only.txt")).unwrap(), "isolated change");
+    assert!(!root.join("child-only.txt").exists());
+    assert_eq!(git::run(&worktree, &call("repository_read", json!({"operation":"status"})), Arc::new(AtomicBool::new(false))).unwrap()["branch"], "child-review");
+    drop(e);
+    assert_eq!(Engine::open(dir.0.join("state")).unwrap().get(id).unwrap().workspace, worktree);
+}
+
+#[tokio::test]
+async fn child_workspace_rejects_escapes_and_invalid_tasks_without_creating_sessions() {
+    let dir = Scratch::new();
+    let outside = Scratch::new();
+    std::fs::write(dir.0.join("file"), "not a folder").unwrap();
+    std::fs::create_dir(dir.0.join(".git")).unwrap();
+    std::os::unix::fs::symlink(&outside.0, dir.0.join("escape")).unwrap();
+    let e = Engine::open_at(dir.0.join("state"), Some("http://127.0.0.1:1".into())).unwrap();
+    let config = Config { subagents: true, ..Default::default() };
+    let sid = e.command(Command::Create { workspace: dir.0.clone(), config: Some(config) }).await.unwrap()["id"].as_str().unwrap().to_owned();
+    let mut invalid: Vec<Value> = [json!("../"), json!(outside.0), json!("escape"), json!("file"), json!(".git"), json!("missing"), json!(false), Value::Null]
+        .into_iter()
+        .map(|workspace| json!({"task":"Review","workspace":workspace}))
+        .collect();
+    invalid.extend([json!({"task":"  "}), json!({"task":42})]);
+    for arguments in invalid {
+        e.command(Command::Tool { session: sid.clone(), name: "spawn_agent".into(), arguments: arguments.clone() }).await.unwrap();
+        finish(&e).await;
+        assert_eq!(e.store.lock().unwrap().list().unwrap().len(), 1, "{arguments}");
+        let events = e.store.lock().unwrap().events(&sid, 0, 1000).unwrap();
+        assert_eq!(events.iter().rev().find(|v| v.kind == "tool_result").unwrap().data["error"], true);
+    }
+}
+
+#[test]
+fn agent_shortcut_preserves_workspace_and_model_controls() {
+    let s = Session::new("/".into(), Config::default());
+    let arguments =
+        json!({"task":"Review independently","workspace":"worktrees/review","provider":"claude","model":"custom-model","effort":"high","read_only":false,"model_config":{"max_output_tokens":8000}});
+    let commands::Input::Command(Command::Tool { session, name, arguments: actual }) = commands::parse(&format!("/agent {arguments}"), &s).unwrap() else { panic!("expected tool") };
+    assert_eq!(session, s.id);
+    assert_eq!(name, "spawn_agent");
+    assert_eq!(actual, arguments);
+    for invalid in ["/agent", "/agent []", "/agent null", "/agent invalid"] {
+        assert!(commands::parse(invalid, &s).is_err());
+    }
+}

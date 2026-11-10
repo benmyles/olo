@@ -10,6 +10,7 @@ use olo_ui::{
 use std::{collections::HashMap, path::PathBuf};
 
 struct Coder {
+    restore_key: String,
     win: Option<gpui::WindowHandle<olo_ui::Frame>>,
     dir: PathBuf,
     workspace: PathBuf,
@@ -469,6 +470,8 @@ impl Coder {
                 .item("Resume", "resume")
                 .enabled(!running && self.view.session.as_ref().is_some_and(|s| !s.archived))
                 .separator()
+                .item("Start Subagent…", "start_agent")
+                .enabled(!running && self.view.session.as_ref().is_some_and(|s| !s.archived && s.config.subagents))
                 .item("Set Goal…", "goal")
                 .item("Spec Mode", "spec")
                 .checked(self.view.session.as_ref().is_some_and(|s| s.spec_mode))
@@ -570,6 +573,17 @@ impl Coder {
                 self.tab = 1;
                 self.page = 2;
                 let _ = self.client.tx.send(Action::Repository);
+            }
+            "start_agent" => {
+                form::open(
+                    cx,
+                    "Start Subagent",
+                    "Read-only. Blank fields inherit this session’s settings.",
+                    "Start",
+                    vec![Field::new("Task:", "").multiline(5), Field::new("Subfolder:", "").optional(), Field::new("Model:", "").optional(), Field::new("Effort:", "").optional()],
+                    self.client.clone(),
+                    form::Submission::Agent { session: self.view.id.clone() },
+                );
             }
             "git_init" => self.client.submit("/git init"),
             "git_refresh" => {
@@ -836,6 +850,7 @@ fn open_coder(cx: &mut gpui::App, dir: PathBuf, workspace: PathBuf, session: Opt
         windows.next += 1;
         windows.next
     });
+    let restore_key = restore["window_key"].as_str().map(str::to_owned).unwrap_or_else(olo_coder_core::id);
     let session = restore["session"].as_str().filter(|s| !s.is_empty()).map(str::to_owned).or(session);
     let proxy = olo_ui::proxy(cx);
     let initial_id = session.clone().unwrap_or_default();
@@ -865,6 +880,7 @@ fn open_coder(cx: &mut gpui::App, dir: PathBuf, workspace: PathBuf, session: Opt
         });
         let selection_subscriptions = [&files, &sessions, &inbox].into_iter().map(|m| cx.observe(m, |_, _, cx| cx.notify())).collect();
         Coder {
+            restore_key: restore_key.clone(),
             _selection_subscriptions: selection_subscriptions,
             win: None,
             dir,
@@ -894,7 +910,7 @@ fn open_coder(cx: &mut gpui::App, dir: PathBuf, workspace: PathBuf, session: Opt
         windows.views.insert(key, view.downgrade());
     });
     let opened = view.clone();
-    let win = olo_ui::open_window(cx, WindowOptions::new("Olo Coder", 1040.0, 700.0).min_size(500.0, 350.0), move |w, cx| {
+    let win = olo_ui::open_window(cx, WindowOptions::new("Olo Coder", 1040.0, 700.0).min_size(500.0, 350.0).restore_key(restore_key), move |w, cx| {
         opened.read(cx).composer.read(cx).focus(w);
         opened.clone()
     });
@@ -934,7 +950,7 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) {
                 .filter_map(|v| v.upgrade())
                 .map(|v| {
                     let s = v.read(cx);
-                    serde_json::json!({"session":s.view.id,"draft":s.composer.read(cx).text(),"drafts":s.drafts,"delivery":s.delivery,"page":s.page,"tab":s.tab,"follow":s.transcript.read(cx).follow})
+                    serde_json::json!({"window_key":s.restore_key,"session":s.view.id,"draft":s.composer.read(cx).text(),"drafts":s.drafts,"delivery":s.delivery,"page":s.page,"tab":s.tab,"follow":s.transcript.read(cx).follow})
                 })
                 .collect::<Vec<_>>();
             let mut windows = windows;

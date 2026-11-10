@@ -32,6 +32,7 @@ impl Field {
 pub enum Submission {
     Coordination { operation: String, session: String, message: Option<String> },
     Repository { operation: String, session: String, head: String },
+    Agent { session: String },
     Guidance { session: String, config: olo_coder_core::Config },
 }
 impl Submission {
@@ -55,6 +56,15 @@ impl Submission {
                 };
                 serde_json::json!({"op":"tool","session":session,"name":name,"arguments":arguments})
             }
+            Self::Agent { session } => {
+                let mut arguments = serde_json::json!({"task":v[0],"read_only":true});
+                for (key, value) in ["workspace", "model", "effort"].into_iter().zip(&v[1..]) {
+                    if !value.trim().is_empty() {
+                        arguments[key] = value.trim().into();
+                    }
+                }
+                serde_json::json!({"op":"tool","session":session,"name":"spawn_agent","arguments":arguments})
+            }
             Self::Guidance { session, config } => {
                 let mut config = config.clone();
                 config.approval_guidance = v[0].clone();
@@ -66,6 +76,8 @@ impl Submission {
 }
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct Snapshot {
+    #[serde(default = "olo_coder_core::id")]
+    window_key: String,
     title: String,
     description: String,
     action: String,
@@ -83,6 +95,7 @@ pub fn snapshots(cx: &gpui::App) -> Vec<Snapshot> {
         .map(|form| {
             let form = form.read(cx);
             Snapshot {
+                window_key: form.window_key.clone(),
                 title: form.title.clone(),
                 description: form.description.clone(),
                 action: form.action.clone(),
@@ -98,6 +111,7 @@ pub fn restore(cx: &mut gpui::App, states: Vec<Snapshot>, client: Handle) {
     }
 }
 struct Form {
+    window_key: String,
     fields: Vec<(Field, Entity<TextField>)>,
     client: Handle,
     title: String,
@@ -129,7 +143,8 @@ impl Render for Form {
                 if e.keystroke.key == "escape" {
                     w.remove_window();
                     cx.stop_propagation();
-                } else if e.keystroke.key == "enter" && (e.keystroke.modifiers.platform || s.fields.iter().any(|(spec, f)| spec.rows == 1 && f.read(cx).is_focused(w))) {
+                } else if e.keystroke.key == "enter" && (e.keystroke.modifiers.platform || e.keystroke.modifiers.control || s.fields.iter().any(|(spec, f)| spec.rows == 1 && f.read(cx).is_focused(w)))
+                {
                     s.submit(w, cx);
                     cx.stop_propagation();
                 }
@@ -149,26 +164,29 @@ impl Render for Form {
     }
 }
 pub fn open(cx: &mut gpui::App, title: &str, description: &'static str, action: &'static str, fields: Vec<Field>, client: Handle, submission: Submission) {
-    open_snapshot(cx, Snapshot { title: title.into(), description: description.into(), action: action.into(), fields, submission }, client);
+    open_snapshot(cx, Snapshot { window_key: olo_coder_core::id(), title: title.into(), description: description.into(), action: action.into(), fields, submission }, client);
 }
 fn open_snapshot(cx: &mut gpui::App, snapshot: Snapshot, client: Handle) {
     if cx.try_global::<Forms>().is_none() {
         cx.set_global(Forms::default());
     }
     cx.defer(move |cx| {
-        let Snapshot { title, description, action, fields, submission } = snapshot;
-        olo_ui::open_window(cx, WindowOptions::new(title.clone(), 580.0, 200.0).dialog().child(), move |window, cx| {
+        let Snapshot { window_key, title, description, action, fields, submission } = snapshot;
+        olo_ui::open_window(cx, WindowOptions::new(title.clone(), 580.0, 200.0).dialog().child().restore_key(window_key.clone()), move |window, cx| {
             let view = cx.new(|cx| {
                 let fields: Vec<_> = fields
                     .into_iter()
                     .map(|spec| {
-                        let field = widgets::text_field(cx, |f| f.name(spec.label.trim_end_matches(':').to_owned()).multiline(spec.rows > 1));
+                        let field = widgets::text_field(cx, |f| {
+                            let f = f.name(spec.label.trim_end_matches(':').to_owned());
+                            if spec.rows > 1 { f.multiline(false) } else { f }
+                        });
                         field.update(cx, |f, cx| f.set_text(&spec.value, cx));
                         (spec, field)
                     })
                     .collect();
                 let subscriptions = fields.iter().map(|(_, f)| cx.observe(f, |_, _, cx| cx.notify())).collect();
-                Form { fields, client, title, action, description, submission, _subscriptions: subscriptions }
+                Form { window_key, fields, client, title, action, description, submission, _subscriptions: subscriptions }
             });
             cx.update_global::<Forms, _>(|forms, _| {
                 forms.0.retain(|weak| weak.upgrade().is_some());

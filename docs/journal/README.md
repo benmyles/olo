@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-10
 
+### Coder: choose a child workspace
+
+*08:15* — Start a read-only child from the native Agent menu with a workspace subfolder, model and effort. Shared /agent commands offer the same operation in the terminal. Multiline task editing now preserves Return; forms and main windows retain their own geometry through upgrades. Reviewed all nine Coder forms in light, dark and night at 1×, 1.25×, 1.5×, 1.75× and 2×: 135 cases, zero findings.
+
+![Coder: choose a child workspace](2026-11-10/081504-coder-choose-a-child-workspace.png)
+
 ### Coder: cancellation stays in control
 
 *03:11* — Stop takes a separate control connection even while another request waits on a peer, and older unsubmitted text returns to the composer. Cancellation has readable status blocks and linked action details. On a forced 454-point-wide window at 2×, delivery choices move above the buttons so Send remains reachable. Ninety panel/theme/scale checks passed.

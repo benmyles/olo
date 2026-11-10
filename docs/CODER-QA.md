@@ -2,8 +2,8 @@
 
 Release builds in the `olo-coder` worktree. All GUI work used isolated Agent
 Screens or `tsession`; all model tasks used scratch workspaces and separate
-service stores. Nothing was installed into the person's session. No subagents
-were launched during development or validation.
+service stores. Nothing was installed into the person's session. No development work was delegated to model agents; child lifecycle checks use
+local provider fixtures.
 
 ## Functional checks
 
@@ -418,3 +418,50 @@ A fresh opt-in Claude attempt after this audit again returned **HTTP 429** on
 its first inference request. Retries were disabled for this quota check. The
 live test now requires signed or redacted Claude thinking before claiming replay
 coverage; the quota rejection prevented reaching that assertion or compaction.
+
+
+## Child workspaces and native form recovery — 2026-11-10
+
+Child tasks can now select an existing subdirectory or Git worktree inside their
+parent workspace, through the native **Start Subagent…** form, `/agent JSON` in
+either composer, or `spawn_agent`. A native Git fixture creates a branch and
+worktree, writes through a child, verifies the parent files are unchanged, and
+reopens the persisted child in its worktree. Separate fixtures reject traversal,
+symlink escapes, non-directories and malformed tasks without orphan sessions.
+
+The baseline admitted two children under a one-child limit because neither had
+started running yet. Admission now counts supervisor reservations atomically,
+including cancellation cleanup; resuming a child obeys the same cap. A waiting
+parent also waits for an admitted child whose first turn has not yet started.
+Counting queries only active IDs, independent of historical session count.
+
+Live GUI and TUI checks against a local provider fixture each created one child
+with the selected workspace, model and effort, inherited read-only policy and
+one completed request. Native keyboard checks found and fixed Enter being
+ignored in multiline forms. Return now inserts a newline there; single-line
+Return and Command+Return submit. Main windows and forms now carry distinct,
+persistent restore keys: a binary re-exec preserved both windows’ exact geometry
+and every field, including the multiline task. Two identically titled main
+windows and two identically titled forms also kept their own drafts and geometry
+after re-exec. A compositor restart also
+recovered the form draft. No model work was delegated for these checks.
+
+All nine native forms were reviewed in light, dark and night at 1×, 1.25×,
+1.5×, 1.75× and 2× while changing scale live: **135 cases, zero findings**.
+The main window and new form also passed the initial 30-case sweep. Minimum
+screen layout lint passed. The visual journal records the new form.
+
+A workspace rerun exposed an unrelated network-test race: another test or the
+network watcher can change the shared generation during a zero-duration wait.
+The assertion now accepts that documented result while retaining the deadline
+and wakeup checks. See [coder-workflow-qa.json](coder-workflow-qa.json) for final
+release counts, benchmark results and the remaining validation limits. The
+complete release workspace run passed **1,695 tests in 204 suites** (141
+ignored); all eight interface tests passed after the final shortcut adjustment.
+The final release build and layout lint passed. The final benchmark passed all
+30 steps (322 frames): slowest non-transition Coder frame 2.55 ms versus
+2.63 ms before, below the 8.3 ms budget. The baseline had three compositor
+stall findings; the final run had none. These shared-host samples are not a
+claim of a performance improvement. Settled GUI idle over three seconds used
+0 CPU, 0 wakeups and 0 frames; the TUI emitted zero bytes during its separate
+three-second idle observation.

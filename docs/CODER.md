@@ -174,17 +174,35 @@ records the specific reason, marks the goal blocked and stops the run without
 spending further keep-going turns. Resume or a new user message reactivates it.
 
 Child agents are off by default. When enabled, `spawn_agent` creates a durable
-child session in the same workspace, with its own model, effort, context, status
-and usage. `model_config` overrides every model field, including thinking budgets,
+child session with its own model, effort, context, status and usage. The optional
+`workspace` selects an existing subfolder or Git worktree inside the parent
+workspace; omitting it inherits the parent directory. Missing folders, files,
+parent traversal and symlinks outside the workspace are rejected before creation. `model_config` overrides every model field, including thinking budgets,
 service tier, output limit, cache/compaction settings and extra provider fields. Children default to read-only and inherit the parent's approval and
 sandbox policy. They cannot loosen a read-only parent or spec mode. Defaults
-allow three children per parent and two levels; both limits are configurable.
+allow three active children per parent and two levels; both limits are configurable.
+Admitted children reserve their slots immediately, including while waiting to
+start or finish cancellation. Resuming an existing child uses the same limit.
 Use `agent_status`, `wait_agent` (event-driven), `message_agent`, and `stop_agent`
 to coordinate. A child's finish is journaled on its parent. All child sessions
 can also be opened directly in either interface. Stopping a parent cancels its
 running descendants. Forking an idle session is distinct from delegating work.
-For isolated writable work, create a session pointing at an existing worktree;
-Coder does not automatically merge or discard branches.
+The native Agent menu offers **Start Subagent…**, with a task, subfolder, model
+and effort. It starts read-only; blank optional fields inherit the parent’s
+settings. The same operation is available in both composers with `/agent JSON`,
+or through the `spawn_agent` tool/API. For isolated writable work:
+
+```text
+/git branch {"branch":"agent-review"}
+/git worktree_add {"branch":"agent-review","path":"worktrees/review"}
+/agents on
+/agent {"task":"Implement the accepted change and run its tests","workspace":"worktrees/review","read_only":false,"model":"gpt-6.1-terra","effort":"high"}
+```
+
+Wait for each repository operation to finish before the next command. The child
+inherits the parent’s approval restrictions even when writable. Coder does not
+automatically merge or discard branches. Unrelated workspaces can be opened as
+separate root sessions and coordinated with session messages.
 
 ## Approval and confinement
 

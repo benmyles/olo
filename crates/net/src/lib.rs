@@ -400,8 +400,12 @@ mod tests {
 
     #[test]
     fn a_nudge_wakes_a_waiter() {
+        let seen = generation();
         let t = Instant::now();
-        assert!(!rest(Duration::ZERO));
+        let changed = rest(Duration::ZERO);
+        // The watcher and other tests can change the process-wide network
+        // generation even during a zero-length wait.
+        assert!(!changed || generation() != seen);
         assert!(t.elapsed() < Duration::from_millis(50));
         let h = std::thread::spawn(|| {
             let t = Instant::now();

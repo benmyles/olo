@@ -456,9 +456,30 @@ impl Engine {
         let s = self.get(&id)?;
         ensure!(!s.archived, "restore the archived session before starting work");
         ensure!(s.in_flight.is_none(), "an interrupted tool has an unknown outcome; inspect it, then use Resume");
+        if s.depth > 0 {
+            if let Some(parent) = &s.parent {
+                let parent = self.get(parent)?;
+                // Forks keep their source depth; only delegated children
+                // consume their parent's subagent slots.
+                if s.depth > parent.depth {
+                    self.child_capacity(&parent, &active)?;
+                }
+            }
+        }
         let cancel = CancellationToken::new();
         active.insert(id.clone(), cancel.clone());
         drop(active);
+        self.launch(id, cancel, compact);
+        Ok(())
+    }
+    // The reservation lock covers capacity checks, persistence and admission.
+    // Status snapshots can lag behind admitted work or its cancellation cleanup.
+    fn child_capacity(&self, parent: &Session, active: &HashMap<String, CancellationToken>) -> Result<()> {
+        let count = self.store.lock().unwrap().active_children(&parent.id, parent.depth, active.keys().map(String::as_str))?;
+        ensure!(count < parent.config.max_subagents, "subagent concurrency limit reached");
+        Ok(())
+    }
+    fn launch(self: &Arc<Self>, id: String, cancel: CancellationToken, compact: bool) {
         let e = self.clone();
         tokio::spawn(async move {
             let mut cancel = cancel;
@@ -512,7 +533,6 @@ impl Engine {
                 break;
             }
         });
-        Ok(())
     }
     async fn run(self: &Arc<Self>, id: &str, cancel: &CancellationToken, compact_only: bool) -> Result<()> {
         ensure!(!cancel.is_cancelled(), "cancelled");
@@ -889,22 +909,35 @@ impl Engine {
             }),
             "history_search" => Ok(serde_json::to_value(self.store.lock().unwrap().search(sid, tools::string(a, "query")?)?)?),
             "spawn_agent" => {
-                ensure!(s.config.subagents, "subagents are disabled");
-                ensure!(s.depth < s.config.max_depth, "subagent depth limit reached");
-                let count = self.store.lock().unwrap().list()?.iter().filter(|v| v["parent"] == s.id && matches!(v["status"].as_str(), Some("running" | "approval"))).count();
-                ensure!(count < s.config.max_subagents, "subagent concurrency limit reached");
-                let config = s.config.child(s.spec_mode, a)?;
                 let task = tools::string(a, "task")?;
-                let mut child = Session::new(s.workspace.clone(), config);
-                child.parent = Some(s.id.clone());
-                child.depth = s.depth + 1;
+                ensure!(!task.trim().is_empty() && task.len() <= 1_000_000, "child task must contain 1 to 1000000 bytes of text");
+                let workspace = match a.get("workspace") {
+                    None => s.workspace.clone(),
+                    Some(value) => tools::path(&s.workspace, value.as_str().context("workspace must be a string")?, false)?,
+                };
+                ensure!(workspace.is_dir(), "child workspace must be an existing directory");
+                let mut active = self.active.lock().unwrap();
+                ensure!(!cancel.is_cancelled(), "calling turn was cancelled before starting child work");
+                ensure!(!self.shutdown.is_cancelled() && !self.upgrading.load(std::sync::atomic::Ordering::Acquire), "service is shutting down or upgrading");
+                let parent = self.get(sid)?;
+                ensure!(parent.config.subagents, "subagents are disabled");
+                ensure!(parent.depth < parent.config.max_depth, "subagent depth limit reached");
+                self.child_capacity(&parent, &active)?;
+                let config = parent.config.child(parent.spec_mode, a)?;
+                let mut child = Session::new(workspace, config);
+                child.parent = Some(parent.id.clone());
+                child.depth = parent.depth + 1;
                 child.title = task.chars().take(72).collect();
                 child.queued.push(task.into());
                 child.goal = Some(Goal { objective: task.into(), status: "active".into(), evidence: String::new() });
-                child.memory = s.memory.clone();
-                self.save(&mut child, "created", json!({"parent":s.id}))?;
-                self.start_guarded(child.id.clone(), false, Some(cancel))?;
-                Ok(json!({"session":child.id}))
+                child.memory = parent.memory.clone();
+                let event = json!({"parent":parent.id,"workspace":child.workspace});
+                self.save(&mut child, "created", event)?;
+                let token = CancellationToken::new();
+                active.insert(child.id.clone(), token.clone());
+                drop(active);
+                self.launch(child.id.clone(), token, false);
+                Ok(json!({"session":child.id,"workspace":child.workspace}))
             }
             "wait_agent" => {
                 let child = tools::string(a, "session")?;
@@ -912,17 +945,32 @@ impl Engine {
                 let mut c = self.get(child)?;
                 c.context.clear();
                 ensure!(c.parent.as_deref() == Some(sid), "not this session's child");
-                if matches!(c.status, Status::Running) {
-                    let wait = async {
+                let wait = async {
+                    loop {
+                        let changed = self.changed.notified();
+                        tokio::pin!(changed);
+                        changed.as_mut().enable();
+                        if !self.active.lock().unwrap().contains_key(child) || self.get(child)?.pending.is_some() {
+                            return Ok::<_, anyhow::Error>(());
+                        }
                         loop {
-                            match events.recv().await {
-                                Ok(e) if e.session == child && matches!(e.kind.as_str(), "idle" | "paused" | "error" | "approval") => break,
-                                Err(_) => break,
-                                _ => {}
+                            tokio::select! {
+                                _ = &mut changed => break,
+                                event = events.recv() => match event {
+                                    Ok(event) if event.session == child && event.kind == "approval" => return Ok(()),
+                                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => break,
+                                    Err(tokio::sync::broadcast::error::RecvError::Closed) => bail!("service event stream closed"),
+                                    _ => {},
+                                }
                             }
                         }
-                    };
-                    tokio::select! {_=cancel.cancelled()=>bail!("cancelled"),_=tokio::time::timeout(std::time::Duration::from_secs(a["timeout_secs"].as_u64().unwrap_or(60).clamp(1,3600)),wait)=>{}}
+                    }
+                };
+                tokio::select! {
+                    _ = cancel.cancelled() => bail!("cancelled"),
+                    result = tokio::time::timeout(std::time::Duration::from_secs(a["timeout_secs"].as_u64().unwrap_or(60).clamp(1,3600)), wait) => {
+                        if let Ok(result) = result { result?; }
+                    }
                 }
                 let mut c = self.get(child)?;
                 c.context.clear();
@@ -1028,6 +1076,61 @@ mod tests {
         assert!(engine.active.lock().unwrap().is_empty());
         assert_eq!(engine.get(&child.id).unwrap().status, Status::Idle);
         drop(engine);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+    #[tokio::test]
+    async fn child_resume_counts_idle_and_cancelling_reservations() {
+        let directory = std::path::PathBuf::from("/var/tmp").join(format!("olo-coder-child-capacity-{}", id()));
+        let engine = Engine::open(directory.clone()).unwrap();
+        let mut parent = Session::new(directory.clone(), Config { subagents: true, max_subagents: 1, ..Default::default() });
+        parent.depth = 1;
+        engine.save(&mut parent, "created", json!({})).unwrap();
+        let mut first = Session::new(directory.clone(), Config::default());
+        first.parent = Some(parent.id.clone());
+        first.depth = parent.depth + 1;
+        engine.save(&mut first, "created", json!({})).unwrap();
+        let mut second = first.clone();
+        second.id = id();
+        engine.save(&mut second, "created", json!({})).unwrap();
+        let token = CancellationToken::new();
+        engine.active.lock().unwrap().insert(first.id.clone(), token.clone());
+        for cancelling in [false, true] {
+            if cancelling {
+                token.cancel();
+            }
+            assert!(engine.start(second.id.clone(), false).unwrap_err().to_string().contains("concurrency"));
+            assert!(!engine.active.lock().unwrap().contains_key(&second.id));
+        }
+        engine.active.lock().unwrap().clear();
+        let mut fork = first.clone();
+        fork.id = id();
+        fork.depth = parent.depth;
+        engine.save(&mut fork, "forked", json!({})).unwrap();
+        engine.active.lock().unwrap().insert(fork.id.clone(), CancellationToken::new());
+        assert!(engine.child_capacity(&parent, &engine.active.lock().unwrap()).is_ok(), "a fork of a child is not another delegated subagent");
+        drop(engine);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[tokio::test]
+    async fn wait_agent_waits_for_an_admitted_idle_child() {
+        let directory = std::path::PathBuf::from("/var/tmp").join(format!("olo-coder-child-wait-{}", id()));
+        let engine = Engine::open(directory.clone()).unwrap();
+        let parent = Session::new(directory.clone(), Config::default());
+        let mut child = Session::new(directory.clone(), Config::default());
+        child.parent = Some(parent.id.clone());
+        child.depth = 1;
+        engine.save(&mut child, "created", json!({})).unwrap();
+        engine.active.lock().unwrap().insert(child.id.clone(), CancellationToken::new());
+        let call = ToolCall { id: id(), name: "wait_agent".into(), arguments: json!({"session":child.id}) };
+        let cancel = CancellationToken::new();
+        let mut mcps = HashMap::new();
+        let wait = engine.invoke(&parent, &call, &cancel, Arc::new(|_, _| {}), &mut mcps);
+        tokio::pin!(wait);
+        assert!(tokio::time::timeout(std::time::Duration::from_millis(30), &mut wait).await.is_err(), "admitted work must not look completed");
+        engine.active.lock().unwrap().remove(&child.id);
+        engine.changed.notify_waiters();
+        assert!(tokio::time::timeout(std::time::Duration::from_millis(100), &mut wait).await.unwrap().is_ok());
         std::fs::remove_dir_all(directory).unwrap();
     }
 }
