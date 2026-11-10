@@ -406,3 +406,88 @@ async fn a_request_goes_on_across_a_network_change() {
     assert_eq!(asked.load(SeqCst), 4);
     assert_eq!(shared.snapshot().in_flight.values().sum::<u32>(), 0);
 }
+
+/// ChatGPT refuses a compressed Codex request with a bare 400 (Ben,
+/// 2026-11-09: a conversation whose history sat just past 3 × 128 KiB
+/// failed every turn): the gateway sends it once more with its JSON
+/// decoded, which is served. A request refused plain isn't sent again, nor
+/// one refused both ways a third time.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_compressed_codex_request_refused_goes_again_plain() {
+    // What reached the fake: (content-encoding, the body).
+    type Got = Arc<Mutex<Vec<(Option<String>, Vec<u8>)>>>;
+    let got: Got = Default::default();
+    let refuse_plain = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let fake = Router::new().route(
+        "/responses",
+        post({
+            let (got, refuse_plain) = (got.clone(), refuse_plain.clone());
+            move |h: HeaderMap, body: axum::body::Bytes| {
+                let (got, refuse_plain) = (got.clone(), refuse_plain.clone());
+                async move {
+                    let coding = h.get("content-encoding").and_then(|v| v.to_str().ok()).map(str::to_owned);
+                    got.lock().unwrap().push((coding.clone(), body.to_vec()));
+                    if coding.is_some() || refuse_plain.load(std::sync::atomic::Ordering::SeqCst) {
+                        return Response::builder().status(400).header("content-type", "application/json").body(Body::from(r#"{"detail":"Bad Request"}"#)).unwrap();
+                    }
+                    Response::builder()
+                        .header("content-type", "text/event-stream")
+                        .body(Body::from("data: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":9,\"output_tokens\":2}}}\n\n"))
+                        .unwrap()
+                }
+            }
+        }),
+    );
+    let up_addr = serve(fake).await;
+    let base = format!("http://{up_addr}");
+    let up = Upstreams { claude: base.clone(), codex: base.clone(), chatgpt: base.clone(), claude_oauth: format!("{base}/oauth"), codex_oauth: format!("{base}/oauth"), origin: None };
+    let mut saved = Saved::default();
+    let mut a = Account::new("a".into(), "a".into(), Provider::Codex);
+    a.created = 1;
+    saved.accounts.push(a);
+    saved.credentials.insert("a".into(), cred("ok"));
+    let shared = Shared::new(saved, None, up, || {});
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = l.local_addr().unwrap();
+    let app = gateway::router(shared.clone(), addr.port());
+    tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
+
+    // Just past 3 × 128 KiB, as Codex sends it: zstd.
+    let json = serde_json::to_vec(&json!({"model": "gpt-6-astra", "input": [{"type": "message", "role": "user", "content": "x".repeat(3 * 131_072 + 2_701)}]})).unwrap();
+    let packed = zstd::encode_all(&json[..], 3).unwrap();
+    let client = reqwest::Client::new();
+    let send = |body: Vec<u8>, coding: Option<&'static str>| {
+        let mut req = client.post(format!("http://{addr}/codex/v1/responses")).header("content-type", "application/json").body(body);
+        if let Some(c) = coding {
+            req = req.header("content-encoding", c);
+        }
+        req.send()
+    };
+    let r = send(packed.clone(), Some("zstd")).await.unwrap();
+    assert_eq!(r.status(), 200);
+    assert!(r.text().await.unwrap().contains("response.completed"));
+    {
+        let got = got.lock().unwrap();
+        assert_eq!(got.len(), 2, "sent once compressed, once plain");
+        assert_eq!((got[0].0.as_deref(), got[0].1 == packed), (Some("zstd"), true));
+        assert_eq!((got[1].0.as_deref(), got[1].1 == json), (None, true), "the same JSON, decoded");
+    }
+    // Counted once, as served.
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    let p = shared.snapshot();
+    let a = p.account("a").unwrap();
+    assert_eq!((a.total.requests, a.total.input_tokens, a.total.output_tokens), (1, 9, 2));
+
+    // Refused plain too: the client gets the 400, after two tries.
+    got.lock().unwrap().clear();
+    refuse_plain.store(true, std::sync::atomic::Ordering::SeqCst);
+    let r = send(packed.clone(), Some("zstd")).await.unwrap();
+    assert_eq!(r.status(), 400);
+    assert_eq!(r.text().await.unwrap(), r#"{"detail":"Bad Request"}"#);
+    assert_eq!(got.lock().unwrap().len(), 2);
+    // Sent plain and refused: once.
+    got.lock().unwrap().clear();
+    let r = send(json.clone(), None).await.unwrap();
+    assert_eq!(r.status(), 400);
+    assert_eq!(got.lock().unwrap().len(), 1);
+}
