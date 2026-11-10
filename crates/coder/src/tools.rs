@@ -23,6 +23,61 @@ pub fn clip(s: &str, n: usize) -> String {
     }
     format!("{}\n[truncated]", &s[..n])
 }
+/// Leave room for the JSON envelope and worst-case six-byte escaping of each
+/// source byte. Paging limits apply to the encoded tool reply, not just its text.
+pub(crate) fn page_bytes(cap: usize) -> usize {
+    cap.saturating_sub(256) / 6
+}
+
+pub(crate) async fn model_output(output: &Value, cap: usize, artifacts: &Path) -> Result<String> {
+    let text = output.to_string();
+    if text.len() <= cap {
+        return Ok(text);
+    }
+    let artifact = id();
+    let path = artifacts.join(&artifact);
+    let bytes = text.len();
+    let preview = clip(&text, page_bytes(cap));
+    // Persist before advertising the reference; slow storage never blocks a
+    // runtime worker. The full output also stays in the durable tool-result event.
+    tokio::task::spawn_blocking(move || atomic_write(&path, text.as_bytes())).await??;
+    let result = json!({"truncated":true,"artifact":artifact,"total_bytes":bytes,"read_with":"read_artifact","preview":preview}).to_string();
+    ensure!(result.len() <= cap, "tool output budget is too small for its artifact reference");
+    Ok(result)
+}
+
+pub(crate) async fn artifact_page(artifacts: &Path, args: &Value, cap: usize) -> Result<Value> {
+    let artifact = string(args, "id")?;
+    ensure!(uuid::Uuid::parse_str(artifact).is_ok(), "invalid artifact id");
+    use tokio::io::AsyncSeekExt;
+    let mut file = tokio::fs::File::open(artifacts.join(artifact)).await?;
+    let total = file.metadata().await?.len();
+    let offset = args["offset"].as_u64().unwrap_or(0);
+    ensure!(offset <= total, "offset exceeds artifact length");
+    file.seek(std::io::SeekFrom::Start(offset)).await?;
+    let limit = args["limit"].as_u64().unwrap_or(16000).max(4).min(page_bytes(cap) as u64);
+    let mut bytes = vec![0; limit.min(total - offset) as usize];
+    file.read_exact(&mut bytes).await?;
+    let valid = match std::str::from_utf8(&bytes) {
+        Ok(_) => true,
+        Err(error) if error.error_len().is_none() && offset + (bytes.len() as u64) < total => {
+            bytes.truncate(error.valid_up_to());
+            true
+        }
+        Err(_) => false,
+    };
+    let next = offset + bytes.len() as u64;
+    let mut result = json!({"next_offset":(next<total).then_some(next),"total_bytes":total});
+    if valid {
+        result["text"] = String::from_utf8(bytes)?.into();
+    } else {
+        use base64::Engine;
+        result["encoding"] = "base64".into();
+        result["data"] = base64::engine::general_purpose::STANDARD.encode(bytes).into();
+    }
+    ensure!(result.to_string().len() <= cap, "artifact page exceeds tool output budget");
+    Ok(result)
+}
 fn def(name: &str, description: &str, properties: Value, required: &[&str]) -> ToolDef {
     ToolDef { name: name.into(), description: description.into(), parameters: json!({"type":"object","properties":properties,"required":required,"additionalProperties":false}) }
 }
@@ -185,7 +240,7 @@ pub fn definitions() -> Vec<ToolDef> {
         def("stop_agent", "Stop a child agent and its active tools.", json!({"session":{"type":"string"}}), &["session"]),
         def(
             "read_artifact",
-            "Read a saved tool-output artifact by its identifier, with a byte offset.",
+            "Read exact saved tool-output bytes by identifier and byte offset. Follow next_offset until null. UTF-8 pages use text; binary pages use encoding=base64 and data. Limits adapt to the encoded tool-output budget.",
             json!({"id":{"type":"string"},"offset":{"type":"integer"},"limit":{"type":"integer"}}),
             &["id"],
         ),
@@ -649,6 +704,85 @@ mod output_tests {
     }
     async fn output(path: &Path) -> Arc<tokio::sync::Mutex<tokio::fs::File>> {
         Arc::new(tokio::sync::Mutex::new(tokio::fs::File::create(path).await.unwrap()))
+    }
+    #[tokio::test]
+    async fn bounded_results_are_valid_json_and_retrievable_without_losing_bytes() {
+        let dir = Scratch::new();
+        let original = json!({"escaped":"\u{0000}\n\"\\🌿λ".repeat(2000),"tail":"last byte"});
+        for cap in [1024, 24000] {
+            let wire = model_output(&original, cap, &dir.0).await.unwrap();
+            assert!(wire.len() <= cap);
+            let reference: Value = serde_json::from_str(&wire).unwrap();
+            assert_eq!(reference["truncated"], true);
+            let mut offset = 0;
+            let mut recovered = String::new();
+            loop {
+                let page = artifact_page(&dir.0, &json!({"id":reference["artifact"],"offset":offset,"limit":64000}), cap).await.unwrap();
+                assert!(page.to_string().len() <= cap);
+                recovered.push_str(page["text"].as_str().unwrap());
+                match page["next_offset"].as_u64() {
+                    Some(next) => {
+                        assert!(next > offset);
+                        offset = next;
+                    }
+                    None => break,
+                }
+            }
+            assert_eq!(recovered, original.to_string());
+        }
+        assert_eq!(model_output(&json!({"small":true}), 1024, &dir.0).await.unwrap(), "{\"small\":true}");
+        let missing = dir.0.join("missing-parent");
+        assert!(model_output(&original, 1024, &missing).await.is_err());
+    }
+    #[tokio::test]
+    async fn artifact_paging_preserves_binary_and_incomplete_utf8_at_eof() {
+        use base64::Engine;
+        let dir = Scratch::new();
+        let artifact = id();
+        let original = (0u8..=255).cycle().take(1024).chain([0xf0, 0x9f, 0x8c]).collect::<Vec<_>>();
+        std::fs::write(dir.0.join(&artifact), &original).unwrap();
+        for limit in [1, 5, 127, 64000] {
+            let mut offset = 0;
+            let mut recovered = Vec::new();
+            loop {
+                let page = artifact_page(&dir.0, &json!({"id":artifact,"offset":offset,"limit":limit}), 1024).await.unwrap();
+                assert!(page.to_string().len() <= 1024);
+                if let Some(text) = page["text"].as_str() {
+                    recovered.extend_from_slice(text.as_bytes());
+                } else {
+                    recovered.extend(base64::engine::general_purpose::STANDARD.decode(page["data"].as_str().unwrap()).unwrap());
+                }
+                match page["next_offset"].as_u64() {
+                    Some(next) => {
+                        assert!(next > offset);
+                        offset = next;
+                    }
+                    None => break,
+                }
+            }
+            assert_eq!(recovered, original);
+        }
+        assert!(artifact_page(&dir.0, &json!({"id":artifact,"offset":original.len()+1}), 1024).await.is_err());
+        let eof = artifact_page(&dir.0, &json!({"id":artifact,"offset":original.len()}), 1024).await.unwrap();
+        assert_eq!(eof["text"], "");
+        assert!(eof["next_offset"].is_null());
+    }
+    #[tokio::test]
+    #[ignore = "release performance measurement; run with --ignored --nocapture"]
+    async fn model_output_release_cost() {
+        let dir = Scratch::new();
+        for (label, count, output) in [("small", 10000, json!({"text":"normal result".repeat(20)})), ("oversized", 100, json!({"text":"escaped \0\n🌿".repeat(4000)}))] {
+            let start = std::time::Instant::now();
+            for _ in 0..count {
+                std::hint::black_box(clip(&output.to_string(), 24000));
+            }
+            let before = start.elapsed();
+            let start = std::time::Instant::now();
+            for _ in 0..count {
+                std::hint::black_box(model_output(&output, 24000, &dir.0).await.unwrap());
+            }
+            println!("{count} {label} replies: clipping baseline {before:?}; complete JSON/durable artifact {:?}", start.elapsed());
+        }
     }
     #[test]
     fn streaming_replacement_of_invalid_utf8_matches_whole_output() {

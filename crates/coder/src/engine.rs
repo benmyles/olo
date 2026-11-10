@@ -885,7 +885,7 @@ impl Engine {
             }
             Err(e) => (json!({"error":e.to_string()}), true),
         };
-        let text = tools::clip(&output.to_string(), s.config.max_tool_bytes);
+        let text = tools::model_output(&output, s.config.max_tool_bytes, &self.artifacts).await?;
         self.change(id, "tool_result", |s| {
             s.in_flight = None;
             s.tool_sequence += 1;
@@ -1022,7 +1022,11 @@ impl Engine {
             "read_transcript" => self.store.lock().unwrap().transcript(
                 sid,
                 a["after"].as_i64().unwrap_or(0),
-                a["limit"].as_u64().unwrap_or(0) as usize,
+                if a["record"].as_i64().is_some() {
+                    a["limit"].as_u64().filter(|n| *n > 0).unwrap_or(16000).min(tools::page_bytes(s.config.max_tool_bytes) as u64) as usize
+                } else {
+                    a["limit"].as_u64().unwrap_or(0) as usize
+                },
                 a["record"].as_i64(),
                 a["offset"].as_u64().unwrap_or(0) as usize,
             ),
@@ -1123,18 +1127,7 @@ impl Engine {
                     }
                 }
             }
-            "read_artifact" => {
-                let artifact = tools::string(a, "id")?;
-                ensure!(uuid::Uuid::parse_str(artifact).is_ok(), "invalid artifact id");
-                let file = self.artifacts.join(artifact);
-                use tokio::io::{AsyncReadExt, AsyncSeekExt};
-                let mut f = tokio::fs::File::open(file).await?;
-                let offset = a["offset"].as_u64().unwrap_or(0);
-                f.seek(std::io::SeekFrom::Start(offset)).await?;
-                let mut b = vec![0; a["limit"].as_u64().unwrap_or(16000).min(s.config.max_tool_bytes as u64) as usize];
-                let n = f.read(&mut b).await?;
-                Ok(json!({"text":String::from_utf8_lossy(&b[..n]),"next_offset":offset+n as u64}))
-            }
+            "read_artifact" => tools::artifact_page(&self.artifacts, a, s.config.max_tool_bytes).await,
             name if name.starts_with("mcp__") => {
                 let rest = &name[5..];
                 let (server, tool) = rest.split_once("__").context("invalid MCP tool name")?;

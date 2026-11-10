@@ -526,3 +526,31 @@ Validation for this change:
 [research, design and configuration](CODER-COMPACTION.md) describe the evidence and
 limits. The deterministic fixtures and live smoke do not establish multi-week task
 success or a universal advantage over other compaction strategies.
+
+## Exact retrieval under tool-output limits — 2026-11-10
+
+A follow-up audit found that the final tool-output clip could cut a transcript
+page or checkpoint response inside its JSON. Raw text page limits did not account
+for JSON escaping or the response envelope. The agent could therefore lose its
+continuation cursor even though the original source remained in the database.
+
+Transcript and artifact pages now reserve room for the encoded response.
+Oversized tool results retain their complete JSON in an atomically written,
+synced artifact; the model receives valid JSON with its reference and a preview.
+Artifact reads preserve UTF-8 boundaries, return binary data as base64, and end
+with a null continuation cursor. Small results take no disk-write path.
+
+Validation: **104 targeted release tests passed, zero failures** (10 opt-in tests
+ignored). A complete HTTP agent/tool loop reconstructs an escape-heavy original
+record and a large checkpoint exactly at the minimum **1 KB** tool-output budget.
+Additional tests cover binary bytes, incomplete UTF-8 at EOF, invalid offsets,
+empty final pages and persistence failure. This changes service retrieval only;
+the GUI/TUI layout is unchanged. The release workspace build passed. Clippy
+completed with the existing style/complexity warnings and no errors.
+
+Release benchmark on the shared host: **10,000 small replies, 1.94 ms before /
+1.86 ms after**; **100 oversized replies, 15.52 ms clipping before / 1,670.96 ms
+with durable artifacts after**. The extra oversized-result cost includes atomic
+writes, file sync and directory sync; it runs off the runtime worker thread.
+These samples are not a claim of a speed improvement. The earlier clipping path
+discarded output from the model-facing response; the new path makes it retrievable.

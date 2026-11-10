@@ -14578,8 +14578,9 @@ protocol references, approvals and recovery guarantees. Native Coder windows
 and forms keep unique `restore_key`s in their saved state so a dialog cannot
 claim the main window's geometry after re-exec. Multiline form fields use
 `TextField::multiline(false)` (its argument controls whether Return sends);
-single-line fields use the unmodified field. No Codex/Claude CLI is wrapped.
-Both providers go through the Token Pool's loopback gateway.
+single-line fields use the unmodified field. No external coding-agent CLI is
+wrapped. Codex uses Token Pool's loopback gateway; custom OpenAI-compatible
+endpoints use their configured API root directly.
 
 * `model` is serializable session/configuration/command state. `store` uses SQLite
   WAL, FULL synchronization, indexed events and conflict-checked edit checkpoints.
@@ -14622,6 +14623,10 @@ Both providers go through the Token Pool's loopback gateway.
 * `tools` implements files, search, checked edits, undo artifacts and cancellable
   argv processes. Process capture prepares its sink before spawning, flushes
   the last asynchronous write and syncs the artifact before reporting success.
+  Model-facing results must remain complete JSON within `max_tool_bytes`.
+  Oversized results persist as exact JSON artifacts before their reference is
+  returned. Transcript/artifact pages reserve space for JSON escaping and their
+  envelope; binary artifact pages use base64, never lossy UTF-8 replacement.
   `collect_output` must short-circuit on a pipe or artifact error rather than
   wait for a blocked child. Streaming retains at most three incomplete UTF-8
   bytes between batches; raw artifacts remain byte-exact within their limit.

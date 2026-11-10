@@ -537,3 +537,79 @@ fn fork_large_archive_release_cost() {
     let records: i64 = inspect.query_row("SELECT count(*) FROM transcript", [], |r| r.get(0)).unwrap();
     assert_eq!(records, 10000, "forks share immutable source ranges without copying transcript payloads");
 }
+
+#[tokio::test]
+async fn agent_retrieves_exact_transcript_and_large_checkpoint_with_a_small_tool_budget() {
+    let dir = Scratch::new();
+    let e = Engine::open(dir.0.join("state")).unwrap();
+    let mut config = custom("http://127.0.0.1:1/v1");
+    config.max_tool_bytes = 1024;
+    config.max_turns = 200;
+    let mut s = Session::new(dir.0.clone(), config);
+    s.user(&"Exact source \0\n\"\\🌿λ ".repeat(80));
+    e.store.lock().unwrap().save(&mut s, "created", json!({})).unwrap();
+    let original = s.context[0].to_string();
+    let record = s.context_refs[0];
+    let checkpoint = id();
+    let detail = json!({"id":checkpoint,"created":now(),"status":"ready","entries":[{"text":"Evidence with escapes \0\n\"\\🌿λ ".repeat(120)}],"prefix_refs":[record]});
+    e.store.lock().unwrap().save(&mut s, "compaction_ready", json!({"checkpoint":detail})).unwrap();
+    let recovered = Arc::new(Mutex::new((String::new(), String::new(), 0usize)));
+    let captured = recovered.clone();
+    let router = axum::Router::new().fallback(axum::routing::post(move |axum::Json(body): axum::Json<Value>| {
+        let captured = captured.clone();
+        let checkpoint = checkpoint.clone();
+        async move {
+            let messages = body["messages"].as_array().unwrap();
+            let last = messages.last().unwrap();
+            let mut memory = captured.lock().unwrap();
+            let (name, args) = if last["role"] != "tool" {
+                ("read_transcript", json!({"record":record,"limit":64000}))
+            } else {
+                let content = last["content"].as_str().unwrap();
+                assert!(content.len() <= 1024, "encoded result exceeds configured budget");
+                let page: Value = serde_json::from_str(content).expect("model must receive complete JSON");
+                let call = &messages[messages.len()-2]["tool_calls"][0]["function"];
+                let args: Value = serde_json::from_str(call["arguments"].as_str().unwrap()).unwrap();
+                match call["name"].as_str().unwrap() {
+                    "read_transcript" => {
+                        memory.0.push_str(page["text"].as_str().expect("transcript pages should fit directly"));
+                        if let Some(offset) = page["next_offset"].as_u64() {
+                            ("read_transcript", json!({"record":record,"limit":64000,"offset":offset}))
+                        } else {
+                            ("compaction_history", json!({"checkpoint":checkpoint}))
+                        }
+                    }
+                    "compaction_history" => {
+                        assert_eq!(page["truncated"], true);
+                        assert_eq!(page["read_with"], "read_artifact");
+                        ("read_artifact", json!({"id":page["artifact"],"limit":64000}))
+                    }
+                    "read_artifact" => {
+                        memory.1.push_str(page["text"].as_str().unwrap());
+                        if let Some(offset) = page["next_offset"].as_u64() {
+                            ("read_artifact", json!({"id":args["id"],"limit":64000,"offset":offset}))
+                        } else {
+                            return axum::Json(completion("Retrieved every source byte."));
+                        }
+                    }
+                    other => panic!("unexpected tool {other}"),
+                }
+            };
+            memory.2 += 1;
+            axum::Json(json!({"choices":[{"index":0,"finish_reason":"tool_calls","message":{"role":"assistant","content":null,"tool_calls":[{"id":format!("read-{}",memory.2),"type":"function","function":{"name":name,"arguments":args.to_string()}}]}}]}))
+        }
+    }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    s.config.model.endpoint.as_mut().unwrap().base_url = format!("http://{}/v1", listener.local_addr().unwrap());
+    e.store.lock().unwrap().save(&mut s, "configured", json!({})).unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    e.command(Command::Send { session: s.id.clone(), text: "Retrieve the source and checkpoint exactly.".into() }).await.unwrap();
+    finish(&e).await;
+    let state = e.get(&s.id).unwrap();
+    assert_eq!(state.status, Status::Idle, "{:?}", state.error);
+    let memory = recovered.lock().unwrap();
+    assert_eq!(memory.0, original);
+    assert_eq!(serde_json::from_str::<Value>(&memory.1).unwrap(), detail);
+    assert!(memory.2 > 2);
+    server.abort();
+}

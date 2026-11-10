@@ -64,6 +64,14 @@ so inspecting a small excerpt does not load a multi-megabyte record. Search is
 literal substring search, not embedding-based
 semantic retrieval. There is no automatic disk-retention expiry.
 
+Agent retrieval pages account for JSON escaping and the configured tool-output
+budget. Oversized checkpoint details, search results and other tool responses
+return valid JSON with an `artifact` ID and `read_with: "read_artifact"`; their
+complete serialized result is durably saved before that reference is exposed.
+Follow artifact `next_offset` values until null to recover the exact result.
+UTF-8 pages return `text`; binary pages return `encoding: "base64"` and `data`.
+This also works at the minimum 1 KB tool-output budget.
+
 Upgrades backfill the active native context available in an older database.
 They cannot reconstruct native payloads discarded by earlier versions; the older
 audit history remains separately available. Removed Claude sessions are paused,

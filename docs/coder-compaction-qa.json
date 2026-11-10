@@ -1903,5 +1903,34 @@
         "slowest_us": 0
       }
     ]
+  },
+  "retrieval_audit": {
+    "date": "2026-11-10",
+    "tests": {
+      "passed": 104,
+      "failed": 0,
+      "ignored": 10
+    },
+    "regressions": [
+      "Complete HTTP agent/tool loop reconstructs source and checkpoint at 1024-byte budget",
+      "UTF-8 byte boundaries and JSON escaping",
+      "Binary artifact byte roundtrip and incomplete EOF sequence",
+      "Invalid offsets, EOF and persistence failure"
+    ],
+    "benchmark": {
+      "small": {
+        "iterations": 10000,
+        "before_ms": 1.936394,
+        "after_ms": 1.859636
+      },
+      "oversized": {
+        "iterations": 100,
+        "before_ms": 15.523848,
+        "after_ms": 1670.956281
+      },
+      "note": "Shared host. Oversized results now require durable file and directory sync on a blocking worker instead of clipping; no UI changes."
+    },
+    "release_workspace_build": "passed",
+    "clippy": "Completed; existing style/complexity warnings, no errors"
   }
 }
