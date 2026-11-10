@@ -138,6 +138,24 @@ pub struct Run {
     pub style: u32,
 }
 impl Run {
+    /// Apply resolved CSS spacing once, including to a run reshaped at a line
+    /// boundary. The stored advances remain in this run's font units.
+    pub(crate) fn add_spacing(&mut self, [letter, word]: [f64; 2], cancel: Option<&AtomicBool>) -> Result<()> {
+        if (letter != 0. || word != 0.) && self.size > 0. {
+            let unit = f64::from(self.font.units_per_em()) / self.size.max(1e-6);
+            let letter_units = (letter * unit).round() as i32;
+            let word_units = (word * unit).round() as i32;
+            let source = self.source.as_bytes();
+            for chunk in self.glyphs.chunks_mut(256) {
+                check(cancel)?;
+                for g in chunk {
+                    let space = source.get(g.cluster as usize).is_some_and(|b| matches!(b, b' ' | b'\t'));
+                    g.x_advance = g.x_advance.saturating_add(letter_units).saturating_add(if space { word_units } else { 0 });
+                }
+            }
+        }
+        Ok(())
+    }
     pub fn advance(&self, size: f64) -> (f64, f64) {
         let unit = size / f64::from(self.font.units_per_em());
         let (x, y) = self.glyphs.iter().fold((0i64, 0i64), |(x, y), g| (x + i64::from(g.x_advance), y + i64::from(g.y_advance)));

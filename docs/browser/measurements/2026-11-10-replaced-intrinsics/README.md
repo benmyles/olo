@@ -12,8 +12,12 @@ The horizontal scrollbar is gone at all 15 live light/dark/night × five-scale
 configurations. Client height is now 578 rather than 562–563 CSS pixels at a
 1000×578 full viewport. The wrapper, picture, image and overlapping content
 match Chrome's x, width and height at every scale (919–920 pixels wide).
-Their **vertical positions still differ by about 438 pixels**, and document
-height differs. This closes a concrete overflow bug, not Stripe acceptance or
+Correction from the subsequent matched-experiment check: the recorded
+438-pixel vertical difference came from different server A/B variants. The
+native response included a product-recommendations section absent from the
+Chrome response. Matching the owned browsers’ anonymous experiment assignment
+removed that difference; it was not a vertical-flow engine defect. Document
+height and other rendering differences remain open. This closes a concrete overflow bug, not Stripe acceptance or
 production readiness. Corpus acceptance remains **0/100**.
 
 ## Evidence

@@ -69,8 +69,12 @@ fn baseline_shift(s: &crate::css::style::Style, parent_size: f64) -> f64 {
         _ => 0.,
     }
 }
+fn text_spacing(style: &crate::css::style::Style, cancel: Option<&AtomicBool>) -> [f64; 2] {
+    let size = style.font().request.size;
+    [P::LetterSpacing, P::WordSpacing].map(|p| style.used_text_spacing(p, size, Default::default(), cancel).unwrap_or(0.))
+}
 /// The style runs of a paragraph: every span styled differently from its
-/// container (font, size, line-height, baseline shift), in prepared-text
+/// container (font, size, line-height, baseline shift, spacing), in prepared-text
 /// coordinates, adjacent equal ones merged.
 fn style_runs(
     tree: &Tree,
@@ -83,6 +87,7 @@ fn style_runs(
 ) -> Result<Vec<shaping::StyleRun>> {
     let mut runs: Vec<shaping::StyleRun> = Vec::new();
     let parent_size = style.font().request.size;
+    let parent_spacing = text_spacing(style, cancel);
     for span in &source.spans {
         check(cancel)?;
         let s = tree.styles.snapshot(span.style_node).ok_or(Error::Stale)?;
@@ -91,8 +96,9 @@ fn style_runs(
         }
         let shift = baseline_shift(s, parent_size);
         let features = shaping::features_of(s);
+        let spacing = text_spacing(s, cancel);
         let same_font = s.font().request == style.font().request && s.font().context() == style.font().context();
-        if same_font && s.line_height() == style.line_height() && shift == 0. && features == shaping::features_of(style) {
+        if same_font && s.line_height() == style.line_height() && shift == 0. && features == shaping::features_of(style) && spacing == parent_spacing {
             continue;
         }
         let start = boundary(prepared, span.range.start)?;
@@ -106,6 +112,7 @@ fn style_runs(
             && last.line_height == s.line_height()
             && last.shift == shift
             && last.features == features
+            && last.spacing == spacing
         {
             last.range.end = end;
             continue;
@@ -127,9 +134,64 @@ fn style_runs(
             web_font: metrics.web_font,
             shift,
             features,
+            spacing,
         });
     }
     Ok(runs)
+}
+/// Keep text-item measurement boundaries without shaping each DOM text node
+/// separately. A ligature or joining sequence crossing a boundary remains one
+/// run; safe cuts reuse the original glyphs and their full shaping context.
+fn retain_text_items(paragraph: &mut shaping::Paragraph, prepared: &prepare::Prepared, cancel: Option<&AtomicBool>) -> Result<()> {
+    if prepared.spans().len() < 2 {
+        return Ok(());
+    }
+    let mut boundaries = Vec::with_capacity(prepared.spans().len() - 1);
+    for span in &prepared.spans()[1..] {
+        check(cancel)?;
+        let at = boundary(prepared, span.range.start)?;
+        if boundaries.last() != Some(&at) {
+            boundaries.push(at);
+        }
+    }
+    let mut out = Vec::new();
+    for run in std::mem::take(&mut paragraph.runs).into_vec() {
+        check(cancel)?;
+        let lo = boundaries.partition_point(|b| *b <= run.range.start);
+        let hi = boundaries.partition_point(|b| *b < run.range.end);
+        let rtl = run.direction == shaping::Direction::RightToLeft;
+        let mut cuts = Vec::new();
+        for &at in &boundaries[lo..hi] {
+            check(cancel)?;
+            let edge = if rtl { run.glyphs.partition_point(|g| g.cluster >= at) } else { run.glyphs.partition_point(|g| g.cluster < at) };
+            let cluster = if rtl { edge.checked_sub(1).and_then(|i| run.glyphs.get(i)) } else { run.glyphs.get(edge) };
+            if cluster.is_some_and(|g| g.cluster == at && !g.unsafe_to_break) {
+                cuts.push((at, edge));
+            }
+        }
+        if cuts.is_empty() {
+            out.push(run);
+            continue;
+        }
+        cuts.push((run.range.end, if rtl { 0 } else { run.glyphs.len() }));
+        let (mut start, mut edge) = (run.range.start, if rtl { run.glyphs.len() } else { 0 });
+        for (end, next) in cuts {
+            check(cancel)?;
+            out.push(shaping::Run {
+                source: run.source.clone(),
+                range: start..end,
+                font: run.font.clone(),
+                script: run.script,
+                direction: run.direction,
+                glyphs: run.glyphs[edge.min(next)..edge.max(next)].into(),
+                size: run.size,
+                style: run.style,
+            });
+            (start, edge) = (end, next);
+        }
+    }
+    paragraph.runs = out.into_boxed_slice();
+    Ok(())
 }
 #[allow(clippy::too_many_arguments)] // The paragraph, its breaks, styles and worker resources.
 fn shape_text(
@@ -149,25 +211,11 @@ fn shape_text(
     }
     while !s.step(128)?.finished {}
     let mut paragraph = s.finish()?;
-    // letter-spacing adds to every glyph's advance, word-spacing to spaces'
-    // (CSS Text 3 §8), in each run's font units.
-    let size = style.font().request.size;
-    let letter = style.used_text_spacing(P::LetterSpacing, size, Default::default(), cancel).unwrap_or(0.);
-    let word = style.used_text_spacing(P::WordSpacing, size, Default::default(), cancel).unwrap_or(0.);
-    if (letter != 0. || word != 0.) && size > 0. {
-        for run in paragraph.runs.iter_mut() {
-            let unit = f64::from(run.font.units_per_em()) / run.size.max(1e-6);
-            let letter_units = (letter * unit).round() as i32;
-            let word_units = (word * unit).round() as i32;
-            let source = run.source.clone();
-            let mut glyphs = run.glyphs.to_vec();
-            for g in &mut glyphs {
-                let space = source.as_bytes().get(g.cluster as usize).is_some_and(|b| matches!(b, b' ' | b'\t'));
-                g.x_advance = g.x_advance.saturating_add(letter_units).saturating_add(if space { word_units } else { 0 });
-            }
-            run.glyphs = glyphs.into_boxed_slice();
-        }
+    paragraph.spacing = text_spacing(style, cancel);
+    for run in paragraph.runs.iter_mut() {
+        run.add_spacing(paragraph.styles.get(run.style as usize).map_or(paragraph.spacing, |s| s.spacing), cancel)?;
     }
+    retain_text_items(&mut paragraph, &prepared, cancel)?;
     let s = Arc::new(paragraph);
     let mut b = linebreak::Job::new(prepared.text().clone(), Default::default(), cancel)?;
     while !b.step(4096)?.finished {}
@@ -468,12 +516,11 @@ impl<'a> PrepareJob<'a> {
                     s.line_height().to_bits().hash(&mut hash);
                     baseline_shift(s, style.font().request.size).to_bits().hash(&mut hash);
                     shaping::features_of(s).hash(&mut hash);
+                    text_spacing(s, self.cancel).map(f64::to_bits).hash(&mut hash);
                 }
             }
             // Spacing shapes into the glyph advances, so it is part of the identity.
-            let size = style.font().request.size;
-            style.used_text_spacing(crate::css::style::Property::LetterSpacing, size, Default::default(), self.cancel).unwrap_or(0.).to_bits().hash(&mut hash);
-            style.used_text_spacing(crate::css::style::Property::WordSpacing, size, Default::default(), self.cancel).unwrap_or(0.).to_bits().hash(&mut hash);
+            text_spacing(style, self.cancel).map(f64::to_bits).hash(&mut hash);
             shaping::features_of(style).hash(&mut hash);
             (font_identity(style.font()), source.source.clone(), hash.finish())
         });

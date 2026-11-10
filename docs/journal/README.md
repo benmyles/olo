@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-10
 
+### Browser: inline spacing follows each span
+
+*08:15* — The heading now measures593.23px, within0.011px of Chrome across15 live theme/scale configurations. Spacing survives line reshaping; safe text-item boundaries retain fractional advances. Full page pixels and journeys remain open, corpus0/100.
+
+![Browser: inline spacing follows each span](2026-11-10/081501-browser-inline-spacing-follows-each-span.png)
+
+### Browser: inline spacing before
+
+*08:14* — Stripe in the matched treatment variant, scroll500, 2×. Inline heading ignores its own negative letter spacing: about622px wide against Chrome’s593px. This is a diagnostic, not website acceptance.
+
+![Browser: inline spacing before](2026-11-10/081459-browser-inline-spacing-before.png)
+
 ### Browser constrains Stripe’s grid image
 
 *07:18* — Percentage max-width now compresses loaded images with definite width attributes during intrinsic sizing. Stripe’s horizontal overflow is gone; client height is 578 rather than 563 pixels. Other page layout and rendering differences remain; this is not site acceptance.

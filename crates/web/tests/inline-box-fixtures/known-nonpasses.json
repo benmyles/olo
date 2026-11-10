@@ -1,48 +1,6 @@
 {
-  "scope": "Explicit component nonpasses: transparent inline item boundaries still share glyph advances. Each remaining X mismatch exceeds the DOM Range enclosure allowance and is pinned. Every line height and Y coordinate must pass; additional X errors are regressions. Not website acceptance.",
-  "expected_nonpasses": {
-    "1.25:vertical-margins-ignored": [
-      {
-        "letter": "C",
-        "native": 40.0,
-        "chrome": 40.025001525878906
-      }
-    ],
-    "1.25:vertical-padding": [
-      {
-        "letter": "C",
-        "native": 40.0,
-        "chrome": 40.025001525878906
-      }
-    ],
-    "1.25:wrap-200-margin-left:auto;margin-right:auto": [
-      {
-        "letter": "E",
-        "native": 120.0,
-        "chrome": 120.0250015258789
-      }
-    ],
-    "1.75:vertical-margins-ignored": [
-      {
-        "letter": "C",
-        "native": 40.0,
-        "chrome": 40.017860412597656
-      }
-    ],
-    "1.75:vertical-padding": [
-      {
-        "letter": "C",
-        "native": 40.0,
-        "chrome": 40.017860412597656
-      }
-    ],
-    "1.75:wrap-200-margin-left:auto;margin-right:auto": [
-      {
-        "letter": "E",
-        "native": 120.00000762939453,
-        "chrome": 120.01786041259766
-      }
-    ]
-  },
-  "reason": "Six fractional-scale text-item advance nonpasses remain where transparent inline boundaries do not isolate shaping. Linear metric/grid corrections resolve the other 21 cases; no website acceptance."
+  "scope": "All component coordinates pass the existing DOM Range enclosure allowance. Not website acceptance.",
+  "expected_nonpasses": {},
+  "reason": "Six fractional-scale text-item advance nonpasses remain where transparent inline boundaries do not isolate shaping. Linear metric/grid corrections resolve the other 21 cases; no website acceptance.",
+  "note": "All prior fractional text-item rounding nonpasses now pass after retaining safe DOM text-item boundaries in shaped runs."
 }

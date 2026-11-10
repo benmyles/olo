@@ -1,0 +1,26 @@
+[
+  {
+    "id": "transparent-ligature",
+    "styles": {}
+  },
+  {
+    "id": "reshape-parent-spacing",
+    "styles": {
+      "p": "width:10px;word-break:break-all;letter-spacing:2px",
+      "q": "width:10px;word-break:break-all;letter-spacing:2px"
+    }
+  },
+  {
+    "id": "reshape-child-spacing",
+    "styles": {
+      "p": "width:10px;word-break:break-all",
+      "q": "width:10px;word-break:break-all",
+      "a": "letter-spacing:2px",
+      "c": "letter-spacing:4px"
+    }
+  },
+  {
+    "id": "restored-ligature",
+    "styles": {}
+  }
+]

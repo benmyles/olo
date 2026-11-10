@@ -29,7 +29,17 @@ horizontal overflow is now fixed: an image's definite HTML width bypassed
 percentage max-width compression when sizing its implicit grid track. The
 image/card widths and 985×578 client size now match Chrome at all 15 live
 configurations. **Next: locate the first remaining vertical-flow divergence**:
-the Sessions card is about438 pixels too low and document height still differs.
+the apparent438px Sessions-card offset was subsequently traced to different
+server A/B variants, and disappears with matching assignments. Document height
+still differs; compare experiment labels and settled content before attributing
+geometry to the engine. Child letter/word spacing now follows its own style,
+survives line reshaping and participates in text-cache identity. Safe text-item
+boundaries preserve fractional advances without splitting ligatures. Stripe’s
+first inline heading is now593.23px rather than622.02px (Chrome593.22–593.23),
+checked across15 live theme/scale combinations. The matched diagnostic still
+has about420px main-content height difference; business-sizes is the first
+uniquely matched section with a height difference, about22px short. See
+[inline spacing and experiment evidence](measurements/2026-11-10-inline-spacing/README.md).
 Continue matched pixels, navigation, pricing and interactive journeys before
 accepting configurations. See [intrinsic image sizing](measurements/2026-11-10-replaced-intrinsics/README.md)
 and [native scrolling](measurements/2026-11-10-native-scroll/README.md).

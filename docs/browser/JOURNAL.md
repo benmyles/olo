@@ -8472,10 +8472,71 @@ and page frames, with existing watchdog wakeups. The initial run overlapped
 journal generation and had two candidate drag hitches/max8.92ms; it is retained
 alongside the repeat. No general speedup or smoothness claim.
 
-Stripe remains active, corpus **0/100**. Its Sessions card is still about438px
-too low and document height differs. Find the first vertical-flow divergence,
+Stripe remains active, corpus **0/100**. The recorded438px Sessions-card
+offset was subsequently traced to different server A/B variants: native
+received an extra product-recommendations section. Matching anonymous
+assignments removes it; document height still differs. Compare like content,
 then continue matched pixels, pricing, navigation and interactive journeys and
 all30 configurations. Prior kit performance failures and scrolling gaps remain
 open. Fetched main is contained (442 ahead,0 behind before this checkpoint).
 No personal desktop install/reload or delegation. Evidence:
 `measurements/2026-11-10-replaced-intrinsics/`.
+
+
+## 2026-11-10: inline spacing, fractional text items and Stripe experiment parity
+
+The apparent438px Sessions-card offset from the preceding checkpoint was
+server content: native received `wpp_curator_h2.treatment` and a product
+recommendations section; Chrome received control without that section.
+Original Chrome HTTP bodies and native before-script DOM serialization
+established this. Matching only the owned profiles’ anonymous Stripe
+assignments removed the offset (Sessions y agrees within0.055px) with no
+vertical-flow change. Normalized labels and source hashes are retained,
+without cookie values. Lazy sections also require scrolling into view before
+comparing; duplicate class names are not unique section identities.
+
+Fixed a genuine heading-width defect: shaping used the paragraph’s spacing
+for child spans, and the shared preparation cache omitted child spacing.
+Resolved per-span values now govern shaping/cache reuse and survive line
+reshaping. Safe DOM text-item boundaries split retained glyph runs after
+shaping for independent device-grid enclosure; unsafe ligature/joining cuts
+stay whole. Original glyphs and shaping context are preserved.
+
+80 independent actual-Chrome observations at five DPRs compare eight element
+rectangles after sequential restyles; fresh/reused native measurement must
+agree exactly. Parent overrides, negative spacing, nested sizes/em, wrap,
+nowrap, RTL, transparent ligatures and forced reshaping pass. The strict0.02px
+coordinate allowance is unchanged. Retaining text-item boundaries resolved
+16 remaining0.025px errors and all six existing inline-box nonpasses:
+225/225 now pass the existing oracle and allowances. Early tiny-font fallback
+and local-versus-web font setup errors are explicitly excluded as engine
+verdicts; diagnostic logs remain.
+
+Release workspace:2,209 passed,0 failed,136 existing ignored,253 suites.
+Workspace build and Browser lints1280×800/1440×900 pass. Thirty final native
+captures/reviews and thirty Chrome captures cover light/dark/night at five
+live scales, odd x49. All native reviews are clean. Drivers require matching
+experiments, DPR, viewport/client size and scroll500, and focus Chrome plus
+wait two animation frames before capture to avoid stale occluded surfaces.
+The initial scroll-flag and stale-surface capture mistakes were corrected;
+final screenshots are journaled. Stripe’s first inline heading changes
+622.02→593.23px; max Chrome width difference0.011px.
+
+Release cost: ABBA at1.25×/2×, plus a1.25× repeat for an isolated173816KiB
+candidate RSS outlier; all12 runs retained. Combined medians1.25×/2×:
+9,000 cached reads6.287→5.708/5.834→5.860ms;20 forced spacing restyles/layouts
+2.172→2.472/2.094→2.700ms;CPU/resize10→10.625/14.375→16.250ms;
+RSS154686→155712/163774→163926KiB. Baseline restyles incorrectly keep the
+same width; candidate widths alternate correctly. Drag first movement
+36.65→36.75/36.75→36.35ms;wheel17.25→17.35/9.90→9.10ms. All idle samples
+have zero CPU/page frames with existing watchdog wakeups. Scroll hitches7→2,
+maximum draw8.47→9.61ms, eight stationary wheel frames each: performance gaps
+remain open, with no general speedup or smoothness claim.
+
+Stripe remains active, corpus **0/100**. Matched diagnostic main-content
+height still differs by about420px; business-sizes is about22px short,
+followed by further section differences. Continue actual page pixels and
+journeys/all30 configurations. Optional-ligature suppression with spacing,
+arbitrary Unicode spacing and HTMLMetaElement.content reflection remain open.
+No personal desktop install/reload or delegation. Evidence:
+`measurements/2026-11-10-inline-spacing/`.

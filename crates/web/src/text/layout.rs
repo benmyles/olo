@@ -294,6 +294,7 @@ impl Memo {
         )?;
         shaped.size = base.size;
         shaped.style = base.style;
+        shaped.add_spacing(p.styles.get(base.style as usize).map_or(p.spacing, |s| s.spacing), cancel)?;
         let shaped = Arc::new(shaped);
         self.shape_glyphs = self.shape_glyphs.checked_add(shaped.glyphs.len()).ok_or(Error::Limit)?;
         if self.shape_glyphs > limits.shape_glyphs {

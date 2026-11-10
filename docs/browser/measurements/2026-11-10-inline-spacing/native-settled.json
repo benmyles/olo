@@ -1,0 +1,745 @@
+{
+  "dpr": 1,
+  "viewport": [
+    1000,
+    578
+  ],
+  "client": [
+    985,
+    578
+  ],
+  "boxes": [
+    {
+      "tag": "MAIN",
+      "id": "main-content",
+      "cls": null,
+      "text": "",
+      "rect": [
+        0,
+        76,
+        985,
+        13488.477412790236
+      ]
+    },
+    {
+      "tag": "SECTION",
+      "id": "",
+      "cls": "hds-color-mode hero-section-container section section--white hds-mode--light",
+      "text": "",
+      "rect": [
+        0,
+        76,
+        985,
+        466.03125
+      ]
+    },
+    {
+      "tag": "DIV",
+      "id": "",
+      "cls": "section-container hero-section__layout",
+      "text": "",
+      "rect": [
+        16,
+        76,
+        953,
+        393.03125
+      ]
+    },
+    {
+      "tag": "H1",
+      "id": "",
+      "cls": "hds-heading hero-section__title hero-section__title--background hero-section__title--banking-copy hds-heading--xl",
+      "text": "Financial infrastructure to grow your revenue. Accept payments, handle business banking,1 and implem",
+      "rect": [
+        110.90625,
+        179.25,
+        735.90625,
+        159.528
+      ]
+    },
+    {
+      "tag": "H1",
+      "id": "",
+      "cls": "hds-heading hero-section__title hero-section__title--foreground hero-section__title--banking-copy hds-heading--xl",
+      "text": "Financial infrastructure to grow your revenue. Accept payments, handle business banking,1 and implem",
+      "rect": [
+        110.90625,
+        179.25,
+        735.90625,
+        159.528
+      ]
+    },
+    {
+      "tag": "DIV",
+      "id": "",
+      "cls": "section-background hero-section__background",
+      "text": "",
+      "rect": [
+        0,
+        0,
+        985,
+        542.03125
+      ]
+    },
+    {
+      "tag": "DIV",
+      "id": "",
+      "cls": "section-container hero-logo-section",
+      "text": "",
+      "rect": [
+        16,
+        469.03125,
+        953,
+        73
+      ]
+    },
+    {
+      "tag": "SECTION",
+      "id": "",
+      "cls": "hds-color-mode section section--white hds-mode--light",
+      "text": "",
+      "rect": [
+        0,
+        542.03125,
+        985,
+        1737.6487012987013
+      ]
+    },
+    {
+      "tag": "DIV",
+      "id": "",
+      "cls": "section-background modular-solutions-bg",
+      "text": "",
+      "rect": [
+        0,
+        542.03125,
+        985,
+        1737.640625
+      ]
+    },
+    {
+      "tag": "DIV",
+      "id": "",
+      "cls": "section-container section-row modular-solutions-section section-row-gap",
+      "text": "",
+      "rect": [
+        16,
+        542.03125,
+        953,
+        1737.6487012987013
+      ]
+    },
+    {
+      "tag": "H2",
+      "id": "",
+      "cls": "hds-heading hds-heading--lg hds-heading--inline",
+      "text": "Flexible solutions for every business model.",
+      "rect": [
+        33,
+        635.03125,
+        622.0287673589393,
+        40
+      ]
+    },
+    {
+      "tag": "H3",
+      "id": "bento-card-title-payments",
+      "cls": "hds-heading modular-solutions-bento-card__title hds-heading--md",
+      "text": "Accept and optimize payments globally\u2014online and in person",
+      "rect": [
+        57,
+        831.625,
+        520.65625,
+        47.040000000000006
+      ]
+    },
+    {
+      "tag": "H3",
+      "id": "bento-card-title-billing",
+      "cls": "hds-heading modular-solutions-bento-card__title hds-heading--md",
+      "text": "Enable any billing model",
+      "rect": [
+        677.65625,
+        831.625,
+        214.34375,
+        47.040000000000006
+      ]
+    },
+    {
+      "tag": "H3",
+      "id": "bento-card-title-agentic-commerce",
+      "cls": "hds-heading modular-solutions-bento-card__title hds-heading--md",
+      "text": "Monetize through agentic commerce",
+      "rect": [
+        57,
+        1351.8125,
+        210.328125,
+        47.040000000000006
+      ]
+    },
+    {
+      "tag": "H3",
+      "id": "bento-card-title-issuing",
+      "cls": "hds-heading modular-solutions-bento-card__title hds-heading--md",
+      "text": "Create a card issuing program",
+      "rect": [
+        367.328125,
+        1351.8125,
+        210.34375,
+        47.040000000000006
+      ]
+    },
+    {
+      "tag": "H3",
+      "id": "bento-card-title-crypto",
+      "cls": "hds-heading modular-solutions-bento-card__title hds-heading--md",
+      "text": "Access borderless money movement with stablecoins and crypto",
+      "rect": [
+        677.671875,
+        1351.8125,
+        214.328125,
+        70.56
+      ]
+    },
+    {
+      "tag": "H3",
+      "id": "bento-card-title-connect",
+      "cls": "hds-heading modular-solutions-bento-card__title hds-heading--md",
+      "text": "Embed payments in your platform",
+      "rect": [
+        57,
+        1872,
+        283.9375,
+        47.040000000000006
+      ]
+    },
+    {
+      "tag": "SECTION",
+      "id": "",
+      "cls": "hds-color-mode section section--white hds-mode--light",
+      "text": "",
+      "rect": [
+        0,
+        2279.6799512987013,
+        985,
+        438
+      ]
+    },
+    {
+      "tag": "DIV",
+      "id": "",
+      "cls": "section-container personalize-section",
+      "text": "",
+      "rect": [
+        16,
+        2279.6799512987013,
+        953,
+        438
+      ]
+    },
+    {
+      "tag": "H2",
+      "id": "",
+      "cls": "homepage-query-box__title",
+      "text": "Get Stripe product recommendations",
+      "rect": [
+        277.0625,
+        2375.6799512987013,
+        430.859375,
+        29
+      ]
+    },
+    {
+      "tag": "SECTION",
+      "id": "",
+      "cls": "hds-color-mode section section--white hds-mode--light",
+      "text": "",
+      "rect": [
+        0,
+        2717.6799512987013,
+        985,
+        560
+      ]
+    },
+    {
+      "tag": "DIV",
+      "id": "",
+      "cls": "section-container sessions-section",
+      "text": "",
+      "rect": [
+        16,
+        2717.6799512987013,
+        953,
+        560
+      ]
+    },
+    {
+      "tag": "SECTION",
+      "id": "",
+      "cls": "hds-color-mode stats-section stats-section--time-pre-dawn section section--white hds-mode--light",
+      "text": "",
+      "rect": [
+        0,
+        3277.6799512987013,
+        985,
+        845.7929509493671
+      ]
+    },
+    {
+      "tag": "SPAN",
+      "id": "",
+      "cls": "stats-section__border",
+      "text": "",
+      "rect": [
+        16,
+        3277.6799512987013,
+        953,
+        845.78125
+      ]
+    },
+    {
+      "tag": "SPAN",
+      "id": "",
+      "cls": "stats-section__active-indicator-container",
+      "text": "",
+      "rect": [
+        16,
+        3277.6799512987013,
+        953,
+        845.78125
+      ]
+    },
+    {
+      "tag": "DIV",
+      "id": "",
+      "cls": "section-container stats-section__container",
+      "text": "",
+      "rect": [
+        16,
+        3277.6799512987013,
+        953,
+        845.7929509493671
+      ]
+    },
+    {
+      "tag": "H2",
+      "id": "",
+      "cls": "hds-heading stats-section__title hds-heading--xxl",
+      "text": "The backbone of\u00a0global commerce",
+      "rect": [
+        247.84375,
+        3357.6799512987013,
+        489.296875,
+        115.36
+      ]
+    },
+    {
+      "tag": "DIV",
+      "id": "",
+      "cls": "section-background",
+      "text": "",
+      "rect": [
+        0,
+        3277.6799512987013,
+        985,
+        845.78125
+      ]
+    },
+    {
+      "tag": "SECTION",
+      "id": "",
+      "cls": "hds-color-mode business-sizes-section section section--white hds-mode--light",
+      "text": "",
+      "rect": [
+        0,
+        4123.472902248068,
+        985,
+        4512.715135542168
+      ]
+    },
+    {
+      "tag": "DIV",
+      "id": "",
+      "cls": "section-container section-row section-row-gap",
+      "text": "",
+      "rect": [
+        16,
+        4123.472902248068,
+        953,
+        4512.715135542168
+      ]
+    },
+    {
+      "tag": "H2",
+      "id": "",
+      "cls": "hds-heading business-sizes__title hds-heading--lg hds-heading--inline",
+      "text": "Powering businesses of all sizes.",
+      "rect": [
+        33,
+        4216.472902248068,
+        465.3505349713201,
+        40
+      ]
+    },
+    {
+      "tag": "H3",
+      "id": "",
+      "cls": "hds-heading section-header__title hds-heading--md",
+      "text": "Transform your enterprise with agile financial infrastructure",
+      "rect": [
+        33,
+        4418.863527248068,
+        373.578125,
+        58.24000000000001
+      ]
+    },
+    {
+      "tag": "H3",
+      "id": "summary-customer-content-Hertz",
+      "cls": "hds-heading customer-stories__customer-summary-description hds-heading--sm",
+      "text": "Hertz unifies commerce with Stripe.",
+      "rect": [
+        89,
+        4620.988527248068,
+        681,
+        24.200000000000003
+      ]
+    },
+    {
+      "tag": "H3",
+      "id": "summary-customer-content-URBN",
+      "cls": "hds-heading customer-stories__customer-summary-description hds-heading--sm",
+      "text": "URBN consolidates $5 billion in online and in-store revenue onto Stripe.",
+      "rect": [
+        89,
+        5206.879152248068,
+        807,
+        24.200000000000003
+      ]
+    },
+    {
+      "tag": "H3",
+      "id": "summary-customer-content-Instacart",
+      "cls": "hds-heading customer-stories__customer-summary-description hds-heading--sm",
+      "text": "Instacart powers online grocery delivery with Stripe.",
+      "rect": [
+        89,
+        5279.879152248068,
+        807,
+        24.200000000000003
+      ]
+    },
+    {
+      "tag": "H3",
+      "id": "summary-customer-content-LeMonde",
+      "cls": "hds-heading customer-stories__customer-summary-description hds-heading--sm",
+      "text": "Le Monde improves local and international payments with Stripe.",
+      "rect": [
+        89,
+        5352.879152248068,
+        807,
+        24.200000000000003
+      ]
+    },
+    {
+      "tag": "H3",
+      "id": "",
+      "cls": "hds-heading section-header__title hds-heading--md",
+      "text": "Build a foundation for your startup that enables faster growth",
+      "rect": [
+        33,
+        5876.691652248068,
+        373.578125,
+        87.36000000000001
+      ]
+    },
+    {
+      "tag": "H3",
+      "id": "",
+      "cls": "hds-heading section-header__title hds-heading--md",
+      "text": "Make your SaaS platform a complete financial operating system",
+      "rect": [
+        33,
+        7003.535402248068,
+        373.578125,
+        87.36000000000001
+      ]
+    },
+    {
+      "tag": "SECTION",
+      "id": "",
+      "cls": "hds-color-mode section hds-mode--dark",
+      "text": "",
+      "rect": [
+        0,
+        8636.188037790236,
+        985,
+        2466.414375
+      ]
+    },
+    {
+      "tag": "DIV",
+      "id": "",
+      "cls": "section-container section-row section-row-gap",
+      "text": "",
+      "rect": [
+        16,
+        8636.188037790236,
+        953,
+        2466.414375
+      ]
+    },
+    {
+      "tag": "H2",
+      "id": "",
+      "cls": "hds-heading hds-heading--lg hds-heading--inline",
+      "text": "Reliable, extensible infrastructure for every stack.",
+      "rect": [
+        33,
+        8729.188037790236,
+        703.8414454594167,
+        40
+      ]
+    },
+    {
+      "tag": "H3",
+      "id": "",
+      "cls": "hds-heading hds-heading--md hds-heading--inline",
+      "text": "Connect to existing systems.",
+      "rect": [
+        33,
+        9044.781787790236,
+        335.170345001926,
+        33
+      ]
+    },
+    {
+      "tag": "H3",
+      "id": "",
+      "cls": "hds-heading hds-heading--md hds-heading--inline",
+      "text": "Scale with confidence.",
+      "rect": [
+        33,
+        9854.141162790236,
+        262.3453816858181,
+        33
+      ]
+    },
+    {
+      "tag": "H3",
+      "id": "",
+      "cls": "hds-heading hds-heading--md hds-heading--inline",
+      "text": "Choose an integration path.",
+      "rect": [
+        33,
+        10493.328662790236,
+        323.157073740205,
+        33
+      ]
+    },
+    {
+      "tag": "SECTION",
+      "id": "",
+      "cls": "hds-color-mode section section--white hds-mode--light",
+      "text": "",
+      "rect": [
+        0,
+        11102.602412790236,
+        985,
+        1765.3
+      ]
+    },
+    {
+      "tag": "DIV",
+      "id": "",
+      "cls": "section-container events-section-container",
+      "text": "",
+      "rect": [
+        16,
+        11102.602412790236,
+        953,
+        1765.3
+      ]
+    },
+    {
+      "tag": "H2",
+      "id": "events-carousel-heading",
+      "cls": "hds-heading events-carousel__header-title hds-heading--lg",
+      "text": "What\u2019s happening",
+      "rect": [
+        33,
+        11198.602412790236,
+        347.984375,
+        35.2
+      ]
+    },
+    {
+      "tag": "H3",
+      "id": "",
+      "cls": "hds-heading hds-heading--sm hds-heading--inline",
+      "text": "Businesses on Stripe generated $1.9T in 2025.",
+      "rect": [
+        33,
+        11822.493037790236,
+        452.59427893323306,
+        28
+      ]
+    },
+    {
+      "tag": "H3",
+      "id": "",
+      "cls": "hds-heading hds-heading--sm hds-heading--inline",
+      "text": "150K+ users have their best day ever on Stripe.",
+      "rect": [
+        33,
+        11822.493037790236,
+        458.6407861328121,
+        28
+      ]
+    },
+    {
+      "tag": "H3",
+      "id": "",
+      "cls": "hds-heading hds-heading--sm hds-heading--inline",
+      "text": "Tidemark\u2019s vertical and SMB SaaS benchmark report.",
+      "rect": [
+        33,
+        11822.493037790236,
+        522.3770129750624,
+        28
+      ]
+    },
+    {
+      "tag": "H3",
+      "id": "",
+      "cls": "hds-heading hds-heading--sm hds-heading--inline",
+      "text": "Shopify\u2019s Tobi L\u00fctke sits down with John Collison.",
+      "rect": [
+        33,
+        11822.493037790236,
+        480.31018314557195,
+        28
+      ]
+    },
+    {
+      "tag": "H3",
+      "id": "",
+      "cls": "hds-heading hds-heading--sm hds-heading--inline",
+      "text": "New tools to process payments outside app stores.",
+      "rect": [
+        33,
+        11822.493037790236,
+        500.3142725780026,
+        28
+      ]
+    },
+    {
+      "tag": "H3",
+      "id": "",
+      "cls": "hds-heading hds-heading--sm hds-heading--inline",
+      "text": "Crypto.com partners with Stripe to enable better crypto payments.",
+      "rect": [
+        33,
+        11822.493037790236,
+        645.40625,
+        28
+      ]
+    },
+    {
+      "tag": "H3",
+      "id": "",
+      "cls": "hds-heading hds-heading--sm hds-heading--inline",
+      "text": "Make your products shoppable through AI platforms.",
+      "rect": [
+        33,
+        11822.493037790236,
+        519.1472530991405,
+        28
+      ]
+    },
+    {
+      "tag": "H3",
+      "id": "",
+      "cls": "hds-heading hds-heading--sm hds-heading--inline",
+      "text": "How leading retailers unify customer experiences and drive growth.",
+      "rect": [
+        33,
+        11822.493037790236,
+        659.6087462403038,
+        28
+      ]
+    },
+    {
+      "tag": "H3",
+      "id": "",
+      "cls": "hds-heading hds-heading--lg",
+      "text": "Book of the week",
+      "rect": [
+        33,
+        12052.493037790236,
+        608,
+        35.2
+      ]
+    },
+    {
+      "tag": "SECTION",
+      "id": "",
+      "cls": "hds-color-mode homepage-footer-cta--before-footnotes section hds-mode--light",
+      "text": "",
+      "rect": [
+        0,
+        12867.902412790236,
+        985,
+        560.375
+      ]
+    },
+    {
+      "tag": "DIV",
+      "id": "",
+      "cls": "section-container footer-cta-section__grid",
+      "text": "",
+      "rect": [
+        16,
+        12867.902412790236,
+        953,
+        560.375
+      ]
+    },
+    {
+      "tag": "SECTION",
+      "id": "",
+      "cls": "hds-color-mode homepage-footnotes section hds-mode--light",
+      "text": "",
+      "rect": [
+        0,
+        13368.277412790236,
+        985,
+        196.2
+      ]
+    },
+    {
+      "tag": "DIV",
+      "id": "",
+      "cls": "section-container homepage-footnotes__divider-container",
+      "text": "",
+      "rect": [
+        16,
+        13368.277412790236,
+        953,
+        120
+      ]
+    },
+    {
+      "tag": "DIV",
+      "id": "",
+      "cls": "section-container",
+      "text": "",
+      "rect": [
+        16,
+        13428.277412790236,
+        953,
+        136.2
+      ]
+    }
+  ]
+}

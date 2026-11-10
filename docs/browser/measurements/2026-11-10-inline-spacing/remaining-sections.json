@@ -1,0 +1,550 @@
+{
+  "native_only": [
+    {
+      "tag": "SECTION",
+      "id": "",
+      "cls": "hds-color-mode stats-section stats-section--time-sunrise section section--white hds-mode--light",
+      "text": "",
+      "rect": [
+        0,
+        3277.679951298702,
+        985,
+        845.7929509493671
+      ]
+    },
+    {
+      "tag": "DIV",
+      "id": "",
+      "cls": "section-container homepage-footnotes__divider-container",
+      "text": "",
+      "rect": [
+        16,
+        13333.077412790235,
+        953,
+        120
+      ]
+    }
+  ],
+  "chrome_only": [
+    {
+      "tag": "SECTION",
+      "id": "",
+      "cls": "hds-color-mode stats-section stats-section--time-pre-dawn section section--white hds-mode--light",
+      "text": "",
+      "rect": [
+        0,
+        3277.625,
+        985,
+        845.75
+      ]
+    }
+  ],
+  "unique_differences": [
+    {
+      "tag": "MAIN",
+      "class": null,
+      "text": "",
+      "native": [
+        0,
+        76,
+        985,
+        13453.277412790236
+      ],
+      "chrome": [
+        0,
+        76,
+        985,
+        13033.390625
+      ],
+      "delta": [
+        0,
+        0,
+        0,
+        419.88678779023576
+      ]
+    },
+    {
+      "tag": "SECTION",
+      "class": "hds-color-mode business-sizes-section section section--white hds-mode--light",
+      "text": "",
+      "native": [
+        0,
+        4123.472902248068,
+        985,
+        4512.715135542168
+      ],
+      "chrome": [
+        0,
+        4123.375,
+        985,
+        4534.703125
+      ],
+      "delta": [
+        0,
+        0.09790224806783954,
+        0,
+        -21.987989457831645
+      ]
+    },
+    {
+      "tag": "SECTION",
+      "class": "hds-color-mode section hds-mode--dark",
+      "text": "",
+      "native": [
+        0,
+        8636.188037790236,
+        985,
+        2431.214375
+      ],
+      "chrome": [
+        0,
+        8658.078125,
+        985,
+        2287.0625
+      ],
+      "delta": [
+        0,
+        -21.890087209763806,
+        0,
+        144.15187500000002
+      ]
+    },
+    {
+      "tag": "H2",
+      "class": "hds-heading hds-heading--lg hds-heading--inline",
+      "text": "Reliable, extensible infrastructure for every stack.",
+      "native": [
+        33,
+        8729.188037790236,
+        669.9375,
+        40
+      ],
+      "chrome": [
+        33,
+        8751.078125,
+        669.90625,
+        40
+      ],
+      "delta": [
+        0,
+        -21.890087209763806,
+        0.03125,
+        0
+      ]
+    },
+    {
+      "tag": "H3",
+      "class": "hds-heading hds-heading--md hds-heading--inline",
+      "text": "Connect to existing systems.",
+      "native": [
+        33,
+        9009.578662790236,
+        327.640625,
+        33
+      ],
+      "chrome": [
+        33,
+        9031.453125,
+        327.609375,
+        33
+      ],
+      "delta": [
+        0,
+        -21.874462209763806,
+        0.03125,
+        0
+      ]
+    },
+    {
+      "tag": "H3",
+      "class": "hds-heading hds-heading--md hds-heading--inline",
+      "text": "Scale with confidence.",
+      "native": [
+        33,
+        9818.938037790236,
+        256.375,
+        33
+      ],
+      "chrome": [
+        33,
+        9696.78125,
+        256.40625,
+        33
+      ],
+      "delta": [
+        0,
+        122.1567877902362,
+        -0.03125,
+        0
+      ]
+    },
+    {
+      "tag": "H3",
+      "class": "hds-heading hds-heading--md hds-heading--inline",
+      "text": "Choose an integration path.",
+      "native": [
+        33,
+        10458.125537790236,
+        315.890625,
+        33
+      ],
+      "chrome": [
+        33,
+        10335.9375,
+        315.859375,
+        33
+      ],
+      "delta": [
+        0,
+        122.1880377902362,
+        0.03125,
+        0
+      ]
+    },
+    {
+      "tag": "DIV",
+      "class": "section-container events-section-container",
+      "text": "",
+      "native": [
+        16,
+        11067.402412790236,
+        953,
+        1765.3
+      ],
+      "chrome": [
+        16,
+        10945.140625,
+        953,
+        1648.875
+      ],
+      "delta": [
+        0,
+        122.26178779023576,
+        0,
+        116.42499999999995
+      ]
+    },
+    {
+      "tag": "H2",
+      "class": "hds-heading events-carousel__header-title hds-heading--lg",
+      "text": "What\u2019s happening",
+      "native": [
+        33,
+        11163.402412790236,
+        347.984375,
+        35.2
+      ],
+      "chrome": [
+        33,
+        11041.140625,
+        347.984375,
+        35.1875
+      ],
+      "delta": [
+        0,
+        122.26178779023576,
+        0.0,
+        0.012500000000002842
+      ]
+    },
+    {
+      "tag": "H3",
+      "class": "hds-heading hds-heading--sm hds-heading--inline",
+      "text": "Businesses on Stripe generated $1.9T in 2025.",
+      "native": [
+        33,
+        11787.293037790236,
+        442.484375,
+        28
+      ],
+      "chrome": [
+        33,
+        11548.640625,
+        442.4375,
+        28
+      ],
+      "delta": [
+        0,
+        238.65241279023576,
+        0.046875,
+        0
+      ]
+    },
+    {
+      "tag": "H3",
+      "class": "hds-heading hds-heading--sm hds-heading--inline",
+      "text": "150K+ users have their best day ever on Stripe.",
+      "native": [
+        33,
+        11787.293037790236,
+        448.09375,
+        28
+      ],
+      "chrome": [
+        33,
+        11548.640625,
+        448.09375,
+        28
+      ],
+      "delta": [
+        0,
+        238.65241279023576,
+        0.0,
+        0
+      ]
+    },
+    {
+      "tag": "H3",
+      "class": "hds-heading hds-heading--sm hds-heading--inline",
+      "text": "Tidemark\u2019s vertical and SMB SaaS benchmark report.",
+      "native": [
+        33,
+        11787.293037790236,
+        511.15625,
+        28
+      ],
+      "chrome": [
+        33,
+        11548.640625,
+        511.1875,
+        28
+      ],
+      "delta": [
+        0,
+        238.65241279023576,
+        -0.03125,
+        0
+      ]
+    },
+    {
+      "tag": "H3",
+      "class": "hds-heading hds-heading--sm hds-heading--inline",
+      "text": "Shopify\u2019s Tobi L\u00fctke sits down with John Collison.",
+      "native": [
+        33,
+        11787.293037790236,
+        469.09375,
+        28
+      ],
+      "chrome": [
+        33,
+        11548.640625,
+        469.078125,
+        28
+      ],
+      "delta": [
+        0,
+        238.65241279023576,
+        0.015625,
+        0
+      ]
+    },
+    {
+      "tag": "H3",
+      "class": "hds-heading hds-heading--sm hds-heading--inline",
+      "text": "New tools to process payments outside app stores.",
+      "native": [
+        33,
+        11787.293037790236,
+        489.3125,
+        28
+      ],
+      "chrome": [
+        33,
+        11548.640625,
+        489.265625,
+        28
+      ],
+      "delta": [
+        0,
+        238.65241279023576,
+        0.046875,
+        0
+      ]
+    },
+    {
+      "tag": "H3",
+      "class": "hds-heading hds-heading--sm hds-heading--inline",
+      "text": "Crypto.com partners with Stripe to enable better crypto payments.",
+      "native": [
+        33,
+        11787.293037790236,
+        631.109375,
+        28
+      ],
+      "chrome": [
+        33,
+        11548.640625,
+        631.09375,
+        28
+      ],
+      "delta": [
+        0,
+        238.65241279023576,
+        0.015625,
+        0
+      ]
+    },
+    {
+      "tag": "H3",
+      "class": "hds-heading hds-heading--sm hds-heading--inline",
+      "text": "Make your products shoppable through AI platforms.",
+      "native": [
+        33,
+        11787.293037790236,
+        507.9375,
+        28
+      ],
+      "chrome": [
+        33,
+        11548.640625,
+        507.890625,
+        28
+      ],
+      "delta": [
+        0,
+        238.65241279023576,
+        0.046875,
+        0
+      ]
+    },
+    {
+      "tag": "H3",
+      "class": "hds-heading hds-heading--sm hds-heading--inline",
+      "text": "How leading retailers unify customer experiences and drive growth.",
+      "native": [
+        33,
+        11787.293037790236,
+        644.875,
+        28
+      ],
+      "chrome": [
+        33,
+        11548.640625,
+        644.84375,
+        28
+      ],
+      "delta": [
+        0,
+        238.65241279023576,
+        0.03125,
+        0
+      ]
+    },
+    {
+      "tag": "H3",
+      "class": "hds-heading hds-heading--lg",
+      "text": "Book of the week",
+      "native": [
+        33,
+        12017.293037790236,
+        608,
+        35.2
+      ],
+      "chrome": [
+        33,
+        11778.640625,
+        608,
+        35.1875
+      ],
+      "delta": [
+        0,
+        238.65241279023576,
+        0,
+        0.012500000000002842
+      ]
+    },
+    {
+      "tag": "SECTION",
+      "class": "hds-color-mode homepage-footer-cta--before-footnotes section hds-mode--light",
+      "text": "",
+      "native": [
+        0,
+        12832.702412790235,
+        985,
+        560.375
+      ],
+      "chrome": [
+        0,
+        12594.015625,
+        985,
+        379.1875
+      ],
+      "delta": [
+        0,
+        238.68678779023503,
+        0,
+        181.1875
+      ]
+    },
+    {
+      "tag": "DIV",
+      "class": "section-container footer-cta-section__grid",
+      "text": "",
+      "native": [
+        16,
+        12832.702412790235,
+        953,
+        560.375
+      ],
+      "chrome": [
+        16,
+        12594.015625,
+        953,
+        379.1875
+      ],
+      "delta": [
+        0,
+        238.68678779023503,
+        0,
+        181.1875
+      ]
+    },
+    {
+      "tag": "SECTION",
+      "class": "hds-color-mode homepage-footnotes section hds-mode--light",
+      "text": "",
+      "native": [
+        0,
+        13333.077412790235,
+        985,
+        196.2
+      ],
+      "chrome": [
+        0,
+        12973.203125,
+        985,
+        136.1875
+      ],
+      "delta": [
+        0,
+        359.87428779023503,
+        0,
+        60.01249999999999
+      ]
+    },
+    {
+      "tag": "DIV",
+      "class": "section-container",
+      "text": "",
+      "native": [
+        16,
+        13393.077412790235,
+        953,
+        136.2
+      ],
+      "chrome": [
+        16,
+        12973.203125,
+        953,
+        136.1875
+      ],
+      "delta": [
+        0,
+        419.87428779023503,
+        0,
+        0.012499999999988631
+      ]
+    }
+  ]
+}

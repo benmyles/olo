@@ -1,0 +1,32 @@
+{
+  "native-source.html": {
+    "sha256": "c532fd22178ca879e892ce75d896be1e8e9ac47a68cc3bdab15f53bb48254c75",
+    "normalized_experiments": [
+      "wpp_curator_h2.treatment",
+      "wpp_curator_input_strength.treatment",
+      "wpp_footer_email_capture.treatment",
+      "wpp_react_homepage_aa.treatment"
+    ],
+    "personalize_section": true
+  },
+  "chrome-source.html": {
+    "sha256": "516188086b4ae065dcb3c1ab8262707a23e894ae3201f0dd8e5bad02c2fb2c1a",
+    "normalized_experiments": [
+      "wpp_curator_h2.control",
+      "wpp_curator_input_strength.treatment",
+      "wpp_footer_email_capture.treatment",
+      "wpp_react_homepage_aa.control"
+    ],
+    "personalize_section": false
+  },
+  "chrome-aligned-source.html": {
+    "sha256": "df773856c1930e641ae151d2523cee1c39aa87d9ad413d41a6453599f5bed8cf",
+    "normalized_experiments": [
+      "wpp_curator_h2.treatment",
+      "wpp_curator_input_strength.treatment",
+      "wpp_footer_email_capture.treatment",
+      "wpp_react_homepage_aa.treatment"
+    ],
+    "personalize_section": true
+  }
+}

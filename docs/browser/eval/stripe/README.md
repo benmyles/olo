@@ -14,12 +14,29 @@ without a dedicated eval environment; no personal account is part of this run.
 
 ## Latest checkpoint
 
+2026-11-10, inline text spacing: spans now use their own letter/word spacing,
+including after line-boundary reshaping, and safe text-item boundaries retain
+fractional advances. Stripe’s first inline heading is593.23px rather than
+622.02px; maximum width difference from Chrome is0.011px across all15 live
+theme/scale combinations.80 new component observations and all225 existing
+inline-box observations pass. Release workspace:2,209 passed,0 failed.
+The previous438px Sessions offset was an A/B mismatch, corrected below.
+Main-content height still differs by about420px; the business-sizes section
+is the next uniquely matched height discrepancy to investigate. Full pixels,
+journeys and all30 acceptance configurations remain open, corpus **0/100**.
+See [evidence](../../measurements/2026-11-10-inline-spacing/README.md).
+
+The preceding checkpoint follows:
+
 2026-11-10, intrinsic image sizing: native classic root bars are integrated,
 and the erroneous horizontal bar is now gone. A definite image width bypassed
 percentage max-width compression, widening an implicit grid track. At the
 matched1000×578 viewport, the four card widths and985×578 client size now agree
-with Chrome at all15 live theme/scale combinations. The card remains about438px
-too low; find the first vertical-flow divergence next. Remaining pixel,
+with Chrome at all15 live theme/scale combinations. Subsequent investigation
+found that the recorded438px vertical difference was a server A/B mismatch,
+not a layout defect: native received an extra product-recommendations section.
+Matching anonymous experiment assignments removed it. Compare experiment labels
+and settle lazy content before comparing geometry. Remaining pixel,
 interaction, pricing and navigation journeys and all30 acceptance configurations
 stay open. Corpus **0/100**. See [evidence](../../measurements/2026-11-10-replaced-intrinsics/README.md).
 

@@ -1,0 +1,97 @@
+[
+  {
+    "id": "plain",
+    "styles": {}
+  },
+  {
+    "id": "child-letter",
+    "styles": {
+      "a": "letter-spacing:1px",
+      "c": "letter-spacing:3px"
+    }
+  },
+  {
+    "id": "child-negative",
+    "styles": {
+      "a": "letter-spacing:-.5px",
+      "n": "letter-spacing:-1px",
+      "c": "letter-spacing:.5px"
+    }
+  },
+  {
+    "id": "child-word",
+    "styles": {
+      "a": "word-spacing:3px",
+      "n": "word-spacing:-1px",
+      "c": "word-spacing:1px"
+    }
+  },
+  {
+    "id": "override-parent",
+    "styles": {
+      "p": "letter-spacing:2px;word-spacing:3px",
+      "q": "letter-spacing:2px;word-spacing:3px",
+      "a": "letter-spacing:normal;word-spacing:normal",
+      "n": "letter-spacing:1px",
+      "c": "letter-spacing:1px;word-spacing:0px"
+    }
+  },
+  {
+    "id": "font-size",
+    "styles": {
+      "a": "font-size:32px;letter-spacing:-.64px;line-height:40px",
+      "n": "font-size:16px;letter-spacing:.1em",
+      "c": "font-size:32px;letter-spacing:0px;line-height:40px"
+    }
+  },
+  {
+    "id": "inherited-em",
+    "styles": {
+      "p": "letter-spacing:.1em",
+      "q": "letter-spacing:.1em",
+      "n": "font-size:10px",
+      "m": "font-size:10px;letter-spacing:.1em"
+    }
+  },
+  {
+    "id": "wrap",
+    "styles": {
+      "p": "width:120px",
+      "q": "width:120px",
+      "a": "letter-spacing:1px",
+      "c": "letter-spacing:3px"
+    }
+  },
+  {
+    "id": "inline-edges",
+    "styles": {
+      "p": "width:170px",
+      "q": "width:170px",
+      "a": "letter-spacing:1px;padding:0 3px;border:1px solid",
+      "n": "margin:0 2px",
+      "c": "letter-spacing:3px;padding:0 3px;border:1px solid"
+    }
+  },
+  {
+    "id": "nowrap",
+    "styles": {
+      "p": "width:100px;white-space:nowrap",
+      "q": "width:100px;white-space:nowrap",
+      "a": "letter-spacing:2px",
+      "c": "letter-spacing:4px"
+    }
+  },
+  {
+    "id": "rtl",
+    "styles": {
+      "p": "direction:rtl",
+      "q": "direction:rtl",
+      "a": "letter-spacing:1px",
+      "c": "letter-spacing:2px"
+    }
+  },
+  {
+    "id": "restored",
+    "styles": {}
+  }
+]

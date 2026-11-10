@@ -4528,5 +4528,17 @@
   "title": "Browser constrains Stripe\u2019s grid image",
   "caption": "Percentage max-width now compresses loaded images with definite width attributes during intrinsic sizing. Stripe\u2019s horizontal overflow is gone; client height is 578 rather than 563 pixels. Other page layout and rendering differences remain; this is not site acceptance.",
   "image": "2026-11-10/071827-browser-constrains-stripe-s-grid-image.png"
+ },
+ {
+  "time": "2026-11-10T08:14:59",
+  "title": "Browser: inline spacing before",
+  "caption": "Stripe in the matched treatment variant, scroll500, 2\u00d7. Inline heading ignores its own negative letter spacing: about622px wide against Chrome\u2019s593px. This is a diagnostic, not website acceptance.",
+  "image": "2026-11-10/081459-browser-inline-spacing-before.png"
+ },
+ {
+  "time": "2026-11-10T08:15:01",
+  "title": "Browser: inline spacing follows each span",
+  "caption": "The heading now measures593.23px, within0.011px of Chrome across15 live theme/scale configurations. Spacing survives line reshaping; safe text-item boundaries retain fractional advances. Full page pixels and journeys remain open, corpus0/100.",
+  "image": "2026-11-10/081501-browser-inline-spacing-follows-each-span.png"
  }
 ]

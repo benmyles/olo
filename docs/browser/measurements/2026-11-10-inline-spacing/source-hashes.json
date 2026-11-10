@@ -1,0 +1,17 @@
+{
+  "crates/web/src/layout/flow.rs": "7ff423f016a0c0e8be2dda652830934255efd732b54294c7080078628784a196",
+  "crates/web/src/text/layout.rs": "5ca022aeb7466a28b8e4ecab6a8be3d166033a54d3e0ba638854f8ce5a235eed",
+  "crates/web/src/text/shaping.rs": "f74bc076a25f0885e0408f0416c6e51f07dd699eb865d89863224df0f28bdd9a",
+  "crates/web/src/text/shaping/paragraph.rs": "b0ac57f6b89c919c17af32e97aff289f08fefa6edfb151f0f3a8ec8a6a404ce6",
+  "crates/web/tests/span_spacing.rs": "7aa4a473110a5ecbb6af0f24b729129695293fc84905d6dbbdfb649a2c072983",
+  "crates/web/tests/inline-box-fixtures/known-nonpasses.json": "41c7da7a941706239524847101fe4426166a6972803601f0c636b361d9a61753",
+  "crates/web/tests/inline-box-fixtures/SOURCE.json": "2a11ee9224bb2d481f9c85487b992a7021464e57aaef610a15317cf0e3d9d77b",
+  "crates/web/tests/span-spacing-fixtures/base.html": "e5d5d107bf15f7fd3432fc660b353377acf18d7e857e76d2f298cca06de0959b",
+  "crates/web/tests/span-spacing-fixtures/cases.json": "2cda740e618c8b5b06bc83433514931ddf1634c09f547b389903a235b33e18ab",
+  "crates/web/tests/span-spacing-fixtures/chrome.json": "779d1a23f9ced4a16e2bc59660e2dc43eb834118b0c25304bb6d568f7129956b",
+  "crates/web/tests/span-spacing-fixtures/ligature.html": "0801a6d07507d8021159e242d00cfede96757876dd5db57ba8f17e4d48a92d1e",
+  "crates/web/tests/span-spacing-fixtures/ligature-cases.json": "2a66b0cd83ea29e94077936e09f7a6f2943f9924ccb995af6183e0ab0050c577",
+  "crates/web/tests/span-spacing-fixtures/capture.py": "ea42a830465bdda0b40b97757cc14c278542baf4cdd56a9a31a002ab57765c9b",
+  "crates/web/tests/span-spacing-fixtures/ligature-chrome.json": "6a890a24b11a9c46a29cdd3ecf3a7a302b1da8d75c8ae9c0a0ef16810226566a",
+  "crates/web/tests/span-spacing-fixtures/README.md": "86ebe8d5c122405b1132590f239c85ea087d7bf094b9a617e3033c41883a9d8a"
+}

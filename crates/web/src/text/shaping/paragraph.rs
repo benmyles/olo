@@ -133,6 +133,8 @@ pub struct Paragraph {
     /// Ranges styled differently from the paragraph (a bold span, a larger
     /// link, a superscript), in source order, never overlapping.
     pub styles: Box<[StyleRun]>,
+    /// Resolved spacing for runs using the paragraph's own style.
+    pub spacing: [f64; 2],
     request: FontRequest,
     font_context: u64,
     shaping_breaks: ShapingBreaks,
@@ -154,6 +156,8 @@ pub struct StyleRun {
     pub shift: f64,
     /// `font-feature-settings`, passed to shaping.
     pub features: Arc<[crate::css::properties::Feature]>,
+    /// Resolved CSS letter/word spacing, applied to glyph advances by layout.
+    pub spacing: [f64; 2],
 }
 impl Paragraph {
     pub fn request(&self) -> &FontRequest {
@@ -266,7 +270,13 @@ impl<'a> ParagraphJob<'a> {
         let mut cuts = self.shaping_breaks.to_vec();
         for (i, s) in styles.iter().enumerate() {
             check(self.cancel)?;
-            if s.range.start >= s.range.end || s.range.end as usize > source_len || i > 0 && styles[i - 1].range.end > s.range.start || !s.size.is_finite() || s.size < 0. {
+            if s.range.start >= s.range.end
+                || s.range.end as usize > source_len
+                || i > 0 && styles[i - 1].range.end > s.range.start
+                || !s.size.is_finite()
+                || s.size < 0.
+                || !s.spacing.iter().all(|v| v.is_finite())
+            {
                 return Err(Error::Invalid);
             }
             if s.range.start > 0 {
@@ -702,6 +712,7 @@ impl<'a> ParagraphJob<'a> {
             font_size: self.request.size,
             language: Box::from(self.scope.language()),
             styles: self.styles.into_boxed_slice(),
+            spacing: [0.; 2],
             request: self.request,
             font_context: self.scope.context(),
             shaping_breaks: self.shaping_breaks,

@@ -15,7 +15,7 @@
     "generate.py": "5d91c10ed8852edcdcd31077965acbeda81cac6fa4da57e10971ae09275b19db",
     "probe.html": "bb8e9160752c0cd61be6be28e93a508439de0bca58b2f993b7a0fc9306075ff9",
     "serve.py": "f93b10e433a21df9704b7c5bd1c4d72523f99ee28097f26acf6ac0a9decfff19",
-    "known-nonpasses.json": "a9e7e716fb9515269857764437dfdb509b59a69f6849114149f997139399d88b"
+    "known-nonpasses.json": "41c7da7a941706239524847101fe4426166a6972803601f0c636b361d9a61753"
   },
   "base": {
     "path": "../flow-fixtures/base.css",

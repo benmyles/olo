@@ -1,0 +1,558 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/ben/worktrees/olo/browser/smithay/smithay/Cargo.toml
+workspace: /home/ben/worktrees/olo/browser/Cargo.toml
+warning: unnecessary parentheses around closure body
+  --> crates/web/src/chunked.rs:55:143
+   |
+55 | ...e_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+   |                                                    ^                              ^
+   |
+   = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+   |
+55 -         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+55 +         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| i * CHUNK..i * CHUNK + c.len())
+   |
+
+warning: unused attribute `allow`
+  --> crates/web/src/paint/image.rs:44:1
+   |
+44 | #[allow(clippy::too_many_arguments)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: the built-in attribute `allow` will be ignored, since it's applied to the macro invocation `thread_local`
+  --> crates/web/src/paint/image.rs:45:1
+   |
+45 | thread_local! {
+   | ^^^^^^^^^^^^
+   = note: `#[warn(unused_attributes)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `size` is never read
+   --> crates/web/src/css/properties/font.rs:274:20
+    |
+274 |     let mut size = None;
+    |                    ^^^^ this value is reassigned later and never used
+...
+353 |     size = Some(super::parse::component(Property::FontSize.grammar(), c, limits, cancelled)?);
+    |     ---- `size` is overwritten here before the previous value is read
+    |
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `family` is never read
+   --> crates/web/src/css/properties/font.rs:276:22
+    |
+276 |     let mut family = None;
+    |                      ^^^^ this value is reassigned later and never used
+...
+363 |     family = Some(Families::parse(parts[i..].iter().copied(), cancelled)?);
+    |     ------ `family` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+   --> crates/web/src/css/style/job.rs:536:25
+    |
+536 |                     let mut walk = |root: NodeId, reach: &selectors::Reach, nodes: &mut crate::dom::NodeSet| {
+    |                         ----^^^^
+    |                         |
+    |                         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates/web/src/page/interaction.rs:38:13
+   |
+38 |         let mut differ = |a: Option<NodeId>, b: Option<NodeId>, state: State, out: &mut Vec<(NodeId, &'static str)>| {
+   |             ----^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: value assigned to `path` is never read
+   --> crates/web/src/page.rs:955:24
+    |
+955 |         let mut path = String::new();
+    |                        ^^^^^^^^^^^^^ this value is reassigned later and never used
+...
+965 |                             path = format!("patched in place, {} elements", nodes.len());
+    |                             ---- `path` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+    --> crates/web/src/page.rs:3971:13
+     |
+3971 |         let mut subject = |a: crate::dom::NodeId, reached: &mut Vec<crate::dom::NodeId>| {
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: value assigned to `skip` is never read
+    --> crates/web/src/svg/viewport.rs:949:24
+     |
+ 949 |         let mut skip = false;
+     |                        ^^^^^ this value is reassigned later and never used
+...
+1019 |             skip = true;
+     |             ----------- `skip` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+  --> crates/web/src/text/prepare.rs:79:23
+   |
+79 |         let single = |mut it: &mut dyn Iterator<Item = char>| {
+   |                       ----^^
+   |                       |
+   |                       help: remove this `mut`
+
+warning: method `get_mut` is never used
+  --> crates/web/src/chunked.rs:57:19
+   |
+22 | impl<T: Clone> Chunked<T> {
+   | ------------------------- method in this implementation
+...
+57 |     pub(crate) fn get_mut(&mut self, i: usize) -> Option<&mut T> {
+   |                   ^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated function `new` is never used
+  --> crates/web/src/paint/index.rs:16:12
+   |
+15 | impl Index {
+   | ---------- associated function in this implementation
+16 |     pub fn new(commands: &[Command], transforms: &[[f64; 6]], cancel: Option<&AtomicBool>) -> Result<Self> {
+   |            ^^^
+
+warning: variant `Quad` is never constructed
+   --> crates/web/src/svg/script.rs:258:5
+    |
+256 | enum Seg {
+    |      --- variant in this enum
+257 |     Line(F, F),
+258 |     Quad([F; 3]),
+    |     ^^^^
+    |
+    = note: `Seg` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: `olo-web` (lib) generated 13 warnings (run `cargo fix --lib -p olo-web` to apply 6 suggestions)
+   Compiling olo-web v0.1.0 (/home/ben/worktrees/olo/browser/crates/web)
+    Finished `release` profile [optimized + debuginfo] target(s) in 2.21s
+     Running tests/span_spacing.rs (target/release/deps/span_spacing-c8f09df5441d539b)
+
+running 1 test
+test span_spacing_matches_chrome_after_restyles_and_text_reuse ... FAILED
+
+failures:
+
+---- span_spacing_matches_chrome_after_restyles_and_text_reuse stdout ----
+
+thread 'span_spacing_matches_chrome_after_restyles_and_text_reuse' (1837960) panicked at crates/web/tests/span_spacing.rs:63:5:
+404 differences:
+"child-letter" at 1: a[2] 270 != 254
+"child-letter" at 1: a[3] 20 != 44
+"child-letter" at 1: n[0] 100 != 106
+"child-letter" at 1: n[2] 90 != 95
+"child-letter" at 1: b[0] 0 != 21
+"child-letter" at 1: b[2] 90 != 100
+"child-letter" at 1: c[2] 270 != 223
+"child-letter" at 1: c[3] 20 != 44
+"child-letter" at 1: m[0] 100 != 118
+"child-letter" at 1: m[2] 90 != 105
+"child-letter" at 1: d[0] 0 != 82
+"child-letter" at 1: d[2] 90 != 100
+"child-negative" at 1: a[2] 270 != 259.5
+"child-negative" at 1: n[0] 100 != 97
+"child-negative" at 1: n[2] 90 != 85
+"child-negative" at 1: c[2] 270 != 278
+"child-negative" at 1: m[0] 100 != 103
+"child-negative" at 1: m[2] 90 != 92.5
+"child-word" at 1: a[2] 270 != 248
+"child-word" at 1: a[3] 20 != 44
+"child-word" at 1: n[0] 100 != 106
+"child-word" at 1: n[2] 90 != 89
+"child-word" at 1: b[0] 0 != 20
+"child-word" at 1: b[2] 90 != 100
+"child-word" at 1: c[2] 270 != 275
+"child-word" at 1: m[0] 100 != 102
+"child-word" at 1: m[2] 90 != 91
+"override-parent" at 1: a[2] 280 != 275
+"override-parent" at 1: a[3] 44 != 20
+"override-parent" at 1: n[0] 118 != 100
+"override-parent" at 1: n[2] 103 != 95
+"override-parent" at 1: b[0] 22 != 0
+"override-parent" at 1: b[2] 118 != 103
+"override-parent" at 1: c[2] 280 != 254
+"override-parent" at 1: m[0] 118 != 106
+"override-parent" at 1: m[2] 103 != 95
+"override-parent" at 1: d[0] 22 != 21
+"font-size" at 1: a[2] 232.03125 != 236.1875
+"font-size" at 1: n[0] 160.015625 != 156.171875
+"font-size" at 1: n[2] 72.015625 != 80.015625
+"font-size" at 1: b[0] 112.015625 != 109.453125
+"inherited-em" at 1: c[2] 257 != 252
+"inherited-em" at 1: m[2] 55 != 50
+"wrap" at 1: a[2] 90 != 95
+"wrap" at 1: n[2] 90 != 95
+"wrap" at 1: b[1] 50 != 74
+"wrap" at 1: b[2] 120 != 90
+"wrap" at 1: b[3] 44 != 20
+"wrap" at 1: c[2] 90 != 105
+"wrap" at 1: m[2] 90 != 105
+"wrap" at 1: d[1] 146 != 170
+"wrap" at 1: d[2] 120 != 90
+"wrap" at 1: d[3] 44 != 20
+"inline-edges" at 1: a[2] 146 != 154
+"inline-edges" at 1: n[2] 146 != 154
+"inline-edges" at 1: c[2] 144 != 168
+"inline-edges" at 1: m[2] 144 != 168
+"nowrap" at 1: a[2] 270 != 302
+"nowrap" at 1: n[0] 100 != 112
+"nowrap" at 1: n[2] 90 != 100
+"nowrap" at 1: b[0] 270 != 302
+"nowrap" at 1: c[2] 270 != 334
+"nowrap" at 1: m[0] 100 != 124
+"nowrap" at 1: m[2] 90 != 110
+"nowrap" at 1: d[0] 270 != 334
+"rtl" at 1: a[0] 10 != 26
+"rtl" at 1: a[2] 270 != 254
+"rtl" at 1: a[3] 20 != 44
+"rtl" at 1: n[0] 110 != 132
+"rtl" at 1: n[2] 90 != 95
+"rtl" at 1: b[0] 190 != 180
+"rtl" at 1: b[2] 90 != 100
+"rtl" at 1: c[0] 10 != 12
+"rtl" at 1: c[2] 270 != 268
+"rtl" at 1: c[3] 20 != 44
+"rtl" at 1: m[0] 110 != 124
+"rtl" at 1: m[2] 90 != 100
+"rtl" at 1: d[0] 190 != 180
+"rtl" at 1: d[2] 90 != 100
+"plain" at 1.25: a[2] 270.01249999999993 != 270.0375061035156
+"plain" at 1.25: c[2] 270.01249999999993 != 270.0375061035156
+"child-letter" at 1.25: a[2] 270.01249999999993 != 254.0375061035156
+"child-letter" at 1.25: a[3] 20 != 44
+"child-letter" at 1.25: n[0] 100.00462962962962 != 106.01250457763672
+"child-letter" at 1.25: n[2] 90.00416666666663 != 95.01250457763672
+"child-letter" at 1.25: b[0] 0 != 21.012500762939453
+"child-letter" at 1.25: b[2] 90.0125 != 100.01250457763672
+"child-letter" at 1.25: c[2] 270.01249999999993 != 223.02500915527344
+"child-letter" at 1.25: c[3] 20 != 44
+"child-letter" at 1.25: m[0] 100.00462962962962 != 118.01250457763672
+"child-letter" at 1.25: m[2] 90.00416666666663 != 105.01250457763672
+"child-letter" at 1.25: d[0] 0 != 82.01250457763672
+"child-letter" at 1.25: d[2] 90.0125 != 100.01250457763672
+"child-negative" at 1.25: a[2] 270.01249999999993 != 259.5375061035156
+"child-negative" at 1.25: n[0] 100.00462962962962 != 97.01250457763672
+"child-negative" at 1.25: n[2] 90.00416666666663 != 85.01250457763672
+"child-negative" at 1.25: c[2] 270.01249999999993 != 278.0375061035156
+"child-negative" at 1.25: m[0] 100.00462962962962 != 103.01250457763672
+"child-negative" at 1.25: m[2] 90.00416666666663 != 92.51250457763672
+"child-word" at 1.25: a[2] 270.01249999999993 != 248.0375061035156
+"child-word" at 1.25: a[3] 20 != 44
+"child-word" at 1.25: n[0] 100.00462962962962 != 106.01250457763672
+"child-word" at 1.25: n[2] 90.00416666666663 != 89.01250457763672
+"child-word" at 1.25: b[0] 0 != 20.012500762939453
+"child-word" at 1.25: b[2] 90.0125 != 100.01250457763672
+"child-word" at 1.25: c[2] 270.01249999999993 != 275.0375061035156
+"child-word" at 1.25: m[0] 100.00462962962962 != 102.01250457763672
+"child-word" at 1.25: m[2] 90.00416666666663 != 91.01250457763672
+"override-parent" at 1.25: a[2] 221.01250000000005 != 275.0375061035156
+"override-parent" at 1.25: a[3] 44 != 20
+"override-parent" at 1.25: n[0] 118.0066742081448 != 100.01250457763672
+"override-parent" at 1.25: n[2] 103.00582579185524 != 95.01250457763672
+"override-parent" at 1.25: b[0] 81.00508793969848 != 0
+"override-parent" at 1.25: b[2] 118.00741206030153 != 103.01250457763672
+"override-parent" at 1.25: c[2] 221.01250000000005 != 254.0375061035156
+"override-parent" at 1.25: m[0] 118.0066742081448 != 106.01250457763672
+"override-parent" at 1.25: m[2] 103.00582579185524 != 95.01250457763672
+"override-parent" at 1.25: d[0] 81.00508793969848 != 21.012500762939453
+"font-size" at 1.25: a[2] 232 != 236.1625061035156
+"font-size" at 1.25: n[0] 160 != 156.16250610351563
+"font-size" at 1.25: n[2] 72 != 80
+"font-size" at 1.25: b[0] 112 != 109.45000457763672
+"inherited-em" at 1.25: c[2] 257.0375 != 252.0375061035156
+"inherited-em" at 1.25: m[2] 55.0125 != 50.01250076293945
+"wrap" at 1.25: a[2] 90.0125 != 95.01250457763672
+"wrap" at 1.25: n[2] 90.0125 != 95.01250457763672
+"wrap" at 1.25: c[2] 90.0125 != 105.01250457763672
+"wrap" at 1.25: m[2] 90.0125 != 105.01250457763672
+"inline-edges" at 1.25: a[2] 145.825 != 153.8249969482422
+"inline-edges" at 1.25: n[2] 145.825 != 153.8249969482422
+"inline-edges" at 1.25: c[2] 143.8125 != 167.8249969482422
+"inline-edges" at 1.25: m[2] 143.8125 != 167.8249969482422
+"nowrap" at 1.25: a[2] 270.0091216216216 != 302.0375061035156
+"nowrap" at 1.25: n[0] 100.00337837837839 != 112.01250457763672
+"nowrap" at 1.25: n[2] 90.00304054054052 != 100.01250457763672
+"nowrap" at 1.25: b[0] 270.0091216216216 != 302.0375061035156
+"nowrap" at 1.25: c[2] 270.0091216216216 != 334.0375061035156
+"nowrap" at 1.25: m[0] 100.00337837837839 != 124.01250457763672
+"nowrap" at 1.25: m[2] 90.00304054054052 != 110.01250457763672
+"nowrap" at 1.25: d[0] 270.0091216216216 != 334.0375061035156
+"rtl" at 1.25: a[0] 9.987500000000011 != 25.962499618530273
+"rtl" at 1.25: a[2] 270.01249999999993 != 254.0375061035156
+"rtl" at 1.25: a[3] 20 != 44
+"rtl" at 1.25: n[0] 109.99212962962963 != 131.97500610351563
+"rtl" at 1.25: n[2] 90.00416666666663 != 95.01250457763672
+"rtl" at 1.25: b[0] 189.9875 != 179.9875030517578
+"rtl" at 1.25: b[2] 90.01249999999999 != 100.01250457763672
+"rtl" at 1.25: c[0] 9.987500000000011 != 11.96250057220459
+"rtl" at 1.25: c[2] 270.01249999999993 != 268.0375061035156
+"rtl" at 1.25: c[3] 20 != 44
+"rtl" at 1.25: m[0] 109.99212962962963 != 123.9749984741211
+"rtl" at 1.25: m[2] 90.00416666666663 != 100.01250457763672
+"rtl" at 1.25: d[0] 189.9875 != 179.9875030517578
+"rtl" at 1.25: d[2] 90.01249999999999 != 100.01250457763672
+"restored" at 1.25: a[2] 270.01249999999993 != 270.0375061035156
+"restored" at 1.25: c[2] 270.01249999999993 != 270.0375061035156
+"child-letter" at 1.5: a[2] 270 != 254
+"child-letter" at 1.5: a[3] 20 != 44
+"child-letter" at 1.5: n[0] 100 != 106
+"child-letter" at 1.5: n[2] 90 != 95
+"child-letter" at 1.5: b[0] 0 != 21
+"child-letter" at 1.5: b[2] 90 != 100
+"child-letter" at 1.5: c[2] 270 != 223
+"child-letter" at 1.5: c[3] 20 != 44
+"child-letter" at 1.5: m[0] 100 != 118
+"child-letter" at 1.5: m[2] 90 != 105
+"child-letter" at 1.5: d[0] 0 != 82
+"child-letter" at 1.5: d[2] 90 != 100
+"child-negative" at 1.5: a[2] 270 != 259.5
+"child-negative" at 1.5: n[0] 100 != 97
+"child-negative" at 1.5: n[2] 90 != 85
+"child-negative" at 1.5: c[2] 270 != 278
+"child-negative" at 1.5: m[0] 100 != 103
+"child-negative" at 1.5: m[2] 90 != 92.5
+"child-word" at 1.5: a[2] 270 != 248
+"child-word" at 1.5: a[3] 20 != 44
+"child-word" at 1.5: n[0] 100 != 106
+"child-word" at 1.5: n[2] 90 != 89
+"child-word" at 1.5: b[0] 0 != 20
+"child-word" at 1.5: b[2] 90 != 100
+"child-word" at 1.5: c[2] 270 != 275
+"child-word" at 1.5: m[0] 100 != 102
+"child-word" at 1.5: m[2] 90 != 91
+"override-parent" at 1.5: a[2] 280 != 275
+"override-parent" at 1.5: a[3] 44 != 20
+"override-parent" at 1.5: n[0] 118 != 100
+"override-parent" at 1.5: n[2] 103 != 95
+"override-parent" at 1.5: b[0] 22 != 0
+"override-parent" at 1.5: b[2] 118 != 103
+"override-parent" at 1.5: c[2] 280 != 254
+"override-parent" at 1.5: m[0] 118 != 106
+"override-parent" at 1.5: m[2] 103 != 95
+"override-parent" at 1.5: d[0] 22 != 21
+"font-size" at 1.5: a[2] 232.01041666666666 != 236.1666717529297
+"font-size" at 1.5: n[0] 160.01041666666666 != 156.1666717529297
+"font-size" at 1.5: n[2] 72 != 80
+"font-size" at 1.5: b[0] 112.01041666666667 != 109.44792175292967
+"inherited-em" at 1.5: c[2] 257.01041666666663 != 252.0104217529297
+"inherited-em" at 1.5: m[2] 55.010416666666686 != 50.01041793823242
+"wrap" at 1.5: a[2] 90 != 95
+"wrap" at 1.5: n[2] 90 != 95
+"wrap" at 1.5: b[1] 50 != 74
+"wrap" at 1.5: b[2] 120 != 90
+"wrap" at 1.5: b[3] 44 != 20
+"wrap" at 1.5: c[2] 90 != 105
+"wrap" at 1.5: m[2] 90 != 105
+"wrap" at 1.5: d[1] 146 != 170
+"wrap" at 1.5: d[2] 120 != 90
+"wrap" at 1.5: d[3] 44 != 20
+"inline-edges" at 1.5: a[2] 145.66666666666669 != 153.6666717529297
+"inline-edges" at 1.5: n[2] 145.66666666666669 != 153.6666717529297
+"inline-edges" at 1.5: c[2] 143.66666666666666 != 167.6666717529297
+"inline-edges" at 1.5: m[2] 143.66666666666666 != 167.6666717529297
+"nowrap" at 1.5: a[2] 270 != 302
+"nowrap" at 1.5: n[0] 100 != 112
+"nowrap" at 1.5: n[2] 90 != 100
+"nowrap" at 1.5: b[0] 270 != 302
+"nowrap" at 1.5: c[2] 270 != 334
+"nowrap" at 1.5: m[0] 100 != 124
+"nowrap" at 1.5: m[2] 90 != 110
+"nowrap" at 1.5: d[0] 270 != 334
+"rtl" at 1.5: a[0] 10 != 26
+"rtl" at 1.5: a[2] 270 != 254
+"rtl" at 1.5: a[3] 20 != 44
+"rtl" at 1.5: n[0] 110 != 132
+"rtl" at 1.5: n[2] 90 != 95
+"rtl" at 1.5: b[0] 190 != 180
+"rtl" at 1.5: b[2] 90 != 100
+"rtl" at 1.5: c[0] 10 != 12
+"rtl" at 1.5: c[2] 270 != 268
+"rtl" at 1.5: c[3] 20 != 44
+"rtl" at 1.5: m[0] 110 != 124
+"rtl" at 1.5: m[2] 90 != 100
+"rtl" at 1.5: d[0] 190 != 180
+"rtl" at 1.5: d[2] 90 != 100
+"child-letter" at 1.75: a[2] 270.0089285714285 != 254.02679443359375
+"child-letter" at 1.75: a[3] 20 != 44.000003814697266
+"child-letter" at 1.75: n[0] 100.00330687830686 != 106.0089340209961
+"child-letter" at 1.75: n[2] 90.00297619047615 != 95.0089340209961
+"child-letter" at 1.75: b[0] 0 != 21.008930206298828
+"child-letter" at 1.75: b[2] 90.00892857142857 != 100.0089340209961
+"child-letter" at 1.75: c[2] 270.0089285714285 != 223.0178680419922
+"child-letter" at 1.75: c[3] 20 != 44.000003814697266
+"child-letter" at 1.75: m[0] 100.00330687830686 != 118.0089340209961
+"child-letter" at 1.75: m[2] 90.00297619047615 != 105.0089340209961
+"child-letter" at 1.75: d[0] 0 != 82.0089340209961
+"child-letter" at 1.75: d[2] 90.00892857142857 != 100.0089340209961
+"child-negative" at 1.75: a[2] 270.0089285714285 != 259.52679443359375
+"child-negative" at 1.75: n[0] 100.00330687830686 != 97.0089340209961
+"child-negative" at 1.75: n[2] 90.00297619047615 != 85.0089340209961
+"child-negative" at 1.75: c[2] 270.0089285714285 != 278.02679443359375
+"child-negative" at 1.75: m[0] 100.00330687830686 != 103.0089340209961
+"child-negative" at 1.75: m[2] 90.00297619047615 != 92.5089340209961
+"child-word" at 1.75: a[2] 270.0089285714285 != 248.02679443359375
+"child-word" at 1.75: a[3] 20 != 44.000003814697266
+"child-word" at 1.75: n[0] 100.00330687830686 != 106.0089340209961
+"child-word" at 1.75: n[2] 90.00297619047615 != 89.0089340209961
+"child-word" at 1.75: b[0] 0 != 20.008930206298828
+"child-word" at 1.75: b[2] 90.00892857142857 != 100.0089340209961
+"child-word" at 1.75: c[2] 270.0089285714285 != 275.02679443359375
+"child-word" at 1.75: m[0] 100.00330687830686 != 102.0089340209961
+"child-word" at 1.75: m[2] 90.00297619047615 != 91.0089340209961
+"override-parent" at 1.75: a[2] 221.00892857142858 != 275.02679443359375
+"override-parent" at 1.75: a[3] 44 != 20
+"override-parent" at 1.75: n[0] 118.004767291532 != 100.0089340209961
+"override-parent" at 1.75: n[2] 103.00416127989658 != 95.0089340209961
+"override-parent" at 1.75: b[0] 81.00363424264178 != 0
+"override-parent" at 1.75: b[2] 118.0052943287868 != 103.0089340209961
+"override-parent" at 1.75: c[2] 221.00892857142858 != 254.02679443359375
+"override-parent" at 1.75: m[0] 118.004767291532 != 106.0089340209961
+"override-parent" at 1.75: m[2] 103.00416127989658 != 95.0089340209961
+"override-parent" at 1.75: d[0] 81.00363424264178 != 21.008930206298828
+"font-size" at 1.75: p[3] 84.57142857142857 != 85.14286041259766
+"font-size" at 1.75: a[2] 232.00892857142856 != 236.16964721679688
+"font-size" at 1.75: a[3] 76.57142857142857 != 77.14286041259766
+"font-size" at 1.75: n[0] 160 != 156.1607208251953
+"font-size" at 1.75: n[1] 16.57142857142857 != 17.142858505249023
+"font-size" at 1.75: n[2] 72.00892857142856 != 80.0089340209961
+"font-size" at 1.75: b[0] 112 != 109.4464340209961
+"font-size" at 1.75: b[1] 57.71428571428571 != 58.857147216796875
+"font-size" at 1.75: q[1] 84.57142857142857 != 85.14286041259766
+"font-size" at 1.75: c[1] 88.57142857142857 != 89.14286041259766
+"font-size" at 1.75: m[1] 88.57142857142857 != 89.14286041259766
+"font-size" at 1.75: d[1] 137.71428571428572 != 138.85714721679688
+"font-size" at 1.75: d[3] 48.571428571428555 != 48.000003814697266
+"inherited-em" at 1.75: c[2] 257.0178571428571 != 252.0178680419922
+"inherited-em" at 1.75: m[2] 54.999999999999986 != 50.000003814697266
+"wrap" at 1.75: a[2] 90.00892857142857 != 95.0089340209961
+"wrap" at 1.75: n[2] 90.00892857142857 != 95.0089340209961
+"wrap" at 1.75: c[2] 90.00892857142857 != 105.0089340209961
+"wrap" at 1.75: m[2] 90.00892857142857 != 105.0089340209961
+"inline-edges" at 1.75: a[2] 145.58928571428572 != 153.58929443359375
+"inline-edges" at 1.75: n[2] 145.58928571428572 != 153.58929443359375
+"inline-edges" at 1.75: c[2] 143.58035714285717 != 167.58929443359375
+"inline-edges" at 1.75: m[2] 143.58035714285717 != 167.58929443359375
+"nowrap" at 1.75: a[2] 270.0065154440154 != 302.02679443359375
+"nowrap" at 1.75: n[0] 100.0024131274131 != 112.0089340209961
+"nowrap" at 1.75: n[2] 90.0021718146718 != 100.0089340209961
+"nowrap" at 1.75: b[0] 270.0065154440154 != 302.02679443359375
+"nowrap" at 1.75: c[2] 270.0065154440154 != 334.02679443359375
+"nowrap" at 1.75: m[0] 100.0024131274131 != 124.0089340209961
+"nowrap" at 1.75: m[2] 90.0021718146718 != 110.0089340209961
+"nowrap" at 1.75: d[0] 270.0065154440154 != 334.02679443359375
+"rtl" at 1.75: a[0] 9.991071428571445 != 25.973215103149418
+"rtl" at 1.75: a[2] 270.0089285714285 != 254.02679443359375
+"rtl" at 1.75: a[3] 20 != 44.000003814697266
+"rtl" at 1.75: n[0] 109.9943783068783 != 131.98214721679688
+"rtl" at 1.75: n[2] 90.00297619047615 != 95.0089340209961
+"rtl" at 1.75: b[0] 189.99107142857144 != 179.99107360839844
+"rtl" at 1.75: b[2] 90.00892857142856 != 100.0089340209961
+"rtl" at 1.75: c[0] 9.991071428571445 != 11.973215103149414
+"rtl" at 1.75: c[2] 270.0089285714285 != 268.02679443359375
+"rtl" at 1.75: c[3] 20 != 44.000003814697266
+"rtl" at 1.75: m[0] 109.9943783068783 != 123.98214721679688
+"rtl" at 1.75: m[2] 90.00297619047615 != 100.0089340209961
+"rtl" at 1.75: d[0] 189.99107142857144 != 179.99107360839844
+"rtl" at 1.75: d[2] 90.00892857142856 != 100.0089340209961
+"child-letter" at 2: a[2] 270 != 254
+"child-letter" at 2: a[3] 20 != 44
+"child-letter" at 2: n[0] 100 != 106
+"child-letter" at 2: n[2] 90 != 95
+"child-letter" at 2: b[0] 0 != 21
+"child-letter" at 2: b[2] 90 != 100
+"child-letter" at 2: c[2] 270 != 223
+"child-letter" at 2: c[3] 20 != 44
+"child-letter" at 2: m[0] 100 != 118
+"child-letter" at 2: m[2] 90 != 105
+"child-letter" at 2: d[0] 0 != 82
+"child-letter" at 2: d[2] 90 != 100
+"child-negative" at 2: a[2] 270 != 259.5
+"child-negative" at 2: n[0] 100 != 97
+"child-negative" at 2: n[2] 90 != 85
+"child-negative" at 2: c[2] 270 != 278
+"child-negative" at 2: m[0] 100 != 103
+"child-negative" at 2: m[2] 90 != 92.5
+"child-word" at 2: a[2] 270 != 248
+"child-word" at 2: a[3] 20 != 44
+"child-word" at 2: n[0] 100 != 106
+"child-word" at 2: n[2] 90 != 89
+"child-word" at 2: b[0] 0 != 20
+"child-word" at 2: b[2] 90 != 100
+"child-word" at 2: c[2] 270 != 275
+"child-word" at 2: m[0] 100 != 102
+"child-word" at 2: m[2] 90 != 91
+"override-parent" at 2: a[2] 280 != 275
+"override-parent" at 2: a[3] 44 != 20
+"override-parent" at 2: n[0] 118 != 100
+"override-parent" at 2: n[2] 103 != 95
+"override-parent" at 2: b[0] 22 != 0
+"override-parent" at 2: b[2] 118 != 103
+"override-parent" at 2: c[2] 280 != 254
+"override-parent" at 2: m[0] 118 != 106
+"override-parent" at 2: m[2] 103 != 95
+"override-parent" at 2: d[0] 22 != 21
+"font-size" at 2: p[3] 85 != 84.5
+"font-size" at 2: a[2] 232.0078125 != 236.171875
+"font-size" at 2: a[3] 77 != 76.5
+"font-size" at 2: n[0] 160 != 156.1640625
+"font-size" at 2: n[1] 17 != 16.5
+"font-size" at 2: n[2] 72.0078125 != 80.0078125
+"font-size" at 2: b[0] 112 != 109.4453125
+"font-size" at 2: b[1] 58.5 != 58
+"font-size" at 2: q[1] 85 != 84.5
+"font-size" at 2: c[1] 89 != 88.5
+"font-size" at 2: m[1] 89 != 88.5
+"font-size" at 2: d[1] 138.5 != 138
+"inherited-em" at 2: c[2] 257 != 252
+"inherited-em" at 2: m[2] 55 != 50
+"wrap" at 2: a[2] 90 != 95
+"wrap" at 2: n[2] 90 != 95
+"wrap" at 2: b[1] 50 != 74
+"wrap" at 2: b[2] 120 != 90
+"wrap" at 2: b[3] 44 != 20
+"wrap" at 2: c[2] 90 != 105
+"wrap" at 2: m[2] 90 != 105
+"wrap" at 2: d[1] 146 != 170
+"wrap" at 2: d[2] 120 != 90
+"wrap" at 2: d[3] 44 != 20
+"inline-edges" at 2: a[2] 146 != 154
+"inline-edges" at 2: n[2] 146 != 154
+"inline-edges" at 2: c[2] 144 != 168
+"inline-edges" at 2: m[2] 144 != 168
+"nowrap" at 2: a[2] 270 != 302
+"nowrap" at 2: n[0] 100 != 112
+"nowrap" at 2: n[2] 90 != 100
+"nowrap" at 2: b[0] 270 != 302
+"nowrap" at 2: c[2] 270 != 334
+"nowrap" at 2: m[0] 100 != 124
+"nowrap" at 2: m[2] 90 != 110
+"nowrap" at 2: d[0] 270 != 334
+"rtl" at 2: a[0] 10 != 26
+"rtl" at 2: a[2] 270 != 254
+"rtl" at 2: a[3] 20 != 44
+"rtl" at 2: n[0] 110 != 132
+"rtl" at 2: n[2] 90 != 95
+"rtl" at 2: b[0] 190 != 180
+"rtl" at 2: b[2] 90 != 100
+"rtl" at 2: c[0] 10 != 12
+"rtl" at 2: c[2] 270 != 268
+"rtl" at 2: c[3] 20 != 44
+"rtl" at 2: m[0] 110 != 124
+"rtl" at 2: m[2] 90 != 100
+"rtl" at 2: d[0] 190 != 180
+"rtl" at 2: d[2] 90 != 100
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    span_spacing_matches_chrome_after_restyles_and_text_reuse
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+error: test failed, to rerun pass `-p olo-web --test span_spacing`

@@ -1,0 +1,188 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/ben/worktrees/olo/browser/smithay/smithay/Cargo.toml
+workspace: /home/ben/worktrees/olo/browser/Cargo.toml
+   Compiling olo-web v0.1.0 (/home/ben/worktrees/olo/browser/crates/web)
+warning: unnecessary parentheses around closure body
+  --> crates/web/src/chunked.rs:55:143
+   |
+55 | ...e_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+   |                                                    ^                              ^
+   |
+   = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+   |
+55 -         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+55 +         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| i * CHUNK..i * CHUNK + c.len())
+   |
+
+warning: unused attribute `allow`
+  --> crates/web/src/paint/image.rs:44:1
+   |
+44 | #[allow(clippy::too_many_arguments)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: the built-in attribute `allow` will be ignored, since it's applied to the macro invocation `thread_local`
+  --> crates/web/src/paint/image.rs:45:1
+   |
+45 | thread_local! {
+   | ^^^^^^^^^^^^
+   = note: `#[warn(unused_attributes)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `size` is never read
+   --> crates/web/src/css/properties/font.rs:274:20
+    |
+274 |     let mut size = None;
+    |                    ^^^^ this value is reassigned later and never used
+...
+353 |     size = Some(super::parse::component(Property::FontSize.grammar(), c, limits, cancelled)?);
+    |     ---- `size` is overwritten here before the previous value is read
+    |
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `family` is never read
+   --> crates/web/src/css/properties/font.rs:276:22
+    |
+276 |     let mut family = None;
+    |                      ^^^^ this value is reassigned later and never used
+...
+363 |     family = Some(Families::parse(parts[i..].iter().copied(), cancelled)?);
+    |     ------ `family` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+   --> crates/web/src/css/style/job.rs:536:25
+    |
+536 |                     let mut walk = |root: NodeId, reach: &selectors::Reach, nodes: &mut crate::dom::NodeSet| {
+    |                         ----^^^^
+    |                         |
+    |                         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates/web/src/page/interaction.rs:38:13
+   |
+38 |         let mut differ = |a: Option<NodeId>, b: Option<NodeId>, state: State, out: &mut Vec<(NodeId, &'static str)>| {
+   |             ----^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: value assigned to `path` is never read
+   --> crates/web/src/page.rs:955:24
+    |
+955 |         let mut path = String::new();
+    |                        ^^^^^^^^^^^^^ this value is reassigned later and never used
+...
+965 |                             path = format!("patched in place, {} elements", nodes.len());
+    |                             ---- `path` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+    --> crates/web/src/page.rs:3971:13
+     |
+3971 |         let mut subject = |a: crate::dom::NodeId, reached: &mut Vec<crate::dom::NodeId>| {
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: value assigned to `skip` is never read
+    --> crates/web/src/svg/viewport.rs:949:24
+     |
+ 949 |         let mut skip = false;
+     |                        ^^^^^ this value is reassigned later and never used
+...
+1019 |             skip = true;
+     |             ----------- `skip` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+  --> crates/web/src/text/prepare.rs:79:23
+   |
+79 |         let single = |mut it: &mut dyn Iterator<Item = char>| {
+   |                       ----^^
+   |                       |
+   |                       help: remove this `mut`
+
+warning: method `get_mut` is never used
+  --> crates/web/src/chunked.rs:57:19
+   |
+22 | impl<T: Clone> Chunked<T> {
+   | ------------------------- method in this implementation
+...
+57 |     pub(crate) fn get_mut(&mut self, i: usize) -> Option<&mut T> {
+   |                   ^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated function `new` is never used
+  --> crates/web/src/paint/index.rs:16:12
+   |
+15 | impl Index {
+   | ---------- associated function in this implementation
+16 |     pub fn new(commands: &[Command], transforms: &[[f64; 6]], cancel: Option<&AtomicBool>) -> Result<Self> {
+   |            ^^^
+
+warning: variant `Quad` is never constructed
+   --> crates/web/src/svg/script.rs:258:5
+    |
+256 | enum Seg {
+    |      --- variant in this enum
+257 |     Line(F, F),
+258 |     Quad([F; 3]),
+    |     ^^^^
+    |
+    = note: `Seg` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: `olo-web` (lib) generated 13 warnings (run `cargo fix --lib -p olo-web` to apply 6 suggestions)
+    Finished `release` profile [optimized + debuginfo] target(s) in 15.03s
+     Running tests/flow.rs (target/release/deps/flow-cec523dfe44bbdfa)
+
+running 33 tests
+test block_width_padding_border_auto_margins_and_percentages ... ok
+test completed_inline_edges_do_not_create_a_line_for_trailing_collapsed_space ... ok
+test closed_details_show_their_summary_alone ... ok
+test empty_inlines_in_a_nowrap_container_lay_out ... ok
+test fit_content_flex_items_inside_a_flex_row_size_from_their_content ... ok
+test column_flex_stacks_items_with_gaps_alignment_and_growth ... ok
+test a_table_of_plain_children_and_a_caption_is_as_wide_as_they_are ... ok
+test a_newline_before_a_br_lays_out ... ok
+test adjoining_positive_negative_and_empty_block_margins ... ok
+test flex_items_wrapping_inline_level_links_take_their_content_width ... ok
+test an_inline_block_of_items_wraps_them_at_min_content_and_columns_share_by_max_content ... ok
+test identical_paragraphs_share_glyphs_with_distinct_dom_source_mappings ... ok
+test grid_areas_and_named_lines_place_items ... ok
+test fixed_and_sticky_boxes_are_laid_out_without_fallbacks ... ok
+test inline_fragment_storage_is_bounded_even_across_block_interruptions ... ok
+test grid_tracks_place_items_and_size_rows_from_content ... ok
+test flex_intrinsic_work_obeys_global_quota_and_cancellation ... ok
+test semantic_opportunities_cannot_reuse_literal_unicode_nowrap_cache_entries ... ok
+test stale_contexts_cancellation_quotas_and_poisoning ... ok
+test reversed_list_lookahead_obeys_limits_and_cancellation ... ok
+test inline_sources_survive_wrap_block_splits_and_resize ... ok
+test used_zero_percentage_edges_restore_cross_span_shaping_without_mutating_cache ... ok
+test text_rewritten_in_place_is_the_tree_built_anew ... ok
+test inline_edges_fit_wrap_and_preserve_actual_box_ends ... ok
+test tables_size_columns_from_cells_and_place_rows ... ok
+test flex_reflow_keeps_intrinsics_and_rejects_unimplemented_contexts ... ok
+test styled_spans_shape_in_their_own_fonts_and_raise_the_line ... ok
+test semantic_br_survives_collapsing_and_wbr_wraps_without_a_glyph ... ok
+test integrated_flex_pages_match_independent_chrome_at_five_native_scales ... ok
+test independent_chrome_inline_spacing ... FAILED
+test definite_flex_reference_runs_through_production_css_and_page_layout ... ok
+test independent_chrome_break_controls ... ok
+test independent_chrome_normal_flow_rectangles ... ok
+
+failures:
+
+---- independent_chrome_inline_spacing stdout ----
+
+thread 'independent_chrome_inline_spacing' (1875556) panicked at crates/web/tests/flow.rs:584:5:
+assertion `left == right` failed: Component non-pass cases changed
+  left: []
+ right: ["1.25:vertical-margins-ignored", "1.25:vertical-padding", "1.25:wrap-200-margin-left:auto;margin-right:auto", "1.75:vertical-margins-ignored", "1.75:vertical-padding", "1.75:wrap-200-margin-left:auto;margin-right:auto"]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    independent_chrome_inline_spacing
+
+test result: FAILED. 32 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+error: test failed, to rerun pass `-p olo-web --test flow`
