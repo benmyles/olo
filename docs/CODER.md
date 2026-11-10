@@ -196,6 +196,11 @@ malformed verdict or reviewer failure goes to the person. Decisions are recorded
 `allow` explicitly approves tool effects. `denied_tools` always wins over
 `allowed_tools`, and spec/read-only restrictions win over approval. An approval
 is tied to its session and tool call ID, not a blanket approval for future calls.
+If saving a decision fails, its pending approval remains available for retry;
+the tool cannot proceed without the committed decision. Completed reviewer
+requests are audited and charged to cumulative usage even when their verdict
+is malformed. A review's context size never replaces the coding model's active
+context count.
 
 The default `sandbox: "workspace"` uses Linux Landlock ABI 3 to confine **process
 writes** to the workspace and Coder's artifact directory, plus `/dev/null`.
@@ -426,6 +431,10 @@ Subscriptions register before replaying history, then stream live events:
 {"seq":124,"session":"SESSION_ID","time":1790000000,"kind":"assistant","data":{}}
 {"ready":true,"after":124}
 ```
+
+Durable notifications are published under the journal's write lock, in commit
+order. Concurrent commands cannot advance a client's cursor past an event that
+is still waiting to be published. This adds no idle polling or worker.
 
 `seq:0` means a transient streaming update, not a durable replay position. A
 `reconnect:true` record asks the client to reopen with the last durable sequence.

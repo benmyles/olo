@@ -1,0 +1,73 @@
+{
+  "date": "2026-11-10",
+  "baseline_commit": "211143c8",
+  "scope": "Approval persistence, independent reviewer usage accounting, ordered durable event publication.",
+  "baseline": {
+    "approval_checkpoint_failure_can_be_retried_without_restarting_work": "FAILED: failed decision save consumed the waiting channel and ended active work.",
+    "automatic_review_preserves_the_main_context_usage": "FAILED: context changed from 123456 to reviewer context 14.",
+    "malformed_review_still_counts_toward_the_session_budget": "FAILED: cumulative input remained 1000 rather than 1011.",
+    "concurrent_journal_publication_matches_durable_order": "Passed before as well as after. The unlock-before-publish race was identified by code inspection; stress did not reproduce that interleaving."
+  },
+  "focused_release": {
+    "unit_passed": 1,
+    "integration_passed": 59,
+    "integration_ignored": 2,
+    "live_ignored": 4,
+    "failed": 0,
+    "execution": "cargo test --release -p olo-coder-core --no-run, followed by direct release unit and integration executables. Both ignored performance benchmarks are opt-in; the journal benchmark was run separately."
+  },
+  "journal_benchmark": {
+    "samples_per_run": 7,
+    "before": {
+      "updates": 768,
+      "writers": 16,
+      "median_ms": 951.426,
+      "min_ms": 943.555,
+      "max_ms": 987.077
+    },
+    "after": {
+      "updates": 768,
+      "writers": 16,
+      "median_ms": 1076.085,
+      "min_ms": 1026.669,
+      "max_ms": 1606.023
+    },
+    "repeat": {
+      "updates": 768,
+      "writers": 16,
+      "median_ms": 1001.663,
+      "min_ms": 919.534,
+      "max_ms": 1079.468
+    },
+    "scope": "Wall time for 768 durable SQLite commits and bounded live publications across 16 concurrent writers, including thread startup. Shared-host samples; no speedup or hard worst-case latency claim. No new idle work."
+  },
+  "workspace_first_attempt": {
+    "exit_code": 101,
+    "failure": "olo-net::network_changes read TCP_USER_TIMEOUT as 0 before the watcher set 15000. Generation is deliberately published before socket effects; the test now waits for both. An isolated rerun passed before the fixture fix."
+  },
+  "release_build": {
+    "command": "cargo build --release --workspace",
+    "exit_code": 0
+  },
+  "limits": [
+    "No layout changes; preceding visual sweep remains recorded in coder-reliability-qa.json.",
+    "Live Claude reasoning/compaction remains unverified after prior HTTP 429 responses. No further live quota used this audit.",
+    "Accelerated lifecycle tests are not a weeks-long live soak or proof of zero defects."
+  ],
+  "network_fixture_repeat": {
+    "runs": 10,
+    "passed": 10,
+    "failed": 0,
+    "command": "target/release/deps/netns-6e2519880d8b3b56 --nocapture",
+    "scope": "Each test uses its own user/network namespace; no changes to the host network."
+  },
+  "workspace_final": {
+    "command": "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER=/usr/bin/env /home/ben/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --release --workspace",
+    "exit_code": 0,
+    "passed": 1674,
+    "failed": 0,
+    "ignored": 140,
+    "suites": 204,
+    "note": "Direct Cargo/test execution bypassed a delayed shared test-runner queue; test selection and assertions unchanged."
+  }
+}

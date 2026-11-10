@@ -75,10 +75,9 @@ impl Engine {
         }
         let after_tool = s.tool_sequence + u64::from(running);
         s.inbox.push(PendingMessage { message: message.clone(), after_tool });
-        let event = db.save(&mut s, "message_queued", json!({"message":message,"wake_allowed":wake}))?;
+        self.checkpoint(&mut db, &mut s, "message_queued", json!({"message":message,"wake_allowed":wake}))?;
         let receipt = db.receipt(&message.id)?.context("missing receipt")?;
         drop(db);
-        let _ = self.events.send(event);
         if interrupt {
             if let Some(cancel) = active.get(&message.to) {
                 cancel.cancel();
@@ -142,9 +141,7 @@ impl Engine {
         if let Some(goal) = s.goal.as_mut().filter(|g| g.status == "blocked") {
             goal.status = "active".into();
         }
-        let event = db.save(&mut s, "messages_delivered", json!({"ids":ids,"messages":messages.iter().map(|p|&p.message).collect::<Vec<_>>(),"skipped_calls":skipped}))?;
-        drop(db);
-        let _ = self.events.send(event);
+        self.checkpoint(&mut db, &mut s, "messages_delivered", json!({"ids":ids,"messages":messages.iter().map(|p|&p.message).collect::<Vec<_>>(),"skipped_calls":skipped}))?;
         Ok(true)
     }
     pub(crate) fn edit_message(&self, session: &str, id: &str, text: Option<String>, delivery: Option<Delivery>) -> Result<Value> {
@@ -254,7 +251,7 @@ impl Engine {
         };
         ensure!(uuid::Uuid::parse_str(&message.id).is_ok(), "message_id must be a UUID");
         if let Some(peer) = peer {
-            let event = {
+            {
                 let mut db = self.store.lock().unwrap();
                 if let Some(receipt) = db.receipt(&message.id)? {
                     let old = db.original_message(&message.id)?.context("missing original message")?;
@@ -262,10 +259,8 @@ impl Engine {
                     return Ok(receipt);
                 }
                 let mut s = db.get(session)?;
-                let event = db.save(&mut s, "message_outgoing", json!({"message":message,"peer":peer}))?;
-                event
-            };
-            let _ = self.events.send(event);
+                self.checkpoint(&mut db, &mut s, "message_outgoing", json!({"message":message,"peer":peer}))?;
+            }
             self.transmit(session, peer, message).await
         } else {
             self.enqueue(message)

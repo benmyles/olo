@@ -288,3 +288,47 @@ See [coder-durability-qa.json](coder-durability-qa.json) for the measured eviden
 The full release workspace suite passed **1,670 tests across 204 suites, zero
 failures**, with 139 explicitly ignored cases. The final core rerun includes the
 empty-payload and unexecuted-tool compaction cases added during final review.
+
+## Approval recovery and live journal order — 2026-11-10
+
+Three regression tests failed before this audit's changes. A failed approval
+decision checkpoint consumed its waiting channel, ending the active turn; both
+allow and deny decisions now remain retryable after the storage problem is
+resolved, and only one committed decision can release the tool. Automatic review
+also replaced the coding session's context count with the reviewer's small window
+(123,456 became 14 in the fixture), and malformed review decisions were omitted
+from cumulative usage. Every completed reviewer request is now charged and
+audited without changing the main model's active-context count. Invalid decisions
+still require explicit approval.
+
+Code inspection found that live publication happened after releasing the journal
+lock. A later writer could publish first, advancing a subscriber's cursor past
+the earlier event. All service writes now use one checkpoint helper that commits
+and publishes under the same lock; bounded broadcast never waits for a reader.
+The concurrency test checks four batches of 768 updates from 16 writers against
+the durable sequence. It passed before as well as after: the test did not
+reproduce the problematic scheduling interleaving.
+
+Release journal benchmark, seven samples per run: **768 updates / 16 writers**,
+median **951.426 ms before** (943.555–987.077), **1,076.085 ms after**
+(1,026.669–1,606.023), and **1,001.663 ms on repeat** (919.534–1,079.468).
+These are whole-batch wall times including thread startup and durable SQLite
+commits on a shared host, not a speedup claim or a worst-case bound. The change
+adds no idle polling or worker.
+
+The focused release executables passed **60 tests**, with two performance cases
+and four live-provider cases explicitly ignored; the journal benchmark ran
+separately. The release workspace build passed. The first full suite stopped at
+an existing `olo-net` fixture race: it asserted a socket option immediately after
+the network generation changed, though the documented watcher order updates
+generation before sockets. An isolated repeat passed; the fixture now waits for
+both the generation and the socket effect before asserting. Production network
+behavior is unchanged, and the initial failure is retained in the evidence.
+
+No layout changes were made in this audit. Live Claude reasoning/compaction
+verification remains open after the prior HTTP 429 responses, as does a
+weeks-long live soak. [Detailed recovery evidence](coder-recovery-qa.json).
+
+The final full release suite passed **1,674 tests across 204 suites, zero
+failures**, with 140 explicitly ignored cases. The corrected namespace fixture
+also passed ten consecutive isolated runs. Formatting and diff checks passed.

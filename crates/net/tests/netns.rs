@@ -102,7 +102,9 @@ fn inside() {
     let g1 = olo_net::generation();
     nl.address(true, 1, [10, 9, 0, 4]);
     nl.route(true, Some([10, 9, 0, 3]), 1, Some([10, 9, 0, 4]));
-    wait_for(|| olo_net::generation() > g1);
+    // The watcher advances its generation before touching sockets, so failed
+    // requests already know to retry. Wait for the effect under test as well.
+    wait_for(|| olo_net::generation() > g1 && user_timeout(&c2) == 15_000);
     assert_eq!(user_timeout(&c2), 15_000, "watched closely");
     let mut probe = [0u8; 1];
     c2.set_nonblocking(true).unwrap();

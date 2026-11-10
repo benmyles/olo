@@ -14583,6 +14583,11 @@ wrapped. Both providers go through the Token Pool's loopback gateway.
   versioned specifications and optional child sessions. An effect's intent is
   committed before execution; a crash leaves an explicit unknown outcome rather
   than silently replaying it. Model replies enter context only when complete.
+  All service journal writes go through `Engine::checkpoint` while holding the
+  store lock: commit and bounded live broadcast remain ordered. Do not release
+  the lock between them; subscribers advance a monotonic cursor. Approval
+  channels are consumed only after their decision commits. Reviewer usage is
+  charged separately from the coding model's active-context count.
 * `provider` preserves native Responses reasoning/compaction and Claude signed
   thinking/redacted content byte-for-byte as JSON values. Codex compaction uses
   a final `compaction_trigger` on Responses; Claude uses signed on-demand

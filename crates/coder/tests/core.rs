@@ -1589,3 +1589,133 @@ async fn peer_receipts_are_validated_before_delivery_is_confirmed() {
     }
     server.abort();
 }
+
+#[tokio::test]
+async fn approval_checkpoint_failure_can_be_retried_without_restarting_work() {
+    for allow in [false, true] {
+        let dir = Scratch::new();
+        let (_, base, server) = server().await;
+        let e = Engine::open_at(dir.0.join("state"), Some(base)).unwrap();
+        let sid = e.command(Command::Create { workspace: dir.0.clone(), config: None }).await.unwrap()["id"].as_str().unwrap().to_owned();
+        let mut events = e.events.subscribe();
+        e.command(Command::Tool { session: sid.clone(), name: "write_file".into(), arguments: json!({"path":"approved.txt","content":"one effect"}) }).await.unwrap();
+        let call_id = loop {
+            let event = tokio::time::timeout(std::time::Duration::from_secs(2), events.recv()).await.unwrap().unwrap();
+            if event.kind == "approval" {
+                break event.data["call"]["id"].as_str().unwrap().to_owned();
+            }
+        };
+        let db = rusqlite::Connection::open(dir.0.join("state/sessions.sqlite3")).unwrap();
+        db.execute_batch("CREATE TRIGGER fail_decision BEFORE INSERT ON events WHEN NEW.kind='approval_decision' BEGIN SELECT RAISE(ABORT,'injected decision checkpoint failure'); END;").unwrap();
+        assert!(e.command(Command::Approve { session: sid.clone(), call_id: call_id.clone(), allow }).await.is_err());
+        assert!(tokio::time::timeout(std::time::Duration::from_millis(50), e.quiesce()).await.is_err(), "a failed decision checkpoint must leave the approval waiting");
+        assert_eq!(e.get(&sid).unwrap().status, Status::Approval);
+        assert!(!dir.0.join("approved.txt").exists());
+        db.execute_batch("DROP TRIGGER fail_decision;").unwrap();
+        e.command(Command::Approve { session: sid.clone(), call_id: call_id.clone(), allow }).await.unwrap();
+        finish(&e).await;
+        assert_eq!(e.get(&sid).unwrap().status, Status::Idle);
+        assert_eq!(dir.0.join("approved.txt").exists(), allow);
+        assert_eq!(e.command(Command::Checkpoints { session: sid.clone() }).await.unwrap().as_array().unwrap().len(), usize::from(allow));
+        assert!(e.command(Command::Approve { session: sid.clone(), call_id, allow }).await.is_err(), "a decision can be consumed only once");
+        assert_eq!(e.store.lock().unwrap().events(&sid, 0, 100).unwrap().iter().filter(|v| v.kind == "approval_decision").count(), 1);
+        server.abort();
+    }
+}
+
+async fn concurrent_journal_batch(writers: usize, count: usize) -> (Vec<i64>, Vec<i64>, f64) {
+    let dir = Scratch::new();
+    let e = Engine::open(dir.0.join("state")).unwrap();
+    let sid = e.command(Command::Create { workspace: dir.0.clone(), config: None }).await.unwrap()["id"].as_str().unwrap().to_owned();
+    let cursor = e.store.lock().unwrap().tail_cursor(&sid, 0).unwrap();
+    let mut events = e.events.subscribe();
+    let runtime = tokio::runtime::Handle::current();
+    let start = std::sync::Barrier::new(writers);
+    let began = std::time::Instant::now();
+    std::thread::scope(|scope| {
+        for writer in 0..writers {
+            let (e, sid, runtime, start) = (&e, &sid, &runtime, &start);
+            scope.spawn(move || {
+                start.wait();
+                for n in 0..count {
+                    runtime.block_on(e.command(Command::Goal { session: sid.clone(), objective: format!("writer {writer}, revision {n}") })).unwrap();
+                }
+            });
+        }
+    });
+    let ms = began.elapsed().as_secs_f64() * 1000.0;
+    let mut published = Vec::new();
+    while let Ok(event) = events.try_recv() {
+        published.push(event.seq);
+    }
+    let stored = e.store.lock().unwrap().events(&sid, cursor, 1000).unwrap().iter().map(|v| v.seq).collect::<Vec<_>>();
+    assert_eq!(stored.len(), writers * count);
+    assert_eq!(published.len(), stored.len(), "no live events may be lost");
+    (published, stored, ms)
+}
+
+#[tokio::test]
+async fn concurrent_journal_publication_matches_durable_order() {
+    for _ in 0..4 {
+        let (published, stored, _) = concurrent_journal_batch(16, 48).await;
+        assert_eq!(published, stored, "live cursors must never skip an earlier committed event");
+    }
+}
+
+#[tokio::test]
+#[ignore = "release performance measurement; 768 durable updates from 16 writers"]
+async fn journal_publication_benchmark() {
+    let mut samples = Vec::new();
+    for _ in 0..7 {
+        let (_, _, ms) = concurrent_journal_batch(16, 48).await;
+        samples.push(ms);
+    }
+    samples.sort_by(f64::total_cmp);
+    println!("Journal batch: 768 updates, 16 writers; median {:.3} ms; min {:.3} ms; max {:.3} ms", samples[3], samples[0], samples[6]);
+}
+
+async fn review_accounting_case(malformed: bool) {
+    let dir = Scratch::new();
+    let (fake, base, server) = server().await;
+    let e = Engine::open_at(dir.0.join("state"), Some(base)).unwrap();
+    let sid = e.command(Command::Create { workspace: dir.0.clone(), config: Some(Config { approval: ApprovalMode::Auto, ..Default::default() }) }).await.unwrap()["id"].as_str().unwrap().to_owned();
+    let mut s = e.get(&sid).unwrap();
+    s.usage = Usage { input: 1000, output: 200, cached: 20, cache_write: 10, context: 123456, requests: 7 };
+    e.store.lock().unwrap().save(&mut s, "fixture", json!({})).unwrap();
+    let text = if malformed { "not a review decision".into() } else { json!({"allow":false,"reason":"Ask the person"}).to_string() };
+    fake.replies.lock().unwrap().push_back(json!({"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":text}]}],"usage":{"input_tokens":11,"output_tokens":3,"input_tokens_details":{"cached_tokens":5}}}));
+    let mut events = e.events.subscribe();
+    e.command(Command::Tool { session: sid.clone(), name: "write_file".into(), arguments: json!({"path":"needs-approval","content":"no"}) }).await.unwrap();
+    let call_id = loop {
+        let event = tokio::time::timeout(std::time::Duration::from_secs(2), events.recv()).await.unwrap().unwrap();
+        if event.kind == "approval" {
+            break event.data["call"]["id"].as_str().unwrap().to_owned();
+        }
+    };
+    let usage = e.get(&sid).unwrap().usage;
+    // Clean up the waiting task before assertions, including on regression.
+    e.command(Command::Approve { session: sid.clone(), call_id, allow: false }).await.unwrap();
+    finish(&e).await;
+    server.abort();
+    assert_eq!(usage.input, 1011, "successful review requests are charged even if their decision is malformed");
+    assert_eq!(usage.output, 203);
+    assert_eq!(usage.cached, 25);
+    assert_eq!(usage.cache_write, 10);
+    assert_eq!(usage.requests, 8);
+    assert_eq!(usage.context, 123456, "reviewer context is independent of the coding session context");
+    let history = e.store.lock().unwrap().events(&sid, 0, 100).unwrap();
+    let reviewed = history.iter().find(|v| v.kind == "auto_review").expect("every completed reviewer request is audited");
+    assert_eq!(reviewed.data["allow"], false);
+    assert_eq!(reviewed.data["usage"]["input"], 11);
+    assert!(!dir.0.join("needs-approval").exists());
+}
+
+#[tokio::test]
+async fn automatic_review_preserves_the_main_context_usage() {
+    review_accounting_case(false).await;
+}
+
+#[tokio::test]
+async fn malformed_review_still_counts_toward_the_session_budget() {
+    review_accounting_case(true).await;
+}
