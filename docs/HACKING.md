@@ -1956,6 +1956,18 @@ event reaches it.
   held, a track click pages, the knob drags; agents read it as a
   `ScrollBar` with its position, 0 to 1. In a frame it places itself
   inside the frame's two lines on device pixels (`in_frame`).
+  `ScrollBar::controlled(id, axis, position, shown, total).on_scroll(...)`
+  drives content whose offset lives outside a GPUI handle, such as Browser's
+  viewport. The callback receives a clamped offset in the caller's units;
+  the owner supplies its accepted position on the next render. The bar fits
+  the breadth it is given, supports both axes and has no idle timer.
+  When a worker must decide whether a wheel step is allowed, call
+  `Window::defer_wheel()` in its input handler and retain the returned
+  `DeferredWheel`. Apply the movement before `complete(true)`; use
+  `complete(false)` at an edge or when cancelled. Dropping the token also
+  cancels it. The Wayland frame loop retains the gesture without drawing
+  or polling while it waits; touchpad events return no token. Browser uses
+  this for script `preventDefault()` decisions.
   `auto_hide(true)` shows the vertical bar only while what it holds
   overflows (panes side by side); its content scrolls (clipped to the
   view, measured) with the bar hidden too, so the bar comes as soon as
@@ -1963,8 +1975,8 @@ event reaches it.
   over what's below and never showed the bar).
 - `widgets::SlimScrollBar::new(id, top, shown, total).on_scroll(|to,
   window, cx|)`: the slim one, there when wanted, for content a BeOS
-  bar's column would cost (Terminal's scrollback; Browser's pages and
-  the boxes that scroll in them, laid over each; use the BeOS bar
+  bar's column would cost (Terminal's scrollback; Browser's nested
+  scroll boxes, laid over each; use the BeOS bar
   elsewhere). Laid over the box it's given: a thin rounded thumb at its
   right edge (`THUMB` 6, `THUMB_WIDE` 8 under the pointer, with a faint
   track), no arrows. It shows when the pointer comes within `SLIM_NEAR`
@@ -14809,12 +14821,19 @@ passes under one work budget, retaining prepared text/intrinsics. Layout keeps
 full viewport, containing block, client size and viewport-unit basis separately;
 `page` restyles units when forced root bars or stable gutters change them.
 JavaScript's root client and VisualViewport sizes read that retained geometry;
-window/media-query sizes remain the full viewport. Browser still opts into
-overlays until its horizontal scrolling, reserved-area painting and native bar
-controls are integrated. Nested classic gutters, root input policy, RTL scroll
-ranges and gutter-only VisualViewport resize events remain open. References:
-`docs/browser/measurements/2026-11-10-viewport-overflow/` and
-`docs/browser/measurements/2026-11-10-classic-viewport/`.
+window/media-query sizes remain the full viewport. Browser uses 15/10 CSS-pixel
+classic metrics, clips the page to its client area and paints native controlled
+ScrollBars. Both scroll axes pass through tiles, fixed layers, hit testing,
+script requests and persisted history; RTL horizontal positions are negative.
+Root wheel input follows overflow policy and waits off the UI thread for the
+page's cancellation decision. GPUI's deferred-wheel token keeps the eased
+remainder while that decision is pending, without polling. Native/script scroll
+notifications coalesce and accepting a native position does not echo a request.
+Nested classic gutters, keyboard defaults, iframe wheel routing, full vertical
+writing and gutter-only VisualViewport resize events remain open. References:
+`docs/browser/measurements/2026-11-10-viewport-overflow/`,
+`docs/browser/measurements/2026-11-10-classic-viewport/` and
+`docs/browser/measurements/2026-11-10-native-scroll/`.
 
 Browser DOM wrapper identities are weak V8 handles. Traced, bidirectional
 internal ownership fields retain connected nodes through the document and detached trees

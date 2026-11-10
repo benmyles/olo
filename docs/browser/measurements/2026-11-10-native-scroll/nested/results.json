@@ -1,0 +1,32 @@
+[
+  {
+    "scale": 1,
+    "blocked": "window 24 \"Browser\" (olo.browser) focused content 54,66 1000x700\n  Label \"Nested position 0\" at 54,220 111x15\n",
+    "moved": "window 24 \"Browser\" (olo.browser) focused content 54,66 1000x700\n  Label \"Nested position 143.34430772066116\" at 54,220 242x15\n",
+    "distance": 143.34430772066116
+  },
+  {
+    "scale": 1.25,
+    "blocked": "window 24 \"Browser\" (olo.browser) focused content 54,66 1000x700\n  Label \"Nested position 143.99998396635056\" at 54,220 243x15\n",
+    "moved": "window 24 \"Browser\" (olo.browser) focused content 54,66 1000x700\n  Label \"Nested position 287.58358393609524\" at 54,220 243x15\n",
+    "distance": 143.58359996974468
+  },
+  {
+    "scale": 1.5,
+    "blocked": "window 24 \"Browser\" (olo.browser) focused content 54,66 1000x700\n  Label \"Nested position 287.999982342124\" at 54,220 227x15\n",
+    "moved": "window 24 \"Browser\" (olo.browser) focused content 54,66 1000x700\n  Label \"Nested position 431.584458142519\" at 54,220 227x15\n",
+    "distance": 143.584475800395
+  },
+  {
+    "scale": 1.75,
+    "blocked": "window 24 \"Browser\" (olo.browser) focused content 54,66 1000x700\n  Label \"Nested position 431.9999835193157\" at 54,220 235x15\n",
+    "moved": "window 24 \"Browser\" (olo.browser) focused content 54,66 1000x700\n  Label \"Nested position 575.999986320734\" at 54,220 227x15\n",
+    "distance": 144.0000028014183
+  },
+  {
+    "scale": 2,
+    "blocked": "window 24 \"Browser\" (olo.browser) focused content 54,66 1000x700\n  Label \"Nested position 575.999986320734\" at 54,221 227x15\n",
+    "moved": "window 24 \"Browser\" (olo.browser) focused content 54,66 1000x700\n  Label \"Nested position 719.9999835044146\" at 54,221 235x15\n",
+    "distance": 143.99999718368053
+  }
+]

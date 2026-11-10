@@ -5,7 +5,7 @@ use olo_web::{
 };
 use std::sync::Arc;
 use url::Url;
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Link {
     pub node: NodeId,
     pub url: olo_ui::gpui::SharedString,

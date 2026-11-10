@@ -1,0 +1,38 @@
+Browser fonts: 240 system font files mapped
+Browser: static page ready 479 ms after the request
+MESA-EGL: warning: pci id for fd 67: 10de:2d39, driver (null)
+pci id for fd 69: 10de:2d39, driver (null)
+pci id for fd 70: 10de:2d39, driver (null)
+MESA-EGL: warning: egl: failed to create dri2 screen
+MESA-EGL: warning: pci id for fd 67: 10de:2d39, driver (null)
+pci id for fd 69: 10de:2d39, driver (null)
+pci id for fd 70: 10de:2d39, driver (null)
+MESA-EGL: warning: egl: failed to create dri2 screen
+MESA-EGL: warning: pci id for fd 67: 10de:2d39, driver (null)
+Browser scripts: 88 run, 0 errors, 0 console lines, 147 timers, 521 listeners, 62 layouts (506 ms), revision 11845 -> 14878, 3348 ms (1053 ms of this thread's CPU)
+Browser: scripted page ready 3885 ms after the request
+Browser live eval: {"dpr":1,"size":[1000,578],"client":[985,563],"dark":true,"resolution":false,"canvases":[{"size":[985,542],"rect":[985,542.03125]}]}
+Browser live eval: {"dpr":1,"size":[1000,578],"client":[985,563],"dark":false,"resolution":false,"canvases":[{"size":[985,542],"rect":[985,542.03125]}]}
+Browser live eval: {"dpr":1.25,"size":[1000,578],"client":[984.8,562.4],"dark":false,"resolution":false,"canvases":[{"size":[985,542],"rect":[984.8,541.5625]}]}
+Browser live eval: {"dpr":1.25,"size":[1000,578],"client":[984.8,562.4],"dark":false,"resolution":false,"canvases":[{"size":[984,541],"rect":[984.8,541.5625]}]}
+Browser live eval: {"dpr":1.5,"size":[1000,578],"client":[984.6666666666666,562.6666666666666],"dark":false,"resolution":true,"canvases":[{"size":[984,541],"rect":[984.6666666666666,541.6979166666666]}]}
+Browser live eval: {"dpr":1.75,"size":[1000,578],"client":[985.1428571428571,562.8571428571428],"dark":false,"resolution":true,"canvases":[{"size":[984,541],"rect":[985.1428571428571,541.4107142857143]}]}
+Browser live eval: {"dpr":1.75,"size":[1000,578],"client":[985.1428571428571,562.8571428571428],"dark":false,"resolution":true,"canvases":[{"size":[985,541],"rect":[985.1428571428571,541.4107142857143]}]}
+Browser live eval: {"dpr":2,"size":[1000,578],"client":[985,563],"dark":false,"resolution":true,"canvases":[{"size":[985,541],"rect":[985,542.0390625]}]}
+Browser live eval: {"dpr":2,"size":[1000,578],"client":[985,563],"dark":false,"resolution":true,"canvases":[{"size":[985,542],"rect":[985,542.0390625]}]}
+Browser live eval: {"dpr":1,"size":[1000,578],"client":[985,563],"dark":true,"resolution":false,"canvases":[{"size":[985,542],"rect":[985,542.03125]}]}
+Browser live eval: {"dpr":1.25,"size":[1000,578],"client":[984.8,562.4],"dark":true,"resolution":false,"canvases":[{"size":[985,542],"rect":[984.8,541.5625]}]}
+Browser live eval: {"dpr":1.25,"size":[1000,578],"client":[984.8,562.4],"dark":true,"resolution":false,"canvases":[{"size":[984,541],"rect":[984.8,541.5625]}]}
+Browser live eval: {"dpr":1.5,"size":[1000,578],"client":[984.6666666666666,562.6666666666666],"dark":true,"resolution":true,"canvases":[{"size":[984,541],"rect":[984.6666666666666,541.6979166666666]}]}
+Browser live eval: {"dpr":1.75,"size":[1000,578],"client":[985.1428571428571,562.8571428571428],"dark":true,"resolution":true,"canvases":[{"size":[984,541],"rect":[985.1428571428571,541.4107142857143]}]}
+Browser live eval: {"dpr":1.75,"size":[1000,578],"client":[985.1428571428571,562.8571428571428],"dark":true,"resolution":true,"canvases":[{"size":[985,541],"rect":[985.1428571428571,541.4107142857143]}]}
+Browser live eval: {"dpr":2,"size":[1000,578],"client":[985,563],"dark":true,"resolution":true,"canvases":[{"size":[985,541],"rect":[985,542.0390625]}]}
+Browser live eval: {"dpr":2,"size":[1000,578],"client":[985,563],"dark":true,"resolution":true,"canvases":[{"size":[985,542],"rect":[985,542.0390625]}]}
+Browser live eval: {"dpr":1,"size":[1000,578],"client":[985,563],"dark":true,"resolution":false,"canvases":[{"size":[985,542],"rect":[985,542.03125]}]}
+Browser live eval: {"dpr":1.25,"size":[1000,578],"client":[984.8,562.4],"dark":true,"resolution":false,"canvases":[{"size":[985,542],"rect":[984.8,541.5625]}]}
+Browser live eval: {"dpr":1.25,"size":[1000,578],"client":[984.8,562.4],"dark":true,"resolution":false,"canvases":[{"size":[984,541],"rect":[984.8,541.5625]}]}
+Browser live eval: {"dpr":1.5,"size":[1000,578],"client":[984.6666666666666,562.6666666666666],"dark":true,"resolution":true,"canvases":[{"size":[984,541],"rect":[984.6666666666666,541.6979166666666]}]}
+Browser live eval: {"dpr":1.75,"size":[1000,578],"client":[985.1428571428571,562.8571428571428],"dark":true,"resolution":true,"canvases":[{"size":[984,541],"rect":[985.1428571428571,541.4107142857143]}]}
+Browser live eval: {"dpr":1.75,"size":[1000,578],"client":[985.1428571428571,562.8571428571428],"dark":true,"resolution":true,"canvases":[{"size":[985,541],"rect":[985.1428571428571,541.4107142857143]}]}
+Browser live eval: {"dpr":2,"size":[1000,578],"client":[985,563],"dark":true,"resolution":true,"canvases":[{"size":[985,541],"rect":[985,542.0390625]}]}
+Browser live eval: {"dpr":2,"size":[1000,578],"client":[985,563],"dark":true,"resolution":true,"canvases":[{"size":[985,542],"rect":[985,542.0390625]}]}

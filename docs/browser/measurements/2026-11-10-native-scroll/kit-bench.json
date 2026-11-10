@@ -1,0 +1,1126 @@
+[
+ {
+  "app": "session",
+  "step": "scale to 1",
+  "transition": true,
+  "frames": 2,
+  "p50_ms": 2.35,
+  "p99_ms": 2.35,
+  "max_ms": 2.35,
+  "ui_max_ms": 2.07,
+  "server": {
+   "frame_max_ms": 0.43,
+   "loop_late_ms": 5.3,
+   "slowest": [
+    "request set_settings",
+    434
+   ],
+   "frames": 10
+  },
+  "notes": [],
+  "failures": []
+ },
+ {
+  "app": "gallery",
+  "step": "launch and load",
+  "transition": true,
+  "frames": 12,
+  "p50_ms": 0.85,
+  "p99_ms": 1.0,
+  "max_ms": 1.0,
+  "ui_max_ms": 0.77,
+  "server": {
+   "frame_max_ms": 6.09,
+   "loop_late_ms": 5.3,
+   "slowest": [
+    "tick",
+    254
+   ],
+   "frames": 58
+  },
+  "notes": [],
+  "failures": [],
+  "launch_ms": 115
+ },
+ {
+  "app": "gallery",
+  "step": "idle 1 s",
+  "transition": false,
+  "frames": 6,
+  "p50_ms": 0.85,
+  "p99_ms": 0.87,
+  "max_ms": 0.87,
+  "ui_max_ms": 0.7,
+  "server": {
+   "frame_max_ms": 0.63,
+   "loop_late_ms": 0.2,
+   "slowest": [
+    "tick",
+    252
+   ],
+   "frames": 29
+  },
+  "notes": [
+   "drew 6 frames with nothing happening"
+  ],
+  "failures": [],
+  "idle_fps": 6
+ },
+ {
+  "app": "gallery",
+  "step": "pointer over it",
+  "transition": false,
+  "frames": 8,
+  "p50_ms": 0.8,
+  "p99_ms": 0.93,
+  "max_ms": 0.93,
+  "ui_max_ms": 0.76,
+  "server": {
+   "frame_max_ms": 0.45,
+   "loop_late_ms": 0.2,
+   "slowest": [
+    "tick",
+    216
+   ],
+   "frames": 184
+  },
+  "notes": [],
+  "failures": []
+ },
+ {
+  "app": "gallery",
+  "step": "scroll 1",
+  "transition": false,
+  "frames": 261,
+  "p50_ms": 0.76,
+  "p99_ms": 1.34,
+  "max_ms": 1.67,
+  "ui_max_ms": 1.46,
+  "server": {
+   "frame_max_ms": 2.99,
+   "loop_late_ms": 2.7,
+   "slowest": [
+    "flushing to clients",
+    1671
+   ],
+   "frames": 474
+  },
+  "notes": [
+   "flick: didn't scroll"
+  ],
+  "failures": [],
+  "even": "0.94\u20131.00"
+ },
+ {
+  "app": "gallery",
+  "step": "scroll 2",
+  "transition": false,
+  "frames": 220,
+  "p50_ms": 0.81,
+  "p99_ms": 1.14,
+  "max_ms": 1.22,
+  "ui_max_ms": 0.95,
+  "server": {
+   "frame_max_ms": 0.49,
+   "loop_late_ms": 1.0,
+   "slowest": [
+    "tick",
+    332
+   ],
+   "frames": 450
+  },
+  "notes": [],
+  "failures": [],
+  "even": "0.99\u20131.01"
+ },
+ {
+  "app": "gallery",
+  "step": "typing",
+  "transition": false,
+  "frames": 50,
+  "p50_ms": 1.0,
+  "p99_ms": 2.09,
+  "max_ms": 2.09,
+  "ui_max_ms": 1.4,
+  "server": {
+   "frame_max_ms": 0.47,
+   "loop_late_ms": 2.1,
+   "slowest": [
+    "flushing to clients",
+    1039
+   ],
+   "frames": 214
+  },
+  "notes": [],
+  "failures": []
+ },
+ {
+  "app": "gallery",
+  "step": "live resize",
+  "transition": false,
+  "frames": 42,
+  "p50_ms": 0.81,
+  "p99_ms": 1.15,
+  "max_ms": 1.15,
+  "ui_max_ms": 0.91,
+  "server": {
+   "frame_max_ms": 0.63,
+   "loop_late_ms": 6.6,
+   "slowest": [
+    "clients' requests",
+    247
+   ],
+   "frames": 122
+  },
+  "notes": [],
+  "failures": []
+ },
+ {
+  "app": "gallery",
+  "step": "theme light, dark",
+  "transition": true,
+  "frames": 14,
+  "p50_ms": 1.11,
+  "p99_ms": 1.24,
+  "max_ms": 1.24,
+  "ui_max_ms": 0.98,
+  "server": {
+   "frame_max_ms": 12.9,
+   "loop_late_ms": 12.9,
+   "slowest": [
+    "request set_settings",
+    390
+   ],
+   "frames": 79
+  },
+  "notes": [],
+  "failures": []
+ },
+ {
+  "app": "styled-edit",
+  "step": "launch and load",
+  "transition": true,
+  "frames": 9,
+  "p50_ms": 1.74,
+  "p99_ms": 5.35,
+  "max_ms": 5.35,
+  "ui_max_ms": 4.88,
+  "server": {
+   "frame_max_ms": 0.63,
+   "loop_late_ms": 0.3,
+   "slowest": [
+    "tick",
+    307
+   ],
+   "frames": 28
+  },
+  "notes": [],
+  "failures": [],
+  "launch_ms": 115
+ },
+ {
+  "app": "styled-edit",
+  "step": "idle 1 s",
+  "transition": false,
+  "frames": 2,
+  "p50_ms": 2.03,
+  "p99_ms": 2.03,
+  "max_ms": 2.03,
+  "ui_max_ms": 1.68,
+  "server": {
+   "frame_max_ms": 0.54,
+   "loop_late_ms": 2.1,
+   "slowest": [
+    "tick",
+    222
+   ],
+   "frames": 13
+  },
+  "notes": [],
+  "failures": [],
+  "idle_fps": 2
+ },
+ {
+  "app": "styled-edit",
+  "step": "pointer over it",
+  "transition": false,
+  "frames": 3,
+  "p50_ms": 1.94,
+  "p99_ms": 2.07,
+  "max_ms": 2.07,
+  "ui_max_ms": 1.75,
+  "server": {
+   "frame_max_ms": 0.55,
+   "loop_late_ms": 0.4,
+   "slowest": [
+    "tick",
+    207
+   ],
+   "frames": 181
+  },
+  "notes": [],
+  "failures": []
+ },
+ {
+  "app": "styled-edit",
+  "step": "scroll 1",
+  "transition": false,
+  "frames": 368,
+  "p50_ms": 1.14,
+  "p99_ms": 1.75,
+  "max_ms": 2.08,
+  "ui_max_ms": 1.83,
+  "server": {
+   "frame_max_ms": 0.59,
+   "loop_late_ms": 0.8,
+   "slowest": [
+    "clients' requests",
+    942
+   ],
+   "frames": 420
+  },
+  "notes": [],
+  "failures": [],
+  "even": "0.99\u20131.01",
+  "glide": "worst +0.00"
+ },
+ {
+  "app": "styled-edit",
+  "step": "6 menus",
+  "transition": false,
+  "frames": 24,
+  "p50_ms": 1.42,
+  "p99_ms": 2.14,
+  "max_ms": 2.14,
+  "ui_max_ms": 1.92,
+  "server": {
+   "frame_max_ms": 0.54,
+   "loop_late_ms": 0.4,
+   "slowest": [
+    "clients' requests",
+    348
+   ],
+   "frames": 603
+  },
+  "notes": [],
+  "failures": []
+ },
+ {
+  "app": "styled-edit",
+  "step": "typing",
+  "transition": false,
+  "frames": 59,
+  "p50_ms": 1.64,
+  "p99_ms": 13.92,
+  "max_ms": 13.92,
+  "ui_max_ms": 13.56,
+  "server": {
+   "frame_max_ms": 0.52,
+   "loop_late_ms": 0.3,
+   "slowest": [
+    "tick",
+    359
+   ],
+   "frames": 211
+  },
+  "notes": [],
+  "failures": [
+   "1 of 59 frames over 8.3 ms (slowest 13.9 ms: setup 0.0, ui 13.6, tessellate 0.0, acquire 0.0, submit 0.4)"
+  ]
+ },
+ {
+  "app": "styled-edit",
+  "step": "live resize",
+  "transition": false,
+  "frames": 38,
+  "p50_ms": 2.33,
+  "p99_ms": 3.08,
+  "max_ms": 3.08,
+  "ui_max_ms": 2.85,
+  "server": {
+   "frame_max_ms": 0.51,
+   "loop_late_ms": 0.5,
+   "slowest": [
+    "tick",
+    209
+   ],
+   "frames": 112
+  },
+  "notes": [],
+  "failures": []
+ },
+ {
+  "app": "styled-edit",
+  "step": "theme light, dark",
+  "transition": true,
+  "frames": 5,
+  "p50_ms": 1.39,
+  "p99_ms": 1.93,
+  "max_ms": 1.93,
+  "ui_max_ms": 1.73,
+  "server": {
+   "frame_max_ms": 3.23,
+   "loop_late_ms": 1.3,
+   "slowest": [
+    "wallpaper ready",
+    806
+   ],
+   "frames": 42
+  },
+  "notes": [],
+  "failures": []
+ },
+ {
+  "app": "session",
+  "step": "scale to 1.5",
+  "transition": true,
+  "frames": 3,
+  "p50_ms": 0.65,
+  "p99_ms": 2.56,
+  "max_ms": 2.56,
+  "ui_max_ms": 2.36,
+  "server": {
+   "frame_max_ms": 0.46,
+   "loop_late_ms": 0.6,
+   "slowest": [
+    "request set_settings",
+    438
+   ],
+   "frames": 15
+  },
+  "notes": [],
+  "failures": []
+ },
+ {
+  "app": "gallery",
+  "step": "launch and load",
+  "transition": true,
+  "frames": 18,
+  "p50_ms": 1.15,
+  "p99_ms": 2.72,
+  "max_ms": 2.72,
+  "ui_max_ms": 1.19,
+  "server": {
+   "frame_max_ms": 3.39,
+   "loop_late_ms": 1.7,
+   "slowest": [
+    "tick",
+    261
+   ],
+   "frames": 77
+  },
+  "notes": [],
+  "failures": [],
+  "launch_ms": 84
+ },
+ {
+  "app": "gallery",
+  "step": "idle 1 s",
+  "transition": false,
+  "frames": 9,
+  "p50_ms": 1.14,
+  "p99_ms": 1.25,
+  "max_ms": 1.25,
+  "ui_max_ms": 0.99,
+  "server": {
+   "frame_max_ms": 0.56,
+   "loop_late_ms": 0.6,
+   "slowest": [
+    "tick",
+    222
+   ],
+   "frames": 41
+  },
+  "notes": [
+   "drew 9 frames with nothing happening"
+  ],
+  "failures": [],
+  "idle_fps": 9
+ },
+ {
+  "app": "gallery",
+  "step": "pointer over it",
+  "transition": false,
+  "frames": 15,
+  "p50_ms": 1.16,
+  "p99_ms": 1.5,
+  "max_ms": 1.5,
+  "ui_max_ms": 1.04,
+  "server": {
+   "frame_max_ms": 0.45,
+   "loop_late_ms": 0.4,
+   "slowest": [
+    "tick",
+    299
+   ],
+   "frames": 193
+  },
+  "notes": [],
+  "failures": []
+ },
+ {
+  "app": "gallery",
+  "step": "scroll 1",
+  "transition": false,
+  "frames": 278,
+  "p50_ms": 0.63,
+  "p99_ms": 1.22,
+  "max_ms": 1.36,
+  "ui_max_ms": 1.16,
+  "server": {
+   "frame_max_ms": 1.95,
+   "loop_late_ms": 1.0,
+   "slowest": [
+    "clients' requests",
+    279
+   ],
+   "frames": 495
+  },
+  "notes": [
+   "flick: didn't scroll"
+  ],
+  "failures": [],
+  "even": "0.99\u20131.01"
+ },
+ {
+  "app": "gallery",
+  "step": "scroll 2",
+  "transition": false,
+  "frames": 241,
+  "p50_ms": 0.64,
+  "p99_ms": 1.26,
+  "max_ms": 1.3,
+  "ui_max_ms": 1.05,
+  "server": {
+   "frame_max_ms": 0.51,
+   "loop_late_ms": 0.6,
+   "slowest": [
+    "tick",
+    215
+   ],
+   "frames": 476
+  },
+  "notes": [],
+  "failures": [
+   "drag: 1 frames skipped",
+   "drag: frames moved 0.96\u20132.00\u00d7 as far as the fingers"
+  ],
+  "even": "0.96\u20132.00"
+ },
+ {
+  "app": "gallery",
+  "step": "typing",
+  "transition": false,
+  "frames": 57,
+  "p50_ms": 0.88,
+  "p99_ms": 1.22,
+  "max_ms": 1.22,
+  "ui_max_ms": 1.01,
+  "server": {
+   "frame_max_ms": 0.6,
+   "loop_late_ms": 0.3,
+   "slowest": [
+    "clients' requests",
+    342
+   ],
+   "frames": 217
+  },
+  "notes": [],
+  "failures": []
+ },
+ {
+  "app": "gallery",
+  "step": "live resize",
+  "transition": false,
+  "frames": 45,
+  "p50_ms": 0.78,
+  "p99_ms": 1.18,
+  "max_ms": 1.18,
+  "ui_max_ms": 0.96,
+  "server": {
+   "frame_max_ms": 0.53,
+   "loop_late_ms": 0.4,
+   "slowest": [
+    "tick",
+    191
+   ],
+   "frames": 130
+  },
+  "notes": [],
+  "failures": []
+ },
+ {
+  "app": "gallery",
+  "step": "theme light, dark",
+  "transition": true,
+  "frames": 19,
+  "p50_ms": 0.9,
+  "p99_ms": 1.25,
+  "max_ms": 1.25,
+  "ui_max_ms": 1.05,
+  "server": {
+   "frame_max_ms": 2.23,
+   "loop_late_ms": 1.6,
+   "slowest": [
+    "wallpaper ready",
+    837
+   ],
+   "frames": 99
+  },
+  "notes": [],
+  "failures": []
+ },
+ {
+  "app": "styled-edit",
+  "step": "launch and load",
+  "transition": true,
+  "frames": 8,
+  "p50_ms": 1.73,
+  "p99_ms": 4.29,
+  "max_ms": 4.29,
+  "ui_max_ms": 3.95,
+  "server": {
+   "frame_max_ms": 0.81,
+   "loop_late_ms": 0.3,
+   "slowest": [
+    "tick",
+    362
+   ],
+   "frames": 26
+  },
+  "notes": [],
+  "failures": [],
+  "launch_ms": 75
+ },
+ {
+  "app": "styled-edit",
+  "step": "idle 1 s",
+  "transition": false,
+  "frames": 2,
+  "p50_ms": 1.16,
+  "p99_ms": 1.16,
+  "max_ms": 1.16,
+  "ui_max_ms": 0.97,
+  "server": {
+   "frame_max_ms": 0.43,
+   "loop_late_ms": 0.6,
+   "slowest": [
+    "tick",
+    216
+   ],
+   "frames": 16
+  },
+  "notes": [],
+  "failures": [],
+  "idle_fps": 2
+ },
+ {
+  "app": "styled-edit",
+  "step": "pointer over it",
+  "transition": false,
+  "frames": 5,
+  "p50_ms": 1.17,
+  "p99_ms": 1.64,
+  "max_ms": 1.64,
+  "ui_max_ms": 1.38,
+  "server": {
+   "frame_max_ms": 0.52,
+   "loop_late_ms": 0.3,
+   "slowest": [
+    "tick",
+    223
+   ],
+   "frames": 187
+  },
+  "notes": [],
+  "failures": []
+ },
+ {
+  "app": "styled-edit",
+  "step": "scroll 1",
+  "transition": false,
+  "frames": 372,
+  "p50_ms": 1.09,
+  "p99_ms": 1.66,
+  "max_ms": 1.97,
+  "ui_max_ms": 1.75,
+  "server": {
+   "frame_max_ms": 0.54,
+   "loop_late_ms": 1.7,
+   "slowest": [
+    "clients' requests",
+    947
+   ],
+   "frames": 427
+  },
+  "notes": [],
+  "failures": [
+   "flick: 1 frames skipped",
+   "glide: a frame +103% off its neighbours"
+  ],
+  "even": "0.98\u20131.02",
+  "glide": "worst +1.03"
+ },
+ {
+  "app": "styled-edit",
+  "step": "6 menus",
+  "transition": false,
+  "frames": 24,
+  "p50_ms": 1.24,
+  "p99_ms": 1.79,
+  "max_ms": 1.79,
+  "ui_max_ms": 1.58,
+  "server": {
+   "frame_max_ms": 0.56,
+   "loop_late_ms": 0.6,
+   "slowest": [
+    "clients' requests",
+    342
+   ],
+   "frames": 603
+  },
+  "notes": [],
+  "failures": []
+ },
+ {
+  "app": "styled-edit",
+  "step": "typing",
+  "transition": false,
+  "frames": 59,
+  "p50_ms": 1.69,
+  "p99_ms": 2.73,
+  "max_ms": 2.73,
+  "ui_max_ms": 2.56,
+  "server": {
+   "frame_max_ms": 0.53,
+   "loop_late_ms": 0.3,
+   "slowest": [
+    "tick",
+    209
+   ],
+   "frames": 212
+  },
+  "notes": [],
+  "failures": []
+ },
+ {
+  "app": "styled-edit",
+  "step": "live resize",
+  "transition": false,
+  "frames": 38,
+  "p50_ms": 1.97,
+  "p99_ms": 2.75,
+  "max_ms": 2.75,
+  "ui_max_ms": 2.55,
+  "server": {
+   "frame_max_ms": 0.49,
+   "loop_late_ms": 0.4,
+   "slowest": [
+    "tick",
+    205
+   ],
+   "frames": 112
+  },
+  "notes": [],
+  "failures": []
+ },
+ {
+  "app": "styled-edit",
+  "step": "theme light, dark",
+  "transition": true,
+  "frames": 5,
+  "p50_ms": 1.18,
+  "p99_ms": 1.53,
+  "max_ms": 1.53,
+  "ui_max_ms": 1.37,
+  "server": {
+   "frame_max_ms": 2.64,
+   "loop_late_ms": 1.3,
+   "slowest": [
+    "tick",
+    627
+   ],
+   "frames": 41
+  },
+  "notes": [],
+  "failures": []
+ },
+ {
+  "app": "session",
+  "step": "scale to 2",
+  "transition": true,
+  "frames": 2,
+  "p50_ms": 0.48,
+  "p99_ms": 0.48,
+  "max_ms": 0.48,
+  "ui_max_ms": 0.33,
+  "server": {
+   "frame_max_ms": 0.53,
+   "loop_late_ms": 0.7,
+   "slowest": [
+    "request set_settings",
+    470
+   ],
+   "frames": 9
+  },
+  "notes": [],
+  "failures": []
+ },
+ {
+  "app": "gallery",
+  "step": "launch and load",
+  "transition": true,
+  "frames": 22,
+  "p50_ms": 0.83,
+  "p99_ms": 1.19,
+  "max_ms": 1.19,
+  "ui_max_ms": 0.97,
+  "server": {
+   "frame_max_ms": 2.63,
+   "loop_late_ms": 0.6,
+   "slowest": [
+    "tick",
+    340
+   ],
+   "frames": 95
+  },
+  "notes": [],
+  "failures": [],
+  "launch_ms": 96
+ },
+ {
+  "app": "gallery",
+  "step": "idle 1 s",
+  "transition": false,
+  "frames": 13,
+  "p50_ms": 0.83,
+  "p99_ms": 1.07,
+  "max_ms": 1.07,
+  "ui_max_ms": 0.92,
+  "server": {
+   "frame_max_ms": 0.44,
+   "loop_late_ms": 0.2,
+   "slowest": [
+    "tick",
+    222
+   ],
+   "frames": 54
+  },
+  "notes": [
+   "drew 13 frames with nothing happening"
+  ],
+  "failures": [],
+  "idle_fps": 13
+ },
+ {
+  "app": "gallery",
+  "step": "pointer over it",
+  "transition": false,
+  "frames": 22,
+  "p50_ms": 0.83,
+  "p99_ms": 1.09,
+  "max_ms": 1.09,
+  "ui_max_ms": 0.89,
+  "server": {
+   "frame_max_ms": 0.43,
+   "loop_late_ms": 0.2,
+   "slowest": [
+    "tick",
+    219
+   ],
+   "frames": 191
+  },
+  "notes": [],
+  "failures": []
+ },
+ {
+  "app": "gallery",
+  "step": "scroll 1",
+  "transition": false,
+  "frames": 287,
+  "p50_ms": 0.71,
+  "p99_ms": 1.01,
+  "max_ms": 1.06,
+  "ui_max_ms": 0.89,
+  "server": {
+   "frame_max_ms": 0.55,
+   "loop_late_ms": 0.5,
+   "slowest": [
+    "clients' requests",
+    249
+   ],
+   "frames": 513
+  },
+  "notes": [
+   "flick: didn't scroll"
+  ],
+  "failures": [],
+  "even": "0.99\u20131.01"
+ },
+ {
+  "app": "gallery",
+  "step": "scroll 2",
+  "transition": false,
+  "frames": 250,
+  "p50_ms": 0.79,
+  "p99_ms": 1.33,
+  "max_ms": 10.04,
+  "ui_max_ms": 6.5,
+  "server": {
+   "frame_max_ms": 0.47,
+   "loop_late_ms": 0.5,
+   "slowest": [
+    "clients' requests",
+    293
+   ],
+   "frames": 489
+  },
+  "notes": [],
+  "failures": [
+   "1 of 250 frames over 8.3 ms (slowest 10.0 ms: setup 0.0, ui 6.5, tessellate 0.0, acquire 0.0, submit 3.5)"
+  ],
+  "even": "0.98\u20131.02"
+ },
+ {
+  "app": "gallery",
+  "step": "typing",
+  "transition": false,
+  "frames": 62,
+  "p50_ms": 0.86,
+  "p99_ms": 1.43,
+  "max_ms": 1.43,
+  "ui_max_ms": 1.26,
+  "server": {
+   "frame_max_ms": 0.5,
+   "loop_late_ms": 1.9,
+   "slowest": [
+    "flushing to clients",
+    1078
+   ],
+   "frames": 226
+  },
+  "notes": [],
+  "failures": []
+ },
+ {
+  "app": "gallery",
+  "step": "live resize",
+  "transition": false,
+  "frames": 47,
+  "p50_ms": 0.79,
+  "p99_ms": 1.12,
+  "max_ms": 1.12,
+  "ui_max_ms": 0.96,
+  "server": {
+   "frame_max_ms": 0.61,
+   "loop_late_ms": 0.4,
+   "slowest": [
+    "tick",
+    231
+   ],
+   "frames": 146
+  },
+  "notes": [],
+  "failures": []
+ },
+ {
+  "app": "gallery",
+  "step": "theme light, dark",
+  "transition": true,
+  "frames": 23,
+  "p50_ms": 0.85,
+  "p99_ms": 1.24,
+  "max_ms": 1.24,
+  "ui_max_ms": 1.01,
+  "server": {
+   "frame_max_ms": 5.46,
+   "loop_late_ms": 4.3,
+   "slowest": [
+    "request set_settings",
+    428
+   ],
+   "frames": 115
+  },
+  "notes": [],
+  "failures": []
+ },
+ {
+  "app": "styled-edit",
+  "step": "launch and load",
+  "transition": true,
+  "frames": 8,
+  "p50_ms": 1.43,
+  "p99_ms": 3.15,
+  "max_ms": 3.15,
+  "ui_max_ms": 2.92,
+  "server": {
+   "frame_max_ms": 1.23,
+   "loop_late_ms": 0.8,
+   "slowest": [
+    "tick",
+    250
+   ],
+   "frames": 29
+  },
+  "notes": [],
+  "failures": [],
+  "launch_ms": 74
+ },
+ {
+  "app": "styled-edit",
+  "step": "idle 1 s",
+  "transition": false,
+  "frames": 2,
+  "p50_ms": 1.61,
+  "p99_ms": 1.61,
+  "max_ms": 1.61,
+  "ui_max_ms": 1.36,
+  "server": {
+   "frame_max_ms": 0.57,
+   "loop_late_ms": 0.2,
+   "slowest": [
+    "tick",
+    197
+   ],
+   "frames": 14
+  },
+  "notes": [],
+  "failures": [],
+  "idle_fps": 2
+ },
+ {
+  "app": "styled-edit",
+  "step": "pointer over it",
+  "transition": false,
+  "frames": 10,
+  "p50_ms": 1.16,
+  "p99_ms": 1.57,
+  "max_ms": 1.57,
+  "ui_max_ms": 1.3,
+  "server": {
+   "frame_max_ms": 0.42,
+   "loop_late_ms": 0.3,
+   "slowest": [
+    "tick",
+    257
+   ],
+   "frames": 180
+  },
+  "notes": [],
+  "failures": []
+ },
+ {
+  "app": "styled-edit",
+  "step": "scroll 1",
+  "transition": false,
+  "frames": 377,
+  "p50_ms": 0.86,
+  "p99_ms": 1.65,
+  "max_ms": 5.96,
+  "ui_max_ms": 5.85,
+  "server": {
+   "frame_max_ms": 0.69,
+   "loop_late_ms": 1.1,
+   "slowest": [
+    "tick",
+    318
+   ],
+   "frames": 432
+  },
+  "notes": [],
+  "failures": [
+   "drag: 1 frames skipped",
+   "drag: frames moved 0.98\u20132.00\u00d7 as far as the fingers",
+   "flick: 2 frames skipped",
+   "glide: a frame +101% off its neighbours"
+  ],
+  "even": "0.98\u20132.00",
+  "glide": "worst +1.01"
+ },
+ {
+  "app": "styled-edit",
+  "step": "6 menus",
+  "transition": false,
+  "frames": 24,
+  "p50_ms": 1.17,
+  "p99_ms": 1.93,
+  "max_ms": 1.93,
+  "ui_max_ms": 1.73,
+  "server": {
+   "frame_max_ms": 0.67,
+   "loop_late_ms": 0.6,
+   "slowest": [
+    "tick",
+    286
+   ],
+   "frames": 603
+  },
+  "notes": [],
+  "failures": []
+ },
+ {
+  "app": "styled-edit",
+  "step": "typing",
+  "transition": false,
+  "frames": 58,
+  "p50_ms": 1.39,
+  "p99_ms": 13.7,
+  "max_ms": 13.7,
+  "ui_max_ms": 13.54,
+  "server": {
+   "frame_max_ms": 0.47,
+   "loop_late_ms": 0.4,
+   "slowest": [
+    "tick",
+    210
+   ],
+   "frames": 211
+  },
+  "notes": [],
+  "failures": [
+   "1 of 58 frames over 8.3 ms (slowest 13.7 ms: setup 0.0, ui 13.5, tessellate 0.0, acquire 0.0, submit 0.2)"
+  ]
+ },
+ {
+  "app": "styled-edit",
+  "step": "live resize",
+  "transition": false,
+  "frames": 38,
+  "p50_ms": 1.67,
+  "p99_ms": 3.96,
+  "max_ms": 3.96,
+  "ui_max_ms": 2.4,
+  "server": {
+   "frame_max_ms": 0.48,
+   "loop_late_ms": 0.4,
+   "slowest": [
+    "tick",
+    221
+   ],
+   "frames": 111
+  },
+  "notes": [],
+  "failures": []
+ },
+ {
+  "app": "styled-edit",
+  "step": "theme light, dark",
+  "transition": true,
+  "frames": 5,
+  "p50_ms": 1.33,
+  "p99_ms": 1.53,
+  "max_ms": 1.53,
+  "ui_max_ms": 1.36,
+  "server": {
+   "frame_max_ms": 2.18,
+   "loop_late_ms": 3.5,
+   "slowest": [
+    "request set_settings",
+    3117
+   ],
+   "frames": 49
+  },
+  "notes": [],
+  "failures": []
+ }
+]

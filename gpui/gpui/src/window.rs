@@ -1688,6 +1688,14 @@ impl Window {
         self.frame_scrolls.push(at);
     }
 
+    /// Defer the current eased wheel step while a worker decides whether it
+    /// may scroll. Call from the wheel handler; apply the accepted movement
+    /// before completing the returned token. No drawing or polling is needed
+    /// while waiting. Direct touchpad events return None.
+    pub fn defer_wheel(&self) -> Option<crate::DeferredWheel> {
+        self.platform_window.defer_wheel()
+    }
+
     /// Olo: how the window kept up since this was last called (and
     /// starts counting again).
     pub fn take_frame_stats(&mut self) -> FrameStats {

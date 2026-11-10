@@ -18,24 +18,28 @@ media-query notifications, script measurements and device-pixel observations
 follow resize/scale/theme changes. Nineteen component observations match Chrome;
 Stripe follows all 15 live theme/scale changes. See
 [live environment evidence](measurements/2026-11-10-live-environment/README.md).
-The next observed layout difference is **scrollbar geometry**: Chrome reserves
-about 15 CSS px on this platform; Olo's overlay scrollbar leaves the page wider
-(Stripe hero ~985 vs 1000 px). Resolve this against the reference before
-accepting configurations. Iframes still restart on resize and lack this
-environment propagation; responsive-source reselection and connected offscreen
-image pixel recovery also remain open.
+Classic root geometry and native scrollbar controls now share the same
+15/10 CSS-pixel metrics. Browser supports both scroll axes, negative RTL
+positions, fixed geometry/hit testing and history/reload restoration. Root
+wheel defaults follow overflow policy and page cancellation; asynchronous
+wheel decisions preserve GPUI's eased remainder. Stripe's hero now uses the
+client width (~985 instead of 1000 CSS px). At a matched 1000×578 viewport,
+the 1× hero rectangle now equals Chrome: 985×542.03125. **Next: erroneous
+horizontal document overflow**: Olo shows a horizontal bar and client height
+563, whereas Chrome has scrollWidth=clientWidth=985 and client height578.
+Its remaining pixels and journeys still need matched Chrome comparisons before
+accepting configurations.
+See [native scrolling](measurements/2026-11-10-native-scroll/README.md).
 
-The scrollbar investigation has fixed viewport overflow ownership and
-per-axis clipping/measurement, with root-only typed scrollbar properties.
-Classic root geometry, viewport-unit restyling and client/VisualViewport
-reads now match the captured component cases (100 Chrome observations at five
-scales). Browser still uses overlays: its horizontal scroll offset, reserved
-area painting and native bar controls must be integrated before enabling classic
-metrics. Stripe's width difference therefore remains. Nested gutters, root
-input policy, RTL scroll ranges and gutter-only VisualViewport resize events
-also remain open. See [classic viewport geometry](measurements/2026-11-10-classic-viewport/README.md). DOM body scrolling still aliases the viewport, and
-the JS layout budget can return stale measurements after 60 layouts/0.25s
-in one advance. Evidence and the failed budget probe are retained in
+Open scrolling work: nested classic gutters and complete nested/iframe wheel
+behavior; keyboard defaults; smooth scrolling/scrollend; vertical writing;
+transformed/contained overflow; gradient/image canvas in empty stable gutters;
+Chrome's float32 fractional scroll roundoff; gutter-only VisualViewport resize
+events. DOM body scrolling still aliases the viewport. Iframes still restart
+on resize and lack main-page environment propagation; responsive-source
+reselection and connected offscreen image pixel recovery also remain open.
+The JS layout budget can return stale measurements after 60 layouts/0.25s in
+one advance. Evidence and the failed budget probe are retained in
 [viewport overflow](measurements/2026-11-10-viewport-overflow/README.md).
 
 Finish its real pages/journeys and all 30 configurations before choosing
@@ -1115,3 +1119,14 @@ this is a harness correction, not a browser speedup.
   `2026-11-10-glyph-coverage/close-shortcut.json` records the owned-screen check.
 - [ ] Verify close/cancellation during in-flight networking and JavaScript;
   static-window exit is not evidence for those paths.
+
+- [ ] Profile native classic-scroll costs: 20 forced layout reads ~1.9→9.4ms;
+  wheel first movement ~9→17ms, drag +8ms in the native-scroll checkpoint.
+  After samples have nine stationary wheel frames and one drag hitch (before:
+  zero stationary frames and two drag hitches). Preserve cancellation and
+  overflow correctness while reducing work/worker round trips; trace the
+  stationary frames rather than treating low draw cost as smoothness proof.
+- [ ] Resolve shared-kit benchmark failures recorded by native-scroll validation:
+  gallery/StyledEdit at1×/1.5×/2×, six of51 steps fail, typing up to13.92ms,
+  gallery scroll10.04ms and scroll/glide hitches. Establish a matched baseline
+  and profile; these findings are not attributed to the patch without evidence.

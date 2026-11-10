@@ -334,6 +334,9 @@ struct FrameLoop {
     signal: calloop::LoopSignal,
     /// A wheel's notches being eased in.
     wheel: RefCell<Option<WheelEase>>,
+    wheel_pending: Cell<bool>,
+    delivering_wheel: Cell<bool>,
+    wheel_resume_after_draw: Cell<bool>,
     /// Olo: the window is gone (its surface destroyed): a frame queued
     /// before draws nothing.
     closed: Cell<bool>,
@@ -985,6 +988,9 @@ impl WaylandWindow {
                 handle: loop_handle,
                 signal,
                 wheel: RefCell::new(None),
+                wheel_pending: Cell::new(false),
+                delivering_wheel: Cell::new(false),
+                wheel_resume_after_draw: Cell::new(false),
                 closed: Cell::new(false),
                 in_frame: Cell::new(false),
                 wanted: Cell::new(false),
@@ -1223,7 +1229,9 @@ impl WaylandWindowStatePtr {
         }
         let wheel = self.wheel_step();
         if let Some(step) = wheel.clone() {
+            frames.delivering_wheel.set(true);
             self.handle_input(PlatformInput::ScrollWheel(step));
+            frames.delivering_wheel.set(false);
         }
         frames.queued.set(false);
 
@@ -1239,8 +1247,11 @@ impl WaylandWindowStatePtr {
         };
         frames.in_frame.set(false);
         drop(cb);
+        if drew {
+            frames.wheel_resume_after_draw.set(false);
+        }
         log::trace!(target: "olo_frames", "frame: drew {drew}, callback {:?}", frames.callback.get());
-        if wheel.is_some() && !drew {
+        if wheel.is_some() && !drew && !frames.wheel_pending.get() {
             // Nothing moved (an edge): the rest goes.
             frames.wheel.take();
         }
@@ -1294,6 +1305,9 @@ impl WaylandWindowStatePtr {
     /// by the time since the last step (a frame's worth from a rest),
     /// and the last of it is under a device pixel rather than a jump.
     fn wheel_step(&self) -> Option<crate::ScrollWheelEvent> {
+        if self.frames.wheel_pending.get() || self.frames.wheel_resume_after_draw.get() {
+            return None;
+        }
         let mut slot = self.frames.wheel.borrow_mut();
         let w = slot.as_mut()?;
         let now = std::time::Instant::now();
@@ -1987,6 +2001,28 @@ impl rwh::HasDisplayHandle for WaylandWindow {
 }
 
 impl PlatformWindow for WaylandWindow {
+    fn defer_wheel(&self) -> Option<crate::DeferredWheel> {
+        if !self.0.frames.delivering_wheel.get() || self.0.frames.wheel_pending.replace(true) {
+            return None;
+        }
+        let this = self.0.clone();
+        Some(crate::DeferredWheel::new(move |resume| {
+            this.frames.wheel_pending.set(false);
+            if resume {
+                if this.frames.wheel.borrow().is_some() {
+                    // First present the accepted movement. Taking another
+                    // step in that immediate frame would use a near-zero dt,
+                    // round to no pixels and mistake it for a scroll edge.
+                    this.frames.wheel_resume_after_draw.set(true);
+                    this.schedule_frame();
+                }
+            } else {
+                this.frames.wheel_resume_after_draw.set(false);
+                this.frames.wheel.take();
+            }
+        }))
+    }
+
     fn bounds(&self) -> Bounds<Pixels> {
         self.borrow().bounds
     }

@@ -1,0 +1,76 @@
+fixtures…
+
+== scale 1, 120 Hz, budget 8.3 ms a frame
+  ~  session            scale to 1                 2 fr  p50  2.35  p99  2.35  max   2.35 ms  (ui  2.07)  server  0.43 (10 fr)
+  ~  gallery            launch and load           12 fr  p50  0.85  p99  1.00  max   1.00 ms  (ui  0.77)  server  6.09 (58 fr)  launch_ms 115
+     gallery            idle 1 s                   6 fr  p50  0.85  p99  0.87  max   0.87 ms  (ui  0.70)  server  0.63 (29 fr)
+     gallery            pointer over it            8 fr  p50  0.80  p99  0.93  max   0.93 ms  (ui  0.76)  server  0.45 (184 fr)
+     gallery            scroll 1                 261 fr  p50  0.76  p99  1.34  max   1.67 ms  (ui  1.46)  server  2.99 (474 fr)  even 0.94–1.00
+       · flick: didn't scroll
+     gallery            scroll 2                 220 fr  p50  0.81  p99  1.14  max   1.22 ms  (ui  0.95)  server  0.49 (450 fr)  even 0.99–1.01
+     gallery            typing                    50 fr  p50  1.00  p99  2.09  max   2.09 ms  (ui  1.40)  server  0.47 (214 fr)
+     gallery            live resize               42 fr  p50  0.81  p99  1.15  max   1.15 ms  (ui  0.91)  server  0.63 (122 fr)
+  ~  gallery            theme light, dark         14 fr  p50  1.11  p99  1.24  max   1.24 ms  (ui  0.98)  server 12.90 (79 fr)
+  ~  styled-edit        launch and load            9 fr  p50  1.74  p99  5.35  max   5.35 ms  (ui  4.88)  server  0.63 (28 fr)  launch_ms 115
+     styled-edit        idle 1 s                   2 fr  p50  2.03  p99  2.03  max   2.03 ms  (ui  1.68)  server  0.54 (13 fr)
+     styled-edit        pointer over it            3 fr  p50  1.94  p99  2.07  max   2.07 ms  (ui  1.75)  server  0.55 (181 fr)
+     styled-edit        scroll 1                 368 fr  p50  1.14  p99  1.75  max   2.08 ms  (ui  1.83)  server  0.59 (420 fr)  even 0.99–1.01, glide worst +0.00
+     styled-edit        6 menus                   24 fr  p50  1.42  p99  2.14  max   2.14 ms  (ui  1.92)  server  0.54 (603 fr)
+FAIL styled-edit        typing                    59 fr  p50  1.64  p99 13.92  max  13.92 ms  (ui 13.56)  server  0.52 (211 fr)
+       ✗ 1 of 59 frames over 8.3 ms (slowest 13.9 ms: setup 0.0, ui 13.6, tessellate 0.0, acquire 0.0, submit 0.4)
+     styled-edit        live resize               38 fr  p50  2.33  p99  3.08  max   3.08 ms  (ui  2.85)  server  0.51 (112 fr)
+  ~  styled-edit        theme light, dark          5 fr  p50  1.39  p99  1.93  max   1.93 ms  (ui  1.73)  server  3.23 (42 fr)
+
+== scale 1.5, 120 Hz, budget 8.3 ms a frame
+  ~  session            scale to 1.5               3 fr  p50  0.65  p99  2.56  max   2.56 ms  (ui  2.36)  server  0.46 (15 fr)
+  ~  gallery            launch and load           18 fr  p50  1.15  p99  2.72  max   2.72 ms  (ui  1.19)  server  3.39 (77 fr)  launch_ms 84
+     gallery            idle 1 s                   9 fr  p50  1.14  p99  1.25  max   1.25 ms  (ui  0.99)  server  0.56 (41 fr)
+     gallery            pointer over it           15 fr  p50  1.16  p99  1.50  max   1.50 ms  (ui  1.04)  server  0.45 (193 fr)
+     gallery            scroll 1                 278 fr  p50  0.63  p99  1.22  max   1.36 ms  (ui  1.16)  server  1.95 (495 fr)  even 0.99–1.01
+       · flick: didn't scroll
+FAIL gallery            scroll 2                 241 fr  p50  0.64  p99  1.26  max   1.30 ms  (ui  1.05)  server  0.51 (476 fr)  even 0.96–2.00
+       ✗ drag: 1 frames skipped
+       ✗ drag: frames moved 0.96–2.00× as far as the fingers
+     gallery            typing                    57 fr  p50  0.88  p99  1.22  max   1.22 ms  (ui  1.01)  server  0.60 (217 fr)
+     gallery            live resize               45 fr  p50  0.78  p99  1.18  max   1.18 ms  (ui  0.96)  server  0.53 (130 fr)
+  ~  gallery            theme light, dark         19 fr  p50  0.90  p99  1.25  max   1.25 ms  (ui  1.05)  server  2.23 (99 fr)
+  ~  styled-edit        launch and load            8 fr  p50  1.73  p99  4.29  max   4.29 ms  (ui  3.95)  server  0.81 (26 fr)  launch_ms 75
+     styled-edit        idle 1 s                   2 fr  p50  1.16  p99  1.16  max   1.16 ms  (ui  0.97)  server  0.43 (16 fr)
+     styled-edit        pointer over it            5 fr  p50  1.17  p99  1.64  max   1.64 ms  (ui  1.38)  server  0.52 (187 fr)
+FAIL styled-edit        scroll 1                 372 fr  p50  1.09  p99  1.66  max   1.97 ms  (ui  1.75)  server  0.54 (427 fr)  even 0.98–1.02, glide worst +1.03
+       ✗ flick: 1 frames skipped
+       ✗ glide: a frame +103% off its neighbours
+     styled-edit        6 menus                   24 fr  p50  1.24  p99  1.79  max   1.79 ms  (ui  1.58)  server  0.56 (603 fr)
+     styled-edit        typing                    59 fr  p50  1.69  p99  2.73  max   2.73 ms  (ui  2.56)  server  0.53 (212 fr)
+     styled-edit        live resize               38 fr  p50  1.97  p99  2.75  max   2.75 ms  (ui  2.55)  server  0.49 (112 fr)
+  ~  styled-edit        theme light, dark          5 fr  p50  1.18  p99  1.53  max   1.53 ms  (ui  1.37)  server  2.64 (41 fr)
+
+== scale 2, 120 Hz, budget 8.3 ms a frame
+  ~  session            scale to 2                 2 fr  p50  0.48  p99  0.48  max   0.48 ms  (ui  0.33)  server  0.53 (9 fr)
+  ~  gallery            launch and load           22 fr  p50  0.83  p99  1.19  max   1.19 ms  (ui  0.97)  server  2.63 (95 fr)  launch_ms 96
+     gallery            idle 1 s                  13 fr  p50  0.83  p99  1.07  max   1.07 ms  (ui  0.92)  server  0.44 (54 fr)
+     gallery            pointer over it           22 fr  p50  0.83  p99  1.09  max   1.09 ms  (ui  0.89)  server  0.43 (191 fr)
+     gallery            scroll 1                 287 fr  p50  0.71  p99  1.01  max   1.06 ms  (ui  0.89)  server  0.55 (513 fr)  even 0.99–1.01
+       · flick: didn't scroll
+FAIL gallery            scroll 2                 250 fr  p50  0.79  p99  1.33  max  10.04 ms  (ui  6.50)  server  0.47 (489 fr)  even 0.98–1.02
+       ✗ 1 of 250 frames over 8.3 ms (slowest 10.0 ms: setup 0.0, ui 6.5, tessellate 0.0, acquire 0.0, submit 3.5)
+     gallery            typing                    62 fr  p50  0.86  p99  1.43  max   1.43 ms  (ui  1.26)  server  0.50 (226 fr)
+     gallery            live resize               47 fr  p50  0.79  p99  1.12  max   1.12 ms  (ui  0.96)  server  0.61 (146 fr)
+  ~  gallery            theme light, dark         23 fr  p50  0.85  p99  1.24  max   1.24 ms  (ui  1.01)  server  5.46 (115 fr)
+  ~  styled-edit        launch and load            8 fr  p50  1.43  p99  3.15  max   3.15 ms  (ui  2.92)  server  1.23 (29 fr)  launch_ms 74
+     styled-edit        idle 1 s                   2 fr  p50  1.61  p99  1.61  max   1.61 ms  (ui  1.36)  server  0.57 (14 fr)
+     styled-edit        pointer over it           10 fr  p50  1.16  p99  1.57  max   1.57 ms  (ui  1.30)  server  0.42 (180 fr)
+FAIL styled-edit        scroll 1                 377 fr  p50  0.86  p99  1.65  max   5.96 ms  (ui  5.85)  server  0.69 (432 fr)  even 0.98–2.00, glide worst +1.01
+       ✗ drag: 1 frames skipped
+       ✗ drag: frames moved 0.98–2.00× as far as the fingers
+       ✗ flick: 2 frames skipped
+       ✗ glide: a frame +101% off its neighbours
+     styled-edit        6 menus                   24 fr  p50  1.17  p99  1.93  max   1.93 ms  (ui  1.73)  server  0.67 (603 fr)
+FAIL styled-edit        typing                    58 fr  p50  1.39  p99 13.70  max  13.70 ms  (ui 13.54)  server  0.47 (211 fr)
+       ✗ 1 of 58 frames over 8.3 ms (slowest 13.7 ms: setup 0.0, ui 13.5, tessellate 0.0, acquire 0.0, submit 0.2)
+     styled-edit        live resize               38 fr  p50  1.67  p99  3.96  max   3.96 ms  (ui  2.40)  server  0.48 (111 fr)
+  ~  styled-edit        theme light, dark          5 fr  p50  1.33  p99  1.53  max   1.53 ms  (ui  1.36)  server  2.18 (49 fr)
+
+51 steps, 3571 frames; 6 failed
+  styled-edit        slowest frame  13.92 ms (typing)
+  gallery            slowest frame  10.04 ms (scroll 2)

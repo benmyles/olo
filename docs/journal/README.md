@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-10
 
+### Browser: native two-axis viewport scrolling
+
+*06:35* — Classic client space with native horizontal and vertical controls, script position 640,720, and a fixed panel that remains interactive. Checked light, dark and night at 1x, 1.25x, 1.5x, 1.75x and 2x. Website compatibility remains incomplete.
+
+![Browser: native two-axis viewport scrolling](2026-11-10/063522-browser-native-two-axis-viewport-scrolling.png)
+
+### Browser: overlay viewport before native scrolling
+
+*06:35* — Before this change the page used overlay scrollbars; script horizontal scrolling did not move the native viewport. Native-scroll checkpoint, light at 1.25x.
+
+![Browser: overlay viewport before native scrolling](2026-11-10/063521-browser-overlay-viewport-before-native-scrolling.png)
+
 ### Browser preserves viewport overflow content
 
 *04:38* — The selected root or body propagates overflow to the viewport. Independent containers retain their own clips; classic scrollbar geometry remains open.

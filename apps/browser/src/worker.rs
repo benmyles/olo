@@ -34,8 +34,31 @@ const MAX_VIEWPORT: u32 = 32768;
 /// Whether pages' scripts run (`OLO_BROWSER_NO_JS=1` turns them off, for
 /// comparing a page with and without).
 const JAVASCRIPT: bool = true;
-pub fn max_scroll(key: &Key, extent: f64) -> i32 {
-    ((extent * key.scale - f64::from(key.height)).ceil().max(0.) as i32).min(i32::MAX - MAX_VIEWPORT as i32 - 256)
+pub fn device_scroll(value: f64, scale: f64) -> i32 {
+    let bound = f64::from(i32::MAX - MAX_VIEWPORT as i32 - 256);
+    (value * scale + 0.5).floor().clamp(-bound, bound) as i32
+}
+/// The page's current scrollport and permitted native scroll ranges.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RootViewport {
+    pub geometry: layout::ViewportGeometry,
+    pub min: [i32; 2],
+    pub max: [i32; 2],
+    pub user: [bool; 2],
+    pub canvas: [u8; 4],
+}
+impl RootViewport {
+    fn of(scene: &paint::Scene) -> Self {
+        let layout = scene.layout();
+        let geometry = layout.viewport_geometry();
+        let range = layout.viewport_scroll_range();
+        let device = |v: f64| device_scroll(v, geometry.full.scale);
+        let user = layout.cache().tree().viewport_overflow().axes.map(|k| matches!(k, Keyword::Auto | Keyword::Scroll));
+        Self { geometry, min: range.min.map(device), max: range.max.map(device), user, canvas: scene.canvas_color() }
+    }
+    pub fn clamp(self, position: [i32; 2]) -> [i32; 2] {
+        std::array::from_fn(|i| position[i].clamp(self.min[i], self.max[i]))
+    }
 }
 /// A body a navigation posts (a form's): its media type, its bytes, and
 /// the page that posted it.
@@ -52,6 +75,7 @@ pub struct Request {
     pub post: Option<Arc<Post>>,
     pub key: Key,
     pub scroll: i32,
+    pub scroll_x: i32,
     pub cancel: crate::network::Cancel,
     pub recycle: Vec<Arc<RenderImage>>,
     pub interaction: page::Interaction,
@@ -75,7 +99,11 @@ pub enum Message {
     Frame,
     /// Input from the person, for the live page's scripts (document
     /// coordinates in CSS px).
-    Input(olo_js::Input),
+    Input {
+        navigation: u64,
+        wheel: Option<u64>,
+        input: olo_js::Input,
+    },
     /// A message the embedding page posted to an iframe's window (to the
     /// frame's thread): its structured clone and the page's origin.
     FrameMessage(Vec<u8>, String),
@@ -192,7 +220,7 @@ impl ScrollArea {
         room(0, dx) || room(1, dy)
     }
 }
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct Label {
     pub image: bool,
     pub text: olo_ui::gpui::SharedString,
@@ -209,7 +237,7 @@ pub struct Label {
     /// `text` is its name.
     pub control: Option<Control>,
 }
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct Control {
     pub role: &'static str,
     pub value: Option<olo_ui::gpui::SharedString>,
@@ -351,6 +379,12 @@ fn backdrop_boxes(layout: &layout::Layout, scale: f64) -> Vec<(BackdropLayer, (p
     out
 }
 pub enum Reply {
+    DefaultWheel {
+        navigation: u64,
+        serial: u64,
+        input: olo_js::Input,
+        prevented: bool,
+    },
     Status(u64, String),
     Location(u64, String),
     /// The page moved its session history (pushState, replaceState,
@@ -366,12 +400,17 @@ pub enum Reply {
         /// The page wants more frames (animations, a canvas drawing): the
         /// window asks for them as it draws its own.
         animating: bool,
+        /// A cached flat page at the UI's requested scroll: only newly
+        /// delivered tiles or changed status can need another draw.
+        retained: bool,
     },
     Content {
         id: u64,
         labels: Vec<Label>,
         extent: f64,
         scroll: i32,
+        scroll_x: i32,
+        viewport: RootViewport,
         interaction_mask: u64,
         document: u64,
         target: Option<olo_web::dom::NodeId>,
@@ -755,7 +794,7 @@ struct Cached {
     /// scroll and size.
     /// The labels made last: for that scene, when, the band of the page
     /// they cover (CSS px, top and bottom), at that size.
-    label_cache: Option<(Arc<olo_web::paint::Scene>, Instant, (f64, f64), (u32, u32), Vec<Label>)>,
+    label_cache: Option<(Arc<olo_web::paint::Scene>, Instant, layout::Rect, (u32, u32), Vec<Label>)>,
     /// The last scene's paint identity (and size) and its tiles'
     /// signatures, by stratum and place.
     paint_identity: Option<(((usize, u64), u32, u32, u64))>,
@@ -767,6 +806,8 @@ struct Cached {
     navigation: u64,
     focus_targets: Option<Arc<crate::navigation::FocusTargets>>,
     anchor_scroll: Option<f64>,
+    scroll_position: [i32; 2],
+    scroll_request: u64,
 }
 pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
     let (tx, rx) = mpsc::channel::<Message>();
@@ -973,7 +1014,14 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                             }
                             continue;
                         }
-                        Message::Input(input) => {
+                        Message::Input { navigation, wheel, input } => {
+                            if last.as_ref().is_none_or(|r| r.navigation != navigation) {
+                                if let Some(serial) = wheel {
+                                    proxy.send(Reply::DefaultWheel { navigation, serial, input, prevented: true });
+                                }
+                                continue;
+                            }
+                            let mut wheel_prevented = true;
                             // Pointer and keys reach the live page's scripts; a
                             // change they make renders at once.
                             if let Some(c) = cached.as_mut()
@@ -982,9 +1030,9 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                                 let target = match input.kind {
                                     olo_js::InputKind::Key { .. } | olo_js::InputKind::Scroll => None,
                                     _ => {
-                                        let (scroll, height) = last.as_ref().map_or((0., f64::INFINITY), |r| (f64::from(r.scroll) / r.key.scale, f64::from(r.key.height) / r.key.scale));
+                                        let (scroll, height) = (input.scroll_y, c.page.scene.layout().viewport_geometry().client[1]);
                                         let stickies = c.page.scene.layout().sticky();
-                                        c.page.scene.hit_test(input.x, input.y, scroll, height, &stickies)
+                                        c.page.scene.hit_test_scrolled(input.x, input.y, [input.scroll_x, scroll], height, &stickies)
                                     }
                                 };
                                 // Over a live iframe the pointer is its page's (in its
@@ -1005,10 +1053,23 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                                         (local.x, local.y) = (input.x - ox, input.y - oy);
                                     }
                                     local.scroll_y = 0.;
+                                    local.scroll_x = 0.;
                                     live.frames.input(node, local);
+                                    if let Some(serial) = wheel {
+                                        proxy.send(Reply::DefaultWheel { navigation, serial, input, prevented: true });
+                                    }
                                     continue;
                                 }
-                                live.realm.input(&input, target);
+                                let prevented = live.realm.input(&input, target);
+                                wheel_prevented = prevented;
+                                if matches!(input.kind, olo_js::InputKind::Scroll) {
+                                    let scale = c.page.scene.layout().viewport_geometry().full.scale;
+                                    c.scroll_position = [input.scroll_x, input.scroll_y].map(|v| device_scroll(v, scale));
+                                    // The UI may already have cancelled this render
+                                    // request in favour of the new viewport. Keep the
+                                    // queued scroll event due for that request too.
+                                    live.next_due_ms = Some(0.);
+                                }
                                 live.loads.dispatch(&mut live.realm);
                                 // The live probe (OLO_BROWSER_EVAL_LIVE) also after input,
                                 // so an idle page can be looked at by moving the pointer.
@@ -1057,6 +1118,11 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                                 {
                                     eprintln!("Browser live: {error}");
                                 }
+                            }
+                            // Complete even cancelled/navigated input so an eased
+                            // wheel never waits indefinitely for a lost recipient.
+                            if let Some(serial) = wheel {
+                                proxy.send(Reply::DefaultWheel { navigation, serial, input, prevented: wheel_prevented });
                             }
                             continue;
                         }
@@ -1152,7 +1218,7 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                     for message in pending.drain(..).chain(std::iter::from_fn(|| rx.try_recv().ok())) {
                         match message {
                             Message::Render(new) => r = new,
-                            Message::Input(input) => kept.push_back(Message::Input(input)),
+                            m @ Message::Input { .. } => kept.push_back(m),
                             Message::Loaded(id, result) => kept.push_back(Message::Loaded(id, result)),
                             Message::Wake => kept.push_back(Message::Wake),
                             Message::Arrived => kept.push_back(Message::Arrived),
@@ -1674,7 +1740,7 @@ fn render(
                 }
             }
             rerendered = true;
-        } else {
+        } else if !live.realm.has_scroll_request() {
             // A frame that changed nothing renders nothing, so the window
             // draws no frame to ask for the next: a page still animating
             // (a timeline in its delay, say) runs on its own clock at the
@@ -2177,6 +2243,8 @@ fn render(
             paint_size: None,
             tile_signatures: Default::default(),
             anchor_scroll: None,
+            scroll_position: [r.scroll_x, r.scroll],
+            scroll_request: r.id,
         });
         // Its late pictures looked for at its first live render (those that
         // landed while it was prepared told no live page).
@@ -2240,16 +2308,10 @@ fn render(
             *viewport_dependent = host.viewport_used.get();
         } else {
             let page_scope = page.scope().clone();
-            let mut job = layout::Job::new(
-                shaper,
-                &page_scope,
-                page.scene.layout().cache().clone(),
-                layout::Viewport { width: f64::from(r.key.width) / r.key.scale, height: f64::from(r.key.height) / r.key.scale, scale: r.key.scale },
-                Default::default(),
-                Some(&r.cancel),
-            )?;
-            while !job.step(64)?.finished {}
-            let layout = Arc::new(job.finish()?);
+            let host = PageHost::new(&page_scope, &r.key);
+            let layout = Arc::new(
+                layout::layout_viewport(shaper, &page_scope, page.scene.layout().cache().clone(), host.viewport, host.scrollbar_widths(), None, Default::default(), Some(&r.cancel), |_| {})?.layout,
+            );
             let mut job = paint::BuildJob::new(&page.document, layout, painter, paint::Options { canvas: [255, 255, 255, 255], dark: false }, Default::default(), Some(&r.cancel))?;
             while !job.step(32)?.finished {}
             page.scene = job.finish()?;
@@ -2306,29 +2368,50 @@ fn render(
     cached.targets_revision = cached.page.document.revision();
     let targets_ms = before_targets.elapsed().as_secs_f64() * 1000.;
     let before_labels = Instant::now();
+    if cached.scroll_request != r.id {
+        cached.scroll_position = [r.scroll_x, r.scroll];
+        cached.scroll_request = r.id;
+    }
+    if let Some(live) = cached.live.as_mut() {
+        if let Some(to) = live.realm.take_scroll_request() {
+            cached.scroll_position = to.map(|v| device_scroll(v, r.key.scale));
+        }
+    }
+    if let Some(y) = sought {
+        cached.scroll_position[1] = (y * r.key.scale).round() as i32;
+    }
+    let viewport = RootViewport::of(&cached.page.scene);
+    cached.scroll_position = viewport.clamp(cached.scroll_position);
+    let [scroll_x, scroll] = cached.scroll_position;
+    if let Some(live) = cached.live.as_mut() {
+        if live.realm.set_scroll_position([f64::from(scroll_x) / r.key.scale, f64::from(scroll) / r.key.scale]) {
+            live.next_due_ms = Some(0.);
+        }
+    }
     let page = &cached.page;
     let scene = &page.scene;
-    // How far down the page reaches: its bottom (what lies above the top,
-    // a box hidden at top: -9999px, adds no scrolling).
-    let extent = {
-        let e = scene.content_extent();
-        (e.y + e.height).max(0.)
-    };
-    let scroll = sought.map_or(r.scroll, |y| (y * r.key.scale).round().max(0.) as i32).clamp(0, max_scroll(&r.key, extent));
+    let extent = scene.layout().document_size().1;
     if pass == Pass::Live && olo_web::env_on!("OLO_SCROLL_DEBUG") {
         eprintln!("  extent {extent:.0}, scroll {scroll} (asked {}), sought {sought:?}", r.scroll);
     }
-    let visible = layout::Rect { x: 0., y: f64::from(scroll) / r.key.scale, width: f64::from(r.key.width) / r.key.scale, height: f64::from(r.key.height) / r.key.scale };
+    let visible = layout::Rect { x: f64::from(scroll_x) / r.key.scale, y: f64::from(scroll) / r.key.scale, width: f64::from(r.key.width) / r.key.scale, height: f64::from(r.key.height) / r.key.scale };
     // The labels (what agents read of the page, what the pointer is over)
     // are made for a band of the page a viewport above and below what
     // shows, in page coordinates, and kept for a tenth of a second while
     // frames only move things (the same commands and size) and what shows
     // stays inside the band: neither an animation nor scrolling makes them
     // again every frame (apple.com's scrolling did, all its boxes read).
-    let band = layout::Rect { y: (visible.y - visible.height).max(0.), height: visible.height * 3., ..visible };
-    let labels_stand = cached.label_cache.as_ref().is_some_and(|(scene, at, (top, bottom), k, _)| {
-        scene.same_commands(&cached.page.scene) && at.elapsed() < Duration::from_millis(100) && visible.y >= *top && visible.y + visible.height <= *bottom && *k == (r.key.width, r.key.height)
+    let band = layout::Rect { x: visible.x - visible.width, width: visible.width * 3., y: (visible.y - visible.height).max(0.), height: visible.height * 3. };
+    let labels_stand = cached.label_cache.as_ref().is_some_and(|(scene, at, band, k, _)| {
+        scene.same_commands(&cached.page.scene)
+            && at.elapsed() < Duration::from_millis(100)
+            && visible.x >= band.x
+            && visible.x + visible.width <= band.x + band.width
+            && visible.y >= band.y
+            && visible.y + visible.height <= band.y + band.height
+            && *k == (r.key.width, r.key.height)
     });
+    let mut labels_changed = false;
     let labels = if labels_stand {
         cached.label_cache.as_ref().map(|c| c.4.clone()).unwrap_or_default()
     } else {
@@ -2419,7 +2502,8 @@ fn render(
         }
         let mut labels = merge_words(labels);
         labels.extend(control_labels(page, scene, band, visible));
-        cached.label_cache = Some((cached.page.scene.clone(), Instant::now(), (band.y, band.y + band.height), (r.key.width, r.key.height), labels.clone()));
+        labels_changed = cached.label_cache.as_ref().is_none_or(|old| old.4 != labels);
+        cached.label_cache = Some((cached.page.scene.clone(), Instant::now(), band, (r.key.width, r.key.height), labels.clone()));
         labels
     };
     if pass == Pass::Live && olo_web::env_on!("OLO_BROWSER_TIMING") {
@@ -2430,6 +2514,8 @@ fn render(
         labels,
         extent,
         scroll,
+        scroll_x,
+        viewport,
         interaction_mask: page.interaction_mask,
         document: page.document.id(),
         target: page.interaction.target,
@@ -2457,6 +2543,7 @@ fn render(
     let painting = Instant::now();
     let scale = scene.device_scale();
     let top = scroll.div_euclid(256) * 256;
+    let left = scroll_x.div_euclid(256) * 256;
     // The strata in paint order: the base page run (opaque, sent as it
     // paints), then each layer above it (transparent): page runs over the
     // visible rows, the fixed layer over the viewport, a sticky layer over
@@ -2565,13 +2652,13 @@ fn render(
             continue;
         }
         let (x0, y0, x1, y1) = match stratum.kind {
-            paint::LayerKind::Page | paint::LayerKind::Surface(_) | paint::LayerKind::Backdrop(_) => (0, top, r.key.width as i32, scroll + r.key.height as i32),
+            paint::LayerKind::Page | paint::LayerKind::Surface(_) | paint::LayerKind::Backdrop(_) => (left, top, scroll_x + r.key.width as i32, scroll + r.key.height as i32),
             // A moved layer: the tiles of its own space that show now (the
             // visible rows within its clip, less its translation); a frame
             // that only moves it finds them all kept.
             paint::LayerKind::Moved(_) => {
                 let Some(m) = scene.moved(si) else { continue };
-                let (mut sx0, mut sy0, mut sx1, mut sy1) = (0, scroll, r.key.width as i32, scroll + r.key.height as i32);
+                let (mut sx0, mut sy0, mut sx1, mut sy1) = (scroll_x, scroll, scroll_x + r.key.width as i32, scroll + r.key.height as i32);
                 if let Some(c) = m.clip {
                     sx0 = sx0.max((c.x * scale).floor() as i32);
                     sy0 = sy0.max((c.y * scale).floor() as i32);
@@ -2609,7 +2696,7 @@ fn render(
                     continue;
                 };
                 let (limit_x, limit_y) = if stratum.kind == paint::LayerKind::Fixed { (f64::from(r.key.width), f64::from(r.key.height)) } else { (f64::INFINITY, f64::INFINITY) };
-                let x0 = (extent.x * scale).floor().max(0.).min(limit_x) as i32;
+                let x0 = (extent.x * scale).floor().max(if stratum.kind == paint::LayerKind::Fixed { 0. } else { f64::from(scroll_x) }).min(limit_x) as i32;
                 let y0 = (extent.y * scale).floor().max(0.).min(limit_y) as i32;
                 let x1 = ((extent.x + extent.width) * scale).ceil().min(limit_x).min(f64::from(x0) + 2048.) as i32;
                 let y1 = ((extent.y + extent.height) * scale).ceil().min(limit_y).min(f64::from(y0) + 2048.) as i32;
@@ -2783,7 +2870,10 @@ fn render(
         && moved_region.as_ref().zip(moved_layers.as_ref()).is_some_and(|(region, layers)| {
             let (top, bottom) = (f64::from(scroll) / scale, f64::from(scroll + r.key.height as i32) / scale);
             let width = f64::from(r.key.width) / scale;
-            region.iter().chain(layers.iter()).all(|rect| rect.y + rect.height <= top || rect.y >= bottom || rect.x + rect.width <= 0. || rect.x >= width)
+            region
+                .iter()
+                .chain(layers.iter())
+                .all(|rect| rect.y + rect.height <= top || rect.y >= bottom || rect.x + rect.width <= f64::from(scroll_x) / scale || rect.x >= f64::from(scroll_x) / scale + width)
         });
     // (Decided by live renders only: a frame of the scroll alone, which
     // renders nothing, cleared it, and the next frame rendered again.)
@@ -2826,12 +2916,14 @@ fn render(
     if pass == Pass::Live && olo_web::env_on!("OLO_BROWSER_TIMING") && !layers.is_empty() {
         eprintln!("  layers: {} ({} tiles)", layers.len(), layers.iter().map(|l| l.tiles.len()).sum::<usize>());
     }
+    let retained = !scene_changed && !labels_changed && same_paint && layers.is_empty() && scroll == r.scroll && scroll_x == r.scroll_x;
     proxy.send(Reply::Layers(r.id, layers));
     if pass == Pass::Live && olo_web::env_on!("OLO_BROWSER_TIMING") {
         eprintln!("  tiles: {repainted} of {total} repainted in {:.1} ms", painting.elapsed().as_secs_f64() * 1000.);
     }
     proxy.send(Reply::Ready {
         id: r.id,
+        retained,
         title: {
             let title = if page.title.is_empty() { &r.key.source } else { &page.title };
             let mut short: String = title.chars().take(256).collect();
@@ -2886,6 +2978,9 @@ impl PageHost {
     }
 }
 impl Host for PageHost {
+    fn scrollbar_widths(&self) -> style::ScrollbarWidths {
+        style::ScrollbarWidths { auto: 15., thin: 10. }
+    }
     fn environment(&self) -> style::Result<Option<Arc<olo_web::css::variables::Environment>>> {
         olo_web::css::variables::Environment::rectangular().map(Some).map_err(|error| style::Error::Property(olo_web::css::properties::Error::Variables(error)))
     }
@@ -3238,7 +3333,7 @@ fn control_labels(page: &page::Page, scene: &paint::Scene, band: layout::Rect, v
         rect.x -= shift[0];
         rect.y -= shift[1];
         let is_fixed = fixed.get(id.index()).copied().unwrap_or(false);
-        let shown = if is_fixed { layout::Rect { x: rect.x, y: rect.y + visible.y, ..rect } } else { rect };
+        let shown = if is_fixed { layout::Rect { x: rect.x + visible.x, y: rect.y + visible.y, ..rect } } else { rect };
         if rect.width <= 0. || rect.height <= 0. || intersect(if is_fixed { visible } else { band }, shown).is_none() {
             continue;
         }
@@ -3321,11 +3416,16 @@ mod tests {
     }
     #[test]
     fn extreme_document_scroll_still_leaves_room_for_viewport_and_tile() {
+        assert_eq!(device_scroll(-0.5, 1.), 0);
+        assert_eq!(device_scroll(-1.5, 1.), -1);
+        assert_eq!(device_scroll(0.5, 1.), 1);
         for height in [1, 256, MAX_VIEWPORT] {
-            let key = Key { source: "about:engine".into(), cwd: None, revision: 0, width: 100, height, scale: 2., palette: Arc::new(Palette::light()) };
-            let scroll = max_scroll(&key, 1e300);
-            assert!(scroll.checked_add(height as i32).and_then(|end| end.checked_add(256)).is_some());
-            assert_eq!(max_scroll(&key, 0.), 0);
+            for sign in [-1., 1.] {
+                let scroll = device_scroll(sign * 1e300, 2.);
+                assert!(scroll.checked_add(height as i32).and_then(|end| end.checked_add(256)).is_some());
+                assert!(scroll.checked_sub(height as i32).and_then(|end| end.checked_sub(256)).is_some());
+            }
+            assert_eq!(device_scroll(0., 2.), 0);
         }
     }
 }

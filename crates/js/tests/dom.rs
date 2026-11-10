@@ -173,7 +173,7 @@ document.getElementById('f').addEventListener('submit', () => console.log('submi
         .collect();
     let mut realm = Realm::new(parsed.document, Config { url: "https://example.test/dir/page.html".into(), ..Default::default() }, None, None).unwrap();
     realm.run_page(&scripts);
-    let at = |kind| Input { kind, x: 0., y: 0., scroll_y: 0., buttons: 0, modifiers: 0 };
+    let at = |kind| Input { kind, x: 0., y: 0., scroll_y: 0., scroll_x: 0., buttons: 0, modifiers: 0 };
     let key = |k: &str, text: Option<&str>| at(InputKind::Key { down: true, key: k.into(), code: String::new(), text: text.map(Into::into) });
     realm.input(&at(InputKind::Down), Some(q));
     realm.input(&at(InputKind::Up), Some(q));
@@ -451,7 +451,7 @@ document.getElementById('s').addEventListener('click', (e) => { e.preventDefault
         .collect();
     let mut realm = Realm::new(parsed.document, Config { url: "https://example.test/".into(), ..Default::default() }, None, None).unwrap();
     realm.run_page(&scripts);
-    let at = |kind| Input { kind, x: 0., y: 0., scroll_y: 0., buttons: 0, modifiers: 0 };
+    let at = |kind| Input { kind, x: 0., y: 0., scroll_y: 0., scroll_x: 0., buttons: 0, modifiers: 0 };
     let click = |realm: &mut Realm, n| {
         realm.input(&at(InputKind::Down), Some(n));
         realm.input(&at(InputKind::Up), Some(n));
@@ -582,7 +582,7 @@ s.addEventListener('change', () => console.log('change', s.value, s.selectedInde
         .collect();
     let mut realm = Realm::new(parsed.document, Config { url: "https://example.test/".into(), ..Default::default() }, None, None).unwrap();
     realm.run_page(&scripts);
-    let at = |kind| Input { kind, x: 0., y: 0., scroll_y: 0., buttons: 0, modifiers: 0 };
+    let at = |kind| Input { kind, x: 0., y: 0., scroll_y: 0., scroll_x: 0., buttons: 0, modifiers: 0 };
     // A disabled select opens nothing; an enabled one asks for its menu.
     realm.input(&at(InputKind::Down), Some(d));
     assert_eq!(realm.take_select_menu(), None);
@@ -1191,7 +1191,7 @@ setTimeout(() => { null.x; }, 0);
         .collect();
     let mut realm = Realm::new(parsed.document, Config { url: "https://example.test/".into(), ..Default::default() }, None, None).unwrap();
     realm.run_page(&scripts);
-    let at = |kind| Input { kind, x: 0., y: 0., scroll_y: 0., buttons: 0, modifiers: 0 };
+    let at = |kind| Input { kind, x: 0., y: 0., scroll_y: 0., scroll_x: 0., buttons: 0, modifiers: 0 };
     realm.input(&at(InputKind::Down), Some(b));
     realm.input(&at(InputKind::Up), Some(b));
     let mut seen: Vec<String> = realm.eval("out.join(' | ')").unwrap().split(" | ").map(str::to_owned).collect();

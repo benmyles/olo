@@ -8380,3 +8380,57 @@ painting must be integrated together before enabling classic metrics. Stripe's
 Nested gutters, viewport input policy, RTL scrolling, gutter-only resize events,
 quirks body metrics and the stale-read JS budget remain open. Fetched origin/main
 was already contained; no personal-session installation/reload or delegation.
+
+## 2026-11-10 — native classic bars and two-axis scroll integration
+
+Enabled 15/10 CSS-pixel classic root gutters in Browser, with shared native
+controlled ScrollBars, client-area clipping and solid canvas gutter fill.
+Both offsets now reach tiles/layers, fixed geometry, hit tests, pointer input,
+script requests, history and reload restoration. RTL horizontal positions
+are negative; device half ties round towards positive infinity. Root wheel
+defaults respect overflow and JavaScript cancellation; scroll events coalesce.
+
+Release testing caught an asynchronous-wheel regression: GPUI discarded the
+notch remainder while the worker decided cancellation, giving only 16–17 px
+from three notches and ~250 ms first movement. Deferred-wheel tokens now retain
+that remainder without polling, resume after the accepted movement is drawn,
+and cancel on drop. Unchanged cached flat-page replies avoid redundant draws.
+A second regression test found Stop still admitted a late default, moving 8 px;
+Stop now rejects all defaults queued before it. With a 700 ms handler, its command
+returned in 4.86 ms and all recorded scroll offsets stayed zero.
+
+95 clean widget reviews:15 before, 60 after, 5 native-control captures and 15
+Stripe captures; light/dark/night and all five live scales at odd x 49. Nested
+wheel cancellation/distance passes at five scales. Back, page reload and owned
+full-session reload preserve both offsets. Both screen-size lints pass.
+Workspace suite:2,206 passed, 0 failed, 136 existing ignored, 252 suites; one
+initial token-pool daemon-discovery failure passed unchanged in a target retry
+and full rerun. Final Stop guard followed by 19 Browser tests passing (1 ignored).
+Release workspace build passes. Journal contains before/after captures.
+
+ABBA at 1.25×/2×:9,000 cached JS reads 5.301→5.976/5.110→5.716 ms;
+20 forced layouts 1.949→9.413/1.907→9.464 ms;CPU/resize 13.125→13.125/
+20.625→23.125 ms;RSS 160070→159970/168022→169352 KiB. Drag first movement
+29.05→37.35/25.60→33.60 ms;wheel 9.15→17.25/9.10→17.35 ms. After has one
+drag hitch and nine stationary wheel frames across eight probes; before has two
+hitches and zero stationary frames. After max draw 0.84 ms, before 6.41 ms.
+Idle zero measured CPU/page frames; existing watchdog wakes remain. Classic
+forced layouts cost roughly 5× in this fixture. No speedup or smoothness claim.
+
+Shared gallery/StyledEdit benchmark at 1×/1.5×/2×:51 steps, 3,571 frames,
+**six failing steps**, including typing maxima 13.92 ms and gallery scroll 10.04 ms,
+plus scroll hitches/glide deviations. It is retained as a failing validation,
+not attributed to this patch without a matched baseline. Those performance
+findings and the Browser worker-round-trip/forced-layout costs remain open.
+
+Stripe's hero now follows client width at all 15 combinations. Fresh Chrome 157
+at the matched 1000×578 viewport confirms the same 985×542.03125 hero rectangle
+at 1×. Olo still has an erroneous horizontal bar, client height 563 vs 578;
+investigate document overflow next. Nested gutters, complete nested/iframe
+wheel behavior, keyboard defaults, smooth/scrollend, vertical writing,
+transformed/contained overflow, body aliases, gutter-only VisualViewport events,
+float 32 scroll exposure and stale JS budget reads remain open. Corpus **0/100**.
+
+Evidence: `measurements/2026-11-10-native-scroll/`. Fetched origin/main was
+already contained (441 ahead, 0 behind before this commit). No personal desktop
+installation/reload or agent delegation.

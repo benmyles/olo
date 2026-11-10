@@ -957,6 +957,10 @@ impl Layout {
     pub fn fixed_boxes(&self) -> Box<[bool]> {
         self.derived().fixed.clone()
     }
+    /// Whether a single box is fixed to the viewport, without copying the index.
+    pub fn fixed_box(&self, id: BoxId) -> bool {
+        self.derived().fixed.get(id.index()).copied().unwrap_or(false)
+    }
     /// The content-box size of each query container (an inline-size
     /// one's height 0: its queries can't see it), by its element.
     pub fn container_sizes(&self) -> Arc<crate::dom::NodeMap<[f64; 2]>> {

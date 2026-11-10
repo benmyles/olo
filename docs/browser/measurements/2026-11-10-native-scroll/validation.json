@@ -1,0 +1,12 @@
+{
+  "exit": 0,
+  "passed": 2206,
+  "failed": 0,
+  "ignored": 136,
+  "suites": 252,
+  "build_finished": true,
+  "final_browser_tests": true,
+  "before_sha256": "e3f30f9414581416383eea6bb8010b8b38fdab5f51ae753eb235c622b0b44acd",
+  "after_sha256": "742319d97e84e50bf2782ecec3f20396cb9a6c8d364c518b164c4c591c70b391",
+  "kit_bench_failed_steps": 6
+}

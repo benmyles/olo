@@ -2779,9 +2779,31 @@ JavaScript root `clientWidth`/`clientHeight` round client size; VisualViewport
 getters return the fractional client dimensions and reuse the current measured
 layout. Initial inner sizes now round consistently with live environment updates.
 Window/media dimensions remain full. Complete VisualViewport event/scroll
-semantics, quirks-mode body metrics and RTL scrolling are not supplied by this
-geometry change. Browser's platform host still returns overlay metrics until
-its horizontal offset, gutter clipping and native bar controls can be activated
-together. The 100-case oracle, 200 render/measurement transitions, API checks,
-and release comparison are documented in
+semantics and quirks-mode body metrics remain open. The geometry oracle,
+200 render/measurement transitions and API checks are documented in
 `measurements/2026-11-10-classic-viewport/README.md`.
+
+Browser now enables 15/10 CSS-pixel classic metrics. Its root scene is clipped
+to client space, native shared-kit bars occupy the reserved space, and solid
+canvas color fills empty stable gutters. Full gradient/image canvas painting
+in empty gutters remains open. Horizontal and vertical offsets pass through
+retained tiles, layers, hit tests, fixed geometry, pointer coordinates, script
+requests and persisted history. RTL scroll ranges extend left from zero;
+device half-pixel ties round towards positive infinity. Chrome's float32
+roundoff in exposed fractional scroll values is not reproduced exactly.
+
+The page worker clamps/snap-aligns script scroll requests and keeps them across
+live renders. Accepting native motion updates the realm without echoing a new
+request; scroll events coalesce. Root wheel defaults respect overflow and the
+page's preventDefault decision. GPUI's DeferredWheel token pauses an eased
+wheel while the worker answers; completing it resumes after the accepted
+movement is drawn, dropping it cancels the remainder. The UI never waits for
+script execution. Cached flat-page replies avoid another draw when labels,
+metadata, tiles and status are unchanged. Layered pages retain their redraws.
+
+Nested gutters, complete nested/iframe wheel behavior, keyboard defaults,
+smooth scrolling, scrollend, vertical writing, transformed/contained overflow,
+body scroll aliases and gutter-only VisualViewport resize events remain open.
+The existing 60-layout/0.25-second JS measurement budget can still return stale
+sizes in a single advance. Native activation evidence and measured costs are
+in `measurements/2026-11-10-native-scroll/README.md`; no site is accepted.

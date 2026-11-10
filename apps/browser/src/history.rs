@@ -8,6 +8,8 @@ pub struct Entry {
     pub cwd: Option<PathBuf>,
     pub document: u64,
     pub scroll: f64,
+    #[serde(default)]
+    pub scroll_x: f64,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct History {
@@ -17,13 +19,13 @@ pub struct History {
 }
 impl History {
     pub fn new(url: String, cwd: Option<PathBuf>) -> Self {
-        Self { entries: vec![Entry { url, cwd, document: 1, scroll: 0. }], cursor: 0, next_document: 2 }
+        Self { entries: vec![Entry { url, cwd, document: 1, scroll: 0., scroll_x: 0. }], cursor: 0, next_document: 2 }
     }
     pub fn restored(self) -> Option<Self> {
         (!self.entries.is_empty()
             && self.entries.len() <= MAX_ENTRIES
             && self.cursor < self.entries.len()
-            && self.entries.iter().all(|e| e.document > 0 && e.document < self.next_document && e.scroll.is_finite() && e.scroll >= 0.))
+            && self.entries.iter().all(|e| e.document > 0 && e.document < self.next_document && e.scroll.is_finite() && e.scroll >= 0. && e.scroll_x.is_finite()))
         .then_some(self)
     }
     pub fn current(&self) -> &Entry {
@@ -32,9 +34,10 @@ impl History {
     pub fn location(&mut self, url: String) {
         self.entries[self.cursor].url = url;
     }
-    pub fn scroll(&mut self, scroll: f64) {
-        if scroll.is_finite() {
-            self.entries[self.cursor].scroll = scroll.max(0.);
+    pub fn scroll(&mut self, position: [f64; 2]) {
+        if position.into_iter().all(f64::is_finite) {
+            self.entries[self.cursor].scroll = position[1].max(0.);
+            self.entries[self.cursor].scroll_x = position[0];
         }
     }
     pub fn can_go(&self, delta: isize) -> bool {
@@ -56,7 +59,7 @@ impl History {
             id
         };
         self.entries.truncate(self.cursor + 1);
-        self.entries.push(Entry { url, cwd, document, scroll: 0. });
+        self.entries.push(Entry { url, cwd, document, scroll: 0., scroll_x: 0. });
         if self.entries.len() > MAX_ENTRIES {
             self.entries.remove(0);
         }
@@ -70,13 +73,14 @@ mod tests {
     fn branching_redirects_scroll_groups_and_restore() {
         let mut h = History::new("https://example.test/".into(), None);
         let first = h.current().document;
-        h.scroll(123.5);
+        h.scroll([-45.25, 123.5]);
         h.push("https://example.test/#section".into(), None, true);
         assert_eq!(h.current().document, first);
         h.push("http://redirect.test/".into(), None, false);
         h.location("https://final.test/".into());
         assert_ne!(h.current().document, first);
         assert_eq!(h.go(-2).unwrap().scroll, 123.5);
+        assert_eq!(h.current().scroll_x, -45.25);
         assert!(!h.can_go(-1));
         assert!(h.can_go(2));
         h.push("https://branch.test/".into(), None, false);

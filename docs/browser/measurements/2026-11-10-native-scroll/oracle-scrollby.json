@@ -1,0 +1,58 @@
+[
+  {
+    "expr": "scrollBy(Infinity,NaN)",
+    "position": [
+      120,
+      64
+    ],
+    "error": null
+  },
+  {
+    "expr": "scrollBy(-Infinity,0)",
+    "position": [
+      120,
+      64
+    ],
+    "error": null
+  },
+  {
+    "expr": "scrollTo()",
+    "position": [
+      120,
+      64
+    ],
+    "error": null
+  },
+  {
+    "expr": "scrollTo(undefined)",
+    "position": [
+      120,
+      64
+    ],
+    "error": null
+  },
+  {
+    "expr": "scrollTo(null)",
+    "position": [
+      120,
+      64
+    ],
+    "error": null
+  },
+  {
+    "expr": "scrollTo(1)",
+    "position": [
+      120,
+      64
+    ],
+    "error": null
+  },
+  {
+    "expr": "scrollTo({})",
+    "position": [
+      120,
+      64
+    ],
+    "error": null
+  }
+]

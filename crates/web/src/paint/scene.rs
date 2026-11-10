@@ -465,6 +465,12 @@ pub struct Scene {
     fallbacks: Arc<layout::Fallbacks>,
 }
 impl Scene {
+    /// Propagated document background over the opaque embedder canvas.
+    pub fn canvas_color(&self) -> [u8; 4] {
+        let alpha = u32::from(self.canvas[3]);
+        std::array::from_fn(|i| if i == 3 { 255 } else { ((u32::from(self.canvas[i]) * alpha + u32::from(self.base[i]) * (255 - alpha) + 127) / 255) as u8 })
+    }
+
     /// What painting this scene substituted.
     pub fn fallbacks(&self) -> &layout::Fallbacks {
         &self.fallbacks
@@ -1124,12 +1130,17 @@ impl Scene {
     /// (the fixed layer at the viewport point, a sticky layer shifted),
     /// skipping boxes with `pointer-events: none` or hidden.
     pub fn hit_test(&self, x: f64, y: f64, scroll: f64, height: f64, stickies: &[layout::Sticky]) -> Option<crate::dom::NodeId> {
+        self.hit_test_scrolled(x, y, [0., scroll], height, stickies)
+    }
+    /// Document-coordinate hit testing at a two-dimensional viewport offset.
+    pub fn hit_test_scrolled(&self, x: f64, y: f64, offset: [f64; 2], height: f64, stickies: &[layout::Sticky]) -> Option<crate::dom::NodeId> {
+        let scroll = offset[1];
         let tree = self.layout.cache().tree();
         let mut hits = Vec::new();
         for (i, stratum) in self.strata.iter().enumerate().rev() {
             let (x, py) = match stratum.kind {
                 LayerKind::Page | LayerKind::Surface(_) | LayerKind::Backdrop(_) => (x, y),
-                LayerKind::Fixed => (x, y - scroll),
+                LayerKind::Fixed => (x - offset[0], y - scroll),
                 LayerKind::Sticky(root) => (x, y - stickies.iter().find(|s| s.root == root).map_or(0., |s| s.offset(scroll, height))),
                 LayerKind::Moved(_) => {
                     let Some(m) = self.moved(i) else { continue };

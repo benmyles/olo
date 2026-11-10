@@ -379,6 +379,33 @@ pub struct ScrollWheelEvent {
     pub kind: ScrollKind,
 }
 
+/// An asynchronous decision about a wheel step. While held, the platform
+/// retains the rest of the gesture without requesting frames. Complete it
+/// after applying the step; dropping it cancels the remaining gesture.
+pub struct DeferredWheel(Option<Box<dyn FnOnce(bool)>>);
+
+impl DeferredWheel {
+    pub(crate) fn new(finish: impl FnOnce(bool) + 'static) -> Self {
+        Self(Some(Box::new(finish)))
+    }
+
+    /// Resume the remaining wheel movement, or discard it at an edge or when
+    /// the recipient prevented the default action.
+    pub fn complete(mut self, continue_scroll: bool) {
+        if let Some(finish) = self.0.take() {
+            finish(continue_scroll);
+        }
+    }
+}
+
+impl Drop for DeferredWheel {
+    fn drop(&mut self) {
+        if let Some(finish) = self.0.take() {
+            finish(false);
+        }
+    }
+}
+
 /// Olo: what a scroll comes from ([`ScrollWheelEvent::kind`]).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ScrollKind {
@@ -651,6 +678,20 @@ impl PlatformInput {
 
 #[cfg(test)]
 mod test {
+
+    #[test]
+    fn deferred_wheel_completes_once_and_cancels_when_abandoned() {
+        use std::{cell::RefCell, rc::Rc};
+        let decisions = Rc::new(RefCell::new(Vec::new()));
+        for decision in [Some(true), Some(false), None] {
+            let seen = decisions.clone();
+            let pending = super::DeferredWheel::new(move |resume| seen.borrow_mut().push(resume));
+            if let Some(resume) = decision {
+                pending.complete(resume);
+            }
+        }
+        assert_eq!(*decisions.borrow(), [true, false, false]);
+    }
 
     use crate::{
         self as gpui, AppContext as _, Context, FocusHandle, InteractiveElement, IntoElement,

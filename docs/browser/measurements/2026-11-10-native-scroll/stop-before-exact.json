@@ -1,0 +1,118 @@
+{
+  "stop_ms": 4.023807996418327,
+  "status": "window 28 \"Browser\" (olo.browser) focused content 53,66 1000x700\n  Label \"Stopped\" at 69,733 47x16\n",
+  "marks": [
+    {
+      "title": "Browser",
+      "frames": 6,
+      "slowest_us": 1436,
+      "total_us": 5082,
+      "adapter": "Intel(R) Graphics (PTL) (Intel open-source Mesa driver)",
+      "marks": [
+        {
+          "at_us": 422785745094,
+          "us": 1217,
+          "ui_us": 94,
+          "setup_us": 0,
+          "tessellate_us": 0,
+          "acquire_us": 0,
+          "submit_us": 1123,
+          "scrolls": [
+            [
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ]
+          ]
+        },
+        {
+          "at_us": 422785748258,
+          "us": 1436,
+          "ui_us": 1286,
+          "setup_us": 0,
+          "tessellate_us": 0,
+          "acquire_us": 0,
+          "submit_us": 150,
+          "scrolls": [
+            [
+              0.0,
+              0.0,
+              0.0,
+              2438.0
+            ]
+          ]
+        },
+        {
+          "at_us": 422785755599,
+          "us": 910,
+          "ui_us": 755,
+          "setup_us": 0,
+          "tessellate_us": 0,
+          "acquire_us": 0,
+          "submit_us": 155,
+          "scrolls": [
+            [
+              0.0,
+              0.0,
+              0.0,
+              2438.0
+            ]
+          ]
+        },
+        {
+          "at_us": 422786422656,
+          "us": 574,
+          "ui_us": 367,
+          "setup_us": 0,
+          "tessellate_us": 0,
+          "acquire_us": 0,
+          "submit_us": 207,
+          "scrolls": [
+            [
+              0.0,
+              0.0,
+              0.0,
+              2438.0
+            ]
+          ]
+        },
+        {
+          "at_us": 422787038611,
+          "us": 471,
+          "ui_us": 285,
+          "setup_us": 0,
+          "tessellate_us": 0,
+          "acquire_us": 0,
+          "submit_us": 186,
+          "scrolls": [
+            [
+              0.0,
+              8.0,
+              0.0,
+              2438.0
+            ]
+          ]
+        },
+        {
+          "at_us": 422787045890,
+          "us": 474,
+          "ui_us": 346,
+          "setup_us": 0,
+          "tessellate_us": 0,
+          "acquire_us": 0,
+          "submit_us": 128,
+          "scrolls": [
+            [
+              0.0,
+              8.0,
+              0.0,
+              2438.0
+            ]
+          ]
+        }
+      ]
+    }
+  ],
+  "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 2 ms after the request\nBrowser scripts: 1 run, 0 errors, 0 console lines, 0 timers, 1 listeners, 0 layouts (0 ms), revision 26 -> 26, 9 ms (8 ms of this thread's CPU)\nBrowser: scripted page ready 13 ms after the request\nwheel input 1: -0,8.380599021911621, pending Some(1)\n2026-11-10T14:42:34.081840Z  INFO olo_kit_base::commands: asked to choose a menu command command=stop by=olo-screen (1520964)\nwheel reply 1: prevented false, moved true, pending None\n"
+}

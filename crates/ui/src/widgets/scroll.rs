@@ -51,20 +51,38 @@ struct BarState {
 /// ([`SCROLL_BAR`] across).
 pub struct ScrollBar {
     id: ElementId,
-    handle: ScrollHandle,
+    source: ScrollSource,
     vertical: bool,
     /// Placed in a scroll view's frame, given the whole view: inside its
     /// sunken lines (when bordered), short of the other bar's corner.
     frame: Option<(bool, bool)>,
 }
 
+#[derive(Clone)]
+enum ScrollSource {
+    Handle(ScrollHandle),
+    Controlled { position: f32, shown: f32, total: f32, change: Option<Rc<dyn Fn(f32, &mut Window, &mut App)>> },
+}
 impl ScrollBar {
+    /// A bar for content whose offset is owned outside a GPUI ScrollHandle.
+    /// Units are chosen by the caller; the value runs from zero to total-shown.
+    /// Changes are delivered through on_scroll; the next render supplies the
+    /// accepted position. This has no timer or idle work of its own.
+    pub fn controlled(id: impl Into<ElementId>, axis: gpui::Axis, position: f32, shown: f32, total: f32) -> Self {
+        Self { id: id.into(), source: ScrollSource::Controlled { position, shown, total, change: None }, vertical: axis == gpui::Axis::Vertical, frame: None }
+    }
+    pub fn on_scroll(mut self, f: impl Fn(f32, &mut Window, &mut App) + 'static) -> Self {
+        if let ScrollSource::Controlled { change, .. } = &mut self.source {
+            *change = Some(Rc::new(f));
+        }
+        self
+    }
     pub fn vertical(id: impl Into<ElementId>, handle: ScrollHandle) -> ScrollBar {
-        ScrollBar { id: id.into(), handle, vertical: true, frame: None }
+        ScrollBar { id: id.into(), source: ScrollSource::Handle(handle), vertical: true, frame: None }
     }
 
     pub fn horizontal(id: impl Into<ElementId>, handle: ScrollHandle) -> ScrollBar {
-        ScrollBar { id: id.into(), handle, vertical: false, frame: None }
+        ScrollBar { id: id.into(), source: ScrollSource::Handle(handle), vertical: false, frame: None }
     }
 
     /// Given a scroll view's bounds: places itself inside its frame's two
@@ -111,24 +129,35 @@ struct Geometry {
 impl ScrollBar {
     /// Where it is (0 to `max`), how far it can go and how much shows.
     fn offsets(&self) -> (f32, f32, f32) {
-        let (o, m, b) = (self.handle.offset(), self.handle.max_offset(), self.handle.bounds());
-        if self.vertical { (-f32::from(o.y), f32::from(m.height), f32::from(b.size.height)) } else { (-f32::from(o.x), f32::from(m.width), f32::from(b.size.width)) }
+        match &self.source {
+            ScrollSource::Handle(handle) => {
+                let (o, m, b) = (handle.offset(), handle.max_offset(), handle.bounds());
+                if self.vertical { (-f32::from(o.y), f32::from(m.height), f32::from(b.size.height)) } else { (-f32::from(o.x), f32::from(m.width), f32::from(b.size.width)) }
+            }
+            ScrollSource::Controlled { position, shown, total, .. } => (*position, (*total - *shown).max(0.), *shown),
+        }
     }
-
-    fn set(&self, offset: f32, window: &mut Window) {
-        let (_, max, _) = self.offsets();
-        let offset = offset.clamp(0.0, max);
-        let o = self.handle.offset();
-        let to = if self.vertical { point(o.x, px(-offset)) } else { point(px(-offset), o.y) };
-        if to != o {
-            self.handle.set_offset(to);
-            window.refresh();
+    fn set(&self, offset: f32, window: &mut Window, cx: &mut App) {
+        let (old, max, _) = self.offsets();
+        let offset = offset.clamp(0., max);
+        if offset == old {
+            return;
+        }
+        match &self.source {
+            ScrollSource::Handle(handle) => {
+                let o = handle.offset();
+                handle.set_offset(if self.vertical { point(o.x, px(-offset)) } else { point(px(-offset), o.y) });
+                window.refresh();
+            }
+            ScrollSource::Controlled { change: Some(change), .. } => change(offset, window, cx),
+            _ => {}
         }
     }
 
     fn geometry(&self, bar: Bounds<Pixels>, window: &Window) -> Geometry {
         let (offset, max, view) = self.offsets();
-        let a = px(SCROLL_BAR);
+        let (breadth, length) = if self.vertical { (bar.size.width, bar.size.height) } else { (bar.size.height, bar.size.width) };
+        let a = breadth.min(length / 2.).max(px(0.));
         let (back, forward, track) = if self.vertical {
             (
                 Bounds { origin: bar.origin, size: size(bar.size.width, a) },
@@ -224,7 +253,7 @@ impl Element for ScrollBar {
                 let dt = now.duration_since(h.last).as_secs_f32().min(0.05);
                 let dir = if h.part == Part::Back { -1.0 } else { 1.0 };
                 let (offset, _, _) = self.offsets();
-                self.set(offset + dir * LINE * dt * 20.0, window);
+                self.set(offset + dir * LINE * dt * 20.0, window, cx);
             }
             if let Some(hs) = state.borrow_mut().held.as_mut() {
                 hs.last = now;
@@ -262,35 +291,44 @@ impl Element for ScrollBar {
         }
         window.set_cursor_style(CursorStyle::Arrow, hitbox);
 
-        let this = (self.handle.clone(), self.vertical);
-        let bar_of = move || ScrollBar { id: ElementId::Name("bar".into()), handle: this.0.clone(), vertical: this.1, frame: None };
+        let render_view = window.current_view();
+        let controlled = matches!(self.source, ScrollSource::Controlled { .. });
+        let this = (self.source.clone(), self.vertical);
+        let bar_of = move || ScrollBar { id: ElementId::Name("bar".into()), source: this.0.clone(), vertical: this.1, frame: None };
         let along = move |vertical: bool, p: Point<Pixels>| f32::from(if vertical { p.y } else { p.x });
         let hb = hitbox.clone();
         let (st, bar_down) = (state.clone(), bar_of.clone());
-        window.on_mouse_event(move |e: &MouseDownEvent, phase, window, _| {
+        window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {
             if !phase.bubble() || e.button != MouseButton::Left || !hb.is_hovered(window) {
                 return;
             }
             let b = bar_down();
+            if matches!(b.source, ScrollSource::Controlled { .. }) {
+                cx.stop_propagation();
+            }
             let g = b.geometry(hb.bounds, window);
             let Some(part) = b.part_at(&g, e.position) else { return };
             let (offset, _, view) = b.offsets();
             let now = Instant::now();
             match part {
-                Part::Back => b.set(offset - LINE, window),
-                Part::Forward => b.set(offset + LINE, window),
+                Part::Back => b.set(offset - LINE, window, cx),
+                Part::Forward => b.set(offset + LINE, window, cx),
                 Part::Track => {
                     // A page towards the click.
                     let before = g.knob.is_some_and(|k| if b.vertical { e.position.y < k.top() } else { e.position.x < k.left() });
-                    b.set(offset + if before { -view } else { view } * 0.9, window);
+                    b.set(offset + if before { -view } else { view } * 0.9, window, cx);
                 }
                 Part::Knob => {}
             }
             st.borrow_mut().held = Some(Held { part, at: along(b.vertical, e.position), offset, since: now, last: now });
-            window.refresh();
+            if controlled {
+                cx.notify(render_view);
+            } else {
+                window.refresh();
+            }
         });
         let (st, bar_move) = (state.clone(), bar_of.clone());
-        window.on_mouse_event(move |e: &MouseMoveEvent, phase, window, _| {
+        window.on_mouse_event(move |e: &MouseMoveEvent, phase, window, cx| {
             if !phase.capture() {
                 return;
             }
@@ -301,13 +339,17 @@ impl Element for ScrollBar {
             let b = bar_move();
             let g = b.geometry(bar, window);
             if g.travel > 0.0 {
-                b.set(h.offset + (along(b.vertical, e.position) - h.at) * g.max / g.travel, window);
+                b.set(h.offset + (along(b.vertical, e.position) - h.at) * g.max / g.travel, window, cx);
             }
         });
         let st = state.clone();
-        window.on_mouse_event(move |e: &MouseUpEvent, phase, window, _| {
+        window.on_mouse_event(move |e: &MouseUpEvent, phase, window, cx| {
             if phase.capture() && e.button == MouseButton::Left && st.borrow_mut().held.take().is_some() {
-                window.refresh();
+                if controlled {
+                    cx.notify(render_view);
+                } else {
+                    window.refresh();
+                }
             }
         });
         let _ = g.view;
@@ -347,7 +389,7 @@ fn arrow_button(window: &mut Window, r: Bounds<Pixels>, dir: Arrow, down: bool, 
     }
     let color = if enabled { style::c(p.control_text) } else { style::shade(p, bg, 1.3) };
     let c = r.center() + if down { point(px(0.5), px(0.5)) } else { point(px(0.0), px(0.0)) };
-    let (s, h) = (px(3.5), px(2.0));
+    let (s, h) = (px(3.5).min((r.size.width.min(r.size.height) - px(4.)).max(px(0.)) / 2.), px(2.0));
     let pts = match dir {
         Arrow::Up => [point(c.x - s, c.y + h), point(c.x + s, c.y + h), point(c.x, c.y - h)],
         Arrow::Down => [point(c.x - s, c.y - h), point(c.x + s, c.y - h), point(c.x, c.y + h)],

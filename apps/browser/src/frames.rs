@@ -83,7 +83,7 @@ impl Frames {
     /// Input over an iframe (CSS px in the frame's own document) for its
     /// page: whether it has one to take it.
     pub fn input(&self, node: NodeId, input: olo_js::Input) -> bool {
-        self.frames.get(&node).is_some_and(|f| f.inbox.send(Message::Input(input)).is_ok())
+        self.frames.get(&node).is_some_and(|f| f.inbox.send(Message::Input { navigation: 0, wheel: None, input }).is_ok())
     }
     /// Whether an element is a frame being shown.
     pub fn has(&self, node: NodeId) -> bool {
@@ -369,7 +369,7 @@ fn start(src: String, parent: url::Url, size: [u32; 2], made: Arc<Mutex<Made>>, 
                 let mut take = |m: Message, realm: &mut olo_js::Realm| match m {
                     Message::Loaded(id, result) => realm.deliver(id, result),
                     Message::FrameMessage(data, origin) => realm.receive_message(None, &data, &origin),
-                    Message::Input(input) => {
+                    Message::Input { input, .. } => {
                         let h = f64::from(size[1]) / key.scale;
                         let target = match input.kind {
                             olo_js::InputKind::Key { .. } | olo_js::InputKind::Scroll => None,

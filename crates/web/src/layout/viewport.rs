@@ -127,3 +127,34 @@ pub fn layout_viewport(
         return Ok(ViewportLayout { layout, fallbacks, progress });
     }
 }
+
+/// CSS-pixel scroll ranges for the viewport (RTL has a negative inline range).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ScrollRange {
+    pub min: [f64; 2],
+    pub max: [f64; 2],
+}
+impl ScrollRange {
+    pub fn clamp(self, position: [f64; 2]) -> [f64; 2] {
+        std::array::from_fn(|i| {
+            let value = if position[i].is_finite() { position[i] } else { 0. };
+            value.clamp(self.min[i], self.max[i])
+        })
+    }
+}
+impl Layout {
+    /// Native viewport scrolling lands on device pixels. Half-pixel ties go
+    /// towards positive infinity, including negative RTL offsets.
+    pub fn clamp_viewport_scroll(&self, position: [f64; 2]) -> [f64; 2] {
+        let range = self.viewport_scroll_range();
+        let scale = self.viewport_geometry().full.scale;
+        range.clamp(range.clamp(position).map(|v| (v * scale + 0.5).floor() / scale))
+    }
+    pub fn viewport_scroll_range(&self) -> ScrollRange {
+        let geometry = self.viewport_geometry();
+        let extent = self.document_size();
+        let snap = |v: f64| (v * geometry.full.scale).round() / geometry.full.scale;
+        let room = [(snap(extent.0) - geometry.client[0]).max(0.), (snap(extent.1) - geometry.client[1]).max(0.)];
+        if self.cache().tree().viewport_rtl() { ScrollRange { min: [-room[0], 0.], max: [0., room[1]] } } else { ScrollRange { min: [0.; 2], max: room } }
+    }
+}

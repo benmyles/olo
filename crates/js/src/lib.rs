@@ -243,6 +243,7 @@ pub struct Input {
     pub y: f64,
     /// The window's scroll position, so events report client coordinates.
     pub scroll_y: f64,
+    pub scroll_x: f64,
     pub buttons: u32,
     /// Bits: shift 1, control 2, alt 4, meta 8.
     pub modifiers: u8,
@@ -399,6 +400,8 @@ struct State {
     worker_starter: Option<FetchStarter>,
     waker: Option<Waker>,
     measure: Option<Measure>,
+    window_scroll_request: Option<[f64; 2]>,
+    window_scroll: [f64; 2],
     /// The last layout, good while the document's revision is its own.
     measured: Option<olo_web::page::Measured>,
     /// The pictures it was made with (how many, and who they are).
@@ -624,6 +627,8 @@ impl Realm {
             worker_starter: None,
             waker: None,
             measure,
+            window_scroll_request: None,
+            window_scroll: [0.; 2],
             measured: None,
             measured_pictures: (0, 0),
             measured_environment_dirty: false,
@@ -1093,10 +1098,20 @@ impl Realm {
         let wants_frame = frame.is_some() && self.call_prelude_number("__olo_wants_frame", 0.).is_ok_and(|v| v > 0.);
         Advanced { next_due_ms, changed: after != before, spent_ms: started.elapsed().as_secs_f64() * 1000., ticks, wants_frame }
     }
-    /// The last layout made for the scripts' measurements, if any: a render
-    /// of the same document keeps its styles and texts.
-    /// The navigation the page asked for since the last call (its URL and
-    /// whether it replaces the current history entry).
+    /// Consume a script's requested viewport position in CSS pixels.
+    pub fn take_scroll_request(&self) -> Option<[f64; 2]> {
+        self.state.borrow_mut().window_scroll_request.take()
+    }
+    /// Whether scripts requested a viewport move since the last render.
+    pub fn has_scroll_request(&self) -> bool {
+        self.state.borrow().window_scroll_request.is_some()
+    }
+    /// Accept the embedder's clamped position without another scroll request.
+    pub fn set_scroll_position(&mut self, position: [f64; 2]) -> bool {
+        self.state.borrow_mut().window_scroll = position;
+        self.call_prelude_numbers("__olo_scrollPosition", &position).is_ok_and(|v| v > 0.)
+    }
+    /// The requested URL and whether it replaces the current history entry.
     pub fn take_navigation(&self) -> Option<(String, bool)> {
         self.state.borrow_mut().navigation.take()
     }
@@ -1168,6 +1183,7 @@ impl Realm {
             s.run_layout_seconds = 0.;
             s.run_limits = (LAYOUTS_PER_ADVANCE, LAYOUT_SECONDS_PER_ADVANCE);
         }
+        self.state.borrow_mut().window_scroll = [input.scroll_x, input.scroll_y];
         let (kind, down, key, code, text, dx, dy) = match &input.kind {
             InputKind::Move => ("move", false, "", "", None, 0., 0.),
             InputKind::Down => ("down", true, "", "", None, 0., 0.),
@@ -1177,10 +1193,11 @@ impl Realm {
             InputKind::Scroll => ("scroll", false, "", "", None, 0., 0.),
         };
         let json = format!(
-            "{{\"kind\":\"{kind}\",\"x\":{},\"y\":{},\"scrollY\":{},\"buttons\":{},\"modifiers\":{},\"down\":{down},\"key\":{},\"code\":{},\"text\":{},\"dx\":{dx},\"dy\":{dy}}}",
+            "{{\"kind\":\"{kind}\",\"x\":{},\"y\":{},\"scrollY\":{},\"scrollX\":{},\"buttons\":{},\"modifiers\":{},\"down\":{down},\"key\":{},\"code\":{},\"text\":{},\"dx\":{dx},\"dy\":{dy}}}",
             input.x,
             input.y,
             input.scroll_y,
+            input.scroll_x,
             input.buttons,
             input.modifiers,
             json_string(key),
@@ -1996,6 +2013,8 @@ impl State {
             worker_starter: None,
             waker: None,
             measure: None,
+            window_scroll_request: None,
+            window_scroll: [0.; 2],
             measured: None,
             measured_pictures: (0, 0),
             measured_environment_dirty: false,
@@ -3109,6 +3128,7 @@ const NATIVES: &[&str] = &[
     "url",
     "viewport",
     "clientViewport",
+    "scrollWindow",
     "userAgent",
     "language",
     "count",
@@ -3960,7 +3980,7 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                 let s = state.borrow();
                 let hit = s.scene.as_ref().filter(|_| x.is_finite() && y.is_finite()).and_then(|scene| {
                     let stickies = scene.layout().sticky();
-                    scene.hit_test(x, y, scroll, height, &stickies)
+                    scene.hit_test_scrolled(x, y, [s.window_scroll[0], scroll], height, &stickies)
                 });
                 // Its element (a text's parent), still in the document.
                 let mut at = hit;
@@ -4335,7 +4355,13 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                         at = s.document.parent(a).ok().flatten();
                     }
                 }
-                drop(s);
+                if kind == "boundingRect"
+                    && s.measured.as_ref().is_some_and(|m| m.viewport_fixed(&s.document, n))
+                    && let Some(v) = values.as_mut()
+                {
+                    v[0] += s.window_scroll[0];
+                    v[1] += s.window_scroll[1];
+                }
                 match values {
                     Some(v) => {
                         let items: Vec<v8::Local<v8::Value>> = v.iter().map(|x| v8::Number::new(scope, *x).into()).collect();
@@ -4373,6 +4399,12 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                         at = s.document.parent(a).ok().flatten();
                     }
                 }
+                if s.measured.as_ref().is_some_and(|m| m.viewport_fixed(&s.document, n)) {
+                    for r in &mut rects {
+                        r.x += s.window_scroll[0];
+                        r.y += s.window_scroll[1];
+                    }
+                }
                 let flat: Vec<v8::Local<v8::Value>> = rects.iter().flat_map(|r| [r.x, r.y, r.width, r.height]).map(|x| v8::Number::new(scope, x).into()).collect();
                 rv.set(v8::Array::new_with_elements(scope, &flat).into());
             }
@@ -4396,6 +4428,12 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                             r.y -= o[1];
                         }
                         at = s.document.parent(a).ok().flatten();
+                    }
+                }
+                if s.measured.as_ref().is_some_and(|m| m.viewport_fixed(&s.document, n)) {
+                    for r in &mut rects {
+                        r.x += s.window_scroll[0];
+                        r.y += s.window_scroll[1];
                     }
                 }
                 let flat: Vec<v8::Local<v8::Value>> = rects.iter().flat_map(|r| [r.x, r.y, r.width, r.height]).map(|x| v8::Number::new(scope, x).into()).collect();
@@ -5105,6 +5143,18 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                 (s.config.viewport.0, s.config.viewport.1, s.config.scale)
             };
             let items: Vec<v8::Local<v8::Value>> = vec![v8::Number::new(scope, w).into(), v8::Number::new(scope, h).into(), v8::Number::new(scope, scale).into()];
+            rv.set(v8::Array::new_with_elements(scope, &items).into());
+        }
+        "scrollWindow" => {
+            let position = [args.get(0).number_value(scope).unwrap_or(0.), args.get(1).number_value(scope).unwrap_or(0.)];
+            let mut s = state.borrow_mut();
+            let to = s.measured().map(|m| m.layout().clamp_viewport_scroll(position)).unwrap_or([0.; 2]);
+            if s.window_scroll != to {
+                s.window_scroll_request = Some(to);
+                s.window_scroll = to;
+            }
+            drop(s);
+            let items: Vec<v8::Local<v8::Value>> = to.into_iter().map(|v| v8::Number::new(scope, v).into()).collect();
             rv.set(v8::Array::new_with_elements(scope, &items).into());
         }
         "clientViewport" => {

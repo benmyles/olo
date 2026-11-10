@@ -1,0 +1,957 @@
+#!/usr/bin/env python3
+"""The speed benchmark: every Olo app, driven as people use it, on
+release builds in a headless session at 120 Hz, with every frame it draws
+checked against the budget: a frame within 8.3 ms, so nothing ever runs
+below 120 frames a second.
+
+  bench [--apps a,b,...] [--scales 1,1.5,2] [--hz 120] [--budget MS]
+        [--size WxH] [--json FILE] [--keep] [--list] [--env K=V ...]
+
+`--env K=V` (again for more) is given to every app: an A/B of a switch
+without a rebuild (`--env OLO_PAINT_MEMO=0`).
+
+Build first: `cargo build --release --workspace` (the apps), then
+`cargo build --release -p olo-ui --examples` (the kit's gallery), apart:
+built in one go, cargo gives the apps the examples' dev-dependencies'
+features (GPUI's test support), and apps built so mark no frames, so
+nothing is measured; a launch with no frames marked fails, saying so.
+A build older than the sources is named before anything runs.
+It starts a session of its own ("bench", the shell's Deskbar and
+desktop, a sandbox home under /var/tmp/olo-bench filled with what makes
+apps work: a 20,000-line document, a folder of 3,000 files, photos, 200
+notifications, a terminal's worth of output), one 3456×2234 screen (a
+16" MacBook Pro's) at 120 Hz, and at each scale (1, 1.5, 2 by default):
+
+  each app: launched (time to its first frame), zoomed to fill the
+  screen, left to load (what it streams in, as it streams), idle for a
+  second (it should draw nothing), the pointer swept over it, each of
+  its scroll views scrolled (two fingers at 900 px/s, a flick and its
+  glide, wheel notches: how evenly too, as tools/dev/scroll-check), its
+  tabs clicked, its menus opened and walked, a field typed in, the
+  window resized live, the theme flipped; then closed.
+  Deskbar: swept and its menu walked. The command palette: shown, typed
+  in, its results walked. The emoji picker: shown, typed in, its grid
+  walked and scrolled, hidden, shown again (a resident picker's usual
+  open). The overview (⌃Space): four windows on two
+  workspaces, opened, its windows walked with the arrows, left. The
+  screen savers: each module run.
+
+Every frame an app draws is in its `{"frames":true}` marks
+(olo_kit::commands::FrameMark); app_server's own frames and event loop
+are in `{"type":"timings"}`. A step fails when any frame took longer than
+the budget (--budget, default a frame at --hz), when a scroll or glide
+skipped a frame, or when app_server took longer than the budget for a
+frame or stalled its loop for more than two. Switching the theme or the
+scale, and an app's first frames, are transitions: listed, with their
+slowest frame, but not failed. Exits 1 if anything failed.
+
+Only looks at Preferences (its panels reach the real system: no typing,
+only its sidebar and tabs are clicked), never presses Return in a menu,
+and leaves out what needs the real system or other sessions (the lock
+screen, the polkit agent, DriveSetup, Agent Screens, Token Pool, Smart
+Tile, Chrome).
+"""
+import importlib.machinery, json, os, random, socket, statistics, subprocess, sys, time
+
+ROOT = '/home/ben/worktrees/olo/browser'
+TSESSION = os.path.join(ROOT, "tools", "dev", "tsession")
+SCRATCH = "/var/tmp/codex-browser-native-scroll/kit-bench"
+HOME = os.path.join(SCRATCH, "home")
+NAME = "browser-scroll-bench"
+RELEASE = os.path.join(ROOT, "target", "release")
+DOWN, UP, ESC, CTRL, KEY_A, BKSP = 108, 103, 1, 29, 30, 14
+LEFT, RIGHT = 105, 106
+BTN = 0x110
+KEYS = {c: k for k, c in enumerate("1234567890-=", 2)}
+KEYS.update({c: 16 + i for i, c in enumerate("qwertyuiop[]")})
+KEYS.update({c: 30 + i for i, c in enumerate("asdfghjkl;'")})
+KEYS.update({c: 44 + i for i, c in enumerate("zxcvbnm,./")})
+KEYS[" "] = 57
+SHIFTED = {"+": "=", "*": "8", "(": "9", ")": "0"}
+
+def _load(name, path):
+    # (A script without .py: its loader named, as `load_module`, gone
+    # from Python 3.15, did.)
+    import importlib.util
+    loader = importlib.machinery.SourceFileLoader(name, path)
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader(name, loader))
+    loader.exec_module(module)
+    return module
+
+
+scroll_check = _load("scroll_check", os.path.join(ROOT, "tools", "dev", "scroll-check"))
+
+
+def stale_builds():
+    """The release binaries older than a source they are built from (from
+    cargo's dep-info, `target/release/EXE.d`): what is measured would not
+    be what is in the tree."""
+    exes = {"olo-app-server", "olo-session", "olo-deskbar", "olo-palette", "olo-emoji-picker", os.path.join("examples", "gallery")}
+    exes.update(a.cmd[0] for a in APPS if not os.path.isabs(a.cmd[0]))
+    stale = []
+    for exe in sorted(exes):
+        path = os.path.join(RELEASE, exe)
+        try:
+            built = os.path.getmtime(path)
+            with open(path + ".d") as f:
+                deps = f.read().split(":", 1)[1].replace("\\\n", " ").split()
+        except (OSError, IndexError):
+            continue
+        if any(os.path.exists(d) and os.path.getmtime(d) > built for d in deps):
+            stale.append(exe)
+    return stale
+
+
+class App:
+    def __init__(self, key, cmd, env=(), type_text="benchmark 123 hello", look_only=False, settle=2.0, rows=False):
+        self.key, self.cmd, self.env = key, cmd, list(env)
+        self.type_text, self.look_only, self.settle, self.rows = type_text, look_only, settle, rows
+
+
+APPS = [
+    App("gallery", [os.path.join(RELEASE, "examples", "gallery")]),
+    App("tracker", ["olo-tracker", os.path.join(HOME, "Big")], settle=3.0),
+    App("tracker-pictures", ["olo-tracker", os.path.join(HOME, "Pictures")], settle=4.0),
+    App("styled-edit", ["olo-styled-edit", os.path.join(HOME, "Documents", "long.txt")]),
+    # Source code, coloured as it opens and as it's typed in (100,000 lines).
+    App("styled-edit-code", ["olo-styled-edit", os.path.join(HOME, "Documents", "long.rs")], type_text="let benchmark = 123;"),
+    # Markdown as it looks: headings, lists, code blocks, marks hidden.
+    App("styled-edit-md", ["olo-styled-edit", os.path.join(HOME, "Documents", "long.md")], type_text="**benchmark** 123"),
+    App("terminal", ["olo-terminal", "-e", "sh", "-c", "seq 1 60000; exec sh"], type_text="echo benchmark", settle=3.0),
+    App("viewer", ["olo-viewer", os.path.join(HOME, "Pictures", "big.png")], settle=2.5),
+    App("notifications", ["olo-notifications", "--bus", f"unix:path=/var/tmp/olo-dev/{NAME}/bus"]),
+    App("activity", ["olo-activity"], rows=True),
+    App("deskcalc", ["olo-deskcalc"], type_text="12345+678="),
+    App("disk-usage", ["olo-disk-usage", HOME], settle=3.0),
+    App("logs", ["olo-logs"], settle=3.0),
+    App("preferences", ["olo-preferences"], look_only=True, rows=True),
+    App("passwords", ["olo-passwords"], env=[f"OLO_1PASSWORD_SOCKET={SCRATCH}/no-such-1p.sock"]),
+    App("screenshot", ["olo-screenshot"]),
+    # A pretend account with thousands of chats (no network, no keyring).
+    App("telegram", ["olo-telegram"], env=["OLO_TELEGRAM_DEMO=3000", f"OLO_TELEGRAM_CACHE={SCRATCH}/telegram-cache", f"OLO_TELEGRAM_SECRETS={SCRATCH}/telegram-secrets"], settle=3.0),
+]
+SAVERS = ["BuyNow", "Icons", "Lissart", "Message", "Spiral", "Spots", "StringTheme", "SuperString"]
+
+
+# What --env gives every app.
+EXTRA_ENV = []
+
+
+def now_us():
+    return int(time.clock_gettime(time.CLOCK_MONOTONIC) * 1e6)
+
+
+def tsession(*args, quiet=True):
+    env = dict(os.environ, TSESSION_PROFILE="release")
+    env.pop("WAYLAND_DISPLAY", None)
+    r = subprocess.run(["/usr/bin/python3", TSESSION, *args], capture_output=True, text=True, env=env)
+    if not quiet:
+        print(r.stdout, end="")
+    return r.stdout
+
+
+class Session:
+    def __init__(self, size):
+        self.size = size
+        self.env = None
+
+    def start(self, hz):
+        # (Ended with this run unless --keep, killed or not.)
+        owner = [] if "--keep" in sys.argv else ["--owner", str(os.getpid())]
+        tsession("start", NAME, self.size, "--session", "--shell", "--home", HOME, "--dark", *owner)
+        self.env = json.load(open(f"/var/tmp/olo-dev/{NAME}/env.json"))
+        self.sock, self.runtime, self.display = self.env["OLO_SOCKET"], self.env["XDG_RUNTIME_DIR"], self.env["WAYLAND_DISPLAY"]
+        for _ in range(100):
+            if self.deskbar_pid():
+                break
+            time.sleep(0.1)
+        tsession("hz", NAME, str(hz))
+        cfg = os.path.join(f"/var/tmp/olo-dev/{NAME}/config/olo")
+        os.makedirs(cfg, exist_ok=True)
+        json.dump({"view": "cards", "fade": False}, open(os.path.join(cfg, "notifications.json"), "w"))
+        time.sleep(1.0)
+
+    def req(self, r, timeout=10.0):
+        s = socket.socket(socket.AF_UNIX)
+        s.settimeout(timeout)
+        try:
+            s.connect(self.sock)
+            s.sendall((json.dumps(r) + "\n").encode())
+            line = s.makefile().readline()
+        finally:
+            s.close()
+        return json.loads(line) if line else None
+
+    def synth(self, events):
+        self.req({"type": "synthetic", "events": events})
+
+    def move(self, x, y):
+        self.synth([{"type": "move", "x": x, "y": y}])
+
+    def click(self, x, y):
+        self.move(x - 1, y)
+        time.sleep(0.02)
+        self.move(x, y)
+        time.sleep(0.03)
+        self.synth([{"type": "button", "button": BTN, "pressed": True}])
+        time.sleep(0.04)
+        self.synth([{"type": "button", "button": BTN, "pressed": False}])
+
+    def key(self, *codes):
+        self.synth([{"type": "key", "key": c, "pressed": True} for c in codes])
+        time.sleep(0.015)
+        self.synth([{"type": "key", "key": c, "pressed": False} for c in reversed(codes)])
+        time.sleep(0.03)
+
+    def type(self, text):
+        for ch in text:
+            if ch.isupper():
+                self.key(42, KEYS[ch.lower()])
+            elif ch in SHIFTED:
+                self.key(42, KEYS[SHIFTED[ch]])
+            elif ch in KEYS:
+                self.key(KEYS[ch])
+
+    def windows(self):
+        return self.req({"type": "list_windows"})["windows"]
+
+    def timings(self):
+        return (self.req({"type": "timings"}) or {}).get("timings")
+
+    def ask_app(self, pid, q, timeout=5.0):
+        s = socket.socket(socket.AF_UNIX)
+        s.settimeout(timeout)
+        try:
+            s.connect(os.path.join(self.runtime, f"olo-menus-{pid}.sock"))
+            s.sendall((json.dumps(q) + "\n").encode())
+            line = s.makefile().readline()
+            return json.loads(line) if line else None
+        except OSError:
+            return None
+        finally:
+            s.close()
+
+    def marks(self, pid):
+        out = []
+        for w in self.ask_app(pid, {"frames": True}) or []:
+            out += w.get("marks", [])
+        return sorted(out, key=lambda m: m["at_us"])
+
+    def ours(self, pid):
+        """Whether `pid` is a program of this session's (never another's)."""
+        try:
+            env = open(f"/proc/{pid}/environ", "rb").read().split(b"\0")
+            return f"WAYLAND_DISPLAY={self.display}".encode() in env
+        except OSError:
+            return False
+
+    def pid_of(self, comm):
+        for d in os.listdir("/proc"):
+            if d.isdigit():
+                try:
+                    # (The kernel keeps 15 characters of a name.)
+                    if open(f"/proc/{d}/comm").read().strip() == comm[:15] and self.ours(int(d)):
+                        return int(d)
+                except OSError:
+                    pass
+        return None
+
+    def deskbar_pid(self):
+        return self.pid_of("olo-deskbar")
+
+    def screen(self):
+        o = self.req({"type": "outputs"})["outputs"][0]
+        s = o["scale"]
+        return o["position"][0], o["position"][1], o["current_mode"]["width"] / s, o["current_mode"]["height"] / s
+
+
+# ---- fixtures ----
+
+def source_fixtures():
+    """A 100,000-line Rust file and a long Markdown document, from Olo's
+    own sources (made when missing, in a home made before them too)."""
+    docs = os.path.join(HOME, "Documents")
+    os.makedirs(docs, exist_ok=True)
+    repo = ROOT
+    rs = os.path.join(docs, "long.rs")
+    if not os.path.exists(rs):
+        one = open(os.path.join(repo, "crates", "ui", "src", "editor", "mod.rs")).read()
+        lines = one.count("\n")
+        with open(rs, "w") as f:
+            for _ in range(100000 // lines + 1):
+                f.write(one)
+    md = os.path.join(docs, "long.md")
+    if not os.path.exists(md):
+        one = open(os.path.join(repo, "docs", "HACKING.md")).read()
+        with open(md, "w") as f:
+            f.write(one * 3)
+
+
+def fixtures():
+    source_fixtures()
+    if os.path.exists(os.path.join(HOME, ".bench-ready")):
+        return
+    rng = random.Random(1)
+    words = ("the quick brown fox jumps over a lazy dog while meeting notes build passed failed deploy lunch draft release "
+             "candidate weekend plans invoice attached reply soon kernel window desktop tracker deskbar be book").split()
+    os.makedirs(os.path.join(HOME, "Documents"), exist_ok=True)
+    with open(os.path.join(HOME, "Documents", "long.txt"), "w") as f:
+        for i in range(20000):
+            f.write(f"{i + 1:5}  " + " ".join(rng.choice(words) for _ in range(rng.randint(3, 16))) + "\n")
+    big = os.path.join(HOME, "Big")
+    os.makedirs(big, exist_ok=True)
+    for i in range(50):
+        os.makedirs(os.path.join(big, f"folder {i:02}"), exist_ok=True)
+    for i in range(3000):
+        ext = rng.choice(["txt", "md", "rs", "json", "html", "css", "py", "toml"])
+        with open(os.path.join(big, f"{rng.choice(words)}-{i:04}.{ext}"), "w") as f:
+            f.write(" ".join(rng.choice(words) for _ in range(rng.randint(1, 200))))
+    pics = os.path.join(HOME, "Pictures")
+    os.makedirs(pics, exist_ok=True)
+    from PIL import Image, ImageDraw
+    for i in range(24):
+        im = Image.new("RGB", (1600, 1200))
+        d = ImageDraw.Draw(im)
+        for y in range(0, 1200, 8):
+            d.rectangle([0, y, 1600, y + 8], fill=((i * 37 + y) % 256, (y // 4) % 256, (255 - i * 9) % 256))
+        for _ in range(40):
+            x, y, r = rng.randint(0, 1600), rng.randint(0, 1200), rng.randint(20, 200)
+            d.ellipse([x - r, y - r, x + r, y + r], fill=(rng.randint(0, 255), rng.randint(0, 255), rng.randint(0, 255)))
+        im.save(os.path.join(pics, f"photo-{i:02}.png"))
+    im = Image.new("RGB", (6000, 4000))
+    d = ImageDraw.Draw(im)
+    for y in range(0, 4000, 16):
+        d.rectangle([0, y, 6000, y + 16], fill=(y % 256, (y // 16) % 256, 128))
+    for _ in range(300):
+        x, y, r = rng.randint(0, 6000), rng.randint(0, 4000), rng.randint(20, 300)
+        d.ellipse([x - r, y - r, x + r, y + r], fill=(rng.randint(0, 255), rng.randint(0, 255), rng.randint(0, 255)))
+    im.save(os.path.join(pics, "big.png"))
+    # The notification history (the Cards view is chosen at start).
+    apps = ["Mail", "Messages", "Calendar", "Slack", "Terminal", "Software"]
+    t = int(time.time())
+    entries = []
+    for i in range(200):
+        body = " ".join(rng.choice(words) for _ in range(rng.choice([4, 10, 25, 60])))
+        entries.append({"id": i + 1, "app": apps[i % len(apps)], "summary": " ".join(rng.choice(words) for _ in range(rng.randint(2, 6))).capitalize(),
+                        "body": [{"text": body}], "text": body, "kind": "information", "time": t - (200 - i) * 60, "unread": i % 3 == 0})
+    d = os.path.join(HOME, ".local", "state", "olo", "notifications")
+    os.makedirs(d, exist_ok=True)
+    json.dump(entries, open(os.path.join(d, "history.json"), "w"))
+    open(os.path.join(HOME, ".bench-ready"), "w").close()
+
+
+# ---- measuring ----
+
+PARTS = (("setup_us", "setup"), ("ui_us", "ui"), ("tessellate_us", "tessellate"), ("acquire_us", "acquire"), ("submit_us", "submit"))
+
+
+def parts(m):
+    """Where a frame's time went (its FrameMark's parts)."""
+    return ", ".join(f"{name} {m.get(k, 0) / 1000:.1f}" for k, name in PARTS)
+
+
+class Step:
+    """One thing done to an app, and the frames it drew meanwhile."""
+
+    def __init__(self, app, step, transition=False):
+        self.app, self.step, self.transition = app, step, transition
+        self.frames, self.notes, self.failures = [], [], []
+        self.server = None
+        self.extra = {}
+        # When what's measured starts, if not with the step (set by it).
+        self.from_us = None
+
+    def summary(self):
+        us = sorted(m["us"] for m in self.frames)
+        q = lambda p: us[min(len(us) - 1, int(p * len(us)))] / 1000 if us else 0.0
+        return {"app": self.app, "step": self.step, "transition": self.transition, "frames": len(us),
+                "p50_ms": round(q(0.5), 2), "p99_ms": round(q(0.99), 2), "max_ms": round(us[-1] / 1000 if us else 0, 2),
+                "ui_max_ms": round(max((m.get("ui_us", 0) for m in self.frames), default=0) / 1000, 2),
+                "server": self.server, "notes": self.notes, "failures": self.failures, **self.extra}
+
+
+class Bench:
+    def __init__(self, s, budget_ms, hz):
+        self.s, self.budget_us, self.hz = s, budget_ms * 1000, hz
+        self.results = []
+
+    def measure(self, app, step, pids, act, transition=False):
+        """Do `act`, collecting the frames `pids` drew meanwhile and
+        app_server's timings, and judge them."""
+        st = Step(app, step, transition)
+        for p in pids:
+            self.s.marks(p)
+        self.s.timings()
+        t0 = now_us()
+        try:
+            act(st)
+        except Exception as e:  # a step that couldn't run is a finding too
+            st.notes.append(f"couldn't: {e}")
+        time.sleep(0.25)
+        t1 = now_us()
+        for p in pids:
+            st.frames += [m for m in self.s.marks(p) if max(t0, st.from_us or 0) <= m["at_us"] <= t1]
+        tm = self.s.timings() or {}
+        slowest = max((o["slowest_us"] for o in tm.get("outputs", [])), default=0)
+        st.server = {"frame_max_ms": round(slowest / 1000, 2), "loop_late_ms": round(tm.get("latest_beat_us", 0) / 1000, 1),
+                     "slowest": tm.get("slowest"), "frames": sum(o["frames"] for o in tm.get("outputs", []))}
+        if step == "launch and load" and not st.frames:
+            # (A window up, and not one frame marked: nothing it does
+            # will be measured.)
+            st.failures.append("no frames marked: built with the examples in one go (GPUI's test support)? Build the apps alone")
+        if st.transition:
+            worst = max(st.frames, key=lambda m: m["us"], default=None)
+            if worst and worst["us"] > self.budget_us:
+                st.notes.append(f"slowest {worst['us'] / 1000:.1f} ms: {parts(worst)}")
+        else:
+            over = [m for m in st.frames if m["us"] > self.budget_us]
+            if over:
+                worst = max(over, key=lambda m: m["us"])
+                st.failures.append(f"{len(over)} of {len(st.frames)} frames over {self.budget_us / 1000:.1f} ms (slowest {worst['us'] / 1000:.1f} ms: {parts(worst)})")
+            if slowest > self.budget_us:
+                st.failures.append(f"app_server took {slowest / 1000:.1f} ms for a frame")
+            if tm.get("latest_beat_us", 0) > 2 * 1e6 / self.hz:
+                st.failures.append(f"app_server's loop stalled {tm['latest_beat_us'] / 1000:.0f} ms ({tm.get('slowest')})")
+        self.results.append(st)
+        self.report(st)
+        return st
+
+    def report(self, st):
+        r = st.summary()
+        flag = "FAIL" if st.failures else ("    " if not st.transition else "  ~ ")
+        srv = r["server"] or {}
+        line = f"{flag} {r['app']:<18} {r['step']:<22} {r['frames']:>5} fr  p50 {r['p50_ms']:5.2f}  p99 {r['p99_ms']:5.2f}  max {r['max_ms']:6.2f} ms  (ui {r['ui_max_ms']:5.2f})  server {srv.get('frame_max_ms', 0):5.2f} ({srv.get('frames', 0)} fr)"
+        extra = [f"{k} {v}" for k, v in r.items() if k in ("launch_ms", "idle_fps", "even", "glide")]
+        print(line + ("  " + ", ".join(extra) if extra else ""))
+        for f in st.failures:
+            print(f"       ✗ {f}")
+        for n in st.notes:
+            print(f"       · {n}")
+
+
+# ---- driving one app ----
+
+def tree_of(s, pid, title):
+    trees = s.ask_app(pid, {"tree": True}) or []
+    for t in trees:
+        if t.get("title") == title and not t.get("layer"):
+            return t
+    return next((t for t in trees if not t.get("layer")), None)
+
+
+def hover(s, rect, seconds=1.5):
+    x0, y0, w, h = rect
+    path, row, y = [], 0, y0 + 10
+    while y < y0 + h - 5:
+        xs = range(int(x0 + 10), int(x0 + w - 10), 18)
+        path += [(x, y) for x in (xs if row % 2 == 0 else reversed(list(xs)))]
+        y += 36
+        row += 1
+    step = max(1, len(path) // int(seconds * 120))
+    t = time.monotonic()
+    for i, (x, y) in enumerate(path[::step]):
+        s.move(x, y)
+        scroll_check.sleep_until(t + (i + 1) / 120)
+
+
+def scroll_targets(tree, content):
+    """Where to scroll: beside each vertical scroll bar (its arrows), in
+    the list it scrolls; else the middle of the window."""
+    cx, cy, cw, ch = content
+    nodes = tree.get("nodes", []) if tree else []
+    downs = [n for n in nodes if n.get("name") == "Scroll Down"]
+    out = []
+    for d in downs:
+        up = next((n for n in nodes if n.get("name") == "Scroll Up" and abs(n["x"] - d["x"]) < 2 and n["y"] < d["y"]), None)
+        top = up["y"] if up else cy
+        bottom = d["y"] + d["height"]
+        left = max(0, d["x"] - 600)
+        out.append((cx + (left + d["x"]) / 2, cy + (top + bottom) / 2))
+    out.sort(key=lambda p: -p[1])
+    return out[:2] or [(cx + cw / 2, cy + ch / 2)]
+
+
+def scroll_at(s, st, at, pid):
+    """Two fingers, a flick and wheel notches at `at`, judged as
+    tools/dev/scroll-check does: down, or up when it can't go down (a
+    list that starts at its end, as Logs' does)."""
+    s.move(*at)
+    time.sleep(0.2)
+    period = 1 / 90
+    results = {}
+    sign = 1
+    kinds = ["drag", "flick", "wheel"]
+    while kinds:
+        kind = kinds.pop(0)
+        s.marks(pid)
+        start = now_us()
+        t0 = time.monotonic()
+        if kind == "drag":
+            for i in range(1, 55):
+                scroll_check.sleep_until(t0 + i * period)
+                s.synth([{"type": "scroll", "dx": 0.0, "dy": sign * 900 * period, "at_us": scroll_check.stamp(t0 + i * period)}])
+            scroll_check.sleep_until(t0 + 54 * period + 0.15)
+            s.synth([{"type": "scroll", "dx": 0.0, "dy": 0.0, "at_us": scroll_check.stamp(t0 + 54 * period + 0.15)}])
+            time.sleep(0.3)
+        elif kind == "flick":
+            for i in range(1, 14):
+                scroll_check.sleep_until(t0 + i * period)
+                s.synth([{"type": "scroll", "dx": 0.0, "dy": sign * 2400 * period, "at_us": scroll_check.stamp(t0 + i * period)}])
+            scroll_check.sleep_until(t0 + 13 * period + 0.004)
+            s.synth([{"type": "scroll", "dx": 0.0, "dy": 0.0, "at_us": scroll_check.stamp(t0 + 13 * period + 0.004)}])
+            time.sleep(2.5)
+        else:
+            for i in range(3):
+                scroll_check.sleep_until(t0 + i * 0.25)
+                s.synth([{"type": "wheel", "dx": 0, "dy": -sign}])
+            time.sleep(0.7)
+        marks = [m for m in s.marks(pid) if m["at_us"] >= start]
+        # The scroll view that moved most, first, for the analysis.
+        moved = {}
+        for a, b in zip(marks, marks[1:]):
+            if len(a["scrolls"]) == len(b["scrolls"]):
+                for i, (p, q) in enumerate(zip(a["scrolls"], b["scrolls"])):
+                    moved[i] = moved.get(i, 0) + abs(q[1] - p[1])
+        stuck = not moved or max(moved.values()) < 1
+        if kind == "drag" and sign == 1 and (stuck or max(moved.values()) < 0.25 * 900 * 54 * period):
+            # At its end already (moved no more than its edge gives): the
+            # other way.
+            sign = -1
+            kinds.insert(0, "drag")
+            continue
+        st.frames += marks
+        if stuck:
+            results[kind] = "didn't scroll"
+            continue
+        k = max(moved, key=moved.get)
+        n = len(marks[0]["scrolls"])
+        ms = [dict(m, scrolls=[[q[0], sign * q[1], *([q[2], sign * q[3]] if len(q) >= 4 else [])] for q in [m["scrolls"][k]]]) for m in marks if len(m["scrolls"]) == n]
+        r = scroll_check.analyse(kind, ms, start, 900 if kind == "drag" else None,
+                                 flick_lift=start + 13 * period * 1e6 if kind == "flick" else None)
+        results[kind] = r
+    return results
+
+
+def judge_scroll(st, results, hz):
+    period = 1000 / hz
+    for kind, r in results.items():
+        if isinstance(r, str):
+            st.notes.append(f"{kind}: {r}")
+            continue
+        if r.get("hitches"):
+            st.failures.append(f"{kind}: {r['hitches']} frames skipped")
+        if kind == "drag" and "step_vs_speed" in r:
+            v = r["step_vs_speed"]
+            st.extra["even"] = f"{v['min']:.2f}–{v['max']:.2f}"
+            if v["max"] > 1.25 or v["min"] < 0.75:
+                st.failures.append(f"drag: frames moved {v['min']:.2f}–{v['max']:.2f}× as far as the fingers")
+        if kind == "flick" and "glide" in r:
+            st.extra["glide"] = f"worst {r['glide']['worst']:+.2f}"
+            if abs(r["glide"]["worst"]) > 0.15:
+                st.failures.append(f"glide: a frame {r['glide']['worst']:+.0%} off its neighbours")
+        if r.get("frame_ms") and r["frame_ms"] > period * 1.25:
+            st.failures.append(f"{kind}: a frame every {r['frame_ms']:.1f} ms, not {period:.1f}")
+
+
+def run_app(b, app, scale):
+    s = b.s
+    before = {w["id"] for w in s.windows()}
+    t0 = time.monotonic()
+    tsession("run", NAME, *app.env, *EXTRA_ENV, *app.cmd)
+    if app.key == "notifications":
+        time.sleep(1.0)
+        # (Its launch is History's, from its own start: not the second
+        # the daemon is given first.)
+        t0 = time.monotonic()
+        tsession("run", NAME, *app.env, *EXTRA_ENV, *app.cmd, "--history")
+    win = None
+    while time.monotonic() - t0 < 10:
+        new = [w for w in s.windows() if w["id"] not in before and w.get("pid") and not w["minimized"]]
+        if new:
+            win = new[0]
+            break
+        time.sleep(0.02)
+    if not win:
+        st = Step(app.key, "launch")
+        st.failures.append("no window in 10 s")
+        b.results.append(st)
+        b.report(st)
+        return
+    launch_ms = (time.monotonic() - t0) * 1000
+    pid, wid = win["pid"], win["id"]
+    tag = app.key
+
+    def settle(st):
+        st.extra["launch_ms"] = round(launch_ms)
+        s.req({"type": "activate", "id": wid})
+        if not win.get("zoomed"):
+            s.req({"type": "toggle_zoom", "id": wid})
+        time.sleep(app.settle)
+
+    b.measure(tag, "launch and load", [pid], settle, transition=True)
+    # (A window just zoomed may be listed before its new frame is.)
+    c = None
+    for _ in range(20):
+        w = next((x for x in s.windows() if x["id"] == wid), win)
+        c = w.get("content") or w.get("frame")
+        if c:
+            break
+        time.sleep(0.1)
+    if not c:
+        print(f"     {tag}: its window has no frame: {w}")
+        # Ended all the same, or the next scale's launch is handed to it.
+        s.req({"type": "close", "id": wid})
+        time.sleep(0.5)
+        if s.ours(pid):
+            os.kill(pid, 15)
+        return
+    content = (c["x"], c["y"], c["width"], c["height"])
+    s.move(content[0] + content[2] - 3, content[1] + content[3] - 3)
+
+    def idle(st):
+        time.sleep(1.0)
+
+    st = b.measure(tag, "idle 1 s", [pid], idle)
+    st.extra["idle_fps"] = len(st.frames)
+    if len(st.frames) > 5:
+        st.notes.append(f"drew {len(st.frames)} frames with nothing happening")
+
+    b.measure(tag, "pointer over it", [pid], lambda st: hover(s, content))
+    tree = tree_of(s, pid, w.get("title"))
+    for i, at in enumerate(scroll_targets(tree, content)):
+        b.measure(tag, f"scroll {i + 1}", [pid], lambda st, at=at: judge_scroll(st, scroll_at(s, st, at, pid), b.hz))
+
+    nodes = tree.get("nodes", []) if tree else []
+    tabs = [n for n in nodes if n.get("role") == "Tab" and n.get("enabled", True)][:8]
+    if tabs:
+        def click_tabs(st):
+            for n in tabs:
+                s.click(content[0] + n["x"] + n["width"] / 2, content[1] + n["y"] + n["height"] / 2)
+                time.sleep(0.25)
+            n = tabs[0]
+            s.click(content[0] + n["x"] + n["width"] / 2, content[1] + n["y"] + n["height"] / 2)
+        b.measure(tag, f"{len(tabs)} tabs", [pid], click_tabs)
+    if app.rows:
+        rows = [n for n in nodes if n.get("role") in ("Row", "ListItem") and n["x"] < 260 and n.get("name")][:24]
+
+        def click_rows(st):
+            for n in rows:
+                s.click(content[0] + n["x"] + min(60, n["width"] / 2), content[1] + n["y"] + n["height"] / 2)
+                time.sleep(0.3)
+        if rows:
+            b.measure(tag, f"{len(rows)} panels", [pid], click_rows)
+
+    menus = s.ask_app(pid, {"menus": True}) or {}
+    titles = []
+    for item in menus.get("entries", []) if isinstance(menus, dict) else []:
+        path = item.get("path") or []
+        if path and path[0] not in titles:
+            titles.append(path[0])
+    bar = [n for n in nodes if n.get("name") in titles and n["y"] < 30]
+    if bar:
+        def walk_menus(st):
+            for n in bar[:6]:
+                s.click(content[0] + n["x"] + n["width"] / 2, content[1] + n["y"] + n["height"] / 2)
+                time.sleep(0.2)
+                for _ in range(5):
+                    s.key(DOWN)
+                    time.sleep(0.06)
+                s.key(ESC)
+                time.sleep(0.15)
+        b.measure(tag, f"{len(bar[:6])} menus", [pid], walk_menus)
+
+    fields = [n for n in nodes if n.get("role") in ("TextInput", "MultilineTextInput", "SearchInput") and n.get("enabled", True)]
+    if app.type_text and not app.look_only and (fields or app.key in ("terminal", "deskcalc")):
+        def typing(st):
+            if fields:
+                n = fields[0]
+                s.click(content[0] + n["x"] + min(40, n["width"] / 2), content[1] + n["y"] + min(10, n["height"] / 2))
+                time.sleep(0.15)
+            s.type(app.type_text)
+            for _ in app.type_text:
+                s.key(BKSP)
+        b.measure(tag, "typing", [pid], typing)
+
+    sx, sy, sw, sh = s.screen()
+
+    def resize(st):
+        # By its corner, as a person does: in from as big as the screen
+        # allows to 60% and back out, twice. The press makes room in the
+        # app's swapchain (a frame, before anything moves); the drag is
+        # what's measured.
+        s.req({"type": "place", "id": wid, "frame": {"x": int(sx + 20), "y": int(sy + 30), "width": int(sw - 220), "height": int(sh - 80)}})
+        time.sleep(0.5)
+        f = next(w["frame"] for w in s.req({"type": "list_windows"})["windows"] if w["id"] == wid)
+        x0, y0 = f["x"] + f["width"] - 2.5, f["y"] + f["height"] - 2.5
+        s.move(x0, y0)
+        time.sleep(0.1)
+        s.synth([{"type": "button", "button": BTN, "pressed": True}])
+        time.sleep(0.15)
+        st.from_us = now_us()
+        for i in range(1, 37):
+            d = 0.4 * (1 - abs((i % 18) - 9) / 9)
+            s.move(x0 - d * f["width"], y0 - d * f["height"])
+            time.sleep(1 / 60)
+        s.synth([{"type": "button", "button": BTN, "pressed": False}])
+    b.measure(tag, "live resize", [pid], resize)
+    s.req({"type": "toggle_zoom", "id": wid})
+    time.sleep(0.3)
+
+    def theme(st):
+        tsession("theme", NAME, "light")
+        time.sleep(0.4)
+        tsession("theme", NAME, "dark")
+        time.sleep(0.4)
+    b.measure(tag, "theme light, dark", [pid], theme, transition=True)
+    s.req({"type": "close", "id": wid})
+    time.sleep(0.5)
+    # Still running (a document typed into asks whether to save it): end
+    # it, or the next scale's launch hands its file to this one and opens
+    # no window of its own.
+    if s.ours(pid):
+        os.kill(pid, 15)
+        for _ in range(50):
+            if not s.ours(pid):
+                break
+            time.sleep(0.05)
+
+
+def run_deskbar(b):
+    s = b.s
+    pid = s.deskbar_pid()
+    if not pid:
+        print("     deskbar: not running")
+        return
+    sx, sy, sw, sh = s.screen()
+    rect = (sx + sw - 172, sy, 172, min(sh, 600))
+    b.measure("deskbar", "pointer over it", [pid], lambda st: hover(s, rect, 1.0))
+
+    def menu(st):
+        s.click(sx + sw - 86, sy + 14)
+        time.sleep(0.25)
+        for _ in range(6):
+            s.key(DOWN)
+            time.sleep(0.06)
+        s.key(ESC)
+        time.sleep(0.2)
+    b.measure("deskbar", "its menu", [pid], menu)
+    s.move(sx + 40, sy + sh - 40)
+
+
+def run_palette(b):
+    """The command palette: a layer over the screen, not a window, so
+    found by its process; shown, typed in, its results walked, hidden."""
+    s = b.s
+    t0 = time.monotonic()
+    tsession("run", NAME, "olo-palette", "--toggle")
+    pid = None
+    while not pid and time.monotonic() - t0 < 10:
+        pid = s.pid_of("olo-palette")
+        time.sleep(0.02)
+    if not pid:
+        st = Step("palette", "launch")
+        st.failures.append("no process in 10 s")
+        b.results.append(st)
+        b.report(st)
+        return
+    b.measure("palette", "launch and show", [pid], lambda st: time.sleep(1.5), transition=True)
+
+    def typing(st):
+        s.type("term")
+        time.sleep(0.3)
+        for _ in "term":
+            s.key(BKSP)
+        s.type("tra")
+        time.sleep(0.3)
+    b.measure("palette", "typing", [pid], typing)
+
+    def walk(st):
+        for _ in range(6):
+            s.key(DOWN)
+            time.sleep(0.06)
+        for _ in range(6):
+            s.key(UP)
+            time.sleep(0.06)
+    b.measure("palette", "results walked", [pid], walk)
+    b.measure("palette", "hide", [pid], lambda st: (s.key(ESC), time.sleep(0.4)), transition=True)
+
+
+def run_emoji(b):
+    """The emoji picker: a layer over the screen, as the palette is;
+    shown, typed in, its grid walked and scrolled, hidden, and shown
+    again (each open is a new surface: its emoji drawn again unless
+    kept)."""
+    s = b.s
+    t0 = time.monotonic()
+    tsession("run", NAME, "olo-emoji-picker", "--toggle")
+    pid = None
+    while not pid and time.monotonic() - t0 < 10:
+        pid = s.pid_of("olo-emoji-picker")
+        time.sleep(0.02)
+    if not pid:
+        st = Step("emoji", "launch")
+        st.failures.append("no process in 10 s")
+        b.results.append(st)
+        b.report(st)
+        return
+    b.measure("emoji", "launch and show", [pid], lambda st: time.sleep(1.5), transition=True)
+
+    def typing(st):
+        s.type("heart")
+        time.sleep(0.3)
+        for _ in "heart":
+            s.key(BKSP)
+        time.sleep(0.3)
+    b.measure("emoji", "typing", [pid], typing)
+
+    def walk(st):
+        for code in [RIGHT] * 4 + [DOWN] * 8 + [UP] * 4 + [LEFT] * 2:
+            s.key(code)
+            time.sleep(0.05)
+    b.measure("emoji", "grid walked", [pid], walk)
+
+    def wheel(st):
+        for dy in [3] * 6 + [-3] * 6:
+            s.synth([{"type": "wheel", "dy": dy}])
+            time.sleep(0.05)
+    b.measure("emoji", "grid wheeled", [pid], wheel)
+    b.measure("emoji", "hide", [pid], lambda st: (s.key(ESC), time.sleep(0.4)), transition=True)
+
+    def again(st):
+        tsession("run", NAME, "olo-emoji-picker", "--toggle")
+        time.sleep(1.0)
+    b.measure("emoji", "show again", [pid], again)
+    b.measure("emoji", "hide again", [pid], lambda st: (s.key(ESC), time.sleep(0.4)), transition=True)
+
+
+def run_overview(b):
+    """The overview: app_server's own frames as it opens (windows gliding,
+    the other workspace's fading in), is walked and leaves, with four
+    live windows on two workspaces."""
+    s = b.s
+    before = {w["id"] for w in s.windows()}
+    pids = []
+    for i, cmd in enumerate([[os.path.join(RELEASE, "examples", "gallery")], ["olo-activity"], ["olo-deskcalc"], ["olo-logs"]]):
+        if i == 2:
+            s.req({"type": "switch_workspace", "index": 1})
+        out = tsession("run", NAME, *cmd)
+        pids += [int(w) for w in out.split() if w.isdigit()][:1]
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < 10 and len({w["id"] for w in s.windows()} - before) <= i:
+            time.sleep(0.02)
+    s.req({"type": "switch_workspace", "index": 0})
+    time.sleep(1.5)
+
+    def out_and_back(st):
+        for _ in range(2):
+            s.key(CTRL, 57)
+            time.sleep(0.4)
+            for k in (106, 106, 108, 105, 103):
+                s.key(k)
+                time.sleep(0.08)
+            s.key(ESC)
+            time.sleep(0.4)
+    st = b.measure("overview", "open, walk, leave", [], out_and_back)
+    if (s.req({"type": "overview"}) or {}).get("overview", {}).get("shown") is not False:
+        st.failures.append("still out after Esc")
+    # Closed as a person closes them: an app ended with its windows open
+    # gets them back where they were when it starts again (DeskCalc's on
+    # the other workspace, out of sight of the next scale's launch).
+    for w in s.windows():
+        if w["id"] not in before:
+            s.req({"type": "close", "id": w["id"]})
+    time.sleep(0.5)
+    for p in pids:
+        if s.ours(p):
+            os.kill(p, 15)
+    time.sleep(0.5)
+    s.req({"type": "switch_workspace", "index": 0})
+
+
+def run_savers(b):
+    s = b.s
+    for module in SAVERS:
+        before = s.pid_of("olo-screensaver")
+        out = tsession("run", NAME, "olo-screensaver", "--module", module)
+        pid = next((int(w) for w in out.split() if w.isdigit()), None)
+        time.sleep(0.6)
+
+        def show(st):
+            time.sleep(1.5)
+        st = b.measure("screensaver", module, [pid] if pid else [], show)
+        if pid and len(st.frames) < 1.2 * b.hz * 0.9:
+            st.failures.append(f"{len(st.frames)} frames in 1.5 s, not {int(1.5 * b.hz)}")
+        if pid and s.ours(pid) and pid != before:
+            os.kill(pid, 15)
+        time.sleep(0.4)
+
+
+def main():
+    a = sys.argv[1:]
+    opt = lambda k, d=None: a[a.index(k) + 1] if k in a else d
+    if "--list" in a:
+        print(" ".join(x.key for x in APPS) + " deskbar palette emoji overview savers")
+        return
+    if "-h" in a or "--help" in a:
+        print(__doc__)
+        return
+    EXTRA_ENV.extend(a[i + 1] for i, x in enumerate(a) if x == "--env" and i + 1 < len(a))
+    hz = float(opt("--hz", 120))
+    budget = float(opt("--budget", 1000 / hz))
+    scales = [float(x) for x in opt("--scales", "1,1.5,2").split(",")]
+    only = opt("--apps")
+    only = set(only.split(",")) if only else None
+    for exe in ("olo-app-server", "olo-session", "olo-deskbar", os.path.join("examples", "gallery")):
+        if not os.path.exists(os.path.join(RELEASE, exe)):
+            sys.exit(f"no target/release/{exe}: cargo build --release --workspace, then cargo build --release -p olo-ui --examples")
+    stale = stale_builds()
+    if stale:
+        print(f"warning: older than the sources (cargo build --release --workspace, then -p olo-ui --examples): {', '.join(stale)}", flush=True)
+    os.makedirs(SCRATCH, exist_ok=True)
+    print("fixtures…", flush=True)
+    fixtures()
+    s = Session(opt("--size", "3456x2234"))
+    s.start(int(hz))
+    b = Bench(s, budget, hz)
+    try:
+        for scale in scales:
+            def scaled(st, scale=scale):
+                tsession("scale", NAME, str(scale))
+                time.sleep(0.8)
+            print(f"\n== scale {scale:g}, {hz:g} Hz, budget {budget:.1f} ms a frame")
+            dp = s.deskbar_pid()
+            b.measure("session", f"scale to {scale:g}", [dp] if dp else [], scaled, transition=True)
+            if not only or "deskbar" in only:
+                run_deskbar(b)
+            for app in APPS:
+                if only and app.key not in only:
+                    continue
+                run_app(b, app, scale)
+            if not only or "palette" in only:
+                run_palette(b)
+            if not only or "emoji" in only:
+                run_emoji(b)
+            if not only or "overview" in only:
+                run_overview(b)
+            if not only or "savers" in only:
+                run_savers(b)
+    finally:
+        if "--keep" not in a:
+            tsession("stop", NAME)
+    failed = [r for r in b.results if r.failures]
+    print(f"\n{len(b.results)} steps, {sum(len(r.frames) for r in b.results)} frames; {len(failed)} failed")
+    worst = {}
+    for r in b.results:
+        if not r.transition and r.frames:
+            m = max(f["us"] for f in r.frames)
+            if m > worst.get(r.app, (0, ""))[0]:
+                worst[r.app] = (m, r.step)
+    for app, (m, step) in sorted(worst.items(), key=lambda x: -x[1][0]):
+        print(f"  {app:<18} slowest frame {m / 1000:6.2f} ms ({step})")
+    if opt("--json"):
+        json.dump([r.summary() for r in b.results], open(opt("--json"), "w"), indent=1)
+    sys.exit(1 if failed else 0)
+
+
+if __name__ == "__main__":
+    main()

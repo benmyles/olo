@@ -1,0 +1,19 @@
+<!doctype html><meta charset=utf-8><title>Viewport scrolling</title>
+<style>
+html,body{margin:0;background:#fff;color:#182333;font:16px sans-serif}
+#page{width:2000px;height:2000px;background:#dbe8f4;position:relative}
+.tile{position:absolute;width:300px;height:180px;padding:16px;box-sizing:border-box;background:#80c2ba}
+#one{left:32px;top:320px}#two{left:720px;top:800px;background:#edbd76}#three{left:1540px;top:1700px;background:#bda6d9}
+#panel{position:fixed;left:24px;top:24px;width:660px;height:230px;background:#fff;border:2px solid #253c56;padding:16px;box-sizing:border-box;direction:ltr}
+button{margin:4px;padding:6px;font:14px sans-serif}h1{margin:0 0 8px;font-size:22px}#readout{margin:8px 0}
+</style>
+<div id=page><div class=tile id=one>Origin marker</div><div class=tile id=two>Middle marker</div><div class=tile id=three>Far corner marker</div></div>
+<div id=panel><h1>Viewport scrolling</h1><div id=readout>Position 0, 0</div>
+<button onclick="scrollTo(640,720)">Move both axes</button><button onclick="scrollTo(0,0)">Return to origin</button><button onclick="block=true">Block wheel</button><button onclick="block=false">Allow wheel</button><br>
+<button onclick="document.documentElement.style.direction='rtl';scrollTo(-640,720)">RTL</button><button onclick="document.documentElement.style.direction='ltr';scrollTo(640,720)">LTR</button><button onclick="document.documentElement.style.scrollbarWidth='none'">Hide bars</button><button onclick="document.documentElement.style.scrollbarWidth='thin'">Thin bars</button><button onclick="document.documentElement.style.scrollbarWidth='auto'">Auto bars</button>
+</div>
+<script>
+let block=false;addEventListener('wheel',e=>{if(block)e.preventDefault()},{passive:false});
+function report(){document.querySelector('#readout').textContent='Position '+scrollX+', '+scrollY+'; client '+document.documentElement.clientWidth+' × '+document.documentElement.clientHeight;}
+addEventListener('scroll',report);addEventListener('resize',report);report();
+</script>

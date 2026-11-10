@@ -1,0 +1,105 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/ben/worktrees/olo/browser/smithay/smithay/Cargo.toml
+workspace: /home/ben/worktrees/olo/browser/Cargo.toml
+   Compiling serde_core v1.0.229
+   Compiling smallvec v1.16.4
+   Compiling getrandom v0.4.3
+   Compiling tokio v1.54.1
+   Compiling indexmap v2.14.2
+   Compiling rustls-pki-types v1.15.1
+   Compiling zvariant v5.15.1
+   Compiling aws-lc-rs v1.18.2
+   Compiling ring v0.17.14
+   Compiling rustls v0.23.46 (/home/ben/worktrees/olo/browser/vendor/rustls)
+   Compiling time v0.3.55
+   Compiling pulseaudio v0.3.2
+   Compiling olo-net v0.1.0 (/home/ben/worktrees/olo/browser/crates/net)
+   Compiling chrono v0.4.45
+   Compiling crypto-common v0.2.2
+   Compiling tempfile v3.27.0
+   Compiling kurbo v0.11.3
+   Compiling icu_normalizer v2.2.0
+   Compiling webpki-roots v1.0.11
+   Compiling yasna v0.6.0
+   Compiling toml_edit v0.25.17+spec-1.1.0
+   Compiling cipher v0.5.2
+   Compiling digest v0.11.3
+   Compiling idna_adapter v1.2.1
+   Compiling chacha20 v0.10.2
+   Compiling idna v1.1.0
+   Compiling svgtypes v0.15.3
+   Compiling url v2.5.8
+   Compiling usvg v0.45.1
+   Compiling zbus_names v4.3.5
+   Compiling serde v1.0.229
+   Compiling serde_json v1.0.154
+   Compiling zbus_macros v5.19.0
+   Compiling uuid v1.29.0
+   Compiling enumflags2 v0.7.12
+   Compiling zcheapstr v1.1.0
+   Compiling zvariant_utils v4.2.0
+   Compiling rustls-webpki v0.103.16
+   Compiling resvg v0.45.1
+   Compiling olo-theme v0.1.0 (/home/ben/worktrees/olo/browser/crates/theme)
+   Compiling olo-color v0.1.0 (/home/ben/worktrees/olo/browser/crates/color)
+   Compiling serde_urlencoded v0.7.1
+   Compiling tokio-util v0.7.20
+   Compiling tower v0.5.3
+   Compiling hmac v0.13.0
+   Compiling h2 v0.4.20 (/home/ben/worktrees/olo/browser/vendor/h2)
+   Compiling universal-hash v0.6.1
+   Compiling poly1305 v0.9.1
+   Compiling tower-http v0.6.11
+   Compiling hkdf v0.13.0
+   Compiling serde_path_to_error v0.1.20
+   Compiling rand v0.10.3
+   Compiling sha1 v0.11.0
+   Compiling sha2 v0.11.1
+   Compiling aes v0.9.3
+   Compiling cbc v0.2.1
+   Compiling aead v0.6.1
+   Compiling rcgen v0.14.10
+   Compiling chacha20poly1305 v0.11.0
+   Compiling tungstenite v0.30.0
+   Compiling zbus v5.19.0
+   Compiling hyper v1.12.0
+   Compiling tokio-rustls v0.26.6
+   Compiling hyper-util v0.1.21
+   Compiling hyper-rustls v0.27.10
+   Compiling axum v0.8.9
+   Compiling reqwest v0.12.28
+   Compiling olo-xdg v0.1.0 (/home/ben/worktrees/olo/browser/crates/xdg)
+   Compiling olo-protocol v0.1.0 (/home/ben/worktrees/olo/browser/crates/protocol)
+   Compiling olo-system v0.1.0 (/home/ben/worktrees/olo/browser/crates/system)
+   Compiling olo-token-pool v0.1.0 (/home/ben/worktrees/olo/browser/crates/pool)
+    Finished `release` profile [optimized + debuginfo] target(s) in 28.10s
+     Running unittests src/lib.rs (target/release/deps/olo_token_pool-93161dd7345a1f35)
+
+running 24 tests
+test activity::tests::counts_by_minute_and_client ... ok
+test drain::tests::busy_while_something_is_under_way ... ok
+test gateway::tests::headers_kept_back ... ok
+test model::tests::credentials_never_print ... ok
+test model::tests::credits_are_spent_before_they_expire ... ok
+test gateway::tests::scans_usage_only ... ok
+test drain::tests::listeners_handed_over_by_port ... ok
+test model::tests::merging_keeps_known_resets ... ok
+test peer::tests::knows_the_clients ... ok
+test model::tests::families ... ok
+test schedule::tests::earliest_expiry_first ... ok
+test schedule::tests::stickiness ... ok
+test import::tests::reads_both ... ok
+test schedule::tests::model_meters_and_cooldowns ... ok
+test upstream::tests::betas_and_tokens ... ok
+test schedule::tests::ties_and_unknowns ... ok
+test upstream::tests::usage_reports ... ok
+test upstream::tests::headers_and_rejections ... ok
+test upstream::tests::every_meter_reported ... ok
+test running::tests::tells_where_connections_go ... ok
+test store::tests::seals_and_opens ... ok
+test peer::tests::finds_who_connected ... ok
+test clients::tests::on_off_and_the_old_way_moved_over ... ok
+test codex_daemon::tests::knows_the_daemon_by_its_start ... ok
+
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+

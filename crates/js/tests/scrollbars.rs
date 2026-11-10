@@ -53,3 +53,70 @@ fn live_classic_metrics_and_cached_reads() {
         assert!(r.report().errors.is_empty(), "{:?}", r.report().errors);
     }
 }
+
+#[test]
+fn viewport_scroll_requests_snap_clamp_and_coalesce() {
+    for scale in [1., 1.25, 1.5, 1.75, 2.] {
+        let (mut r, _) = realm(scale);
+        r.eval("document.querySelector('#content').style.width='2000px';globalThis.events=0;document.addEventListener('scroll',()=>events++)").unwrap();
+        // Independent Chrome observations: positive and negative half-pixel
+        // ties differ; RTL starts at zero and extends into negative x.
+        let expected = match scale {
+            1. => [1., 0.],
+            1.25 => [0.8, -0.8],
+            1.5 => [2. / 3., -2. / 3.],
+            1.75 => [4. / 7., -4. / 7.],
+            _ => [0.5, -0.5],
+        };
+        r.eval("scrollTo(.5,.5)").unwrap();
+        let to = r.take_scroll_request().unwrap();
+        assert!((to[0] - expected[0]).abs() < 1e-9, "{scale}: {to:?}");
+        assert_eq!(to[0], to[1]);
+        r.eval("scrollTo({top:32});scrollBy({left:16});scrollTo({left:80})").unwrap();
+        assert_eq!(r.eval("[scrollX,scrollY,pageXOffset,pageYOffset]").unwrap(), "[80,32,80,32]");
+        assert_eq!(r.take_scroll_request(), Some([80., 32.]));
+        assert!(!r.set_scroll_position([80., 32.]));
+        assert!(!r.has_scroll_request());
+        assert_eq!(r.eval("events").unwrap(), "0");
+        r.advance(20., std::time::Duration::from_secs(1));
+        assert_eq!(r.eval("events").unwrap(), "1");
+        r.eval("scrollTo(80,32)").unwrap();
+        assert!(!r.has_scroll_request());
+        r.advance(40., std::time::Duration::from_secs(1));
+        assert_eq!(r.eval("events").unwrap(), "1");
+        assert!(r.set_scroll_position([120., 64.]));
+        assert_eq!(r.eval("[scrollX,scrollY]").unwrap(), "[120,64]");
+        assert!(!r.has_scroll_request(), "accepting native movement must not echo a request");
+        r.eval("scrollBy(Infinity,NaN);scrollBy(-Infinity,0);scrollTo();scrollTo(undefined);scrollTo(null);scrollTo(1);scrollTo({})").unwrap();
+        assert_eq!(r.eval("[scrollX,scrollY]").unwrap(), "[120,64]");
+        assert!(!r.has_scroll_request());
+        r.eval("document.documentElement.style.direction='rtl';scrollTo(-.5,.5)").unwrap();
+        let to = r.take_scroll_request().unwrap();
+        assert!((to[0] - expected[1]).abs() < 1e-9, "RTL {scale}: {to:?}");
+        r.eval("scrollTo(-10000,10000)").unwrap();
+        let to = r.take_scroll_request().unwrap();
+        let bar = (15. * scale).round() / scale;
+        assert!((to[0] - (-1000. - bar)).abs() < 1e-9, "RTL end {scale}: {to:?}");
+        assert!((to[1] - (1300. + bar)).abs() < 1e-9);
+        r.eval("scrollTo(Infinity,NaN)").unwrap();
+        assert_eq!(r.take_scroll_request(), Some([0., 0.]));
+        assert!(r.report().errors.is_empty(), "{:?}", r.report().errors);
+    }
+}
+
+#[test]
+fn fixed_geometry_and_pointer_coordinates_follow_both_scroll_axes() {
+    let (mut r, _) = realm(1.25);
+    r.eval("document.body.insertAdjacentHTML('beforeend','<div id=fixed style=\"position:fixed;left:24px;top:32px;width:100px;height:40px\"><span>Fixed</span></div><div style=\"transform:translateX(0);position:absolute;left:0;top:0\"><div id=contained style=\"position:fixed;left:24px;top:32px;width:100px;height:40px\"></div></div>');document.querySelector('#content').style.width='2000px';scrollTo(80,120)").unwrap();
+    assert_eq!(r.eval("(()=>{let r=document.querySelector('#fixed').getBoundingClientRect();return [r.x,r.y]})()").unwrap(), "[24,32]");
+    assert_eq!(r.eval("(()=>{let r=document.querySelector('#fixed').getClientRects()[0];return [r.x,r.y]})()").unwrap(), "[24,32]");
+    assert_eq!(r.eval("(()=>{let r=document.querySelector('#contained').getBoundingClientRect();return [r.x,r.y]})()").unwrap(), "[-56,-88]");
+    r.eval("globalThis.pointer=null;document.body.addEventListener('mousemove',e=>pointer=[e.clientX,e.clientY,e.pageX,e.pageY]);document.body.addEventListener('wheel',e=>e.preventDefault(),{passive:false})").unwrap();
+    let mut input = olo_js::Input { kind: olo_js::InputKind::Move, x: 110., y: 170., scroll_x: 80., scroll_y: 120., buttons: 0, modifiers: 0 };
+    assert!(!r.input(&input, None));
+    assert_eq!(r.eval("pointer").unwrap(), "[30,50,110,170]");
+    input.kind = olo_js::InputKind::Wheel { dx: 10., dy: 20. };
+    assert!(r.input(&input, None));
+    assert_eq!(r.eval("document.elementFromPoint(990,50)").unwrap(), "null");
+    assert!(r.report().errors.is_empty(), "{:?}", r.report().errors);
+}

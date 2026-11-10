@@ -1,0 +1,587 @@
+[
+  {
+    "mode": "light",
+    "scale": 1,
+    "data": {
+      "dpr": 1,
+      "size": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        563
+      ],
+      "dark": false,
+      "resolution": false,
+      "canvases": [
+        {
+          "size": [
+            985,
+            542
+          ],
+          "rect": [
+            985,
+            542.03125
+          ]
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.0,
+        "dark": false,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 1.25,
+    "data": {
+      "dpr": 1.25,
+      "size": [
+        1000,
+        578
+      ],
+      "client": [
+        984.8,
+        562.4
+      ],
+      "dark": false,
+      "resolution": false,
+      "canvases": [
+        {
+          "size": [
+            984,
+            541
+          ],
+          "rect": [
+            984.8,
+            541.5625
+          ]
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.25,
+        "dark": false,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 1.5,
+    "data": {
+      "dpr": 1.5,
+      "size": [
+        1000,
+        578
+      ],
+      "client": [
+        984.6666666666666,
+        562.6666666666666
+      ],
+      "dark": false,
+      "resolution": true,
+      "canvases": [
+        {
+          "size": [
+            984,
+            541
+          ],
+          "rect": [
+            984.6666666666666,
+            541.6979166666666
+          ]
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.5,
+        "dark": false,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 1.75,
+    "data": {
+      "dpr": 1.75,
+      "size": [
+        1000,
+        578
+      ],
+      "client": [
+        985.1428571428571,
+        562.8571428571428
+      ],
+      "dark": false,
+      "resolution": true,
+      "canvases": [
+        {
+          "size": [
+            985,
+            541
+          ],
+          "rect": [
+            985.1428571428571,
+            541.4107142857143
+          ]
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.75,
+        "dark": false,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 2,
+    "data": {
+      "dpr": 2,
+      "size": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        563
+      ],
+      "dark": false,
+      "resolution": true,
+      "canvases": [
+        {
+          "size": [
+            985,
+            542
+          ],
+          "rect": [
+            985,
+            542.0390625
+          ]
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 2.0,
+        "dark": false,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1,
+    "data": {
+      "dpr": 1,
+      "size": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        563
+      ],
+      "dark": true,
+      "resolution": false,
+      "canvases": [
+        {
+          "size": [
+            985,
+            542
+          ],
+          "rect": [
+            985,
+            542.03125
+          ]
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.0,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1.25,
+    "data": {
+      "dpr": 1.25,
+      "size": [
+        1000,
+        578
+      ],
+      "client": [
+        984.8,
+        562.4
+      ],
+      "dark": true,
+      "resolution": false,
+      "canvases": [
+        {
+          "size": [
+            984,
+            541
+          ],
+          "rect": [
+            984.8,
+            541.5625
+          ]
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.25,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1.5,
+    "data": {
+      "dpr": 1.5,
+      "size": [
+        1000,
+        578
+      ],
+      "client": [
+        984.6666666666666,
+        562.6666666666666
+      ],
+      "dark": true,
+      "resolution": true,
+      "canvases": [
+        {
+          "size": [
+            984,
+            541
+          ],
+          "rect": [
+            984.6666666666666,
+            541.6979166666666
+          ]
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.5,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1.75,
+    "data": {
+      "dpr": 1.75,
+      "size": [
+        1000,
+        578
+      ],
+      "client": [
+        985.1428571428571,
+        562.8571428571428
+      ],
+      "dark": true,
+      "resolution": true,
+      "canvases": [
+        {
+          "size": [
+            985,
+            541
+          ],
+          "rect": [
+            985.1428571428571,
+            541.4107142857143
+          ]
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.75,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 2,
+    "data": {
+      "dpr": 2,
+      "size": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        563
+      ],
+      "dark": true,
+      "resolution": true,
+      "canvases": [
+        {
+          "size": [
+            985,
+            542
+          ],
+          "rect": [
+            985,
+            542.0390625
+          ]
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 2.0,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1,
+    "data": {
+      "dpr": 1,
+      "size": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        563
+      ],
+      "dark": true,
+      "resolution": false,
+      "canvases": [
+        {
+          "size": [
+            985,
+            542
+          ],
+          "rect": [
+            985,
+            542.03125
+          ]
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.0,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1.25,
+    "data": {
+      "dpr": 1.25,
+      "size": [
+        1000,
+        578
+      ],
+      "client": [
+        984.8,
+        562.4
+      ],
+      "dark": true,
+      "resolution": false,
+      "canvases": [
+        {
+          "size": [
+            984,
+            541
+          ],
+          "rect": [
+            984.8,
+            541.5625
+          ]
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.25,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1.5,
+    "data": {
+      "dpr": 1.5,
+      "size": [
+        1000,
+        578
+      ],
+      "client": [
+        984.6666666666666,
+        562.6666666666666
+      ],
+      "dark": true,
+      "resolution": true,
+      "canvases": [
+        {
+          "size": [
+            984,
+            541
+          ],
+          "rect": [
+            984.6666666666666,
+            541.6979166666666
+          ]
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.5,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1.75,
+    "data": {
+      "dpr": 1.75,
+      "size": [
+        1000,
+        578
+      ],
+      "client": [
+        985.1428571428571,
+        562.8571428571428
+      ],
+      "dark": true,
+      "resolution": true,
+      "canvases": [
+        {
+          "size": [
+            985,
+            541
+          ],
+          "rect": [
+            985.1428571428571,
+            541.4107142857143
+          ]
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.75,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 2,
+    "data": {
+      "dpr": 2,
+      "size": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        563
+      ],
+      "dark": true,
+      "resolution": true,
+      "canvases": [
+        {
+          "size": [
+            985,
+            542
+          ],
+          "rect": [
+            985,
+            542.0390625
+          ]
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 2.0,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  }
+]

@@ -1148,6 +1148,19 @@ impl Measured {
     pub fn viewport(&self) -> layout::Viewport {
         self.viewport
     }
+    /// A measured element or text inherits the viewport attachment of its
+    /// enclosing layout box. Transformed containing blocks are accounted for
+    /// by the layout's retained positioning index.
+    pub fn viewport_fixed(&self, doc: &Document, mut node: crate::dom::NodeId) -> bool {
+        for _ in 0..1024 {
+            if let Some(id) = self.index.get(&node) {
+                return self.layout.fixed_box(*id);
+            }
+            let Some(parent) = doc.composed_parent(node).ok().flatten().or_else(|| doc.shadow_host(node)) else { break };
+            node = parent;
+        }
+        false
+    }
     fn geometry(&self, node: crate::dom::NodeId) -> Option<(layout::BoxId, layout::Rect, &layout::Geometry)> {
         let id = *self.index.get(&node)?;
         let bounds = self.layout.bounds(id)?;

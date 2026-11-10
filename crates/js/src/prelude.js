@@ -620,7 +620,7 @@
     clientTop: { get() { const r = N.rect(this), p = N.paddingRect(this); return r && p ? Math.round(p[1] - r[1]) : 0; } }, clientLeft: { get() { const r = N.rect(this), p = N.paddingRect(this); return r && p ? Math.round(p[0] - r[0]) : 0; } },
     scrollWidth: { get() { if (this === html() || this === document.body && N.computed(this, 'overflow-y') === 'visible') return Math.round(N.docSize()[0]); const r = N.scrollSize(this); return r ? Math.round(r[2]) : 0; } }, scrollHeight: { get() { if (this === html() || this === document.body && N.computed(this, 'overflow-y') === 'visible') return Math.round(N.docSize()[1]); const r = N.scrollSize(this); return r ? Math.round(r[3]) : 0; } },
     scrollTop: { get() { if (this === html() || this === document.body) return global.scrollY; return N.scrollOffset(this)[1]; }, set(v) { if (this === html() || this === document.body) { global.scrollTo(global.scrollX, Number(v) || 0); return; } scrollElement(this, N.scrollOffset(this)[0], Number(v) || 0); } },
-    scrollLeft: { get() { if (this === html() || this === document.body) return global.scrollX; return N.scrollOffset(this)[0]; }, set(v) { if (this === html() || this === document.body) return; scrollElement(this, Number(v) || 0, N.scrollOffset(this)[1]); } },
+    scrollLeft: { get() { if (this === html() || this === document.body) return global.scrollX; return N.scrollOffset(this)[0]; }, set(v) { if (this === html() || this === document.body) { global.scrollTo(Number(v) || 0,global.scrollY); return; } scrollElement(this, Number(v) || 0, N.scrollOffset(this)[1]); } },
     shadowRoot: { get() { if (this._shadow) return this._shadow; const root = N.shadowRootOf(this); if (root) { Object.defineProperty(this, '_shadow', { value: root, configurable: true }); Object.defineProperty(root, 'host', { value: this, configurable: true }); Object.defineProperty(root, 'mode', { value: 'open', configurable: true }); Object.defineProperty(root, '_declarative', { value: true, configurable: true, writable: true }); } return root; } },
     assignedSlot: { get() { return assignedSlotOf(this); } },
     isContentEditable: { get() { return false; } },
@@ -876,8 +876,9 @@
     // root where nothing else is; nothing outside the viewport).
     elementFromPoint(x, y) {
       x = +x; y = +y;
-      if (!(x >= 0 && y >= 0 && x < global.innerWidth && y < global.innerHeight)) return null;
-      return N.hitTest(x + scrollXY[0], y + scrollXY[1], scrollXY[1], global.innerHeight) || this.documentElement;
+      const size = N.clientViewport();
+      if (!(x >= 0 && y >= 0 && x < size[0] && y < size[1])) return null;
+      return N.hitTest(x + scrollXY[0], y + scrollXY[1], scrollXY[1], size[1]) || this.documentElement;
     },
     elementsFromPoint(x, y) { const out = []; for (let e = this.elementFromPoint(x, y); e; e = e.parentElement) out.push(e); return out; },
     caretRangeFromPoint() { return null; },
@@ -1608,9 +1609,22 @@
   // (An accessor, as Chrome's: the document bound with the page.)
   Object.defineProperty(global, 'document', { get() { return documentNode; }, enumerable: true, configurable: true });
   Object.defineProperty(global, 'opener', { value: null, writable: true, enumerable: true, configurable: true });
-  const scrollWindow = (x, y) => { const size = N.docSize(); const [vw2, vh2] = N.clientViewport(); scrollXY[0] = Math.max(0, Math.min(x, size[0] - vw2)); scrollXY[1] = Math.max(0, Math.min(y, size[1] - vh2)); global.scrollX = global.pageXOffset = scrollXY[0]; global.scrollY = global.pageYOffset = scrollXY[1]; setTimeout(() => { dispatch(documentNode, new Event('scroll', { bubbles: true })); }, 0); };
-  global.scroll = global.scrollTo = (x, y) => { if (typeof x === 'object' && x) { y = x.top; x = x.left; } scrollWindow(Number(x) || 0, Number(y) || 0); };
-  global.scrollBy = (x, y) => { if (typeof x === 'object' && x) { y = x.top; x = x.left; } scrollWindow(scrollXY[0] + (Number(x) || 0), scrollXY[1] + (Number(y) || 0)); };
+  let windowScrollPending = false;
+  const scrollPosition = (x,y) => {
+    if (x === scrollXY[0] && y === scrollXY[1]) return 0;
+    scrollXY[0]=x; scrollXY[1]=y;
+    global.scrollX=global.pageXOffset=x; global.scrollY=global.pageYOffset=y;
+    if (!windowScrollPending) {
+      windowScrollPending=true;
+      setTimeout(() => { windowScrollPending=false; dispatch(documentNode,new Event('scroll',{bubbles:true})); },0);
+    }
+    return 1;
+  };
+  H.__olo_scrollPosition = scrollPosition;
+  const scrollWindow = (x,y) => {const p=N.scrollWindow(x,y);scrollPosition(p[0],p[1]);};
+  global.scroll = global.scrollTo = function(x,y) { if (arguments.length < 2) {const o=x??{};y=o.top===undefined?scrollXY[1]:o.top;x=o.left===undefined?scrollXY[0]:o.left;} scrollWindow(Number(x)||0,Number(y)||0); };
+  const scrollNumber = v => { v=Number(v); return Number.isFinite(v)?v:0; };
+  global.scrollBy = function(x,y) { if (arguments.length < 2) {const o=x??{};y=o.top;x=o.left;} scrollWindow(scrollXY[0]+scrollNumber(x),scrollXY[1]+scrollNumber(y)); };
   global.alert = (m) => log('alert', [String(m)]); global.confirm = () => false; global.prompt = () => null; global.print = () => {}; global.open = () => null; global.close = () => {}; global.focus = () => {}; global.blur = () => {}; global.stop = () => {}; global.reportError = reportError; global.getSelection = () => ({ rangeCount: 0, type: 'None', toString: () => '', getRangeAt: () => new Range(), removeAllRanges() {}, addRange() {}, anchorNode: null, focusNode: null, isCollapsed: true, addEventListener() {} });
   // (A pseudo-element's, given its name with or without its colons, as
   // Chrome takes it: an unknown one has no values at all.)
@@ -2309,14 +2323,12 @@
   };
   H.__olo_input = (json, target) => {
     const i = JSON.parse(json);
-    scrollXY[0] = 0;
-    scrollXY[1] = i.scrollY;
-    global.scrollY = global.pageYOffset = i.scrollY;
+    scrollPosition(i.scrollX, i.scrollY);
     // Pointer events target elements: text under the pointer is its
     // parent's (UI Events §4.3).
     while (target && N.nodeType(target) !== 1 && N.parent(target)) target = N.parent(target);
     if (!target || !N.isConnected(target) || N.nodeType(target) !== 1) target = document.body || documentNode;
-    const base = { bubbles: true, cancelable: true, composed: true, view: global, clientX: i.x, clientY: i.y - i.scrollY, pageX: i.x, pageY: i.y, screenX: i.x, screenY: i.y - i.scrollY, buttons: i.buttons, shiftKey: !!(i.modifiers & 1), ctrlKey: !!(i.modifiers & 2), altKey: !!(i.modifiers & 4), metaKey: !!(i.modifiers & 8) };
+    const base = { bubbles: true, cancelable: true, composed: true, view: global, clientX: i.x - i.scrollX, clientY: i.y - i.scrollY, pageX: i.x, pageY: i.y, screenX: i.x - i.scrollX, screenY: i.y - i.scrollY, buttons: i.buttons, shiftKey: !!(i.modifiers & 1), ctrlKey: !!(i.modifiers & 2), altKey: !!(i.modifiers & 4), metaKey: !!(i.modifiers & 8) };
     let prevented = false;
     const fire = (Ctor, type, at, extra) => { const ev = new Ctor(type, Object.assign({}, base, extra || {})); if (!dispatch(at, ev, true)) prevented = true; return ev; };
     switch (i.kind) {
@@ -2375,7 +2387,7 @@
         }
         break;
       }
-      case 'scroll': dispatch(documentNode, new Event('scroll', { bubbles: true })); break;
+      case 'scroll': break;
     }
     return prevented;
   };

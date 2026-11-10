@@ -7,7 +7,7 @@ mod images;
 mod overflow;
 pub use overflow::ViewportOverflow;
 mod viewport;
-pub use viewport::{ViewportGeometry, ViewportLayout, layout_viewport};
+pub use viewport::{ScrollRange, ViewportGeometry, ViewportLayout, layout_viewport};
 pub mod positioned;
 mod tree;
 mod used;

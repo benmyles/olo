@@ -30,6 +30,8 @@ struct Saved {
     source: String,
     scroll: f64,
     #[serde(default)]
+    scroll_x: f64,
+    #[serde(default)]
     history: Option<history::History>,
 }
 struct Browser {
@@ -39,6 +41,8 @@ struct Browser {
     history: history::History,
     loaded_group: u64,
     document_ready: bool,
+    /// Metadata delivered before Ready that changes what the window exposes.
+    content_changed: bool,
     navigation: u64,
     seek_anchor: bool,
     focus_scroll: Option<olo_web::dom::NodeId>,
@@ -78,6 +82,10 @@ struct Browser {
     page_focus: Option<olo_web::dom::NodeId>,
     /// The page's scripts run (see `worker::Reply::Content::live`).
     live: bool,
+    wheel_serial: u64,
+    /// Stop rejects defaults for input already handed to the page worker.
+    wheel_cancelled_through: u64,
+    wheel_pending: Option<(u64, gpui::DeferredWheel)>,
     /// The page's scroll containers, as the last render had them.
     scroll_areas: Arc<[worker::ScrollArea]>,
     status: String,
@@ -86,6 +94,8 @@ struct Browser {
     /// own entries (`history.go`): done at the next render.
     pending_traverse: Option<isize>,
     scroll: i32,
+    scroll_x: i32,
+    root_viewport: Option<worker::RootViewport>,
     extent: f64,
     interaction: olo_web::page::Interaction,
     pressed: Option<olo_web::dom::NodeId>,
@@ -118,12 +128,13 @@ impl Browser {
         let has_history = restored_history.is_some();
         let mut history = restored_history.unwrap_or_else(|| history::History::new(source, None));
         if restoring && !has_history {
-            history.scroll(saved.scroll);
+            history.scroll([saved.scroll_x, saved.scroll]);
         }
         let source = history.current().url.clone();
         let cwd = history.current().cwd.clone();
         let loaded_group = history.current().document;
         let scroll = history.current().scroll;
+        let scroll_x = history.current().scroll_x;
         let address = text_field(cx, |f| f.name("Address").hint("Website URL or local HTML path").keeps_enter());
         address.update(cx, |f, cx| f.set_text(source.clone(), cx));
         let events = cx.subscribe_in(&address, window, |this, _, event, window, cx| {
@@ -156,6 +167,7 @@ impl Browser {
             history,
             loaded_group,
             document_ready: false,
+            content_changed: false,
             navigation: 1,
             seek_anchor: !restoring,
             focus_scroll: None,
@@ -180,10 +192,15 @@ impl Browser {
             scroll_areas: Arc::from([]),
             page_focus: None,
             live: false,
+            wheel_serial: 0,
+            wheel_cancelled_through: 0,
+            wheel_pending: None,
             status: "Loading…".into(),
             blocked_action: None,
             pending_traverse: None,
-            scroll: (scroll * f64::from(window.scale_factor())).round() as i32,
+            scroll: worker::device_scroll(scroll, f64::from(window.scale_factor())),
+            scroll_x: worker::device_scroll(scroll_x, f64::from(window.scale_factor())),
+            root_viewport: None,
             extent: 0.,
             interaction: Default::default(),
             pressed: None,
@@ -204,7 +221,9 @@ impl Browser {
             return;
         }
         if let Some(old) = &self.key {
-            self.scroll = (f64::from(self.scroll) * scale / old.scale).round() as i32;
+            self.scroll = worker::device_scroll(f64::from(self.scroll) / old.scale, scale);
+            self.scroll_x = worker::device_scroll(f64::from(self.scroll_x) / old.scale, scale);
+            self.root_viewport = None;
             // Another document: its page's shared textures go with it.
             if old.source != key.source || old.revision != key.revision {
                 self.shared_retired.append(&mut self.shared_keys);
@@ -237,6 +256,7 @@ impl Browser {
             id: self.id,
             key,
             scroll: self.scroll,
+            scroll_x: self.scroll_x,
             cancel: self.cancel.clone(),
             recycle,
             interaction: self.interaction,
@@ -248,8 +268,9 @@ impl Browser {
         })));
         cx.notify();
     }
-    fn css_scroll(&self) -> f64 {
-        f64::from(self.scroll) / self.key.as_ref().map_or(1., |k| k.scale)
+    fn css_scroll(&self) -> [f64; 2] {
+        let scale = self.key.as_ref().map_or(1., |k| k.scale);
+        [f64::from(self.scroll_x) / scale, f64::from(self.scroll) / scale]
     }
     fn discard_targets(&mut self) {
         let old = std::mem::take(&mut self.focus_targets);
@@ -259,6 +280,7 @@ impl Browser {
     }
     fn begin_navigation(&mut self, entry: history::Entry, same: bool, seek: bool, window: &mut Window, cx: &mut Context<Self>) {
         window.focus(&self.focus);
+        self.wheel_pending.take();
         self.cancel.cancel();
         if !same {
             let _ = self.tx.send(worker::Message::CancelStylesheets(self.navigation));
@@ -281,8 +303,11 @@ impl Browser {
             self.loaded_group = entry.document;
             self.document_ready = false;
             self.revision = self.revision.wrapping_add(1);
-            self.scroll = (entry.scroll * f64::from(window.scale_factor())).round() as i32;
+            self.scroll = worker::device_scroll(entry.scroll, f64::from(window.scale_factor()));
+            self.scroll_x = worker::device_scroll(entry.scroll_x, f64::from(window.scale_factor()));
             self.key = None;
+            self.root_viewport = None;
+            self.live = false;
             self.labels.clear();
             self.interaction_mask = 0;
             self.document_snapshot = Default::default();
@@ -312,7 +337,8 @@ impl Browser {
         };
         let same = self.document_ready && entry.document == self.loaded_group;
         if same {
-            self.scroll = (entry.scroll * f64::from(window.scale_factor())).round() as i32;
+            self.scroll = worker::device_scroll(entry.scroll, f64::from(window.scale_factor()));
+            self.scroll_x = worker::device_scroll(entry.scroll_x, f64::from(window.scale_factor()));
             // An entry of this document: its scripts take it (popstate:
             // a single-page app shows what that URL is).
             let _ = self.tx.send(worker::Message::Traverse(entry.url.clone()));
@@ -361,7 +387,10 @@ impl Browser {
         let bounds = self.viewport.get();
         // The window's points are CSS pixels; the scroll is in device pixels.
         let scroll = if menu.fixed { 0. } else { f64::from(self.scroll) / key.scale };
-        let field = Bounds::new(point(bounds.left() + px(menu.rect.x as f32), bounds.top() + px((menu.rect.y - scroll) as f32)), gpui::size(px(menu.rect.width as f32), px(menu.rect.height as f32)));
+        let field = Bounds::new(
+            point(bounds.left() + px((menu.rect.x - if menu.fixed { 0. } else { f64::from(self.scroll_x) / key.scale }) as f32), bounds.top() + px((menu.rect.y - scroll) as f32)),
+            gpui::size(px(menu.rect.width as f32), px(menu.rect.height as f32)),
+        );
         let mut m = olo_ui::menu::Menu::new("Options");
         for (i, (label, disabled)) in menu.options.iter().enumerate() {
             m = m.item(if label.is_empty() { " ".to_owned() } else { label.clone() }, i.to_string()).enabled(!disabled);
@@ -379,43 +408,79 @@ impl Browser {
         let bounds = self.viewport.get();
         let scale = key.scale;
         // The window's points are CSS pixels; the scroll is in device pixels.
-        let (x, y) = at.map_or((0., 0.), |at| (f64::from(f32::from(at.x - bounds.left())), f64::from(f32::from(at.y - bounds.top())) + f64::from(self.scroll) / scale));
-        let _ = self.tx.send(worker::Message::Input(worker::Input {
-            kind,
-            x,
-            y,
-            scroll_y: f64::from(self.scroll) / scale,
-            buttons: u32::from(self.pressed.is_some() || self.interaction.active.is_some()),
-            modifiers: u8::from(modifiers.shift) | u8::from(modifiers.control) << 1 | u8::from(modifiers.alt) << 2 | u8::from(modifiers.platform) << 3,
-        }));
+        let (x, y) =
+            at.map_or((0., 0.), |at| (f64::from(f32::from(at.x - bounds.left())) + f64::from(self.scroll_x) / scale, f64::from(f32::from(at.y - bounds.top())) + f64::from(self.scroll) / scale));
+        let _ = self.tx.send(worker::Message::Input {
+            navigation: self.navigation,
+            wheel: matches!(kind, worker::InputKind::Wheel { .. }).then_some(self.wheel_serial),
+            input: worker::Input {
+                kind,
+                x,
+                y,
+                scroll_y: f64::from(self.scroll) / scale,
+                scroll_x: f64::from(self.scroll_x) / scale,
+                buttons: u32::from(self.pressed.is_some() || self.interaction.active.is_some()),
+                modifiers: u8::from(modifiers.shift) | u8::from(modifiers.control) << 1 | u8::from(modifiers.alt) << 2 | u8::from(modifiers.platform) << 3,
+            },
+        });
     }
     /// The element (and link) under window point `at`, as the last
     /// render's labels have it.
     fn under(&self, at: gpui::Point<gpui::Pixels>) -> (Option<olo_web::dom::NodeId>, Option<Arc<links::Link>>) {
         let bounds = self.viewport.get();
         let scale = self.key.as_ref().map_or(1., |k| k.scale);
-        let x = f64::from(f32::from(at.x - bounds.left()));
+        let viewport_x = f64::from(f32::from(at.x - bounds.left()));
+        let x = viewport_x + f64::from(self.scroll_x) / scale;
         let viewport_y = f64::from(f32::from(at.y - bounds.top()));
         let y = viewport_y + f64::from(self.scroll) / scale;
-        let height_css = f64::from(f32::from(bounds.size.height));
+        let height_css = self.root_viewport.map_or(f64::from(f32::from(bounds.size.height)), |v| v.geometry.client[1]);
         let shift = |st: &olo_web::layout::Sticky| st.offset(f64::from(self.scroll) / scale, height_css);
         // Fixed and sticky labels paint over the page: tried first, where
         // they are shown.
         let label = self.labels.iter().rev().filter(|l| l.fixed || l.sticky.is_some()).chain(self.labels.iter().rev().filter(|l| !l.fixed && l.sticky.is_none())).find(|l| {
             let ly = if l.fixed { viewport_y } else { y - l.sticky.as_ref().map_or(0., shift) };
-            x >= l.rect.x && x < l.rect.x + l.rect.width && ly >= l.rect.y && ly < l.rect.y + l.rect.height
+            let lx = if l.fixed { viewport_x } else { x };
+            lx >= l.rect.x && lx < l.rect.x + l.rect.width && ly >= l.rect.y && ly < l.rect.y + l.rect.height
         });
         (label.and_then(|l| l.node), label.and_then(|l| l.link.clone()))
     }
-    /// The wheel moved the page: no hover until it stops, then the hover
-    /// of what is under the pointer by then.
-    /// The page scrolled to `to` (device pixels from its top, kept within
-    /// it): by the wheel, or its scroll bar dragged or paged.
-    fn scroll_page(&mut self, to: i32, modifiers: gpui::Modifiers, cx: &mut Context<Self>) {
-        let max = self.key.as_ref().map_or(0, |key| worker::max_scroll(key, self.extent));
-        let old = self.scroll;
-        self.scroll = to.clamp(0, max);
-        if self.scroll == old {
+    /// The wheel's default action, after the document has had a chance to cancel it.
+    fn wheel_default(&mut self, dx: f64, dy: f64, at: gpui::Point<gpui::Pixels>, modifiers: gpui::Modifiers, cx: &mut Context<Self>) -> bool {
+        let scale = self.key.as_ref().map_or(1., |k| k.scale);
+        let bounds = self.viewport.get();
+        let px = f64::from(f32::from(at.x - bounds.left()));
+        let py = f64::from(f32::from(at.y - bounds.top()));
+        let page_y = py + f64::from(self.scroll) / scale;
+        let page_x = px + f64::from(self.scroll_x) / scale;
+        let inside = |a: &worker::ScrollArea| {
+            let y = if a.fixed { py } else { page_y };
+            let x = if a.fixed { px } else { page_x };
+            x >= a.rect.x && x < a.rect.x + a.rect.width && y >= a.rect.y && y < a.rect.y + a.rect.height
+        };
+        if let Some(i) = self.scroll_areas.iter().rposition(|a| inside(a) && a.takes(dx, dy)) {
+            let mut areas = self.scroll_areas.to_vec();
+            let a = &mut areas[i];
+            // Kept here as it will be, so wheel steps before the
+            // next render still know where the box's ends are.
+            a.offset = [(a.offset[0] + dx).clamp(0., a.max[0]), (a.offset[1] + dy).clamp(0., a.max[1])];
+            let _ = self.tx.send(worker::Message::ScrollBox { node: a.node, dx, dy });
+            self.scroll_areas = areas.into();
+            self.scrolled(cx);
+            cx.notify();
+            return true;
+        }
+        let user = self.root_viewport.map_or([false; 2], |r| r.user);
+        let x = self.scroll_x.saturating_add(if user[0] { (dx * scale).round() as i32 } else { 0 });
+        let y = self.scroll.saturating_add(if user[1] { (dy * scale).round() as i32 } else { 0 });
+        let old = [self.scroll_x, self.scroll];
+        self.scroll_page_to([x, y], modifiers, cx);
+        old != [self.scroll_x, self.scroll]
+    }
+    fn scroll_page_to(&mut self, to: [i32; 2], modifiers: gpui::Modifiers, cx: &mut Context<Self>) {
+        let old = [self.scroll_x, self.scroll];
+        let position = self.root_viewport.map_or(old, |v| v.clamp(to));
+        [self.scroll_x, self.scroll] = position;
+        if position == old {
             return;
         }
         self.send_input(worker::InputKind::Scroll, None, modifiers);
@@ -426,8 +491,10 @@ impl Browser {
             let mut recycle = Vec::new();
             let height = key.height as i32;
             let scroll = self.scroll;
+            let x = self.scroll_x;
+            let width = key.width as i32;
             self.tiles.retain(|(r, image)| {
-                let keep = r.y + r.height as i32 > scroll && r.y < scroll + height;
+                let keep = r.y + r.height as i32 > scroll && r.y < scroll + height && r.x + r.width as i32 > x && r.x < x + width;
                 if !keep {
                     recycle.push(image.clone());
                 }
@@ -457,6 +524,10 @@ impl Browser {
         }));
     }
     fn pointer(&mut self, at: gpui::Point<gpui::Pixels>, phase: u8, window: &mut Window, cx: &mut Context<Self>) {
+        let bounds = self.viewport.get();
+        if self.root_viewport.is_some_and(|v| f64::from(f32::from(at.x - bounds.left())) >= v.geometry.client[0] || f64::from(f32::from(at.y - bounds.top())) >= v.geometry.client[1]) {
+            return;
+        }
         self.send_input(
             match phase {
                 1 => worker::InputKind::Down,
@@ -518,6 +589,8 @@ impl Browser {
                 self.begin_navigation(self.history.current().clone(), false, false, window, cx);
             }
             "stop" => {
+                self.wheel_cancelled_through = self.wheel_serial;
+                self.wheel_pending.take();
                 self.cancel.cancel();
                 let _ = self.tx.send(worker::Message::CancelStylesheets(self.navigation));
                 self.id += 1;
@@ -556,22 +629,49 @@ impl Browser {
     fn recycle(&mut self, images: Vec<Arc<RenderImage>>) {
         self.retired.extend(images);
     }
-    fn merge_tiles(&mut self, tiles: Vec<(olo_web::paint::DeviceRect, Arc<RenderImage>)>) {
+    fn merge_tiles(&mut self, tiles: Vec<(olo_web::paint::DeviceRect, Arc<RenderImage>)>) -> bool {
         let mut recycle = Vec::new();
+        let mut changed = false;
         for (r, image) in tiles {
             if let Some(old) = self.tiles.iter_mut().find(|(old, _)| *old == r) {
                 let previous = std::mem::replace(&mut old.1, image);
                 if !Arc::ptr_eq(&previous, &old.1) {
+                    changed = true;
                     recycle.push(previous);
                 }
             } else {
+                changed = true;
                 self.tiles.push((r, image));
             }
         }
         self.recycle(recycle);
+        changed
     }
     fn reply(&mut self, message: worker::Reply, cx: &mut Context<Self>) {
         match message {
+            worker::Reply::DefaultWheel { navigation, serial, input, prevented } => {
+                let mut moved = false;
+                if navigation == self.navigation
+                    && serial > self.wheel_cancelled_through
+                    && !prevented
+                    && let worker::InputKind::Wheel { dx, dy } = input.kind
+                {
+                    let bounds = self.viewport.get();
+                    let at = point(bounds.left() + px((input.x - input.scroll_x) as f32), bounds.top() + px((input.y - input.scroll_y) as f32));
+                    let modifiers =
+                        gpui::Modifiers { shift: input.modifiers & 1 != 0, control: input.modifiers & 2 != 0, alt: input.modifiers & 4 != 0, platform: input.modifiers & 8 != 0, ..Default::default() };
+                    moved = self.wheel_default(dx, dy, at, modifiers, cx);
+                }
+                if olo_web::env_on!("OLO_SCROLL_DEBUG") {
+                    eprintln!("wheel reply {serial}: prevented {prevented}, moved {moved}, pending {:?}", self.wheel_pending.as_ref().map(|p| p.0));
+                }
+                if self.wheel_pending.as_ref().is_some_and(|(pending, _)| *pending == serial) {
+                    if let Some((_, pending)) = self.wheel_pending.take() {
+                        pending.complete(moved);
+                    }
+                }
+                return;
+            }
             worker::Reply::Location(id, url) if id == self.id => {
                 // Preserve the request cache key through redirects; display and
                 // persist the final URL. Reload uses this canonical location.
@@ -611,16 +711,30 @@ impl Browser {
             // The page has something to show: a frame, which asks it for its next.
             worker::Reply::WantFrame(id) if id == self.id => self.animating = true,
             worker::Reply::Error(id, s) if id == 0 || id == self.id => self.status = s,
-            worker::Reply::Ready { id, title, fallbacks, tiles, animating } if id == self.id => {
+            worker::Reply::Ready { id, title, fallbacks, tiles, animating, retained } if id == self.id => {
+                let status = self.blocked_action.map_or(title, str::to_owned);
+                let content_changed = std::mem::take(&mut self.content_changed);
+                let changed = self.merge_tiles(tiles) || content_changed || !retained || self.animating != animating || !self.document_ready || self.status != status || self.fallbacks != fallbacks;
                 self.animating = animating;
                 self.document_ready = true;
-                self.merge_tiles(tiles);
-                self.status = self.blocked_action.map_or(title, str::to_owned);
+                self.status = status;
                 self.fallbacks = fallbacks;
                 let (document, navigation) = self.snapshot_identity;
                 self.document_snapshot = serde_json::json!({"url":self.history.current().url,"navigation":navigation,"document":document,"fallbacks":self.fallbacks}).to_string().into();
+                if !changed {
+                    return;
+                }
             }
-            worker::Reply::Content { id, labels, extent, scroll, interaction_mask, document, target, focus_targets, scroll_areas, page_focus, live } if id == self.id => {
+            worker::Reply::Content { id, labels, extent, scroll, scroll_x, viewport, interaction_mask, document, target, focus_targets, scroll_areas, page_focus, live } if id == self.id => {
+                self.content_changed |= self.page_focus != page_focus
+                    || self.live != live
+                    || self.extent != extent
+                    || self.scroll != scroll
+                    || self.scroll_x != scroll_x
+                    || self.root_viewport != Some(viewport)
+                    || self.interaction.target != target
+                    || !Arc::ptr_eq(&self.focus_targets, &focus_targets)
+                    || self.snapshot_identity != (document, self.navigation);
                 self.labels = labels;
                 self.page_focus = page_focus;
                 self.live = live;
@@ -628,6 +742,8 @@ impl Browser {
                 self.interaction_mask = interaction_mask;
                 self.extent = extent;
                 self.scroll = scroll;
+                self.scroll_x = scroll_x;
+                self.root_viewport = Some(viewport);
                 self.interaction.target = target;
                 self.seek_anchor = false;
                 self.focus_scroll = None;
@@ -714,6 +830,7 @@ impl Render for Browser {
             .child(Button::new("Go").on_click(move |w, cx| go.update(cx, |v, cx| v.command("go", w, cx))))
             .child(Button::new("Stop").on_click(move |w, cx| stop.update(cx, |v, cx| v.command("stop", w, cx))));
         let p = theme::palette(cx);
+        let gutter_background = p.panel_background;
         let request = me.downgrade();
         let key = self.key.clone();
         let palette = p.clone();
@@ -741,7 +858,8 @@ impl Render for Browser {
         let me_shared = cx.entity();
         let viewport = self.viewport.clone();
         let scroll = self.scroll;
-        let extent = self.extent;
+        let scroll_x = self.scroll_x;
+        let root_viewport = self.root_viewport;
         let retired = std::mem::take(&mut self.retired);
         let animating = self.animating;
         let recycle = self.tx.clone();
@@ -831,13 +949,18 @@ impl Render for Browser {
                 }
                 let bounds = style::snap(window, bounds);
                 let scale = f64::from(window.scale_factor());
-                window.note_scroll([0., (f64::from(scroll) / scale) as f32, 0., (extent - f64::from(f32::from(bounds.size.height))).max(0.) as f32]);
-                window.paint_quad(gpui::fill(bounds, style::c(p.document_background)));
+                let room = root_viewport.map_or([0.; 2], |v| std::array::from_fn(|i| f64::from(v.max[i] - v.min[i]) / scale));
+                window.note_scroll([(f64::from(scroll_x) / scale) as f32, (f64::from(scroll) / scale) as f32, room[0] as f32, room[1] as f32]);
+                window.paint_quad(gpui::fill(bounds, style::c(root_viewport.map_or(p.document_background, |v| v.canvas))));
+                let content_bounds = root_viewport.map_or(bounds, |v| {
+                    let c = v.geometry.content;
+                    Bounds::new(point(bounds.left() + px(c.x as f32), bounds.top()), size(px(c.width as f32), px(c.height as f32)))
+                });
                 agent::record(window, cx, agent::Node { role: "Document", name: Some("Page".into()), value: Some(document_snapshot.clone()), bounds, enabled: true, ..Default::default() });
-                window.with_content_mask(Some(gpui::ContentMask { bounds }), |window| {
+                window.with_content_mask(Some(gpui::ContentMask { bounds: content_bounds }), |window| {
                     for (r, image) in &tiles {
                         let b = Bounds::new(
-                            point(bounds.left() + px((f64::from(r.x) / scale) as f32), bounds.top() + px((f64::from(r.y - scroll) / scale) as f32)),
+                            point(bounds.left() + px((f64::from(r.x - scroll_x) / scale) as f32), bounds.top() + px((f64::from(r.y - scroll) / scale) as f32)),
                             size(px((f64::from(r.width) / scale) as f32), px((f64::from(r.height) / scale) as f32)),
                         );
                         let _ = window.paint_image_nearest(b, image.clone());
@@ -846,10 +969,10 @@ impl Render for Browser {
                     // scrolled with it, the fixed layer not, a sticky layer
                     // shifted as the scroll has it (CSS Positioned Layout 3 §3.4).
                     let scroll_css = f64::from(scroll) / scale;
-                    let height_css = f64::from(f32::from(bounds.size.height));
+                    let height_css = root_viewport.map_or(f64::from(f32::from(bounds.size.height)), |v| v.geometry.client[1]);
                     let page_rect = |r: &olo_web::paint::DeviceRect| {
                         Bounds::new(
-                            point(bounds.left() + px((f64::from(r.x) / scale) as f32), bounds.top() + px((f64::from(r.y - scroll) / scale) as f32)),
+                            point(bounds.left() + px((f64::from(r.x - scroll_x) / scale) as f32), bounds.top() + px((f64::from(r.y - scroll) / scale) as f32)),
                             size(px((f64::from(r.width) / scale) as f32), px((f64::from(r.height) / scale) as f32)),
                         )
                     };
@@ -900,7 +1023,7 @@ impl Render for Browser {
                         };
                         let mask = clip.map(|c| gpui::ContentMask {
                             bounds: Bounds::new(
-                                point(bounds.left() + px((f64::from(c.x) / scale) as f32), bounds.top() + px((f64::from(c.y - scroll) / scale) as f32)),
+                                point(bounds.left() + px((f64::from(c.x - scroll_x) / scale) as f32), bounds.top() + px((f64::from(c.y - scroll) / scale) as f32)),
                                 size(px((f64::from(c.width) / scale) as f32), px((f64::from(c.height) / scale) as f32)),
                             ),
                         });
@@ -909,7 +1032,7 @@ impl Render for Browser {
                         for (r, radii, sigma, saturation, saturate_first) in backdrops {
                             let y = f64::from(if scrolled { r.y + my - scroll } else { r.y }) / scale + dy;
                             let b = Bounds::new(
-                                point(bounds.left() + px((f64::from(r.x + mx) / scale) as f32), bounds.top() + px(y as f32)),
+                                point(bounds.left() + px((f64::from(r.x + mx - if scrolled { scroll_x } else { 0 }) / scale) as f32), bounds.top() + px(y as f32)),
                                 size(px((f64::from(r.width) / scale) as f32), px((f64::from(r.height) / scale) as f32)),
                             );
                             let corners = gpui::Corners { top_left: px(radii[0]), top_right: px(radii[1]), bottom_right: px(radii[2]), bottom_left: px(radii[3]) };
@@ -923,7 +1046,7 @@ impl Render for Browser {
                                 for (r, image) in layer_tiles {
                                     let at = |x: f64, y: f64| {
                                         let (dx, dy) = (m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]);
-                                        point(bounds.left() + px((dx / scale) as f32), bounds.top() + px(((dy - f64::from(scroll)) / scale) as f32))
+                                        point(bounds.left() + px(((dx - f64::from(scroll_x)) / scale) as f32), bounds.top() + px(((dy - f64::from(scroll)) / scale) as f32))
                                     };
                                     // Half a texel in from its edges: sampled
                                     // between texels, an edge reads its atlas
@@ -944,7 +1067,7 @@ impl Render for Browser {
                             for (r, image) in layer_tiles {
                                 let y = f64::from(if scrolled { r.y + my - scroll } else { r.y }) / scale + dy;
                                 let b = Bounds::new(
-                                    point(bounds.left() + px((f64::from(r.x + mx) / scale) as f32), bounds.top() + px(y as f32)),
+                                    point(bounds.left() + px((f64::from(r.x + mx - if scrolled { scroll_x } else { 0 }) / scale) as f32), bounds.top() + px(y as f32)),
                                     size(px((f64::from(r.width) / scale) as f32), px((f64::from(r.height) / scale) as f32)),
                                 );
                                 // Tiles texel for pixel; a surface at another
@@ -958,7 +1081,13 @@ impl Render for Browser {
                         // The worker's labels reach past the viewport (they
                         // serve the scroll near it): agents read what shows.
                         let top = r.y - if *fixed { 0. } else { f64::from(scroll) / scale } + sticky.as_ref().map_or(0., shift);
-                        if top + r.height <= 0. || top >= height_css {
+                        let left = r.x - if *fixed { 0. } else { f64::from(scroll_x) / scale };
+                        let c = root_viewport.map(|v| v.geometry.content);
+                        if top + r.height <= 0.
+                            || top >= c.map_or(height_css, |c| c.height)
+                            || left + r.width <= c.map_or(0., |c| c.x)
+                            || left >= c.map_or(f64::from(f32::from(bounds.size.width)), |c| c.x + c.width)
+                        {
                             continue;
                         }
                         agent::record(
@@ -982,7 +1111,10 @@ impl Render for Browser {
                                 focused: link.as_ref().is_some_and(|l| Some(l.node) == focused) || control.is_some() && node.is_some() && (*node == focused || *node == page_focus),
                                 enabled: !control.as_ref().is_some_and(|c| c.disabled),
                                 bounds: Bounds::new(
-                                    point(bounds.left() + px(r.x as f32), bounds.top() + px((r.y - if *fixed { 0. } else { f64::from(scroll) / scale } + sticky.as_ref().map_or(0., shift)) as f32)),
+                                    point(
+                                        bounds.left() + px((r.x - if *fixed { 0. } else { f64::from(scroll_x) / scale }) as f32),
+                                        bounds.top() + px((r.y - if *fixed { 0. } else { f64::from(scroll) / scale } + sticky.as_ref().map_or(0., shift)) as f32),
+                                    ),
                                     size(px(r.width as f32), px(r.height as f32)),
                                 ),
                                 ..Default::default()
@@ -1001,7 +1133,10 @@ impl Render for Browser {
                                 role: "ScrollArea",
                                 value: Some(format!("{:.0},{:.0} of {:.0},{:.0}", a.offset[0], a.offset[1], a.max[0], a.max[1]).into()),
                                 enabled: true,
-                                bounds: Bounds::new(point(bounds.left() + px(a.rect.x as f32), bounds.top() + px(top as f32)), size(px(a.rect.width as f32), px(a.rect.height as f32))),
+                                bounds: Bounds::new(
+                                    point(bounds.left() + px((a.rect.x - if a.fixed { 0. } else { f64::from(scroll_x) / scale }) as f32), bounds.top() + px(top as f32)),
+                                    size(px(a.rect.width as f32), px(a.rect.height as f32)),
+                                ),
                                 ..Default::default()
                             },
                         );
@@ -1017,16 +1152,45 @@ impl Render for Browser {
         let up_link = me.clone();
         let leave_link = me.clone();
         let hover_link = me.clone();
-        // The page's scroll bar: the kit's slim one over its right edge,
-        // there when the pointer comes near or the page scrolls (in device
-        // pixels: where the view is, how much shows, the page's height).
-        let page_bar = self.key.as_ref().filter(|key| f64::from(key.height) < self.extent * key.scale).map(|key| {
-            let me = me.clone();
-            let (shown, total) = (key.height as f32, (self.extent * key.scale) as f32);
-            olo_ui::widgets::SlimScrollBar::new("page-scroll", self.scroll as f32, shown, total).on_scroll(move |to, _, cx| {
-                me.update(cx, |v, cx| v.scroll_page(to.round() as i32, gpui::Modifiers::default(), cx));
-            })
-        });
+        // Native bars occupy the exact space reserved by page layout.
+        // The same shared control handles either axis and accepts worker-owned
+        // positions; the full page surface still supplies window/media sizes.
+        let mut page_bars: Vec<gpui::AnyElement> = Vec::new();
+        if let Some(view) = self.root_viewport {
+            let g = view.geometry;
+            let scale = g.full.scale;
+            for axis in 0..2 {
+                if !g.bars[axis] {
+                    continue;
+                }
+                let me = me.clone();
+                let min = view.min[axis];
+                let position = if axis == 0 { self.scroll_x } else { self.scroll };
+                let shown = g.client[axis] as f32;
+                let total = shown + (f64::from(view.max[axis] - min) / scale) as f32;
+                let bar = olo_ui::widgets::ScrollBar::controlled(
+                    if axis == 0 { "page-scroll-x" } else { "page-scroll-y" },
+                    if axis == 0 { gpui::Axis::Horizontal } else { gpui::Axis::Vertical },
+                    (f64::from(position - min) / scale) as f32,
+                    shown,
+                    total,
+                )
+                .on_scroll(move |to, _, cx| {
+                    me.update(cx, |v, cx| {
+                        let mut position = [v.scroll_x, v.scroll];
+                        position[axis] = min + (f64::from(to) * scale).round() as i32;
+                        v.scroll_page_to(position, gpui::Modifiers::default(), cx);
+                    })
+                });
+                let (x, y, w, h) = if axis == 0 { (0., g.client[1], g.client[0], g.thickness) } else { (g.client[0], 0., g.thickness, g.client[1]) };
+                page_bars.push(div().absolute().left(px(x as f32)).top(px(y as f32)).w(px(w as f32)).h(px(h as f32)).child(bar).into_any_element());
+            }
+            if g.bars == [true, true] {
+                page_bars.push(
+                    div().absolute().left(px(g.client[0] as f32)).top(px(g.client[1] as f32)).w(px(g.thickness as f32)).h(px(g.thickness as f32)).bg(style::c(gutter_background)).into_any_element(),
+                );
+            }
+        }
         // Boxes scrolling inside the page (`overflow: auto`): a slim bar over
         // each one in view, as the page's (in CSS pixels: the box's offset,
         // its height, its content's).
@@ -1034,6 +1198,7 @@ impl Render for Browser {
             Some(key) => {
                 let view = f64::from(key.height) / key.scale;
                 let page_top = f64::from(self.scroll) / key.scale;
+                let page_left = f64::from(self.scroll_x) / key.scale;
                 self.scroll_areas
                     .iter()
                     .filter(|a| a.user[1] && a.max[1] > 0.5)
@@ -1065,7 +1230,16 @@ impl Render for Browser {
                                 cx.notify();
                             });
                         });
-                        Some(div().absolute().left(px(a.rect.x as f32)).top(px(top as f32)).w(px(a.rect.width as f32)).h(px(a.rect.height as f32)).child(bar).into_any_element())
+                        Some(
+                            div()
+                                .absolute()
+                                .left(px((a.rect.x - if a.fixed { 0. } else { page_left }) as f32))
+                                .top(px(top as f32))
+                                .w(px(a.rect.width as f32))
+                                .h(px(a.rect.height as f32))
+                                .child(bar)
+                                .into_any_element(),
+                        )
                     })
                     .collect()
             }
@@ -1078,8 +1252,8 @@ impl Render for Browser {
             .overflow_hidden()
             .relative()
             .child(surface)
-            .children(page_bar.map(|bar| div().absolute().top_0().left_0().size_full().child(bar)))
             .children(area_bars)
+            .children(page_bars)
             .on_mouse_move(move |e, w, cx| move_link.update(cx, |v, cx| v.pointer(e.position, 0, w, cx)))
             .on_mouse_down(gpui::MouseButton::Left, move |e, w, cx| down_link.update(cx, |v, cx| v.pointer(e.position, 1, w, cx)))
             .on_mouse_up(gpui::MouseButton::Left, move |e, w, cx| up_link.update(cx, |v, cx| v.pointer(e.position, 2, w, cx)))
@@ -1111,7 +1285,6 @@ impl Render for Browser {
                         ScrollDelta::Pixels(p) => (f32::from(p.x), f32::from(p.y)),
                         ScrollDelta::Lines(p) => (p.x * 40., p.y * 40.),
                     };
-                    let scale = f64::from(w.scale_factor());
                     // Over a scroll container with room that way: the box
                     // scrolls (the innermost, painted last), not the page.
                     let (mut dx, mut dy) = (-f64::from(delta_x), -f64::from(delta));
@@ -1119,33 +1292,18 @@ impl Render for Browser {
                     if e.modifiers.shift && dx == 0. {
                         (dx, dy) = (dy, 0.);
                     }
-                    let bounds = v.viewport.get();
-                    let px = f64::from(f32::from(e.position.x - bounds.left()));
-                    let py = f64::from(f32::from(e.position.y - bounds.top()));
-                    let page_y = py + f64::from(v.scroll) / scale;
-                    let inside = |a: &worker::ScrollArea| {
-                        let y = if a.fixed { py } else { page_y };
-                        px >= a.rect.x && px < a.rect.x + a.rect.width && y >= a.rect.y && y < a.rect.y + a.rect.height
-                    };
-                    if let Some(i) = v.scroll_areas.iter().rposition(|a| inside(a) && a.takes(dx, dy)) {
-                        let mut areas = v.scroll_areas.to_vec();
-                        let a = &mut areas[i];
-                        // Kept here as it will be, so wheel steps before the
-                        // next render still know where the box's ends are.
-                        a.offset = [(a.offset[0] + dx).clamp(0., a.max[0]), (a.offset[1] + dy).clamp(0., a.max[1])];
-                        let _ = v.tx.send(worker::Message::ScrollBox { node: a.node, dx, dy });
-                        v.scroll_areas = areas.into();
+                    if v.live {
+                        v.wheel_serial = v.wheel_serial.wrapping_add(1);
+                        if let Some(pending) = w.defer_wheel() {
+                            v.wheel_pending = Some((v.wheel_serial, pending));
+                        }
+                        if olo_web::env_on!("OLO_SCROLL_DEBUG") {
+                            eprintln!("wheel input {}: {dx},{dy}, pending {:?}", v.wheel_serial, v.wheel_pending.as_ref().map(|p| p.0));
+                        }
                         v.send_input(worker::InputKind::Wheel { dx, dy }, Some(e.position), e.modifiers);
-                        v.scrolled(cx);
-                        return;
+                    } else {
+                        v.wheel_default(dx, dy, e.position, e.modifiers, cx);
                     }
-                    // Sideways with nothing to take it: the page doesn't scroll sideways.
-                    if dy == 0. {
-                        v.send_input(worker::InputKind::Wheel { dx, dy }, Some(e.position), e.modifiers);
-                        return;
-                    }
-                    v.send_input(worker::InputKind::Wheel { dx: 0., dy: -f64::from(delta) }, Some(e.position), e.modifiers);
-                    v.scroll_page(v.scroll - (f64::from(delta) * scale).round() as i32, e.modifiers, cx);
                 })
             });
         div()
@@ -1273,7 +1431,7 @@ fn main() {
                 let v = v.read(cx);
                 let mut history = v.history.clone();
                 history.scroll(v.css_scroll());
-                serde_json::to_string(&Saved { source: history.current().url.clone(), scroll: v.css_scroll(), history: Some(history) }).unwrap_or_default()
+                serde_json::to_string(&Saved { source: history.current().url.clone(), scroll: v.css_scroll()[1], scroll_x: v.css_scroll()[0], history: Some(history) }).unwrap_or_default()
             })
         });
         let messages = view.clone();
