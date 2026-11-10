@@ -37,12 +37,19 @@ pub struct State {
     pub error: Mutex<Option<String>>,
     /// Loudness in thousandths (1000 as recorded), applied to the samples.
     pub volume: AtomicU32,
+    /// How fast it plays, in thousandths (1000 as recorded; 1500: 1.5×),
+    /// its pitch kept (`stretch`).
+    pub rate: AtomicU32,
+    /// Its first sound was sent (playing or paused as asked), or it
+    /// failed: until then a transport shown is drawn again as it opens.
+    pub started: AtomicBool,
 }
 
 enum Ev {
     Play,
     Pause,
     Seek(f64),
+    Rate(f64),
     Stop,
     Server(u32, Box<protocol::Command>),
     Timing(protocol::PlaybackLatency),
@@ -63,7 +70,7 @@ impl Player {
     /// Start `input`, playing or paused at the beginning.
     pub fn start_with(input: &Input, playing: bool) -> Player {
         let (tx, rx) = mpsc::channel();
-        let state = Arc::new(State { volume: AtomicU32::new(1000), ..Default::default() });
+        let state = Arc::new(State { volume: AtomicU32::new(1000), rate: AtomicU32::new(1000), ..Default::default() });
         let (input, st, tx2) = (input.clone(), state.clone(), tx.clone());
         std::thread::Builder::new()
             .name("audio".into())
@@ -73,9 +80,16 @@ impl Player {
                     *st.error.lock().unwrap() = Some(e);
                 }
                 st.playing.store(false, Ordering::Relaxed);
+                st.started.store(true, Ordering::Release);
             })
             .ok();
         Player { tx, state }
+    }
+
+    /// Still opening: its first sound not yet sent (`playing` says
+    /// false until it is, whatever it was asked).
+    pub fn opening(&self) -> bool {
+        !self.state.started.load(Ordering::Acquire)
     }
 
     pub fn toggle(&self) {
@@ -103,7 +117,25 @@ impl Player {
     pub fn set_volume(&self, volume: f64) {
         self.state.volume.store((volume.clamp(0.0, 1.0) * 1000.0).round() as u32, Ordering::Relaxed);
     }
+
+    /// Play at `rate` (0.25 to 2: a quarter as fast to twice), the
+    /// pitch as recorded; at once, from where it's heard.
+    pub fn set_rate(&self, rate: f64) {
+        let rate = rate.clamp(MIN_RATE, MAX_RATE);
+        self.state.rate.store((rate * 1000.0).round() as u32, Ordering::Relaxed);
+        let _ = self.tx.send(Ev::Rate(rate));
+    }
+
+    /// How fast it plays (1: as recorded).
+    pub fn rate(&self) -> f64 {
+        f64::from(self.state.rate.load(Ordering::Relaxed)) / 1000.0
+    }
 }
+
+/// The slowest and fastest sound and video play (Viewer and Quick Look's
+/// Playback Speed).
+pub const MIN_RATE: f64 = 0.25;
+pub const MAX_RATE: f64 = 2.0;
 
 /// The length of `input`'s sound in seconds (0 when unknown).
 pub fn probe(input: &Input) -> Result<f64, String> {
@@ -332,17 +364,42 @@ fn run(input: &Input, playing: bool, st: &State, tx: mpsc::Sender<Ev>, rx: mpsc:
     }
 
     let mut buf = Vec::new();
+    let (mut raw, mut samples) = (Vec::new(), Vec::new());
     // Bytes sent since the stream began, and where the read index was
     // reset by the last seek (the flush moves it to the write index).
     let mut written: i64 = 0;
     let mut base_bytes: i64 = 0;
     let mut base_secs = 0.0;
     let mut draining = false;
-    let mut send_chunk = |src: &mut Source, sock: &mut UnixStream, len: usize, written: &mut i64, draining: &mut bool| -> Result<(), String> {
+    // How fast it plays, and (at any rate but 1) what makes its samples
+    // so, its pitch kept.
+    let mut speed = 1.0;
+    let mut stretch: Option<crate::stretch::Stretch> = None;
+    let mut send_chunk = |src: &mut Source, stretch: &mut Option<crate::stretch::Stretch>, sock: &mut UnixStream, len: usize, written: &mut i64, draining: &mut bool| -> Result<(), String> {
         if *draining {
             return Ok(());
         }
-        src.read(len, &mut buf);
+        match stretch {
+            None => src.read(len, &mut buf),
+            Some(s) => {
+                let frame = src.channels * 2;
+                let want = len / frame;
+                while s.available() < want && !s.done() {
+                    src.read(((want as f64 * s.rate()) as usize + 1024) * frame, &mut raw);
+                    if raw.is_empty() {
+                        s.finish();
+                        break;
+                    }
+                    samples.clear();
+                    samples.extend(raw.as_chunks::<2>().0.iter().map(|b| i16::from_le_bytes(*b)));
+                    s.push(&samples);
+                }
+                samples.clear();
+                s.take(want, &mut samples);
+                buf.clear();
+                buf.extend(samples.iter().flat_map(|v| v.to_le_bytes()));
+            }
+        }
         let volume = st.volume.load(Ordering::Relaxed);
         if volume < 1000 {
             for s in buf.as_chunks_mut::<2>().0 {
@@ -358,8 +415,9 @@ fn run(input: &Input, playing: bool, st: &State, tx: mpsc::Sender<Ev>, rx: mpsc:
         }
         Ok(())
     };
-    send_chunk(&mut src, &mut sock, info.requested_bytes as usize, &mut written, &mut draining)?;
+    send_chunk(&mut src, &mut stretch, &mut sock, info.requested_bytes as usize, &mut written, &mut draining)?;
     st.playing.store(playing, Ordering::Relaxed);
+    st.started.store(true, Ordering::Release);
 
     let cork = |sock: &mut UnixStream, cork: bool| {
         protocol::write_command_message(sock, SEQ_OTHER, &protocol::Command::CorkPlaybackStream(protocol::CorkStreamParams { channel, cork }), version).map_err(err)
@@ -378,15 +436,33 @@ fn run(input: &Input, playing: bool, st: &State, tx: mpsc::Sender<Ev>, rx: mpsc:
             Ev::Seek(secs) => {
                 let secs = secs.clamp(0.0, duration.max(0.0));
                 src.seek(secs);
+                stretch = (speed != 1.0).then(|| crate::stretch::Stretch::new(rate, src.channels, speed));
                 protocol::write_command_message(&mut sock, SEQ_OTHER, &protocol::Command::FlushPlaybackStream(channel), version).map_err(err)?;
                 base_bytes = written;
                 base_secs = secs;
                 draining = false;
                 st.position_ms.store((secs * 1000.0) as u64, Ordering::Relaxed);
             }
+            // Another speed: what the server holds was made at the old
+            // one, so from where it's heard now, at the new.
+            Ev::Rate(r) => {
+                if r == speed {
+                    continue;
+                }
+                speed = r;
+                stretch = (speed != 1.0).then(|| crate::stretch::Stretch::new(rate, src.channels, speed));
+                if !st.finished.load(Ordering::Relaxed) {
+                    let at = st.position_ms.load(Ordering::Relaxed) as f64 / 1000.0;
+                    src.seek(at);
+                    protocol::write_command_message(&mut sock, SEQ_OTHER, &protocol::Command::FlushPlaybackStream(channel), version).map_err(err)?;
+                    base_bytes = written;
+                    base_secs = at;
+                    draining = false;
+                }
+            }
             Ev::Server(_, cmd) if matches!(*cmd, protocol::Command::Request(protocol::Request { channel: c, .. }) if c == channel) => {
                 let protocol::Command::Request(protocol::Request { length, .. }) = *cmd else { continue };
-                send_chunk(&mut src, &mut sock, length as usize, &mut written, &mut draining)?;
+                send_chunk(&mut src, &mut stretch, &mut sock, length as usize, &mut written, &mut draining)?;
                 protocol::write_command_message(&mut sock, SEQ_TIMING, &protocol::Command::GetPlaybackLatency(protocol::LatencyParams { channel, now: std::time::SystemTime::now() }), version)
                     .map_err(err)?;
             }
@@ -398,7 +474,8 @@ fn run(input: &Input, playing: bool, st: &State, tx: mpsc::Sender<Ev>, rx: mpsc:
             }
             Ev::Server(_, cmd) if matches!(*cmd, protocol::Command::Error(_)) => return Err(format!("Sound server error: {cmd:?}")),
             Ev::Timing(t) => {
-                let played = (t.read_offset - base_bytes).max(0) as f64 / bps as f64;
+                // (Heard at `speed`: that much more of the recording.)
+                let played = (t.read_offset - base_bytes).max(0) as f64 / bps as f64 * speed;
                 if !st.finished.load(Ordering::Relaxed) {
                     st.position_ms.store(((base_secs + played) * 1000.0) as u64, Ordering::Relaxed);
                 }

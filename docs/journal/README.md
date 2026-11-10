@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-09
 
+### Videos and sounds play at 0.25× to 2×
+
+*19:29* — Quick Look and the Viewer have a speed button at the transport's right end: it says the speed and opens the speeds over itself, 0.25× to 2×; > and < step faster and slower, and the Viewer's View menu has them too. The sound keeps its pitch (time-stretched, as SoundTouch does it) and the picture follows it.
+
+![Videos and sounds play at 0.25× to 2×](2026-11-09/192932-videos-and-sounds-play-at-0-25-to-2.png)
+
 ### AppImages show their own icons everywhere
 
 *18:04* — An AppImage's icon, read out of its image, now shows for its file in Tracker (with or without the .AppImage extension), for its running windows in Deskbar and the Twitcher, and under its own name in the window menu. Each AppImage known gets a hidden desktop entry, so every app lookup finds it; one run from a folder nothing looked at is found by its process (here DBDelve, run from a folder of its own).

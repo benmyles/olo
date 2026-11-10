@@ -146,12 +146,18 @@ struct Doc {
     video_edit: Option<video_edit::VideoEdit>,
     /// Opened to be edited (`--edit`): the editor as soon as it shows.
     pending_edit: bool,
+    /// How fast its sound or video plays (View ▸ Playback Speed): kept
+    /// as it goes to the file before or after, and over an upgrade.
+    speed: f64,
     _subs: Vec<Subscription>,
 }
 
 #[derive(Serialize, Deserialize)]
 struct Saved {
     files: Vec<PathBuf>,
+    /// Each file's playback speed (1 for one that plays nothing).
+    #[serde(default)]
+    speeds: Vec<f64>,
 }
 
 fn is_pdf(path: &Path) -> bool {
@@ -221,6 +227,7 @@ impl Viewer {
             trimming: false,
             video_edit: None,
             pending_edit: false,
+            speed: 1.0,
             on_disk: None,
             focus: cx.focus_handle(),
             crop_press: None,
@@ -481,6 +488,10 @@ impl Doc {
 
     /// (Re)load `path` into this window.
     fn load(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        // (The next file plays at the speed this one did.)
+        if let Content::Other(p) = &self.content {
+            self.speed = p.read(cx).chosen_rate();
+        }
         self.on_disk = stamp(&path);
         self.path = path.clone();
         self.sized = false;
@@ -568,7 +579,12 @@ impl Doc {
         }
         match item {
             Some(item) => {
-                let preview = cx.new(|cx| PreviewView::new(item, generation, true, cx));
+                let speed = self.speed;
+                let preview = cx.new(|cx| {
+                    let mut p = PreviewView::new(item, generation, true, cx);
+                    p.set_playback_rate(speed, cx);
+                    p
+                });
                 let sub = cx.subscribe(&preview, |d: &mut Doc, prev, e: &PreviewEvent, cx| {
                     // A photo wider than sRGB shown whole: the window draws
                     // in Display P3 while it shows one (`Gamut`).
@@ -1050,11 +1066,19 @@ impl Doc {
                     .shift_key("9")
                     .checked(zoom == VideoZoom::Fill)
                     .separator()
+                    .submenu(speed_menu(prev.read(cx).playback_rate().unwrap_or(1.0)))
                     .submenu(decode)
                     .separator()
                     .item(full_screen, "fullscreen")
                     .keys("F"),
             );
+        }
+        // A sound: its speed.
+        if let Content::Other(prev) = &self.content
+            && !prev.read(cx).is_video()
+            && let Some(rate) = prev.read(cx).playback_rate()
+        {
+            menus.push(Menu::new("View").submenu(speed_menu(rate)));
         }
         if picture {
             let crop = self.edit.as_ref().and_then(|e| e.crop.as_ref());
@@ -1187,6 +1211,26 @@ impl Doc {
         }
         if command.starts_with("edit-") {
             return self.video_edit_command(command, window, cx);
+        }
+        // View ▸ Playback Speed: a speed, or the next one up or down.
+        if command.starts_with("speed-")
+            && let Content::Other(prev) = &self.content
+        {
+            prev.update(cx, |p, cx| match command {
+                "speed-faster" => {
+                    p.step_playback_rate(1, cx);
+                }
+                "speed-slower" => {
+                    p.step_playback_rate(-1, cx);
+                }
+                c => {
+                    if let Some(rate) = olo_preview::ui::speed_command(c) {
+                        p.set_playback_rate(rate, cx);
+                    }
+                }
+            });
+            cx.notify();
+            return;
         }
         // View ▸ Decode With: the video decoded there from now on.
         if let Some(d) = command.strip_prefix("decode-")
@@ -1413,6 +1457,16 @@ impl Doc {
     fn keys(&mut self, e: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let key = e.keystroke.key.as_str();
         let plain = !e.keystroke.modifiers.modified();
+        // A video or a sound: `>` a speed faster, `<` slower.
+        if let Some(by) = olo_preview::ui::speed_key(&e.keystroke)
+            && let Content::Other(prev) = &self.content
+            && prev.read(cx).playback_rate().is_some()
+        {
+            prev.update(cx, |p, cx| p.step_playback_rate(by, cx));
+            cx.notify();
+            cx.stop_propagation();
+            return;
+        }
         let look = self.viewer.upgrade().is_some_and(|v| v.read(cx).look);
         // A look: Space or Escape puts it away.
         if look && plain && matches!(key, "space" | "escape") {
@@ -1958,6 +2012,21 @@ fn file_drag(path: &Path) -> gpui::OutgoingDrag {
     drag
 }
 
+/// View ▸ Playback Speed: slower and faster (`<` and `>`), then each
+/// speed, the one playing checked.
+fn speed_menu(rate: f64) -> Menu {
+    let speeds = olo_preview::ui::PreviewView::SPEEDS;
+    let menu = Menu::new("Playback Speed")
+        .item("Slower", "speed-slower")
+        .keys("<")
+        .enabled(rate > speeds[0] + 1e-6)
+        .item("Faster", "speed-faster")
+        .keys(">")
+        .enabled(rate < speeds[speeds.len() - 1] - 1e-6)
+        .separator();
+    olo_preview::ui::speed_items(menu, rate)
+}
+
 fn main() {
     olo_crash::install();
     // A session or install from before the rename (Tabula) carries on.
@@ -2004,7 +2073,15 @@ fn main() {
                 return Some("{}".into());
             }
             let files = v.docs.iter().map(|d| d.read(cx).path.clone()).collect();
-            serde_json::to_string(&Saved { files }).ok()
+            let speeds = v
+                .docs
+                .iter()
+                .map(|d| match &d.read(cx).content {
+                    Content::Other(p) => p.read(cx).chosen_rate(),
+                    _ => d.read(cx).speed,
+                })
+                .collect();
+            serde_json::to_string(&Saved { files, speeds }).ok()
         });
         // Unsaved changes, or a save under way: the new version waits.
         let docs = viewer.clone();
@@ -2012,8 +2089,13 @@ fn main() {
         let restored = olo_ui::restored_state().filter(|_| !look).and_then(|s| serde_json::from_str::<Saved>(&s).ok());
         viewer.update(cx, |v, cx| match restored {
             Some(saved) if !saved.files.is_empty() => {
-                for f in saved.files {
+                for (k, f) in saved.files.into_iter().enumerate() {
                     v.open_file(f, cx);
+                    if let Some(&speed) = saved.speeds.get(k)
+                        && let Some(doc) = v.docs.last()
+                    {
+                        doc.update(cx, |d, _| d.speed = speed);
+                    }
                 }
             }
             _ => v.handle_args(&args, None, cx),

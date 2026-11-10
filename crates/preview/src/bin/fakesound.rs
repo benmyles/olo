@@ -183,6 +183,9 @@ fn command(id: u32, c: &mut Client, seq: u32, cmd: Command, next_channel: &Mutex
                 s.buffer.clear();
                 s.read = s.written;
                 s.drain = None;
+                // (What was asked for and never sent, a drain's, isn't
+                // waited for: asked for again, as a server does.)
+                s.requested = 0;
                 eprintln!("fakesound: stream {ch}: flushed");
             }
             protocol::write_ack_message(&mut c.writer, seq)

@@ -340,11 +340,13 @@ struct Clock {
     show_next: bool,
     /// Waiting for the decoder since (`HOLD`).
     starving: Option<Instant>,
+    /// Media seconds a second (1.5: one and a half times as fast).
+    rate: f64,
 }
 
 impl Clock {
     fn now(&self) -> f64 {
-        self.at + self.since.map_or(0.0, |s| s.elapsed().as_secs_f64())
+        self.at + self.since.map_or(0.0, |s| s.elapsed().as_secs_f64() * self.rate)
     }
 }
 
@@ -393,7 +395,7 @@ impl Video {
             .flatten();
         Video {
             shared,
-            clock: Mutex::new(Clock { at: 0.0, since: playing.then(Instant::now), heard_ms: 0, finished: false, show_next: opts.picture, starving: None }),
+            clock: Mutex::new(Clock { at: 0.0, since: playing.then(Instant::now), heard_ms: 0, finished: false, show_next: opts.picture, starving: None, rate: 1.0 }),
             audio: opts.sound.then(|| audio::Player::start_with(input, playing)),
             duration,
             picture: opts.picture,
@@ -434,6 +436,29 @@ impl Video {
         if let Some(a) = &self.audio {
             a.set_volume(volume);
         }
+    }
+
+    /// Play at `rate` (`audio::MIN_RATE` to `MAX_RATE`: 0.25 to 2), the
+    /// sound's pitch kept; from where it is now. A decoder that can't
+    /// keep up at 2× passes pictures over, as at any speed.
+    pub fn set_rate(&self, rate: f64) {
+        let rate = rate.clamp(audio::MIN_RATE, audio::MAX_RATE);
+        {
+            let mut c = self.clock.lock().unwrap();
+            c.at = c.now();
+            if c.since.is_some() {
+                c.since = Some(Instant::now());
+            }
+            c.rate = rate;
+        }
+        if let Some(a) = &self.audio {
+            a.set_rate(rate);
+        }
+    }
+
+    /// How fast it plays (1: as recorded).
+    pub fn rate(&self) -> f64 {
+        self.clock.lock().unwrap().rate
     }
 
     pub fn error(&self) -> Option<String> {
@@ -593,7 +618,8 @@ impl Video {
                 sh.late += u64::from(now - f.pts > LATE);
             }
         }
-        let next = sh.queue.front().map(|f| Duration::from_secs_f64((f.pts - now).max(0.004)));
+        // (Its time in the media's seconds: sooner played faster.)
+        let next = sh.queue.front().map(|f| Duration::from_secs_f64(((f.pts - now) / c.rate).max(0.004)));
         let ended = if self.picture {
             // The pictures ran out (the sound ends by itself).
             sh.eof && sh.queue.is_empty() && sh.seek.is_none()

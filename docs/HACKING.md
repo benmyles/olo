@@ -8405,6 +8405,45 @@ panels. The document has the keyboard from the moment its window opens
   Olo's own making (`cargo run -p olo-video --example test_clip OUT.mp4`:
   each second its own colour): paused at second 4, → 14, → 24, ← 14,
   the same file.
+- Playback speed (Ben, 2026-11-09: "in quick look and viewer add the
+  ability to watch videos at custom speeds from 0.25x up to 2x"): a
+  button at the transport's right end says the speed ("1×", "1.5×";
+  agents: Button "Playback Speed", its value the speed) and opens the
+  speeds over itself as a menu field does (`menu::popup_over`): 0.25×,
+  0.5×, 0.75×, 1× (Normal), 1.25×, 1.5×, 1.75×, 2×
+  (`PreviewView::SPEEDS`, `speed_items`, commands `speed-1.5`). `>` is a
+  speed faster, `<` slower (YouTube's keys, `speed_key`), in Quick Look
+  and the Viewer; the Viewer's View ▸ Playback Speed has Slower and
+  Faster and every speed (a sound's View menu is just that). The speed
+  is the view's (`PreviewView::set_playback_rate`), kept as Quick Look
+  or the Viewer goes to the file before or after, and the Viewer keeps
+  each window's over an upgrade (`Saved::speeds`). The video's clock
+  runs `rate` media seconds a second (`video::Video::set_rate`, its next
+  picture due sooner), and the sound (`audio::Player::set_rate`) is
+  time-stretched with its pitch kept (`stretch.rs`: WSOLA as SoundTouch's
+  `TDStretch`: pieces of 40 ms at 2× to 90 ms at half speed, each moved
+  within 15–20 ms to where it best continues the last, by correlation
+  weighted to the window's middle, a coarse search every 4 samples at
+  48 kHz then a fine one, and an 8 ms cross-fade; at 1× it isn't in the
+  way at all). A change of speed starts the sound again from where it's
+  heard (the server's buffer was made at the old speed) and the player
+  reports its position in the media's seconds (what's been heard ×
+  speed), so the picture still follows the sound. `rate_without_pitch`
+  checks 0.25× to 2× on a 440 Hz tone: as long as the speed says
+  (within 0.1 s of 2 s ÷ speed), its pitch within 2%, and no step
+  between samples steeper than the tone's own (no clicks where pieces
+  meet). Tried headless with a 40 s VP9 and Opus clip (a beep each
+  second) against `olo-fakesound`: the position ran 1.00, 1.25, 0.50,
+  0.25 and 2.00 media seconds a second at those speeds, the picture's
+  own clock beside it, the sound arriving at its full 192,000 bytes a
+  second all along (a change of speed costs one flush); Quick Look kept
+  1.5× from one file to the next; the layout review clean at 1×, 1.5×
+  and 2×.
+- A sound's transport is drawn again every 100 ms while it plays, and
+  while it opens (`audio::Player::opening`, `State::started`): the
+  player says it's playing only once its first sound is sent, after the
+  view was first drawn, so a sound opened in the Viewer used to show ▶
+  at 0:00 while it played. Once it ends, nothing is drawn (0 frames).
 - Pictures: Image ▸ Rotate, Flip, Crop… (⌘K: `crop.rs`'s `CropFrame`,
   an overlay pinned over the preview with `.inset_0()`, its pointer's
   shape set as it paints; drag out a frame, move it or its edges, Return

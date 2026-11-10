@@ -3850,5 +3850,11 @@
   "title": "AppImages show their own icons everywhere",
   "caption": "An AppImage's icon, read out of its image, now shows for its file in Tracker (with or without the .AppImage extension), for its running windows in Deskbar and the Twitcher, and under its own name in the window menu. Each AppImage known gets a hidden desktop entry, so every app lookup finds it; one run from a folder nothing looked at is found by its process (here DBDelve, run from a folder of its own).",
   "image": "2026-11-09/180432-appimages-show-their-own-icons-everywhere.png"
+ },
+ {
+  "time": "2026-11-09T19:29:32",
+  "title": "Videos and sounds play at 0.25\u00d7 to 2\u00d7",
+  "caption": "Quick Look and the Viewer have a speed button at the transport's right end: it says the speed and opens the speeds over itself, 0.25\u00d7 to 2\u00d7; > and < step faster and slower, and the Viewer's View menu has them too. The sound keeps its pitch (time-stretched, as SoundTouch does it) and the picture follows it.",
+  "image": "2026-11-09/192932-videos-and-sounds-play-at-0-25-to-2.png"
  }
 ]
