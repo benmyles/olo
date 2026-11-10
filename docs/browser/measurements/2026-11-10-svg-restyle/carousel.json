@@ -1,0 +1,766 @@
+[
+  {
+    "company": "Substack",
+    "native": {
+      "offset": 1902,
+      "active": "Show testimonial from Substack",
+      "buttons": [
+        {
+          "name": "Show testimonial from Mindbody",
+          "class": "hds-button testimonial-carousel__navigation-button hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        },
+        {
+          "name": "Show testimonial from Jobber",
+          "class": "hds-button testimonial-carousel__navigation-button hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        },
+        {
+          "name": "Show testimonial from Substack",
+          "class": "hds-button testimonial-carousel__navigation-button testimonial-carousel__navigation-button--active hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(255, 103, 26)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(90, 91, 93)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        },
+        {
+          "name": "Show testimonial from Lightspeed",
+          "class": "hds-button testimonial-carousel__navigation-button hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        }
+      ]
+    },
+    "chrome": {
+      "offset": 1902,
+      "active": "Show testimonial from Substack",
+      "buttons": [
+        {
+          "name": "Show testimonial from Mindbody",
+          "class": "hds-button testimonial-carousel__navigation-button hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        },
+        {
+          "name": "Show testimonial from Jobber",
+          "class": "hds-button testimonial-carousel__navigation-button hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        },
+        {
+          "name": "Show testimonial from Substack",
+          "class": "hds-button testimonial-carousel__navigation-button testimonial-carousel__navigation-button--active hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(255, 103, 26)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(90, 91, 93)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        },
+        {
+          "name": "Show testimonial from Lightspeed",
+          "class": "hds-button testimonial-carousel__navigation-button hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "company": "Lightspeed",
+    "native": {
+      "offset": 2853,
+      "active": "Show testimonial from Lightspeed",
+      "buttons": [
+        {
+          "name": "Show testimonial from Mindbody",
+          "class": "hds-button testimonial-carousel__navigation-button hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        },
+        {
+          "name": "Show testimonial from Jobber",
+          "class": "hds-button testimonial-carousel__navigation-button hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        },
+        {
+          "name": "Show testimonial from Substack",
+          "class": "hds-button testimonial-carousel__navigation-button hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        },
+        {
+          "name": "Show testimonial from Lightspeed",
+          "class": "hds-button testimonial-carousel__navigation-button testimonial-carousel__navigation-button--active hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(237, 81, 83)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(0, 0, 0)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        }
+      ]
+    },
+    "chrome": {
+      "offset": 2853,
+      "active": "Show testimonial from Lightspeed",
+      "buttons": [
+        {
+          "name": "Show testimonial from Mindbody",
+          "class": "hds-button testimonial-carousel__navigation-button hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        },
+        {
+          "name": "Show testimonial from Jobber",
+          "class": "hds-button testimonial-carousel__navigation-button hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        },
+        {
+          "name": "Show testimonial from Substack",
+          "class": "hds-button testimonial-carousel__navigation-button hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        },
+        {
+          "name": "Show testimonial from Lightspeed",
+          "class": "hds-button testimonial-carousel__navigation-button testimonial-carousel__navigation-button--active hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(237, 81, 83)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(0, 0, 0)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "company": "Mindbody",
+    "native": {
+      "offset": 0,
+      "active": "Show testimonial from Mindbody",
+      "buttons": [
+        {
+          "name": "Show testimonial from Mindbody",
+          "class": "hds-button testimonial-carousel__navigation-button testimonial-carousel__navigation-button--active hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(45, 45, 45)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        },
+        {
+          "name": "Show testimonial from Jobber",
+          "class": "hds-button testimonial-carousel__navigation-button hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        },
+        {
+          "name": "Show testimonial from Substack",
+          "class": "hds-button testimonial-carousel__navigation-button hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        },
+        {
+          "name": "Show testimonial from Lightspeed",
+          "class": "hds-button testimonial-carousel__navigation-button hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        }
+      ]
+    },
+    "chrome": {
+      "offset": 0,
+      "active": "Show testimonial from Mindbody",
+      "buttons": [
+        {
+          "name": "Show testimonial from Mindbody",
+          "class": "hds-button testimonial-carousel__navigation-button testimonial-carousel__navigation-button--active hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(45, 45, 45)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        },
+        {
+          "name": "Show testimonial from Jobber",
+          "class": "hds-button testimonial-carousel__navigation-button hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        },
+        {
+          "name": "Show testimonial from Substack",
+          "class": "hds-button testimonial-carousel__navigation-button hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        },
+        {
+          "name": "Show testimonial from Lightspeed",
+          "class": "hds-button testimonial-carousel__navigation-button hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "company": "Jobber",
+    "native": {
+      "offset": 951,
+      "active": "Show testimonial from Jobber",
+      "buttons": [
+        {
+          "name": "Show testimonial from Mindbody",
+          "class": "hds-button testimonial-carousel__navigation-button hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        },
+        {
+          "name": "Show testimonial from Jobber",
+          "class": "hds-button testimonial-carousel__navigation-button testimonial-carousel__navigation-button--active hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(1, 41, 57)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        },
+        {
+          "name": "Show testimonial from Substack",
+          "class": "hds-button testimonial-carousel__navigation-button hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        },
+        {
+          "name": "Show testimonial from Lightspeed",
+          "class": "hds-button testimonial-carousel__navigation-button hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        }
+      ]
+    },
+    "chrome": {
+      "offset": 951,
+      "active": "Show testimonial from Jobber",
+      "buttons": [
+        {
+          "name": "Show testimonial from Mindbody",
+          "class": "hds-button testimonial-carousel__navigation-button hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        },
+        {
+          "name": "Show testimonial from Jobber",
+          "class": "hds-button testimonial-carousel__navigation-button testimonial-carousel__navigation-button--active hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(1, 41, 57)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        },
+        {
+          "name": "Show testimonial from Substack",
+          "class": "hds-button testimonial-carousel__navigation-button hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        },
+        {
+          "name": "Show testimonial from Lightspeed",
+          "class": "hds-button testimonial-carousel__navigation-button hds-button--primary",
+          "color": "rgb(255, 255, 255)",
+          "svg": [
+            {
+              "tag": "svg",
+              "fill": "none",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            },
+            {
+              "tag": "path",
+              "fill": "rgb(149, 164, 186)",
+              "color": "rgb(255, 255, 255)",
+              "opacity": "1"
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

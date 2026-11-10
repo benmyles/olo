@@ -263,6 +263,36 @@ impl Cache {
             fallbacks: self.fallbacks.clone(),
         })
     }
+    fn refresh_svg_texts(&mut self, previous: &[Arc<crate::svg::Viewport>], paint_only: bool, engine: &mut shaping::Engine, scope: &Scope, cancel: Option<&AtomicBool>) -> Result<()> {
+        let mut updated = None;
+        for (i, vector) in self.tree.vectors().iter().enumerate() {
+            let old = &previous[i];
+            if Arc::ptr_eq(vector, old) || (paint_only && vector.texts == old.texts) {
+                continue;
+            }
+            let mut paths = Vec::with_capacity(vector.texts.len());
+            for source in &vector.texts {
+                let path = match self.tree.styles.snapshot(source.node) {
+                    Some(style) => match crate::svg::text::shape(engine, scope, style, source, 1 << 20, cancel) {
+                        Ok(path) => path,
+                        Err(e @ (Error::Cancelled | Error::Stale)) => return Err(e),
+                        Err(_) => {
+                            self.fallbacks.note("SVG text not shaped", Some(source.node));
+                            None
+                        }
+                    },
+                    None => None,
+                };
+                paths.push(path);
+            }
+            let texts = updated.get_or_insert_with(|| self.svg_texts.to_vec());
+            texts[i] = paths.into_boxed_slice();
+        }
+        if let Some(texts) = updated {
+            self.svg_texts = Arc::from(texts);
+        }
+        Ok(())
+    }
     /// The shaped texts of an SVG viewport, cloned for its resolved geometry.
     pub(crate) fn svg_texts(&self, vector: u32) -> Vec<Option<tiny_skia::Path>> {
         self.svg_texts.get(vector as usize).map(|t| t.to_vec()).unwrap_or_default()
@@ -852,11 +882,12 @@ impl Layout {
     pub fn device_scale(&self) -> f64 {
         self.scale
     }
-    /// This layout with other styles for the same boxes: a restyle that
-    /// changed only what is painted keeps every position and size.
-    /// This layout with new styles over the same geometry: for a restyle
-    /// whose every change is paint-only.
-    pub fn with_styles(&self, styles: Arc<StyleTree>, document: &crate::dom::Document, images: Option<Arc<crate::image::Set>>) -> Self {
+    /// Replace image bindings over unchanged styles and geometry.
+    pub(crate) fn with_images(&self, document: &crate::dom::Document, images: Option<Arc<crate::image::Set>>) -> Self {
+        self.with_tree(self.cache.tree.rebound(self.cache.tree.styles().clone(), document, images))
+    }
+    fn with_tree(&self, tree: Tree) -> Self {
+        let styles = tree.styles();
         // Over the same geometry and positions (a restyle that kept the
         // layout changed nothing but paint), only a transform coming or
         // going changes which boxes are fixed (a transformed ancestor
@@ -867,7 +898,7 @@ impl Layout {
         {
             let _ = derived.set(d.clone());
         }
-        let tree = Arc::new(self.cache.tree.with_styles(styles, document, images));
+        let tree = Arc::new(tree);
         let cache = Arc::new(Cache {
             tree,
             texts: self.cache.texts.clone(),
@@ -891,6 +922,50 @@ impl Layout {
             derived,
             containers: self.containers.clone(),
         }
+    }
+    /// Refresh SVG style inputs while retaining the HTML layout. SVG text
+    /// outlines survive a paint-only change; changed text slots are shaped on
+    /// the worker before publishing the immutable snapshot.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn restyled(
+        &self,
+        styles: Arc<StyleTree>,
+        document: &crate::dom::Document,
+        images: Option<Arc<crate::image::Set>>,
+        engine: &mut shaping::Engine,
+        scope: &Scope,
+        found: &mut Fallbacks,
+        cancel: Option<&AtomicBool>,
+    ) -> Result<Self> {
+        let tree = self.cache.tree.restyled(styles, document, images, found, cancel)?;
+        let changed = !self.cache.tree.same_vectors(&tree);
+        let mut next = self.with_tree(tree);
+        if changed {
+            let cache = Arc::get_mut(&mut next.cache).ok_or(Error::Stale)?;
+            cache.refresh_svg_texts(self.cache.tree.vectors(), true, engine, scope, cancel)?;
+        }
+        Ok(next)
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn refresh_vectors(
+        &mut self,
+        document: &crate::dom::Document,
+        revision: u64,
+        nodes: &[crate::dom::NodeId],
+        paint_only: bool,
+        engine: &mut shaping::Engine,
+        scope: &Scope,
+        found: &mut Fallbacks,
+        cancel: Option<&AtomicBool>,
+    ) -> Result<()> {
+        let cache = Arc::get_mut(&mut self.cache).ok_or(Error::Stale)?;
+        let tree = Arc::get_mut(&mut cache.tree).ok_or(Error::Stale)?;
+        let previous = tree.vector_snapshot();
+        tree.refresh_vectors(document, revision, nodes.iter().copied(), found, cancel)?;
+        if paint_only && !Arc::ptr_eq(&previous, &tree.vector_snapshot()) {
+            cache.refresh_svg_texts(&previous, true, engine, scope, cancel)?;
+        }
+        Ok(())
     }
     /// What the rendering that made this layout substituted, by stage.
     pub fn recorded(&self) -> Arc<super::Recorded> {

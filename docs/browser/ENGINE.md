@@ -2888,3 +2888,35 @@ realms; five vertical-rl-start cases remain explicit ignored nonpasses.
 Transformed ancestor coordinates, snap/iframe traversal, nested classic gutters,
 full vertical layout, body/quirks behavior and exact interruption/timing remain
 open. See [evidence](measurements/2026-11-10-scroll-into-view/README.md).
+
+
+## Retained SVG style inputs and transactional animation sampling
+
+SVG source compilation records the styles read by visible geometry and its
+referenced resources. Cached clip definitions replay their dependency list.
+The layout tree indexes these inputs to source indices; patched styles inspect
+unshared chunks and rebuild only affected SVG sources. Individual sources are
+shared with previous snapshots. HTML geometry and unchanged SVG text outlines
+remain retained. In-place script measurement patches use the same refresh path.
+Changing an id conservatively rebuilds sources because it can retarget a URL
+without changing computed values. A failed mutable-style borrow must not advance
+the tree's document revision. New dependencies and index storage are included
+in retained-storage accounting; source loads preserve worker quotas/cancellation.
+
+SVG paint signatures include immutable style identities as well as compiled
+geometry. This covers style-driven gradient/clip changes whose color or geometry
+was not represented fully in the old source fingerprint. Full SVG semantics
+and existing exact-pixel fixture gaps remain open. Partial-stage fallback
+counts retain the engine's conservative max-merge policy.
+
+The render transaction owns pending timeline/animation/container state. Success
+commits it with the new scene; failure leaves the previous state available for
+retry. This repairs cancellation at transition completion, which previously
+removed the final sample while the scene still showed its intermediate color.
+The regression also checks that an aborted frame publishes no completion event
+and that retry emits exactly one. This change adds no idle work or timers.
+
+[Evidence and release costs](measurements/2026-11-10-svg-restyle/README.md)
+include120 cached-versus-fresh pixel comparisons, in-place measurements,
+reference retargeting, cancellation, and live Stripe selection captures.
+Stripe remains0/30; the corpus remains0/100.

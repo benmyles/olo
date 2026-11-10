@@ -1,0 +1,22 @@
+{
+  "build": {
+    "command": "cargo build --release --workspace",
+    "exit": 0,
+    "log": "final-build.log"
+  },
+  "test": {
+    "command": "cargo test --release --workspace",
+    "exit": 0,
+    "log": "test-workspace.log",
+    "suites": 262,
+    "passed": 2273,
+    "failed": 0,
+    "ignored": 140
+  },
+  "targeted": {
+    "command": "cargo test --release -p olo-web --test measure --test svg_page",
+    "exit": 0,
+    "passed": 48
+  },
+  "note": "Final production binary predates only test-markup and documentation edits. Earlier failing runs are retained separately."
+}

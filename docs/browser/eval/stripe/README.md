@@ -14,6 +14,19 @@ without a dedicated eval environment; no personal account is part of this run.
 
 ## Latest checkpoint
 
+2026-11-10, retained SVG styles and transition cancellation: Jobber's painted
+selection now matches Chrome in all15 theme/scale captures. The baseline kept
+an old highlight in five captures; source invalidation alone left one failure,
+traced to consuming transition completion during a cancelled render. Both
+paths now have regressions. All four testimonial controls match endpoints and
+computed fills at1×. Native widget reviews are clean. See
+[SVG restyle evidence](../../measurements/2026-11-10-svg-restyle/README.md).
+Next: events/footer geometry and the remaining recorded journeys. These checks
+close the diagnosed highlight failures, not whole-page visual parity or site
+acceptance. Acceptance remains0/30.
+
+The preceding checkpoint follows:
+
 2026-11-10, initial ancestor/smooth scrolling: the Jobber control now reaches
 Chrome's endpoint in all15 theme/scale settings using actual pointer clicks.
 At1×, Substack, Lightspeed, Mindbody and Jobber all switch to matching positions;

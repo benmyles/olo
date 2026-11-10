@@ -1,0 +1,9 @@
+{
+  "base_commit": "eb198d8447f159cca15558fc2c287a542182090e",
+  "merged_head": "343b606b3269437c5c94bac434c2220dc72de61a",
+  "sha256": {
+    "before": "0a4f984731c549fd81f4cbf1162ac775693264f5a9465e61b01e14ab77ddcd3d",
+    "svg-only": "19eecc9e9fd5e0b12a53383f79f74f937ddcb5acb5f17b2cb4250c7eb25258b8",
+    "after": "f18993b6e51464b377f617f21f1a40efd97482dd99317dad4e9c431985c16d72"
+  }
+}

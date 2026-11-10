@@ -55,8 +55,16 @@ The actual Jobber button now reaches Chrome's endpoint in all15 live
 configurations. Native review findings are empty, but page pixels and selection
 transition behavior still need comparison. See
 [scrolling evidence](measurements/2026-11-10-scroll-into-view/README.md).
-**Next: finish testimonial visual/interaction parity, then investigate the
-events/footer layouts.**
+Retained SVG sources now refresh their changed style inputs, and cancelling a
+render no longer consumes transition completion before its pixels are published.
+Jobber's painted selection matches Chrome in all15 final captures; all four
+controls match endpoints and computed fills at1×. See
+[SVG restyle evidence](measurements/2026-11-10-svg-restyle/README.md).
+**Next: investigate events/footer geometry, then finish the remaining journeys
+and exact-pixel comparisons.**
+Also profile the SVG checkpoint's one 1.25× root-scroll hitch (9.55 ms draw,
+above the 8.3 ms budget); the release ABBA evidence preserves it. Idle CPU and
+frames remain zero, but this does not close the performance acceptance gate.
 See [fractional fitting evidence](measurements/2026-11-10-fractional-fit/README.md),
 [query measurement evidence](measurements/2026-11-10-query-measurement/README.md)
 and [inline spacing evidence](measurements/2026-11-10-inline-spacing/README.md).

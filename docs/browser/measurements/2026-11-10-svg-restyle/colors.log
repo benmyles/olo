@@ -1,0 +1,5 @@
+/var/tmp/codex-browser-svg-refresh/check-colors.py:15: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+  crop=im.crop(tuple(round(n*scale) for n in [315,515+shift,460,585+shift]));c=Counter(crop.getdata())
+before 10 / 15 active; nonpasses [('dark', 1.5), ('dark', 2), ('night', 1.25), ('night', 1.75), ('night', 2)]
+after-svg-only 14 / 15 active; nonpasses [('dark', 1.75)]
+after 15 / 15 active; nonpasses []

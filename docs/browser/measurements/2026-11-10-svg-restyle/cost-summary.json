@@ -1,0 +1,68 @@
+[
+  {
+    "scale": 1.25,
+    "before": {
+      "cached": 1.443,
+      "changed": 1.0310000000000001,
+      "unrelated": 0.7255,
+      "frameTimes": 8.333,
+      "cpu_per_resize": 16.25,
+      "rss_kib": 161968.0,
+      "drag_first_ms": 33.85,
+      "wheel_first_ms": 17.5,
+      "hitches": 0,
+      "stationary_frames": 6,
+      "max_draw_ms": 5.03,
+      "idle_cpu": 0.0,
+      "idle_frames": 0
+    },
+    "after": {
+      "cached": 1.4365,
+      "changed": 1.172,
+      "unrelated": 0.7415,
+      "frameTimes": 8.3335,
+      "cpu_per_resize": 18.125,
+      "rss_kib": 168132.0,
+      "drag_first_ms": 34.5,
+      "wheel_first_ms": 17.1,
+      "hitches": 1,
+      "stationary_frames": 6,
+      "max_draw_ms": 9.55,
+      "idle_cpu": 0.0,
+      "idle_frames": 0
+    }
+  },
+  {
+    "scale": 2,
+    "before": {
+      "cached": 1.7265000000000001,
+      "changed": 0.998,
+      "unrelated": 0.7404999999999999,
+      "frameTimes": 8.333,
+      "cpu_per_resize": 22.5,
+      "rss_kib": 164972.0,
+      "drag_first_ms": 34.45,
+      "wheel_first_ms": 17.1,
+      "hitches": 0,
+      "stationary_frames": 6,
+      "max_draw_ms": 7.45,
+      "idle_cpu": 0.0,
+      "idle_frames": 0
+    },
+    "after": {
+      "cached": 1.6309999999999998,
+      "changed": 1.2505000000000002,
+      "unrelated": 0.7525,
+      "frameTimes": 8.322,
+      "cpu_per_resize": 20.0,
+      "rss_kib": 165662.0,
+      "drag_first_ms": 36.75,
+      "wheel_first_ms": 17.1,
+      "hitches": 0,
+      "stationary_frames": 6,
+      "max_draw_ms": 2.63,
+      "idle_cpu": 0.0,
+      "idle_frames": 0
+    }
+  }
+]

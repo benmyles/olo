@@ -1,0 +1,3077 @@
+[
+  {
+    "mode": "light",
+    "scale": 1,
+    "native": {
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "dpr": 1,
+      "scroll": [
+        0,
+        8111
+      ],
+      "active": "Show testimonial from Jobber",
+      "offset": 951,
+      "container": [
+        17,
+        20.89477724806784,
+        951,
+        378.68
+      ],
+      "cards": [
+        [
+          -934,
+          20.89477724806784,
+          951,
+          306.68
+        ],
+        [
+          17,
+          20.89477724806784,
+          951,
+          306.68
+        ],
+        [
+          968,
+          20.89477724806784,
+          951,
+          306.68
+        ],
+        [
+          1919,
+          20.89477724806784,
+          951,
+          306.68
+        ]
+      ]
+    },
+    "chrome": {
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "dpr": 1,
+      "scroll": [
+        0,
+        8111
+      ],
+      "active": "Show testimonial from Jobber",
+      "offset": 951,
+      "container": [
+        17,
+        20.453125,
+        951,
+        378.625
+      ],
+      "cards": [
+        [
+          -934,
+          20.453125,
+          951,
+          306.625
+        ],
+        [
+          17,
+          20.453125,
+          951,
+          306.625
+        ],
+        [
+          968,
+          20.453125,
+          951,
+          306.625
+        ],
+        [
+          1919,
+          20.453125,
+          951,
+          306.625
+        ]
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.0,
+        "dark": false,
+        "findings": []
+      }
+    ],
+    "native_action": {
+      "clicked": [
+        432.0,
+        590.0
+      ],
+      "matched": {
+        "window": 3,
+        "role": "Button",
+        "name": "Show testimonial from Jobber",
+        "x": 316.75,
+        "y": 539.5747680664062,
+        "width": 229.75,
+        "height": 100.0,
+        "center": [
+          432.0,
+          590.0
+        ]
+      },
+      "after": {
+        "window": {
+          "id": 3,
+          "app_id": "olo.browser",
+          "title": "Browser"
+        },
+        "focused": null
+      }
+    },
+    "chrome_action": {
+      "clicked": [
+        432.0,
+        602.0
+      ],
+      "matched": {
+        "window": 2,
+        "role": "Button",
+        "name": "Show testimonial from Jobber",
+        "x": 316.75,
+        "y": 552.078125,
+        "width": 229.75,
+        "height": 100.0,
+        "center": [
+          432.0,
+          602.0
+        ]
+      },
+      "after": {
+        "window": {
+          "id": 2,
+          "app_id": "google-chrome",
+          "title": "Stripe | Financial Infrastructure to Grow Your Revenue - Google Chrome"
+        },
+        "focused": {
+          "window": 2,
+          "role": "Button",
+          "name": "Show testimonial from Jobber",
+          "x": 316.75,
+          "y": 552.078125,
+          "width": 229.75,
+          "height": 100.0,
+          "center": [
+            432.0,
+            602.0
+          ],
+          "focused": true
+        }
+      }
+    }
+  },
+  {
+    "mode": "light",
+    "scale": 1.25,
+    "native": {
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "dpr": 1.25,
+      "scroll": [
+        0,
+        8111.2
+      ],
+      "active": "Show testimonial from Jobber",
+      "offset": 951.2,
+      "container": [
+        16.8,
+        19.621151980931245,
+        951.2,
+        378.48
+      ],
+      "cards": [
+        [
+          -934.4000000000001,
+          19.621151980931245,
+          951.2,
+          306.48
+        ],
+        [
+          16.799999999999955,
+          19.621151980931245,
+          951.2,
+          306.48
+        ],
+        [
+          968,
+          19.621151980931245,
+          951.2,
+          306.48
+        ],
+        [
+          1919.2000000000005,
+          19.621151980931245,
+          951.2,
+          306.48
+        ]
+      ]
+    },
+    "chrome": {
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "dpr": 1.25,
+      "scroll": [
+        0,
+        8111.2001953125
+      ],
+      "active": "Show testimonial from Jobber",
+      "offset": 951.2000122070312,
+      "container": [
+        16.80000114440918,
+        19.975000381469727,
+        951.2000122070312,
+        378.45001220703125
+      ],
+      "cards": [
+        [
+          -934.4000244140625,
+          19.975000381469727,
+          951.2000122070312,
+          306.45001220703125
+        ],
+        [
+          16.80000114440918,
+          19.975000381469727,
+          951.2000122070312,
+          306.45001220703125
+        ],
+        [
+          968,
+          19.975000381469727,
+          951.2000122070312,
+          306.45001220703125
+        ],
+        [
+          1919.2000732421875,
+          19.975000381469727,
+          951.2000122070312,
+          306.45001220703125
+        ]
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.25,
+        "dark": false,
+        "findings": []
+      }
+    ],
+    "native_action": {
+      "clicked": [
+        432.0,
+        589.0
+      ],
+      "matched": {
+        "window": 3,
+        "role": "Button",
+        "name": "Show testimonial from Jobber",
+        "x": 316.6000061035156,
+        "y": 538.5011596679688,
+        "width": 229.80001831054688,
+        "height": 100.0,
+        "center": [
+          432.0,
+          589.0
+        ],
+        "focused": true
+      },
+      "after": {
+        "window": {
+          "id": 3,
+          "app_id": "olo.browser",
+          "title": "Browser"
+        },
+        "focused": {
+          "window": 3,
+          "role": "Button",
+          "name": "Show testimonial from Jobber",
+          "x": 316.6000061035156,
+          "y": 538.5011596679688,
+          "width": 229.80001831054688,
+          "height": 100.0,
+          "center": [
+            432.0,
+            589.0
+          ],
+          "focused": true
+        }
+      }
+    },
+    "chrome_action": {
+      "clicked": [
+        432.0,
+        601.0
+      ],
+      "matched": {
+        "window": 2,
+        "role": "Button",
+        "name": "Show testimonial from Jobber",
+        "x": 316.6000061035156,
+        "y": 551.425048828125,
+        "width": 229.8000030517578,
+        "height": 100.0,
+        "center": [
+          432.0,
+          601.0
+        ],
+        "focused": true
+      },
+      "after": {
+        "window": {
+          "id": 2,
+          "app_id": "google-chrome",
+          "title": "Stripe | Financial Infrastructure to Grow Your Revenue - Google Chrome"
+        },
+        "focused": {
+          "window": 2,
+          "role": "Button",
+          "name": "Show testimonial from Jobber",
+          "x": 316.6000061035156,
+          "y": 551.425048828125,
+          "width": 229.8000030517578,
+          "height": 100.0,
+          "center": [
+            432.0,
+            601.0
+          ],
+          "focused": true
+        }
+      }
+    }
+  },
+  {
+    "mode": "light",
+    "scale": 1.5,
+    "native": {
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "dpr": 1.5,
+      "scroll": [
+        0,
+        8111.333333333333
+      ],
+      "active": "Show testimonial from Jobber",
+      "offset": 951.3333333333334,
+      "container": [
+        16.666666666666668,
+        17.83456846950594,
+        951.3333333333334,
+        378.3466666666667
+      ],
+      "cards": [
+        [
+          -934.6666666666667,
+          17.83456846950594,
+          951.3333333333334,
+          306.3466666666667
+        ],
+        [
+          16.66666666666663,
+          17.83456846950594,
+          951.3333333333334,
+          306.3466666666667
+        ],
+        [
+          968.0000000000001,
+          17.83456846950594,
+          951.3333333333334,
+          306.3466666666667
+        ],
+        [
+          1919.333333333333,
+          17.83456846950594,
+          951.3333333333334,
+          306.3466666666667
+        ]
+      ]
+    },
+    "chrome": {
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "dpr": 1.5,
+      "scroll": [
+        0,
+        8111.33349609375
+      ],
+      "active": "Show testimonial from Jobber",
+      "offset": 951.3333129882812,
+      "container": [
+        16.666667938232422,
+        17.64583396911621,
+        951.3333740234375,
+        378.32293701171875
+      ],
+      "cards": [
+        [
+          -934.6666870117188,
+          17.64583396911621,
+          951.3333740234375,
+          306.32293701171875
+        ],
+        [
+          16.666667938232422,
+          17.64583396911621,
+          951.3333740234375,
+          306.32293701171875
+        ],
+        [
+          968,
+          17.64583396911621,
+          951.3333740234375,
+          306.32293701171875
+        ],
+        [
+          1919.3333740234375,
+          17.64583396911621,
+          951.3333740234375,
+          306.32293701171875
+        ]
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.5,
+        "dark": false,
+        "findings": []
+      }
+    ],
+    "native_action": {
+      "clicked": [
+        431.0,
+        586.0
+      ],
+      "matched": {
+        "window": 3,
+        "role": "Button",
+        "name": "Show testimonial from Jobber",
+        "x": 316.5,
+        "y": 536.1812744140625,
+        "width": 229.83331298828125,
+        "height": 100.00003051757812,
+        "center": [
+          431.0,
+          586.0
+        ],
+        "focused": true
+      },
+      "after": {
+        "window": {
+          "id": 3,
+          "app_id": "olo.browser",
+          "title": "Browser"
+        },
+        "focused": {
+          "window": 3,
+          "role": "Button",
+          "name": "Show testimonial from Jobber",
+          "x": 316.5,
+          "y": 536.1812744140625,
+          "width": 229.83331298828125,
+          "height": 100.00003051757812,
+          "center": [
+            431.0,
+            586.0
+          ],
+          "focused": true
+        }
+      }
+    },
+    "chrome_action": {
+      "clicked": [
+        431.0,
+        599.0
+      ],
+      "matched": {
+        "window": 2,
+        "role": "Button",
+        "name": "Show testimonial from Jobber",
+        "x": 316.5,
+        "y": 548.96875,
+        "width": 229.83334350585938,
+        "height": 100.0,
+        "center": [
+          431.0,
+          599.0
+        ],
+        "focused": true
+      },
+      "after": {
+        "window": {
+          "id": 2,
+          "app_id": "google-chrome",
+          "title": "Stripe | Financial Infrastructure to Grow Your Revenue - Google Chrome"
+        },
+        "focused": {
+          "window": 2,
+          "role": "Button",
+          "name": "Show testimonial from Jobber",
+          "x": 316.5,
+          "y": 548.96875,
+          "width": 229.83334350585938,
+          "height": 100.0,
+          "center": [
+            431.0,
+            599.0
+          ],
+          "focused": true
+        }
+      }
+    }
+  },
+  {
+    "mode": "light",
+    "scale": 1.75,
+    "native": {
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "dpr": 1.75,
+      "scroll": [
+        0,
+        8110.857142857143
+      ],
+      "active": "Show testimonial from Jobber",
+      "offset": 952,
+      "container": [
+        16.571428571428573,
+        18.60587785632015,
+        952,
+        378.2514285714286
+      ],
+      "cards": [
+        [
+          -935.4285714285714,
+          18.60587785632015,
+          952,
+          306.2514285714286
+        ],
+        [
+          16.571428571428555,
+          18.60587785632015,
+          952,
+          306.2514285714286
+        ],
+        [
+          968.5714285714287,
+          18.60587785632015,
+          952,
+          306.2514285714286
+        ],
+        [
+          1920.5714285714284,
+          18.60587785632015,
+          952,
+          306.2514285714286
+        ]
+      ]
+    },
+    "chrome": {
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "dpr": 1.75,
+      "scroll": [
+        0,
+        8110.85693359375
+      ],
+      "active": "Show testimonial from Jobber",
+      "offset": 952,
+      "container": [
+        16.571430206298828,
+        18.83928680419922,
+        952.0000610351562,
+        378.2321472167969
+      ],
+      "cards": [
+        [
+          -935.4285888671875,
+          18.83928680419922,
+          952.0000610351562,
+          306.2321472167969
+        ],
+        [
+          16.571430206298828,
+          18.83928680419922,
+          952.0000610351562,
+          306.2321472167969
+        ],
+        [
+          968.5714721679688,
+          18.83928680419922,
+          952.0000610351562,
+          306.2321472167969
+        ],
+        [
+          1920.571533203125,
+          18.83928680419922,
+          952.0000610351562,
+          306.2321472167969
+        ]
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.75,
+        "dark": false,
+        "findings": []
+      }
+    ],
+    "native_action": {
+      "clicked": [
+        432.0,
+        587.0
+      ],
+      "matched": {
+        "window": 3,
+        "role": "Button",
+        "name": "Show testimonial from Jobber",
+        "x": 316.5714416503906,
+        "y": 537.1430053710938,
+        "width": 230.0,
+        "height": 100.0,
+        "center": [
+          432.0,
+          587.0
+        ],
+        "focused": true
+      },
+      "after": {
+        "window": {
+          "id": 3,
+          "app_id": "olo.browser",
+          "title": "Browser"
+        },
+        "focused": {
+          "window": 3,
+          "role": "Button",
+          "name": "Show testimonial from Jobber",
+          "x": 316.5714416503906,
+          "y": 537.1430053710938,
+          "width": 230.0,
+          "height": 100.0,
+          "center": [
+            432.0,
+            587.0
+          ],
+          "focused": true
+        }
+      }
+    },
+    "chrome_action": {
+      "clicked": [
+        432.0,
+        600.0
+      ],
+      "matched": {
+        "window": 2,
+        "role": "Button",
+        "name": "Show testimonial from Jobber",
+        "x": 316.5714416503906,
+        "y": 550.0714111328125,
+        "width": 230.00001525878906,
+        "height": 100.00000762939453,
+        "center": [
+          432.0,
+          600.0
+        ],
+        "focused": true
+      },
+      "after": {
+        "window": {
+          "id": 2,
+          "app_id": "google-chrome",
+          "title": "Stripe | Financial Infrastructure to Grow Your Revenue - Google Chrome"
+        },
+        "focused": {
+          "window": 2,
+          "role": "Button",
+          "name": "Show testimonial from Jobber",
+          "x": 316.5714416503906,
+          "y": 550.0714111328125,
+          "width": 230.00001525878906,
+          "height": 100.00000762939453,
+          "center": [
+            432.0,
+            600.0
+          ],
+          "focused": true
+        }
+      }
+    }
+  },
+  {
+    "mode": "light",
+    "scale": 2,
+    "native": {
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "dpr": 2,
+      "scroll": [
+        0,
+        8111
+      ],
+      "active": "Show testimonial from Jobber",
+      "offset": 951,
+      "container": [
+        17,
+        17.43383974806784,
+        951,
+        377.68
+      ],
+      "cards": [
+        [
+          -934,
+          17.43383974806784,
+          951,
+          305.68
+        ],
+        [
+          17,
+          17.43383974806784,
+          951,
+          305.68
+        ],
+        [
+          968,
+          17.43383974806784,
+          951,
+          305.68
+        ],
+        [
+          1919,
+          17.43383974806784,
+          951,
+          305.68
+        ]
+      ]
+    },
+    "chrome": {
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "dpr": 2,
+      "scroll": [
+        0,
+        8111
+      ],
+      "active": "Show testimonial from Jobber",
+      "offset": 951,
+      "container": [
+        17,
+        17.265625,
+        951,
+        377.6640625
+      ],
+      "cards": [
+        [
+          -934,
+          17.265625,
+          951,
+          305.6640625
+        ],
+        [
+          17,
+          17.265625,
+          951,
+          305.6640625
+        ],
+        [
+          968,
+          17.265625,
+          951,
+          305.6640625
+        ],
+        [
+          1919,
+          17.265625,
+          951,
+          305.6640625
+        ]
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 2.0,
+        "dark": false,
+        "findings": []
+      }
+    ],
+    "native_action": {
+      "clicked": [
+        432.0,
+        585.0
+      ],
+      "matched": {
+        "window": 3,
+        "role": "Button",
+        "name": "Show testimonial from Jobber",
+        "x": 316.75,
+        "y": 535.1138305664062,
+        "width": 229.75,
+        "height": 100.0,
+        "center": [
+          432.0,
+          585.0
+        ],
+        "focused": true
+      },
+      "after": {
+        "window": {
+          "id": 3,
+          "app_id": "olo.browser",
+          "title": "Browser"
+        },
+        "focused": {
+          "window": 3,
+          "role": "Button",
+          "name": "Show testimonial from Jobber",
+          "x": 316.75,
+          "y": 535.1138305664062,
+          "width": 229.75,
+          "height": 100.0,
+          "center": [
+            432.0,
+            585.0
+          ],
+          "focused": true
+        }
+      }
+    },
+    "chrome_action": {
+      "clicked": [
+        432.0,
+        598.0
+      ],
+      "matched": {
+        "window": 2,
+        "role": "Button",
+        "name": "Show testimonial from Jobber",
+        "x": 316.75,
+        "y": 547.9296875,
+        "width": 229.75,
+        "height": 100.0,
+        "center": [
+          432.0,
+          598.0
+        ],
+        "focused": true
+      },
+      "after": {
+        "window": {
+          "id": 2,
+          "app_id": "google-chrome",
+          "title": "Stripe | Financial Infrastructure to Grow Your Revenue - Google Chrome"
+        },
+        "focused": {
+          "window": 2,
+          "role": "Button",
+          "name": "Show testimonial from Jobber",
+          "x": 316.75,
+          "y": 547.9296875,
+          "width": 229.75,
+          "height": 100.0,
+          "center": [
+            432.0,
+            598.0
+          ],
+          "focused": true
+        }
+      }
+    }
+  },
+  {
+    "mode": "dark",
+    "scale": 1,
+    "native": {
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "dpr": 1,
+      "scroll": [
+        0,
+        8111
+      ],
+      "active": "Show testimonial from Jobber",
+      "offset": 951,
+      "container": [
+        17,
+        20.89477724806784,
+        951,
+        378.68
+      ],
+      "cards": [
+        [
+          -934,
+          20.89477724806784,
+          951,
+          306.68
+        ],
+        [
+          17,
+          20.89477724806784,
+          951,
+          306.68
+        ],
+        [
+          968,
+          20.89477724806784,
+          951,
+          306.68
+        ],
+        [
+          1919,
+          20.89477724806784,
+          951,
+          306.68
+        ]
+      ]
+    },
+    "chrome": {
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "dpr": 1,
+      "scroll": [
+        0,
+        8111
+      ],
+      "active": "Show testimonial from Jobber",
+      "offset": 951,
+      "container": [
+        17,
+        20.453125,
+        951,
+        378.625
+      ],
+      "cards": [
+        [
+          -934,
+          20.453125,
+          951,
+          306.625
+        ],
+        [
+          17,
+          20.453125,
+          951,
+          306.625
+        ],
+        [
+          968,
+          20.453125,
+          951,
+          306.625
+        ],
+        [
+          1919,
+          20.453125,
+          951,
+          306.625
+        ]
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.0,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "native_action": {
+      "clicked": [
+        432.0,
+        590.0
+      ],
+      "matched": {
+        "window": 3,
+        "role": "Button",
+        "name": "Show testimonial from Jobber",
+        "x": 316.75,
+        "y": 539.5747680664062,
+        "width": 229.75,
+        "height": 100.0,
+        "center": [
+          432.0,
+          590.0
+        ],
+        "focused": true
+      },
+      "after": {
+        "window": {
+          "id": 3,
+          "app_id": "olo.browser",
+          "title": "Browser"
+        },
+        "focused": {
+          "window": 3,
+          "role": "Button",
+          "name": "Show testimonial from Jobber",
+          "x": 316.75,
+          "y": 539.5747680664062,
+          "width": 229.75,
+          "height": 100.0,
+          "center": [
+            432.0,
+            590.0
+          ],
+          "focused": true
+        }
+      }
+    },
+    "chrome_action": {
+      "clicked": [
+        432.0,
+        602.0
+      ],
+      "matched": {
+        "window": 2,
+        "role": "Button",
+        "name": "Show testimonial from Jobber",
+        "x": 316.75,
+        "y": 552.078125,
+        "width": 229.75,
+        "height": 100.0,
+        "center": [
+          432.0,
+          602.0
+        ],
+        "focused": true
+      },
+      "after": {
+        "window": {
+          "id": 2,
+          "app_id": "google-chrome",
+          "title": "Stripe | Financial Infrastructure to Grow Your Revenue - Google Chrome"
+        },
+        "focused": {
+          "window": 2,
+          "role": "Button",
+          "name": "Show testimonial from Jobber",
+          "x": 316.75,
+          "y": 552.078125,
+          "width": 229.75,
+          "height": 100.0,
+          "center": [
+            432.0,
+            602.0
+          ],
+          "focused": true
+        }
+      }
+    }
+  },
+  {
+    "mode": "dark",
+    "scale": 1.25,
+    "native": {
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "dpr": 1.25,
+      "scroll": [
+        0,
+        8111.2
+      ],
+      "active": "Show testimonial from Jobber",
+      "offset": 951.2,
+      "container": [
+        16.8,
+        19.621151980931245,
+        951.2,
+        378.48
+      ],
+      "cards": [
+        [
+          -934.4000000000001,
+          19.621151980931245,
+          951.2,
+          306.48
+        ],
+        [
+          16.799999999999955,
+          19.621151980931245,
+          951.2,
+          306.48
+        ],
+        [
+          968,
+          19.621151980931245,
+          951.2,
+          306.48
+        ],
+        [
+          1919.2000000000005,
+          19.621151980931245,
+          951.2,
+          306.48
+        ]
+      ]
+    },
+    "chrome": {
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "dpr": 1.25,
+      "scroll": [
+        0,
+        8111.2001953125
+      ],
+      "active": "Show testimonial from Jobber",
+      "offset": 951.2000122070312,
+      "container": [
+        16.80000114440918,
+        19.975000381469727,
+        951.2000122070312,
+        378.45001220703125
+      ],
+      "cards": [
+        [
+          -934.4000244140625,
+          19.975000381469727,
+          951.2000122070312,
+          306.45001220703125
+        ],
+        [
+          16.80000114440918,
+          19.975000381469727,
+          951.2000122070312,
+          306.45001220703125
+        ],
+        [
+          968,
+          19.975000381469727,
+          951.2000122070312,
+          306.45001220703125
+        ],
+        [
+          1919.2000732421875,
+          19.975000381469727,
+          951.2000122070312,
+          306.45001220703125
+        ]
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.25,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "native_action": {
+      "clicked": [
+        432.0,
+        589.0
+      ],
+      "matched": {
+        "window": 3,
+        "role": "Button",
+        "name": "Show testimonial from Jobber",
+        "x": 316.6000061035156,
+        "y": 538.5011596679688,
+        "width": 229.80001831054688,
+        "height": 100.0,
+        "center": [
+          432.0,
+          589.0
+        ],
+        "focused": true
+      },
+      "after": {
+        "window": {
+          "id": 3,
+          "app_id": "olo.browser",
+          "title": "Browser"
+        },
+        "focused": {
+          "window": 3,
+          "role": "Button",
+          "name": "Show testimonial from Jobber",
+          "x": 316.6000061035156,
+          "y": 538.5011596679688,
+          "width": 229.80001831054688,
+          "height": 100.0,
+          "center": [
+            432.0,
+            589.0
+          ],
+          "focused": true
+        }
+      }
+    },
+    "chrome_action": {
+      "clicked": [
+        432.0,
+        601.0
+      ],
+      "matched": {
+        "window": 2,
+        "role": "Button",
+        "name": "Show testimonial from Jobber",
+        "x": 316.6000061035156,
+        "y": 551.425048828125,
+        "width": 229.8000030517578,
+        "height": 100.0,
+        "center": [
+          432.0,
+          601.0
+        ],
+        "focused": true
+      },
+      "after": {
+        "window": {
+          "id": 2,
+          "app_id": "google-chrome",
+          "title": "Stripe | Financial Infrastructure to Grow Your Revenue - Google Chrome"
+        },
+        "focused": {
+          "window": 2,
+          "role": "Button",
+          "name": "Show testimonial from Jobber",
+          "x": 316.6000061035156,
+          "y": 551.425048828125,
+          "width": 229.8000030517578,
+          "height": 100.0,
+          "center": [
+            432.0,
+            601.0
+          ],
+          "focused": true
+        }
+      }
+    }
+  },
+  {
+    "mode": "dark",
+    "scale": 1.5,
+    "native": {
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "dpr": 1.5,
+      "scroll": [
+        0,
+        8111.333333333333
+      ],
+      "active": "Show testimonial from Jobber",
+      "offset": 951.3333333333334,
+      "container": [
+        16.666666666666668,
+        17.83456846950594,
+        951.3333333333334,
+        378.3466666666667
+      ],
+      "cards": [
+        [
+          -934.6666666666667,
+          17.83456846950594,
+          951.3333333333334,
+          306.3466666666667
+        ],
+        [
+          16.66666666666663,
+          17.83456846950594,
+          951.3333333333334,
+          306.3466666666667
+        ],
+        [
+          968.0000000000001,
+          17.83456846950594,
+          951.3333333333334,
+          306.3466666666667
+        ],
+        [
+          1919.333333333333,
+          17.83456846950594,
+          951.3333333333334,
+          306.3466666666667
+        ]
+      ]
+    },
+    "chrome": {
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "dpr": 1.5,
+      "scroll": [
+        0,
+        8111.33349609375
+      ],
+      "active": "Show testimonial from Jobber",
+      "offset": 951.3333129882812,
+      "container": [
+        16.666667938232422,
+        17.64583396911621,
+        951.3333740234375,
+        378.32293701171875
+      ],
+      "cards": [
+        [
+          -934.6666870117188,
+          17.64583396911621,
+          951.3333740234375,
+          306.32293701171875
+        ],
+        [
+          16.666667938232422,
+          17.64583396911621,
+          951.3333740234375,
+          306.32293701171875
+        ],
+        [
+          968,
+          17.64583396911621,
+          951.3333740234375,
+          306.32293701171875
+        ],
+        [
+          1919.3333740234375,
+          17.64583396911621,
+          951.3333740234375,
+          306.32293701171875
+        ]
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.5,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "native_action": {
+      "clicked": [
+        431.0,
+        586.0
+      ],
+      "matched": {
+        "window": 3,
+        "role": "Button",
+        "name": "Show testimonial from Jobber",
+        "x": 316.5,
+        "y": 536.1812744140625,
+        "width": 229.83331298828125,
+        "height": 100.00003051757812,
+        "center": [
+          431.0,
+          586.0
+        ],
+        "focused": true
+      },
+      "after": {
+        "window": {
+          "id": 3,
+          "app_id": "olo.browser",
+          "title": "Browser"
+        },
+        "focused": {
+          "window": 3,
+          "role": "Button",
+          "name": "Show testimonial from Jobber",
+          "x": 316.5,
+          "y": 536.1812744140625,
+          "width": 229.83331298828125,
+          "height": 100.00003051757812,
+          "center": [
+            431.0,
+            586.0
+          ],
+          "focused": true
+        }
+      }
+    },
+    "chrome_action": {
+      "clicked": [
+        431.0,
+        599.0
+      ],
+      "matched": {
+        "window": 2,
+        "role": "Button",
+        "name": "Show testimonial from Jobber",
+        "x": 316.5,
+        "y": 548.96875,
+        "width": 229.83334350585938,
+        "height": 100.0,
+        "center": [
+          431.0,
+          599.0
+        ],
+        "focused": true
+      },
+      "after": {
+        "window": {
+          "id": 2,
+          "app_id": "google-chrome",
+          "title": "Stripe | Financial Infrastructure to Grow Your Revenue - Google Chrome"
+        },
+        "focused": {
+          "window": 2,
+          "role": "Button",
+          "name": "Show testimonial from Jobber",
+          "x": 316.5,
+          "y": 548.96875,
+          "width": 229.83334350585938,
+          "height": 100.0,
+          "center": [
+            431.0,
+            599.0
+          ],
+          "focused": true
+        }
+      }
+    }
+  },
+  {
+    "mode": "dark",
+    "scale": 1.75,
+    "native": {
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "dpr": 1.75,
+      "scroll": [
+        0,
+        8110.857142857143
+      ],
+      "active": "Show testimonial from Jobber",
+      "offset": 952,
+      "container": [
+        16.571428571428573,
+        18.60587785632015,
+        952,
+        378.2514285714286
+      ],
+      "cards": [
+        [
+          -935.4285714285714,
+          18.60587785632015,
+          952,
+          306.2514285714286
+        ],
+        [
+          16.571428571428555,
+          18.60587785632015,
+          952,
+          306.2514285714286
+        ],
+        [
+          968.5714285714287,
+          18.60587785632015,
+          952,
+          306.2514285714286
+        ],
+        [
+          1920.5714285714284,
+          18.60587785632015,
+          952,
+          306.2514285714286
+        ]
+      ]
+    },
+    "chrome": {
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "dpr": 1.75,
+      "scroll": [
+        0,
+        8110.85693359375
+      ],
+      "active": "Show testimonial from Jobber",
+      "offset": 952,
+      "container": [
+        16.571430206298828,
+        18.83928680419922,
+        952.0000610351562,
+        378.2321472167969
+      ],
+      "cards": [
+        [
+          -935.4285888671875,
+          18.83928680419922,
+          952.0000610351562,
+          306.2321472167969
+        ],
+        [
+          16.571430206298828,
+          18.83928680419922,
+          952.0000610351562,
+          306.2321472167969
+        ],
+        [
+          968.5714721679688,
+          18.83928680419922,
+          952.0000610351562,
+          306.2321472167969
+        ],
+        [
+          1920.571533203125,
+          18.83928680419922,
+          952.0000610351562,
+          306.2321472167969
+        ]
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.75,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "native_action": {
+      "clicked": [
+        432.0,
+        587.0
+      ],
+      "matched": {
+        "window": 3,
+        "role": "Button",
+        "name": "Show testimonial from Jobber",
+        "x": 316.5714416503906,
+        "y": 537.1430053710938,
+        "width": 230.0,
+        "height": 100.0,
+        "center": [
+          432.0,
+          587.0
+        ],
+        "focused": true
+      },
+      "after": {
+        "window": {
+          "id": 3,
+          "app_id": "olo.browser",
+          "title": "Browser"
+        },
+        "focused": {
+          "window": 3,
+          "role": "Button",
+          "name": "Show testimonial from Jobber",
+          "x": 316.5714416503906,
+          "y": 537.1430053710938,
+          "width": 230.0,
+          "height": 100.0,
+          "center": [
+            432.0,
+            587.0
+          ],
+          "focused": true
+        }
+      }
+    },
+    "chrome_action": {
+      "clicked": [
+        432.0,
+        600.0
+      ],
+      "matched": {
+        "window": 2,
+        "role": "Button",
+        "name": "Show testimonial from Jobber",
+        "x": 316.5714416503906,
+        "y": 550.0714111328125,
+        "width": 230.00001525878906,
+        "height": 100.00000762939453,
+        "center": [
+          432.0,
+          600.0
+        ],
+        "focused": true
+      },
+      "after": {
+        "window": {
+          "id": 2,
+          "app_id": "google-chrome",
+          "title": "Stripe | Financial Infrastructure to Grow Your Revenue - Google Chrome"
+        },
+        "focused": {
+          "window": 2,
+          "role": "Button",
+          "name": "Show testimonial from Jobber",
+          "x": 316.5714416503906,
+          "y": 550.0714111328125,
+          "width": 230.00001525878906,
+          "height": 100.00000762939453,
+          "center": [
+            432.0,
+            600.0
+          ],
+          "focused": true
+        }
+      }
+    }
+  },
+  {
+    "mode": "dark",
+    "scale": 2,
+    "native": {
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "dpr": 2,
+      "scroll": [
+        0,
+        8111
+      ],
+      "active": "Show testimonial from Jobber",
+      "offset": 951,
+      "container": [
+        17,
+        17.43383974806784,
+        951,
+        377.68
+      ],
+      "cards": [
+        [
+          -934,
+          17.43383974806784,
+          951,
+          305.68
+        ],
+        [
+          17,
+          17.43383974806784,
+          951,
+          305.68
+        ],
+        [
+          968,
+          17.43383974806784,
+          951,
+          305.68
+        ],
+        [
+          1919,
+          17.43383974806784,
+          951,
+          305.68
+        ]
+      ]
+    },
+    "chrome": {
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "dpr": 2,
+      "scroll": [
+        0,
+        8111
+      ],
+      "active": "Show testimonial from Jobber",
+      "offset": 951,
+      "container": [
+        17,
+        17.265625,
+        951,
+        377.6640625
+      ],
+      "cards": [
+        [
+          -934,
+          17.265625,
+          951,
+          305.6640625
+        ],
+        [
+          17,
+          17.265625,
+          951,
+          305.6640625
+        ],
+        [
+          968,
+          17.265625,
+          951,
+          305.6640625
+        ],
+        [
+          1919,
+          17.265625,
+          951,
+          305.6640625
+        ]
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 2.0,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "native_action": {
+      "clicked": [
+        432.0,
+        585.0
+      ],
+      "matched": {
+        "window": 3,
+        "role": "Button",
+        "name": "Show testimonial from Jobber",
+        "x": 316.75,
+        "y": 535.1138305664062,
+        "width": 229.75,
+        "height": 100.0,
+        "center": [
+          432.0,
+          585.0
+        ],
+        "focused": true
+      },
+      "after": {
+        "window": {
+          "id": 3,
+          "app_id": "olo.browser",
+          "title": "Browser"
+        },
+        "focused": {
+          "window": 3,
+          "role": "Button",
+          "name": "Show testimonial from Jobber",
+          "x": 316.75,
+          "y": 535.1138305664062,
+          "width": 229.75,
+          "height": 100.0,
+          "center": [
+            432.0,
+            585.0
+          ],
+          "focused": true
+        }
+      }
+    },
+    "chrome_action": {
+      "clicked": [
+        432.0,
+        598.0
+      ],
+      "matched": {
+        "window": 2,
+        "role": "Button",
+        "name": "Show testimonial from Jobber",
+        "x": 316.75,
+        "y": 547.9296875,
+        "width": 229.75,
+        "height": 100.0,
+        "center": [
+          432.0,
+          598.0
+        ],
+        "focused": true
+      },
+      "after": {
+        "window": {
+          "id": 2,
+          "app_id": "google-chrome",
+          "title": "Stripe | Financial Infrastructure to Grow Your Revenue - Google Chrome"
+        },
+        "focused": {
+          "window": 2,
+          "role": "Button",
+          "name": "Show testimonial from Jobber",
+          "x": 316.75,
+          "y": 547.9296875,
+          "width": 229.75,
+          "height": 100.0,
+          "center": [
+            432.0,
+            598.0
+          ],
+          "focused": true
+        }
+      }
+    }
+  },
+  {
+    "mode": "night",
+    "scale": 1,
+    "native": {
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "dpr": 1,
+      "scroll": [
+        0,
+        8111
+      ],
+      "active": "Show testimonial from Jobber",
+      "offset": 951,
+      "container": [
+        17,
+        20.89477724806784,
+        951,
+        378.68
+      ],
+      "cards": [
+        [
+          -934,
+          20.89477724806784,
+          951,
+          306.68
+        ],
+        [
+          17,
+          20.89477724806784,
+          951,
+          306.68
+        ],
+        [
+          968,
+          20.89477724806784,
+          951,
+          306.68
+        ],
+        [
+          1919,
+          20.89477724806784,
+          951,
+          306.68
+        ]
+      ]
+    },
+    "chrome": {
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "dpr": 1,
+      "scroll": [
+        0,
+        8111
+      ],
+      "active": "Show testimonial from Jobber",
+      "offset": 951,
+      "container": [
+        17,
+        20.453125,
+        951,
+        378.625
+      ],
+      "cards": [
+        [
+          -934,
+          20.453125,
+          951,
+          306.625
+        ],
+        [
+          17,
+          20.453125,
+          951,
+          306.625
+        ],
+        [
+          968,
+          20.453125,
+          951,
+          306.625
+        ],
+        [
+          1919,
+          20.453125,
+          951,
+          306.625
+        ]
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.0,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "native_action": {
+      "clicked": [
+        432.0,
+        590.0
+      ],
+      "matched": {
+        "window": 3,
+        "role": "Button",
+        "name": "Show testimonial from Jobber",
+        "x": 316.75,
+        "y": 539.5747680664062,
+        "width": 229.75,
+        "height": 100.0,
+        "center": [
+          432.0,
+          590.0
+        ],
+        "focused": true
+      },
+      "after": {
+        "window": {
+          "id": 3,
+          "app_id": "olo.browser",
+          "title": "Browser"
+        },
+        "focused": {
+          "window": 3,
+          "role": "Button",
+          "name": "Show testimonial from Jobber",
+          "x": 316.75,
+          "y": 539.5747680664062,
+          "width": 229.75,
+          "height": 100.0,
+          "center": [
+            432.0,
+            590.0
+          ],
+          "focused": true
+        }
+      }
+    },
+    "chrome_action": {
+      "clicked": [
+        432.0,
+        602.0
+      ],
+      "matched": {
+        "window": 2,
+        "role": "Button",
+        "name": "Show testimonial from Jobber",
+        "x": 316.75,
+        "y": 552.078125,
+        "width": 229.75,
+        "height": 100.0,
+        "center": [
+          432.0,
+          602.0
+        ],
+        "focused": true
+      },
+      "after": {
+        "window": {
+          "id": 2,
+          "app_id": "google-chrome",
+          "title": "Stripe | Financial Infrastructure to Grow Your Revenue - Google Chrome"
+        },
+        "focused": {
+          "window": 2,
+          "role": "Button",
+          "name": "Show testimonial from Jobber",
+          "x": 316.75,
+          "y": 552.078125,
+          "width": 229.75,
+          "height": 100.0,
+          "center": [
+            432.0,
+            602.0
+          ],
+          "focused": true
+        }
+      }
+    }
+  },
+  {
+    "mode": "night",
+    "scale": 1.25,
+    "native": {
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "dpr": 1.25,
+      "scroll": [
+        0,
+        8111.2
+      ],
+      "active": "Show testimonial from Jobber",
+      "offset": 951.2,
+      "container": [
+        16.8,
+        19.621151980931245,
+        951.2,
+        378.48
+      ],
+      "cards": [
+        [
+          -934.4000000000001,
+          19.621151980931245,
+          951.2,
+          306.48
+        ],
+        [
+          16.799999999999955,
+          19.621151980931245,
+          951.2,
+          306.48
+        ],
+        [
+          968,
+          19.621151980931245,
+          951.2,
+          306.48
+        ],
+        [
+          1919.2000000000005,
+          19.621151980931245,
+          951.2,
+          306.48
+        ]
+      ]
+    },
+    "chrome": {
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "dpr": 1.25,
+      "scroll": [
+        0,
+        8111.2001953125
+      ],
+      "active": "Show testimonial from Jobber",
+      "offset": 951.2000122070312,
+      "container": [
+        16.80000114440918,
+        19.975000381469727,
+        951.2000122070312,
+        378.45001220703125
+      ],
+      "cards": [
+        [
+          -934.4000244140625,
+          19.975000381469727,
+          951.2000122070312,
+          306.45001220703125
+        ],
+        [
+          16.80000114440918,
+          19.975000381469727,
+          951.2000122070312,
+          306.45001220703125
+        ],
+        [
+          968,
+          19.975000381469727,
+          951.2000122070312,
+          306.45001220703125
+        ],
+        [
+          1919.2000732421875,
+          19.975000381469727,
+          951.2000122070312,
+          306.45001220703125
+        ]
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.25,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "native_action": {
+      "clicked": [
+        432.0,
+        589.0
+      ],
+      "matched": {
+        "window": 3,
+        "role": "Button",
+        "name": "Show testimonial from Jobber",
+        "x": 316.6000061035156,
+        "y": 538.5011596679688,
+        "width": 229.80001831054688,
+        "height": 100.0,
+        "center": [
+          432.0,
+          589.0
+        ],
+        "focused": true
+      },
+      "after": {
+        "window": {
+          "id": 3,
+          "app_id": "olo.browser",
+          "title": "Browser"
+        },
+        "focused": {
+          "window": 3,
+          "role": "Button",
+          "name": "Show testimonial from Jobber",
+          "x": 316.6000061035156,
+          "y": 538.5011596679688,
+          "width": 229.80001831054688,
+          "height": 100.0,
+          "center": [
+            432.0,
+            589.0
+          ],
+          "focused": true
+        }
+      }
+    },
+    "chrome_action": {
+      "clicked": [
+        432.0,
+        601.0
+      ],
+      "matched": {
+        "window": 2,
+        "role": "Button",
+        "name": "Show testimonial from Jobber",
+        "x": 316.6000061035156,
+        "y": 551.425048828125,
+        "width": 229.8000030517578,
+        "height": 100.0,
+        "center": [
+          432.0,
+          601.0
+        ],
+        "focused": true
+      },
+      "after": {
+        "window": {
+          "id": 2,
+          "app_id": "google-chrome",
+          "title": "Stripe | Financial Infrastructure to Grow Your Revenue - Google Chrome"
+        },
+        "focused": {
+          "window": 2,
+          "role": "Button",
+          "name": "Show testimonial from Jobber",
+          "x": 316.6000061035156,
+          "y": 551.425048828125,
+          "width": 229.8000030517578,
+          "height": 100.0,
+          "center": [
+            432.0,
+            601.0
+          ],
+          "focused": true
+        }
+      }
+    }
+  },
+  {
+    "mode": "night",
+    "scale": 1.5,
+    "native": {
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "dpr": 1.5,
+      "scroll": [
+        0,
+        8111.333333333333
+      ],
+      "active": "Show testimonial from Jobber",
+      "offset": 951.3333333333334,
+      "container": [
+        16.666666666666668,
+        17.83456846950594,
+        951.3333333333334,
+        378.3466666666667
+      ],
+      "cards": [
+        [
+          -934.6666666666667,
+          17.83456846950594,
+          951.3333333333334,
+          306.3466666666667
+        ],
+        [
+          16.66666666666663,
+          17.83456846950594,
+          951.3333333333334,
+          306.3466666666667
+        ],
+        [
+          968.0000000000001,
+          17.83456846950594,
+          951.3333333333334,
+          306.3466666666667
+        ],
+        [
+          1919.333333333333,
+          17.83456846950594,
+          951.3333333333334,
+          306.3466666666667
+        ]
+      ]
+    },
+    "chrome": {
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "dpr": 1.5,
+      "scroll": [
+        0,
+        8111.33349609375
+      ],
+      "active": "Show testimonial from Jobber",
+      "offset": 951.3333129882812,
+      "container": [
+        16.666667938232422,
+        17.64583396911621,
+        951.3333740234375,
+        378.32293701171875
+      ],
+      "cards": [
+        [
+          -934.6666870117188,
+          17.64583396911621,
+          951.3333740234375,
+          306.32293701171875
+        ],
+        [
+          16.666667938232422,
+          17.64583396911621,
+          951.3333740234375,
+          306.32293701171875
+        ],
+        [
+          968,
+          17.64583396911621,
+          951.3333740234375,
+          306.32293701171875
+        ],
+        [
+          1919.3333740234375,
+          17.64583396911621,
+          951.3333740234375,
+          306.32293701171875
+        ]
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.5,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "native_action": {
+      "clicked": [
+        431.0,
+        586.0
+      ],
+      "matched": {
+        "window": 3,
+        "role": "Button",
+        "name": "Show testimonial from Jobber",
+        "x": 316.5,
+        "y": 536.1812744140625,
+        "width": 229.83331298828125,
+        "height": 100.00003051757812,
+        "center": [
+          431.0,
+          586.0
+        ],
+        "focused": true
+      },
+      "after": {
+        "window": {
+          "id": 3,
+          "app_id": "olo.browser",
+          "title": "Browser"
+        },
+        "focused": {
+          "window": 3,
+          "role": "Button",
+          "name": "Show testimonial from Jobber",
+          "x": 316.5,
+          "y": 536.1812744140625,
+          "width": 229.83331298828125,
+          "height": 100.00003051757812,
+          "center": [
+            431.0,
+            586.0
+          ],
+          "focused": true
+        }
+      }
+    },
+    "chrome_action": {
+      "clicked": [
+        431.0,
+        599.0
+      ],
+      "matched": {
+        "window": 2,
+        "role": "Button",
+        "name": "Show testimonial from Jobber",
+        "x": 316.5,
+        "y": 548.96875,
+        "width": 229.83334350585938,
+        "height": 100.0,
+        "center": [
+          431.0,
+          599.0
+        ],
+        "focused": true
+      },
+      "after": {
+        "window": {
+          "id": 2,
+          "app_id": "google-chrome",
+          "title": "Stripe | Financial Infrastructure to Grow Your Revenue - Google Chrome"
+        },
+        "focused": {
+          "window": 2,
+          "role": "Button",
+          "name": "Show testimonial from Jobber",
+          "x": 316.5,
+          "y": 548.96875,
+          "width": 229.83334350585938,
+          "height": 100.0,
+          "center": [
+            431.0,
+            599.0
+          ],
+          "focused": true
+        }
+      }
+    }
+  },
+  {
+    "mode": "night",
+    "scale": 1.75,
+    "native": {
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "dpr": 1.75,
+      "scroll": [
+        0,
+        8110.857142857143
+      ],
+      "active": "Show testimonial from Jobber",
+      "offset": 952,
+      "container": [
+        16.571428571428573,
+        18.60587785632015,
+        952,
+        378.2514285714286
+      ],
+      "cards": [
+        [
+          -935.4285714285714,
+          18.60587785632015,
+          952,
+          306.2514285714286
+        ],
+        [
+          16.571428571428555,
+          18.60587785632015,
+          952,
+          306.2514285714286
+        ],
+        [
+          968.5714285714287,
+          18.60587785632015,
+          952,
+          306.2514285714286
+        ],
+        [
+          1920.5714285714284,
+          18.60587785632015,
+          952,
+          306.2514285714286
+        ]
+      ]
+    },
+    "chrome": {
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "dpr": 1.75,
+      "scroll": [
+        0,
+        8110.85693359375
+      ],
+      "active": "Show testimonial from Jobber",
+      "offset": 952,
+      "container": [
+        16.571430206298828,
+        18.83928680419922,
+        952.0000610351562,
+        378.2321472167969
+      ],
+      "cards": [
+        [
+          -935.4285888671875,
+          18.83928680419922,
+          952.0000610351562,
+          306.2321472167969
+        ],
+        [
+          16.571430206298828,
+          18.83928680419922,
+          952.0000610351562,
+          306.2321472167969
+        ],
+        [
+          968.5714721679688,
+          18.83928680419922,
+          952.0000610351562,
+          306.2321472167969
+        ],
+        [
+          1920.571533203125,
+          18.83928680419922,
+          952.0000610351562,
+          306.2321472167969
+        ]
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.75,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "native_action": {
+      "clicked": [
+        432.0,
+        587.0
+      ],
+      "matched": {
+        "window": 3,
+        "role": "Button",
+        "name": "Show testimonial from Jobber",
+        "x": 316.5714416503906,
+        "y": 537.1430053710938,
+        "width": 230.0,
+        "height": 100.0,
+        "center": [
+          432.0,
+          587.0
+        ],
+        "focused": true
+      },
+      "after": {
+        "window": {
+          "id": 3,
+          "app_id": "olo.browser",
+          "title": "Browser"
+        },
+        "focused": {
+          "window": 3,
+          "role": "Button",
+          "name": "Show testimonial from Jobber",
+          "x": 316.5714416503906,
+          "y": 537.1430053710938,
+          "width": 230.0,
+          "height": 100.0,
+          "center": [
+            432.0,
+            587.0
+          ],
+          "focused": true
+        }
+      }
+    },
+    "chrome_action": {
+      "clicked": [
+        432.0,
+        600.0
+      ],
+      "matched": {
+        "window": 2,
+        "role": "Button",
+        "name": "Show testimonial from Jobber",
+        "x": 316.5714416503906,
+        "y": 550.0714111328125,
+        "width": 230.00001525878906,
+        "height": 100.00000762939453,
+        "center": [
+          432.0,
+          600.0
+        ],
+        "focused": true
+      },
+      "after": {
+        "window": {
+          "id": 2,
+          "app_id": "google-chrome",
+          "title": "Stripe | Financial Infrastructure to Grow Your Revenue - Google Chrome"
+        },
+        "focused": {
+          "window": 2,
+          "role": "Button",
+          "name": "Show testimonial from Jobber",
+          "x": 316.5714416503906,
+          "y": 550.0714111328125,
+          "width": 230.00001525878906,
+          "height": 100.00000762939453,
+          "center": [
+            432.0,
+            600.0
+          ],
+          "focused": true
+        }
+      }
+    }
+  },
+  {
+    "mode": "night",
+    "scale": 2,
+    "native": {
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "dpr": 2,
+      "scroll": [
+        0,
+        8111
+      ],
+      "active": "Show testimonial from Jobber",
+      "offset": 951,
+      "container": [
+        17,
+        17.43383974806784,
+        951,
+        377.68
+      ],
+      "cards": [
+        [
+          -934,
+          17.43383974806784,
+          951,
+          305.68
+        ],
+        [
+          17,
+          17.43383974806784,
+          951,
+          305.68
+        ],
+        [
+          968,
+          17.43383974806784,
+          951,
+          305.68
+        ],
+        [
+          1919,
+          17.43383974806784,
+          951,
+          305.68
+        ]
+      ]
+    },
+    "chrome": {
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "dpr": 2,
+      "scroll": [
+        0,
+        8111
+      ],
+      "active": "Show testimonial from Jobber",
+      "offset": 951,
+      "container": [
+        17,
+        17.265625,
+        951,
+        377.6640625
+      ],
+      "cards": [
+        [
+          -934,
+          17.265625,
+          951,
+          305.6640625
+        ],
+        [
+          17,
+          17.265625,
+          951,
+          305.6640625
+        ],
+        [
+          968,
+          17.265625,
+          951,
+          305.6640625
+        ],
+        [
+          1919,
+          17.265625,
+          951,
+          305.6640625
+        ]
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 2.0,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "native_action": {
+      "clicked": [
+        432.0,
+        585.0
+      ],
+      "matched": {
+        "window": 3,
+        "role": "Button",
+        "name": "Show testimonial from Jobber",
+        "x": 316.75,
+        "y": 535.1138305664062,
+        "width": 229.75,
+        "height": 100.0,
+        "center": [
+          432.0,
+          585.0
+        ],
+        "focused": true
+      },
+      "after": {
+        "window": {
+          "id": 3,
+          "app_id": "olo.browser",
+          "title": "Browser"
+        },
+        "focused": {
+          "window": 3,
+          "role": "Button",
+          "name": "Show testimonial from Jobber",
+          "x": 316.75,
+          "y": 535.1138305664062,
+          "width": 229.75,
+          "height": 100.0,
+          "center": [
+            432.0,
+            585.0
+          ],
+          "focused": true
+        }
+      }
+    },
+    "chrome_action": {
+      "clicked": [
+        432.0,
+        598.0
+      ],
+      "matched": {
+        "window": 2,
+        "role": "Button",
+        "name": "Show testimonial from Jobber",
+        "x": 316.75,
+        "y": 547.9296875,
+        "width": 229.75,
+        "height": 100.0,
+        "center": [
+          432.0,
+          598.0
+        ],
+        "focused": true
+      },
+      "after": {
+        "window": {
+          "id": 2,
+          "app_id": "google-chrome",
+          "title": "Stripe | Financial Infrastructure to Grow Your Revenue - Google Chrome"
+        },
+        "focused": {
+          "window": 2,
+          "role": "Button",
+          "name": "Show testimonial from Jobber",
+          "x": 316.75,
+          "y": 547.9296875,
+          "width": 229.75,
+          "height": 100.0,
+          "center": [
+            432.0,
+            598.0
+          ],
+          "focused": true
+        }
+      }
+    }
+  }
+]

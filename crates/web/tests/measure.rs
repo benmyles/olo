@@ -717,3 +717,38 @@ fn a_ratio_svg_with_a_percentage_height_contributes_its_ratio_width() {
     assert_eq!(m.border_box(find(&doc, "a")).unwrap().width, 24.);
     assert_eq!(m.border_box(find(&doc, "b")).unwrap().width, 80.);
 }
+
+#[test]
+fn in_place_svg_style_patches_refresh_compiled_paint() {
+    let (measurer, host, mut doc, viewport) =
+        measurer_for("<!doctype html><style>.selected path{fill:blue}</style><div id=owner><svg width=40 height=20><path d='M0 0H40V20H0Z' fill='red'/></svg></div>");
+    let mut shaper = shaping::Engine::default();
+    let mut previous = measurer.measure(&doc, &host, &mut shaper, viewport, None, None).unwrap();
+    let owner = previous.layout().cache().tree().styles().iter().find(|(n, _)| doc.attribute(*n, "id").unwrap() == Some("owner")).unwrap().0;
+    let geometry = previous.layout().geometry_identity();
+    for (class, color) in [("selected", [0, 0, 255, 255]), ("", [255, 0, 0, 255]), ("selected", [0, 0, 255, 255])] {
+        doc.set_attribute(owner, "class", class).unwrap();
+        let next = measurer.measure(&doc, &host, &mut shaper, viewport, Some(previous), None).unwrap();
+        assert!(next.path().starts_with("patched in place"), "{}", next.path());
+        assert_eq!(next.layout().cache().tree().vector(0).unwrap().shapes[0].color, color);
+        assert_eq!(next.layout().geometry_identity(), geometry);
+        previous = next;
+    }
+}
+
+#[test]
+fn shared_styles_do_not_hide_a_svg_reference_id_change() {
+    let (measurer, host, mut doc, viewport) =
+        measurer_for("<!doctype html><svg width=40 height=20><defs><linearGradient id=g><stop stop-color='red'/></linearGradient></defs><path d='M0 0H40V20H0Z' fill='url(#g)'/></svg>");
+    let mut shaper = shaping::Engine::default();
+    let previous = measurer.measure(&doc, &host, &mut shaper, viewport, None, None).unwrap();
+    assert_eq!(previous.layout().cache().tree().vector(0).unwrap().shapes[0].color, [255, 0, 0, 255]);
+    let shared = previous.layout().cache().tree().styles().clone();
+    let gradient = shared.iter().find(|(n, _)| doc.attribute(*n, "id").unwrap() == Some("g")).unwrap().0;
+    doc.set_attribute(gradient, "id", "gone").unwrap();
+    let next = measurer.measure(&doc, &host, &mut shaper, viewport, Some(previous), None).unwrap();
+    assert!(next.path().starts_with("patched a copy"), "{}", next.path());
+    let fresh = measurer.measure(&doc, &host, &mut shaper, viewport, None, None).unwrap();
+    let colors = |m: &page::Measured| m.layout().cache().tree().vector(0).unwrap().shapes.iter().map(|s| s.color).collect::<Vec<_>>();
+    assert_eq!(colors(&next), colors(&fresh));
+}

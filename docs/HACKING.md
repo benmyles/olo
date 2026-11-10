@@ -14856,3 +14856,17 @@ A detached `Image` is a valid canvas/WebGL source and must not be discarded
 merely because it has no layout box. See `crates/js/src/wrappers.rs` and its
 forced-collection tests. Native DOM arena/GL context reclamation and recovery
 of connected offscreen images used as pixel sources remain incomplete.
+
+Retained inline SVGs keep the style inputs used during compilation, including
+external paint and clip resources. `layout::Tree::restyled` refreshes affected
+sources through their reverse dependency index; unchanged SVGs remain shared.
+An image-only binding update uses `Layout::with_images`. In-place measurement
+patches must refresh SVG inputs too. Compiled source fingerprints include style
+identities so tile reuse cannot hide a paint-only update. Source refresh runs
+on the page worker under its existing quotas and cancellation checks.
+
+Page rendering commits its animation timeline, animated-node membership and
+container sizes only after a successful scene. Sampling a transition consumes
+its completion/event state: never leave those changes committed when rendering
+is cancelled, or the retry can retain the last intermediate color indefinitely.
+See `docs/browser/measurements/2026-11-10-svg-restyle/`.

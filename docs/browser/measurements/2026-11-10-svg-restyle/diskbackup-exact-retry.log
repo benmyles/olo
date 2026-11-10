@@ -1,0 +1,14 @@
+
+running 10 tests
+test agent_setup::tests::shared_once ... ok
+test agent_setup::tests::google_logins_first ... ok
+test app::undo_tests::undo_puts_back_only_what_the_step_changed ... ok
+test window::tests::what_is_kept_said_plainly ... ok
+test window::tests::how_far_and_how_long ... ok
+test window::tests::the_headline_says_how_it_stands ... ok
+test window::tests::words_for_times ... ok
+test agent_setup::tests::the_brief_says_where_what_and_how ... ok
+test window::tests::unfinished_and_checks_said ... ok
+test lint::ui_lint_main_window ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.40s

@@ -1,0 +1,762 @@
+Browser: limits Limits { memory_high: 4294967296, memory_max: 6442450944, swap_max: 268435456, cpu_quota_us: 4000000, cpu_weight: 50, tasks_max: 512 }
+Browser fonts: 240 system font files mapped
+Browser: static page ready 5 ms after the request
+Browser scripts: 1 run, 0 errors, 0 console lines, 1 timers, 0 listeners, 0 layouts (0 ms), revision 1007 -> 1007, 49 ms (47 ms of this thread's CPU)
+Browser: scripted page ready 61 ms after the request
+  layout for scripts: style 1.7 ms, boxes 0.3 ms, text 0.4 ms, layout 0.2 ms, index 0.0 ms, all 2.6 ms (call 2.6 ms): full job: nothing before; viewport units restyled
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.1 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  live render: revision 1007 -> 1047 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.1)
+  content: focus targets 0.02 ms, labels 0.09 ms (125 labels)
+  moved: 0 rects, all off screen; first None; viewport 0..578
+  tiles: 0 of 15 repainted in 0.0 ms
+  layout for scripts: style 0.1 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.1 ms (call 0.1 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  live render: revision 1047 -> 1087 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.1)
+  content: focus targets 0.02 ms, labels 0.02 ms (125 labels)
+  moved: 0 rects, all off screen; first None; viewport 0..578
+  tiles: 0 of 15 repainted in 0.0 ms
+  layout for scripts: style 0.1 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.1 ms (call 0.1 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  live render: revision 1087 -> 1127 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.1)
+  content: focus targets 0.02 ms, labels 0.10 ms (125 labels)
+  moved: 0 rects, all off screen; first None; viewport 0..578
+  tiles: 0 of 15 repainted in 0.0 ms
+  layout for scripts: style 0.1 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.1 ms (call 0.1 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  live render: revision 1127 -> 1167 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.1)
+  content: focus targets 0.02 ms, labels 0.13 ms (125 labels)
+  moved: 0 rects, all off screen; first None; viewport 0..578
+  tiles: 0 of 15 repainted in 0.0 ms
+  layout for scripts: style 0.1 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.1 ms (call 0.1 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  live render: revision 1167 -> 1207 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.1)
+  content: focus targets 0.02 ms, labels 0.12 ms (125 labels)
+  moved: 0 rects, all off screen; first None; viewport 0..578
+  tiles: 0 of 15 repainted in 0.0 ms
+  layout for scripts: style 0.1 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.1 ms (call 0.1 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  live render: revision 1207 -> 1247 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.1)
+  content: focus targets 0.02 ms, labels 0.02 ms (125 labels)
+  moved: 0 rects, all off screen; first None; viewport 0..578
+  tiles: 0 of 15 repainted in 0.0 ms
+  layout for scripts: style 0.1 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.1 ms (call 0.1 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 2 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.0 ms, index 0.0 ms, all 0.0 ms (call 0.0 ms): patched in place, 1 elements
+  live render: revision 1247 -> 1288 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.3)
+  content: focus targets 0.03 ms, labels 0.14 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.1 ms
+  live render: revision 1288 -> 1289 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.14 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(651.577µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1289 -> 1290 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.03 ms, labels 0.12 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(611.054µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1290 -> 1291 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.12 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(582.718µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1291 -> 1292 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(497.083µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1292 -> 1293 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.12 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(558.057µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1293 -> 1294 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(499.773µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1294 -> 1295 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(516.994µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1295 -> 1296 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.12 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(663.752µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1296 -> 1297 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.13 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(680.918µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1297 -> 1298 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.12 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(661.701µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1298 -> 1299 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(616.601µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1299 -> 1300 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.1)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(434.704µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1300 -> 1301 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(513.435µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1301 -> 1302 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.12 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(565.152µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1302 -> 1303 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(533.256µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1303 -> 1304 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.1)
+  content: focus targets 0.03 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(465.009µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1304 -> 1305 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(551.634µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1305 -> 1306 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(493.004µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1306 -> 1307 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.1)
+  content: focus targets 0.02 ms, labels 0.10 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(412.647µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1307 -> 1308 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.12 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(662.715µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1308 -> 1309 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(603.911µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1309 -> 1310 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(648.762µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1310 -> 1311 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.03 ms, labels 0.14 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(817.493µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1311 -> 1312 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.3)
+  content: focus targets 0.03 ms, labels 0.14 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(697.515µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1312 -> 1313 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.12 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(654.258µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1313 -> 1314 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(623.18µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1314 -> 1315 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.1)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(466.034µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1315 -> 1316 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.03 ms, labels 0.13 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(615.563µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1316 -> 1317 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.03 ms, labels 0.12 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(577.413µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1317 -> 1318 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.12 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(585.342µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1318 -> 1319 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(500.964µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1319 -> 1320 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.10 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(469.152µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1320 -> 1321 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.12 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(602.003µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1321 -> 1322 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.10 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(486.213µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1322 -> 1323 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(485.976µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1323 -> 1324 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.14 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(663.477µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1324 -> 1325 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.03 ms, labels 0.12 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(598.447µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1325 -> 1326 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.03 ms, labels 0.13 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(629.676µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1326 -> 1327 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.03 ms, labels 0.14 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(706.136µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1327 -> 1328 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.12 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(670.725µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1328 -> 1329 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.03 ms, labels 0.12 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(640.909µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1329 -> 1330 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(494.972µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1330 -> 1331 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.03 ms, labels 0.12 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(671.39µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1331 -> 1332 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.03 ms, labels 0.12 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(647.432µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1332 -> 1333 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(580.198µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1333 -> 1334 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.1)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(456.335µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1334 -> 1335 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(558.492µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1335 -> 1336 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.1)
+  content: focus targets 0.02 ms, labels 0.10 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(436.24µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1336 -> 1337 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(490.642µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1337 -> 1338 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(490.981µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1338 -> 1339 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.1)
+  content: focus targets 0.02 ms, labels 0.10 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(442.329µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1339 -> 1340 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.15 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(499.199µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1340 -> 1341 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.03 ms, labels 0.12 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(677.343µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1341 -> 1342 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.03 ms, labels 0.12 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(636.504µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1342 -> 1343 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(620.733µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1343 -> 1344 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.03 ms, labels 0.14 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(708.26µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1344 -> 1345 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.12 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(643.206µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1345 -> 1346 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(488.83µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1346 -> 1347 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.1)
+  content: focus targets 0.02 ms, labels 0.10 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(441.625µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1347 -> 1348 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(481.208µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1348 -> 1349 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.10 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(482.11µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1349 -> 1350 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.1)
+  content: focus targets 0.02 ms, labels 0.10 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(463.899µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1350 -> 1351 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.1)
+  content: focus targets 0.02 ms, labels 0.10 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(454.376µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1351 -> 1352 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.12 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(671.914µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1352 -> 1353 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.1)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(471.048µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1353 -> 1354 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(506.106µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1354 -> 1355 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.12 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(650.61µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1355 -> 1356 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(568.999µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1356 -> 1357 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.03 ms, labels 0.14 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(699.058µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1357 -> 1358 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.12 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(675.264µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1358 -> 1359 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.12 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(644.9µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1359 -> 1360 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.1)
+  content: focus targets 0.02 ms, labels 0.10 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(459.882µs) ago, due false, wants true, again false, hidden false)
+  live: 7 node wrappers, 7 of them in the document
+  live: in 2.0 s, 81 advances (81 ticks, at most 1 in one; 27 ms of scripts, 0 WebGL calls in 0 ms), 79 renders (17 ms); 281 layouts for measurements so far
+  memory: scripts' heap 12 of 18 MB, their pictures 0 MB (0), the page's pictures 0 MB
+  live render: revision 1360 -> 1361 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(611.047µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1361 -> 1362 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(573.934µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1362 -> 1363 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.12 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(567.471µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1363 -> 1364 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.3)
+  content: focus targets 0.03 ms, labels 0.23 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(910.44µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1364 -> 1365 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(583.133µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1365 -> 1366 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(624.968µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1366 -> 1367 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(562.428µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1367 -> 1368 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.14 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(583.834µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1368 -> 1369 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(520.752µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1369 -> 1370 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(556.374µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1370 -> 1371 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(548.856µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1371 -> 1372 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.12 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(604.213µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1372 -> 1373 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(544.904µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1373 -> 1374 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(560.816µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1374 -> 1375 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(546.996µs) ago, due false, wants true, again false, hidden false)
+  live render: revision 1375 -> 1376 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.2)
+  content: focus targets 0.02 ms, labels 0.11 ms (125 labels)
+  moved: not only matrices (same paint false)
+  tiles: 0 of 15 repainted in 0.0 ms
+  live: idle with a render due (paced Some(582.583µs) ago, due false, wants true, again false, hidden false)
+  live console: [log] SVG_BENCH {"cached":[3.9607260000000224,1.1602010000000291,1.021556000000146,1.0673010000000431,1.7913900000000922,1.2430610000001252,1.5031839999999193],"changed":[0.942918000000077,0.6831680000000233,0.667348999999831,0.6829929999996693,0.7386100000001079,0.6911160000001928,1.087903999999753],"unrelated":[0.5403049999999894,0.47874500000000353,0.46862800000008065,0.6114820000000236,0.46730600000000777,0.46797399999991285,0.813752999999906],"frameTimes":[3.1635700000001634,8.485762000000022,8.292786999999862,8.19633900000008,8.396477000000004,8.271299000000226,8.56935599999997,8.2151080000001,8.14634199999955,8.432594000000336,8.336318999999776,8.364135000000033,8.24132799999984,8.358440000000428,8.36687599999982,8.23024899999973,8.340579000000162,8.419830999999704,8.22326000000021,8.381376000000273,8.253614999999627,8.584825000000137,8.31919000000039,8.478103999999803,8.200788999999759,8.358821999999918,8.136839000000009,8.494744999999966,8.44082200000048,8.149922000000288,8.40109199999938,8.142426999999998,8.578131999999869,8.409794000000375,8.239143000000013,8.203137000000197,8.63030899999967,8.015941999999995,8.336041000000023,8.423101000000088,8.34444499999995,8.315798000000086,8.327757999999903,8.445071000000098,8.148435999999947,8.3371089999996,8.367354000000205,8.41883000000007,8.167097999999669,8.378323000000364,8.25765599999977,8.676081000000295,8.015838000000258,8.26704699999982,3.3956240000002254,13.567125999999462,8.157848000000058,8.371396000000232,8.363031000000092,8.225958999999648,8.466443000000254,8.393024999999852,8.227268000000095,8.369452999999794,8.277552000000014,8.400730000000294,8.294176999999763,8.286721999999827,8.337664000000132,8.424594999999726,8.244185000000016,8.279438000000255,8.395647000000281,8.29999199999952,8.458032000000685,8.192371999999523,8.407639000000017,8.267579999999953,8.442434000000503,8.278893000000153,8.27344099999982,8.305132999999842,8.540555000000495,8.19286399999919,8.249328000000332,8.344257000000198,8.276425000
+  live render: revision 1376 -> 1378 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.1)
+  content: focus targets 0.02 ms, labels 0.02 ms (125 labels)
+  moved: 0 rects, all off screen; first None; viewport 0..578
+  tiles: 0 of 15 repainted in 0.0 ms

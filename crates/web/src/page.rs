@@ -980,7 +980,20 @@ impl Measurer {
                     patched = match Arc::get_mut(&mut m.layout).and_then(|l| l.patch_styles(doc, patch)) {
                         Some(result) => {
                             path = format!("patched in place, {} elements", nodes.len());
-                            result?.map(|p| (p, None))
+                            let result = result?;
+                            if let Some(p) = &result {
+                                Arc::get_mut(&mut m.layout).ok_or(layout::Error::Stale)?.refresh_vectors(
+                                    doc,
+                                    previous_revision.ok_or(layout::Error::Stale)?,
+                                    &p.nodes,
+                                    p.geometry_kept,
+                                    shaper,
+                                    &self.scope,
+                                    &mut found[1],
+                                    cancel,
+                                )?;
+                            }
+                            result.map(|p| (p, None))
                         }
                         None => {
                             let mut tree = (**m.layout.cache().tree().styles()).clone();
@@ -1032,13 +1045,13 @@ impl Measurer {
         };
         let kept = previous.as_ref().filter(|p| styles.geometry_kept() && !relayout && p.viewport == viewport && same_pictures(p));
         let layout = if let Some(p) = kept {
-            redone[1] = layout::Redone::Not;
+            redone[1] = layout::Redone::Part;
             redone[2] = layout::Redone::Not;
             redone[3] = layout::Redone::Not;
             match &patched {
                 // Patched in place: the layout holds the patched styles.
                 Some((_, None)) => p.layout.clone(),
-                _ => Arc::new(p.layout.with_styles(styles, doc, None)),
+                _ => Arc::new(p.layout.restyled(styles, doc, None, shaper, &self.scope, &mut found[1], cancel)?),
             }
         } else {
             let previous = previous.as_ref();
@@ -1057,12 +1070,12 @@ impl Measurer {
                 _ => None,
             };
             let kept = match (previous, previous_revision) {
-                (Some(p), Some(revision)) => kept_boxes(&p.layout, doc, revision, &styles, in_place, bound),
+                (Some(p), Some(revision)) => kept_boxes(&p.layout, doc, revision, &styles, in_place, bound, &mut found[1], cancel)?,
                 _ => None,
             };
             let tree = match kept {
                 Some(tree) => {
-                    redone[1] = layout::Redone::Not;
+                    redone[1] = layout::Redone::Part;
                     Arc::new(tree)
                 }
                 None => {
@@ -3124,8 +3137,7 @@ impl Page {
             return why("the layout is of another image set");
         }
         let Some(set) = images.with_replaced(pictures) else { return why("a picture isn't bound or changed size") };
-        let styles = tree.styles().clone();
-        let next = Arc::new(layout.with_styles(styles, &self.document, Some(set.clone())));
+        let next = Arc::new(layout.with_images(&self.document, Some(set.clone())));
         match self.scene.with_transforms(next, &[], cancel) {
             Ok(Some(scene)) => {
                 self.scene = scene;
@@ -3734,11 +3746,20 @@ fn dirty_nodes(doc: &Document, revision: u64) -> Option<crate::dom::NodeSet> {
 /// (GitHub rebuilt its 2578 boxes, 4.5 ms, for a class flipped as it
 /// scrolls). `patched_in_place`: the patch's own verdict, its old styles
 /// gone.
-fn kept_boxes(previous: &layout::Layout, doc: &Document, revision: u64, styles: &Arc<StyleTree>, patched_in_place: Option<bool>, images: Option<&Arc<crate::image::Set>>) -> Option<layout::Tree> {
+fn kept_boxes(
+    previous: &layout::Layout,
+    doc: &Document,
+    revision: u64,
+    styles: &Arc<StyleTree>,
+    patched_in_place: Option<bool>,
+    images: Option<&Arc<crate::image::Set>>,
+    found: &mut layout::Fallbacks,
+    cancel: Option<&AtomicBool>,
+) -> Result<Option<layout::Tree>> {
     use crate::dom::Change;
-    let changes = doc.changes_since(revision)?;
+    let Some(changes) = doc.changes_since(revision) else { return Ok(None) };
     if changes.len() > 1024 {
-        return None;
+        return Ok(None);
     }
     let unread = |name: &str| {
         matches!(name, "class" | "id" | "title" | "role" | "tabindex" | "slot" | "part" | "lang" | "translate" | "draggable" | "nonce")
@@ -3778,7 +3799,7 @@ fn kept_boxes(previous: &layout::Layout, doc: &Document, revision: u64, styles: 
                     Change::Control(_) => "a control's value".into(),
                     _ => "a change of another kind".into(),
                 });
-                return None;
+                return Ok(None);
             }
         }
     }
@@ -3789,14 +3810,21 @@ fn kept_boxes(previous: &layout::Layout, doc: &Document, revision: u64, styles: 
         _ => false,
     };
     if !same_images {
-        return None;
+        return Ok(None);
     }
-    let kept = if Arc::ptr_eq(old.styles(), styles) { patched_in_place? } else { styles.keeps_boxes_of(old.styles()) };
+    let kept = if Arc::ptr_eq(old.styles(), styles) {
+        match patched_in_place {
+            Some(kept) => kept,
+            None => return Ok(None),
+        }
+    } else {
+        styles.keeps_boxes_of(old.styles())
+    };
     if !kept {
         why("a style decides other boxes".into());
-        return None;
+        return Ok(None);
     }
-    let tree = old.with_styles(styles.clone(), doc, images.cloned());
+    let tree = old.restyled(styles.clone(), doc, images.cloned(), found, cancel)?;
     let tree = if texts.is_empty() && holders.is_empty() {
         Some(tree)
     } else {
@@ -3821,7 +3849,7 @@ fn kept_boxes(previous: &layout::Layout, doc: &Document, revision: u64, styles: 
             eprintln!("box tree check: {}", t.differs_from(&fresh).unwrap_or_else(|| "the same".into()));
         }
     }
-    tree
+    Ok(tree)
 }
 /// `nodes` and their ancestors into `dirty`.
 fn dirty_ancestors(doc: &Document, nodes: &[crate::dom::NodeId], dirty: &mut crate::dom::NodeSet) {
@@ -4162,46 +4190,19 @@ fn render(
     changes: Option<&RuleChanges>,
     mut progress: impl FnMut(Phase, usize),
 ) -> Result<(Arc<paint::Scene>, usize, layout::Fallbacks)> {
-    let effective = viewport::ViewportHost::new(host, viewport, previous);
-    let host = &effective;
-    let mut result = render_once(
-        doc,
-        images,
-        rules,
-        quirks,
-        resource_issues,
-        input,
-        host,
-        scope,
-        shaper,
-        painter,
-        viewport,
-        cancel,
-        previous,
-        previous_scene,
-        animated,
-        timeline,
-        containers,
-        restyle,
-        rematch,
-        changes,
-        &mut progress,
-    )?;
-    for _ in 0..QUERY_PASSES {
-        let units_changed = effective.update(result.0.layout());
-        let sizes = if rules.has_containers() { container_sizes(result.0.layout()) } else { Default::default() };
-        if !units_changed && sizes == *containers {
-            return Ok(result);
-        }
-        // What the containers whose size changed hold is matched again; the
-        // rest of this pass's styles and boxes are kept.
-        let resized = resized_containers(containers, &sizes);
-        if crate::env_on!("OLO_WEB_TIMING") {
-            eprintln!("render: {} of {} query containers sized anew: what they hold styled again", resized.len(), sizes.len());
-        }
-        *containers = sizes;
-        let first = result.0.clone();
-        result = render_once(
+    // Sampling consumes transition completions and animation events. Keep
+    // that state with the scene it describes: a cancelled paint must leave
+    // the next render able to sample the same terminal frame again.
+    let mut pending_timeline = timeline.clone();
+    let mut pending_animated = animated.clone();
+    let mut pending_containers = containers.clone();
+    let rendered = (|| {
+        let timeline = &mut pending_timeline;
+        let animated = &mut pending_animated;
+        let containers = &mut pending_containers;
+        let effective = viewport::ViewportHost::new(host, viewport, previous);
+        let host = &effective;
+        let mut result = render_once(
             doc,
             images,
             rules,
@@ -4214,18 +4215,62 @@ fn render(
             painter,
             viewport,
             cancel,
-            Some(first.layout()),
-            None,
+            previous,
+            previous_scene,
             animated,
             timeline,
             containers,
-            &resized,
-            &[],
-            None,
+            restyle,
+            rematch,
+            changes,
             &mut progress,
         )?;
+        for _ in 0..QUERY_PASSES {
+            let units_changed = effective.update(result.0.layout());
+            let sizes = if rules.has_containers() { container_sizes(result.0.layout()) } else { Default::default() };
+            if !units_changed && sizes == *containers {
+                return Ok(result);
+            }
+            // What the containers whose size changed hold is matched again; the
+            // rest of this pass's styles and boxes are kept.
+            let resized = resized_containers(containers, &sizes);
+            if crate::env_on!("OLO_WEB_TIMING") {
+                eprintln!("render: {} of {} query containers sized anew: what they hold styled again", resized.len(), sizes.len());
+            }
+            *containers = sizes;
+            let first = result.0.clone();
+            result = render_once(
+                doc,
+                images,
+                rules,
+                quirks,
+                resource_issues,
+                input,
+                host,
+                scope,
+                shaper,
+                painter,
+                viewport,
+                cancel,
+                Some(first.layout()),
+                None,
+                animated,
+                timeline,
+                containers,
+                &resized,
+                &[],
+                None,
+                &mut progress,
+            )?;
+        }
+        Err(layout::Error::Limit.into())
+    })();
+    if rendered.is_ok() {
+        *timeline = pending_timeline;
+        *animated = pending_animated;
+        *containers = pending_containers;
     }
-    Err(layout::Error::Limit.into())
+    rendered
 }
 #[allow(clippy::too_many_arguments)]
 fn render_once(
@@ -4543,23 +4588,23 @@ fn render_once(
         }
     };
     let layout = if let Some(p) = kept {
-        redone[1] = layout::Redone::Not;
+        redone[1] = layout::Redone::Part;
         redone[2] = layout::Redone::Not;
         redone[3] = layout::Redone::Not;
         if let Some(t) = timing {
             stamps[1] = t.elapsed().as_secs_f64() * 1000.;
             stamps[2] = stamps[1];
         }
-        Arc::new(p.with_styles(styles, doc, images.cloned()))
+        Arc::new(p.restyled(styles, doc, images.cloned(), shaper, scope, &mut found[1], cancel)?)
     } else {
         progress(Phase::Boxes, 0);
         let kept = match (previous, previous_revision) {
-            (Some(p), Some(revision)) => kept_boxes(p, doc, revision, &styles, None, images),
+            (Some(p), Some(revision)) => kept_boxes(p, doc, revision, &styles, None, images, &mut found[1], cancel)?,
             _ => None,
         };
         let tree = match kept {
             Some(tree) => {
-                redone[1] = layout::Redone::Not;
+                redone[1] = layout::Redone::Part;
                 Arc::new(tree)
             }
             None => {
@@ -4645,7 +4690,7 @@ fn render_once(
         let live_now = images.map(|i| i.live_nodes().collect::<Vec<_>>()).unwrap_or_default();
         let live_before = previous_scene.layout().cache().tree().images().map(|i| i.live_nodes().collect::<Vec<_>>()).unwrap_or_default();
         let surfaces_stand = live_now == live_before;
-        if only_transforms {
+        if only_transforms && old.same_vectors(new) {
             animated.extend(patched.nodes.iter().copied());
             if newly == 0 && surfaces_stand {
                 scene = previous_scene.with_transforms(layout.clone(), &boxes, cancel)?;

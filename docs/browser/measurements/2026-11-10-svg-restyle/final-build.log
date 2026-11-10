@@ -1,0 +1,1428 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/ben/worktrees/olo/browser/smithay/smithay/Cargo.toml
+workspace: /home/ben/worktrees/olo/browser/Cargo.toml
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+  --> gpui/gpui/src/platform/linux/dispatcher.rs:51:18
+   |
+51 |                 .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+   |                  ^^^^^^^^^^^^
+   |
+   = note: `#[warn(deprecated)]` on by default
+help: replace the use of the deprecated method
+   |
+51 -                 .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+51 +                 .try_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+   |
+
+warning: method `holds_clipboard` is never used
+   --> gpui/gpui/src/platform.rs:269:8
+    |
+162 | pub(crate) trait Platform: 'static {
+    |                  -------- method in this trait
+...
+269 |     fn holds_clipboard(&self) -> bool {
+    |        ^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `selected_text_range` is never used
+    --> gpui/gpui/src/platform.rs:1282:8
+     |
+1277 | impl PlatformInputHandler {
+     | ------------------------- method in this implementation
+...
+1282 |     fn selected_text_range(&mut self, ignore_disabled_input: bool) -> Option<UTF16Selection> {
+     |        ^^^^^^^^^^^^^^^^^^^
+
+warning: method `holds_clipboard` is never used
+  --> gpui/gpui/src/platform/linux/platform.rs:80:8
+   |
+46 | pub trait LinuxClient {
+   |           ----------- method in this trait
+...
+80 |     fn holds_clipboard(&self) -> bool {
+   |        ^^^^^^^^^^^^^^^
+
+warning: field `italic` is never read
+  --> gpui/gpui/src/platform/linux/text_system.rs:38:5
+   |
+34 | struct Source {
+   |        ------ field in this struct
+...
+38 |     italic: bool,
+   |     ^^^^^^
+
+warning: methods `set_theme` and `set_size` are never used
+  --> gpui/gpui/src/platform/linux/wayland/cursor.rs:76:12
+   |
+33 | impl Cursor {
+   | ----------- methods in this implementation
+...
+76 |     pub fn set_theme(&mut self, theme_name: String) {
+   |            ^^^^^^^^^
+...
+89 |     pub fn set_size(&mut self, size: u32) {
+   |            ^^^^^^^^
+
+warning: method `set_appearance` is never used
+    --> gpui/gpui/src/platform/linux/wayland/window.rs:1951:12
+     |
+1008 | impl WaylandWindowStatePtr {
+     | -------------------------- method in this implementation
+...
+1951 |     pub fn set_appearance(&mut self, appearance: WindowAppearance) {
+     |            ^^^^^^^^^^^^^^
+
+warning: associated function `ahead` is never used
+  --> gpui/gpui/src/platform/blade/blade_context.rs:53:12
+   |
+49 | impl BladeContext {
+   | ----------------- associated function in this implementation
+...
+53 |     pub fn ahead() -> std::thread::JoinHandle<anyhow::Result<BladeContext>> {
+   |            ^^^^^
+
+warning: `gpui` (lib) generated 8 warnings (run `cargo fix --lib -p gpui` to apply 1 suggestion)
+warning: unused import: `crate::mp4box::*`
+ --> vendor/mp4/src/writer.rs:4:5
+  |
+4 | use crate::mp4box::*;
+  |     ^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: use of deprecated constant `std::u32::MAX`: replaced by the `MAX` associated constant on this type
+   --> vendor/mp4/src/mp4box/mp4a.rs:269:32
+    |
+269 |     if size as u64 > std::u32::MAX as u64 {
+    |                                ^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated constant `std::u32::MAX`: replaced by the `MAX` associated constant on this type
+   --> vendor/mp4/src/writer.rs:120:34
+    |
+120 |         if mdat_size > std::u32::MAX as u64 {
+    |                                  ^^^
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/types.rs:692:14
+    |
+692 |     fn title(&self) -> Option<Cow<str>>;
+    |              ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |              |
+    |              the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+    = note: `#[warn(mismatched_lifetime_syntaxes)]` on by default
+help: use `'_` for type paths
+    |
+692 |     fn title(&self) -> Option<Cow<'_, str>>;
+    |                                   +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/types.rs:698:16
+    |
+698 |     fn summary(&self) -> Option<Cow<str>>;
+    |                ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |                |
+    |                the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+698 |     fn summary(&self) -> Option<Cow<'_, str>>;
+    |                                     +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/types.rs:702:14
+    |
+702 |     fn title(&self) -> Option<Cow<str>> {
+    |              ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |              |
+    |              the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+702 |     fn title(&self) -> Option<Cow<'_, str>> {
+    |                                   +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/types.rs:714:16
+    |
+714 |     fn summary(&self) -> Option<Cow<str>> {
+    |                ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |                |
+    |                the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+714 |     fn summary(&self) -> Option<Cow<'_, str>> {
+    |                                     +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/types.rs:720:14
+    |
+720 |     fn title(&self) -> Option<Cow<str>> {
+    |              ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |              |
+    |              the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+720 |     fn title(&self) -> Option<Cow<'_, str>> {
+    |                                   +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/types.rs:732:16
+    |
+732 |     fn summary(&self) -> Option<Cow<str>> {
+    |                ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |                |
+    |                the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+732 |     fn summary(&self) -> Option<Cow<'_, str>> {
+    |                                     +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/mp4box/ilst.rs:169:14
+    |
+169 |     fn title(&self) -> Option<Cow<str>> {
+    |              ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |              |
+    |              the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+169 |     fn title(&self) -> Option<Cow<'_, str>> {
+    |                                   +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/mp4box/ilst.rs:181:16
+    |
+181 |     fn summary(&self) -> Option<Cow<str>> {
+    |                ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |                |
+    |                the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+181 |     fn summary(&self) -> Option<Cow<'_, str>> {
+    |                                     +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/mp4box/ilst.rs:190:22
+    |
+190 | fn item_to_str(item: &IlstItemBox) -> Cow<str> {
+    |                      ^^^^^^^^^^^^     ^^^^^^^^ the same lifetime is hidden here
+    |                      |
+    |                      the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+190 | fn item_to_str(item: &IlstItemBox) -> Cow<'_, str> {
+    |                                           +++
+
+warning: `mp4` (lib) generated 12 warnings (run `cargo fix --lib -p mp4` to apply 10 suggestions)
+   Compiling olo-web v0.1.0 (/home/ben/worktrees/olo/browser/crates/web)
+warning: hidden lifetime parameters in types are deprecated
+   --> crates/app_server/src/toolkits.rs:117:49
+    |
+117 |         let keys: Vec<(&str, olo_system::dconf::Setting)> = settings
+    |                              -------------------^^^^^^^
+    |                              |
+    |                              expected lifetime parameter
+    |
+note: the lint level is defined here
+   --> crates/app_server/src/lib.rs:1:9
+    |
+  1 | #![warn(rust_2018_idioms)]
+    |         ^^^^^^^^^^^^^^^^
+    = note: `#[warn(elided_lifetimes_in_paths)]` implied by `#[warn(rust_2018_idioms)]`
+help: indicate the anonymous lifetime
+    |
+117 |         let keys: Vec<(&str, olo_system::dconf::Setting<'_>)> = settings
+    |                                                        ++++
+
+warning: unused imports: `MouseMoveEvent` and `ScrollWheelEvent`
+  --> crates/interface/src/dispatch.rs:17:131
+   |
+17 |     Bounds, ClickEvent, ImeInput, KeyDownEvent, KeyboardButton, KeyboardClickEvent, MouseButton, MouseClickEvent, MouseDownEvent, MouseMoveEvent, M...
+   |                                                                                                                                   ^^^^^^^^^^^^^^
+18 |     ScrollWheelEvent, WindowCx,
+   |     ^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `ImageTriangle`
+  --> crates/interface/src/painter.rs:19:113
+   |
+19 |     AtlasTile, Background, BorderStyle, Bounds, BoxShadow, Corners, DevicePixels, Edges, FontId, GlyphId, Hsla, ImageTriangle, IsZer...
+   |                                                                                                                 ^^^^^^^^^^^^^
+
+warning: unused imports: `Path` and `process::Command`
+ --> crates/interface/src/platform/linux/platform.rs:3:12
+  |
+3 |     path::{Path, PathBuf},
+  |            ^^^^
+4 |     process::Command,
+  |     ^^^^^^^^^^^^^^^^
+
+warning: unused imports: `Context as _` and `anyhow`
+  --> crates/interface/src/platform/linux/platform.rs:16:14
+   |
+16 | use anyhow::{Context as _, anyhow};
+   |              ^^^^^^^^^^^^  ^^^^^^
+
+warning: unused import: `futures::channel::oneshot`
+  --> crates/interface/src/platform/linux/platform.rs:19:5
+   |
+19 | use futures::channel::oneshot;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `ashpd::WindowIdentifier`
+  --> crates/interface/src/platform/linux/wayland/client.rs:11:5
+   |
+11 | use ashpd::WindowIdentifier;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `futures::channel::oneshot::Receiver`
+  --> crates/interface/src/platform/linux/wayland/window.rs:12:5
+   |
+12 | use futures::channel::oneshot::Receiver;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `PromptButton` and `PromptLevel`
+  --> crates/interface/src/platform/linux/wayland/window.rs:34:125
+   |
+34 | ...put, Pixels, PlatformDisplay, PlatformInput, Point, PromptButton, PromptLevel, RequestFrameOptions, ResizeEdge, Size, Tiling,
+   |                                                        ^^^^^^^^^^^^  ^^^^^^^^^^^
+
+warning: unused imports: `PathBuf` and `Path`
+  --> crates/interface/src/platform.rs:31:12
+   |
+31 |     path::{Path, PathBuf},
+   |            ^^^^  ^^^^^^^
+
+warning: unused import: `Weak`
+  --> crates/interface/src/stage.rs:14:14
+   |
+14 |     rc::{Rc, Weak},
+   |              ^^^^
+
+warning: unused import: `util::TryFutureExt`
+  --> crates/interface/src/executor.rs:22:5
+   |
+22 | use util::TryFutureExt;
+   |     ^^^^^^^^^^^^^^^^^^
+
+warning: type `Interactivity` is more private than the item `InteractiveElement::interactivity`
+   --> crates/interface/src/element.rs:404:5
+    |
+404 |     fn interactivity(&mut self) -> &mut Interactivity;
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ method `InteractiveElement::interactivity` is reachable at visibility `pub`
+    |
+note: but type `Interactivity` is only usable at visibility `pub(crate)`
+   --> crates/interface/src/element.rs:204:1
+    |
+204 | pub(crate) struct Interactivity {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: `#[warn(private_interfaces)]` on by default
+
+warning: type `Interactivity` is more private than the item `<element::Element as InteractiveElement>::interactivity`
+   --> crates/interface/src/element.rs:611:5
+    |
+611 |     fn interactivity(&mut self) -> &mut Interactivity {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ method `<element::Element as InteractiveElement>::interactivity` is reachable at visibility `pub`
+    |
+note: but type `Interactivity` is only usable at visibility `pub(crate)`
+   --> crates/interface/src/element.rs:204:1
+    |
+204 | pub(crate) struct Interactivity {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: field `scale_factor` is never read
+  --> crates/interface/src/assets.rs:66:16
+   |
+62 | pub struct RenderImage {
+   |            ----------- field in this struct
+...
+66 |     pub(crate) scale_factor: f32,
+   |                ^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `render_size` is never used
+   --> crates/interface/src/assets.rs:138:19
+    |
+ 83 | impl RenderImage {
+    | ---------------- method in this implementation
+...
+138 |     pub(crate) fn render_size(&self, frame_index: usize) -> Size<Pixels> {
+    |                   ^^^^^^^^^^^
+
+warning: function `swap_rgba_pa_to_bgra` is never used
+  --> crates/interface/src/color.rs:26:15
+   |
+26 | pub(crate) fn swap_rgba_pa_to_bgra(color: &mut [u8]) {
+   |               ^^^^^^^^^^^^^^^^^^^^
+
+warning: method `displays` is never used
+  --> crates/interface/src/display.rs:76:19
+   |
+61 | impl Client {
+   | ----------- method in this implementation
+...
+76 |     pub(crate) fn displays(&self) -> Vec<Rc<dyn PlatformDisplay>> {
+   |                   ^^^^^^^^
+
+warning: field `headless` is never read
+   --> crates/interface/src/display.rs:131:16
+    |
+124 | pub(crate) struct Display {
+    |                   ------- field in this struct
+...
+131 |     pub(crate) headless: bool,
+    |                ^^^^^^^^
+
+warning: method `is_gone` is never used
+   --> crates/interface/src/display.rs:242:19
+    |
+144 | impl Display {
+    | ------------ method in this implementation
+...
+242 |     pub(crate) fn is_gone(&self) -> bool {
+    |                   ^^^^^^^
+
+warning: variant `Ready` is never constructed
+  --> crates/interface/src/executor.rs:63:5
+   |
+61 | enum TaskState<T> {
+   |      --------- variant in this enum
+62 |     /// A task that is ready to return a value
+63 |     Ready(Option<T>),
+   |     ^^^^^
+   |
+   = note: `TaskState` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: associated function `ready` is never used
+  --> crates/interface/src/executor.rs:71:12
+   |
+69 | impl<T> Task<T> {
+   | --------------- associated function in this implementation
+70 |     /// Creates a new task that will resolve with the value
+71 |     pub fn ready(val: T) -> Self {
+   |            ^^^^^
+
+warning: multiple methods are never used
+   --> crates/interface/src/executor.rs:145:12
+    |
+129 | impl BackgroundExecutor {
+    | ----------------------- methods in this implementation
+...
+145 |     pub fn spawn_labeled<R>(&self, label: TaskLabel, future: impl Future<Output = R> + Send + 'static) -> Task<R>
+    |            ^^^^^^^^^^^^^
+...
+168 |     pub fn block<R>(&self, future: impl Future<Output = R>) -> R {
+    |            ^^^^^
+...
+173 |     pub(crate) fn block_internal<Fut: Future>(&self, _background_only: bool, future: Fut, timeout: Option<Duration>) -> Result<Fut:...
+    |                   ^^^^^^^^^^^^^^
+...
+275 |     pub fn block_with_timeout<Fut: Future>(&self, duration: Duration, future: Fut) -> Result<Fut::Output, impl Future<Output = Fut:...
+    |            ^^^^^^^^^^^^^^^^^^
+...
+281 |     pub async fn scoped<'scope, F>(&self, scheduler: F)
+    |                  ^^^^^^
+...
+297 |     pub fn now(&self) -> Instant {
+    |            ^^^
+...
+304 |     pub fn timer(&self, duration: Duration) -> Task<()> {
+    |            ^^^^^
+...
+386 |     pub fn num_cpus(&self) -> usize {
+    |            ^^^^^^^^
+...
+391 |     pub fn is_main_thread(&self) -> bool {
+    |            ^^^^^^^^^^^^^^
+
+warning: struct `Scope` is never constructed
+   --> crates/interface/src/executor.rs:475:12
+    |
+475 | pub struct Scope<'a> {
+    |            ^^^^^
+
+warning: associated items `new`, `num_cpus`, and `spawn` are never used
+   --> crates/interface/src/executor.rs:484:8
+    |
+483 | impl<'a> Scope<'a> {
+    | ------------------ associated items in this implementation
+484 |     fn new(executor: BackgroundExecutor) -> Self {
+    |        ^^^
+...
+490 |     pub fn num_cpus(&self) -> usize {
+    |            ^^^^^^^^
+...
+495 |     pub fn spawn<F>(&mut self, f: F)
+    |            ^^^^^
+
+warning: methods `mouse_event` and `keyboard_event` are never used
+   --> crates/interface/src/interactive.rs:575:19
+    |
+574 | impl PlatformInput {
+    | ------------------ methods in this implementation
+575 |     pub(crate) fn mouse_event(&self) -> Option<&dyn Any> {
+    |                   ^^^^^^^^^^^
+...
+590 |     pub(crate) fn keyboard_event(&self) -> Option<&dyn Any> {
+    |                   ^^^^^^^^^^^^^^
+
+warning: constant `BUDGET` is never used
+  --> crates/interface/src/outline.rs:44:7
+   |
+44 | const BUDGET: usize = 4 << 20;
+   |       ^^^^^^
+
+warning: constant `KEEP_FRAMES` is never used
+  --> crates/interface/src/outline.rs:46:7
+   |
+46 | const KEEP_FRAMES: u64 = 120;
+   |       ^^^^^^^^^^^
+
+warning: method `end_frame` is never used
+   --> crates/interface/src/outline.rs:211:12
+    |
+194 | impl Outlines {
+    | ------------- method in this implementation
+...
+211 |     pub fn end_frame(&mut self, atlas: &dyn PlatformAtlas) {
+    |            ^^^^^^^^^
+
+warning: multiple methods are never used
+   --> crates/interface/src/platform.rs:235:8
+    |
+234 | pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
+    |                  -------------- methods in this trait
+235 |     fn bounds(&self) -> Bounds<Pixels>;
+    |        ^^^^^^
+236 |     fn is_maximized(&self) -> bool;
+    |        ^^^^^^^^^^^^
+237 |     fn window_bounds(&self) -> WindowBounds;
+    |        ^^^^^^^^^^^^^
+...
+241 |     fn appearance(&self) -> WindowAppearance;
+    |        ^^^^^^^^^^
+242 |     fn display(&self) -> Option<Rc<dyn PlatformDisplay>>;
+243 |     fn mouse_position(&self) -> Point<Pixels>;
+    |        ^^^^^^^^^^^^^^
+244 |     fn modifiers(&self) -> Modifiers;
+    |        ^^^^^^^^^
+245 |     fn capslock(&self) -> Capslock;
+    |        ^^^^^^^^
+246 |     fn activate(&self);
+    |        ^^^^^^^^
+...
+250 |     fn activate_with_token(&self, _token: &str) {
+    |        ^^^^^^^^^^^^^^^^^^^
+...
+253 |     fn is_active(&self) -> bool;
+    |        ^^^^^^^^^
+254 |     fn is_hovered(&self) -> bool;
+    |        ^^^^^^^^^^
+255 |     fn set_title(&mut self, title: &str);
+256 |     fn set_background_appearance(&self, background_appearance: WindowBackgroundAppearance);
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+259 |     fn set_keep_awake(&self, _on: bool) {}
+    |        ^^^^^^^^^^^^^^
+...
+264 |     fn activation_token(&self, done: Box<dyn FnOnce(Option<String>)>) {
+    |        ^^^^^^^^^^^^^^^^
+...
+269 |     fn export_handle(&self, done: Box<dyn FnOnce(Option<String>)>) {
+    |        ^^^^^^^^^^^^^
+...
+274 |     fn set_layer_keyboard(&self, _keyboard: LayerKeyboard) {}
+    |        ^^^^^^^^^^^^^^^^^^
+275 |     fn set_layer_margin(&self, _margin: (i32, i32, i32, i32)) {}
+    |        ^^^^^^^^^^^^^^^^
+...
+278 |     fn set_drop_accept(&self, _accept: Option<DropAccept>) {}
+    |        ^^^^^^^^^^^^^^^
+...
+282 |     fn place_externals(&self, _places: &[(u64, Bounds<Pixels>)]) {}
+    |        ^^^^^^^^^^^^^^^
+...
+287 |     fn set_external_buffer(&self, _key: u64, buffer: Option<ExternalBuffer>) {
+    |        ^^^^^^^^^^^^^^^^^^^
+...
+292 |     fn minimize(&self);
+    |        ^^^^^^^^
+293 |     fn zoom(&self);
+    |        ^^^^
+294 |     fn toggle_fullscreen(&self);
+    |        ^^^^^^^^^^^^^^^^^
+...
+298 |     fn request_close(&self) {}
+    |        ^^^^^^^^^^^^^
+299 |     fn is_fullscreen(&self) -> bool;
+    |        ^^^^^^^^^^^^^
+...
+310 |     fn draw_now(&self) {}
+    |        ^^^^^^^^
+...
+336 |     fn get_title(&self) -> String {
+    |        ^^^^^^^^^
+...
+341 |     fn inner_window_bounds(&self) -> WindowBounds {
+    |        ^^^^^^^^^^^^^^^^^^^
+...
+344 |     fn start_window_move(&self) {}
+    |        ^^^^^^^^^^^^^^^^^
+345 |     fn start_window_resize(&self, _edge: ResizeEdge) {}
+    |        ^^^^^^^^^^^^^^^^^^^
+...
+349 |     fn start_drag(&self, _drag: OutgoingDrag, _done: futures::channel::oneshot::Sender<Option<DragAction>>) {}
+    |        ^^^^^^^^^^
+...
+355 |     fn window_decorations(&self) -> Decorations {
+    |        ^^^^^^^^^^^^^^^^^^
+...
+360 |     fn tiling(&self) -> Tiling {
+    |        ^^^^^^
+...
+363 |     fn set_app_id(&mut self, _app_id: &str) {}
+    |        ^^^^^^^^^^
+...
+366 |     fn set_gamut(&mut self, _space: crate::Gamut) -> bool {
+    |        ^^^^^^^^^
+...
+371 |     fn on_hdr_display(&self) -> bool {
+    |        ^^^^^^^^^^^^^^
+...
+374 |     fn map_window(&mut self) -> anyhow::Result<()> {
+    |        ^^^^^^^^^^
+
+warning: method `remove` is never used
+   --> crates/interface/src/platform.rs:766:8
+    |
+764 | pub(crate) trait PlatformAtlas: Send + Sync {
+    |                  ------------- method in this trait
+765 |     fn get_or_insert_with<'a>(&self, key: ...
+766 |     fn remove(&self, key: &AtlasKey);
+    |        ^^^^^^
+
+warning: fields `is_movable`, `is_minimizable`, `focus`, `show`, and `display_id` are never read
+   --> crates/interface/src/platform.rs:870:9
+    |
+860 | pub(crate) struct WindowParams {
+    |                   ------------ fields in this struct
+...
+870 |     pub is_movable: bool,
+    |         ^^^^^^^^^^
+...
+876 |     pub is_minimizable: bool,
+    |         ^^^^^^^^^^^^^^
+877 |     pub focus: bool,
+    |         ^^^^^
+878 |     pub show: bool,
+    |         ^^^^
+879 |     pub display_id: Option<DisplayId>,
+    |         ^^^^^^^^^^
+    |
+    = note: `WindowParams` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: associated function `text_hash` is never used
+    --> crates/interface/src/platform.rs:1667:19
+     |
+1637 | impl ClipboardString {
+     | -------------------- associated function in this implementation
+...
+1667 |     pub(crate) fn text_hash(text: &str) -> u64 {
+     |                   ^^^^^^^^^
+
+warning: methods `destroy`, `decrement_ref_count`, and `is_unreferenced` are never used
+   --> crates/interface/src/platform/blade/blade_atlas.rs:280:8
+    |
+272 | impl BladeAtlasTexture {
+    | ---------------------- methods in this implementation
+...
+280 |     fn destroy(&mut self, gpu: &gpu::Context) {
+    |        ^^^^^^^
+...
+289 |     fn decrement_ref_count(&mut self) {
+    |        ^^^^^^^^^^^^^^^^^^^
+...
+293 |     fn is_unreferenced(&mut self) -> bool {
+    |        ^^^^^^^^^^^^^^^
+
+warning: methods `set_gamut`, `update_transparency`, and `viewport_size` are never used
+   --> crates/interface/src/platform/blade/blade_renderer.rs:537:12
+    |
+531 | impl BladeRenderer {
+    | ------------------ methods in this implementation
+...
+537 |     pub fn set_gamut(&mut self, gamut: crate::Gamut) -> bool {
+    |            ^^^^^^^^^
+...
+833 |     pub fn update_transparency(&mut self, transparent: bool) {
+    |            ^^^^^^^^^^^^^^^^^^^
+...
+845 |     pub fn viewport_size(&self) -> gpu::Extent {
+    |            ^^^^^^^^^^^^^
+
+warning: constant `KEYRING_LABEL` is never used
+  --> crates/interface/src/platform/linux/platform.rs:34:18
+   |
+34 | pub(crate) const KEYRING_LABEL: &str = "zed-github-account";
+   |                  ^^^^^^^^^^^^^
+
+warning: constant `FILE_PICKER_PORTAL_MISSING` is never used
+  --> crates/interface/src/platform/linux/platform.rs:36:7
+   |
+36 | const FILE_PICKER_PORTAL_MISSING: &str = "Couldn't open file picker due to missing xdg-desktop-portal implementation.";
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: multiple methods are never used
+  --> crates/interface/src/platform/linux/platform.rs:39:8
+   |
+38 | pub trait LinuxClient {
+   |           ----------- methods in this trait
+39 |     fn compositor_name(&self) -> &'static str;
+   |        ^^^^^^^^^^^^^^^
+40 |     fn with_common<R>(&self, f: impl FnOnce(&mut LinuxCommon) -> R) -> R;
+41 |     fn keyboard_layout(&self) -> Box<dyn PlatformKeyboardLayout>;
+   |        ^^^^^^^^^^^^^^^
+42 |     fn displays(&self) -> Vec<Rc<dyn PlatformDisplay>>;
+   |        ^^^^^^^^
+...
+45 |     fn primary_display(&self) -> Option<Rc<dyn PlatformDisplay>>;
+   |        ^^^^^^^^^^^^^^^
+...
+49 |     fn open_uri(&self, uri: &str);
+   |        ^^^^^^^^
+50 |     fn reveal_path(&self, path: PathBuf);
+   |        ^^^^^^^^^^^
+51 |     fn write_to_primary(&self, item: ClipboardItem);
+   |        ^^^^^^^^^^^^^^^^
+...
+58 |     fn linger_for_clipboard(&self) -> bool {
+   |        ^^^^^^^^^^^^^^^^^^^^
+...
+62 |     fn holds_clipboard(&self) -> bool {
+   |        ^^^^^^^^^^^^^^^
+...
+66 |     fn external_modifiers(&self, _fourcc: u32) -> Vec<u64> {
+   |        ^^^^^^^^^^^^^^^^^^
+...
+69 |     fn read_from_primary(&self) -> Option<ClipboardItem>;
+   |        ^^^^^^^^^^^^^^^^^
+70 |     fn read_from_clipboard(&self) -> Option<ClipboardItem>;
+   |        ^^^^^^^^^^^^^^^^^^^
+...
+83 |     fn active_window(&self) -> Option<WindowId>;
+   |        ^^^^^^^^^^^^^
+84 |     fn window_stack(&self) -> Option<Vec<WindowId>>;
+   |        ^^^^^^^^^^^^
+
+warning: field `quit` is never read
+  --> crates/interface/src/platform/linux/platform.rs:90:16
+   |
+89 | pub(crate) struct PlatformHandlers {
+   |                   ---------------- field in this struct
+90 |     pub(crate) quit: Option<Box<dyn FnMut()>>,
+   |                ^^^^
+
+warning: field `auto_hide_scrollbars` is never read
+   --> crates/interface/src/platform/linux/platform.rs:105:16
+    |
+100 | pub(crate) struct LinuxCommon {
+    |                   ----------- field in this struct
+...
+105 |     pub(crate) auto_hide_scrollbars: bool,
+    |                ^^^^^^^^^^^^^^^^^^^^
+
+warning: field `italic` is never read
+  --> crates/interface/src/platform/linux/text_system.rs:37:5
+   |
+33 | struct Source {
+   |        ------ field in this struct
+...
+37 |     italic: bool,
+   |     ^^^^^^
+
+warning: fields `xdg_exporter`, `blur_manager`, `idle_inhibit_manager`, `subcompositor`, and `linux_dmabuf` are never read
+   --> crates/interface/src/platform/linux/wayland/client.rs:116:9
+    |
+ 91 | pub struct Globals {
+    |            ------- fields in this struct
+...
+116 |     pub xdg_exporter: Option<zxdg_exporter_v2::ZxdgExporterV2>,
+    |         ^^^^^^^^^^^^
+...
+119 |     pub blur_manager: Option<org_kde_kwin_blur_manager::OrgKdeKwinBlurManager>,
+    |         ^^^^^^^^^^^^
+...
+122 |     pub idle_inhibit_manager: Option<zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1>,
+    |         ^^^^^^^^^^^^^^^^^^^^
+...
+130 |     pub subcompositor: Option<wl_subcompositor::WlSubcompositor>,
+    |         ^^^^^^^^^^^^^
+131 |     pub linux_dmabuf: Option<zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1>,
+    |         ^^^^^^^^^^^^
+    |
+    = note: `Globals` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: fields `primary_selection` and `next_token_request` are never read
+   --> crates/interface/src/platform/linux/wayland/client.rs:317:5
+    |
+290 | pub(crate) struct WaylandClientState {
+    |                   ------------------ fields in this struct
+...
+317 |     primary_selection: Option<zwp_primary_selection_device_v1::ZwpPrimarySelectionDeviceV1>,
+    |     ^^^^^^^^^^^^^^^^^
+...
+369 |     next_token_request: u64,
+    |     ^^^^^^^^^^^^^^^^^^
+
+warning: function `drag_icon` is never used
+   --> crates/interface/src/platform/linux/wayland/client.rs:413:4
+    |
+413 | fn drag_icon(globals: &Globals, image: &crate::DragImage) -> Option<(wl_surface::WlSurface, wl_buffer::WlBuffer, wl_shm_pool::WlShm...
+    |    ^^^^^^^^^
+
+warning: variants `Uri`, `Path`, and `Window` are never constructed
+   --> crates/interface/src/platform/linux/wayland/client.rs:468:5
+    |
+466 | pub(crate) enum PendingActivation {
+    |                 ----------------- variants in this enum
+467 |     /// URI to open in the web browser.
+468 |     Uri(String),
+    |     ^^^
+469 |     /// Path to open in the file explorer.
+470 |     Path(PathBuf),
+    |     ^^^^
+471 |     /// A window from ourselves to raise.
+472 |     Window(ObjectId),
+    |     ^^^^^^
+
+warning: methods `start_drag`, `set_drop_accept`, `get_serial`, and `set_pending_activation` are never used
+   --> crates/interface/src/platform/linux/wayland/client.rs:534:12
+    |
+480 | impl WaylandClientStatePtr {
+    | -------------------------- methods in this implementation
+...
+534 |     pub fn start_drag(&self, origin: &wl_surface::WlSurface, drag: crate::OutgoingDrag, done: futures::channel::oneshot::Sender<Opt...
+    |            ^^^^^^^^^^
+...
+569 |     pub fn set_drop_accept(&self, surface: &ObjectId, accept: Option<crate::DropAccept>) {
+    |            ^^^^^^^^^^^^^^^
+...
+599 |     pub fn get_serial(&self, kind: SerialKind) -> u32 {
+    |            ^^^^^^^^^^
+...
+603 |     pub fn set_pending_activation(&self, window: ObjectId) {
+    |            ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: methods `wait_for_export` and `request_activation_token` are never used
+    --> crates/interface/src/platform/linux/wayland/client.rs:2671:12
+     |
+2666 | impl WaylandClientStatePtr {
+     | -------------------------- methods in this implementation
+...
+2671 |     pub fn wait_for_export(&self, surface: ObjectId, done: Box<dyn FnOnce(Option<String>)>) {
+     |            ^^^^^^^^^^^^^^^
+...
+2680 |     pub fn request_activation_token(&self, surface: &wl_surface::WlSurface, app_id: Option<String>, done: Box<dyn FnOnce(Option<St...
+     |            ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: constant `ALLOWED_TEXT_MIME_TYPES` is never used
+  --> crates/interface/src/platform/linux/wayland/clipboard.rs:20:18
+   |
+20 | pub(crate) const ALLOWED_TEXT_MIME_TYPES: [&str; 2] = ["text/plain;charset=utf-8", "UTF8_STRING"];
+   |                  ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: methods `read_bytes`, `read_text`, and `read_image` are never used
+   --> crates/interface/src/platform/linux/wayland/clipboard.rs:79:8
+    |
+ 61 | impl<T: ReceiveData> DataOffer<T> {
+    | --------------------------------- methods in this implementation
+...
+ 79 |     fn read_bytes(&self, connection: &Connection, mime_type: &str) -> Option<Vec<u8>> {
+    |        ^^^^^^^^^^
+...
+ 96 |     fn read_text(&self, connection: &Connection) -> Option<ClipboardItem> {
+    |        ^^^^^^^^^
+...
+114 |     fn read_image(&self, connection: &Connection) -> Option<ClipboardItem> {
+    |        ^^^^^^^^^^
+
+warning: methods `set_primary`, `read`, and `read_primary` are never used
+   --> crates/interface/src/platform/linux/wayland/clipboard.rs:151:12
+    |
+130 | impl Clipboard {
+    | -------------- methods in this implementation
+...
+151 |     pub fn set_primary(&mut self, item: ClipboardItem) {
+    |            ^^^^^^^^^^^
+...
+236 |     pub fn read(&mut self) -> Option<ClipboardItem> {
+    |            ^^^^
+...
+252 |     pub fn read_primary(&mut self) -> Option<ClipboardItem> {
+    |            ^^^^^^^^^^^^
+
+warning: methods `set_theme` and `set_size` are never used
+  --> crates/interface/src/platform/linux/wayland/cursor.rs:57:12
+   |
+33 | impl Cursor {
+   | ----------- methods in this implementation
+...
+57 |     pub fn set_theme(&mut self, theme_name: String) {
+   |            ^^^^^^^^^
+...
+67 |     pub fn set_size(&mut self, size: u32) {
+   |            ^^^^^^^^
+
+warning: fields `app_id`, `appearance`, and `hovered` are never read
+   --> crates/interface/src/platform/linux/wayland/window.rs:104:5
+    |
+ 92 | pub struct WaylandWindowState {
+    |            ------------------ fields in this struct
+...
+104 |     app_id: Option<String>,
+    |     ^^^^^^
+105 |     appearance: WindowAppearance,
+    |     ^^^^^^^^^^
+...
+160 |     hovered: bool,
+    |     ^^^^^^^
+
+warning: fields `place` and `attached` are never read
+   --> crates/interface/src/platform/linux/wayland/window.rs:196:5
+    |
+191 | struct External {
+    |        -------- fields in this struct
+...
+196 |     place: Option<Bounds<i32>>,
+    |     ^^^^^
+...
+204 |     attached: bool,
+    |     ^^^^^^^^
+
+warning: constant `EXTERNAL_KEEP` is never used
+   --> crates/interface/src/platform/linux/wayland/window.rs:209:7
+    |
+209 | const EXTERNAL_KEEP: usize = 6;
+    |       ^^^^^^^^^^^^^
+
+warning: methods `attach` and `hide` are never used
+   --> crates/interface/src/platform/linux/wayland/window.rs:213:8
+    |
+211 | impl External {
+    | ------------- methods in this implementation
+212 |     /// Attach `shown` (made into a buffer the first time) and commit.
+213 |     fn attach(&mut self, globals: &Globals) {
+    |        ^^^^^^
+...
+244 |     fn hide(&mut self) {
+    |        ^^^^
+
+warning: methods `make_external` and `is_transparent` are never used
+   --> crates/interface/src/platform/linux/wayland/window.rs:341:8
+    |
+338 | impl WaylandWindowState {
+    | ----------------------- methods in this implementation
+...
+341 |     fn make_external(&mut self, key: u64) -> bool {
+    |        ^^^^^^^^^^^^^
+...
+444 |     pub fn is_transparent(&self) -> bool {
+    |            ^^^^^^^^^^^^^^
+
+warning: method `set_appearance` is never used
+    --> crates/interface/src/platform/linux/wayland/window.rs:1625:12
+     |
+ 833 | impl WaylandWindowStatePtr {
+     | -------------------------- method in this implementation
+...
+1625 |     pub fn set_appearance(&mut self, appearance: WindowAppearance) {
+     |            ^^^^^^^^^^^^^^
+
+warning: function `update_window` is never used
+    --> crates/interface/src/platform/linux/wayland/window.rs:2214:4
+     |
+2214 | fn update_window(mut state: RefMut<WaylandWindowState>) {
+     |    ^^^^^^^^^^^^^
+
+warning: method `to_xdg` is never used
+    --> crates/interface/src/platform/linux/wayland/window.rs:2255:8
+     |
+2254 | impl WindowDecorations {
+     | ---------------------- method in this implementation
+2255 |     fn to_xdg(self) -> zxdg_toplevel_decoration_v1::Mode {
+     |        ^^^^^^
+
+warning: method `to_xdg` is never used
+    --> crates/interface/src/platform/linux/wayland/window.rs:2264:8
+     |
+2263 | impl ResizeEdge {
+     | --------------- method in this implementation
+2264 |     fn to_xdg(self) -> xdg_toplevel::ResizeEdge {
+     |        ^^^^^^
+
+warning: methods `replay`, `movable`, and `replay_moved` are never used
+   --> crates/interface/src/scene.rs:279:12
+    |
+ 54 | impl Scene {
+    | ---------- methods in this implementation
+...
+279 |     pub fn replay(&mut self, range: Range<usize>, prev_scene: &Scene) {
+    |            ^^^^^^
+...
+297 |     pub(crate) fn movable(&self, range: Range<usize>, mask: &ContentMask<ScaledPixels>) -> Movable {
+    |                   ^^^^^^^
+...
+333 |     pub(crate) fn replay_moved(&mut self, range: Range<usize>, prev_scene: &Scene, by: Point<ScaledPixels>, mask: &ContentMask<Scal...
+    |                   ^^^^^^^^^^^^
+
+warning: struct `Movable` is never constructed
+   --> crates/interface/src/scene.rs:667:19
+    |
+667 | pub(crate) struct Movable {
+    |                   ^^^^^^^
+
+warning: field `gpu` is never read
+   --> crates/interface/src/stage.rs:146:16
+    |
+140 | pub(crate) struct Opened {
+    |                   ------ field in this struct
+...
+146 |     pub(crate) gpu: Option<GpuSpecs>,
+    |                ^^^
+
+warning: method `redraw` is never used
+   --> crates/interface/src/stage.rs:388:19
+    |
+182 | impl Stage {
+    | ---------- method in this implementation
+...
+388 |     pub(crate) fn redraw(&self) {
+    |                   ^^^^^^
+
+warning: constant `SMOOTH_SVG_SCALE_FACTOR` is never used
+ --> crates/interface/src/svg_renderer.rs:9:11
+  |
+9 | pub const SMOOTH_SVG_SCALE_FACTOR: f32 = 2.;
+  |           ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: variant `Text` is never constructed
+  --> crates/interface/src/text_system.rs:67:5
+   |
+65 | enum Warm {
+   |      ---- variant in this enum
+66 |     Face((FontId, u32, u32, TextRendering)),
+67 |     Text { font_id: FontId, size: Pixels, scale: f32, texts: Arc<[SharedString]> },
+   |     ^^^^
+
+warning: method `warm_text` is never used
+   --> crates/interface/src/text_system.rs:360:19
+    |
+ 70 | impl TextSystem {
+    | --------------- method in this implementation
+...
+360 |     pub(crate) fn warm_text(self: &Arc<Self>, font_id: FontId, font_size: Pixels, scale_factor: f32, texts: Arc<[SharedString]>) {
+    |                   ^^^^^^^^^
+
+warning: methods `warm_text`, `warm`, `layout_index`, `reuse_layouts`, and `truncate_layouts` are never used
+   --> crates/interface/src/text_system.rs:521:19
+    |
+514 | impl WindowTextSystem {
+    | --------------------- methods in this implementation
+...
+521 |     pub(crate) fn warm_text(&self, font_id: FontId, font_size: Pixels, scale_factor: f32, texts: Arc<[SharedString]>) {
+    |                   ^^^^^^^^^
+...
+526 |     pub(crate) fn warm(&self, font_id: FontId, font_size: Pixels, scale_factor: f32, rendering: TextRendering) {
+    |                   ^^^^
+...
+534 |     pub(crate) fn layout_index(&self) -> LineLayoutIndex {
+    |                   ^^^^^^^^^^^^
+...
+538 |     pub(crate) fn reuse_layouts(&self, index: Range<LineLayoutIndex>) {
+    |                   ^^^^^^^^^^^^^
+...
+542 |     pub(crate) fn truncate_layouts(&self, index: LineLayoutIndex) {
+    |                   ^^^^^^^^^^^^^^^^
+
+warning: function `display_hdr` is never used
+   --> crates/interface/src/text_system.rs:957:15
+    |
+957 | pub(crate) fn display_hdr(name: &str) -> bool {
+    |               ^^^^^^^^^^^
+
+warning: struct `LineLayoutIndex` is never constructed
+   --> crates/interface/src/text_system/line_layout.rs:449:19
+    |
+449 | pub(crate) struct LineLayoutIndex {
+    |                   ^^^^^^^^^^^^^^^
+
+warning: method `shifted` is never used
+   --> crates/interface/src/text_system/line_layout.rs:457:19
+    |
+454 | impl LineLayoutIndex {
+    | -------------------- method in this implementation
+...
+457 |     pub(crate) fn shifted(&self, from: &LineLayoutIndex, to: &LineLayoutIndex) -> LineLayoutIndex {
+    |                   ^^^^^^^
+
+warning: methods `layout_index`, `reuse_layouts`, and `truncate_layouts` are never used
+   --> crates/interface/src/text_system/line_layout.rs:467:12
+    |
+462 | impl LineLayoutCache {
+    | -------------------- methods in this implementation
+...
+467 |     pub fn layout_index(&self) -> LineLayoutIndex {
+    |            ^^^^^^^^^^^^
+...
+472 |     pub fn reuse_layouts(&self, range: Range<LineLayoutIndex>) {
+    |            ^^^^^^^^^^^^^
+...
+493 |     pub fn truncate_layouts(&self, index: LineLayoutIndex) {
+    |            ^^^^^^^^^^^^^^^^
+
+warning: function `view_any` is never used
+   --> crates/interface/src/tree.rs:703:15
+    |
+703 | pub(crate) fn view_any(view: &dyn crate::view::AnyView) -> &dyn Any {
+    |               ^^^^^^^^
+
+warning: function `clip_of` is never used
+   --> crates/interface/src/tree.rs:708:15
+    |
+708 | pub(crate) fn clip_of(style: &Style, bounds: Bounds<Pixels>, rem_size: Pixels) -> Option<ContentMask<Pixels>> {
+    |               ^^^^^^^
+
+warning: function `atomic_incr_if_not_zero` is never used
+  --> crates/interface/src/util.rs:49:15
+   |
+49 | pub(crate) fn atomic_incr_if_not_zero(counter: &AtomicUsize) -> usize {
+   |               ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: methods `save_state` and `type_name` are never used
+   --> crates/interface/src/view.rs:106:8
+    |
+ 98 | pub(crate) trait AnyView: 'static {
+    |                  ------- methods in this trait
+...
+106 |     fn save_state(&mut self, id: ViewId, cx: &mut WindowCx) -> Option<String>;
+    |        ^^^^^^^^^^
+107 |     fn type_name(&self) -> &'static str;
+    |        ^^^^^^^^^
+
+warning: method `id` is never used
+   --> crates/interface/src/view.rs:333:19
+    |
+301 | impl<V: View> ViewRef<V> {
+    | ------------------------ method in this implementation
+...
+333 |     pub(crate) fn id(&self) -> ViewId {
+    |                   ^^
+
+warning: method `id` is never used
+   --> crates/interface/src/view.rs:554:19
+    |
+360 | impl<'a, 'b, V: View> Cx<'a, 'b, V> {
+    | ----------------------------------- method in this implementation
+...
+554 |     pub(crate) fn id(&self) -> ViewId {
+    |                   ^^
+
+warning: `app_server` (lib) generated 1 warning
+warning: `olo-interface` (lib) generated 77 warnings (run `cargo fix --lib -p olo-interface` to apply 10 suggestions)
+warning: field `from` is never read
+   --> apps/screenshot/src/library.rs:139:9
+    |
+138 |     Trashed {
+    |     ------- field in this variant
+139 |         from: PathBuf,
+    |         ^^^^
+    |
+    = note: `Change` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `Size`
+  --> crates/kit/src/menu.rs:30:85
+   |
+30 |     ParentElement as _, PathBuilder, Pixels, Point, ScrollWheelEvent, SharedString, Size, Styled as _, TimerId, View, WindowCx, Wind...
+   |                                                                                     ^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `IntoElement`
+ --> crates/kit/src/app.rs:9:76
+  |
+9 | use olo_interface::{AnyChild, AppCx, Cx, Element, InteractiveElement as _, IntoElement as _, ParentElement as _, SharedString, Styled...
+  |                                                                            ^^^^^^^^^^^
+
+warning: unused variable: `g`
+   --> crates/kit/src/style.rs:607:19
+    |
+607 | pub fn pill_width(g: &mut Painter, text: &str, font_size: f32, font: &Font) -> f32 {
+    |                   ^ help: if this is intentional, prefix it with an underscore: `_g`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `cx`
+   --> crates/kit/src/widgets/text_field.rs:608:24
+    |
+608 |     fn copy(&mut self, cx: &mut Cx<Self>) {
+    |                        ^^ help: if this is intentional, prefix it with an underscore: `_cx`
+
+warning: function `bar_menus` is never used
+    --> crates/kit/src/menu.rs:1211:15
+     |
+1211 | pub(crate) fn bar_menus(cx: &mut WindowCx) -> Option<(Vec<Menu>, OnChoose)> {
+     |               ^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `olo-screenshot` (bin "olo-screenshot") generated 1 warning
+warning: `olo-kit` (lib) generated 5 warnings (run `cargo fix --lib -p olo-kit` to apply 3 suggestions)
+   Compiling olo-js v0.1.0 (/home/ben/worktrees/olo/browser/crates/js)
+warning: unnecessary parentheses around closure body
+  --> crates/web/src/chunked.rs:55:143
+   |
+55 | ...e_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+   |                                                    ^                              ^
+   |
+   = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+   |
+55 -         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+55 +         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| i * CHUNK..i * CHUNK + c.len())
+   |
+
+warning: unused attribute `allow`
+  --> crates/web/src/paint/image.rs:44:1
+   |
+44 | #[allow(clippy::too_many_arguments)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: the built-in attribute `allow` will be ignored, since it's applied to the macro invocation `thread_local`
+  --> crates/web/src/paint/image.rs:45:1
+   |
+45 | thread_local! {
+   | ^^^^^^^^^^^^
+   = note: `#[warn(unused_attributes)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `size` is never read
+   --> crates/web/src/css/properties/font.rs:274:20
+    |
+274 |     let mut size = None;
+    |                    ^^^^ this value is reassigned later and never used
+...
+353 |     size = Some(super::parse::component(Property::FontSize.grammar(), c, limits, cancelled)?);
+    |     ---- `size` is overwritten here before the previous value is read
+    |
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `family` is never read
+   --> crates/web/src/css/properties/font.rs:276:22
+    |
+276 |     let mut family = None;
+    |                      ^^^^ this value is reassigned later and never used
+...
+363 |     family = Some(Families::parse(parts[i..].iter().copied(), cancelled)?);
+    |     ------ `family` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+   --> crates/web/src/css/style/job.rs:536:25
+    |
+536 |                     let mut walk = |root: NodeId, reach: &selectors::Reach, nodes: &mut crate::dom::NodeSet| {
+    |                         ----^^^^
+    |                         |
+    |                         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates/web/src/page/interaction.rs:38:13
+   |
+38 |         let mut differ = |a: Option<NodeId>, b: Option<NodeId>, state: State, out: &mut Vec<(NodeId, &'static str)>| {
+   |             ----^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: value assigned to `path` is never read
+   --> crates/web/src/page.rs:972:24
+    |
+972 |         let mut path = String::new();
+    |                        ^^^^^^^^^^^^^ this value is reassigned later and never used
+...
+982 |                             path = format!("patched in place, {} elements", nodes.len());
+    |                             ---- `path` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+    --> crates/web/src/page.rs:3991:13
+     |
+3991 |         let mut subject = |a: crate::dom::NodeId, reached: &mut Vec<crate::dom::NodeId>| {
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: value assigned to `skip` is never read
+    --> crates/web/src/svg/viewport.rs:969:24
+     |
+ 969 |         let mut skip = false;
+     |                        ^^^^^ this value is reassigned later and never used
+...
+1039 |             skip = true;
+     |             ----------- `skip` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+  --> crates/web/src/text/prepare.rs:79:23
+   |
+79 |         let single = |mut it: &mut dyn Iterator<Item = char>| {
+   |                       ----^^
+   |                       |
+   |                       help: remove this `mut`
+
+warning: method `get_mut` is never used
+  --> crates/web/src/chunked.rs:57:19
+   |
+22 | impl<T: Clone> Chunked<T> {
+   | ------------------------- method in this implementation
+...
+57 |     pub(crate) fn get_mut(&mut self, i: usize) -> Option<&mut T> {
+   |                   ^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated function `new` is never used
+  --> crates/web/src/paint/index.rs:16:12
+   |
+15 | impl Index {
+   | ---------- associated function in this implementation
+16 |     pub fn new(commands: &[Command], transforms: &[[f64; 6]], cancel: Option<&AtomicBool>) -> Result<Self> {
+   |            ^^^
+
+warning: variant `Quad` is never constructed
+   --> crates/web/src/svg/script.rs:258:5
+    |
+256 | enum Seg {
+    |      --- variant in this enum
+257 |     Line(F, F),
+258 |     Quad([F; 3]),
+    |     ^^^^
+    |
+    = note: `Seg` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: `olo-web` (lib) generated 13 warnings (run `cargo fix --lib -p olo-web` to apply 6 suggestions)
+warning: unused doc comment
+    --> crates/js/src/lib.rs:3402:1
+     |
+3402 | /// Every `__olo.*` function: `args.data()` names it.
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ rustdoc does not generate documentation for macro invocations
+     |
+     = help: to document an item produced by a macro, the macro must produce the documentation as part of its expansion
+     = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `Shader`
+ --> crates/js/src/canvas.rs:9:104
+  |
+9 | use tiny_skia::{BlendMode, FillRule, LineCap, LineJoin, Mask, Paint, Path, PathBuilder, Pixmap, Point, Shader, Stroke, Transform};
+  |                                                                                                        ^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `text` is never read
+    --> crates/js/src/lib.rs:2680:20
+     |
+2680 |     let mut text = String::new();
+     |                    ^^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2689 |         text = if name.is_empty() {
+     |         ---- `text` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: calls to `std::mem::drop` with a reference instead of an owned value does nothing
+    --> crates/js/src/lib.rs:2316:13
+     |
+2316 |             drop(s);
+     |             ^^^^^-^
+     |                  |
+     |                  argument has type `&mut State`
+     |
+     = note: `#[warn(dropping_references)]` on by default
+help: use `let _ = ...` to ignore the expression or result
+     |
+2316 -             drop(s);
+2316 +             let _ = s;
+     |
+
+warning: `olo-js` (lib) generated 4 warnings (run `cargo fix --lib -p olo-js` to apply 1 suggestion)
+   Compiling olo-browser v0.1.0 (/home/ben/worktrees/olo/browser/apps/browser)
+warning: unnecessary parentheses around type
+   --> apps/browser/src/worker.rs:800:28
+    |
+800 |     paint_identity: Option<(((usize, u64), u32, u32, u64))>,
+    |                            ^                             ^
+    |
+    = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+    |
+800 -     paint_identity: Option<(((usize, u64), u32, u32, u64))>,
+800 +     paint_identity: Option<((usize, u64), u32, u32, u64)>,
+    |
+
+warning: variable does not need to be mutable
+   --> apps/browser/src/frames.rs:369:21
+    |
+369 |                 let mut take = |m: Message, realm: &mut olo_js::Realm| match m {
+    |                     ----^^^^
+    |                     |
+    |                     help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `prefetch_scripts` is never used
+   --> apps/browser/src/network.rs:789:12
+    |
+470 | impl Loader {
+    | ----------- method in this implementation
+...
+789 |     pub fn prefetch_scripts(&self, document: &Resource, urls: Vec<Url>, cancel: &Cancel) {
+    |            ^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `0` is never read
+   --> apps/browser/src/worker.rs:439:16
+    |
+439 |     SelectMenu(u64, SelectMenu),
+    |     ---------- ^^^
+    |     |
+    |     field in this variant
+    |
+help: consider changing the field to be of unit type to suppress this warning while preserving the field numbering, or remove the field
+    |
+439 -     SelectMenu(u64, SelectMenu),
+439 +     SelectMenu((), SelectMenu),
+    |
+
+warning: `olo-browser` (bin "olo-browser") generated 4 warnings (run `cargo fix --bin "olo-browser" -p olo-browser` to apply 2 suggestions)
+    Finished `release` profile [optimized + debuginfo] target(s) in 25.89s
+warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`

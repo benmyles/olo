@@ -533,3 +533,129 @@ fn svg_gradients_paint_across_their_shapes() {
     assert!(centre[1] > 230, "{centre:?}");
     assert!(corner[1] < 30, "{corner:?}");
 }
+
+#[test]
+fn svg_paint_changes_reach_retained_layout_without_a_resize() {
+    for scale in [1., 1.25, 1.5, 1.75, 2.] {
+        let (mut page, mut painter) = load("<style>.selected path{fill:blue}</style><div id=owner><svg width=40 height=20><path d='M0 0H40V20H0Z' fill=red /></svg></div>", scale);
+        let scope = page.scope().clone();
+        let host = paint_host::Scaled::new(scope, scale);
+        let mut shaper = shaping::Engine::default();
+        let owner = page.scene.layout().cache().tree().styles().iter().find(|(n, _)| page.document.attribute(*n, "id").unwrap() == Some("owner")).unwrap().0;
+        for (class, expected) in [("selected", [0, 0, 255, 255]), ("", [255, 0, 0, 255]), ("selected", [0, 0, 255, 255])] {
+            let mut doc = page.document.clone();
+            doc.set_attribute(owner, "class", class).unwrap();
+            page.rerender(doc, Vec::new(), &host, &mut shaper, &mut painter, layout::Viewport { width: 128., height: 80., scale }, None, |_, _| {}).unwrap();
+            let tile = painter.raster(&page.scene, paint::DeviceRect { x: 0, y: 0, width: 100, height: 100 }, None).unwrap();
+            assert_eq!(&tile.rgba()[(5 * 100 + 5) * 4..][..4], expected, "scale {scale}, class {class}");
+        }
+    }
+}
+
+#[test]
+fn svg_restyles_match_fresh_pixels_and_keep_unaffected_sources() {
+    let cases = [
+        (".selected path{fill:blue}", "<path d='M0 0H40V20H0Z' fill='red'/>", ""),
+        (".selected{color:blue}", "<path d='M0 0H40V20H0Z' fill='currentColor'/>", ""),
+        (".selected path{stroke:blue;stroke-opacity:.5}", "<path d='M2 5H38' stroke=red stroke-width='8'/>", ""),
+        (".selected g{opacity:.25}", "<g><path d='M0 0H40V20H0Z' fill='red'/></g>", ""),
+        (
+            ".selected #last{stop-color:blue}",
+            "<path d='M0 0H40V20H0Z' fill='url(#gradient)'/>",
+            "<svg width=0 height=0><defs><linearGradient id=gradient><stop stop-color='red'/><stop id=last offset=1 stop-color='red'/></linearGradient></defs></svg>",
+        ),
+        (
+            ".selected #cliprect{visibility:hidden}",
+            "<path d='M0 0H40V20H0Z' fill=red clip-path='url(#clip)'/>",
+            "<svg width=0 height=0><defs><clipPath id=clip><rect id=cliprect width=20 height='20'/></clipPath></defs></svg>",
+        ),
+        (
+            ".selected #maskrect{fill:black}",
+            "<path d='M0 0H40V20H0Z' fill=red mask='url(#mask)'/>",
+            "<svg width=0 height=0><defs><mask id=mask><rect id=maskrect width=40 height=20 fill='white'/></mask></defs></svg>",
+        ),
+        (".selected #letter{visibility:hidden}", "<text id=letter x=0 y=16 font-size=16 fill=red>A</text><text x=20 y=16 font-size=16 fill=blue>B</text>", ""),
+    ];
+    for (case, (css, content, definitions)) in cases.iter().enumerate() {
+        for scale in [1., 1.25, 1.5, 1.75, 2.] {
+            // Two consumers exercise dependency propagation through the shared
+            // clip-definition cache. The last SVG has no changed inputs.
+            let body = |class| {
+                format!(
+                    "<style>{css}</style><div id=owner class='{class}'>{definitions}<svg width=40 height=20>{content}</svg><svg width=40 height=20>{content}</svg></div><svg width=40 height=20><path fill=green d='M0 0H40V20H0Z'/></svg>"
+                )
+            };
+            let (mut page, mut painter) = load(&body(""), scale);
+            let scope = page.scope().clone();
+            let host = paint_host::Scaled::new(scope, scale);
+            let mut shaper = shaping::Engine::default();
+            let owner = page.scene.layout().cache().tree().styles().iter().find(|(n, _)| page.document.attribute(*n, "id").unwrap() == Some("owner")).unwrap().0;
+            let rect = paint::DeviceRect { x: 0, y: 0, width: (128. * scale) as u32, height: (80. * scale) as u32 };
+            for class in ["selected", "", "selected"] {
+                let old = page.scene.clone();
+                let old_pixels = painter.raster(&old, rect, None).unwrap();
+                let kept_source = old.layout().cache().tree().vectors().last().unwrap().clone();
+                let mut doc = page.document.clone();
+                doc.set_attribute(owner, "class", class).unwrap();
+                page.rerender(doc, Vec::new(), &host, &mut shaper, &mut painter, layout::Viewport { width: 128., height: 80., scale }, None, |_, _| {}).unwrap();
+                let actual = painter.raster(&page.scene, rect, None).unwrap();
+                let (fresh, mut fresh_painter) = load(&body(class), scale);
+                let expected = fresh_painter.raster(&fresh.scene, rect, None).unwrap();
+                assert_eq!(actual.rgba(), expected.rgba(), "case {case}, scale {scale}, class {class}");
+                assert_eq!(painter.raster(&old, rect, None).unwrap().rgba(), old_pixels.rgba(), "old snapshot changed");
+                assert!(Arc::ptr_eq(&kept_source, page.scene.layout().cache().tree().vectors().last().unwrap()), "unrelated SVG rebuilt: case {case}");
+                assert_eq!(old.layout().geometry_identity(), page.scene.layout().geometry_identity(), "paint-only SVG change discarded HTML geometry: case {case}");
+            }
+        }
+    }
+}
+
+#[test]
+fn svg_reference_id_change_invalidates_without_a_computed_style_change() {
+    let body = "<svg width=40 height=20><defs><linearGradient id=gradient><stop stop-color='red'/></linearGradient></defs><path d='M0 0H40V20H0Z' fill='url(#gradient)'/></svg>";
+    let (mut page, mut painter) = load(body, 1.);
+    let host = paint_host::Scaled::new(page.scope().clone(), 1.);
+    let gradient = page.scene.layout().cache().tree().styles().iter().find(|(n, _)| page.document.attribute(*n, "id").unwrap() == Some("gradient")).unwrap().0;
+    let mut doc = page.document.clone();
+    doc.set_attribute(gradient, "id", "gone").unwrap();
+    page.rerender(doc, Vec::new(), &host, &mut shaping::Engine::default(), &mut painter, layout::Viewport { width: 128., height: 80., scale: 1. }, None, |_, _| {}).unwrap();
+    let (fresh, mut fresh_painter) = load(&body.replace("id=gradient", "id=gone"), 1.);
+    let rect = paint::DeviceRect { x: 0, y: 0, width: 100, height: 80 };
+    assert_eq!(painter.raster(&page.scene, rect, None).unwrap().rgba(), fresh_painter.raster(&fresh.scene, rect, None).unwrap().rgba());
+}
+
+#[test]
+fn cancelled_svg_transition_completion_is_retried() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let (mut page, mut painter) =
+        load("<style>path{fill:red;transition:fill .2s linear}.selected path{fill:blue}</style><div id=owner><svg width=40 height=20><path d='M0 0H40V20H0Z'/></svg></div>", 1.);
+    let host = paint_host::Scaled::new(page.scope().clone(), 1.);
+    let mut shaper = shaping::Engine::default();
+    let viewport = layout::Viewport { width: 128., height: 80., scale: 1. };
+    let owner = page.scene.layout().cache().tree().styles().iter().find(|(n, _)| page.document.attribute(*n, "id").unwrap() == Some("owner")).unwrap().0;
+    let mut doc = page.document.clone();
+    doc.set_attribute(owner, "class", "selected").unwrap();
+    for t in [1000., 1100.] {
+        page.set_time(t);
+        page.rerender(doc.clone(), Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+    }
+    page.take_animation_events();
+    let before = page.scene.clone();
+    page.set_time(1300.);
+    let cancel = AtomicBool::new(false);
+    assert!(
+        page.rerender(doc.clone(), Vec::new(), &host, &mut shaper, &mut painter, viewport, Some(&cancel), |phase, _| {
+            if matches!(phase, page::Phase::Paint) {
+                cancel.store(true, Ordering::Relaxed);
+            }
+        })
+        .is_err()
+    );
+    assert!(Arc::ptr_eq(&page.scene, &before));
+    assert!(page.take_animation_events().is_empty(), "cancelled completion published an event");
+    page.rerender(doc, Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+    let tile = painter.raster(&page.scene, paint::DeviceRect { x: 0, y: 0, width: 100, height: 80 }, None).unwrap();
+    assert_eq!(&tile.rgba()[(5 * 100 + 5) * 4..][..4], [0, 0, 255, 255]);
+    assert!(!page.animating());
+    assert_eq!(page.take_animation_events().iter().filter(|(_, kind, _, _)| *kind == "transitionend").count(), 1);
+}

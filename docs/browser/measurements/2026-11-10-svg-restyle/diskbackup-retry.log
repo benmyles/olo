@@ -1,0 +1,142 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/ben/worktrees/olo/browser/smithay/smithay/Cargo.toml
+workspace: /home/ben/worktrees/olo/browser/Cargo.toml
+   Compiling crypto-common v0.2.2
+   Compiling zbus v5.19.0
+   Compiling image v0.25.10
+   Compiling blade-graphics v0.7.1 (/home/ben/worktrees/olo/browser/gpui/blade-graphics)
+   Compiling rustls v0.23.46 (/home/ben/worktrees/olo/browser/vendor/rustls)
+   Compiling gpui v0.2.2 (/home/ben/worktrees/olo/browser/gpui/gpui)
+   Compiling tracing-subscriber v0.3.23
+   Compiling globset v0.4.20
+   Compiling pulseaudio v0.3.2
+   Compiling olo-net v0.1.0 (/home/ben/worktrees/olo/browser/crates/net)
+   Compiling digest v0.11.3
+   Compiling cipher v0.5.2
+   Compiling universal-hash v0.6.1
+   Compiling hmac v0.13.0
+   Compiling poly1305 v0.9.1
+   Compiling chacha20 v0.10.2
+   Compiling sha2 v0.11.1
+   Compiling aead v0.6.1
+   Compiling hkdf v0.13.0
+   Compiling aes v0.9.3
+   Compiling cbc v0.2.1
+   Compiling chacha20poly1305 v0.11.0
+   Compiling md-5 v0.11.0
+   Compiling blade-util v0.3.0 (/home/ben/worktrees/olo/browser/gpui/blade-util)
+   Compiling jxl-oxide v0.12.6
+   Compiling rustls-platform-verifier v0.7.1
+   Compiling ureq v3.5.0
+   Compiling olo-images v0.1.0 (/home/ben/worktrees/olo/browser/crates/images)
+   Compiling olo-diskbackup v0.1.0 (/home/ben/worktrees/olo/browser/crates/diskbackup)
+   Compiling olo-xdg v0.1.0 (/home/ben/worktrees/olo/browser/crates/xdg)
+   Compiling ashpd v0.12.3
+   Compiling ashpd v0.11.1
+   Compiling olo-protocol v0.1.0 (/home/ben/worktrees/olo/browser/crates/protocol)
+   Compiling olo-keychain v0.1.0 (/home/ben/worktrees/olo/browser/crates/keychain)
+   Compiling oo7 v0.5.0
+   Compiling olo-kit-base v0.1.0 (/home/ben/worktrees/olo/browser/crates/kit-base)
+   Compiling olo-system v0.1.0 (/home/ben/worktrees/olo/browser/crates/system)
+   Compiling olo-ui v0.1.0 (/home/ben/worktrees/olo/browser/crates/ui)
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+  --> gpui/gpui/src/platform/linux/dispatcher.rs:51:18
+   |
+51 |                 .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+   |                  ^^^^^^^^^^^^
+   |
+   = note: `#[warn(deprecated)]` on by default
+help: replace the use of the deprecated method
+   |
+51 -                 .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+51 +                 .try_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+   |
+
+warning: method `holds_clipboard` is never used
+   --> gpui/gpui/src/platform.rs:269:8
+    |
+162 | pub(crate) trait Platform: 'static {
+    |                  -------- method in this trait
+...
+269 |     fn holds_clipboard(&self) -> bool {
+    |        ^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `selected_text_range` is never used
+    --> gpui/gpui/src/platform.rs:1282:8
+     |
+1277 | impl PlatformInputHandler {
+     | ------------------------- method in this implementation
+...
+1282 |     fn selected_text_range(&mut self, ignore_disabled_input: bool) -> Option<UTF16Selection> {
+     |        ^^^^^^^^^^^^^^^^^^^
+
+warning: method `holds_clipboard` is never used
+  --> gpui/gpui/src/platform/linux/platform.rs:80:8
+   |
+46 | pub trait LinuxClient {
+   |           ----------- method in this trait
+...
+80 |     fn holds_clipboard(&self) -> bool {
+   |        ^^^^^^^^^^^^^^^
+
+warning: field `italic` is never read
+  --> gpui/gpui/src/platform/linux/text_system.rs:38:5
+   |
+34 | struct Source {
+   |        ------ field in this struct
+...
+38 |     italic: bool,
+   |     ^^^^^^
+
+warning: methods `set_theme` and `set_size` are never used
+  --> gpui/gpui/src/platform/linux/wayland/cursor.rs:76:12
+   |
+33 | impl Cursor {
+   | ----------- methods in this implementation
+...
+76 |     pub fn set_theme(&mut self, theme_name: String) {
+   |            ^^^^^^^^^
+...
+89 |     pub fn set_size(&mut self, size: u32) {
+   |            ^^^^^^^^
+
+warning: method `set_appearance` is never used
+    --> gpui/gpui/src/platform/linux/wayland/window.rs:1951:12
+     |
+1008 | impl WaylandWindowStatePtr {
+     | -------------------------- method in this implementation
+...
+1951 |     pub fn set_appearance(&mut self, appearance: WindowAppearance) {
+     |            ^^^^^^^^^^^^^^
+
+warning: associated function `ahead` is never used
+  --> gpui/gpui/src/platform/blade/blade_context.rs:53:12
+   |
+49 | impl BladeContext {
+   | ----------------- associated function in this implementation
+...
+53 |     pub fn ahead() -> std::thread::JoinHandle<anyhow::Result<BladeContext>> {
+   |            ^^^^^
+
+warning: `gpui` (lib) generated 8 warnings (run `cargo fix --lib -p gpui` to apply 1 suggestion)
+   Compiling olo-diskbackup-app v0.1.0 (/home/ben/worktrees/olo/browser/apps/diskbackup)
+    Finished `release` profile [optimized + debuginfo] target(s) in 1m 00s
+warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+     Running unittests src/main.rs (target/release/deps/olo_diskbackup-d9635b68ed1b6035)
+
+running 10 tests
+test agent_setup::tests::google_logins_first ... ok
+test agent_setup::tests::the_brief_says_where_what_and_how ... ok
+test window::tests::how_far_and_how_long ... ok
+test app::undo_tests::undo_puts_back_only_what_the_step_changed ... ok
+test window::tests::what_is_kept_said_plainly ... ok
+test window::tests::unfinished_and_checks_said ... ok
+test agent_setup::tests::shared_once ... ok
+test window::tests::words_for_times ... ok
+test window::tests::the_headline_says_how_it_stands ... ok
+test lint::ui_lint_main_window ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.28s

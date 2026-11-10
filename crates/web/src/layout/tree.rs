@@ -132,9 +132,11 @@ impl TextSource {
 }
 pub struct Tree {
     viewport_elements: super::overflow::ViewportElements,
-    vectors: Arc<[crate::svg::Viewport]>,
+    vectors: Arc<[Arc<crate::svg::Viewport>]>,
+    vector_users: Arc<crate::dom::NodeMap<Vec<u32>>>,
+    vector_limits: BuildLimits,
     images: Option<Arc<crate::image::Set>>,
-    /// Shared with the trees restyled from this one (`with_styles`, every
+    /// Shared with the trees restyled from this one (`restyled`, every
     /// frame of a live page): the same boxes, never copied.
     pub(super) boxes: Arc<[BoxNode]>,
     pub(super) sources: Arc<[TextSource]>,
@@ -146,14 +148,14 @@ pub struct Tree {
     text_bytes: usize,
 }
 impl Tree {
-    /// This tree with other styles for the same boxes (a restyle that
-    /// moved nothing), for the document as it is now (its revision moved
-    /// on; the styles were made against it) and with images rebound to
-    /// it (a redrawn canvas is the same box with new pixels).
-    pub fn with_styles(&self, styles: Arc<StyleTree>, document: &Document, images: Option<Arc<crate::image::Set>>) -> Self {
+    /// Rebind shared storage. A caller changing styles must also refresh SVG
+    /// inputs through `restyled`; image-only replacements keep them intact.
+    pub(super) fn rebound(&self, styles: Arc<StyleTree>, document: &Document, images: Option<Arc<crate::image::Set>>) -> Self {
         Self {
             viewport_elements: self.viewport_elements,
             vectors: self.vectors.clone(),
+            vector_users: self.vector_users.clone(),
+            vector_limits: self.vector_limits,
             images: images.or_else(|| self.images.clone()),
             boxes: self.boxes.clone(),
             sources: self.sources.clone(),
@@ -164,6 +166,83 @@ impl Tree {
             revision: if document.id() == self.document { document.revision() } else { self.revision },
             text_bytes: self.text_bytes,
         }
+    }
+    /// Refresh compiled sources whose style inputs changed. The reverse index
+    /// includes external gradients, masks, use targets and cached clip sources.
+    /// Unchanged SVGs and all HTML boxes remain shared with the old snapshot.
+    pub(crate) fn restyled(&self, styles: Arc<StyleTree>, document: &Document, images: Option<Arc<crate::image::Set>>, found: &mut Fallbacks, cancel: Option<&AtomicBool>) -> Result<Self> {
+        let mut next = self.rebound(styles.clone(), document, images);
+        let changed = styles
+            .styles_unshared(Some(&self.styles))
+            .filter_map(|(node, style)| (self.vector_users.contains_key(&node) && self.styles.snapshot(node).is_none_or(|old| !style.same_as(old))).then_some(node));
+        next.refresh_vectors(document, self.revision, changed, found, cancel)?;
+        Ok(next)
+    }
+    pub(super) fn refresh_vectors(&mut self, document: &Document, previous_revision: u64, changed: impl Iterator<Item = NodeId>, found: &mut Fallbacks, cancel: Option<&AtomicBool>) -> Result<()> {
+        if self.vectors.is_empty() {
+            return Ok(());
+        }
+        let mut dirty = std::collections::BTreeSet::new();
+        for node in changed {
+            check(cancel)?;
+            if let Some(users) = self.vector_users.get(&node) {
+                dirty.extend(users.iter().copied());
+            }
+        }
+        // An id change can retarget an existing reference without changing a
+        // computed style. Reload all sources in that uncommon case.
+        if document.changes_since(previous_revision).is_some_and(|changes| changes.iter().any(|(_, c)| matches!(c, crate::dom::Change::Attribute { name, .. } if name.as_ref() == "id"))) {
+            dirty.extend(0..self.vectors.len() as u32);
+        }
+        if dirty.is_empty() {
+            return Ok(());
+        }
+        let mut vectors = self.vectors.to_vec();
+        let mut sources = crate::svg::clip::Sources::default();
+        let mut work = 0usize;
+        let mut nodes = 0usize;
+        let mut bytes = 0usize;
+        let mut reindex = false;
+        for i in dirty {
+            let old = &self.vectors[i as usize];
+            let source = crate::svg::Viewport::load_with_sources(
+                document,
+                &self.styles,
+                old.node,
+                self.vector_limits.nodes.saturating_sub(nodes),
+                self.vector_limits.vector_work.saturating_sub(work),
+                self.vector_limits.vector_bytes.saturating_sub(bytes),
+                &mut sources,
+                found,
+                cancel,
+            )?;
+            work = work.checked_add(source.work).ok_or(Error::Limit)?;
+            nodes = nodes.checked_add(source.visited).ok_or(Error::Limit)?;
+            bytes = bytes.checked_add(source.payload_bytes()).ok_or(Error::Limit)?;
+            reindex |= source.dependencies != old.dependencies;
+            vectors[i as usize] = Arc::new(source);
+        }
+        // Retained and replacement sources together must still fit the same
+        // document budget; shared clip definitions are charged only once.
+        let mut definitions = std::collections::HashSet::new();
+        let mut retained = 0usize;
+        for source in &vectors {
+            check(cancel)?;
+            retained = retained.checked_add(source.payload_bytes()).ok_or(Error::Limit)?;
+            for clip in source.clip_nodes() {
+                if definitions.insert(Arc::as_ptr(&clip.definition)) {
+                    retained = retained.checked_add(clip.definition.payload_bytes() + size_of::<crate::svg::clip::Definition>() + 2 * size_of::<usize>()).ok_or(Error::Limit)?;
+                }
+            }
+            if retained > self.vector_limits.vector_bytes {
+                return Err(Error::Limit);
+            }
+        }
+        if reindex {
+            self.vector_users = Arc::new(vector_users(&vectors));
+        }
+        self.vectors = Arc::from(vectors);
+        Ok(())
     }
     /// This tree with the text the document has now for `texts` (text
     /// nodes whose data changed) and `holders` (inline elements whose
@@ -302,6 +381,8 @@ impl Tree {
         Some(Self {
             viewport_elements: self.viewport_elements,
             vectors: self.vectors.clone(),
+            vector_users: self.vector_users.clone(),
+            vector_limits: self.vector_limits,
             images: self.images.clone(),
             boxes: self.boxes.clone(),
             sources: sources.into(),
@@ -351,9 +432,15 @@ impl Tree {
         self.images.as_ref().map_or(0, |i| Arc::as_ptr(i) as *const u8 as usize)
     }
     pub fn vector(&self, index: u32) -> Option<&crate::svg::Viewport> {
-        self.vectors.get(index as usize)
+        self.vectors.get(index as usize).map(Arc::as_ref)
     }
-    pub fn vectors(&self) -> &[crate::svg::Viewport] {
+    pub(super) fn vector_snapshot(&self) -> Arc<[Arc<crate::svg::Viewport>]> {
+        self.vectors.clone()
+    }
+    pub(crate) fn same_vectors(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.vectors, &other.vectors)
+    }
+    pub fn vectors(&self) -> &[Arc<crate::svg::Viewport>] {
         &self.vectors
     }
     /// A box with a natural ratio and no natural size: an SVG with a
@@ -433,12 +520,13 @@ impl Tree {
         super::viewport::unit_size(viewport, widths, self.viewport_overflow(), self.viewport_elements.root_style(&self.styles))
     }
     /// The styles to change in place, when nothing else holds them, for
-    /// the document as it is now (see `with_styles`).
+    /// the document as it is now (see `restyled`).
     pub(super) fn styles_mut(&mut self, document: &Document) -> Option<&mut StyleTree> {
+        let styles = Arc::get_mut(&mut self.styles)?;
         if self.document == document.id() {
             self.revision = document.revision();
         }
-        Arc::get_mut(&mut self.styles)
+        Some(styles)
     }
     pub fn validate(&self, document: &Document) -> Result<()> {
         if self.document != document.id() || self.revision != document.revision() { Err(Error::Stale) } else { Ok(()) }
@@ -453,7 +541,9 @@ impl Tree {
             .map(|c| c.definition.payload_bytes() + size_of::<crate::svg::clip::Definition>() + 2 * size_of::<usize>())
             .sum();
         definitions
-            + self.vectors.len() * size_of::<crate::svg::Viewport>()
+            + self.vectors.len() * (size_of::<crate::svg::Viewport>() + 3 * size_of::<usize>())
+            + self.vector_users.capacity() * (size_of::<(NodeId, Vec<u32>)>() + 1)
+            + self.vector_users.values().map(|v| v.capacity() * size_of::<u32>()).sum::<usize>()
             + self.vectors.iter().map(|v| v.payload_bytes()).sum::<usize>()
             + self.images.as_ref().map_or(0, |images| images.payload_bytes())
             + self.boxes.len() * size_of::<BoxNode>()
@@ -542,7 +632,7 @@ struct OpenInline {
 }
 pub struct BuildJob<'a> {
     clip_sources: crate::svg::clip::Sources<'a>,
-    vectors: Vec<crate::svg::Viewport>,
+    vectors: Vec<Arc<crate::svg::Viewport>>,
     vector_bytes: usize,
     vector_work: usize,
     images: Option<Arc<crate::image::Set>>,
@@ -1284,7 +1374,7 @@ impl<'a> BuildJob<'a> {
                         }
                         self.vector_work += source.work;
                         self.progress.visited += source.visited.saturating_sub(1);
-                        self.vectors.push(source);
+                        self.vectors.push(Arc::new(source));
                         match display {
                             Display::Box { outer: Outer::Inline, .. } if !absolute => self.append_object(node, container, node, BoxKind::InlineVector { vector })?,
                             _ if self.in_line(s, absolute, container) => {
@@ -1564,6 +1654,8 @@ impl<'a> BuildJob<'a> {
         Ok(Arc::new(Tree {
             viewport_elements: super::overflow::ViewportElements::new(self.document),
             images: self.images,
+            vector_users: Arc::new(vector_users(&self.vectors)),
+            vector_limits: self.limits,
             vectors: Arc::from(self.vectors),
             text_bytes,
             document: self.document.id(),
@@ -1786,4 +1878,14 @@ fn closed_details_hides(document: &Document, node: NodeId) -> Result<bool> {
     }
     let first_summary = document.children(parent)?.find(|&c| document.node_type(c).ok() == Some(NodeType::Element) && document.name(c).ok().flatten() == Some("summary"));
     Ok(first_summary != Some(node))
+}
+
+fn vector_users(vectors: &[Arc<crate::svg::Viewport>]) -> crate::dom::NodeMap<Vec<u32>> {
+    let mut users = crate::dom::NodeMap::<Vec<u32>>::default();
+    for (i, vector) in vectors.iter().enumerate() {
+        for &node in &vector.dependencies {
+            users.entry(node).or_default().push(i as u32);
+        }
+    }
+    users
 }

@@ -8662,3 +8662,39 @@ RSS157284→157506KiB /165166→165830KiB. Root drag latency28.65→28.65ms /
 No root-scroll hitches; maximum draw9.04→3.49ms. New scroll operations do
 additional correct work compared with the former stub; no general Chrome
 performance claim.
+
+## 2026-11-10 — retained SVG styles and cancelled transition completion
+
+Compiled SVG sources now track their style dependencies, including external
+paint servers and shared clips. Restyles refresh affected sources while keeping
+unrelated vectors and HTML geometry shared. Measurement patches follow the
+same path; reference id changes cannot hide behind unchanged computed styles.
+Rendering commits animation and container-query state only with a successful
+scene, so cancellation no longer consumes the final transition color/event.
+
+The original red/blue and cancelled-purple regressions failed before their
+fixes. There are 120 cached/fresh pixel comparisons across five scales, plus
+measurement and reference-retarget regressions. Real Stripe Jobber clicks now
+paint the active selection in all 15 theme/scale captures (baseline 10/15,
+SVG-only fix 14/15); all four controls match Chrome's endpoints and computed
+fills at 1×. These intermittent captures are not reliability estimates.
+Final widget reviews and all three Browser layout lints are clean.
+
+Merged main through 97541be6 as 343b606b. Release workspace build/tests pass:
+2,273 passed, 0 failed, 140 ignored in 262 suites. An earlier DiskBackup
+shutdown abort and a malformed new SVG test fixture are retained in the
+evidence, with successful retries/corrections.
+
+Release ABBA costs at 1.25×/2×: 20 SVG mutations 1.031→1.172 ms /
+0.998→1.251 ms; 3,000 cached reads 1.443→1.437 ms / 1.727→1.631 ms;
+CPU per resize 16.250→18.125 ms / 22.500→20.000 ms; RSS
+161968→168132 KiB / 164972→165662 KiB. Drag latency
+33.85→34.50 ms / 34.45→36.75 ms; wheel 17.50→17.10 ms /
+17.10→17.10 ms. Idle CPU/frames are zero. One candidate 1.25× scroll
+draw takes 9.55 ms and remains above budget. Last-300-frame RSS growth
+in a 1,200-frame run is 124→136 KiB. No general performance claim.
+
+[Evidence](measurements/2026-11-10-svg-restyle/README.md) preserves captures,
+checks, failures, binary identities and costs. Events/footer geometry, other
+journeys and exact pixels remain open: Stripe 0/30, corpus 0/100. No personal
+session installation, reload or GUI interaction.

@@ -1,0 +1,3 @@
+/home/ben/worktrees/olo/browser/docs/browser/measurements/2026-11-10-svg-restyle/verify.py:46: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+  counts = Counter(crop.getdata())
+Evidence verified: 15 final selections, 4 controls, 8 ABBA samples, 2 retention runs; workspace 2273/0/140. Stripe remains 0/30.

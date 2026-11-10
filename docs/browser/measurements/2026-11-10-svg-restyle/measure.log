@@ -1,0 +1,8 @@
+before 1.25 cpu/resize 17.5 latency 409.6425515017472 rss 162288 cached 1.441 changed 0.982
+after 1.25 cpu/resize 20.0 latency 410.09086548001505 rss 177480 cached 1.452 changed 1.211
+after 1.25 cpu/resize 16.25 latency 410.2226609829813 rss 158784 cached 1.446 changed 1.182
+before 1.25 cpu/resize 15.0 latency 410.2760375244543 rss 161648 cached 1.604 changed 1.151
+before 2 cpu/resize 25.0 latency 409.85811248538084 rss 164208 cached 1.725 changed 0.982
+after 2 cpu/resize 18.75 latency 411.4966324996203 rss 165568 cached 1.698 changed 1.179
+after 2 cpu/resize 21.25 latency 410.40460552903824 rss 165756 cached 1.636 changed 1.345
+before 2 cpu/resize 20.0 latency 410.2190950070508 rss 165736 cached 1.971 changed 1.088

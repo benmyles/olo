@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-10
 
+### Browser: SVG selection survives cancelled rendering
+
+*10:54* — Retained SVG sources refresh changed style inputs, and animation completion commits with its rendered scene. Jobber's painted selection matches Chrome in all 15 final theme/scale captures; Stripe's remaining page-layout and journey gaps stay open.
+
+![Browser: SVG selection survives cancelled rendering](2026-11-10/105443-browser-svg-selection-survives-cancelled-renderi.png)
+
+### Browser: stale SVG selection before refresh fix
+
+*10:54* — On the owned Agent Screen at 1.5× in dark mode, Jobber is selected in the document and the carousel has reached its destination, but the SVG logos still paint the previous Mindbody selection.
+
+![Browser: stale SVG selection before refresh fix](2026-11-10/105442-browser-stale-svg-selection-before-refresh-fix.png)
+
 ### Browser scrolls to the requested testimonial
 
 *10:03* — General ancestor and smooth scrolling move Stripe’s actual Jobber button to Chrome’s endpoint at five scales in light, dark and night modes. Page pixels, delayed selection paints and other journeys remain open; Stripe is not accepted.

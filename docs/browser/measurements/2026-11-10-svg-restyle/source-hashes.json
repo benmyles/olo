@@ -1,0 +1,13 @@
+{
+  "crates/web/src/layout/flow.rs": "85f678d0608c735c58dfa904a26993742efda7093a443708ab2d7b2c0d65784d",
+  "crates/web/src/layout/tree.rs": "22b6d62c5cdaaf87bd655790ba3476e65fc5f2cd90d523d8eff99260a8094568",
+  "crates/web/src/page.rs": "d1492c8c2960b0d65cd83780c544f441ae0e186f625cef56fb474506d9a96def",
+  "crates/web/src/svg.rs": "be1be73e237ff88151c51cca3e0e08a0c3ff193c2e9f170b7ef94aee3e608d51",
+  "crates/web/src/svg/clip.rs": "19f233ad28c8545f156f6dd62561d29ca0c1b98bd65c78d66bcdab2e101dfb3f",
+  "crates/web/src/svg/gradient.rs": "41d6e3648f28c5d96c539d1488b8b4baf29958ce5912974c930a1a662283bb4d",
+  "crates/web/src/svg/text.rs": "2b5ed587c9f5d9005b60a47cdd07454d6b06b33b86942a5aa821baf77d922415",
+  "crates/web/src/svg/viewport.rs": "2693203510acbc8278e8c07da1e058afac10f36ac6bbb7c76e2468b0ca6b6fc3",
+  "crates/web/tests/measure.rs": "c52cd2014231c25ba434aeb6ae43af6e5f807548c7fd20604b5951239f090cdd",
+  "crates/web/tests/svg_page.rs": "241b8f3ee32f197b4c00f7aacb13e4c230032ebf1ea84a275b607aa68d45a0ae",
+  "crates/web/src/svg/styles.rs": "2339924ae5db48e2254a337300593e2d2b07733a7d20d1050c0b5217688f10a3"
+}

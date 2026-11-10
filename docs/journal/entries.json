@@ -4576,5 +4576,17 @@
   "title": "Browser scrolls to the requested testimonial",
   "caption": "General ancestor and smooth scrolling move Stripe\u2019s actual Jobber button to Chrome\u2019s endpoint at five scales in light, dark and night modes. Page pixels, delayed selection paints and other journeys remain open; Stripe is not accepted.",
   "image": "2026-11-10/100318-browser-scrolls-to-the-requested-testimonial.png"
+ },
+ {
+  "time": "2026-11-10T10:54:42",
+  "title": "Browser: stale SVG selection before refresh fix",
+  "caption": "On the owned Agent Screen at 1.5\u00d7 in dark mode, Jobber is selected in the document and the carousel has reached its destination, but the SVG logos still paint the previous Mindbody selection.",
+  "image": "2026-11-10/105442-browser-stale-svg-selection-before-refresh-fix.png"
+ },
+ {
+  "time": "2026-11-10T10:54:43",
+  "title": "Browser: SVG selection survives cancelled rendering",
+  "caption": "Retained SVG sources refresh changed style inputs, and animation completion commits with its rendered scene. Jobber's painted selection matches Chrome in all 15 final theme/scale captures; Stripe's remaining page-layout and journey gaps stay open.",
+  "image": "2026-11-10/105443-browser-svg-selection-survives-cancelled-renderi.png"
  }
 ]

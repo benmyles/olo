@@ -3,7 +3,7 @@
 //! transform), for the painter's gradient shaders.
 use super::clip;
 use crate::{
-    css::style::{Property as P, StyleTree},
+    css::style::Property as P,
     dom::{Document, NodeId, NodeType},
     layout::{Error, Result},
 };
@@ -50,9 +50,9 @@ fn length(value: Option<&str>, default: f32, bounding: bool, basis: f32) -> f32 
 /// (in the viewport's space) is `bounds`, drawn under `ctm`; `viewport` the
 /// size percentages of user-space units are of. None when it names none.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn resolve<'a>(
+pub(super) fn resolve<'a>(
     doc: &'a Document,
-    styles: &StyleTree,
+    styles: &super::styles::Styles<'_>,
     sources: &mut clip::Sources<'a>,
     reference: &str,
     ctm: tiny_skia::Transform,

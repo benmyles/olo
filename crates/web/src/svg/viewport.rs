@@ -66,6 +66,7 @@ pub struct Layer {
 }
 pub struct Viewport {
     pub node: NodeId,
+    pub(crate) dependencies: Vec<NodeId>,
     pub shapes: Vec<Shape>,
     pub(crate) rectangles: u32,
     /// Texts to shape, by `Geometry::Text` slot.
@@ -82,8 +83,8 @@ pub struct Viewport {
     pub visited: usize,
     pub work: usize,
     /// A hash of everything drawn (shapes, colours, layers, masks, texts):
-    /// two loads of the same SVG fingerprint alike, so a painted tile over
-    /// it can be kept across layouts.
+    /// loads over the same immutable style inputs fingerprint alike, so a
+    /// painted tile over it can be kept across layouts.
     pub fingerprint: u64,
 }
 impl Viewport {
@@ -171,6 +172,9 @@ impl Viewport {
         if doc.namespace(root)? != Some(Namespace::Svg) || doc.name(root)? != Some("svg") {
             return Err(Error::Invalid);
         }
+        let style_tree = styles;
+        let tracked = super::styles::Styles::new(styles);
+        let styles = &tracked;
         let root_style = styles.snapshot(root).ok_or(Error::Stale)?;
         let mut clip = [false; 2];
         for (axis, p) in [P::OverflowX, P::OverflowY].into_iter().enumerate() {
@@ -179,6 +183,7 @@ impl Viewport {
         }
         let mut result = Self {
             node: root,
+            dependencies: Vec::new(),
             shapes: Vec::new(),
             rectangles: 0,
             texts: Vec::new(),
@@ -574,11 +579,26 @@ impl Viewport {
         }
         result.visited = visited;
         result.work = work;
-        result.fingerprint = result.fingerprint();
+        result.dependencies = tracked.finish();
+        if result.payload_bytes().saturating_add(sources.bytes) > bytes_limit {
+            return Err(Error::Limit);
+        }
+        // Compiled geometry alone does not encode every paint input (gradient
+        // stops, percentage rectangles and clip definitions in particular).
+        // Include the immutable styles read during compilation. Shared styles
+        // preserve this key across layouts; any replaced input invalidates it.
+        use std::hash::{Hash, Hasher};
+        let mut fingerprint = std::hash::DefaultHasher::new();
+        result.fingerprint().hash(&mut fingerprint);
+        for &node in &result.dependencies {
+            style_tree.snapshot(node).map(Style::identity).hash(&mut fingerprint);
+        }
+        result.fingerprint = fingerprint.finish();
         Ok(result)
     }
     pub fn payload_bytes(&self) -> usize {
-        self.layers.as_ref().map_or(0, |l| 2 * size_of::<usize>() + size_of_val(&l.slice))
+        self.dependencies.capacity() * size_of::<NodeId>()
+            + self.layers.as_ref().map_or(0, |l| 2 * size_of::<usize>() + size_of_val(&l.slice))
             + self.clips.as_ref().map_or(0, |c| 2 * size_of::<usize>() + size_of_val(&c.slice))
             + self.shapes.len() * size_of::<Shape>()
             + self.shapes.iter().map(|s| s.geometry.payload_bytes()).sum::<usize>()
@@ -920,7 +940,7 @@ fn text_source(doc: &Document, node: NodeId, ctm: Option<tiny_skia::Transform>, 
 #[allow(clippy::too_many_arguments)]
 fn mask_content<'a>(
     doc: &'a Document,
-    styles: &StyleTree,
+    styles: &super::styles::Styles<'_>,
     sources: &mut clip::Sources<'a>,
     mask: NodeId,
     base: Option<tiny_skia::Transform>,
@@ -1043,7 +1063,7 @@ fn mask_content<'a>(
 #[allow(clippy::too_many_arguments)]
 fn paint<'a>(
     doc: &'a Document,
-    styles: &StyleTree,
+    styles: &super::styles::Styles<'_>,
     sources: &mut clip::Sources<'a>,
     s: &Style,
     node: NodeId,
@@ -1104,7 +1124,7 @@ fn paint_reference<'a>(doc: &'a Document, node: NodeId, attribute: &str) -> Resu
 /// The first stop colour of a referenced gradient, with its stop-opacity.
 fn first_stop<'a>(
     doc: &'a Document,
-    styles: &StyleTree,
+    styles: &super::styles::Styles<'_>,
     sources: &mut clip::Sources<'a>,
     reference: &str,
     work_limit: usize,

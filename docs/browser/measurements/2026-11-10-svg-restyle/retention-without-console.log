@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/var/tmp/codex-browser-svg-refresh/retention.py", line 29, in <module>
+    assert time.monotonic()<deadline,'No completion'
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: No completion

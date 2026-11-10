@@ -3,7 +3,7 @@
 use crate::{
     css::{
         math,
-        style::{Display, Keyword as K, Property as P, StyleTree, Value},
+        style::{Display, Keyword as K, Property as P, Value},
     },
     dom::{Document, Namespace, NodeId, NodeType},
     layout::{Error, Result},
@@ -42,6 +42,7 @@ pub struct Sources<'a> {
     document: Option<(u64, u64)>,
     ids: HashMap<&'a str, NodeId>,
     definitions: HashMap<NodeId, Option<Arc<Definition>>>,
+    dependencies: HashMap<NodeId, Vec<NodeId>>,
     pub work: usize,
     pub bytes: usize,
     failed: bool,
@@ -107,7 +108,15 @@ impl<'a> Sources<'a> {
         Ok(())
     }
     #[allow(clippy::too_many_arguments)]
-    pub fn get(&mut self, doc: &'a Document, styles: &StyleTree, url: &str, work_limit: usize, bytes_limit: usize, cancel: Option<&AtomicBool>) -> Result<Option<Arc<Definition>>> {
+    pub(super) fn get(
+        &mut self,
+        doc: &'a Document,
+        styles: &super::styles::Styles<'_>,
+        url: &str,
+        work_limit: usize,
+        bytes_limit: usize,
+        cancel: Option<&AtomicBool>,
+    ) -> Result<Option<Arc<Definition>>> {
         if self.failed {
             return Err(Error::Failed);
         }
@@ -118,7 +127,7 @@ impl<'a> Sources<'a> {
         result
     }
     #[allow(clippy::too_many_arguments)]
-    fn get_inner(&mut self, doc: &'a Document, styles: &StyleTree, url: &str, work_limit: usize, bytes_limit: usize, cancel: Option<&AtomicBool>) -> Result<Option<Arc<Definition>>> {
+    fn get_inner(&mut self, doc: &'a Document, styles: &super::styles::Styles<'_>, url: &str, work_limit: usize, bytes_limit: usize, cancel: Option<&AtomicBool>) -> Result<Option<Arc<Definition>>> {
         self.index(doc, work_limit, bytes_limit, cancel)?;
         self.tick(url.len(), work_limit, cancel)?;
         let fragment = url.strip_prefix('#').ok_or(Error::Invalid)?;
@@ -154,8 +163,26 @@ impl<'a> Sources<'a> {
             return Ok(None);
         }
         if let Some(definition) = self.definitions.get(&node) {
+            if let Some(reads) = self.dependencies.get(&node) {
+                styles.include(reads);
+            }
             return Ok(definition.clone());
         }
+        let checkpoint = styles.checkpoint();
+        let result = self.compile(doc, styles, node, work_limit, bytes_limit, cancel);
+        if result.is_ok() {
+            let reads = styles.since(checkpoint);
+            self.bytes = self.bytes.checked_add(reads.capacity() * size_of::<NodeId>()).ok_or(Error::Limit)?;
+            let capacity = self.dependencies.capacity();
+            self.dependencies.insert(node, reads);
+            self.bytes = self.bytes.checked_add((self.dependencies.capacity() - capacity) * (size_of::<(NodeId, Vec<NodeId>)>() + 1)).ok_or(Error::Limit)?;
+            if self.bytes > bytes_limit {
+                return Err(Error::Limit);
+            }
+        }
+        result
+    }
+    fn compile(&mut self, doc: &'a Document, styles: &super::styles::Styles<'_>, node: NodeId, work_limit: usize, bytes_limit: usize, cancel: Option<&AtomicBool>) -> Result<Option<Arc<Definition>>> {
         // Chromium treats a display:none definition/ancestor as an unavailable
         // resource. This compatibility behavior differs from CSS Masking1 §6.1;
         // the independent pixel corpus pins both direct and ancestor cases.
@@ -236,7 +263,7 @@ impl<'a> Sources<'a> {
     }
 }
 /// Whether a clip element is plain enough to resolve: untransformed and not itself clipped.
-fn effects(doc: &Document, styles: &StyleTree, node: NodeId) -> Result<bool> {
+fn effects(doc: &Document, styles: &super::styles::Styles<'_>, node: NodeId) -> Result<bool> {
     if doc.attribute(node, "transform")?.is_some() {
         return Ok(false);
     }

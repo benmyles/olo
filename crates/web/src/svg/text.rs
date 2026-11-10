@@ -26,6 +26,7 @@ pub enum Baseline {
     TextBottom,
 }
 /// A text element as loaded: its content and placement, shaped later.
+#[derive(PartialEq)]
 pub struct Source {
     pub node: NodeId,
     pub text: Arc<str>,
