@@ -313,8 +313,8 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) -> Result<
                             KeyCode::Down => selected_link = (selected_link + 1).min(choices.len().saturating_sub(1)),
                             KeyCode::Enter => {
                                 if let Some((_, link)) = choices.get(selected_link) {
-                                    if let Some(id) = link.strip_prefix("olo-coder:event/").and_then(|s| s.parse::<i64>().ok()) {
-                                        panes[active].client.submit(format!("/event {id}"));
+                                    if let Some(command) = client::read_link(link) {
+                                        panes[active].client.submit(command);
                                     } else if link.starts_with("https://") || link.starts_with("http://") {
                                         let link = link.clone();
                                         std::thread::spawn(move || {

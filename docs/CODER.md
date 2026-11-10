@@ -17,8 +17,9 @@ never opens a window. The first client starts the service. State lives in
 `$XDG_STATE_HOME/olo/coder` (normally `~/.local/state/olo/coder`); `--data DIR` or
 `OLO_CODER_HOME` chooses another store. Its directory and socket are owner-only.
 A separate store is a separate service. Do not share one database over a network
-filesystem. No model credentials are copied into Coder: requests go to the
-loopback Olo Token Pool, `OLO_POOL_PORT` (17891 by default).
+filesystem. Codex requests go to the loopback Olo Token Pool, `OLO_POOL_PORT`
+(17891 by default). Custom OpenAI-compatible endpoints use environment-referenced
+credentials in the service; key values are never stored in session configuration.
 
 ## Workflows
 
@@ -47,11 +48,11 @@ Both composers accept these commands:
 | `/todos JSON`, `/memory text` | Set tracked work and durable handoff notes |
 | `/spec on`, `/spec text`, `/accept [revision]` | Collaborate without workspace effects; accept exactly the current revision to implement it |
 | `/attach path` | Attach a workspace text file, PNG or JPEG (up to 20 MB), while idle |
-| `/model ID [effort]`, `/provider codex\|claude`, `/models` | Select any provider model ID; discover the pool's catalog |
+| `/model ID [effort]`, `/provider codex\|openai`, `/models` | Select any provider model ID; discover the configured provider's catalog |
 | `/approval ask\|auto\|allow`, `/guidance text` | Configure action approval |
 | `/approve [CALL_ID]`, `/deny [CALL_ID]` | Resolve a particular pending action, once |
 | `/agents on`, `/readonly on` | Enable optional child agents or restrict workspace effects |
-| `/compact`, `/history [query]`, `/fork [title]` | Compact with the provider, search saved history, fork an idle checkpoint |
+| `/compact`, `/history [query]`, `/fork [title]` | Compact context, search saved history, fork an idle checkpoint |
 | `/checkpoints`, `/undo EDIT_ID` | List recoverable edits/deletions; restore only when newer work will not be overwritten |
 | `/event SEQUENCE` | Inspect the complete durable action behind a transcript detail link |
 | `/git OP [JSON]`, `/github OP JSON` | Native repository and GitHub operations |
@@ -65,11 +66,55 @@ Changing configuration requires a stopped turn. A provider switch needs an empty
 session: encrypted reasoning cannot be translated between providers. A model
 change within a provider keeps its original opaque items; the provider decides
 whether the selected model accepts them. Model IDs are never silently replaced.
-Set effort to `""` to omit it for models that do not support effort. Claude
-thinking is explicitly configurable (for example `{"type":"adaptive"}`, or a
-legacy budget on models that support it). `model.max_output_tokens` is the
-Claude Messages output limit; the Codex subscription endpoint controls its own
-per-response limit. Run token and turn budgets apply to both providers.
+Set effort to `""` to omit it for models that do not support effort.
+`model.max_output_tokens` limits custom Chat Completions output; the Codex
+subscription endpoint controls its own per-response limit. Run budgets cover
+both providers, approval review and client compaction.
+
+## Custom OpenAI-compatible endpoints
+
+Choose **Settings ▸ Custom Endpoint…**, or configure an empty session:
+
+```text
+/endpoint {"base_url":"https://api.fireworks.ai/inference/v1","api_key_env":"FIREWORKS_API_KEY"}
+/model YOUR_FIREWORKS_MODEL_ID
+/set model.context_window 128000
+```
+
+Use the model/deployment ID and window published for your account; Coder does not
+hardcode Fireworks or DeepSeek model names. `/models` queries the endpoint's
+`GET /models` catalog when supported. Requests use `POST /chat/completions` below
+the configured API root. The GUI saves endpoint and model together. The TUI's
+`/config` or JSON `configure` command can also update them atomically.
+
+The service must inherit `FIREWORKS_API_KEY` when it starts. Export it in the shell
+that starts the service, then launch Coder. Changing a client's environment does
+not alter an already-running service; after its work is stopped, its explicit
+`--rpc '{"op":"shutdown"}'` command allows restarting it from the new environment.
+Never paste a key into a session message or configuration. An unauthenticated local
+server can leave `api_key_env` null. `header_env` maps additional HTTP header names
+to environment variable names. HTTPS is required except for loopback HTTP;
+redirects are not followed.
+
+`endpoint.stream` and `endpoint.include_usage` default to true. Set the latter
+false for gateways that reject streaming usage options. `token_limit_field` can
+be `"max_tokens"` (default) or `"max_completion_tokens"`. Model-specific fields go
+in `model.extra`; required routing, message, tool and completion-count fields
+remain managed by Coder. `model.thinking` supports provider-specific thinking
+configuration. Native assistant reasoning, including `reasoning_content`, is
+retained and replayed across tool turns. Ordered `reasoning_details` blocks,
+including opaque encrypted data, also survive streaming and replay
+([gateway reasoning format](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens)). Custom models must support function tools
+for the full agent workflow. They use Coder's [client compactor](CODER-COMPACTION.md),
+with immutable transcripts, evidence-linked checkpoints and background preparation.
+
+Claude is no longer a Coder provider. Existing Claude sessions are paused and their
+original state is archived before conversion to an empty Codex working context.
+The independent Olo Token Pool's support for other applications is unchanged.
+
+Protocol references: [Fireworks OpenAI compatibility](https://docs.fireworks.ai/tools-sdks/openai-compatibility),
+[Fireworks Chat Completions](https://docs.fireworks.ai/api-reference/post-chatcompletions),
+[DeepSeek thinking and tool replay](https://api-docs.deepseek.com/guides/thinking_mode/).
 
 ## Sessions, tiles and steering
 
@@ -327,7 +372,7 @@ has an unknown outcome and is never automatically replayed. Inspect the workspac
 then Resume supplies an explicit unknown-outcome tool result so the model can
 reconcile what happened. Partially received provider replies never execute tools.
 A dropped provider stream fails the turn without appending partial native output.
-Claude streams must close every content block and supply a stop reason before
+Custom streams must supply a valid completion reason and `[DONE]` before
 admission. Tool calls require unique, nonempty IDs and object arguments, so an
 unfinished argument stream cannot become a call with placeholder arguments.
 
@@ -369,29 +414,22 @@ returned encrypted window replaces the old active window; no client summary is
 substituted. Inline compaction items in normal responses are also preserved.
 An incomplete response, empty compaction payload or unexecuted tool call rejects
 explicit compaction and leaves the previous durable context intact.
-Claude retains thinking signatures, redacted thinking and complete content blocks.
-On-demand compaction sends `compaction: {type: "summarize"}` with
-`compact-2026-09-04`, and preserves the returned signed block as the first message.
-Models without provider compaction can set `model.auto_compact: false`; Coder
-reports a rejected compaction rather than discarding context.
+Custom endpoints use [client-side checkpoint compaction](CODER-COMPACTION.md).
+The immutable native transcript remains available through `read_transcript` and
+`search_transcript`, independently of the smaller active context. `/compactions`
+inspects checkpoint evidence and `/restore-context ID` restores the current
+checkpoint while idle. Server and client compaction retain newer steering messages.
 Preflight context estimates traverse borrowed native values without making a
 serialized copy. Image encodings have a fixed conservative allowance instead
 of being counted as millions of text tokens; actual provider usage takes precedence.
 
 Stable instructions and tools precede the conversation. Mutable goals, todos,
 accepted specs, and handoff notes are supplied at the end of each request, so a
-routine tracking update does not invalidate the stable prompt prefix. Claude
-uses automatic caching and a stable system breakpoint with a one-hour TTL by
-default. Set `model.cache_ttl` to `"5m"` or `null` to change or disable it. Complete
-signed content blocks remain untouched. Provider JSON and streams are bounded
-by `max_response_bytes` (64 MB by default).
+routine tracking update does not invalidate the stable prompt prefix. Provider
+JSON and streams are bounded by `max_response_bytes` (64 MB by default).
 
 Protocol references: [Responses streaming and compaction triggers](https://developers.openai.com/api/reference/resources/responses/streaming-events),
-[OpenAI compaction](https://developers.openai.com/api/docs/guides/compaction),
-[Claude on-demand compaction](https://platform.claude.com/docs/en/build-with-claude/compaction-on-demand),
-[Claude thinking validity](https://platform.claude.com/docs/en/build-with-claude/compaction-thinking-blocks),
-[Claude stream lifecycle](https://platform.claude.com/docs/en/build-with-claude/streaming),
-[Claude prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching).
+[OpenAI compaction](https://developers.openai.com/api/docs/guides/compaction).
 
 ## Rich output, Git and GitHub
 

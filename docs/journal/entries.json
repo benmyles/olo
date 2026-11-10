@@ -3916,5 +3916,11 @@
   "title": "Coder: choose a child workspace",
   "caption": "Start a read-only child from the native Agent menu with a workspace subfolder, model and effort. Shared /agent commands offer the same operation in the terminal. Multiline task editing now preserves Return; forms and main windows retain their own geometry through upgrades. Reviewed all nine Coder forms in light, dark and night at 1\u00d7, 1.25\u00d7, 1.5\u00d7, 1.75\u00d7 and 2\u00d7: 135 cases, zero findings.",
   "image": "2026-11-10/081504-coder-choose-a-child-workspace.png"
+ },
+ {
+  "time": "2026-11-10T09:15:49",
+  "title": "Coder custom model endpoints",
+  "caption": "A native Chat Completions endpoint form stores environment variable names for credentials. Model and endpoint save together; unfinished form values survive an in-place upgrade. Reviewed at five scales in light, dark and night modes.",
+  "image": "2026-11-10/091549-coder-custom-model-endpoints.png"
  }
 ]

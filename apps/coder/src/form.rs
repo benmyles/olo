@@ -33,6 +33,7 @@ pub enum Submission {
     Coordination { operation: String, session: String, message: Option<String> },
     Repository { operation: String, session: String, head: String },
     Agent { session: String },
+    Endpoint { session: String, config: olo_coder_core::Config },
     Guidance { session: String, config: olo_coder_core::Config },
 }
 impl Submission {
@@ -64,6 +65,18 @@ impl Submission {
                     }
                 }
                 serde_json::json!({"op":"tool","session":session,"name":"spawn_agent","arguments":arguments})
+            }
+            Self::Endpoint { session, config } => {
+                let mut config = config.clone();
+                if config.model.provider != olo_coder_core::Provider::Openai {
+                    config.model = olo_coder_core::ModelConfig::for_provider(olo_coder_core::Provider::Openai);
+                }
+                let endpoint = config.model.endpoint.get_or_insert_with(Default::default);
+                endpoint.base_url = v[0].trim().into();
+                endpoint.api_key_env = (!v[2].trim().is_empty()).then(|| v[2].trim().to_owned());
+                config.model.model = v[1].trim().into();
+                config.model.effort = v[3].trim().into();
+                serde_json::json!({"op":"configure","session":session,"config":config})
             }
             Self::Guidance { session, config } => {
                 let mut config = config.clone();

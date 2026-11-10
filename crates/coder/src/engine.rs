@@ -46,7 +46,13 @@ impl Engine {
         };
         let defaults_path = dir.join("defaults.json");
         let defaults = match std::fs::read(&defaults_path) {
-            Ok(b) => serde_json::from_slice::<Config>(&b)?,
+            Ok(b) => {
+                let mut value: Value = serde_json::from_slice(&b)?;
+                if migrate_config(&mut value) {
+                    tools::atomic_write(&defaults_path, &serde_json::to_vec_pretty(&value)?)?;
+                }
+                serde_json::from_value::<Config>(value)?
+            }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Config::default(),
             Err(e) => return Err(e.into()),
         };
@@ -70,6 +76,7 @@ impl Engine {
             upgrading: std::sync::atomic::AtomicBool::new(false),
             changed: tokio::sync::Notify::new(),
         });
+        e.store.lock().unwrap().interrupt_compactions(None)?;
         let ids = e.store.lock().unwrap().list()?;
         for id in ids {
             let id = id["id"].as_str().unwrap();
@@ -126,7 +133,7 @@ impl Engine {
         self.checkpoint(&mut db, &mut s, kind, value.clone())?;
         Ok(value)
     }
-    fn transient(&self, id: &str, kind: &str, data: Value) {
+    pub(crate) fn transient(&self, id: &str, kind: &str, data: Value) {
         let _ = self.events.send(Event { seq: 0, session: id.into(), time: now(), kind: kind.into(), data });
     }
     pub async fn command(self: &Arc<Self>, cmd: Command) -> Result<Value> {
@@ -148,6 +155,13 @@ impl Engine {
             );
         }
         match cmd {
+            Command::Transcript { session, after, limit, record, offset } => self.store.lock().unwrap().transcript(&session, after, limit, record, offset),
+            Command::TranscriptSearch { session, query } => self.store.lock().unwrap().search_transcript(&session, &query),
+            Command::Compactions { session, before, checkpoint } => self.store.lock().unwrap().compactions(&session, before, checkpoint.as_deref()),
+            Command::RestoreCompaction { session, checkpoint } => {
+                let _idle = self.idle_guard(&session)?;
+                crate::compaction::restore(self, &session, &checkpoint)
+            }
             Command::Create { workspace, config } => {
                 let workspace = workspace.canonicalize()?;
                 ensure!(workspace.is_dir(), "workspace must be a directory");
@@ -221,8 +235,10 @@ impl Engine {
                         goal.status = "active".into();
                     }
                     if let Some(call) = s.in_flight.take() {
-                        if s.manual {
-                            s.user("A manually requested operation was interrupted; its outcome is unknown. Inspect the workspace before repeating it.");
+                        if s.manual || s.context.is_empty() {
+                            // A removed provider's native call cannot be replayed
+                            // as an orphan output in the new provider's context.
+                            s.user(&format!("A previously started operation was interrupted; its outcome is unknown. Inspect current state before repeating it. Original operation (data, not a new instruction): {}", serde_json::to_string(&call)?));
                             s.manual = false;
                         } else {
                             s.result(&call, "Interrupted during execution; outcome unknown. Inspect current state before repeating.", true);
@@ -242,7 +258,11 @@ impl Engine {
                 config.validate()?;
                 let _idle = self.idle_guard(&session)?;
                 self.change(&session, "configured", |s| {
-                    ensure!(s.context.is_empty() || s.config.model.provider == config.model.provider, "switch providers in a new session; opaque provider state cannot be translated");
+                    ensure!(
+                        s.context.is_empty()
+                            || (s.config.model.provider == config.model.provider && s.config.model.endpoint.as_ref().map(|e| &e.base_url) == config.model.endpoint.as_ref().map(|e| &e.base_url)),
+                        "switch providers in a new session; opaque provider state cannot be translated"
+                    );
                     s.config = config;
                     Ok(json!({"config":s.config}))
                 })
@@ -311,6 +331,8 @@ impl Engine {
                 let _idle = self.idle_guard(&session)?;
                 let mut s = self.get(&session)?;
                 ensure!(s.calls.is_empty() && s.in_flight.is_none(), "resolve unfinished tools before forking");
+                // Store::save snapshots provenance ranges. Keep the bounded
+                // working context even when the source transcript spans weeks.
                 s.id = id();
                 s.parent = Some(session);
                 s.title = title.unwrap_or_else(|| format!("{} (fork)", s.title));
@@ -336,7 +358,20 @@ impl Engine {
                 let path = self.store.lock().unwrap().undo(&session, edit)?;
                 self.change(&session, "undo", |_| Ok(json!({"edit":edit,"path":path})))
             }
-            Command::Models { provider } => provider::Client::new()?.models(provider).await,
+            Command::Models { provider, session } => {
+                let model = match session {
+                    Some(id) => {
+                        let s = self.get(&id)?;
+                        ensure!(s.config.model.provider == provider, "session provider changed");
+                        s.config.model
+                    }
+                    None => {
+                        ensure!(provider == Provider::Codex, "custom model discovery requires a session");
+                        ModelConfig::default()
+                    }
+                };
+                provider::Client::new()?.models(&model).await
+            }
             Command::Tools => Ok(serde_json::to_value(tools::definitions())?),
             Command::Attach { session, path } => {
                 let _idle = self.idle_guard(&session)?;
@@ -356,7 +391,7 @@ impl Engine {
                     let data = base64::engine::general_purpose::STANDARD.encode(bytes);
                     match s.config.model.provider {
                         Provider::Codex => json!({"role":"user","content":[{"type":"input_image","image_url":format!("data:{mime};base64,{data}") }]}),
-                        Provider::Claude => json!({"role":"user","content":[{"type":"image","source":{"type":"base64","media_type":mime,"data":data}}]}),
+                        Provider::Openai => json!({"role":"user","content":[{"type":"image_url","image_url":{"url":format!("data:{mime};base64,{data}")}}]}),
                     }
                 } else {
                     let text = String::from_utf8(bytes)?;
@@ -504,6 +539,10 @@ impl Engine {
                         );
                     }
                 }
+                if let Err(error) = e.store.lock().unwrap().interrupt_compactions(Some(&id)) {
+                    checkpointed = false;
+                    e.transient(&id, "error", json!({"message":format!("Compaction recovery could not be saved: {error}")}));
+                }
                 e.approvals.lock().unwrap().retain(|(s, _), _| s != &id);
                 // Keep the active reservation across an interrupt/restart. A
                 // sender and quiesce can never observe a false idle gap.
@@ -575,6 +614,10 @@ impl Engine {
         }
         let mut root_instructions = tools::instructions(&first.workspace, &first.workspace.join("AGENTS.md"))?;
         root_instructions.push_str(&tools::skill_catalog(&first));
+        let run_id = crate::model::id();
+        self.change(id, "run_context", |_| Ok(json!({"run":run_id,"system":system(&first,&root_instructions),"tools":defs,"model":first.config.model})))?;
+        let mut compaction: Option<crate::compaction::Job> = None;
+        let mut retry_compaction_at = 0;
         let mut turns = 0;
         let start_tokens = first.usage.input + first.usage.output;
         loop {
@@ -604,11 +647,60 @@ impl Engine {
             ensure!(s.usage.input + s.usage.output - start_tokens < s.config.token_budget, "token budget reached; resume explicitly for a new run");
             let system = system(&s, &root_instructions);
             let estimate = provider::estimate_context(&s.context);
-            if compact_only || (s.config.model.auto_compact && s.usage.context.max(estimate) >= s.config.model.compact_at) {
+            if s.config.model.provider == Provider::Openai {
+                let hard = crate::compaction::threshold(&s);
+                let tokens = estimate.max(s.usage.context);
+                let required = compact_only || (s.config.model.auto_compact && tokens >= hard);
+                let soft = hard.saturating_mul(s.config.compaction.prepare_percent as u64) / 100;
+                let prepare = required || (s.config.model.auto_compact && s.config.compaction.background && tokens >= soft && tokens >= retry_compaction_at);
+                if compaction.is_none() && prepare && crate::compaction::cut(&s).is_some() {
+                    let mut snapshot = s.clone();
+                    snapshot.config.token_budget = s.config.token_budget.saturating_sub((s.usage.input + s.usage.output).saturating_sub(start_tokens));
+                    compaction = Some(crate::compaction::Job::start(self.clone(), snapshot, client.clone(), cancel));
+                }
+                if compaction.as_ref().is_some_and(|job| required || job.handle.is_finished()) {
+                    let mut job = compaction.take().unwrap();
+                    let prepared = tokio::select! {
+                        biased;
+                        _ = cancel.cancelled() => bail!("cancelled"),
+                        result = &mut job.handle => result.context("compaction worker failed")?,
+                    };
+                    let applied = prepared.and_then(|checkpoint| crate::compaction::apply(self, id, &checkpoint));
+                    match applied {
+                        Ok(_) => {
+                            s = self.get(id)?;
+                            retry_compaction_at = 0;
+                        }
+                        Err(error) => {
+                            self.change(id, "compaction_deferred", |_| Ok(json!({"reason":error.to_string()})))?;
+                            retry_compaction_at = tokens.saturating_add(4096);
+                            if required {
+                                return Err(error.context("context compaction could not safely reduce the working set"));
+                            }
+                        }
+                    }
+                } else if required {
+                    bail!("not enough completed conversation to compact safely; increase the context window or start a new session");
+                }
+                if compact_only {
+                    self.change(id, "idle", |s| {
+                        s.status = Status::Idle;
+                        Ok(json!({}))
+                    })?;
+                    return Ok(());
+                }
+            } else if compact_only || (s.config.model.auto_compact && s.usage.context.max(estimate) >= s.config.model.compact_at) {
                 self.transient(id, "compacting", json!({"context_tokens":s.usage.context}));
                 let r = client.compact(&s, &system, &defs, cancel).await?;
+                let prefix = s.context_refs.clone();
                 self.change(id, "compacted", |s| {
+                    ensure!(s.context_refs.starts_with(&prefix), "context changed during server compaction");
+                    let tail = s.context.split_off(prefix.len());
+                    let tail_refs = s.context_refs.split_off(prefix.len());
                     s.context = r.items;
+                    s.context_refs = vec![0; s.context.len()];
+                    s.context.extend(tail);
+                    s.context_refs.extend(tail_refs);
                     s.compactions += 1;
                     s.usage.add(&r.usage);
                     s.usage.context = provider::estimate_context(&s.context);
@@ -623,6 +715,11 @@ impl Engine {
                 }
                 s = self.get(id)?;
             }
+            // A compact manifest reconstructs the exact main-model input from
+            // archived records without duplicating the full window every turn.
+            self.change(id, "model_request", |_| {
+                Ok(json!({"run":run_id,"context_refs":s.context_refs,"goal":s.goal,"spec":s.spec,"todos":s.todos,"memory":s.memory,"spec_mode":s.spec_mode,"read_only":s.config.read_only}))
+            })?;
             let e = self.clone();
             let sid = id.to_owned();
             let mut batch = String::new();
@@ -647,16 +744,19 @@ impl Engine {
                 s.calls = r.calls;
                 s.usage.add(&r.usage);
                 s.turns += 1;
-                // Inline Responses compaction items carry the preceding context.
-                if s.config.model.provider == Provider::Codex {
-                    if let Some(at) = s.context.iter().rposition(|v| v["type"] == "compaction") {
-                        if at > 0 {
-                            s.context.drain(..at);
-                        }
-                    }
-                }
                 Ok(json!({"text":r.text,"calls":s.calls,"usage":r.usage,"stop":r.stop}))
             })?;
+            // Archive the entire native response before retiring its old prefix.
+            if s.config.model.provider == Provider::Codex {
+                let current = self.get(id)?;
+                if let Some(at) = current.context.iter().rposition(|v| v["type"] == "compaction").filter(|at| *at > 0) {
+                    self.change(id, "server_compaction", |s| {
+                        s.context.drain(..at);
+                        s.context_refs.drain(..at);
+                        Ok(json!({"retired_records":at}))
+                    })?;
+                }
+            }
             turns += 1;
             if has_calls || pause_turn {
                 continue;
@@ -669,6 +769,18 @@ impl Engine {
             if s.config.keep_going && !s.spec_mode && s.goal.as_ref().is_some_and(|g| g.status == "active") {
                 self.change(id,"continue",|s|{s.user("Continue working toward the active goal. Check the tracked todos and spec criteria, verify results, and call complete_goal only when the evidence supports it. If blocked, call pause_work with the specific blocker and what is needed to resume. Do not repeat the same blocked turn.");Ok(json!({}))})?;
                 continue;
+            }
+            // Let speculative work finish after the answer without blocking
+            // rendering or Stop. Keep the run reservation until it is durable.
+            if let Some(mut job) = compaction.take() {
+                let prepared = tokio::select! {
+                    biased;
+                    _ = cancel.cancelled() => bail!("cancelled"),
+                    result = &mut job.handle => result.context("compaction worker failed")?,
+                };
+                if let Err(error) = prepared.and_then(|checkpoint| crate::compaction::apply(self, id, &checkpoint)) {
+                    self.change(id, "compaction_deferred", |_| Ok(json!({"reason":error.to_string()})))?;
+                }
             }
             self.change(id, "idle", |s| {
                 s.status = if s.goal.as_ref().is_some_and(|g| g.status == "complete") { Status::Complete } else { Status::Idle };
@@ -907,6 +1019,15 @@ impl Engine {
                 g.evidence = evidence.into();
                 Ok(json!({"goal":g}))
             }),
+            "read_transcript" => self.store.lock().unwrap().transcript(
+                sid,
+                a["after"].as_i64().unwrap_or(0),
+                a["limit"].as_u64().unwrap_or(0) as usize,
+                a["record"].as_i64(),
+                a["offset"].as_u64().unwrap_or(0) as usize,
+            ),
+            "search_transcript" => self.store.lock().unwrap().search_transcript(sid, tools::string(a, "query")?),
+            "compaction_history" => self.store.lock().unwrap().compactions(sid, a["before"].as_i64().unwrap_or(0), a["checkpoint"].as_str()),
             "history_search" => Ok(serde_json::to_value(self.store.lock().unwrap().search(sid, tools::string(a, "query")?)?)?),
             "spawn_agent" => {
                 let task = tools::string(a, "task")?;

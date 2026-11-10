@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-10
 
+### Coder custom model endpoints
+
+*09:15* — A native Chat Completions endpoint form stores environment variable names for credentials. Model and endpoint save together; unfinished form values survive an in-place upgrade. Reviewed at five scales in light, dark and night modes.
+
+![Coder custom model endpoints](2026-11-10/091549-coder-custom-model-endpoints.png)
+
 ### Coder: choose a child workspace
 
 *08:15* — Start a read-only child from the native Agent menu with a workspace subfolder, model and effort. Shared /agent commands offer the same operation in the terminal. Multiline task editing now preserves Return; forms and main windows retain their own geometry through upgrades. Reviewed all nine Coder forms in light, dark and night at 1×, 1.25×, 1.5×, 1.75× and 2×: 135 cases, zero findings.

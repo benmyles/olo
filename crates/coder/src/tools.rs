@@ -144,11 +144,29 @@ pub fn definitions() -> Vec<ToolDef> {
             json!({"id":{"type":"string"},"status":{"type":"string"},"evidence":{"type":"string"}}),
             &["id", "status", "evidence"],
         ),
+        def(
+            "read_transcript",
+            "Read the immutable original transcript. With record: exact JSON paged by byte offset/limit, follow next_offset. Without record: list records after an ID (limit <=100). Sources survive compaction.",
+            json!({"record":{"type":"integer"},"offset":{"type":"integer"},"after":{"type":"integer"},"limit":{"type":"integer"}}),
+            &[],
+        ),
+        def(
+            "search_transcript",
+            "Search exact text in original messages, reasoning and tool results, including records retired by compaction. Retrieve matches with read_transcript.",
+            json!({"query":{"type":"string"}}),
+            &["query"],
+        ),
+        def(
+            "compaction_history",
+            "List compaction checkpoints (before cursor), or inspect a checkpoint with its original source IDs, evidence, warnings and parent link.",
+            json!({"checkpoint":{"type":"string"},"before":{"type":"integer"}}),
+            &[],
+        ),
         def("history_search", "Search durable conversation and tool history outside the active context.", json!({"query":{"type":"string"}}), &["query"]),
         def(
             "spawn_agent",
             "Start an optional child agent. Parent configuration is inherited; model, effort and every model_config field can be selected. Children default to read-only and cannot loosen parent approval policy. An optional workspace selects an existing subfolder or Git worktree inside the parent workspace. Returns its session id and workspace.",
-            json!({"task":{"type":"string"},"workspace":{"type":"string","description":"Existing folder or worktree within the parent workspace; defaults to the parent workspace."},"model":{"type":"string"},"provider":{"type":"string","enum":["codex","claude"]},"effort":{"type":"string"},"model_config":{"type":"object","description":"Override model fields including thinking, service_tier, max_output_tokens, compaction and extra provider options; inherits defaults for the selected provider."},"read_only":{"type":"boolean"}}),
+            json!({"task":{"type":"string"},"workspace":{"type":"string","description":"Existing folder or worktree within the parent workspace; defaults to the parent workspace."},"model":{"type":"string"},"provider":{"type":"string","enum":["codex","openai"]},"effort":{"type":"string"},"model_config":{"type":"object","description":"Override model fields including thinking, service_tier, max_output_tokens, compaction and extra provider options; inherits defaults for the selected provider."},"read_only":{"type":"boolean"}}),
             &["task"],
         ),
         def(
@@ -253,6 +271,9 @@ pub fn readonly(name: &str) -> bool {
             | "search"
             | "read_skill"
             | "history_search"
+            | "read_transcript"
+            | "search_transcript"
+            | "compaction_history"
             | "agent_status"
             | "wait_agent"
             | "read_artifact"

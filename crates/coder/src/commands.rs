@@ -3,7 +3,7 @@
 use crate::model::*;
 use anyhow::{Context, Result, bail};
 
-pub const HELP: &str = "Messages go to the agent. Enter sends; Escape stops.\n\n/new [workspace] · /sessions · /open ID · /status · /stop · /resume\n/model MODEL [EFFORT] · /provider codex|claude · /models\n/goal OBJECTIVE · /todos JSON · /memory TEXT · /attach PATH\n/spec on|off · /spec TEXT · /accept [REVISION]\n/keep on|off · /approval ask|auto|allow · /guidance TEXT\n/agents on|off · /agent JSON · /readonly on|off · /compact\n/config [JSON] · /defaults [JSON] · /set KEY JSON · /fork [TITLE] · /history [QUERY] · /undo EDIT · /checkpoints · /event SEQUENCE\n/git OP [JSON] · /github OP JSON · /tool NAME JSON\n/pin [on|off] · /rename TITLE · /tags WORDS · /archive · /restore\n/interrupt TEXT · /after-tool TEXT · /queue TEXT · /inbox\n/cancel-message ID · /retry-message ID\n/message [PEER/]SESSION TEXT · /peers · /connect NAME STORE · /disconnect NAME · /peer-sessions NAME\n/api JSON (every command) · /help · /quit\n\nChanges to model and configuration require a stopped turn.\nApproval: /approve CALL_ID or /deny CALL_ID.\nFull configuration includes budgets, timeouts, model provider fields,\nMCP servers, hooks, subagent limits and review model.\nAn execute or MCP tool has host access when approved.";
+pub const HELP: &str = "Messages go to the agent. Enter sends; Escape stops.\n\n/new [workspace] · /sessions · /open ID · /status · /stop · /resume\n/model MODEL [EFFORT] · /provider codex|openai · /models · /endpoint JSON\n/goal OBJECTIVE · /todos JSON · /memory TEXT · /attach PATH\n/spec on|off · /spec TEXT · /accept [REVISION]\n/keep on|off · /approval ask|auto|allow · /guidance TEXT\n/agents on|off · /agent JSON · /readonly on|off · /compact\n/transcript [ID] · /transcript-search TEXT · /compactions [ID] · /restore-context ID\n/config [JSON] · /defaults [JSON] · /set KEY JSON · /fork [TITLE] · /history [QUERY] · /undo EDIT · /checkpoints · /event SEQUENCE\n/git OP [JSON] · /github OP JSON · /tool NAME JSON\n/pin [on|off] · /rename TITLE · /tags WORDS · /archive · /restore\n/interrupt TEXT · /after-tool TEXT · /queue TEXT · /inbox\n/cancel-message ID · /retry-message ID\n/message [PEER/]SESSION TEXT · /peers · /connect NAME STORE · /disconnect NAME · /peer-sessions NAME\n/api JSON (every command) · /help · /quit\n\nChanges to model and configuration require a stopped turn.\nApproval: /approve CALL_ID or /deny CALL_ID.\nFull configuration includes budgets, timeouts, model provider fields,\nMCP servers, hooks, subagent limits and review model.\nAn execute or MCP tool has host access when approved.";
 pub enum Input {
     Command(Command),
     Open(String),
@@ -21,6 +21,14 @@ pub fn parse(text: &str, s: &Session) -> Result<Input> {
     let session = s.id.clone();
     let mut config = s.config.clone();
     let command = match name {
+        "/endpoint" => {
+            let endpoint: EndpointConfig = serde_json::from_str(arg)?;
+            if config.model.provider != Provider::Openai {
+                config.model = ModelConfig::for_provider(Provider::Openai);
+            }
+            config.model.endpoint = Some(endpoint);
+            Command::Configure { session, config }
+        }
         "/agent" => {
             let arguments: serde_json::Value = serde_json::from_str(arg).context("expected a JSON object with task and optional workspace/model settings")?;
             anyhow::ensure!(arguments.is_object(), "arguments must be a JSON object");
@@ -46,6 +54,10 @@ pub fn parse(text: &str, s: &Session) -> Result<Input> {
                 Command::Tool { session, name: format!("{}_{}", if name == "/git" { "repository" } else { "github" }, if read { "read" } else { "write" }), arguments }
             }
         }
+        "/transcript" => Command::Transcript { session, after: 0, limit: 0, record: if arg.is_empty() { None } else { Some(arg.parse()?) }, offset: 0 },
+        "/transcript-search" => Command::TranscriptSearch { session, query: arg.into() },
+        "/compactions" => Command::Compactions { session, before: 0, checkpoint: (!arg.is_empty()).then(|| arg.into()) },
+        "/restore-context" => Command::RestoreCompaction { session, checkpoint: arg.into() },
         "/checkpoints" => Command::Checkpoints { session },
         "/event" => Command::Events { session, after: arg.parse::<i64>()?.saturating_sub(1), limit: 1 },
         "/help" => return Ok(Input::Help),
@@ -110,7 +122,7 @@ pub fn parse(text: &str, s: &Session) -> Result<Input> {
             }
         }
         "/undo" => Command::Undo { session, edit: arg.parse()? },
-        "/models" => Command::Models { provider: s.config.model.provider },
+        "/models" => Command::Models { provider: s.config.model.provider, session: Some(session) },
         "/api" => serde_json::from_str(arg)?,
         "/defaults" => Command::Defaults { config: if arg.is_empty() { None } else { Some(serde_json::from_str(arg)?) } },
         "/set" => {
@@ -144,8 +156,8 @@ pub fn parse(text: &str, s: &Session) -> Result<Input> {
                 "/provider" => {
                     let provider = match arg {
                         "codex" => Provider::Codex,
-                        "claude" => Provider::Claude,
-                        _ => bail!("expected codex or claude"),
+                        "openai" => Provider::Openai,
+                        _ => bail!("expected codex or openai"),
                     };
                     if config.model.provider != provider {
                         config.model = ModelConfig::for_provider(provider);

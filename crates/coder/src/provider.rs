@@ -7,6 +7,7 @@ use serde_json::{Value, json};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
+#[derive(Clone)]
 pub struct Client {
     http: reqwest::Client,
     base: String,
@@ -25,7 +26,7 @@ pub fn estimate_context(items: &[Value]) -> u64 {
     fn tokens(value: &Value) -> u64 {
         match value {
             Value::Object(object) => {
-                if matches!(object.get("type").and_then(Value::as_str), Some("input_image" | "image")) {
+                if matches!(object.get("type").and_then(Value::as_str), Some("input_image" | "image" | "image_url")) {
                     return 8192;
                 }
                 object.iter().fold(2u64, |n, (key, value)| n.saturating_add((key.len() as u64).div_ceil(3)).saturating_add(tokens(value)))
@@ -46,7 +47,7 @@ impl Client {
     }
     pub fn at(base: &str) -> Result<Self> {
         // The pool has the credentials. Never inherit a proxy or send its requests elsewhere.
-        let url = reqwest::Url::parse(&base)?;
+        let url = reqwest::Url::parse(base)?;
         ensure!(matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "[::1]")), "Coder's token pool must be on loopback");
         Ok(Self {
             http: reqwest::Client::builder()
@@ -58,64 +59,84 @@ impl Client {
             base: base.trim_end_matches('/').into(),
         })
     }
-    fn endpoint(&self, p: Provider, path: &str) -> String {
-        format!("{}/{}/v1/{path}", self.base, if p == Provider::Codex { "codex" } else { "claude" })
+    fn endpoint(&self, model: &ModelConfig, path: &str) -> Result<String> {
+        model.validate()?;
+        Ok(match model.provider {
+            Provider::Codex => format!("{}/codex/v1/{path}", self.base),
+            Provider::Openai => format!("{}/{path}", model.endpoint.as_ref().context("custom endpoint is missing")?.base_url.trim_end_matches('/')),
+        })
     }
-    pub async fn models(&self, p: Provider) -> Result<Value> {
-        let r = self
-            .http
-            .get(self.endpoint(p, "models"))
-            .query(&[("client_version", "0.166.0")])
-            .header("anthropic-version", "2026-10-21")
-            .header("anthropic-beta", "compact-2026-09-04")
-            .timeout(Duration::from_secs(30))
-            .send()
-            .await?;
-        let status = r.status();
-        let v: Value = serde_json::from_slice(&bounded_response(r, 4 * 1024 * 1024).await?)?;
-        ensure!(status.is_success(), "models: {status}: {v}");
-        Ok(v)
+    fn authorize(&self, mut request: reqwest::RequestBuilder, model: &ModelConfig) -> Result<reqwest::RequestBuilder> {
+        if model.provider == Provider::Openai {
+            let endpoint = model.endpoint.as_ref().context("custom endpoint is missing")?;
+            if let Some(variable) = &endpoint.api_key_env {
+                let key = std::env::var(variable).with_context(|| format!("set {variable} in the Coder service environment"))?;
+                ensure!(!key.trim().is_empty(), "{variable} is empty");
+                let mut value = reqwest::header::HeaderValue::from_str(&format!("Bearer {key}")).context("invalid API key header")?;
+                value.set_sensitive(true);
+                request = request.header(reqwest::header::AUTHORIZATION, value);
+            }
+            for (name, variable) in &endpoint.header_env {
+                let secret = std::env::var(variable).with_context(|| format!("set {variable} in the Coder service environment"))?;
+                let mut value = reqwest::header::HeaderValue::from_str(&secret).context("invalid configured header value")?;
+                value.set_sensitive(true);
+                request = request.header(name, value);
+            }
+        }
+        Ok(request)
+    }
+    pub async fn models(&self, model: &ModelConfig) -> Result<Value> {
+        let mut request = self.http.get(self.endpoint(model, "models")?).timeout(Duration::from_secs(30));
+        if model.provider == Provider::Codex {
+            request = request.query(&[("client_version", "0.166.0")]);
+        }
+        let response = self.authorize(request, model)?.send().await?;
+        let status = response.status();
+        ensure!(status.is_success(), "models: {status}");
+        Ok(serde_json::from_slice(&bounded_response(response, 4 * 1024 * 1024).await?)?)
     }
     pub async fn turn(&self, s: &Session, system: &str, defs: &[ToolDef], cancel: &CancellationToken, mut event: impl FnMut(&str, Value)) -> Result<Reply> {
         let body = body(s, system, defs);
-        let v = self.request(s, &body, if s.config.model.provider == Provider::Codex { "responses" } else { "messages" }, cancel, &mut event).await?;
-        parse(s.config.model.provider, v)
+        if s.config.model.provider == Provider::Openai {
+            let estimate = estimate_context(std::slice::from_ref(&body));
+            ensure!(
+                estimate.saturating_add(s.config.model.max_output_tokens as u64) <= s.config.model.context_window,
+                "estimated request exceeds context_window; compact the session or increase its configured window (including tools and output allowance)"
+            );
+        }
+        let v = self.request(s, &body, if s.config.model.provider == Provider::Codex { "responses" } else { "chat/completions" }, cancel, &mut event).await?;
+        let missing_input = v["usage"]["prompt_tokens"].as_u64().unwrap_or(0) == 0;
+        let missing_output = v["usage"]["completion_tokens"].as_u64().unwrap_or(0) == 0;
+        let mut reply = parse(s.config.model.provider, v)?;
+        if s.config.model.provider == Provider::Openai {
+            if missing_input {
+                reply.usage.input = estimate_context(std::slice::from_ref(&body));
+            }
+            if missing_output {
+                reply.usage.output = estimate_context(&reply.items);
+            }
+            reply.usage.context = reply.usage.input.saturating_add(reply.usage.output);
+        }
+        Ok(reply)
     }
     pub async fn compact(&self, s: &Session, system: &str, defs: &[ToolDef], cancel: &CancellationToken) -> Result<Reply> {
         ensure!(s.calls.is_empty() && s.in_flight.is_none(), "finish tool results before compaction");
-        let (path, body) = match s.config.model.provider {
-            Provider::Codex => {
-                let mut b = body(s, system, defs);
-                b["input"].as_array_mut().unwrap().push(json!({"type":"compaction_trigger"}));
-                ("responses", b)
-            }
-            Provider::Claude => {
-                let mut b = body(s, system, defs);
-                b.as_object_mut().unwrap().remove("context_management");
-                b["compaction"] = json!({"type":"summarize"});
-                ("messages", b)
-            }
-        };
-        let v = self.request(s, &body, path, cancel, &mut |_, _| {}).await?;
-        if s.config.model.provider == Provider::Codex {
-            let mut reply = parse(Provider::Codex, v)?;
-            ensure!(reply.calls.is_empty(), "compaction response contains unexecuted tool calls");
-            ensure!(reply.items.iter().any(|v| v["type"] == "compaction" && v["encrypted_content"].as_str().is_some_and(|s| !s.is_empty())), "compact response has no encrypted compaction item");
-            reply.stop = "compaction".into();
-            Ok(reply)
-        } else {
-            ensure!(v["stop_reason"] == "compaction", "provider did not compact: {}", v["stop_reason"]);
-            let r = parse(Provider::Claude, v)?;
-            ensure!(r.items[0]["content"].as_array().is_some_and(|a| a.iter().any(|b| b["type"] == "compaction")), "no signed compaction block");
-            Ok(r)
-        }
+        ensure!(s.config.model.provider == Provider::Codex, "custom endpoints use Coder's checkpoint compactor");
+        let mut request = body(s, system, defs);
+        request["input"].as_array_mut().unwrap().push(json!({"type":"compaction_trigger"}));
+        let value = self.request(s, &request, "responses", cancel, &mut |_, _| {}).await?;
+        let mut reply = parse(Provider::Codex, value)?;
+        ensure!(reply.calls.is_empty(), "compaction response contains unexecuted tool calls");
+        ensure!(reply.items.iter().any(|v| v["type"] == "compaction" && v["encrypted_content"].as_str().is_some_and(|s| !s.is_empty())), "compact response has no encrypted compaction item");
+        reply.stop = "compaction".into();
+        Ok(reply)
     }
     async fn request(&self, s: &Session, body: &Value, path: &str, cancel: &CancellationToken, event: &mut impl FnMut(&str, Value)) -> Result<Value> {
         ensure!(!cancel.is_cancelled(), "cancelled before provider request dispatch");
         let request = async {
             for attempt in 0..=s.config.retries {
-                let response =
-                    self.http.post(self.endpoint(s.config.model.provider, path)).header("anthropic-version", "2026-10-21").header("anthropic-beta", "compact-2026-09-04").json(body).send().await;
+                let request = self.http.post(self.endpoint(&s.config.model, path)?).json(body);
+                let response = self.authorize(request, &s.config.model)?.send().await;
                 let response = match response {
                     Ok(r) => r,
                     Err(e) if attempt < s.config.retries => {
@@ -133,6 +154,10 @@ impl Client {
                 }
                 let status = response.status();
                 if !status.is_success() {
+                    if s.config.model.provider == Provider::Openai {
+                        // Custom gateways may echo authentication in error bodies.
+                        bail!("custom endpoint returned HTTP {status}; check endpoint, model, credentials and quota");
+                    }
                     let bytes = bounded_response(response, 64 * 1024).await.with_context(|| format!("provider {status}"))?;
                     bail!("provider {status}: {}", crate::tools::clip(&String::from_utf8_lossy(&bytes), 8000));
                 }
@@ -147,10 +172,7 @@ impl Client {
                 }
                 let mut stream = response.bytes_stream();
                 let mut decoder = Sse::default();
-                let mut claude = json!({"content":[],"usage":{}});
-                let mut claude_started = false;
-                let mut open_blocks = std::collections::HashSet::new();
-                let mut inputs = std::collections::HashMap::<usize, String>::new();
+                let mut chat = crate::chat::Stream::default();
                 let mut complete = None;
                 let mut received = 0usize;
                 while let Some(chunk) = stream.next().await {
@@ -159,9 +181,16 @@ impl Client {
                     ensure!(received <= s.config.max_response_bytes, "provider response exceeds configured byte limit");
                     for data in decoder.push(&chunk)? {
                         if data == "[DONE]" {
+                            if s.config.model.provider == Provider::Openai {
+                                return chat.finish();
+                            }
                             continue;
                         }
                         let v: Value = serde_json::from_str(&data).context("invalid provider event")?;
+                        if s.config.model.provider == Provider::Openai {
+                            chat.push(v, event)?;
+                            continue;
+                        }
                         match v["type"].as_str().unwrap_or("") {
                             "response.output_text.delta" => event("delta", json!({"text":v["delta"]})),
                             "response.reasoning_summary_text.delta" => event("reasoning", json!({"text":v["delta"]})),
@@ -170,59 +199,6 @@ impl Client {
                             }
                             "response.failed" | "response.incomplete" => bail!("provider did not finish: {}", v["response"]),
                             "error" => bail!("provider error: {v}"),
-                            "message_start" => {
-                                ensure!(!claude_started, "duplicate message start");
-                                claude = v["message"].clone();
-                                ensure!(claude["content"].as_array().is_some_and(Vec::is_empty), "message start must have empty content");
-                                claude_started = true;
-                            }
-                            "content_block_start" => {
-                                let i = v["index"].as_u64().context("missing block index")? as usize;
-                                ensure!(i < 4096, "too many content blocks");
-                                ensure!(claude_started && open_blocks.insert(i), "content block started out of order");
-                                let blocks = claude["content"].as_array_mut().context("missing content")?;
-                                ensure!(i == blocks.len(), "content block index is duplicated or missing");
-                                blocks.push(v["content_block"].clone());
-                            }
-                            "content_block_delta" => {
-                                let i = v["index"].as_u64().context("missing block index")? as usize;
-                                ensure!(open_blocks.contains(&i), "delta outside an open content block");
-                                let block = claude["content"].get_mut(i).context("delta before block")?;
-                                let d = &v["delta"];
-                                match d["type"].as_str().unwrap_or("") {
-                                    "text_delta" => {
-                                        append(block, "text", &d["text"]);
-                                        event("delta", json!({"text":d["text"]}));
-                                    }
-                                    "thinking_delta" => {
-                                        append(block, "thinking", &d["thinking"]);
-                                        event("reasoning", json!({"text":d["thinking"]}));
-                                    }
-                                    "signature_delta" => append(block, "signature", &d["signature"]),
-                                    "input_json_delta" => inputs.entry(i).or_default().push_str(d["partial_json"].as_str().unwrap_or("")),
-                                    _ => {}
-                                }
-                            }
-                            "content_block_stop" => {
-                                let i = v["index"].as_u64().context("missing block index")? as usize;
-                                ensure!(open_blocks.remove(&i), "content block stopped without a matching start");
-                                if let Some(input) = inputs.remove(&i) {
-                                    claude["content"][i]["input"] = serde_json::from_str(&input)?;
-                                }
-                            }
-                            "message_delta" => {
-                                ensure!(claude_started, "message delta before message start");
-                                claude["stop_reason"] = v["delta"]["stop_reason"].clone();
-                                if let Some(u) = v["usage"].as_object() {
-                                    for (k, v) in u {
-                                        claude["usage"][k] = v.clone();
-                                    }
-                                }
-                            }
-                            "message_stop" => {
-                                ensure!(claude_started && open_blocks.is_empty() && inputs.is_empty(), "provider stopped before content blocks were complete; no tools executed");
-                                complete = Some(claude.clone());
-                            }
                             _ => {}
                         }
                     }
@@ -241,14 +217,6 @@ impl Client {
         }
     }
 }
-fn append(block: &mut Value, key: &str, value: &Value) {
-    let delta = value.as_str().unwrap_or("");
-    if let Some(Value::String(text)) = block.get_mut(key) {
-        text.push_str(delta);
-    } else {
-        block[key] = delta.into();
-    }
-}
 pub fn body(s: &Session, system: &str, defs: &[ToolDef]) -> Value {
     let m = &s.config.model;
     let mut b = Value::Object(m.extra.clone());
@@ -265,23 +233,37 @@ pub fn body(s: &Session, system: &str, defs: &[ToolDef]) -> Value {
             }
             b["tools"] = defs.iter().map(|d| json!({"type":"function","name":d.name,"description":d.description,"parameters":d.parameters,"strict":false})).collect::<Vec<_>>().into();
         }
-        Provider::Claude => {
-            b["system"] = json!([{"type":"text","text":system}]);
-            if let Some(ttl) = &m.cache_ttl {
-                // Automatic caching follows the growing conversation without
-                // rewriting signed thinking or compaction blocks.
-                b["cache_control"] = json!({"type":"ephemeral","ttl":ttl});
-                b["system"][0]["cache_control"] = json!({"type":"ephemeral","ttl":ttl});
+        Provider::Openai => {
+            let endpoint = m.endpoint.as_ref();
+            b["stream"] = endpoint.is_none_or(|e| e.stream).into();
+            b.as_object_mut().unwrap().remove("stream_options");
+            if b["stream"] == true && endpoint.is_none_or(|e| e.include_usage) {
+                b["stream_options"] = json!({"include_usage":true});
             }
-            b["messages"] = s.context.clone().into();
-            b["max_tokens"] = m.max_output_tokens.into();
+            let mut messages = vec![json!({"role":"system","content":system})];
+            messages.extend(s.context.clone());
+            b["messages"] = messages.into();
+            let key = if endpoint.is_some_and(|e| e.token_limit_field == TokenLimitField::MaxCompletionTokens) { "max_completion_tokens" } else { "max_tokens" };
+            b.as_object_mut().unwrap().remove(if key == "max_tokens" { "max_completion_tokens" } else { "max_tokens" });
+            b[key] = m.max_output_tokens.into();
             if !m.effort.is_empty() {
-                b["output_config"] = json!({"effort":m.effort});
+                b["reasoning_effort"] = m.effort.clone().into();
             }
             if let Some(thinking) = &m.thinking {
                 b["thinking"] = thinking.clone();
             }
-            b["tools"] = defs.iter().map(|d| json!({"name":d.name,"description":d.description,"input_schema":d.parameters})).collect::<Vec<_>>().into();
+            for key in ["tools", "functions", "function_call"] {
+                b.as_object_mut().unwrap().remove(key);
+            }
+            if defs.is_empty() {
+                for key in ["tool_choice", "parallel_tool_calls"] {
+                    b.as_object_mut().unwrap().remove(key);
+                }
+            }
+            if !defs.is_empty() {
+                b["tools"] = defs.iter().map(|d| json!({"type":"function","function":{"name":d.name,"description":d.description,"parameters":d.parameters}})).collect::<Vec<_>>().into();
+            }
+            b["n"] = 1.into();
         }
     }
     if s.goal.is_some() || !s.todos.is_empty() || !s.memory.is_empty() || !s.spec.text.is_empty() || s.spec_mode || s.config.read_only {
@@ -296,13 +278,10 @@ pub fn body(s: &Session, system: &str, defs: &[ToolDef]) -> Value {
     b
 }
 pub fn usage(p: Provider, v: &Value) -> Usage {
-    let input = v["input_tokens"].as_u64().unwrap_or(0);
-    let output = v["output_tokens"].as_u64().unwrap_or(0);
-    let cached = if p == Provider::Codex { v["input_tokens_details"]["cached_tokens"].as_u64().unwrap_or(0) } else { v["cache_read_input_tokens"].as_u64().unwrap_or(0) };
-    let cache_write = if p == Provider::Claude { v["cache_creation_input_tokens"].as_u64().unwrap_or(0) } else { 0 };
-    let input = input + if p == Provider::Claude { cached + cache_write } else { 0 };
-    let context = input + output;
-    Usage { input, output, cached, cache_write, context, requests: 1 }
+    let input = v[if p == Provider::Codex { "input_tokens" } else { "prompt_tokens" }].as_u64().unwrap_or(0);
+    let output = v[if p == Provider::Codex { "output_tokens" } else { "completion_tokens" }].as_u64().unwrap_or(0);
+    let cached = v[if p == Provider::Codex { "input_tokens_details" } else { "prompt_tokens_details" }]["cached_tokens"].as_u64().unwrap_or(0);
+    Usage { input, output, cached, cache_write: 0, context: input.saturating_add(output), requests: 1 }
 }
 pub fn parse(p: Provider, v: Value) -> Result<Reply> {
     let mut calls = vec![];
@@ -330,18 +309,31 @@ pub fn parse(p: Provider, v: Value) -> Result<Reply> {
             }
             (items, "completed".to_string())
         }
-        Provider::Claude => {
-            let blocks = v["content"].as_array().context("missing message content")?;
-            for b in blocks {
-                match b["type"].as_str().unwrap_or("") {
-                    "text" => text.push_str(b["text"].as_str().unwrap_or("")),
-                    "tool_use" => {
-                        calls.push(ToolCall { id: b["id"].as_str().context("missing tool id")?.into(), name: b["name"].as_str().context("missing tool name")?.into(), arguments: b["input"].clone() })
-                    }
-                    _ => {}
+        Provider::Openai => {
+            let choices = v["choices"].as_array().context("missing completion choices")?;
+            ensure!(choices.len() == 1, "expected exactly one completion choice");
+            let choice = &choices[0];
+            let message = &choice["message"];
+            ensure!(message["role"] == "assistant", "completion must be an assistant message");
+            let stop = choice["finish_reason"].as_str().context("completion has no finish reason")?;
+            ensure!(matches!(stop, "stop" | "tool_calls"), "provider stopped: {stop}; no tools executed");
+            ensure!(message["refusal"].is_null() || message["refusal"] == "", "provider refused the request");
+            if let Some(content) = message["content"].as_str() {
+                text.push_str(content);
+            }
+            if let Some(tools) = message.get("tool_calls").filter(|v| !v.is_null()) {
+                for call in tools.as_array().context("tool_calls must be an array")? {
+                    ensure!(call["type"] == "function", "unsupported tool call type");
+                    calls.push(ToolCall {
+                        id: call["id"].as_str().context("missing tool id")?.into(),
+                        name: call["function"]["name"].as_str().context("missing tool name")?.into(),
+                        arguments: serde_json::from_str(call["function"]["arguments"].as_str().context("missing tool arguments")?)?,
+                    });
                 }
             }
-            (vec![json!({"role":"assistant","content":blocks})], v["stop_reason"].as_str().context("message has no stop reason")?.into())
+            ensure!((stop == "tool_calls") == !calls.is_empty(), "finish reason does not match tool calls");
+            ensure!(!text.is_empty() || !calls.is_empty(), "empty completion; no tools executed");
+            (vec![message.clone()], stop.into())
         }
     };
     ensure!(!matches!(stop.as_str(), "max_tokens" | "refusal"), "provider stopped: {stop}");

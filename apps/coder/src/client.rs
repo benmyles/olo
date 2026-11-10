@@ -18,7 +18,7 @@ pub enum Update {
     Catalog { rows: Vec<Value>, next_offset: Option<usize> },
     InputResult { session: String, text: String, error: Option<String> },
     Repository { session: String, result: Value },
-    Models { provider: Provider, ids: Vec<String> },
+    Models { session: String, model: Box<olo_coder_core::ModelConfig>, ids: Vec<String> },
     Event(Event),
     Notice(String),
     Connection(Option<String>),
@@ -201,6 +201,8 @@ fn follow(dir: &std::path::Path, session: &str, filter: SessionFilter, callback:
                                     | "todos"
                                     | "goal_complete"
                                     | "compacted"
+                                    | "compaction_applied"
+                                    | "compaction_restored"
                                     | "criterion"
                                     | "running"
                                     | "memory"
@@ -367,13 +369,15 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
                             Action::Models => {
                                 let dir = dir.clone();
                                 let provider = s.config.model.provider;
+                                let session = s.id.clone();
+                                let model = Box::new(s.config.model.clone());
                                 let callback = callback.clone();
                                 std::thread::spawn(move || {
-                                    if let Ok(value) = rpc::call(&dir, &Command::Models { provider }) {
+                                    if let Ok(value) = rpc::call(&dir, &Command::Models { provider, session: Some(session.clone()) }) {
                                         let entries = value["data"].as_array().or_else(|| value["models"].as_array()).or_else(|| value.as_array());
                                         let ids =
                                             entries.map(|rows| rows.iter().filter_map(|r| r["id"].as_str().or(r["slug"].as_str()).or(r.as_str())).map(str::to_owned).collect()).unwrap_or_default();
-                                        callback(Update::Models { provider, ids });
+                                        callback(Update::Models { session, model, ids });
                                     }
                                 });
                                 return Ok(());
@@ -437,7 +441,7 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
                                 callback(Update::Session(Box::new(s.clone())));
                             }
                             Input::Command(cmd) => {
-                                let previous = s.config.model.provider;
+                                let previous = s.config.model.clone();
                                 let quiet = matches!(
                                     &cmd,
                                     Command::Send { .. }
@@ -459,10 +463,10 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
                                     callback(Update::InputResult { session, text, error: None });
                                 }
                                 if !quiet {
-                                    callback(Update::Notice(if let Some(diff) = value["diff"].as_str() { fenced("diff", diff) } else { fenced("json", &serde_json::to_string_pretty(&value)?) }));
+                                    callback(Update::Notice(command_result(&cmd, &value)?));
                                 }
                                 s = serde_json::from_value(rpc::call(&dir, &Command::Get { session: s.id.clone() })?)?;
-                                if s.config.model.provider != previous {
+                                if s.config.model != previous {
                                     let _ = tx.send(Action::Models);
                                 }
                                 callback(Update::Session(Box::new(s.clone())));
@@ -503,6 +507,7 @@ pub struct View {
     pub live: String,
     pub live_code: bool,
     pub notice: String,
+    pub compaction_progress: Option<String>,
     pub connection: Option<String>,
     pub seq: i64,
     pub id: String,
@@ -525,8 +530,8 @@ impl View {
             Update::InputResult { .. } => {}
             Update::Connection(status) => self.connection = status,
             Update::Rendered(doc) => self.rich = doc,
-            Update::Models { provider, ids } => {
-                if self.session.as_ref().is_some_and(|s| s.config.model.provider == provider) {
+            Update::Models { session, model, ids } => {
+                if self.session.as_ref().is_some_and(|s| s.id == session && s.config.model == *model) {
                     self.models = ids;
                 }
             }
@@ -541,13 +546,14 @@ impl View {
                 self.lines.clear();
                 self.live.clear();
                 self.notice.clear();
+                self.compaction_progress = None;
                 self.connection = None;
                 self.rich = Arc::default();
                 self.repository = None;
                 self.push("# Make something remarkable\n\nA workspace for ideas, code, and the work between them.\n\n**Build** — describe what you want to create.\n\n**Explore** — ask about your codebase or review a change.\n\n**Plan together** — start with `/spec on` and shape a detailed specification.\n\nSet a `/goal` for ongoing work. Your session, decisions, and checkpoints stay with you.\n\n---\n");
             }
             Update::Session(s) => {
-                if self.session.as_ref().is_some_and(|old| old.config.model.provider != s.config.model.provider) {
+                if self.session.as_ref().is_some_and(|old| old.id != s.id || old.config.model != s.config.model) {
                     self.models.clear();
                 }
                 self.session = Some(*s);
@@ -561,7 +567,12 @@ impl View {
                     return;
                 }
                 self.seq = self.seq.max(e.seq);
+                if matches!(e.kind.as_str(), "idle" | "error" | "paused" | "interrupted" | "compaction_applied" | "compaction_deferred") {
+                    self.compaction_progress = None;
+                }
                 match e.kind.as_str() {
+                    "compaction_progress" => self.compaction_progress = Some(format!("Compacting {}/{}", e.data["completed"], e.data["total"])),
+                    "compaction_ready" => self.compaction_progress = Some("Checkpoint ready".into()),
                     "delta" => {
                         self.live_code = false;
                         self.live.push_str(e.data["text"].as_str().unwrap_or(""));
@@ -692,6 +703,9 @@ impl View {
                         let reason = e.data["reason"].as_str().map(|s| format!(" · {s}")).unwrap_or_default();
                         self.push(&format!("\n\n> **Reconnecting to the model**{delay} · attempt {}{reason}\n\n", e.data["attempt"]));
                     }
+                    "compaction_applied" => self.push(&format!("\n\n> **Context checkpoint applied** — {} tokens in the working set. Original transcript preserved.\n\n[Inspect checkpoint](olo-coder:compaction/{}) · [Original transcript](olo-coder:transcript)\n\n", e.data["context_tokens"], e.data["checkpoint_id"].as_str().unwrap_or(""))),
+                    "compaction_restored" => self.push("\n\n> **Context restored** — Original messages are back in the working set.\n\n"),
+                    "compaction_deferred" => self.push(&format!("\n\n> **Compaction deferred** — {}\n\n", e.data["reason"].as_str().unwrap_or("Source context changed"))),
                     "compacted" => self.push("\n\n> **Context compacted** — Provider context was saved. The full session history remains available.\n\n"),
                     "auto_review" => {
                         let decision = if e.data["allow"] == true { "Action approved" } else { "Approval needed" };
@@ -722,13 +736,14 @@ impl View {
             || "Connecting…".into(),
             |s| {
                 format!(
-                    "{:?} · {} · {} · {} tokens · {} compactions{}",
+                    "{:?} · {}{} · {} tokens · {} compactions{}{}",
                     s.status,
                     s.config.model.model,
-                    s.config.model.effort,
+                    if s.config.model.effort.is_empty() { String::new() } else { format!(" · {}", s.config.model.effort) },
                     s.usage.input + s.usage.output,
                     s.compactions,
-                    if s.spec_mode { " · Spec mode" } else { "" }
+                    if s.spec_mode { " · Spec mode" } else { "" },
+                    self.compaction_progress.as_ref().map(|v| format!(" · {v}")).unwrap_or_default()
                 )
             },
         )
@@ -768,6 +783,66 @@ impl View {
         );
         t
     }
+}
+
+/// Internal transcript links only inspect data; untrusted model text cannot
+/// turn a link click into an approval, restore, write or model invocation.
+pub fn read_link(link: &str) -> Option<String> {
+    if link == "olo-coder:transcript" {
+        return Some("/transcript".into());
+    }
+    for (prefix, command) in [("olo-coder:event/", "event"), ("olo-coder:transcript/", "transcript")] {
+        if let Some(id) = link.strip_prefix(prefix).and_then(|v| v.parse::<i64>().ok()).filter(|id| *id > 0) {
+            return Some(format!("/{command} {id}"));
+        }
+    }
+    if let Some(id) = link.strip_prefix("olo-coder:compaction/").filter(|v| v.len() == 36 && v.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-')) {
+        return Some(format!("/compactions {id}"));
+    }
+    None
+}
+fn command_result(command: &Command, value: &Value) -> Result<String> {
+    let mut links = String::new();
+    match command {
+        Command::Compactions { .. } => {
+            if let Some(rows) = value["checkpoints"].as_array() {
+                links.push_str("### Compaction checkpoints\n\n| Checkpoint | State | Sources | Summary tokens |\n| --- | --- | ---: | ---: |\n");
+                for row in rows {
+                    let id = row["id"].as_str().unwrap_or("");
+                    links.push_str(&format!(
+                        "| [{}](olo-coder:compaction/{id}) | {} | {} | {} |\n",
+                        id.chars().take(8).collect::<String>(),
+                        row["status"].as_str().unwrap_or(""),
+                        row["source_count"],
+                        row["summary_tokens"]
+                    ));
+                }
+            }
+            if let Some(id) = value["parent"].as_str() {
+                links.push_str(&format!("\n[Previous checkpoint](olo-coder:compaction/{id})\n"));
+            }
+            for id in value["prefix_refs"].as_array().into_iter().flatten().filter_map(Value::as_i64).take(100) {
+                links.push_str(&format!("[Source {id}](olo-coder:transcript/{id}) · "));
+            }
+        }
+        Command::Transcript { .. } => {
+            for row in value["records"].as_array().into_iter().flatten() {
+                if let Some(id) = row["id"].as_i64() {
+                    links.push_str(&format!("[Record {id}](olo-coder:transcript/{id}) · "));
+                }
+            }
+        }
+        Command::TranscriptSearch { .. } => {
+            for row in value.as_array().into_iter().flatten() {
+                if let Some(id) = row["id"].as_i64() {
+                    links.push_str(&format!("[Match {id}](olo-coder:transcript/{id}) · "));
+                }
+            }
+        }
+        _ => {}
+    }
+    links.push_str(&if let Some(diff) = value["diff"].as_str() { fenced("diff", diff) } else { fenced("json", &serde_json::to_string_pretty(value)?) });
+    Ok(links)
 }
 
 fn fenced(language: &str, text: &str) -> String {
@@ -838,6 +913,27 @@ fn todo_component(title: &str, todos: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn catalogs_are_bound_to_the_session_and_endpoint_that_requested_them() {
+        let mut session = Session::new("/var/tmp".into(), Config { model: ModelConfig::for_provider(Provider::Openai), ..Config::default() });
+        let old = session.config.model.clone();
+        let mut view = View { id: session.id.clone(), session: Some(session.clone()), models: vec!["old-model".into()], ..Default::default() };
+        session.config.model.endpoint.as_mut().unwrap().base_url = "http://127.0.0.1:9999/v1".into();
+        view.apply(Update::Session(Box::new(session.clone())));
+        assert!(view.models.is_empty());
+        view.apply(Update::Models { session: session.id.clone(), model: Box::new(old), ids: vec!["stale".into()] });
+        assert!(view.models.is_empty());
+        view.apply(Update::Models { session: session.id, model: Box::new(session.config.model), ids: vec!["fresh".into()] });
+        assert_eq!(view.models, vec!["fresh"]);
+    }
+    #[test]
+    fn source_links_cannot_perform_writes_or_accept_embedded_commands() {
+        assert_eq!(read_link("olo-coder:transcript/47"), Some("/transcript 47".into()));
+        assert_eq!(read_link("olo-coder:compaction/11111111-1111-1111-1111-111111111111"), Some("/compactions 11111111-1111-1111-1111-111111111111".into()));
+        for link in ["olo-coder:restore-context/47", "olo-coder:event/-1", "olo-coder:event/1\n/approve", "olo-coder:compaction/../../", "olo-coder:api/{}"] {
+            assert!(read_link(link).is_none());
+        }
+    }
     #[test]
     fn stopped_actions_and_session_status_are_readable_separate_blocks() {
         let mut view = View { id: "session".into(), ..Default::default() };

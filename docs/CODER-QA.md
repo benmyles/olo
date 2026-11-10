@@ -5,6 +5,9 @@ Screens or `tsession`; all model tasks used scratch workspaces and separate
 service stores. Nothing was installed into the person's session. No development work was delegated to model agents; child lifecycle checks use
 local provider fixtures.
 
+Current provider support is documented in the final section below. Earlier Claude
+checks are historical evidence; Claude support has since been removed from Coder.
+
 ## Functional checks
 
 - `cargo build --release --workspace` passed.
@@ -465,3 +468,61 @@ stall findings; the final run had none. These shared-host samples are not a
 claim of a performance improvement. Settled GUI idle over three seconds used
 0 CPU, 0 wakeups and 0 frames; the TUI emitted zero bytes during its separate
 three-second idle observation.
+
+
+## Custom endpoints and evidence-backed compaction
+
+Claude support is removed from Coder. Codex retains Token Pool transport and native
+encrypted reasoning/server compaction. Arbitrary OpenAI-compatible Chat Completions
+endpoints have streamed tools, native reasoning replay, configurable authentication
+by environment reference, a model catalog, and a native configuration form.
+
+The new client compactor preserves immutable original records, exact source links,
+raw instruction excerpts, recent complete tool exchanges, verified claims and a
+checkpoint chain. Background work checkpoints each completed chunk and resumes it
+only when source and policy identity still match. Prefix comparison protects newer
+steering messages; restore preserves the suffix and never repeats filesystem effects.
+Tests cover malformed summaries, rejected claims, cancellation, restart, repeated
+compaction, forks, UTF-8 paging, migrations and authenticated custom tool loops.
+System/tool snapshots and request manifests preserve the main model's inputs without
+repeating the full transcript in every audit event.
+
+Validation for this change:
+
+- Release workspace build passed. Complete workspace run: **1,706 passed, zero
+  failed, 205 suites**. Subsequent Coder-only changes received targeted release
+  tests; final counts are recorded in `coder-compaction-qa.json`.
+- Real Codex client-compaction smoke: **21 original items → 6 active items**, four
+  source-checked entries, **7,086 input + 318 output tokens**. The package correction
+  and approval constraint survived; every original item remained retrievable.
+- Real Codex encrypted reasoning, provider compaction and replay passed; five
+  native items compacted to one and the remembered marker/result survived.
+- Custom endpoint authentication, catalog, complete tool loop and reasoning replay
+  passed against local HTTP fixtures. No Fireworks account/model access is claimed.
+- **30 window reviews** across light, dark and night mode at 1×, 1.25×, 1.5×,
+  1.75× and 2×: zero findings. The test verifies actual scale and active night-light
+  state. Live minimum-screen lint passed. The unfinished endpoint form survived
+  an isolated GUI re-exec; its service also upgraded independently.
+- Actual Ratatui session attachment, transcript retrieval, checkpoint history and
+  detach passed against the same isolated custom-provider session as the GUI.
+  Final service/GUI reload retained that session through database version 6;
+  subsequent TUI retrieval passed. Settled GUI idle over three seconds measured
+  zero CPU, wakeups and frames.
+- Release UI benchmark: baseline maximum steady frame **28.82 ms** with six failed
+  steps (shared-host/server stalls included); completed run **5.31 ms**, maximum including
+  transitions **5.78 ms**, **325 frames / 30 steps / zero failures**. These are
+  observed runs, not a controlled claim that this feature accelerates rendering.
+  A subsequent catalog-refactor check measured **3.47 ms** maximum steady Coder
+  frame, with one compositor stall finding; every Coder frame met its budget.
+- Archive benchmark, 100 operations each: growing durable commits **163.43 ms**,
+  unchanged-context commits **132.98 ms**, indexed searches **8.69 ms**.
+  Reading 100 first pages from a 2 MB record took **0.87 ms** using incremental
+  SQLite reads versus **29.55 ms** loading whole records. Ten forks of a
+  10,000-record archive with six active items took **12.45 ms**, copying zero raw
+  transcript records. Forks inherit frozen source ranges and checkpoint snapshots.
+  Clippy completed; repository style/complexity warnings remain.
+
+[Machine-readable results](coder-compaction-qa.json) and
+[research, design and configuration](CODER-COMPACTION.md) describe the evidence and
+limits. The deterministic fixtures and live smoke do not establish multi-week task
+success or a universal advantage over other compaction strategies.

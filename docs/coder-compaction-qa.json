@@ -1,0 +1,1907 @@
+{
+  "date": "2026-11-10",
+  "scope": "Codex-only Token Pool plus custom Chat Completions endpoints and client compaction",
+  "research": "CODER-COMPACTION.md",
+  "workspace_tests": {
+    "passed": 1706,
+    "failed": 0,
+    "suites": 205,
+    "ignored": 142,
+    "note": "Complete workspace run followed by targeted checks after final Coder-only changes."
+  },
+  "live": {
+    "client_compaction": {
+      "passed": true,
+      "source_items": 21,
+      "active_items": 6,
+      "source_checked_entries": 4,
+      "input_tokens": 7086,
+      "output_tokens": 318
+    },
+    "codex_encrypted_reasoning_server_compaction_replay": {
+      "passed": true,
+      "before_items": 5,
+      "after_items": 1
+    },
+    "custom_remote_endpoint": "Not run: no Fireworks credentials supplied; authenticated custom HTTP and tool loops tested against local fixtures."
+  },
+  "visual_reviews": [
+    {
+      "theme": "light",
+      "scale": 1,
+      "review": [
+        {
+          "title": "New session \u2014 Olo Coder",
+          "width": 1040,
+          "height": 700,
+          "scale": 1.0,
+          "dark": false,
+          "findings": []
+        },
+        {
+          "title": "Custom Model Endpoint",
+          "width": 580,
+          "height": 236,
+          "scale": 1.0,
+          "dark": false,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "scale": 1.25,
+      "review": [
+        {
+          "title": "New session \u2014 Olo Coder",
+          "width": 1040,
+          "height": 700,
+          "scale": 1.25,
+          "dark": false,
+          "findings": []
+        },
+        {
+          "title": "Custom Model Endpoint",
+          "width": 580,
+          "height": 236,
+          "scale": 1.25,
+          "dark": false,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "scale": 1.5,
+      "review": [
+        {
+          "title": "New session \u2014 Olo Coder",
+          "width": 1040,
+          "height": 700,
+          "scale": 1.5,
+          "dark": false,
+          "findings": []
+        },
+        {
+          "title": "Custom Model Endpoint",
+          "width": 580,
+          "height": 236,
+          "scale": 1.5,
+          "dark": false,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "scale": 1.75,
+      "review": [
+        {
+          "title": "New session \u2014 Olo Coder",
+          "width": 1040,
+          "height": 700,
+          "scale": 1.75,
+          "dark": false,
+          "findings": []
+        },
+        {
+          "title": "Custom Model Endpoint",
+          "width": 580,
+          "height": 236,
+          "scale": 1.75,
+          "dark": false,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "scale": 2,
+      "review": [
+        {
+          "title": "New session \u2014 Olo Coder",
+          "width": 1040,
+          "height": 700,
+          "scale": 2.0,
+          "dark": false,
+          "findings": []
+        },
+        {
+          "title": "Custom Model Endpoint",
+          "width": 580,
+          "height": 236,
+          "scale": 2.0,
+          "dark": false,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "scale": 1,
+      "review": [
+        {
+          "title": "New session \u2014 Olo Coder",
+          "width": 1040,
+          "height": 700,
+          "scale": 1.0,
+          "dark": true,
+          "findings": []
+        },
+        {
+          "title": "Custom Model Endpoint",
+          "width": 580,
+          "height": 236,
+          "scale": 1.0,
+          "dark": true,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "scale": 1.25,
+      "review": [
+        {
+          "title": "New session \u2014 Olo Coder",
+          "width": 1040,
+          "height": 700,
+          "scale": 1.25,
+          "dark": true,
+          "findings": []
+        },
+        {
+          "title": "Custom Model Endpoint",
+          "width": 580,
+          "height": 236,
+          "scale": 1.25,
+          "dark": true,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "scale": 1.5,
+      "review": [
+        {
+          "title": "New session \u2014 Olo Coder",
+          "width": 1040,
+          "height": 700,
+          "scale": 1.5,
+          "dark": true,
+          "findings": []
+        },
+        {
+          "title": "Custom Model Endpoint",
+          "width": 580,
+          "height": 236,
+          "scale": 1.5,
+          "dark": true,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "scale": 1.75,
+      "review": [
+        {
+          "title": "New session \u2014 Olo Coder",
+          "width": 1040,
+          "height": 700,
+          "scale": 1.75,
+          "dark": true,
+          "findings": []
+        },
+        {
+          "title": "Custom Model Endpoint",
+          "width": 580,
+          "height": 236,
+          "scale": 1.75,
+          "dark": true,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "scale": 2,
+      "review": [
+        {
+          "title": "New session \u2014 Olo Coder",
+          "width": 1040,
+          "height": 700,
+          "scale": 2.0,
+          "dark": true,
+          "findings": []
+        },
+        {
+          "title": "Custom Model Endpoint",
+          "width": 580,
+          "height": 236,
+          "scale": 2.0,
+          "dark": true,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "theme": "night",
+      "scale": 1,
+      "review": [
+        {
+          "title": "New session \u2014 Olo Coder",
+          "width": 1040,
+          "height": 700,
+          "scale": 1.0,
+          "dark": true,
+          "findings": []
+        },
+        {
+          "title": "Custom Model Endpoint",
+          "width": 580,
+          "height": 236,
+          "scale": 1.0,
+          "dark": true,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "theme": "night",
+      "scale": 1.25,
+      "review": [
+        {
+          "title": "New session \u2014 Olo Coder",
+          "width": 1040,
+          "height": 700,
+          "scale": 1.25,
+          "dark": true,
+          "findings": []
+        },
+        {
+          "title": "Custom Model Endpoint",
+          "width": 580,
+          "height": 236,
+          "scale": 1.25,
+          "dark": true,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "theme": "night",
+      "scale": 1.5,
+      "review": [
+        {
+          "title": "New session \u2014 Olo Coder",
+          "width": 1040,
+          "height": 700,
+          "scale": 1.5,
+          "dark": true,
+          "findings": []
+        },
+        {
+          "title": "Custom Model Endpoint",
+          "width": 580,
+          "height": 236,
+          "scale": 1.5,
+          "dark": true,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "theme": "night",
+      "scale": 1.75,
+      "review": [
+        {
+          "title": "New session \u2014 Olo Coder",
+          "width": 1040,
+          "height": 700,
+          "scale": 1.75,
+          "dark": true,
+          "findings": []
+        },
+        {
+          "title": "Custom Model Endpoint",
+          "width": 580,
+          "height": 236,
+          "scale": 1.75,
+          "dark": true,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "theme": "night",
+      "scale": 2,
+      "review": [
+        {
+          "title": "New session \u2014 Olo Coder",
+          "width": 1040,
+          "height": 700,
+          "scale": 2.0,
+          "dark": true,
+          "findings": []
+        },
+        {
+          "title": "Custom Model Endpoint",
+          "width": 580,
+          "height": 236,
+          "scale": 2.0,
+          "dark": true,
+          "findings": []
+        }
+      ]
+    }
+  ],
+  "gui_checks": [
+    "Endpoint form Enter submission",
+    "Model and endpoint configured together",
+    "Custom catalog and inference via local fixture",
+    "Unfinished form survives SIGURG re-exec",
+    "Transcript source links are read-only",
+    "1280x800 live layout lint at five scales"
+  ],
+  "tui_checks": [
+    "Custom endpoint session attached",
+    "Original transcript retrieval",
+    "Compaction history",
+    "Detach"
+  ],
+  "archive_benchmark": {
+    "iterations": 100,
+    "growing_commits_ms": 163.426597,
+    "unchanged_context_commits_ms": 132.980717,
+    "indexed_searches_ms": 8.691627,
+    "large_record_first_page": {
+      "record_bytes_approx": 2000000,
+      "page_bytes": 16000,
+      "iterations": 100,
+      "whole_record_baseline_ms": 29.554523,
+      "incremental_pages_ms": 0.865919
+    },
+    "forks": {
+      "records": 10000,
+      "active_items": 6,
+      "iterations": 10,
+      "elapsed_ms": 12.447123,
+      "raw_records_copied": 0
+    }
+  },
+  "ui_benchmark_before": {
+    "steps": 30,
+    "frames": 322,
+    "max_coder_ms": 28.82,
+    "max_steady_coder_ms": 28.82,
+    "failed_steps": 6,
+    "results": [
+      {
+        "app": "session",
+        "step": "scale to 1",
+        "transition": true,
+        "frames": 2,
+        "p50_ms": 1.78,
+        "p99_ms": 1.78,
+        "max_ms": 1.78,
+        "ui_max_ms": 1.55,
+        "server": {
+          "frame_max_ms": 0.7,
+          "loop_late_ms": 2.8,
+          "slowest": [
+            "flushing to clients",
+            2830
+          ],
+          "frames": 13
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "launch and load",
+        "transition": true,
+        "frames": 7,
+        "p50_ms": 1.2,
+        "p99_ms": 4.75,
+        "max_ms": 4.75,
+        "ui_max_ms": 4.23,
+        "server": {
+          "frame_max_ms": 9.74,
+          "loop_late_ms": 9.1,
+          "slowest": [
+            "flushing to clients",
+            718
+          ],
+          "frames": 49
+        },
+        "notes": [],
+        "failures": [],
+        "launch_ms": 227
+      },
+      {
+        "app": "coder",
+        "step": "idle 1 s",
+        "transition": false,
+        "frames": 3,
+        "p50_ms": 1.15,
+        "p99_ms": 1.2,
+        "max_ms": 1.2,
+        "ui_max_ms": 0.94,
+        "server": {
+          "frame_max_ms": 0.5,
+          "loop_late_ms": 16.8,
+          "slowest": [
+            "tick",
+            157
+          ],
+          "frames": 18
+        },
+        "notes": [],
+        "failures": [
+          "app_server's loop stalled 17 ms (['tick', 157])"
+        ],
+        "idle_fps": 3
+      },
+      {
+        "app": "coder",
+        "step": "pointer over it",
+        "transition": false,
+        "frames": 11,
+        "p50_ms": 1.24,
+        "p99_ms": 4.45,
+        "max_ms": 4.45,
+        "ui_max_ms": 1.22,
+        "server": {
+          "frame_max_ms": 3.54,
+          "loop_late_ms": 12.5,
+          "slowest": [
+            "flushing to clients",
+            1378
+          ],
+          "frames": 178
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 1",
+        "transition": false,
+        "frames": 5,
+        "p50_ms": 1.12,
+        "p99_ms": 1.27,
+        "max_ms": 1.27,
+        "ui_max_ms": 0.98,
+        "server": {
+          "frame_max_ms": 3.09,
+          "loop_late_ms": 25.8,
+          "slowest": [
+            "flushing to clients",
+            5119
+          ],
+          "frames": 419
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": [
+          "app_server's loop stalled 26 ms (['flushing to clients', 5119])"
+        ]
+      },
+      {
+        "app": "coder",
+        "step": "scroll 2",
+        "transition": false,
+        "frames": 0,
+        "p50_ms": 0.0,
+        "p99_ms": 0.0,
+        "max_ms": 0,
+        "ui_max_ms": 0.0,
+        "server": {
+          "frame_max_ms": 1.21,
+          "loop_late_ms": 4.4,
+          "slowest": [
+            "flushing to clients",
+            2858
+          ],
+          "frames": 417
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "5 menus",
+        "transition": false,
+        "frames": 15,
+        "p50_ms": 1.12,
+        "p99_ms": 2.64,
+        "max_ms": 2.64,
+        "ui_max_ms": 1.36,
+        "server": {
+          "frame_max_ms": 2.08,
+          "loop_late_ms": 28.2,
+          "slowest": [
+            "flushing to clients",
+            2839
+          ],
+          "frames": 516
+        },
+        "notes": [],
+        "failures": [
+          "app_server's loop stalled 28 ms (['flushing to clients', 2839])"
+        ]
+      },
+      {
+        "app": "coder",
+        "step": "typing",
+        "transition": false,
+        "frames": 13,
+        "p50_ms": 0.81,
+        "p99_ms": 0.82,
+        "max_ms": 0.82,
+        "ui_max_ms": 0.65,
+        "server": {
+          "frame_max_ms": 0.47,
+          "loop_late_ms": 2.8,
+          "slowest": [
+            "flushing to clients",
+            1045
+          ],
+          "frames": 65
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "live resize",
+        "transition": false,
+        "frames": 38,
+        "p50_ms": 1.31,
+        "p99_ms": 1.91,
+        "max_ms": 1.91,
+        "ui_max_ms": 1.46,
+        "server": {
+          "frame_max_ms": 0.84,
+          "loop_late_ms": 4.3,
+          "slowest": [
+            "flushing to clients",
+            1503
+          ],
+          "frames": 120
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "theme light, dark",
+        "transition": true,
+        "frames": 5,
+        "p50_ms": 0.83,
+        "p99_ms": 0.99,
+        "max_ms": 0.99,
+        "ui_max_ms": 0.74,
+        "server": {
+          "frame_max_ms": 7.65,
+          "loop_late_ms": 13.3,
+          "slowest": [
+            "tick",
+            941
+          ],
+          "frames": 54
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "session",
+        "step": "scale to 1.5",
+        "transition": true,
+        "frames": 4,
+        "p50_ms": 0.53,
+        "p99_ms": 1.96,
+        "max_ms": 1.96,
+        "ui_max_ms": 1.72,
+        "server": {
+          "frame_max_ms": 0.47,
+          "loop_late_ms": 8.6,
+          "slowest": [
+            "flushing to clients",
+            10151
+          ],
+          "frames": 14
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "launch and load",
+        "transition": true,
+        "frames": 8,
+        "p50_ms": 1.17,
+        "p99_ms": 6.69,
+        "max_ms": 6.69,
+        "ui_max_ms": 3.72,
+        "server": {
+          "frame_max_ms": 3.58,
+          "loop_late_ms": 6.7,
+          "slowest": [
+            "tick",
+            684
+          ],
+          "frames": 43
+        },
+        "notes": [],
+        "failures": [],
+        "launch_ms": 138
+      },
+      {
+        "app": "coder",
+        "step": "idle 1 s",
+        "transition": false,
+        "frames": 2,
+        "p50_ms": 1.24,
+        "p99_ms": 1.24,
+        "max_ms": 1.24,
+        "ui_max_ms": 0.93,
+        "server": {
+          "frame_max_ms": 0.49,
+          "loop_late_ms": 38.0,
+          "slowest": [
+            "tick",
+            161
+          ],
+          "frames": 18
+        },
+        "notes": [],
+        "failures": [
+          "app_server's loop stalled 38 ms (['tick', 161])"
+        ],
+        "idle_fps": 2
+      },
+      {
+        "app": "coder",
+        "step": "pointer over it",
+        "transition": false,
+        "frames": 17,
+        "p50_ms": 1.15,
+        "p99_ms": 2.58,
+        "max_ms": 2.58,
+        "ui_max_ms": 0.97,
+        "server": {
+          "frame_max_ms": 2.22,
+          "loop_late_ms": 4.7,
+          "slowest": [
+            "flushing to clients",
+            1591
+          ],
+          "frames": 185
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 1",
+        "transition": false,
+        "frames": 4,
+        "p50_ms": 0.85,
+        "p99_ms": 0.87,
+        "max_ms": 0.87,
+        "ui_max_ms": 0.65,
+        "server": {
+          "frame_max_ms": 2.45,
+          "loop_late_ms": 16.9,
+          "slowest": [
+            "flushing to clients",
+            2874
+          ],
+          "frames": 440
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": [
+          "app_server's loop stalled 17 ms (['flushing to clients', 2874])"
+        ]
+      },
+      {
+        "app": "coder",
+        "step": "scroll 2",
+        "transition": false,
+        "frames": 0,
+        "p50_ms": 0.0,
+        "p99_ms": 0.0,
+        "max_ms": 0,
+        "ui_max_ms": 0.0,
+        "server": {
+          "frame_max_ms": 1.91,
+          "loop_late_ms": 4.2,
+          "slowest": [
+            "flushing to clients",
+            836
+          ],
+          "frames": 424
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "5 menus",
+        "transition": false,
+        "frames": 15,
+        "p50_ms": 1.01,
+        "p99_ms": 1.24,
+        "max_ms": 1.24,
+        "ui_max_ms": 1.01,
+        "server": {
+          "frame_max_ms": 0.53,
+          "loop_late_ms": 2.7,
+          "slowest": [
+            "tick",
+            218
+          ],
+          "frames": 502
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "typing",
+        "transition": false,
+        "frames": 13,
+        "p50_ms": 1.01,
+        "p99_ms": 1.25,
+        "max_ms": 1.25,
+        "ui_max_ms": 0.87,
+        "server": {
+          "frame_max_ms": 0.6,
+          "loop_late_ms": 0.4,
+          "slowest": [
+            "tick",
+            153
+          ],
+          "frames": 66
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "live resize",
+        "transition": false,
+        "frames": 38,
+        "p50_ms": 1.16,
+        "p99_ms": 2.58,
+        "max_ms": 2.58,
+        "ui_max_ms": 1.13,
+        "server": {
+          "frame_max_ms": 1.09,
+          "loop_late_ms": 4.3,
+          "slowest": [
+            "flushing to clients",
+            1337
+          ],
+          "frames": 114
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "theme light, dark",
+        "transition": true,
+        "frames": 5,
+        "p50_ms": 1.14,
+        "p99_ms": 1.5,
+        "max_ms": 1.5,
+        "ui_max_ms": 1.16,
+        "server": {
+          "frame_max_ms": 5.49,
+          "loop_late_ms": 5.0,
+          "slowest": [
+            "request set_settings",
+            530
+          ],
+          "frames": 51
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "session",
+        "step": "scale to 2",
+        "transition": true,
+        "frames": 2,
+        "p50_ms": 0.57,
+        "p99_ms": 0.57,
+        "max_ms": 0.57,
+        "ui_max_ms": 0.39,
+        "server": {
+          "frame_max_ms": 0.42,
+          "loop_late_ms": 1.6,
+          "slowest": [
+            "request set_settings",
+            1155
+          ],
+          "frames": 10
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "launch and load",
+        "transition": true,
+        "frames": 9,
+        "p50_ms": 1.16,
+        "p99_ms": 4.56,
+        "max_ms": 4.56,
+        "ui_max_ms": 1.19,
+        "server": {
+          "frame_max_ms": 3.46,
+          "loop_late_ms": 2.9,
+          "slowest": [
+            "tick",
+            475
+          ],
+          "frames": 46
+        },
+        "notes": [],
+        "failures": [],
+        "launch_ms": 80
+      },
+      {
+        "app": "coder",
+        "step": "idle 1 s",
+        "transition": false,
+        "frames": 2,
+        "p50_ms": 1.16,
+        "p99_ms": 1.16,
+        "max_ms": 1.16,
+        "ui_max_ms": 0.91,
+        "server": {
+          "frame_max_ms": 0.48,
+          "loop_late_ms": 2.9,
+          "slowest": [
+            "tick",
+            95
+          ],
+          "frames": 12
+        },
+        "notes": [],
+        "failures": [],
+        "idle_fps": 2
+      },
+      {
+        "app": "coder",
+        "step": "pointer over it",
+        "transition": false,
+        "frames": 29,
+        "p50_ms": 1.07,
+        "p99_ms": 2.37,
+        "max_ms": 2.37,
+        "ui_max_ms": 2.12,
+        "server": {
+          "frame_max_ms": 1.13,
+          "loop_late_ms": 6.4,
+          "slowest": [
+            "flushing to clients",
+            1091
+          ],
+          "frames": 178
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 1",
+        "transition": false,
+        "frames": 4,
+        "p50_ms": 1.05,
+        "p99_ms": 1.14,
+        "max_ms": 1.14,
+        "ui_max_ms": 0.88,
+        "server": {
+          "frame_max_ms": 0.61,
+          "loop_late_ms": 6.3,
+          "slowest": [
+            "flushing to clients",
+            3352
+          ],
+          "frames": 444
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 2",
+        "transition": false,
+        "frames": 0,
+        "p50_ms": 0.0,
+        "p99_ms": 0.0,
+        "max_ms": 0,
+        "ui_max_ms": 0.0,
+        "server": {
+          "frame_max_ms": 0.6,
+          "loop_late_ms": 3.7,
+          "slowest": [
+            "tick",
+            192
+          ],
+          "frames": 421
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "5 menus",
+        "transition": false,
+        "frames": 15,
+        "p50_ms": 1.01,
+        "p99_ms": 1.17,
+        "max_ms": 1.17,
+        "ui_max_ms": 0.9,
+        "server": {
+          "frame_max_ms": 0.55,
+          "loop_late_ms": 4.3,
+          "slowest": [
+            "tick",
+            217
+          ],
+          "frames": 503
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "typing",
+        "transition": false,
+        "frames": 13,
+        "p50_ms": 1.02,
+        "p99_ms": 1.19,
+        "max_ms": 1.19,
+        "ui_max_ms": 0.95,
+        "server": {
+          "frame_max_ms": 0.53,
+          "loop_late_ms": 1.6,
+          "slowest": [
+            "tick",
+            685
+          ],
+          "frames": 70
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "live resize",
+        "transition": false,
+        "frames": 37,
+        "p50_ms": 1.26,
+        "p99_ms": 28.82,
+        "max_ms": 28.82,
+        "ui_max_ms": 21.93,
+        "server": {
+          "frame_max_ms": 2.18,
+          "loop_late_ms": 12.9,
+          "slowest": [
+            "request synthetic",
+            2374
+          ],
+          "frames": 123
+        },
+        "notes": [],
+        "failures": [
+          "4 of 37 frames over 8.3 ms (slowest 28.8 ms: setup 0.0, ui 21.9, tessellate 0.0, acquire 0.0, submit 6.9)"
+        ]
+      },
+      {
+        "app": "coder",
+        "step": "theme light, dark",
+        "transition": true,
+        "frames": 6,
+        "p50_ms": 1.23,
+        "p99_ms": 1.27,
+        "max_ms": 1.27,
+        "ui_max_ms": 1.05,
+        "server": {
+          "frame_max_ms": 8.04,
+          "loop_late_ms": 23.9,
+          "slowest": [
+            "request set_settings",
+            23630
+          ],
+          "frames": 61
+        },
+        "notes": [],
+        "failures": []
+      }
+    ]
+  },
+  "ui_benchmark_final": {
+    "steps": 30,
+    "frames": 325,
+    "max_coder_ms": 5.78,
+    "max_steady_coder_ms": 5.31,
+    "failed_steps": 0,
+    "results": [
+      {
+        "app": "session",
+        "step": "scale to 1",
+        "transition": true,
+        "frames": 3,
+        "p50_ms": 1.7,
+        "p99_ms": 3.03,
+        "max_ms": 3.03,
+        "ui_max_ms": 2.91,
+        "server": {
+          "frame_max_ms": 0.46,
+          "loop_late_ms": 0.2,
+          "slowest": [
+            "request set_settings",
+            398
+          ],
+          "frames": 11
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "launch and load",
+        "transition": true,
+        "frames": 9,
+        "p50_ms": 0.76,
+        "p99_ms": 1.79,
+        "max_ms": 1.79,
+        "ui_max_ms": 0.71,
+        "server": {
+          "frame_max_ms": 4.97,
+          "loop_late_ms": 3.0,
+          "slowest": [
+            "tick",
+            229
+          ],
+          "frames": 44
+        },
+        "notes": [],
+        "failures": [],
+        "launch_ms": 76
+      },
+      {
+        "app": "coder",
+        "step": "idle 1 s",
+        "transition": false,
+        "frames": 2,
+        "p50_ms": 0.83,
+        "p99_ms": 0.83,
+        "max_ms": 0.83,
+        "ui_max_ms": 0.68,
+        "server": {
+          "frame_max_ms": 0.5,
+          "loop_late_ms": 0.3,
+          "slowest": [
+            "tick",
+            216
+          ],
+          "frames": 20
+        },
+        "notes": [],
+        "failures": [],
+        "idle_fps": 2
+      },
+      {
+        "app": "coder",
+        "step": "pointer over it",
+        "transition": false,
+        "frames": 11,
+        "p50_ms": 0.8,
+        "p99_ms": 1.06,
+        "max_ms": 1.06,
+        "ui_max_ms": 0.85,
+        "server": {
+          "frame_max_ms": 0.41,
+          "loop_late_ms": 0.3,
+          "slowest": [
+            "tick",
+            1249
+          ],
+          "frames": 183
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 1",
+        "transition": false,
+        "frames": 4,
+        "p50_ms": 0.95,
+        "p99_ms": 0.99,
+        "max_ms": 0.99,
+        "ui_max_ms": 0.79,
+        "server": {
+          "frame_max_ms": 3.03,
+          "loop_late_ms": 1.9,
+          "slowest": [
+            "tick",
+            311
+          ],
+          "frames": 442
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 2",
+        "transition": false,
+        "frames": 0,
+        "p50_ms": 0.0,
+        "p99_ms": 0.0,
+        "max_ms": 0,
+        "ui_max_ms": 0.0,
+        "server": {
+          "frame_max_ms": 0.5,
+          "loop_late_ms": 0.3,
+          "slowest": [
+            "tick",
+            276
+          ],
+          "frames": 420
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "5 menus",
+        "transition": false,
+        "frames": 15,
+        "p50_ms": 0.72,
+        "p99_ms": 1.03,
+        "max_ms": 1.03,
+        "ui_max_ms": 0.84,
+        "server": {
+          "frame_max_ms": 0.49,
+          "loop_late_ms": 0.7,
+          "slowest": [
+            "clients' requests",
+            636
+          ],
+          "frames": 501
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "typing",
+        "transition": false,
+        "frames": 13,
+        "p50_ms": 0.74,
+        "p99_ms": 0.95,
+        "max_ms": 0.95,
+        "ui_max_ms": 0.75,
+        "server": {
+          "frame_max_ms": 0.39,
+          "loop_late_ms": 0.3,
+          "slowest": [
+            "tick",
+            219
+          ],
+          "frames": 65
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "live resize",
+        "transition": false,
+        "frames": 38,
+        "p50_ms": 0.82,
+        "p99_ms": 1.1,
+        "max_ms": 1.1,
+        "ui_max_ms": 0.92,
+        "server": {
+          "frame_max_ms": 0.49,
+          "loop_late_ms": 7.7,
+          "slowest": [
+            "request place",
+            8858
+          ],
+          "frames": 112
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "theme light, dark",
+        "transition": true,
+        "frames": 5,
+        "p50_ms": 0.79,
+        "p99_ms": 0.93,
+        "max_ms": 0.93,
+        "ui_max_ms": 0.82,
+        "server": {
+          "frame_max_ms": 4.75,
+          "loop_late_ms": 3.7,
+          "slowest": [
+            "request set_settings",
+            388
+          ],
+          "frames": 48
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "session",
+        "step": "scale to 1.5",
+        "transition": true,
+        "frames": 2,
+        "p50_ms": 1.99,
+        "p99_ms": 1.99,
+        "max_ms": 1.99,
+        "ui_max_ms": 1.6,
+        "server": {
+          "frame_max_ms": 0.36,
+          "loop_late_ms": 0.3,
+          "slowest": [
+            "request set_settings",
+            409
+          ],
+          "frames": 11
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "launch and load",
+        "transition": true,
+        "frames": 9,
+        "p50_ms": 0.79,
+        "p99_ms": 1.75,
+        "max_ms": 1.75,
+        "ui_max_ms": 0.69,
+        "server": {
+          "frame_max_ms": 3.45,
+          "loop_late_ms": 1.3,
+          "slowest": [
+            "tick",
+            255
+          ],
+          "frames": 44
+        },
+        "notes": [],
+        "failures": [],
+        "launch_ms": 95
+      },
+      {
+        "app": "coder",
+        "step": "idle 1 s",
+        "transition": false,
+        "frames": 2,
+        "p50_ms": 0.8,
+        "p99_ms": 0.8,
+        "max_ms": 0.8,
+        "ui_max_ms": 0.67,
+        "server": {
+          "frame_max_ms": 0.52,
+          "loop_late_ms": 0.2,
+          "slowest": [
+            "tick",
+            212
+          ],
+          "frames": 14
+        },
+        "notes": [],
+        "failures": [],
+        "idle_fps": 2
+      },
+      {
+        "app": "coder",
+        "step": "pointer over it",
+        "transition": false,
+        "frames": 17,
+        "p50_ms": 0.91,
+        "p99_ms": 1.06,
+        "max_ms": 1.06,
+        "ui_max_ms": 0.81,
+        "server": {
+          "frame_max_ms": 0.75,
+          "loop_late_ms": 1.4,
+          "slowest": [
+            "tick",
+            208
+          ],
+          "frames": 186
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 1",
+        "transition": false,
+        "frames": 4,
+        "p50_ms": 1.07,
+        "p99_ms": 1.12,
+        "max_ms": 1.12,
+        "ui_max_ms": 0.89,
+        "server": {
+          "frame_max_ms": 0.54,
+          "loop_late_ms": 3.0,
+          "slowest": [
+            "tick",
+            309
+          ],
+          "frames": 438
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 2",
+        "transition": false,
+        "frames": 0,
+        "p50_ms": 0.0,
+        "p99_ms": 0.0,
+        "max_ms": 0,
+        "ui_max_ms": 0.0,
+        "server": {
+          "frame_max_ms": 0.54,
+          "loop_late_ms": 2.5,
+          "slowest": [
+            "tick",
+            1138
+          ],
+          "frames": 421
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "5 menus",
+        "transition": false,
+        "frames": 15,
+        "p50_ms": 1.22,
+        "p99_ms": 4.85,
+        "max_ms": 4.85,
+        "ui_max_ms": 2.41,
+        "server": {
+          "frame_max_ms": 1.25,
+          "loop_late_ms": 14.9,
+          "slowest": [
+            "flushing to clients",
+            6343
+          ],
+          "frames": 510
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "typing",
+        "transition": false,
+        "frames": 13,
+        "p50_ms": 1.11,
+        "p99_ms": 3.67,
+        "max_ms": 3.67,
+        "ui_max_ms": 3.45,
+        "server": {
+          "frame_max_ms": 0.66,
+          "loop_late_ms": 4.9,
+          "slowest": [
+            "flushing to clients",
+            4457
+          ],
+          "frames": 68
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "live resize",
+        "transition": false,
+        "frames": 38,
+        "p50_ms": 1.28,
+        "p99_ms": 5.31,
+        "max_ms": 5.31,
+        "ui_max_ms": 4.01,
+        "server": {
+          "frame_max_ms": 2.24,
+          "loop_late_ms": 5.6,
+          "slowest": [
+            "flushing to clients",
+            2855
+          ],
+          "frames": 123
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "theme light, dark",
+        "transition": true,
+        "frames": 6,
+        "p50_ms": 1.11,
+        "p99_ms": 1.91,
+        "max_ms": 1.91,
+        "ui_max_ms": 1.29,
+        "server": {
+          "frame_max_ms": 9.65,
+          "loop_late_ms": 7.6,
+          "slowest": [
+            "request set_settings",
+            730
+          ],
+          "frames": 48
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "session",
+        "step": "scale to 2",
+        "transition": true,
+        "frames": 3,
+        "p50_ms": 0.76,
+        "p99_ms": 3.67,
+        "max_ms": 3.67,
+        "ui_max_ms": 3.43,
+        "server": {
+          "frame_max_ms": 0.42,
+          "loop_late_ms": 7.3,
+          "slowest": [
+            "request set_settings",
+            1476
+          ],
+          "frames": 16
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "launch and load",
+        "transition": true,
+        "frames": 10,
+        "p50_ms": 1.17,
+        "p99_ms": 5.78,
+        "max_ms": 5.78,
+        "ui_max_ms": 0.95,
+        "server": {
+          "frame_max_ms": 7.34,
+          "loop_late_ms": 9.2,
+          "slowest": [
+            "flushing to clients",
+            2765
+          ],
+          "frames": 49
+        },
+        "notes": [],
+        "failures": [],
+        "launch_ms": 210
+      },
+      {
+        "app": "coder",
+        "step": "idle 1 s",
+        "transition": false,
+        "frames": 2,
+        "p50_ms": 1.2,
+        "p99_ms": 1.2,
+        "max_ms": 1.2,
+        "ui_max_ms": 0.95,
+        "server": {
+          "frame_max_ms": 0.85,
+          "loop_late_ms": 3.3,
+          "slowest": [
+            "flushing to clients",
+            3202
+          ],
+          "frames": 13
+        },
+        "notes": [],
+        "failures": [],
+        "idle_fps": 2
+      },
+      {
+        "app": "coder",
+        "step": "pointer over it",
+        "transition": false,
+        "frames": 29,
+        "p50_ms": 1.15,
+        "p99_ms": 1.46,
+        "max_ms": 1.46,
+        "ui_max_ms": 1.15,
+        "server": {
+          "frame_max_ms": 2.21,
+          "loop_late_ms": 3.0,
+          "slowest": [
+            "flushing to clients",
+            2386
+          ],
+          "frames": 179
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 1",
+        "transition": false,
+        "frames": 4,
+        "p50_ms": 0.88,
+        "p99_ms": 1.24,
+        "max_ms": 1.24,
+        "ui_max_ms": 0.95,
+        "server": {
+          "frame_max_ms": 3.29,
+          "loop_late_ms": 8.2,
+          "slowest": [
+            "tick",
+            6268
+          ],
+          "frames": 439
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 2",
+        "transition": false,
+        "frames": 0,
+        "p50_ms": 0.0,
+        "p99_ms": 0.0,
+        "max_ms": 0,
+        "ui_max_ms": 0.0,
+        "server": {
+          "frame_max_ms": 2.43,
+          "loop_late_ms": 16.4,
+          "slowest": [
+            "tick",
+            1605
+          ],
+          "frames": 427
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "5 menus",
+        "transition": false,
+        "frames": 15,
+        "p50_ms": 0.97,
+        "p99_ms": 1.06,
+        "max_ms": 1.06,
+        "ui_max_ms": 0.84,
+        "server": {
+          "frame_max_ms": 1.33,
+          "loop_late_ms": 2.9,
+          "slowest": [
+            "tick",
+            177
+          ],
+          "frames": 505
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "typing",
+        "transition": false,
+        "frames": 13,
+        "p50_ms": 0.91,
+        "p99_ms": 0.97,
+        "max_ms": 0.97,
+        "ui_max_ms": 0.77,
+        "server": {
+          "frame_max_ms": 0.35,
+          "loop_late_ms": 0.3,
+          "slowest": [
+            "tick",
+            228
+          ],
+          "frames": 66
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "live resize",
+        "transition": false,
+        "frames": 38,
+        "p50_ms": 0.94,
+        "p99_ms": 1.27,
+        "max_ms": 1.27,
+        "ui_max_ms": 1.1,
+        "server": {
+          "frame_max_ms": 0.51,
+          "loop_late_ms": 0.6,
+          "slowest": [
+            "tick",
+            200
+          ],
+          "frames": 116
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "theme light, dark",
+        "transition": true,
+        "frames": 5,
+        "p50_ms": 0.81,
+        "p99_ms": 0.84,
+        "max_ms": 0.84,
+        "ui_max_ms": 0.7,
+        "server": {
+          "frame_max_ms": 3.52,
+          "loop_late_ms": 2.2,
+          "slowest": [
+            "request set_settings",
+            428
+          ],
+          "frames": 48
+        },
+        "notes": [],
+        "failures": []
+      }
+    ]
+  },
+  "final_targeted_tests": {
+    "passed": 101,
+    "failed": 0,
+    "ignored": 9,
+    "suites": 6
+  },
+  "ui_benchmark_followup": {
+    "steps": 30,
+    "frames": 323,
+    "max_steady_coder_ms": 3.47,
+    "failed_steps": [
+      {
+        "step": "live resize",
+        "failures": [
+          "app_server's loop stalled 18 ms (['flushing to clients', 2265])"
+        ]
+      }
+    ],
+    "note": "Follow-up after catalog comparison refactor. All Coder frames met budget; one compositor stall exceeded its budget. Shared-host runs vary."
+  },
+  "final_upgrade": {
+    "database_version": 6,
+    "gui_restored": true,
+    "tui_after_service_upgrade": "passed"
+  },
+  "settled_idle": {
+    "seconds": 3.0,
+    "total": {
+      "cpu": 0.0,
+      "wakeups": 0
+    },
+    "threads": [
+      {
+        "tid": 2564494,
+        "name": "olo-coder",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 2850422,
+        "name": "Timer",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 2850424,
+        "name": "theme-watch",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 2850425,
+        "name": "menus",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 2850426,
+        "name": "upgrade-watch",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 2850427,
+        "name": "coder-rich-text",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 2850428,
+        "name": "coder-client",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 2850441,
+        "name": "coder-client",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 2850442,
+        "name": "coder-events",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 2850443,
+        "name": "coder-events",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 2850446,
+        "name": "olo-cod:disk$0",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 2850452,
+        "name": "olo-co:traceq0",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 2850475,
+        "name": "olo-icons",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      }
+    ],
+    "windows": [
+      {
+        "title": "Confirm the custom endpoint connection. \u2014 Olo Coder",
+        "frames": 0,
+        "per_second": 0.0,
+        "mean_us": 0,
+        "ui_us": 0,
+        "tessellate_us": 0,
+        "submit_us": 0,
+        "slowest_us": 0
+      }
+    ]
+  }
+}

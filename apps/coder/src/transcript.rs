@@ -40,8 +40,8 @@ impl Transcript {
 }
 impl EditorHost for Transcript {
     fn open_link(&mut self, _: usize, link: String, _: &mut Window, _: &mut Context<Self>) {
-        if let Some(id) = link.strip_prefix("olo-coder:event/").and_then(|s| s.parse::<i64>().ok()) {
-            self.client.submit(format!("/event {id}"));
+        if let Some(command) = crate::client::read_link(&link) {
+            self.client.submit(command);
         } else if link.starts_with("https://") || link.starts_with("http://") {
             std::thread::spawn(move || {
                 let _ = olo_xdg::open::open(&olo_xdg::open::Target::parse(&link));

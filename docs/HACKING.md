@@ -14597,15 +14597,28 @@ Both providers go through the Token Pool's loopback gateway.
   admitted child may not have been polled yet. `wait_agent` uses the same reservation
   and completion notification, and wakes for approvals without polling. Optional
   child workspaces pass native path confinement before creation.
-* `provider` preserves native Responses reasoning/compaction and Claude signed
-  thinking/redacted content byte-for-byte as JSON values. Codex compaction uses
-  a final `compaction_trigger` on Responses; Claude uses signed on-demand
-  compaction. Context replacement is transactional and history remains searchable.
-  Completion validation also applies to explicit compaction. Claude streaming
-  tracks open content blocks before admitting tools; unknown event types remain
-  forward-compatible. The shared provider/MCP SSE decoder scans only newly
-  appended bytes and removes consumed lines once per chunk. Its ignored release
+* `provider` preserves native Responses reasoning/compaction and custom Chat
+  Completions assistant messages, including `reasoning_content`, as JSON values.
+  Codex uses Token Pool and a final `compaction_trigger`. Custom endpoints use
+  HTTPS (loopback HTTP allowed), environment-referenced credentials, and the
+  `chat` stream accumulator: tools require a complete finish reason and `[DONE]`.
+  The SSE decoder scans newly appended bytes only; its ignored release
   `provider_stream_batch_benchmark` measures a fixed 4,096-event batch.
+* `compaction` prepares evidence-linked checkpoints for custom endpoints in the
+  background. Every native item is archived in SQLite `transcript` before active
+  context can retire it. Keep `context_refs` aligned on every prefix replacement;
+  append new items with zero references for `Store::save` to allocate. A ready
+  checkpoint may apply only at a completed tool boundary with an identical
+  captured prefix/model/parent. Preserve concurrently appended suffix messages.
+  Exact quotes are checked before an optional source-verification model pass.
+  Restore replaces only the active summary prefix and never replays effects;
+  forks snapshot checkpoint metadata and inherit immutable transcript ranges. Stop cancels preparation,
+  and interrupted checkpoints remain inspectable. See
+  [CODER-COMPACTION.md](CODER-COMPACTION.md) for November 2026 research, defaults,
+  retrieval APIs, recovery and limitations. The source model's opaque state is
+  never translated on a provider switch. Database v5 preserves old Claude state
+  in an event and transcript, pauses the session, and resets its active model.
+  Version 6 adds fork source ranges and independent inherited checkpoint states.
 * `tools` implements files, search, checked edits, undo artifacts and cancellable
   argv processes. Process capture prepares its sink before spawning, flushes
   the last asynchronous write and syncs the artifact before reporting success.

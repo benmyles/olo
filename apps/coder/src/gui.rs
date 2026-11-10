@@ -106,8 +106,8 @@ impl Coder {
             _ => {}
         }
         let details = matches!(&u, Update::Session(_) | Update::Opened(_));
-        let redraw =
-            matches!(&u, Update::Rendered(_) | Update::Session(_) | Update::Repository { .. } | Update::Models { .. } | Update::Opened(_) | Update::Catalog { .. } | Update::InputResult { .. });
+        let redraw = matches!(&u, Update::Event(e) if matches!(e.kind.as_str(), "compaction_progress" | "compaction_ready" | "compaction_applied" | "compaction_deferred"))
+            || matches!(&u, Update::Rendered(_) | Update::Session(_) | Update::Repository { .. } | Update::Models { .. } | Update::Opened(_) | Update::Catalog { .. } | Update::InputResult { .. });
         let repository = matches!(&u,Update::Repository{session,..} if session==&self.view.id) || matches!(&u, Update::Opened(_));
         self.view.apply(u);
         if repository {
@@ -197,8 +197,8 @@ impl Coder {
     fn settings_panel(&self, inset: gpui::Pixels, cx: &mut Context<Self>) -> gpui::AnyElement {
         let Some(s) = &self.view.session else { return div().into_any_element() };
         let editable = !matches!(s.status, olo_coder_core::Status::Running | olo_coder_core::Status::Approval);
-        let mut panel = div().w_full().flex().flex_col().gap(px(m::SPACING));
-        let provider = self.client.clone();
+        let mut panel = div().w_full().flex().flex_col().gap(px(m::TIGHT));
+        let provider = cx.entity();
         let approval = self.client.clone();
         let effort = self.client.clone();
         let model = self.client.clone();
@@ -213,21 +213,35 @@ impl Coder {
         panel = panel
             .child(div().ml(-inset).child(StringView::new("Model & reasoning").bold(true)))
             .child(
-                MenuField::new("provider", vec!["Codex".into(), "Claude".into()], usize::from(s.config.model.provider == olo_coder_core::Provider::Claude))
+                MenuField::new("provider", vec!["Codex (Token Pool)".into(), "Custom endpoint".into()], usize::from(s.config.model.provider == olo_coder_core::Provider::Openai))
                     .enabled(editable)
                     .label("Provider:")
                     .divider(80.0)
-                    .on_change(move |i, _, _| provider.submit(format!("/provider {}", if i == 0 { "codex" } else { "claude" }))),
+                    .on_change(move |i, w, cx| {
+                        provider.update(cx, |s, cx| {
+                            if i == 0 {
+                                s.client.submit("/provider codex");
+                            } else {
+                                s.command("endpoint", w, cx);
+                            }
+                        })
+                    }),
             )
             .child(MenuField::new("model", choices, selected_model).name("Model").enabled(editable).width(280.0).on_change(move |i, _, _| model.submit(format!("/model {}", models[i]))));
-        let efforts = ["none", "low", "medium", "high", "xhigh", "max", "ultra"];
+        let endpoint = cx.entity();
+        panel = panel.child(Button::new("Configure Endpoint…").enabled(editable).on_click(move |w, cx| endpoint.update(cx, |s, cx| s.command("endpoint", w, cx))));
+        let efforts = ["", "none", "low", "medium", "high", "xhigh", "max", "ultra"];
         panel = panel
             .child(
-                MenuField::new("reasoning", efforts.iter().map(|s| (*s).into()).collect(), efforts.iter().position(|v| *v == s.config.model.effort).unwrap_or(2))
-                    .enabled(editable)
-                    .label("Reasoning:")
-                    .divider(80.0)
-                    .on_change(move |i, _, _| effort.submit(format!("/set model.effort {}", serde_json::json!(efforts[i])))),
+                MenuField::new(
+                    "reasoning",
+                    efforts.iter().map(|s| (if s.is_empty() { "Provider default" } else { *s }).into()).collect(),
+                    efforts.iter().position(|v| *v == s.config.model.effort).unwrap_or(0),
+                )
+                .enabled(editable)
+                .label("Reasoning:")
+                .divider(80.0)
+                .on_change(move |i, _, _| effort.submit(format!("/set model.effort {}", serde_json::json!(efforts[i])))),
             )
             .child(widgets::separator())
             .child(div().ml(-inset).child(StringView::new("Autonomy & approvals").bold(true)))
@@ -452,6 +466,8 @@ impl Coder {
                 .item("Fork Session", "fork")
                 .separator()
                 .item("Compact Context", "compact")
+                .item("Compaction Checkpoints", "compactions")
+                .item("Original Transcript", "transcript")
                 .separator()
                 .item("Close Window", "close")
                 .key("w")
@@ -499,6 +515,7 @@ impl Coder {
                 .item("GitHub Pull Requests…", "github_pulls")
                 .item("Draft Pull Request…", "github_draft"),
             Menu::new("Settings")
+                .item("Custom Endpoint…", "endpoint")
                 .item("Model…", "model")
                 .item("Approval Guidance…", "guidance")
                 .item("Configuration…", "config")
@@ -621,6 +638,32 @@ impl Coder {
                     self.prefill("/github pulls {\"repository\":\"owner/repo\"}", window, cx);
                 }
             }
+            "endpoint" => {
+                if let Some(s) = &self.view.session {
+                    let config = s.config.clone();
+                    let endpoint = config.model.endpoint.clone().unwrap_or_else(|| olo_coder_core::EndpointConfig {
+                        base_url: "https://api.fireworks.ai/inference/v1".into(),
+                        api_key_env: Some("FIREWORKS_API_KEY".into()),
+                        ..Default::default()
+                    });
+                    let model = if config.model.provider == olo_coder_core::Provider::Openai { config.model.model.clone() } else { String::new() };
+                    let effort = if config.model.provider == olo_coder_core::Provider::Openai { config.model.effort.clone() } else { String::new() };
+                    form::open(
+                        cx,
+                        "Custom Model Endpoint",
+                        "Use a Chat Completions API. Key names refer to the service environment.",
+                        "Save",
+                        vec![
+                            Field::new("API root:", endpoint.base_url),
+                            Field::new("Model ID:", model),
+                            Field::new("Key variable:", endpoint.api_key_env.unwrap_or_default()).optional(),
+                            Field::new("Effort:", effort).optional(),
+                        ],
+                        self.client.clone(),
+                        form::Submission::Endpoint { session: s.id.clone(), config },
+                    );
+                }
+            }
             "guidance" => {
                 let session = self.view.id.clone();
                 if let Some(s) = &self.view.session {
@@ -654,7 +697,7 @@ impl Coder {
                 });
                 self.client.submit(format!("/{cmd} {}", if on { "off" } else { "on" }));
             }
-            "new" | "pin" | "archive" | "restore" | "peers" | "fork" | "compact" | "resume" | "accept" => self.client.submit(format!("/{cmd}")),
+            "new" | "pin" | "archive" | "restore" | "peers" | "fork" | "compact" | "compactions" | "transcript" | "resume" | "accept" => self.client.submit(format!("/{cmd}")),
             "config" => {
                 let text = self.view.session.as_ref().map(|s| serde_json::to_string(&s.config).unwrap_or_default()).unwrap_or_default();
                 self.prefill(&format!("/config {text}"), window, cx);

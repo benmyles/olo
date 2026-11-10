@@ -9,11 +9,6 @@ use tokio_util::sync::CancellationToken;
 async fn pool_codex_reasoning_compaction_and_replay() {
     reasoning_compaction_and_replay(Provider::Codex, "gpt-6.1-terra").await;
 }
-#[tokio::test]
-#[ignore = "uses real token-pool quota"]
-async fn pool_claude_reasoning_compaction_and_replay() {
-    reasoning_compaction_and_replay(Provider::Claude, "claude-sonnet-5-5").await;
-}
 async fn reasoning_compaction_and_replay(p: Provider, model: &str) {
     let client = provider::Client::new().unwrap();
     {
@@ -22,24 +17,12 @@ async fn reasoning_compaction_and_replay(p: Provider, model: &str) {
         s.config.model.provider = p;
         s.config.model.model = model.into();
         s.config.model.effort = "high".into();
-        if p == Provider::Claude {
-            s.config.model.thinking = Some(json!({"type":"adaptive"}));
-        }
         s.user("Remember the marker cedar-47 and that 19 * 31 = 589. Solve without tools: count permutations of 1 through 9 where no adjacent pair sums to 10, with 1 before 9. Check the combinatorial argument carefully. End with the marker and multiplication result; keep the final answer short.");
         let stop = CancellationToken::new();
         let first = client.turn(&s, "You are a concise test assistant. Follow the user.", &[], &stop, |_, _| {}).await.unwrap();
         println!("{model}: {} ({} output tokens)", first.text, first.usage.output);
         assert!(first.text.contains("589"));
-        if p == Provider::Codex {
-            assert!(first.items.iter().any(|v| v["type"] == "reasoning" && v["encrypted_content"].is_string()), "encrypted reasoning must be returned");
-        } else {
-            assert!(
-                first.items.iter().flat_map(|v| v["content"].as_array().into_iter().flatten()).any(|b| {
-                    (b["type"] == "thinking" && b["signature"].as_str().is_some_and(|s| !s.is_empty())) || (b["type"] == "redacted_thinking" && b["data"].as_str().is_some_and(|s| !s.is_empty()))
-                }),
-                "Claude must return signed or redacted thinking to verify its replay"
-            );
-        }
+        assert!(first.items.iter().any(|v| v["type"] == "reasoning" && v["encrypted_content"].is_string()), "encrypted reasoning must be returned");
         s.context.extend(first.items);
         s.user("What marker did I ask you to remember?");
         let second = client.turn(&s, "You are a concise test assistant. Follow the user.", &[], &stop, |_, _| {}).await.unwrap();
@@ -116,6 +99,53 @@ async fn pool_automatic_review_approves_a_scoped_edit() {
     assert!(history.iter().any(|v| v.kind == "auto_review" && v.data["allow"] == true));
     println!("automatic reviewer approved the scoped edit; {} model turns", s.turns);
     e.quiesce().await;
+    drop(e);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[tokio::test]
+#[ignore = "uses real Codex token-pool quota to evaluate client compaction"]
+async fn pool_client_compaction_checks_sources_and_retains_corrections() {
+    let dir = std::path::PathBuf::from("/var/tmp").join(format!("olo-coder-summary-live-{}", id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let e = Engine::open(dir.join("state")).unwrap();
+    let mut config = Config::default();
+    config.model = ModelConfig::for_provider(Provider::Openai);
+    config.model.auto_compact = false;
+    config.compaction.model = Some(ModelConfig { effort: "low".into(), ..ModelConfig::default() });
+    config.compaction.summary_tokens = 2000;
+    config.compaction.keep_recent_exchanges = 1;
+    config.compaction.keep_recent_tokens = 256;
+    config.retries = 0;
+    let mut s = Session::new(dir.clone(), config);
+    s.user("Task: repair cedar-47. Never run network integration tests without my approval. The original target was package v1.");
+    s.context.push(json!({"role":"assistant","content":"Proposal: update package v1 and run integration tests. Nothing has been executed."}));
+    s.user("Correction: use package v2, not v1. Network integration tests still need my approval.");
+    for i in 0..8 {
+        s.context.push(json!({"role":"assistant","content":format!("Inspection {i}: {}", "File observations only; tests have not run. ".repeat(45))}));
+        s.user(&format!("Continue inspection {i}, keeping the corrected package and approval constraint."));
+    }
+    s.context.push(json!({"role":"assistant","content":"Current inspection is complete; no tests have run."}));
+    s.user("Prepare to continue.");
+    e.store.lock().unwrap().save(&mut s, "created", json!({})).unwrap();
+    e.command(Command::Compact { session: s.id.clone() }).await.unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(240), e.quiesce()).await.unwrap();
+    let state = e.get(&s.id).unwrap();
+    assert_eq!(state.status, Status::Idle, "{:?}", state.error);
+    let cp = e.store.lock().unwrap().compactions(&s.id, 0, state.active_checkpoint.as_deref()).unwrap();
+    assert!(cp["warnings"].as_array().unwrap().is_empty(), "{:?}", cp["warnings"]);
+    assert!(cp["entries"].as_array().unwrap().iter().any(|v| v["verified"] == true));
+    let text = state.context[0]["content"].as_str().unwrap();
+    assert!(text.contains("v2") && text.contains("approval"), "missing correction or approval constraint");
+    assert_eq!(e.store.lock().unwrap().transcript_items(&s.id, &s.context_refs).unwrap(), s.context);
+    println!(
+        "Client compaction: {} original items; {} active items; {} source-checked entries; {} input + {} output tokens",
+        s.context.len(),
+        state.context.len(),
+        cp["entries"].as_array().unwrap().len(),
+        state.usage.input,
+        state.usage.output
+    );
     drop(e);
     std::fs::remove_dir_all(dir).unwrap();
 }

@@ -15,3 +15,6 @@ pub use engine::Engine;
 pub use model::*;
 
 mod coordination;
+
+mod chat;
+pub mod compaction;

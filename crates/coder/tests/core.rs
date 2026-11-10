@@ -51,21 +51,6 @@ fn opaque_reasoning_and_compaction_survive_disk_and_request() {
     assert_eq!(body["store"], false);
 }
 #[test]
-fn claude_thinking_redacted_and_signed_compaction_are_lossless() {
-    let blocks = json!([{"type":"compaction","content":"summary","signature":"signature"},{"type":"thinking","thinking":"reasoning","signature":"sig"},{"type":"redacted_thinking","data":"encrypted"},{"type":"tool_use","id":"a","name":"read_file","input":{"path":"x"}}]);
-    let reply =
-        provider::parse(Provider::Claude, json!({"content":blocks,"stop_reason":"tool_use","usage":{"input_tokens":3,"output_tokens":4,"cache_read_input_tokens":5,"cache_creation_input_tokens":6}}))
-            .unwrap();
-    let mut s = Session::new(PathBuf::from("/"), Config::default());
-    s.config.model.provider = Provider::Claude;
-    s.context = reply.items;
-    s.result(&reply.calls[0], "result", false);
-    let body = provider::body(&s, "system", &[]);
-    assert_eq!(body["messages"][0]["content"], blocks);
-    assert_eq!(body["messages"][1]["content"][0]["tool_use_id"], "a");
-    assert_eq!(reply.usage.context, 18);
-}
-#[test]
 fn sse_split_every_byte_unicode_crlf_multiline() {
     let wire = "event: hello\r\ndata: {\"text\":\r\ndata: \"héllo 🌿\"}\r\n\r\n: ping\n\ndata: [DONE]\n\n";
     let mut decoder = Sse::default();
@@ -80,7 +65,7 @@ fn sse_split_every_byte_unicode_crlf_multiline() {
 #[test]
 fn incomplete_replies_never_produce_tools() {
     assert!(provider::parse(Provider::Codex, json!({"status":"incomplete","output":[{"type":"function_call","call_id":"x","name":"execute","arguments":"{}"}]})).is_err());
-    assert!(provider::parse(Provider::Claude, json!({"stop_reason":"max_tokens","content":[]})).is_err());
+    assert!(provider::parse(Provider::Openai, json!({"stop_reason":"max_tokens","content":[]})).is_err());
 }
 #[test]
 fn file_edits_are_checked_undoable_and_conflict_safe() {
@@ -328,28 +313,6 @@ async fn full_loop_approval_compaction_specs_and_budget() {
     assert!(e.get(&sid).unwrap().error.unwrap().contains("budget"));
     server.abort();
 }
-#[tokio::test]
-async fn claude_server_compaction_is_signed_and_replayed() {
-    let (fake, base, server) = server().await;
-    let client = provider::Client::at(&base).unwrap();
-    let dir = Scratch::new();
-    let mut s = Session::new(dir.0.clone(), Config::default());
-    s.config.model.provider = Provider::Claude;
-    s.config.model.model = "claude-custom".into();
-    s.user("remember this");
-    let block = json!({"type":"compaction","content":"summary","signature":"do-not-change"});
-    fake.replies.lock().unwrap().push_back(json!({"content":[block],"stop_reason":"compaction"}));
-    let r = client.compact(&s, "system", &tools::definitions(), &CancellationToken::new()).await.unwrap();
-    s.context = r.items;
-    s.user("continue");
-    fake.replies.lock().unwrap().push_back(json!({"content":[{"type":"text","text":"yes"}],"stop_reason":"end_turn"}));
-    client.turn(&s, "system", &tools::definitions(), &CancellationToken::new(), |_, _| {}).await.unwrap();
-    let req = fake.requests.lock().unwrap();
-    assert_eq!(req[0].1["compaction"]["type"], "summarize");
-    assert_eq!(req[1].1["messages"][0]["content"][0], block);
-    server.abort();
-}
-
 #[tokio::test]
 async fn automatic_review_fails_closed_and_hard_denials_win() {
     let dir = Scratch::new();
@@ -728,33 +691,6 @@ fn nested_files_deletion_checkpoints_and_recovery_preserve_newer_work() {
 }
 
 #[test]
-fn cache_accounting_and_mutable_state_do_not_change_stable_prefixes() {
-    let mut s = Session::new(PathBuf::from("/"), Config::default());
-    s.config.model.provider = Provider::Claude;
-    let signed = json!({"role":"assistant","content":[{"type":"thinking","thinking":"opaque","signature":"never-touch"}]});
-    s.context.push(signed.clone());
-    let before = provider::body(&s, "stable", &tools::definitions());
-    s.memory.push_str("remember this");
-    let after = provider::body(&s, "stable", &tools::definitions());
-    assert_eq!(before["system"], after["system"]);
-    assert_eq!(before["tools"], after["tools"]);
-    assert_eq!(after["messages"][0], signed);
-    assert!(after["messages"][1].to_string().contains("remember this"));
-    assert_eq!(after["cache_control"]["ttl"], "1h");
-    s.config.model.cache_ttl = None;
-    let disabled = provider::body(&s, "stable", &[]);
-    assert!(disabled.get("cache_control").is_none());
-    let usage = provider::usage(Provider::Claude, &json!({"input_tokens":10,"output_tokens":20,"cache_read_input_tokens":100,"cache_creation_input_tokens":50}));
-    assert_eq!(usage.input, 160);
-    assert_eq!(usage.cached, 100);
-    assert_eq!(usage.cache_write, 50);
-    assert_eq!(usage.context, 180);
-    let codex = provider::usage(Provider::Codex, &json!({"input_tokens":160,"output_tokens":20,"input_tokens_details":{"cached_tokens":100}}));
-    assert_eq!(codex.input, 160);
-    assert_eq!(codex.context, 180);
-}
-
-#[test]
 fn older_journal_migration_preserves_edits_and_indexes_history() {
     let dir = Scratch::new();
     let mut db = Store::open(&dir.0).unwrap();
@@ -765,7 +701,7 @@ fn older_journal_migration_preserves_edits_and_indexes_history() {
     let edit = db.edit(&s.id, &file, Some(b"before"), b"after").unwrap();
     drop(db);
     let old = rusqlite::Connection::open(dir.0.join("sessions.sqlite3")).unwrap();
-    old.execute_batch("DROP TRIGGER event_search_insert; DROP TABLE event_search; ALTER TABLE edits DROP COLUMN deleted; PRAGMA user_version=1;").unwrap();
+    old.execute_batch("DROP TRIGGER transcript_insert; DROP TABLE transcript_search; DROP TABLE transcript; DROP TABLE compactions; DROP TRIGGER event_search_insert; DROP TABLE event_search; ALTER TABLE edits DROP COLUMN deleted; PRAGMA user_version=1;").unwrap();
     drop(old);
     let db = Store::open(&dir.0).unwrap();
     assert_eq!(db.search(&s.id, "migration marker").unwrap().len(), 1);
@@ -855,17 +791,17 @@ async fn keep_going_can_pause_on_a_blocker_and_resume_with_evidence() {
 #[test]
 fn child_model_tuning_preserves_parent_restrictions() {
     let parent = Config { subagents: true, read_only: true, approval: ApprovalMode::Ask, denied_tools: vec!["execute".into()], ..Config::default() };
-    let child = parent.child(false, &json!({"provider":"claude","read_only":false,"model_config":{"model":"future-claude","thinking":{"type":"enabled","budget_tokens":4096},"max_output_tokens":8192,"service_tier":"priority","extra":{"new_option":true}}})).unwrap();
-    assert_eq!(child.model.provider, Provider::Claude);
-    assert_eq!(child.model.model, "future-claude");
+    let child = parent.child(false, &json!({"provider":"openai","read_only":false,"model_config":{"model":"custom-deployment","thinking":{"type":"enabled","budget_tokens":4096},"max_output_tokens":8192,"service_tier":"priority","extra":{"new_option":true}}})).unwrap();
+    assert_eq!(child.model.provider, Provider::Openai);
+    assert_eq!(child.model.model, "custom-deployment");
     assert_eq!(child.model.thinking.unwrap()["budget_tokens"], 4096);
     assert_eq!(child.model.max_output_tokens, 8192);
     assert_eq!(child.model.extra["new_option"], true);
     assert_eq!(child.approval, ApprovalMode::Ask);
     assert_eq!(child.denied_tools, parent.denied_tools);
     assert!(child.read_only);
-    let defaults = parent.child(false, &json!({"provider":"claude"})).unwrap();
-    assert_eq!(defaults.model.model, "claude-sonnet-5-5");
+    let defaults = parent.child(false, &json!({"provider":"openai"})).unwrap();
+    assert_eq!(defaults.model.model, "custom-model");
     assert!(Config::default().child(true, &json!({"read_only":false})).unwrap().read_only);
     assert!(parent.child(false, &json!({"model_config":{"approval":"allow"}})).is_err());
 }
@@ -1236,7 +1172,7 @@ fn pre_coordination_stores_upgrade_without_losing_provider_context() {
     old["config"].as_object_mut().unwrap().remove("wake_on_message");
     let db = rusqlite::Connection::open(dir.0.join("sessions.sqlite3")).unwrap();
     db.execute("UPDATE sessions SET body=? WHERE id=?", rusqlite::params![old.to_string(), s.id]).unwrap();
-    db.execute_batch("DROP TABLE messages; PRAGMA user_version=3;").unwrap();
+    db.execute_batch("DROP TRIGGER transcript_insert; DROP TABLE transcript_search; DROP TABLE transcript; DROP TABLE compactions; DROP TABLE messages; PRAGMA user_version=3;").unwrap();
     drop(db);
     let e = Engine::open(dir.0.clone()).unwrap();
     let upgraded = e.get(&s.id).unwrap();
@@ -1487,53 +1423,20 @@ fn fragmented_long_sse_lines_preserve_every_event() {
 
 #[test]
 fn malformed_provider_calls_cannot_enter_the_tool_loop() {
-    for p in [Provider::Codex, Provider::Claude] {
+    for p in [Provider::Codex, Provider::Openai] {
         for (ids, args) in [(vec!["duplicate", "duplicate"], json!({})), (vec![""], json!({})), (vec!["one"], json!([1, 2])), (vec!["one"], Value::Null)] {
             let v = match p {
                 Provider::Codex => {
                     json!({"status":"completed","output":ids.iter().map(|id|json!({"type":"function_call","call_id":id,"name":"execute","arguments":args.to_string()})).collect::<Vec<_>>()})
                 }
-                Provider::Claude => json!({"stop_reason":"tool_use","content":ids.iter().map(|id|json!({"type":"tool_use","id":id,"name":"execute","input":args})).collect::<Vec<_>>()}),
+                Provider::Openai => {
+                    json!({"choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","tool_calls":ids.iter().map(|id|json!({"type":"function","id":id,"function":{"name":"execute","arguments":args.to_string()}})).collect::<Vec<_>>()}}]})
+                }
             };
             assert!(provider::parse(p, v).is_err());
         }
     }
-    assert!(provider::parse(Provider::Claude, json!({"content":[]})).is_err());
-}
-
-#[tokio::test]
-async fn claude_stream_requires_closed_blocks_before_admitting_tools() {
-    let start = json!({"type":"message_start","message":{"content":[],"usage":{}}});
-    let block = json!({"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"call","name":"write_file","input":{}}});
-    let delta = json!({"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"path\":\"file\",\"content\":\"ok\"}"}});
-    let close = json!({"type":"content_block_stop","index":0});
-    let reason = json!({"type":"message_delta","delta":{"stop_reason":"tool_use"}});
-    let stop = json!({"type":"message_stop"});
-    let cases = vec![
-        (false, vec![start.clone(), block.clone(), delta.clone(), reason.clone(), stop.clone()]),
-        (false, vec![start.clone(), block.clone(), delta.clone(), close.clone(), stop.clone()]),
-        (false, vec![start.clone(), block.clone(), close.clone(), delta.clone(), reason.clone(), stop.clone()]),
-        (false, vec![start.clone(), block.clone(), close.clone(), block.clone(), reason.clone(), stop.clone()]),
-        (true, vec![start, block, delta, close, json!({"type":"future_event","opaque":"retained elsewhere"}), reason, stop]),
-    ];
-    for (valid, events) in cases {
-        let wire = events.iter().map(|v| format!("data: {v}\n\n")).collect::<String>();
-        let app = axum::Router::new().fallback(axum::routing::post(move || {
-            let wire = wire.clone();
-            async move { ([("content-type", "text/event-stream")], wire) }
-        }));
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let base = format!("http://{}", listener.local_addr().unwrap());
-        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        let mut s = Session::new("/var/tmp".into(), Config::default());
-        s.config.model.provider = Provider::Claude;
-        let result = provider::Client::at(&base).unwrap().turn(&s, "test", &[], &CancellationToken::new(), |_, _| {}).await;
-        assert_eq!(result.is_ok(), valid, "{result:?}");
-        if let Ok(reply) = result {
-            assert_eq!(reply.calls[0].arguments, json!({"path":"file","content":"ok"}));
-        }
-        server.abort();
-    }
+    assert!(provider::parse(Provider::Openai, json!({"content":[]})).is_err());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -2063,7 +1966,7 @@ async fn child_workspace_rejects_escapes_and_invalid_tasks_without_creating_sess
 fn agent_shortcut_preserves_workspace_and_model_controls() {
     let s = Session::new("/".into(), Config::default());
     let arguments =
-        json!({"task":"Review independently","workspace":"worktrees/review","provider":"claude","model":"custom-model","effort":"high","read_only":false,"model_config":{"max_output_tokens":8000}});
+        json!({"task":"Review independently","workspace":"worktrees/review","provider":"openai","model":"custom-model","effort":"high","read_only":false,"model_config":{"max_output_tokens":8000}});
     let commands::Input::Command(Command::Tool { session, name, arguments: actual }) = commands::parse(&format!("/agent {arguments}"), &s).unwrap() else { panic!("expected tool") };
     assert_eq!(session, s.id);
     assert_eq!(name, "spawn_agent");
