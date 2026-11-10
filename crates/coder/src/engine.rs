@@ -593,6 +593,7 @@ impl Engine {
             }
             ensure!(!cancel.is_cancelled(), "cancelled");
             self.change(id, "idle", |s| {
+                ensure!(!cancel.is_cancelled(), "cancelled");
                 s.manual = false;
                 if s.status != Status::Paused {
                     s.status = Status::Idle;
@@ -665,7 +666,7 @@ impl Engine {
                         _ = cancel.cancelled() => bail!("cancelled"),
                         result = &mut job.handle => result.context("compaction worker failed")?,
                     };
-                    let applied = prepared.and_then(|checkpoint| crate::compaction::apply(self, id, &checkpoint));
+                    let applied = prepared.and_then(|checkpoint| crate::compaction::apply(self, id, &checkpoint, cancel));
                     match applied {
                         Ok(_) => {
                             s = self.get(id)?;
@@ -684,6 +685,7 @@ impl Engine {
                 }
                 if compact_only {
                     self.change(id, "idle", |s| {
+                        ensure!(!cancel.is_cancelled(), "cancelled");
                         s.status = Status::Idle;
                         Ok(json!({}))
                     })?;
@@ -694,6 +696,7 @@ impl Engine {
                 let r = client.compact(&s, &system, &defs, cancel).await?;
                 let prefix = s.context_refs.clone();
                 self.change(id, "compacted", |s| {
+                    ensure!(!cancel.is_cancelled(), "cancelled");
                     ensure!(s.context_refs.starts_with(&prefix), "context changed during server compaction");
                     let tail = s.context.split_off(prefix.len());
                     let tail_refs = s.context_refs.split_off(prefix.len());
@@ -708,6 +711,7 @@ impl Engine {
                 })?;
                 if compact_only {
                     self.change(id, "idle", |s| {
+                        ensure!(!cancel.is_cancelled(), "cancelled");
                         s.status = Status::Idle;
                         Ok(json!({}))
                     })?;
@@ -717,7 +721,11 @@ impl Engine {
             }
             // A compact manifest reconstructs the exact main-model input from
             // archived records without duplicating the full window every turn.
-            self.change(id, "model_request", |_| {
+            self.change(id, "model_request", |current| {
+                // Compaction can spend the remaining budget after the loop's
+                // first check. Read current usage under the journal lock before
+                // admitting another request, including background usage charges.
+                ensure!(current.usage.input.saturating_add(current.usage.output).saturating_sub(start_tokens) < current.config.token_budget, "token budget reached; resume explicitly for a new run");
                 Ok(json!({"run":run_id,"context_refs":s.context_refs,"goal":s.goal,"spec":s.spec,"todos":s.todos,"memory":s.memory,"spec_mode":s.spec_mode,"read_only":s.config.read_only}))
             })?;
             let e = self.clone();
@@ -778,11 +786,12 @@ impl Engine {
                     _ = cancel.cancelled() => bail!("cancelled"),
                     result = &mut job.handle => result.context("compaction worker failed")?,
                 };
-                if let Err(error) = prepared.and_then(|checkpoint| crate::compaction::apply(self, id, &checkpoint)) {
+                if let Err(error) = prepared.and_then(|checkpoint| crate::compaction::apply(self, id, &checkpoint, cancel)) {
                     self.change(id, "compaction_deferred", |_| Ok(json!({"reason":error.to_string()})))?;
                 }
             }
             self.change(id, "idle", |s| {
+                ensure!(!cancel.is_cancelled(), "cancelled");
                 s.status = if s.goal.as_ref().is_some_and(|g| g.status == "complete") { Status::Complete } else { Status::Idle };
                 Ok(json!({"status":s.status}))
             })?;

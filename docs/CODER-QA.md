@@ -554,3 +554,34 @@ with durable artifacts after**. The extra oversized-result cost includes atomic
 writes, file sync and directory sync; it runs off the runtime worker thread.
 These samples are not a claim of a speed improvement. The earlier clipping path
 discarded output from the model-facing response; the new path makes it retrievable.
+
+## Compaction admission and cancellation — 2026-11-10
+
+Two new HTTP regressions reproduced a budget overrun: both custom compaction and
+Codex server compaction could exhaust the current run budget, then admit another
+foreground request. Request admission now checks current billed usage under the
+journal lock after compaction. The completed checkpoint remains available, and
+an explicit Resume starts a fresh run budget. Already admitted concurrent model
+requests can still exceed the budget when their actual usage is reported; this
+is a request-admission budget, not a provider billing cap.
+
+Checkpoint publication now checks cancellation under the journal lock. A worker
+waiting there cannot overwrite Stop's interrupted checkpoint. A deterministic
+thread/lock fixture exercises preparing, chunk and ready publication after Stop's
+cleanup; all three are rejected. Cancelled checkpoint application preserves the
+original context. Manual, server-compaction and foreground completion commits
+also check cancellation before setting an idle state.
+
+**107 targeted release tests passed, zero failures** (11 opt-in tests ignored).
+The release workspace build passed. Clippy completed with existing style and
+complexity warnings. The custom-provider regression also verifies a successful
+explicit Resume from the saved checkpoint. These service changes do not alter
+GUI/TUI layout, frame processing or idle behavior.
+
+The interleaved release benchmark alternates execution order for 100 commits per
+path. Checkpoint publication totaled **136.41 ms before / 138.77 ms after**;
+median latency **1.245 / 1.256 ms**. Request-manifest publication totaled
+**150.80 / 140.98 ms**; median **1.227 / 1.284 ms**. Both paths include durable
+SQLite commits. The earlier sequential sample and paired p95/max latencies are
+retained in `coder-compaction-qa.json`; shared-host samples do not establish a
+speed improvement or isolate the guard's CPU cost.

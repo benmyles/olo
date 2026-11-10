@@ -613,3 +613,60 @@ async fn agent_retrieves_exact_transcript_and_large_checkpoint_with_a_small_tool
     assert!(memory.2 > 2);
     server.abort();
 }
+
+#[tokio::test]
+async fn compaction_usage_exhausting_the_run_budget_prevents_another_model_request() {
+    let dir = Scratch::new();
+    let f = Arc::new(Fixture::default());
+    let (base, server) = endpoint(f.clone()).await;
+    let e = Engine::open(dir.0.join("state")).unwrap();
+    let mut config = custom(&base);
+    config.model.auto_compact = true;
+    config.model.compact_at = 10000;
+    config.token_budget = 100;
+    let s = seed(&e, &dir.0, config);
+    e.command(Command::Send { session: s.id.clone(), text: "Continue after compaction".into() }).await.unwrap();
+    finish(&e).await;
+    let state = e.get(&s.id).unwrap();
+    assert_eq!(state.status, Status::Failed, "budget exhaustion must stop the run");
+    assert!(state.error.as_deref().unwrap().contains("token budget reached"));
+    assert!(state.active_checkpoint.is_some(), "the completed checkpoint must remain usable");
+    assert_eq!(state.usage.input + state.usage.output, 145);
+    let reads = f.requests.lock().unwrap();
+    assert_eq!(reads.len(), 1, "no foreground inference after compaction exhausted the run budget");
+    assert!(reads[0].1["messages"][0]["content"].as_str().unwrap().contains("evidence-backed working memory"));
+    assert_eq!(e.store.lock().unwrap().transcript_items(&s.id, &s.context_refs).unwrap(), s.context);
+    drop(reads);
+    e.command(Command::Resume { session: s.id.clone() }).await.unwrap();
+    finish(&e).await;
+    assert_eq!(e.get(&s.id).unwrap().status, Status::Idle);
+    assert_eq!(f.requests.lock().unwrap().len(), 2, "explicit Resume starts a fresh run budget with the saved checkpoint");
+    server.abort();
+}
+
+#[tokio::test]
+async fn server_compaction_usage_also_stops_before_an_over_budget_inference() {
+    let dir = Scratch::new();
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let seen = requests.clone();
+    let router = axum::Router::new().fallback(axum::routing::post(move |axum::Json(body): axum::Json<Value>| {
+        seen.lock().unwrap().push(body);
+        async { axum::Json(json!({"status":"completed","output":[{"type":"compaction","encrypted_content":"opaque-state"}],"usage":{"input_tokens":120,"output_tokens":25}})) }
+    }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let e = Engine::open_at(dir.0.join("state"), Some(format!("http://{}", listener.local_addr().unwrap()))).unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    let mut config = Config { token_budget: 100, ..Default::default() };
+    config.model.compact_at = 10000;
+    let s = seed(&e, &dir.0, config);
+    e.command(Command::Send { session: s.id.clone(), text: "Continue after compaction".into() }).await.unwrap();
+    finish(&e).await;
+    let state = e.get(&s.id).unwrap();
+    assert_eq!(state.status, Status::Failed);
+    assert!(state.error.as_deref().unwrap().contains("token budget reached"));
+    assert_eq!(state.compactions, 1);
+    assert_eq!(state.usage.input + state.usage.output, 145);
+    assert_eq!(requests.lock().unwrap().len(), 1);
+    assert_eq!(e.store.lock().unwrap().transcript_items(&s.id, &s.context_refs).unwrap(), s.context);
+    server.abort();
+}

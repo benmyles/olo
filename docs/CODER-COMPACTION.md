@@ -113,9 +113,19 @@ never sent to Codex.
 Summarization usage counts toward session usage and the current run's budget.
 The context meter continues to describe foreground context. The optional model
 for compaction can use another endpoint, model, reasoning effort and output limit.
+A foreground request checks the latest billed usage again after compaction;
+exhaustion stops the run while retaining its completed checkpoint. Explicit
+Resume starts a fresh run budget. Already admitted requests can exceed a budget
+when their actual usage arrives, including concurrent foreground/background work;
+the budget is an admission limit, not a provider-side billing cap.
 A background failure backs off until context grows; it does not retry on an idle
 polling loop. A hard-boundary failure stops explicitly with the original context
 intact instead of quietly dropping messages.
+
+Checkpoint publication and application check cancellation while holding the
+journal lock. A worker delayed on that lock cannot revive a checkpoint after
+Stop marks it interrupted. Completion commits also check cancellation so a late
+completion cannot replace the paused state.
 
 ## Defaults and controls
 

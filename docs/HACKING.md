@@ -14611,6 +14611,10 @@ endpoints use their configured API root directly.
   append new items with zero references for `Store::save` to allocate. A ready
   checkpoint may apply only at a completed tool boundary with an identical
   captured prefix/model/parent. Preserve concurrently appended suffix messages.
+  Check cancellation inside the journal-lock closure for publication, application
+  and completion; checking before acquiring the lock races Stop's cleanup.
+  Recheck current billed usage at request admission after compaction, since it
+  shares the foreground run's token budget.
   Exact quotes are checked before an optional source-verification model pass.
   Restore replaces only the active summary prefix and never replays effects;
   forks snapshot checkpoint metadata and inherit immutable transcript ranges. Stop cancels preparation,

@@ -1932,5 +1932,65 @@
     },
     "release_workspace_build": "passed",
     "clippy": "Completed; existing style/complexity warnings, no errors"
+  },
+  "boundary_audit": {
+    "date": "2026-11-10",
+    "tests": {
+      "passed": 107,
+      "failed": 0,
+      "ignored": 11
+    },
+    "before_regressions": {
+      "custom_compaction_budget": "failed as expected: extra foreground request admitted",
+      "codex_compaction_budget": "failed as expected: extra foreground request admitted"
+    },
+    "release_workspace_build": "passed",
+    "clippy": "Completed with existing style/complexity warnings",
+    "checks": [
+      "Current usage rechecked at request admission",
+      "Explicit Resume retains checkpoint and starts fresh budget",
+      "Cancelled publishers blocked on journal lock cannot revive interrupted checkpoints",
+      "Cancelled application preserves context",
+      "Completion commits respect cancellation"
+    ],
+    "initial_sequential_benchmark_ms": {
+      "checkpoint_baseline": 329.591816,
+      "checkpoint_checked": 476.787837,
+      "request_baseline": 433.396042,
+      "request_checked": 659.391703,
+      "note": "100 commits per case, sequential before/after; subsequent paired measurement alternates order to reduce WAL/FTS age and shared-host load bias."
+    },
+    "paired_release_benchmark": {
+      "iterations_per_case": 100,
+      "checkpoint": {
+        "before": {
+          "total_ms": 136.405355,
+          "p50_ms": 1.244619,
+          "p95_ms": 1.593452,
+          "max_ms": 6.786561
+        },
+        "after": {
+          "total_ms": 138.772541,
+          "p50_ms": 1.256385,
+          "p95_ms": 2.081546,
+          "max_ms": 4.177199
+        }
+      },
+      "request": {
+        "before": {
+          "total_ms": 150.803928,
+          "p50_ms": 1.227025,
+          "p95_ms": 2.593166,
+          "max_ms": 7.716912
+        },
+        "after": {
+          "total_ms": 140.98117,
+          "p50_ms": 1.28358,
+          "p95_ms": 1.698757,
+          "max_ms": 7.541557
+        }
+      },
+      "note": "Alternating baseline/checked order; includes durable SQLite commits. Shared-host samples do not isolate guard CPU cost or establish a speed improvement."
+    }
   }
 }
