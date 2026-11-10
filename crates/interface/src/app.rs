@@ -141,9 +141,10 @@ pub fn stay_resident() {
     }
 }
 
-/// How a new window should be.
+/// How a new window should be, as the display thread takes it. (Olo's
+/// kit has its own options over this: `olo_kit::WindowOptions`.)
 #[derive(Clone, Debug)]
-pub struct WindowOptions {
+pub struct WindowSpec {
     pub title: SharedString,
     /// Its content's size, in points (what frames it is app_server's).
     pub size: (f32, f32),
@@ -158,11 +159,15 @@ pub struct WindowOptions {
     pub session_lock_output: Option<String>,
     pub background: WindowBackgroundAppearance,
     pub fullscreen: bool,
+    /// The person can size it.
+    pub resizable: bool,
+    /// It takes the keyboard as it opens.
+    pub focus: bool,
 }
 
-impl WindowOptions {
+impl WindowSpec {
     pub fn new(title: impl Into<SharedString>, width: f32, height: f32) -> Self {
-        WindowOptions {
+        WindowSpec {
             title: title.into(),
             size: (width, height),
             min_size: None,
@@ -175,6 +180,8 @@ impl WindowOptions {
             session_lock_output: None,
             background: WindowBackgroundAppearance::Opaque,
             fullscreen: false,
+            resizable: true,
+            focus: true,
         }
     }
 
@@ -195,9 +202,9 @@ impl WindowOptions {
             titlebar: Some(crate::TitlebarOptions { title: Some(self.title.clone()), appears_transparent: false, traffic_light_position: None }),
             kind: self.kind.clone(),
             is_movable: true,
-            is_resizable: true,
+            is_resizable: self.resizable,
             is_minimizable: true,
-            focus: true,
+            focus: self.focus,
             show: true,
             display_id: None,
             toplevel_tag: self.toplevel_tag.clone(),
@@ -238,7 +245,7 @@ impl<V: View> WindowHandle<V> {
         let id = self.id;
         self.looper.post(move |looper| {
             with_window(looper, id, |cx| {
-                if let Some(view) = cx.core.root_view {
+                if let Some(view) = cx.core.main_view.or(cx.core.root_view) {
                     cx.update_view(view, f);
                 }
             });
@@ -253,7 +260,7 @@ impl<V: View> WindowHandle<V> {
         let id = self.id;
         Messenger::new(self.looper.clone(), move |looper, message| {
             with_window(looper, id, |cx| {
-                if let Some(view) = cx.core.root_view {
+                if let Some(view) = cx.core.main_view.or(cx.core.root_view) {
                     cx.update_view::<V, _>(view, |v, cx| v.message(message, cx));
                 }
             });
@@ -276,6 +283,18 @@ impl<V: View> WindowHandle<V> {
     pub fn is_open(&self) -> bool {
         !self.looper.is_gone()
     }
+
+    /// The same window, its own view taken to be a `T` (what
+    /// `WindowCx::set_main_view` named: a window whose first view is a
+    /// frame round the view the program knows it by).
+    pub fn retyped<T: View>(self) -> WindowHandle<T> {
+        WindowHandle { id: self.id, looper: self.looper, _view: PhantomData }
+    }
+
+    /// The looper the window is on.
+    pub fn looper(&self) -> &LooperHandle {
+        &self.looper
+    }
 }
 
 /// The program, as its own looper's code is handed it.
@@ -286,7 +305,7 @@ pub struct AppCx<'a> {
 impl AppCx<'_> {
     /// Opens a window on a looper of its own, around the view `build`
     /// makes there. Returns at once: the window is opened by its looper.
-    pub fn open_window<V: View>(&mut self, options: WindowOptions, build: impl FnOnce(&mut Cx<V>) -> V + Send + 'static) -> WindowHandle<V> {
+    pub fn open_window<V: View>(&mut self, options: WindowSpec, build: impl FnOnce(&mut Cx<V>) -> V + Send + 'static) -> WindowHandle<V> {
         open_window(options, build)
     }
 
@@ -302,7 +321,7 @@ impl AppCx<'_> {
 
 /// Opens a window on a looper of its own (see [`AppCx::open_window`]).
 /// From any thread of a running program.
-pub fn open_window<V: View>(options: WindowOptions, build: impl FnOnce(&mut Cx<V>) -> V + Send + 'static) -> WindowHandle<V> {
+pub fn open_window<V: View>(options: WindowSpec, build: impl FnOnce(&mut Cx<V>) -> V + Send + 'static) -> WindowHandle<V> {
     let id = display().next_window_id();
     // (BeOS named a window's thread "w>" and its title.)
     let name = format!("w>{}", options.title);

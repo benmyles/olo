@@ -32,6 +32,19 @@ use crate::{
     view::{AnyView, Child, Cx, View, ViewSlot},
 };
 
+thread_local! {
+    static TEXT: std::cell::RefCell<Option<Arc<WindowTextSystem>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// The calling thread's text system: the program's fonts and glyphs
+/// with this thread's own cache of shaped lines (every window on a
+/// looper shares it, and so does text measured before anything is
+/// drawn: a button sized for its label finds the label shaped already
+/// when it draws it).
+pub fn thread_text_system() -> Arc<WindowTextSystem> {
+    TEXT.with(|t| t.borrow_mut().get_or_insert_with(|| Arc::new(WindowTextSystem::new(display().text_system.clone()))).clone())
+}
+
 /// The windows on a looper (most loopers have one; a window's menus and
 /// tips are windows on its looper too).
 #[derive(Default)]
@@ -50,6 +63,10 @@ pub(crate) struct WindowCore {
     pub(crate) layout: Layout<NodeId>,
     pub(crate) root: Option<NodeId>,
     pub(crate) root_view: Option<ViewId>,
+    /// The view the program knows the window by, if it isn't its first
+    /// (a frame round it): what the window's handle reaches, and what
+    /// is asked whether the window may close.
+    pub(crate) main_view: Option<ViewId>,
     pub(crate) gfx: Gfx,
     /// The window's content, in points.
     pub(crate) size: Size<Pixels>,
@@ -89,6 +106,8 @@ pub(crate) struct WindowCore {
     /// take it, and what would happen by default may.
     pub(crate) propagate: bool,
     pub(crate) default_prevented: bool,
+    /// The node whose handler is running now.
+    pub(crate) current: Option<NodeId>,
     pub(crate) next_frame: Vec<NextFrame>,
     /// The pointer's shape, as last asked for.
     pub(crate) cursor: crate::CursorStyle,
@@ -188,7 +207,7 @@ fn flush_all(looper: &mut Looper) {
 
 impl WindowCore {
     fn new(id: WindowId, opened: Opened, title: SharedString) -> WindowCore {
-        let text_system = Arc::new(WindowTextSystem::new(display().text_system.clone()));
+        let text_system = thread_text_system();
         let gfx = Gfx {
             scale_factor: opened.scale,
             rem_size: px(16.),
@@ -208,6 +227,7 @@ impl WindowCore {
             layout: Layout::new(),
             root: None,
             root_view: None,
+            main_view: None,
             gfx,
             size: opened.size,
             title,
@@ -231,6 +251,7 @@ impl WindowCore {
             closed: false,
             propagate: true,
             default_prevented: false,
+            current: None,
             next_frame: Vec::new(),
             cursor: crate::CursorStyle::Arrow,
             recycled: Vec::new(),
@@ -272,7 +293,7 @@ impl WindowCore {
 
     /// Whether a node is in what the window shows (not in a view that
     /// isn't placed anywhere now).
-    fn attached(&self, id: NodeId) -> bool {
+    pub(crate) fn is_attached(&self, id: NodeId) -> bool {
         let mut at = Some(id);
         while let Some(id) = at {
             if Some(id) == self.root {
@@ -477,7 +498,7 @@ impl<'a> WindowCx<'a> {
             WindowEvent::Resized { size, scale } => self.resized(size, scale),
             WindowEvent::Active(active) => {
                 self.core.active = active;
-                if let Some(view) = self.core.root_view {
+                if let Some(view) = self.core.main_view.or(self.core.root_view) {
                     self.with_any_view(view, |view, id, cx| view.window_activated(id, active, cx));
                 }
             }
@@ -488,7 +509,7 @@ impl<'a> WindowCx<'a> {
             }
             WindowEvent::Moved => {}
             WindowEvent::CloseRequested => {
-                let may = match self.core.root_view {
+                let may = match self.core.main_view.or(self.core.root_view) {
                     Some(view) => self.with_any_view(view, |v, id, cx| v.close_requested(id, cx)).unwrap_or(true),
                     None => true,
                 };
@@ -536,6 +557,16 @@ impl<'a> WindowCx<'a> {
         }
     }
 
+    /// What was drawn while something it shows was still coming (a
+    /// picture being decoded: `Painter::paint_unfinished`) is drawn
+    /// again: it has come.
+    pub fn repaint_unfinished(&mut self) {
+        let waiting: Vec<NodeId> = self.core.nodes.iter().filter(|(_, n)| n.notes.as_ref().is_some_and(|notes| notes.unfinished)).map(|(id, _)| id).collect();
+        for id in waiting {
+            self.core.mark_paint(id);
+        }
+    }
+
     /// Everything is drawn again (the look changed: the theme, the
     /// scale, how text is drawn). Not for one thing changing: that's
     /// its view's [`Cx::invalidate`].
@@ -572,7 +603,7 @@ impl<'a> WindowCx<'a> {
             let Some(slot) = self.core.views.get_mut(view) else { continue };
             slot.dirty = false;
             let Some(root) = slot.root else { continue };
-            if !self.core.attached(root) {
+            if !self.core.is_attached(root) {
                 // (Not shown now: it says what it shows when it's placed
                 // again, `place_view`.)
                 continue;
@@ -617,7 +648,7 @@ impl<'a> WindowCx<'a> {
         while !core.paint_queue.is_empty() {
             for id in std::mem::take(&mut core.paint_queue) {
                 if core.nodes.get(id).is_some_and(|n| n.paint_dirty) {
-                    if core.attached(id) {
+                    if core.is_attached(id) {
                         core.record(id);
                         recorded.push(id);
                         drew += 1;
@@ -726,10 +757,16 @@ impl<'a> WindowCx<'a> {
         self.core.views.get(id)?.view.as_ref()?.as_any().downcast_ref()
     }
 
+    /// Names the view the program knows the window by (see
+    /// `main_view`): what its `WindowHandle` reaches.
+    pub fn set_main_view<V: View>(&mut self, view: &Child<V>) {
+        self.core.main_view = Some(view.id());
+    }
+
     /// Gives the window's own view a command by name (a menu's, the
     /// palette's, an agent's). Whether it was taken.
     pub fn command(&mut self, command: &str) -> bool {
-        match self.core.root_view {
+        match self.core.main_view.or(self.core.root_view) {
             Some(view) => self.with_any_view(view, |v, id, cx| v.command(id, command, cx)).unwrap_or(false),
             None => false,
         }
@@ -857,6 +894,11 @@ impl<'a> WindowCx<'a> {
     /// Closes the window.
     pub fn close_window(&mut self) {
         self.core.closed = true;
+    }
+
+    /// Where the element whose handler is running now is, in the window.
+    pub fn listener_bounds(&self) -> Bounds<Pixels> {
+        self.core.current.and_then(|id| self.core.nodes.get(id)).map(|n| n.bounds).unwrap_or_default()
     }
 
     /// What's being handed round stops here: nothing else gets it.

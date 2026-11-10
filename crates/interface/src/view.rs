@@ -190,6 +190,42 @@ impl<V: View> Child<V> {
     }
 }
 
+/// A [`Child`] of whatever type: owned the same way, placed the same
+/// way, for an owner that needn't know what it holds (a window's frame
+/// round the program's view).
+pub struct AnyChild {
+    id: ViewId,
+    window: WindowId,
+}
+
+impl AnyChild {
+    /// Where it goes in its owner's `body`.
+    pub fn element(&self) -> Element {
+        Element::new(Kind::View(self.id))
+    }
+}
+
+impl<V: View> From<Child<V>> for AnyChild {
+    fn from(child: Child<V>) -> AnyChild {
+        let any = AnyChild { id: child.id, window: child.window };
+        // (The view goes on, under its new handle.)
+        std::mem::forget(child);
+        any
+    }
+}
+
+impl Drop for AnyChild {
+    fn drop(&mut self) {
+        let _ = DROPPED.try_with(|d| d.borrow_mut().push((self.window, self.id)));
+    }
+}
+
+impl crate::IntoElement for &AnyChild {
+    fn into_element(self) -> Element {
+        self.element()
+    }
+}
+
 impl<V> Drop for Child<V> {
     fn drop(&mut self) {
         let _ = DROPPED.try_with(|d| d.borrow_mut().push((self.window, self.id)));

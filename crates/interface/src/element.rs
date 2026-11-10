@@ -13,7 +13,7 @@ use std::{any::Any, fmt::Display, rc::Rc, sync::Arc};
 use smallvec::SmallVec;
 
 use crate::{
-    Bounds, ClickEvent, CursorStyle, KeyDownEvent, KeyUpEvent, ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Painter, Pixels, ScrollWheelEvent, SharedString, Size,
+    Bounds, ClickEvent, KeyDownEvent, KeyUpEvent, ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Painter, Pixels, ScrollWheelEvent, SharedString, Size,
     StyleRefinement, Styled, TextRun, WindowCx, tree::ViewId,
 };
 
@@ -206,7 +206,6 @@ pub(crate) struct Interactivity {
     pub(crate) hover_style: Option<Box<StyleRefinement>>,
     pub(crate) active_style: Option<Box<StyleRefinement>>,
     pub(crate) focus_style: Option<Box<StyleRefinement>>,
-    pub(crate) cursor: Option<CursorStyle>,
     /// What's under it gets nothing of the pointer.
     pub(crate) occlude: bool,
     /// It can have the keyboard.
@@ -217,6 +216,9 @@ pub(crate) struct Interactivity {
     /// leaves, or the keyboard comes or goes.
     pub(crate) paints_by_state: bool,
     pub(crate) disabled: bool,
+    /// Return clicks it from anywhere in its window, when nothing that
+    /// has the keyboard takes Return (a default button).
+    pub(crate) default_key: bool,
     pub(crate) agent: Option<AgentSpec>,
 }
 
@@ -225,14 +227,13 @@ impl Interactivity {
     pub(crate) fn takes_pointer(&self) -> bool {
         self.occlude
             || self.paints_by_state
-            || self.cursor.is_some()
             || self.hover_style.is_some()
             || self.active_style.is_some()
             || !(self.mouse_down.is_empty() && self.mouse_up.is_empty() && self.mouse_move.is_empty() && self.scroll_wheel.is_empty() && self.click.is_empty() && self.hover.is_empty())
     }
 
     pub(crate) fn hears_window(&self) -> bool {
-        !(self.window_mouse_down.is_empty() && self.window_mouse_up.is_empty() && self.window_mouse_move.is_empty() && self.mouse_up_out.is_empty())
+        self.default_key || !(self.window_mouse_down.is_empty() && self.window_mouse_up.is_empty() && self.window_mouse_move.is_empty() && self.mouse_up_out.is_empty())
     }
 }
 
@@ -498,12 +499,6 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// The pointer's shape over it.
-    fn cursor(mut self, cursor: CursorStyle) -> Self {
-        self.interactivity().cursor = Some(cursor);
-        self
-    }
-
     /// What's under it gets nothing of the pointer (a sheet over a
     /// window's content).
     fn occlude(mut self) -> Self {
@@ -522,6 +517,14 @@ pub trait InteractiveElement: Sized {
         let inter = self.interactivity();
         inter.focusable = true;
         inter.tab_stop = true;
+        self
+    }
+
+    /// Return clicks it from anywhere in its window, when what has the
+    /// keyboard doesn't take Return itself (a text field's Return is its
+    /// own): BeOS's default button.
+    fn default_key(mut self) -> Self {
+        self.interactivity().default_key = true;
         self
     }
 

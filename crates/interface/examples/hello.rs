@@ -3,7 +3,7 @@
 //!
 //!     cargo run -p olo-interface --example hello
 
-use olo_interface::{Bounds, ControlState, Cx, Element, InteractiveElement as _, IntoElement as _, ParentElement as _, Pixels, Styled as _, View, WindowOptions, control_canvas, div, fill, px, rgb};
+use olo_interface::{Bounds, ControlState, Cx, Element, InteractiveElement as _, IntoElement as _, ParentElement as _, Pixels, Styled as _, View, WindowSpec, control_canvas, div, fill, px, rgb};
 
 struct Hello {
     count: u32,
@@ -59,6 +59,6 @@ impl View for Hello {
 fn main() {
     let _ = tracing_subscriber::fmt().with_writer(std::io::stderr).try_init();
     olo_interface::run("olo.hello", |app| {
-        app.open_window(WindowOptions::new("Hello", 320., 160.), |_| Hello { count: 0 });
+        app.open_window(WindowSpec::new("Hello", 320., 160.), |_| Hello { count: 0 });
     });
 }

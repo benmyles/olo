@@ -299,11 +299,12 @@ pub fn mono_font(weight: FontWeight) -> Font {
     Font { family: MONO_FONT.into(), weight, ..olo_interface::font(MONO_FONT) }
 }
 
-/// The width of `text` in `font` at `size` points.
-pub fn text_width(g: &mut Painter, text: impl Into<SharedString>, size: f32, font: Font) -> Pixels {
+/// The width of `text` in `font` at `size` points (shaped as it will be
+/// drawn; the looper's text cache keeps it for the drawing).
+pub fn text_width(text: impl Into<SharedString>, size: f32, font: Font) -> Pixels {
     let text = text.into();
     let run = TextRun { len: text.len(), font, color: Hsla::default(), background_color: None, underline: None, strikethrough: None, size: None };
-    g.text_system().shape_line(text, px(size), &[run], None).width
+    olo_interface::thread_text_system().shape_line(text, px(size), &[run], None).width
 }
 
 /// One line of text with its capitals centred on `center_y` and its
@@ -393,10 +394,10 @@ pub fn key_combo(g: &mut Painter, right_center: Point<Pixels>, keys: &str, color
 }
 
 /// The width of keys as [`key_combo`] draws them.
-pub fn key_combo_width(g: &mut Painter, keys: &str) -> f32 {
+pub fn key_combo_width(keys: &str) -> f32 {
     let font = ui_font(FontWeight::NORMAL);
     let parts = combo_parts(keys);
-    parts.iter().map(|t| f32::from(text_width(g, t.clone(), PLAIN_SIZE, font.clone()))).sum::<f32>() - SHORTCUT_KERN * parts.len().saturating_sub(1) as f32
+    parts.iter().map(|t| f32::from(text_width(t.clone(), PLAIN_SIZE, font.clone()))).sum::<f32>() - SHORTCUT_KERN * parts.len().saturating_sub(1) as f32
 }
 
 /// ⌘ and ⇧ sit this much closer to what follows than their advance width.
@@ -605,7 +606,7 @@ pub fn pill_height(font_size: f32) -> f32 {
 /// How wide a [`pill`] saying `text` is.
 pub fn pill_width(g: &mut Painter, text: &str, font_size: f32, font: &Font) -> f32 {
     let h = pill_height(font_size);
-    (f32::from(text_width(g, text.to_owned(), font_size, font.clone())) + h * 0.9).max(h).round()
+    (f32::from(text_width(text.to_owned(), font_size, font.clone())) + h * 0.9).max(h).round()
 }
 
 /// A short tag in a pill (a badge, a count), its left edge at `x` and
@@ -938,5 +939,16 @@ pub(crate) fn note_if_clipped(g: &mut Painter, text: &str, bounds: Bounds<Pixels
     let seen = bounds.top() < clip.bottom() && bounds.bottom() > clip.top();
     if cut && seen {
         g.note_cut(SharedString::from(text.to_owned()), bounds);
+    }
+}
+
+/// BeOS's check mark: a stroke down and up, 1.6 points wide.
+pub fn check_mark(g: &mut Painter, r: Bounds<Pixels>, color: Hsla) {
+    let mut path = PathBuilder::stroke(px(1.6));
+    path.move_to(point(r.left(), r.top() + r.size.height * 0.5));
+    path.line_to(point(r.left() + r.size.width * 0.38, r.bottom()));
+    path.line_to(point(r.right(), r.top()));
+    if let Ok(path) = path.build() {
+        g.paint_path(path, color);
     }
 }

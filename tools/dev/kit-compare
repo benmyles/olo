@@ -1,0 +1,123 @@
+#!/usr/bin/python3
+"""Compares two builds of the same window pixel for pixel: an app on the
+GPUI kit (olo-ui) and the same app on Olo's own (olo-kit), while apps
+move from one to the other.
+
+  kit-compare OLD NEW [ARGS...] [--scales 1,1.5,2] [--themes light,dark]
+              [--size WxH] [--out DIR] [--tolerance N] [--settle SECONDS]
+
+OLD and NEW are programs as `tsession run` takes them (a name in
+target/<profile> or its examples, or a path). Each is started alone in a
+headless session of its own at each scale and theme, its first window's
+content is shot once it has settled, and the two shots are compared:
+how many pixels differ by more than --tolerance (0: any difference) in
+any channel, and where. Differing shots and a picture of where they
+differ are kept in --out (/var/tmp/olo-kit-compare). Exits 1 if any
+differ.
+"""
+import json, os, subprocess, sys, time
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+TSESSION = os.path.join(ROOT, "tools", "dev", "tsession")
+NAME = "kitcmp"
+
+
+def tsession(*args, check=True):
+    r = subprocess.run(["/usr/bin/python3", TSESSION, *args], capture_output=True, text=True)
+    if check and r.returncode != 0:
+        sys.exit(f"tsession {' '.join(args)}: {r.stderr.strip() or r.stdout.strip()}")
+    return r.stdout
+
+
+def windows():
+    try:
+        return json.loads(tsession("ipc", NAME, '{"type":"list_windows"}', check=False)).get("windows", [])
+    except Exception:
+        return []
+
+
+def shot(program, args, scale, theme, size, settle, path):
+    tsession("stop", NAME, check=False)
+    tsession("start", NAME, size, f"--{theme}", "--scale", str(scale))
+    try:
+        tsession("run", NAME, program, *args)
+        deadline = time.time() + 20
+        win = None
+        while time.time() < deadline:
+            ws = windows()
+            if ws:
+                win = ws[0]
+                break
+            time.sleep(0.1)
+        if not win:
+            sys.exit(f"{program}: no window after 20 s (see /var/tmp/olo-dev/{NAME}/)")
+        time.sleep(settle)
+        win = (windows() or [win])[0]
+        c = win["content"]
+        # (The pointer out of the way: nothing lit under it.)
+        tsession("move", NAME, "2", "2")
+        time.sleep(0.2)
+        tsession("shot", NAME, path, str(c["x"]), str(c["y"]), str(c["width"]), str(c["height"]))
+        return c
+    finally:
+        tsession("stop", NAME, check=False)
+
+
+def main():
+    a = sys.argv[1:]
+
+    def opt(name, default):
+        if name in a:
+            i = a.index(name)
+            v = a[i + 1]
+            del a[i : i + 2]
+            return v
+        return default
+
+    scales = opt("--scales", "1,1.5,2").split(",")
+    themes = opt("--themes", "light,dark").split(",")
+    size = opt("--size", "1000x800")
+    out = opt("--out", "/var/tmp/olo-kit-compare")
+    tolerance = int(opt("--tolerance", "0"))
+    settle = float(opt("--settle", "1.0"))
+    if len(a) < 2:
+        sys.exit(__doc__)
+    old, new, args = a[0], a[1], a[2:]
+    from PIL import Image, ImageChops
+
+    os.makedirs(out, exist_ok=True)
+    bad = 0
+    for scale in scales:
+        for theme in themes:
+            tag = f"{scale}x-{theme}"
+            po, pn = os.path.join(out, f"old-{tag}.png"), os.path.join(out, f"new-{tag}.png")
+            co = shot(old, args, scale, theme, size, settle, po)
+            cn = shot(new, args, scale, theme, size, settle, pn)
+            io, inew = Image.open(po).convert("RGB"), Image.open(pn).convert("RGB")
+            if io.size != inew.size:
+                print(f"DIFF {tag}: sizes differ, {io.size} and {inew.size} (content {co['width']}x{co['height']} and {cn['width']}x{cn['height']})")
+                bad += 1
+                continue
+            diff = ImageChops.difference(io, inew)
+            mask = diff.convert("L").point(lambda v: 255 if v > tolerance else 0)
+            # (Any channel: the greyscale of a difference in one channel
+            # alone can round to nothing.)
+            r, g, b = diff.split()
+            mask = ImageChops.lighter(ImageChops.lighter(r, g), b).point(lambda v: 255 if v > tolerance else 0)
+            box = mask.getbbox()
+            if box is None:
+                print(f"same {tag}: {io.size[0]}x{io.size[1]} pixels")
+                os.remove(po)
+                os.remove(pn)
+                continue
+            count = sum(1 for v in mask.getdata() if v)
+            worst = max(max(px) for px in diff.getdata())
+            where = os.path.join(out, f"diff-{tag}.png")
+            mask.save(where)
+            print(f"DIFF {tag}: {count} pixels differ (most by {worst}) within {box}; see {po}, {pn}, {where}")
+            bad += 1
+    sys.exit(1 if bad else 0)
+
+
+if __name__ == "__main__":
+    main()
