@@ -252,3 +252,39 @@ The final focused suite passed 58 tests and the workspace release build passed.
 [Detailed audit evidence](coder-reliability-qa.json) includes the failing baseline
 regressions, live Stop measurements, CLI recovery, visual cases and every
 benchmark run.
+
+## Durable delivery and provider audit — 2026-11-10
+
+Two new regression tests failed against `6456d547`: a late failed peer attempt
+could overwrite confirmed acceptance, and an incomplete Codex compaction reply
+could replace the saved opaque context. Confirmed `sent` state now survives later
+failed attempts and database reopen. The sender validates receipt identity,
+destination, provenance and admission state while accepting pending text edited
+at the recipient. Failed attempts remain in the audit history.
+
+Explicit compaction now uses completion validation and rejects empty encrypted
+payloads or unexecuted tool calls before replacing context. The regression checks
+all three failures and verifies the original opaque fields after database reopen.
+Claude streaming requires matching block starts/stops and a final stop reason;
+duplicate indices, deltas after a block closes and unfinished argument streams
+fail before tool admission. Unknown event types remain tolerated. Both providers
+reject duplicate/empty tool IDs and non-object arguments.
+
+The shared provider/MCP SSE decoder no longer rescans partial lines or shifts its
+buffer for every line. A release benchmark decodes **851,968 bytes / 4,096 events**
+nine times: median **42.878 ms before, 0.494 ms after** (ranges 42.159–53.298 ms
+and 0.474–1.223 ms). This measures framing only, not inference, networking or
+rendering, and is not a worst-case bound. Regression tests also cover Unicode,
+CRLF and long lines split into chunks from one byte to a complete batch.
+
+The final focused release run passed **56 tests**, with five explicitly ignored
+cases (four live-provider cases and the separately run benchmark). The release
+workspace build passed. Drawing/layout did not change in this audit; the preceding
+90-case visual sweep remains the relevant visual evidence. The previous live
+Claude reasoning/compaction attempt returned HTTP 429; this audit did not consume
+more pool quota. Live Claude validation and a weeks-long live soak remain open.
+See [coder-durability-qa.json](coder-durability-qa.json) for the measured evidence.
+
+The full release workspace suite passed **1,670 tests across 204 suites, zero
+failures**, with 139 explicitly ignored cases. The final core rerun includes the
+empty-payload and unexecuted-tool compaction cases added during final review.

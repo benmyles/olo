@@ -1396,3 +1396,196 @@ async fn audit_stop_still_cancels_active_process_when_checkpoint_writes_fail() {
     tokio::time::timeout(std::time::Duration::from_secs(1), e.quiesce()).await.expect("cancellation must not depend on journal writes succeeding");
     assert!(e.get(&sid).unwrap().in_flight.is_some(), "a failed result checkpoint must remain an explicitly unknown outcome");
 }
+
+#[test]
+fn durable_receipt_confirmation_survives_a_late_failed_attempt() {
+    let dir = Scratch::new();
+    let mut db = Store::open(&dir.0).unwrap();
+    let mut session = Session::new(dir.0.clone(), Config::default());
+    let message = Message {
+        id: id(),
+        from: Some(Sender { instance: id(), session: session.id.clone(), title: "sender".into() }),
+        to_instance: id(),
+        to: id(),
+        text: "Review".into(),
+        delivery: Delivery::Queue,
+        created: now(),
+        wake: false,
+    };
+    db.save(&mut session, "message_outgoing", json!({"message":message})).unwrap();
+    db.save(&mut session, "message_sent", json!({"id":message.id})).unwrap();
+    db.save(&mut session, "message_uncertain", json!({"id":message.id,"error":"older request lost its connection"})).unwrap();
+    assert_eq!(db.receipt(&message.id).unwrap().unwrap()["state"], "sent", "a late failed attempt cannot erase confirmed acceptance");
+    drop(db);
+    assert_eq!(Store::open(&dir.0).unwrap().receipt(&message.id).unwrap().unwrap()["state"], "sent");
+}
+
+#[tokio::test]
+async fn durable_context_survives_incomplete_compaction() {
+    let dir = Scratch::new();
+    let (fake, base, server) = server().await;
+    let e = Engine::open_at(dir.0.join("state"), Some(base)).unwrap();
+    let sid = e.command(Command::Create { workspace: dir.0.clone(), config: None }).await.unwrap()["id"].as_str().unwrap().to_owned();
+    let mut session = e.get(&sid).unwrap();
+    session.context = vec![json!({"type":"reasoning","encrypted_content":"must-survive","future_field":17}), json!({"role":"user","content":"Keep the decision."})];
+    e.store.lock().unwrap().save(&mut session, "fixture", json!({})).unwrap();
+    for response in [
+        json!({"status":"incomplete","output":[{"type":"compaction","encrypted_content":"unfinished-window"}]}),
+        json!({"status":"completed","output":[{"type":"compaction","encrypted_content":""}]}),
+        json!({"status":"completed","output":[{"type":"compaction","encrypted_content":"window"},{"type":"function_call","call_id":"unexecuted","name":"write_file","arguments":"{}"}]}),
+    ] {
+        fake.replies.lock().unwrap().push_back(response);
+        e.command(Command::Compact { session: sid.clone() }).await.unwrap();
+        finish(&e).await;
+        let after = e.get(&sid).unwrap();
+        assert_eq!(after.context, session.context, "failed compaction must never replace the saved provider context");
+        assert_eq!(after.compactions, 0);
+        assert_eq!(after.status, Status::Failed);
+    }
+    drop(e);
+    assert_eq!(Engine::open(dir.0.join("state")).unwrap().get(&sid).unwrap().context, session.context);
+    server.abort();
+}
+
+#[test]
+#[ignore = "release performance measurement; fixed 4096-event provider batch"]
+fn provider_stream_batch_benchmark() {
+    let payload = format!("héllo {}", "x".repeat(180));
+    let wire = format!("data: {}\r\n\r\n", json!({"text":payload})).repeat(4096);
+    let mut samples = vec![];
+    for _ in 0..9 {
+        let began = std::time::Instant::now();
+        let events = Sse::default().push(wire.as_bytes()).unwrap();
+        samples.push(began.elapsed().as_secs_f64() * 1000.0);
+        assert_eq!(events.len(), 4096);
+        assert_eq!(serde_json::from_str::<Value>(&events[4095]).unwrap()["text"], payload);
+    }
+    samples.sort_by(f64::total_cmp);
+    println!("SSE batch: {} bytes, 4096 events; median {:.3} ms; min {:.3} ms; max {:.3} ms", wire.len(), samples[4], samples[0], samples[8]);
+}
+
+#[test]
+fn fragmented_long_sse_lines_preserve_every_event() {
+    let payload = "héllo 🌿".repeat(1024);
+    let expected = json!({"text":payload}).to_string();
+    let wire = format!(": heartbeat\r\nevent: delta\r\ndata: {expected}\r\n\r\n").repeat(3);
+    for size in [1, 2, 3, 7, 31, 4096, wire.len()] {
+        let mut sse = Sse::default();
+        let mut events = vec![];
+        for chunk in wire.as_bytes().chunks(size) {
+            events.extend(sse.push(chunk).unwrap());
+        }
+        assert_eq!(events, vec![expected.clone(); 3], "chunk size {size}");
+        assert_eq!(sse.push(b"data: next\n\n").unwrap(), vec!["next"]);
+    }
+}
+
+#[test]
+fn malformed_provider_calls_cannot_enter_the_tool_loop() {
+    for p in [Provider::Codex, Provider::Claude] {
+        for (ids, args) in [(vec!["duplicate", "duplicate"], json!({})), (vec![""], json!({})), (vec!["one"], json!([1, 2])), (vec!["one"], Value::Null)] {
+            let v = match p {
+                Provider::Codex => {
+                    json!({"status":"completed","output":ids.iter().map(|id|json!({"type":"function_call","call_id":id,"name":"execute","arguments":args.to_string()})).collect::<Vec<_>>()})
+                }
+                Provider::Claude => json!({"stop_reason":"tool_use","content":ids.iter().map(|id|json!({"type":"tool_use","id":id,"name":"execute","input":args})).collect::<Vec<_>>()}),
+            };
+            assert!(provider::parse(p, v).is_err());
+        }
+    }
+    assert!(provider::parse(Provider::Claude, json!({"content":[]})).is_err());
+}
+
+#[tokio::test]
+async fn claude_stream_requires_closed_blocks_before_admitting_tools() {
+    let start = json!({"type":"message_start","message":{"content":[],"usage":{}}});
+    let block = json!({"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"call","name":"write_file","input":{}}});
+    let delta = json!({"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"path\":\"file\",\"content\":\"ok\"}"}});
+    let close = json!({"type":"content_block_stop","index":0});
+    let reason = json!({"type":"message_delta","delta":{"stop_reason":"tool_use"}});
+    let stop = json!({"type":"message_stop"});
+    let cases = vec![
+        (false, vec![start.clone(), block.clone(), delta.clone(), reason.clone(), stop.clone()]),
+        (false, vec![start.clone(), block.clone(), delta.clone(), close.clone(), stop.clone()]),
+        (false, vec![start.clone(), block.clone(), close.clone(), delta.clone(), reason.clone(), stop.clone()]),
+        (false, vec![start.clone(), block.clone(), close.clone(), block.clone(), reason.clone(), stop.clone()]),
+        (true, vec![start, block, delta, close, json!({"type":"future_event","opaque":"retained elsewhere"}), reason, stop]),
+    ];
+    for (valid, events) in cases {
+        let wire = events.iter().map(|v| format!("data: {v}\n\n")).collect::<String>();
+        let app = axum::Router::new().fallback(axum::routing::post(move || {
+            let wire = wire.clone();
+            async move { ([("content-type", "text/event-stream")], wire) }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut s = Session::new("/var/tmp".into(), Config::default());
+        s.config.model.provider = Provider::Claude;
+        let result = provider::Client::at(&base).unwrap().turn(&s, "test", &[], &CancellationToken::new(), |_, _| {}).await;
+        assert_eq!(result.is_ok(), valid, "{result:?}");
+        if let Ok(reply) = result {
+            assert_eq!(reply.calls[0].arguments, json!({"path":"file","content":"ok"}));
+        }
+        server.abort();
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn peer_receipts_are_validated_before_delivery_is_confirmed() {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    let dir = Scratch::new();
+    let peer = dir.0.join("peer");
+    std::fs::create_dir(&peer).unwrap();
+    let listener = tokio::net::UnixListener::bind(peer.join("service.sock")).unwrap();
+    let remote = id();
+    let mode = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let behavior = mode.clone();
+    let server = tokio::spawn(async move {
+        loop {
+            let (stream, _) = listener.accept().await.unwrap();
+            let remote = remote.clone();
+            let mode = behavior.load(std::sync::atomic::Ordering::SeqCst);
+            tokio::spawn(async move {
+                let mut stream = BufReader::new(stream);
+                let mut line = String::new();
+                stream.read_line(&mut line).await.unwrap();
+                let req: Value = serde_json::from_str(&line).unwrap();
+                let result = if req["command"]["op"] == "info" {
+                    json!({"instance":remote})
+                } else {
+                    let mut message = req["command"]["message"].clone();
+                    match mode {
+                        0 => message["id"] = json!(id()),
+                        1 => message["to"] = json!(id()),
+                        2 => message["from"]["session"] = json!(id()),
+                        _ => message["text"] = json!("Edited at recipient"),
+                    };
+                    json!({"sequence":1,"message":message,"state":if mode==3{"sent"}else{"queued"}})
+                };
+                stream.get_mut().write_all(format!("{}\n", json!({"result":result})).as_bytes()).await.unwrap();
+            });
+        }
+    });
+    let e = Engine::open(dir.0.join("state")).unwrap();
+    let sid = e.command(Command::Create { workspace: dir.0.clone(), config: None }).await.unwrap()["id"].as_str().unwrap().to_owned();
+    e.command(Command::LinkPeer { name: "test".into(), directory: peer, reciprocal: false }).await.unwrap();
+    for i in 0..5 {
+        mode.store(i, std::sync::atomic::Ordering::SeqCst);
+        let mid = id();
+        let result = e
+            .command(Command::SendMessage {
+                session: sid.clone(),
+                target: id(),
+                peer: Some("test".into()),
+                text: "Original message".into(),
+                delivery: Delivery::Queue,
+                wake: false,
+                message_id: Some(mid.clone()),
+            })
+            .await;
+        assert_eq!(result.is_ok(), i == 4, "{result:?}");
+        assert_eq!(e.command(Command::Receipt { message: mid }).await.unwrap()["state"], if i == 4 { "sent" } else { "uncertain" });
+    }
+    server.abort();
+}

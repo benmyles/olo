@@ -1,0 +1,82 @@
+{
+  "date": "2026-11-10",
+  "baseline_commit": "6456d547",
+  "scope": "Durable peer receipts, provider completion/compaction validation, incremental SSE framing. No layout changes.",
+  "baseline_regressions": {
+    "passed": 2,
+    "failed": 2,
+    "failures": [
+      "durable_receipt_confirmation_survives_a_late_failed_attempt",
+      "durable_context_survives_incomplete_compaction"
+    ]
+  },
+  "focused_release_suites": [
+    {
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "passed": 55,
+      "failed": 0,
+      "ignored": 1
+    },
+    {
+      "passed": 0,
+      "failed": 0,
+      "ignored": 4
+    },
+    {
+      "passed": 0,
+      "failed": 0,
+      "ignored": 0
+    }
+  ],
+  "release_workspace_build": {
+    "command": "cargo build --release --workspace",
+    "exit_code": 0
+  },
+  "sse_batch_benchmark": {
+    "command": "cargo test --release -p olo-coder-core provider_stream_batch_benchmark -- --ignored --nocapture",
+    "samples_per_run": 9,
+    "before": {
+      "bytes": 851968,
+      "events": 4096,
+      "median_ms": 42.878,
+      "min_ms": 42.159,
+      "max_ms": 53.298
+    },
+    "after": {
+      "bytes": 851968,
+      "events": 4096,
+      "median_ms": 0.494,
+      "min_ms": 0.474,
+      "max_ms": 1.223
+    },
+    "scope": "Decoder only; assertions check event count and Unicode payload. Shared host; not network/model/rendering latency or a hard upper bound."
+  },
+  "checks": [
+    "Confirmed outgoing acceptance survives a late failed attempt and database reopen.",
+    "Incomplete, empty and tool-bearing compaction replies preserve opaque context and unknown fields across reopen.",
+    "Claude rejects unfinished/repeated blocks, deltas after block stop and missing stop reason; valid tools and unknown future events succeed.",
+    "Both providers reject duplicate/empty tool IDs and non-object arguments.",
+    "Peer receipts require matching immutable identity and admission state; recipient-edited text remains valid.",
+    "SSE framing preserves Unicode and CRLF across chunks of 1, 2, 3, 7, 31, 4096 bytes and a complete batch; reuse succeeds."
+  ],
+  "protocol_references": [
+    "https://platform.claude.com/docs/en/build-with-claude/streaming",
+    "https://platform.claude.com/docs/en/build-with-claude/handling-stop-reasons"
+  ],
+  "limits": [
+    "The prior live Claude reasoning/compaction attempt returned HTTP 429; no further quota-consuming attempt made in this audit.",
+    "No new visual sweep: GUI and TUI drawing/layout are unchanged; preceding 90-case sweep is recorded in coder-reliability-qa.json.",
+    "Finite automated tests do not establish zero defects or a weeks-long live soak."
+  ],
+  "release_workspace_tests": {
+    "command": "cargo test --release --workspace",
+    "passed": 1670,
+    "failed": 0,
+    "ignored": 139,
+    "suites": 204
+  }
+}

@@ -98,9 +98,11 @@ impl Client {
         };
         let v = self.request(s, &body, path, cancel, &mut |_, _| {}).await?;
         if s.config.model.provider == Provider::Codex {
-            let items = v["output"].as_array().context("compact response has no output")?.clone();
-            ensure!(items.iter().any(|v| v["type"] == "compaction" && v["encrypted_content"].is_string()), "compact response has no encrypted compaction item");
-            Ok(Reply { items, calls: vec![], text: String::new(), usage: usage(Provider::Codex, &v["usage"]), stop: "compaction".into() })
+            let mut reply = parse(Provider::Codex, v)?;
+            ensure!(reply.calls.is_empty(), "compaction response contains unexecuted tool calls");
+            ensure!(reply.items.iter().any(|v| v["type"] == "compaction" && v["encrypted_content"].as_str().is_some_and(|s| !s.is_empty())), "compact response has no encrypted compaction item");
+            reply.stop = "compaction".into();
+            Ok(reply)
         } else {
             ensure!(v["stop_reason"] == "compaction", "provider did not compact: {}", v["stop_reason"]);
             let r = parse(Provider::Claude, v)?;
@@ -145,6 +147,8 @@ impl Client {
                 let mut stream = response.bytes_stream();
                 let mut decoder = Sse::default();
                 let mut claude = json!({"content":[],"usage":{}});
+                let mut claude_started = false;
+                let mut open_blocks = std::collections::HashSet::new();
                 let mut inputs = std::collections::HashMap::<usize, String>::new();
                 let mut complete = None;
                 let mut received = 0usize;
@@ -165,18 +169,23 @@ impl Client {
                             }
                             "response.failed" | "response.incomplete" => bail!("provider did not finish: {}", v["response"]),
                             "error" => bail!("provider error: {v}"),
-                            "message_start" => claude = v["message"].clone(),
+                            "message_start" => {
+                                ensure!(!claude_started, "duplicate message start");
+                                claude = v["message"].clone();
+                                ensure!(claude["content"].as_array().is_some_and(Vec::is_empty), "message start must have empty content");
+                                claude_started = true;
+                            }
                             "content_block_start" => {
                                 let i = v["index"].as_u64().context("missing block index")? as usize;
                                 ensure!(i < 4096, "too many content blocks");
+                                ensure!(claude_started && open_blocks.insert(i), "content block started out of order");
                                 let blocks = claude["content"].as_array_mut().context("missing content")?;
-                                while blocks.len() <= i {
-                                    blocks.push(Value::Null);
-                                }
-                                blocks[i] = v["content_block"].clone();
+                                ensure!(i == blocks.len(), "content block index is duplicated or missing");
+                                blocks.push(v["content_block"].clone());
                             }
                             "content_block_delta" => {
                                 let i = v["index"].as_u64().context("missing block index")? as usize;
+                                ensure!(open_blocks.contains(&i), "delta outside an open content block");
                                 let block = claude["content"].get_mut(i).context("delta before block")?;
                                 let d = &v["delta"];
                                 match d["type"].as_str().unwrap_or("") {
@@ -195,11 +204,13 @@ impl Client {
                             }
                             "content_block_stop" => {
                                 let i = v["index"].as_u64().context("missing block index")? as usize;
+                                ensure!(open_blocks.remove(&i), "content block stopped without a matching start");
                                 if let Some(input) = inputs.remove(&i) {
                                     claude["content"][i]["input"] = serde_json::from_str(&input)?;
                                 }
                             }
                             "message_delta" => {
+                                ensure!(claude_started, "message delta before message start");
                                 claude["stop_reason"] = v["delta"]["stop_reason"].clone();
                                 if let Some(u) = v["usage"].as_object() {
                                     for (k, v) in u {
@@ -208,6 +219,7 @@ impl Client {
                                 }
                             }
                             "message_stop" => {
+                                ensure!(claude_started && open_blocks.is_empty() && inputs.is_empty(), "provider stopped before content blocks were complete; no tools executed");
                                 complete = Some(claude.clone());
                             }
                             _ => {}
@@ -327,16 +339,22 @@ pub fn parse(p: Provider, v: Value) -> Result<Reply> {
                     _ => {}
                 }
             }
-            (vec![json!({"role":"assistant","content":blocks})], v["stop_reason"].as_str().unwrap_or("end_turn").into())
+            (vec![json!({"role":"assistant","content":blocks})], v["stop_reason"].as_str().context("message has no stop reason")?.into())
         }
     };
     ensure!(!matches!(stop.as_str(), "max_tokens" | "refusal"), "provider stopped: {stop}");
+    let mut ids = std::collections::HashSet::new();
+    ensure!(
+        calls.iter().all(|call| !call.id.is_empty() && ids.insert(&call.id) && !call.name.is_empty() && call.arguments.is_object()),
+        "tool calls require unique nonempty IDs, names and object arguments"
+    );
     Ok(Reply { items, calls, text, usage: usage(p, &v["usage"]), stop })
 }
 /// Incremental UTF-8 SSE framing, including CRLF and multiline data fields.
 #[derive(Default)]
 pub struct Sse {
     pending: Vec<u8>,
+    scanned: usize,
     data: Vec<String>,
     data_bytes: usize,
 }
@@ -345,9 +363,10 @@ impl Sse {
         ensure!(self.pending.len() + bytes.len() + self.data_bytes < 32 * 1024 * 1024, "provider event too large");
         self.pending.extend_from_slice(bytes);
         let mut out = vec![];
-        while let Some(n) = self.pending.iter().position(|b| *b == b'\n') {
-            let line = self.pending.drain(..=n).collect::<Vec<_>>();
-            let line = std::str::from_utf8(&line)?.trim_end_matches(['\n', '\r']);
+        let mut consumed = 0;
+        while let Some(n) = self.pending[self.scanned..].iter().position(|b| *b == b'\n') {
+            let end = self.scanned + n + 1;
+            let line = std::str::from_utf8(&self.pending[consumed..end])?.trim_end_matches(['\n', '\r']);
             if line.is_empty() {
                 if !self.data.is_empty() {
                     out.push(self.data.join("\n"));
@@ -358,7 +377,11 @@ impl Sse {
                 self.data_bytes += d.len() + 1;
                 self.data.push(d.strip_prefix(' ').unwrap_or(d).into());
             }
+            consumed = end;
+            self.scanned = end;
         }
+        self.pending.drain(..consumed);
+        self.scanned = self.pending.len();
         Ok(out)
     }
 }

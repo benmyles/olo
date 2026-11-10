@@ -145,6 +145,10 @@ can leave delivery uncertain. `/retry-message ID` resends the original message
 with its original UUID; the recipient deduplicates it even if its pending copy
 was edited or has already been consumed. Retry never wakes a recipient that
 has not opted in. A rejected request is not silently retried with a new ID.
+The sender validates the receipt's message identity, destination, sender and
+admission state before recording `sent`. Once acceptance is confirmed, a later
+failed attempt cannot downgrade that fact to `uncertain`; its failure remains
+in the audit history. A receipt may contain text edited at the recipient.
 
 The API exposes `browse`, `organize`, `steer`, `edit_message`, `move_message`,
 `cancel_message`, `messages`, `receipt`, `send_message`, `retry_message`, `peers`,
@@ -284,6 +288,9 @@ has an unknown outcome and is never automatically replayed. Inspect the workspac
 then Resume supplies an explicit unknown-outcome tool result so the model can
 reconcile what happened. Partially received provider replies never execute tools.
 A dropped provider stream fails the turn without appending partial native output.
+Claude streams must close every content block and supply a stop reason before
+admission. Tool calls require unique, nonempty IDs and object arguments, so an
+unfinished argument stream cannot become a call with placeholder arguments.
 
 The full audit history is paged and searchable through a persistent SQLite FTS5
 trigram index, independently of the active context. Views retain at most 256 KB / 2,000 recent lines; reconnect initially
@@ -309,6 +316,8 @@ items, including unknown fields. Explicit and automatic compaction use a final
 `compaction_trigger` input item on the subscription Responses endpoint. The
 returned encrypted window replaces the old active window; no client summary is
 substituted. Inline compaction items in normal responses are also preserved.
+An incomplete response, empty compaction payload or unexecuted tool call rejects
+explicit compaction and leaves the previous durable context intact.
 Claude retains thinking signatures, redacted thinking and complete content blocks.
 On-demand compaction sends `compaction: {type: "summarize"}` with
 `compact-2026-09-04`, and preserves the returned signed block as the first message.
@@ -330,6 +339,7 @@ Protocol references: [Responses streaming and compaction triggers](https://devel
 [OpenAI compaction](https://developers.openai.com/api/docs/guides/compaction),
 [Claude on-demand compaction](https://platform.claude.com/docs/en/build-with-claude/compaction-on-demand),
 [Claude thinking validity](https://platform.claude.com/docs/en/build-with-claude/compaction-thinking-blocks),
+[Claude stream lifecycle](https://platform.claude.com/docs/en/build-with-claude/streaming),
 [Claude prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching).
 
 ## Rich output, Git and GitHub

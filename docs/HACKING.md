@@ -14587,6 +14587,11 @@ wrapped. Both providers go through the Token Pool's loopback gateway.
   thinking/redacted content byte-for-byte as JSON values. Codex compaction uses
   a final `compaction_trigger` on Responses; Claude uses signed on-demand
   compaction. Context replacement is transactional and history remains searchable.
+  Completion validation also applies to explicit compaction. Claude streaming
+  tracks open content blocks before admitting tools; unknown event types remain
+  forward-compatible. The shared provider/MCP SSE decoder scans only newly
+  appended bytes and removes consumed lines once per chunk. Its ignored release
+  `provider_stream_batch_benchmark` measures a fixed 4,096-event batch.
 * `tools` implements files, search, checked edits, undo artifacts and cancellable
   argv processes. `sandbox` prepares Landlock write confinement before fork and
   applies it using syscalls only in `pre_exec`. `mcp` speaks stdio and Streamable HTTP JSON-RPC; its

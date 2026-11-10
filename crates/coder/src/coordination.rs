@@ -273,7 +273,21 @@ impl Engine {
     }
     async fn transmit(&self, session: &str, peer: &str, message: Message) -> Result<Value> {
         let id = message.id.clone();
-        let result = self.peer_call(peer, Command::ReceiveMessage { message }).await;
+        let result = self.peer_call(peer, Command::ReceiveMessage { message: message.clone() }).await.and_then(|receipt| {
+            let received: Message = serde_json::from_value(receipt["message"].clone()).context("peer returned no valid message receipt")?;
+            ensure!(
+                received.id == message.id
+                    && received.to == message.to
+                    && received.to_instance == message.to_instance
+                    && received.from.as_ref().map(|s| (&s.instance, &s.session)) == message.from.as_ref().map(|s| (&s.instance, &s.session))
+                    && receipt["sequence"].as_i64().is_some_and(|seq| seq > 0)
+                    && matches!(receipt["state"].as_str(), Some("queued" | "delivered" | "cancelled")),
+                "peer receipt does not confirm acceptance of the addressed message"
+            );
+            // A recipient may already have edited or consumed the message.
+            // Identity and destination are immutable; its pending text is not.
+            Ok(receipt)
+        });
         self.change(session, if result.is_ok() { "message_sent" } else { "message_uncertain" }, |_| Ok(json!({"id":id,"peer":peer,"error":result.as_ref().err().map(ToString::to_string)})))?;
         result.context("delivery was not confirmed; Retry Message uses the same ID and cannot duplicate an accepted message")
     }

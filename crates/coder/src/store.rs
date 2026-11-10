@@ -127,7 +127,7 @@ impl Store {
                     "message_sent" => "sent",
                     _ => "uncertain",
                 };
-                tx.execute("UPDATE messages SET state=?,updated=? WHERE id=?", params![state, now() as i64, data["id"].as_str()])?;
+                tx.execute("UPDATE messages SET state=?,updated=? WHERE id=? AND NOT(state='sent' AND ?='uncertain')", params![state, now() as i64, data["id"].as_str(), state])?;
             }
             _ => {}
         }
