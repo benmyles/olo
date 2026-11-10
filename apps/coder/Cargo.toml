@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 olo-coder-core = { path = "../../crates/coder" }
 olo-ui.workspace = true
+olo-protocol.workspace = true
 olo-kit-base.workspace = true
 olo-crash.workspace = true
 olo-sync.workspace = true

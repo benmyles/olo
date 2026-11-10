@@ -15,15 +15,20 @@ use std::{
 #[derive(Clone, Debug)]
 pub enum Update {
     Session(Box<Session>),
+    Catalog { rows: Vec<Value>, next_offset: Option<usize> },
+    InputResult { session: String, text: String, error: Option<String> },
     Repository { session: String, result: Value },
     Models { provider: Provider, ids: Vec<String> },
     Event(Event),
     Notice(String),
+    Connection(Option<String>),
     Opened(String),
     Rendered(Arc<olo_ui::rich_text::Text>),
 }
 pub enum Action {
     Submit(String),
+    Steer(String, Delivery),
+    Browse(SessionFilter),
     Refresh,
     Repository,
     Models,
@@ -54,26 +59,34 @@ impl Drop for Following {
         }
     }
 }
-fn follow(dir: &std::path::Path, session: &str, callback: Arc<dyn Fn(Update) + Send + Sync>, actions: mpsc::Sender<Action>) -> Result<Following> {
-    let first = std::os::unix::net::UnixStream::connect(rpc::socket(dir))?;
-    let stream = Arc::new(olo_sync::Mutex::new(Some(first.try_clone()?)));
+fn follow(dir: &std::path::Path, session: &str, filter: SessionFilter, callback: Arc<dyn Fn(Update) + Send + Sync>, actions: mpsc::Sender<Action>) -> Result<Following> {
+    let first = std::os::unix::net::UnixStream::connect(rpc::socket(dir)).ok();
+    let stream = Arc::new(olo_sync::Mutex::new(first.as_ref().map(|s| s.try_clone()).transpose()?));
     let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let (wake, wait) = mpsc::channel();
     let held = Following { stream: stream.clone(), stop: stop.clone(), wake };
     let dir = dir.to_owned();
     let session = session.to_string();
     std::thread::Builder::new().name("coder-events".into()).spawn(move || {
-        let mut next = Some(first);
+        let mut next = first;
         let mut cursor = -1;
         while !stop.load(std::sync::atomic::Ordering::Relaxed) {
             if let Some(mut connected) = next.take() {
                 let mut replaying = true;
-                let _ = writeln!(connected, "{}", json!({"subscribe":true,"session":session,"after":cursor}));
+                let request = if session.is_empty() { json!({"subscribe_sessions":true,"filter":filter}) } else { json!({"subscribe":true,"session":session,"after":cursor}) };
+                let _ = writeln!(connected, "{request}");
                 for line in std::io::BufReader::new(connected).lines() {
                     let Ok(line) = line else { break };
                     let Ok(v) = serde_json::from_str::<Value>(&line) else { continue };
+                    if let Some(catalog) = v.get("catalog") {
+                        if let Some(rows) = catalog["sessions"].as_array() {
+                            callback(Update::Catalog { rows: rows.clone(), next_offset: catalog["next_offset"].as_u64().map(|v| v as usize) });
+                        }
+                        continue;
+                    }
                     if v["ready"] == true {
                         replaying = false;
+                        callback(Update::Connection(None));
                         cursor = cursor.max(v["after"].as_i64().unwrap_or(0));
                         let _ = actions.send(Action::Refresh);
                         continue;
@@ -109,6 +122,12 @@ fn follow(dir: &std::path::Path, session: &str, callback: Arc<dyn Fn(Update) + S
                                     | "attachment"
                                     | "undo"
                                     | "child_finished"
+                                    | "organized"
+                                    | "message_queued"
+                                    | "messages_delivered"
+                                    | "message_cancelled"
+                                    | "message_edited"
+                                    | "message_moved"
                             );
                         let repository_changed = !replaying
                             && (event.kind == "undo"
@@ -127,7 +146,9 @@ fn follow(dir: &std::path::Path, session: &str, callback: Arc<dyn Fn(Update) + S
             if stop.load(std::sync::atomic::Ordering::Relaxed) {
                 break;
             }
-            callback(Update::Notice("Reconnecting to the session service…".into()));
+            if !session.is_empty() {
+                callback(Update::Connection(Some("Reconnecting to the session service…".into())));
+            }
             // Offline backoff only; connected clients sleep on their socket forever.
             for attempt in 0.. {
                 if stop.load(std::sync::atomic::Ordering::Relaxed) {
@@ -180,21 +201,68 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
         .name("coder-client".into())
         .spawn(move || {
             let result = (|| -> Result<()> {
-                callback(Update::Notice("Opening your workspace…".into()));
-                super::ensure_service(&dir)?;
-                let mut s: Session = serde_json::from_value(rpc::call(
-                    &dir,
-                    &match session {
-                        Some(session) => Command::Get { session },
-                        None => Command::Create { workspace, config: None },
-                    },
-                )?)?;
+                callback(Update::Connection(Some("Opening your workspace…".into())));
+                let mut wanted = session;
+                let mut workspace = workspace;
+                let mut last_error = String::new();
+                let mut attempt = 0u32;
+                let mut s: Session = loop {
+                    let opened = (|| -> Result<Session> {
+                        super::ensure_service(&dir)?;
+                        Ok(serde_json::from_value(rpc::call(
+                            &dir,
+                            &match &wanted {
+                                Some(session) => Command::Get { session: session.clone() },
+                                None => Command::Create { workspace: workspace.clone(), config: None },
+                            },
+                        )?)?)
+                    })();
+                    match opened {
+                        Ok(s) => break s,
+                        Err(error) => {
+                            let error = format!("{error:#}");
+                            if error != last_error {
+                                callback(Update::Connection(Some(format!("Waiting for the session: {error}. Retrying automatically; /open ID or /new can choose another session."))));
+                                last_error = error.clone();
+                            }
+                            attempt = attempt.saturating_add(1);
+                            match rx.recv_timeout(std::time::Duration::from_secs(1u64 << attempt.min(3))) {
+                                Ok(Action::Quit) | Err(mpsc::RecvTimeoutError::Disconnected) => return Ok(()),
+                                Ok(Action::Submit(text) | Action::Steer(text, _)) => {
+                                    if let Some(id) = text.trim().strip_prefix("/open ") {
+                                        wanted = Some(id.trim().into());
+                                    } else if text.trim() == "/new" {
+                                        wanted = None;
+                                    } else if let Some(path) = text.trim().strip_prefix("/new ") {
+                                        workspace = PathBuf::from(path.trim());
+                                        wanted = None;
+                                    } else {
+                                        callback(Update::InputResult { session: wanted.clone().unwrap_or_default(), text, error: Some(error) });
+                                    }
+                                }
+                                Ok(Action::Browse(filter)) => {
+                                    if let Ok(catalog) = rpc::call(&dir, &Command::Browse { filter }) {
+                                        if let Some(rows) = catalog["sessions"].as_array() {
+                                            callback(Update::Catalog { rows: rows.clone(), next_offset: catalog["next_offset"].as_u64().map(|n| n as usize) });
+                                        }
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                };
                 callback(Update::Opened(s.id.clone()));
                 let _ = tx.send(Action::Repository);
                 let _ = tx.send(Action::Models);
                 callback(Update::Session(Box::new(s.clone())));
-                let mut following = follow(&dir, &s.id, callback.clone(), tx.clone())?;
+                let mut following = follow(&dir, &s.id, Default::default(), callback.clone(), tx.clone())?;
+                let mut catalog = follow(&dir, "", Default::default(), callback.clone(), tx.clone())?;
                 while let Ok(action) = rx.recv() {
+                    let mut submitted = match &action {
+                        Action::Submit(text) | Action::Steer(text, _) => Some((s.id.clone(), text.clone())),
+                        _ => None,
+                    };
                     let result = (|| -> Result<()> {
                         let input = match action {
                             Action::Quit => return Err(anyhow::anyhow!("__quit")),
@@ -232,6 +300,17 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
                                 callback(Update::Session(Box::new(s.clone())));
                                 return Ok(());
                             }
+                            Action::Browse(filter) => {
+                                catalog = follow(&dir, "", filter, callback.clone(), tx.clone())?;
+                                return Ok(());
+                            }
+                            Action::Steer(text, delivery) => {
+                                if text.starts_with('/') {
+                                    commands::parse(&text, &s)?
+                                } else {
+                                    Input::Command(Command::Steer { session: s.id.clone(), text, delivery, message_id: None })
+                                }
+                            }
                             Action::Stop => Input::Command(Command::Stop { session: s.id.clone() }),
                             Action::Approve(allow) => Input::Command(Command::Approve { session: s.id.clone(), call_id: s.pending.as_ref().context("no pending approval")?.call.id.clone(), allow }),
                             Action::Submit(text) => commands::parse(&text, &s)?,
@@ -244,7 +323,7 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
                                 inspecting = Arc::new(std::sync::atomic::AtomicBool::new(false));
                                 s = serde_json::from_value(rpc::call(&dir, &Command::Get { session: id })?)?;
                                 callback(Update::Opened(s.id.clone()));
-                                following = follow(&dir, &s.id, callback.clone(), tx.clone())?;
+                                following = follow(&dir, &s.id, Default::default(), callback.clone(), tx.clone())?;
                                 let _ = tx.send(Action::Repository);
                                 let _ = tx.send(Action::Models);
                                 callback(Update::Session(Box::new(s.clone())));
@@ -254,16 +333,33 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
                                 let workspace = if path.is_empty() { s.workspace.clone() } else { PathBuf::from(path) };
                                 s = serde_json::from_value(rpc::call(&dir, &Command::Create { workspace, config: None })?)?;
                                 callback(Update::Opened(s.id.clone()));
-                                following = follow(&dir, &s.id, callback.clone(), tx.clone())?;
+                                following = follow(&dir, &s.id, Default::default(), callback.clone(), tx.clone())?;
                                 let _ = tx.send(Action::Repository);
                                 let _ = tx.send(Action::Models);
                                 callback(Update::Session(Box::new(s.clone())));
                             }
                             Input::Command(cmd) => {
                                 let previous = s.config.model.provider;
-                                let quiet =
-                                    matches!(&cmd, Command::Send { .. } | Command::Tool { .. } | Command::Stop { .. } | Command::Resume { .. } | Command::Configure { .. } | Command::Approve { .. });
+                                let quiet = matches!(
+                                    &cmd,
+                                    Command::Send { .. }
+                                        | Command::Steer { .. }
+                                        | Command::Organize { .. }
+                                        | Command::CancelMessage { .. }
+                                        | Command::EditMessage { .. }
+                                        | Command::MoveMessage { .. }
+                                        | Command::Tool { .. }
+                                        | Command::Stop { .. }
+                                        | Command::Resume { .. }
+                                        | Command::Configure { .. }
+                                        | Command::Approve { .. }
+                                );
                                 let value = rpc::call(&dir, &cmd)?;
+                                // The command was accepted. A later refresh failure
+                                // must never restore an already submitted message.
+                                if let Some((session, text)) = submitted.take() {
+                                    callback(Update::InputResult { session, text, error: None });
+                                }
                                 if !quiet {
                                     callback(Update::Notice(if let Some(diff) = value["diff"].as_str() { fenced("diff", diff) } else { fenced("json", &serde_json::to_string_pretty(&value)?) }));
                                 }
@@ -276,6 +372,9 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
                         }
                         Ok(())
                     })();
+                    if let Some((session, text)) = submitted {
+                        callback(Update::InputResult { session, text, error: result.as_ref().err().map(|e| format!("{e:#}")) });
+                    }
                     if let Err(e) = result {
                         if e.to_string() == "__quit" {
                             break;
@@ -284,6 +383,7 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
                     }
                 }
                 drop(following);
+                drop(catalog);
                 Ok(())
             })();
             if let Err(e) = result {
@@ -296,6 +396,8 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
 #[derive(Default)]
 pub struct View {
     pub session: Option<Session>,
+    pub catalog: Arc<Vec<Value>>,
+    pub next_offset: Option<usize>,
     pub rich: Arc<olo_ui::rich_text::Text>,
     pub repository: Option<Value>,
     pub models: Vec<String>,
@@ -303,6 +405,7 @@ pub struct View {
     pub live: String,
     pub live_code: bool,
     pub notice: String,
+    pub connection: Option<String>,
     pub seq: i64,
     pub id: String,
 }
@@ -317,6 +420,12 @@ impl View {
     }
     pub fn apply(&mut self, u: Update) {
         match u {
+            Update::Catalog { rows, next_offset } => {
+                self.catalog = Arc::new(rows);
+                self.next_offset = next_offset;
+            }
+            Update::InputResult { .. } => {}
+            Update::Connection(status) => self.connection = status,
             Update::Rendered(doc) => self.rich = doc,
             Update::Models { provider, ids } => {
                 if self.session.as_ref().is_some_and(|s| s.config.model.provider == provider) {
@@ -334,6 +443,7 @@ impl View {
                 self.lines.clear();
                 self.live.clear();
                 self.notice.clear();
+                self.connection = None;
                 self.rich = Arc::default();
                 self.repository = None;
                 self.push("# Make something remarkable\n\nA workspace for ideas, code, and the work between them.\n\n**Build** — describe what you want to create.\n\n**Explore** — ask about your codebase or review a change.\n\n**Plan together** — start with `/spec on` and shape a detailed specification.\n\nSet a `/goal` for ongoing work. Your session, decisions, and checkpoints stay with you.\n\n---\n");
@@ -359,6 +469,18 @@ impl View {
                         self.live.push_str(e.data["text"].as_str().unwrap_or(""));
                         if self.live.len() > 64000 {
                             self.live = olo_coder_core::tools::clip(&self.live, 64000);
+                        }
+                    }
+                    "message_queued" => {
+                        let message = &e.data["message"];
+                        let from = message["from"]["title"].as_str().unwrap_or("You");
+                        self.push(&format!("\n### {} · {}\n\n{}\n\n", from, message["delivery"].as_str().unwrap_or("queued"), message["text"].as_str().unwrap_or("")));
+                    }
+                    "messages_delivered" => {
+                        self.live.clear();
+                        let skipped = e.data["skipped_calls"].as_array().map_or(0, Vec::len);
+                        if skipped > 0 {
+                            self.push(&format!("\n> Steering applied · {skipped} earlier actions skipped before execution.\n"));
                         }
                     }
                     "user" => {
@@ -464,6 +586,9 @@ impl View {
             } else {
                 text.push_str(&self.live);
             }
+        }
+        if let Some(status) = &self.connection {
+            text.push_str(&format!("\n\n> {status}\n"));
         }
         text
     }
@@ -588,6 +713,19 @@ fn todo_component(title: &str, todos: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn reconnect_status_is_transient_and_preserves_transcript() {
+        let mut view = View::default();
+        view.push("A durable conversation");
+        let before = view.markdown();
+        for _ in 0..100 {
+            view.apply(Update::Connection(Some("Reconnecting…".into())));
+        }
+        assert_eq!(view.markdown().matches("Reconnecting…").count(), 1);
+        assert_eq!(view.lines.len(), 1);
+        view.apply(Update::Connection(None));
+        assert_eq!(view.markdown(), before);
+    }
     #[test]
     fn rich_components_preserve_numeric_cells_and_contain_fences() {
         let table = component(&json!({"kind":"table","title":"Results","columns":["Metric","Value"],"rows":[["Tests",27],["Successful",true]]}));

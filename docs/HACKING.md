@@ -14626,3 +14626,17 @@ Olo Coder's Ratatui and native kit clients share `crates/coder` and one durable
 Unix-socket service. Its commands, provider-native reasoning and compaction,
 approvals, Git/GitHub, extensions and recovery are documented in
 [CODER.md](CODER.md). The service owns work independently of attached windows.
+
+
+Coder's native windows and Ratatui tiles each own a presentation client, draft
+map and scroll state; service work is independent of those views. Window restore
+order is stable. Session catalogs subscribe to durable changes with a short
+change-triggered debounce, never a polling timer. Cross-service coordination is
+in `crates/coder/src/coordination.rs`: owner-local links, immutable original
+messages for idempotent retry, durable receipts and explicit steering boundaries.
+See [CODER.md](CODER.md) for the API and [CODER-QA.md](CODER-QA.md) for validation.
+
+`TextControl::rows(1)` can host a multiline `TextField` in a compact toolbar:
+first-line baseline alignment follows the field's multiline behavior, even when
+only one line is visible. Additional lines remain editable and scroll with the
+caret; the control's height still comes from the shared font metrics.

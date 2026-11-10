@@ -8759,6 +8759,7 @@ dependencies = [
  "olo-coder-core",
  "olo-crash",
  "olo-kit-base",
+ "olo-protocol",
  "olo-sync",
  "olo-ui",
  "olo-xdg",

@@ -2,7 +2,7 @@
 //! never loaded wholesale on reconnect. Each effect is journaled before dispatch.
 use crate::model::*;
 use anyhow::{Context, Result};
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::Value;
 use std::{
     os::unix::fs::{DirBuilderExt, PermissionsExt},
@@ -21,7 +21,7 @@ impl Store {
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
         db.busy_timeout(std::time::Duration::from_secs(5))?;
         let version: i64 = db.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-        anyhow::ensure!(version <= 3, "session database was written by a newer Olo Coder");
+        anyhow::ensure!(version <= 4, "session database was written by a newer Olo Coder");
         db.execute_batch(
             "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;
           CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY, updated INTEGER NOT NULL, body TEXT NOT NULL);
@@ -37,6 +37,14 @@ impl Store {
         if version < 3 {
             db.execute_batch("BEGIN IMMEDIATE; ALTER TABLE edits ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0; PRAGMA user_version=3; COMMIT;")?;
         }
+        if version < 4 {
+            db.execute_batch("BEGIN IMMEDIATE;
+              CREATE TABLE IF NOT EXISTS messages(seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, sender TEXT, recipient TEXT NOT NULL, body TEXT NOT NULL, original TEXT NOT NULL, state TEXT NOT NULL, updated INTEGER NOT NULL);
+              CREATE INDEX IF NOT EXISTS message_recipient ON messages(recipient,seq);
+              CREATE INDEX IF NOT EXISTS message_sender ON messages(sender,seq);
+              CREATE INDEX IF NOT EXISTS session_pin ON sessions(coalesce(json_extract(body,'$.pinned'),0) DESC,updated DESC,id);
+              PRAGMA user_version=4; COMMIT;")?;
+        }
         Ok(Self { db })
     }
     pub fn get(&self, id: &str) -> Result<Session> {
@@ -48,6 +56,39 @@ impl Store {
         let rows = q.query_map([], |r| r.get::<_, String>(0))?;
         rows.map(|r| Ok(serde_json::from_str(&r?)?)).collect()
     }
+    pub fn browse(&self, filter: &SessionFilter) -> Result<Value> {
+        anyhow::ensure!(filter.offset <= i64::MAX as usize - 500 && filter.query.len() <= 4096, "catalog offset or query is too large");
+        let limit = if filter.limit == 0 { 100 } else { filter.limit.min(500) };
+        let mut q = self.db.prepare("SELECT json_object('id',id,'title',json_extract(body,'$.title'),'workspace',json_extract(body,'$.workspace'),
+          'status',json_extract(body,'$.status'),'updated',updated,'parent',json_extract(body,'$.parent'),'model',json_extract(body,'$.config.model.model'),
+          'pinned',json(CASE WHEN json_extract(body,'$.pinned') THEN 'true' ELSE 'false' END),'archived',json(CASE WHEN json_extract(body,'$.archived') THEN 'true' ELSE 'false' END),
+          'tags',json(coalesce(json_extract(body,'$.tags'),'[]')),'pending',coalesce(json_array_length(body,'$.inbox'),0)) FROM sessions
+          WHERE (? OR NOT coalesce(json_extract(body,'$.archived'),0)) AND (?='' OR instr(lower(json_extract(body,'$.title') || ' ' || json_extract(body,'$.workspace') || ' ' || coalesce(json_extract(body,'$.tags'),'')),lower(?))>0)
+          ORDER BY coalesce(json_extract(body,'$.pinned'),0) DESC,updated DESC,id LIMIT ? OFFSET ?")?;
+        let rows = q.query_map(params![filter.archived, filter.query, filter.query, (limit + 1) as i64, filter.offset as i64], |r| r.get::<_, String>(0))?;
+        let mut rows = rows.map(|r| Ok(serde_json::from_str::<Value>(&r?)?)).collect::<Result<Vec<_>>>()?;
+        let more = rows.len() > limit;
+        rows.truncate(limit);
+        Ok(serde_json::json!({"sessions":rows,"next_offset":more.then_some(filter.offset+limit)}))
+    }
+    pub fn unconfirmed_messages(&self) -> Result<Vec<(String, String)>> {
+        let mut q = self.db.prepare("SELECT sender,id FROM messages WHERE state='sending'")?;
+        Ok(q.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+    pub fn original_message(&self, id: &str) -> Result<Option<Message>> {
+        let row = self.db.query_row("SELECT original FROM messages WHERE id=?", [id], |r| r.get::<_, String>(0)).optional()?;
+        row.map(|row| Ok(serde_json::from_str(&row)?)).transpose()
+    }
+    pub fn receipt(&self, id: &str) -> Result<Option<Value>> {
+        let row = self.db.query_row("SELECT json_object('sequence',seq,'message',json(body),'state',state,'updated',updated) FROM messages WHERE id=?", [id], |r| r.get::<_, String>(0)).optional()?;
+        row.map(|r| Ok(serde_json::from_str(&r)?)).transpose()
+    }
+    pub fn messages(&self, session: &str, after: i64, limit: usize) -> Result<Vec<Value>> {
+        let mut q =
+            self.db.prepare("SELECT json_object('sequence',seq,'message',json(body),'state',state,'updated',updated) FROM messages WHERE (recipient=? OR sender=?) AND seq>? ORDER BY seq LIMIT ?")?;
+        let rows = q.query_map(params![session, session, after, limit.clamp(1, 500) as i64], |r| r.get::<_, String>(0))?;
+        rows.map(|r| Ok(serde_json::from_str(&r?)?)).collect()
+    }
     pub fn tail_cursor(&self, session: &str, count: i64) -> Result<i64> {
         Ok(self.db.query_row("SELECT coalesce((SELECT seq FROM events WHERE session=? ORDER BY seq DESC LIMIT 1 OFFSET ?),0)", params![session, count], |r| r.get(0))?)
     }
@@ -55,6 +96,41 @@ impl Store {
         s.updated = now();
         let tx = self.db.transaction()?;
         tx.execute("INSERT INTO sessions VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET updated=excluded.updated,body=excluded.body", params![s.id, s.updated as i64, serde_json::to_string(s)?])?;
+        match kind {
+            "message_queued" | "message_outgoing" => {
+                let message: Message = serde_json::from_value(data["message"].clone())?;
+                tx.execute(
+                    "INSERT INTO messages(id,sender,recipient,body,original,state,updated) VALUES(?,?,?,?,?,?,?)",
+                    params![
+                        message.id,
+                        message.from.as_ref().map(|s| &s.session),
+                        message.to,
+                        serde_json::to_string(&message)?,
+                        serde_json::to_string(&message)?,
+                        if kind == "message_queued" { "queued" } else { "sending" },
+                        now() as i64
+                    ],
+                )?;
+            }
+            "message_edited" => {
+                let message = &data["message"];
+                tx.execute("UPDATE messages SET body=?,updated=? WHERE id=?", params![message.to_string(), now() as i64, message["id"].as_str()])?;
+            }
+            "messages_delivered" => {
+                for id in data["ids"].as_array().into_iter().flatten().filter_map(Value::as_str) {
+                    tx.execute("UPDATE messages SET state='delivered',updated=? WHERE id=?", params![now() as i64, id])?;
+                }
+            }
+            "message_cancelled" | "message_sent" | "message_uncertain" => {
+                let state = match kind {
+                    "message_cancelled" => "cancelled",
+                    "message_sent" => "sent",
+                    _ => "uncertain",
+                };
+                tx.execute("UPDATE messages SET state=?,updated=? WHERE id=?", params![state, now() as i64, data["id"].as_str()])?;
+            }
+            _ => {}
+        }
         tx.execute("INSERT INTO events(session,time,kind,data) VALUES(?,?,?,?)", params![s.id, now() as i64, kind, data.to_string()])?;
         let seq = tx.last_insert_rowid();
         tx.commit()?;

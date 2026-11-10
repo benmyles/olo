@@ -11,14 +11,14 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Clear, List, ListState, Paragraph, Wrap},
+    widgets::{Block, Clear, List, ListState, Paragraph},
 };
 use std::{path::PathBuf, sync::mpsc};
 enum Input {
     Key(Event),
-    Update(Update),
+    Update { pane: usize, update: Update },
     Upgrade,
-    Wrapped { document: std::sync::Arc<olo_ui::rich_text::Text>, width: usize, lines: Vec<Line<'static>> },
+    Wrapped { pane: usize, document: std::sync::Arc<olo_ui::rich_text::Text>, width: usize, lines: Vec<Line<'static>> },
 }
 struct Restore;
 impl Drop for Restore {
@@ -27,26 +27,118 @@ impl Drop for Restore {
         let _ = execute!(std::io::stdout(), LeaveAlternateScreen, event::DisableBracketedPaste);
     }
 }
+struct Pane {
+    key: usize,
+    client: client::Handle,
+    view: View,
+    draft: String,
+    drafts: std::collections::HashMap<String, String>,
+    cursor: usize,
+    scroll: usize,
+    delivery: olo_coder_core::Delivery,
+    history: Vec<String>,
+    history_at: usize,
+    rendered: std::sync::Arc<olo_ui::rich_text::Text>,
+    width: usize,
+    lines: Vec<Line<'static>>,
+}
+impl Drop for Pane {
+    fn drop(&mut self) {
+        let _ = self.client.tx.send(Action::Quit);
+    }
+}
+impl Pane {
+    fn open(key: usize, dir: PathBuf, workspace: PathBuf, session: Option<String>, state: serde_json::Value, updates: mpsc::Sender<Input>) -> Self {
+        let draft = state["draft"].as_str().unwrap_or("").to_owned();
+        let cursor = draft.len();
+        let session = state["session"].as_str().filter(|s| !s.is_empty()).map(str::to_owned).or(session);
+        let initial_id = session.clone().unwrap_or_default();
+        Self {
+            key,
+            client: client::start(dir, workspace, session, move |update| {
+                let _ = updates.send(Input::Update { pane: key, update });
+            }),
+            view: View { id: initial_id, ..Default::default() },
+            draft,
+            cursor,
+            drafts: serde_json::from_value(state["drafts"].clone()).unwrap_or_default(),
+            scroll: state["scroll"].as_u64().unwrap_or(0) as usize,
+            delivery: serde_json::from_value(state["delivery"].clone()).unwrap_or_default(),
+            history: Vec::new(),
+            history_at: 0,
+            rendered: Default::default(),
+            width: 0,
+            lines: Vec::new(),
+        }
+    }
+    fn update(&mut self, u: Update) {
+        match &u {
+            Update::Opened(id) if id != &self.view.id => {
+                if !self.view.id.is_empty() {
+                    self.drafts.insert(self.view.id.clone(), std::mem::take(&mut self.draft));
+                    self.scroll = 0;
+                }
+                if let Some(text) = self.drafts.remove(id) {
+                    self.draft = text;
+                }
+                self.cursor = self.draft.len();
+                self.lines.clear();
+            }
+            Update::InputResult { session, text, error: Some(_) } => {
+                let draft = if session == &self.view.id { &mut self.draft } else { self.drafts.entry(session.clone()).or_default() };
+                if draft.is_empty() {
+                    *draft = text.clone();
+                } else {
+                    draft.insert_str(0, &format!("{text}\n\n"));
+                }
+                self.cursor = self.draft.len();
+            }
+            _ => {}
+        }
+        self.view.apply(u);
+    }
+    fn snapshot(&self) -> serde_json::Value {
+        serde_json::json!({"session":self.view.id,"draft":self.draft,"drafts":self.drafts,"scroll":self.scroll,"delivery":self.delivery})
+    }
+}
+struct Picker {
+    query: String,
+    selected: usize,
+    tile: bool,
+}
+fn matching(view: &View, query: &str) -> Vec<serde_json::Value> {
+    let query = query.to_lowercase();
+    view.catalog.iter().filter(|r| format!("{} {} {}", r["title"], r["workspace"], r["tags"]).to_lowercase().contains(&query)).cloned().collect()
+}
+fn mode_name(mode: olo_coder_core::Delivery) -> &'static str {
+    match mode {
+        olo_coder_core::Delivery::AfterTool => "After next tool",
+        olo_coder_core::Delivery::Queue => "Queue after response",
+        olo_coder_core::Delivery::Interrupt => "Interrupt now",
+    }
+}
 pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) -> Result<()> {
     olo_kit_base::restore::claim();
-    let restored = olo_kit_base::restore::take().and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok());
-    let session = restored.as_ref().and_then(|v| v["session"].as_str()).filter(|s| !s.is_empty()).map(str::to_owned).or(session);
+    let restored = olo_kit_base::restore::take().and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok()).unwrap_or_default();
     enable_raw_mode()?;
     let restore = Restore;
     execute!(std::io::stdout(), EnterAlternateScreen, event::EnableBracketedPaste)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(std::io::stdout()))?;
     let (tx, rx) = mpsc::channel();
-    let (wrap, jobs) = mpsc::channel::<(std::sync::Arc<olo_ui::rich_text::Text>, usize)>();
+    let (wrap, jobs) = mpsc::channel::<(usize, std::sync::Arc<olo_ui::rich_text::Text>, usize)>();
     let layout_updates = tx.clone();
     std::thread::Builder::new().name("coder-terminal-layout".into()).spawn(move || {
-        while let Ok(mut job) = jobs.recv() {
+        while let Ok(job) = jobs.recv() {
+            let mut batch = std::collections::BTreeMap::new();
+            batch.insert(job.0, job);
             for newer in jobs.try_iter() {
-                job = newer;
+                batch.insert(newer.0, newer);
             }
-            let (document, width) = job;
-            let lines = styled_lines(&document, width);
-            if layout_updates.send(Input::Wrapped { document, width, lines }).is_err() {
-                break;
+            for (pane, document, width) in batch.into_values() {
+                let lines = styled_lines(&document, width);
+                if layout_updates.send(Input::Wrapped { pane, document, width, lines }).is_err() {
+                    return;
+                }
             }
         }
     })?;
@@ -62,82 +154,158 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) -> Result<
             }
         }
     })?;
-    let client = client::start(dir, workspace, session, move |u| {
-        let _ = tx.send(Input::Update(u));
-    });
-    let mut view = View::default();
-    view.push("Olo Coder\nA persistent workspace for your agent. /help lists commands.\nCtrl+D detaches; work continues. Escape stops the current turn.");
-    let mut draft = restored.as_ref().and_then(|v| v["draft"].as_str()).unwrap_or("").to_string();
-    let mut cursor = draft.len();
-    let mut scroll = restored.as_ref().and_then(|v| v["scroll"].as_u64()).unwrap_or(0) as usize;
-    let mut history = Vec::<String>::new();
-    let mut history_at = 0;
-    let mut rendered = std::sync::Arc::default();
-    let mut render_width = 0;
-    let mut rich_lines = Vec::new();
+    let states = restored["panes"].as_array().cloned().unwrap_or_else(|| vec![restored.clone()]);
+    let mut panes = states.into_iter().take(4).enumerate().map(|(i, state)| Pane::open(i, dir.clone(), workspace.clone(), session.clone(), state, tx.clone())).collect::<Vec<_>>();
+    if panes.is_empty() {
+        panes.push(Pane::open(0, dir.clone(), workspace.clone(), session, serde_json::Value::Null, tx.clone()));
+    }
+    let mut next = panes.len();
+    let mut active = (restored["active"].as_u64().unwrap_or(0) as usize).min(panes.len() - 1);
+    let mut picker: Option<Picker> = None;
     let mut links: Option<Vec<(String, String)>> = None;
     let mut selected_link = 0;
     loop {
         terminal.draw(|f| {
             let rows = Layout::vertical([Constraint::Length(2), Constraint::Min(4), Constraint::Length(4), Constraint::Length(1)]).split(f.area());
-            f.render_widget(Paragraph::new(view.status()).style(Style::default().fg(Color::Yellow)), rows[0]);
-            let panes = Layout::horizontal([Constraint::Percentage(72), Constraint::Percentage(28)]).split(rows[1]);
-            let width = panes[0].width.saturating_sub(2).max(1) as usize;
-            if !std::sync::Arc::ptr_eq(&rendered, &view.rich) || render_width != width {
-                let _ = wrap.send((view.rich.clone(), width));
-                rendered = view.rich.clone();
-                render_width = width;
+            f.render_widget(Paragraph::new(panes[active].view.status()).style(Style::default().fg(Color::Yellow)), rows[0]);
+            let count = panes.len();
+            let areas = if count < 3 {
+                Layout::horizontal(vec![Constraint::Ratio(1, count as u32); count]).split(rows[1]).to_vec()
+            } else {
+                Layout::vertical([Constraint::Ratio(1, 2); 2]).split(rows[1]).iter().flat_map(|r| Layout::horizontal([Constraint::Ratio(1, 2); 2]).split(*r).to_vec()).take(count).collect()
+            };
+            for (i, (pane, area)) in panes.iter_mut().zip(areas).enumerate() {
+                let width = area.width.saturating_sub(2).max(1) as usize;
+                if !std::sync::Arc::ptr_eq(&pane.rendered, &pane.view.rich) || pane.width != width {
+                    let _ = wrap.send((pane.key, pane.view.rich.clone(), width));
+                    pane.rendered = pane.view.rich.clone();
+                    pane.width = width;
+                }
+                let end = pane.lines.len().saturating_sub(pane.scroll);
+                let start = end.saturating_sub(area.height.saturating_sub(2) as usize);
+                let title = format!(" {} · {}{} ", i + 1, pane.view.session.as_ref().map(|s| s.title.as_str()).unwrap_or("Connecting…"), if i == active { " · active" } else { "" });
+                let block = Block::bordered().title(title).border_style(Style::default().fg(if i == active { Color::LightYellow } else { Color::DarkGray }));
+                f.render_widget(Paragraph::new(pane.lines[start..end].to_vec()).block(block), area);
             }
-            let lines = &rich_lines;
-            let visible = panes[0].height.saturating_sub(2) as usize;
-            let end = lines.len().saturating_sub(scroll);
-            let start = end.saturating_sub(visible);
-            f.render_widget(Paragraph::new(lines[start..end].to_vec()).block(Block::bordered().title("Conversation")), panes[0]);
-            f.render_widget(Paragraph::new(view.work()).wrap(Wrap { trim: false }).block(Block::bordered().title("Work")), panes[1]);
+            let pane = &panes[active];
             let width = rows[2].width.saturating_sub(2).max(1) as usize;
-            let before = wrapped(&draft[..cursor], width);
+            let before = wrapped(&pane.draft[..pane.cursor], width);
             let col = Span::raw(before.last().map(String::as_str).unwrap_or("")).width();
             let row = before.len().saturating_sub(1) + usize::from(col == width);
             let col = col % width;
             let top = row.saturating_sub(rows[2].height.saturating_sub(3) as usize);
-            let input = wrapped(&draft, width);
-            f.render_widget(Paragraph::new(input.get(top..).unwrap_or_default().join("\n")).block(Block::bordered().title("Message or /command")), rows[2]);
-            f.render_widget(Paragraph::new("Enter send · Alt+Enter newline · Esc stop · Ctrl+O links · Ctrl+D detach"), rows[3]);
+            let input = wrapped(&pane.draft, width);
+            let pending = pane.view.session.as_ref().map_or(0, |s| s.inbox.len());
+            f.render_widget(
+                Paragraph::new(input.get(top..).unwrap_or_default().join("\n")).block(Block::bordered().title(format!("{} · {} pending · Alt+M delivery", mode_name(pane.delivery), pending))),
+                rows[2],
+            );
+            f.render_widget(Paragraph::new("Enter send · Ctrl+P sessions · Ctrl+T tile · Ctrl+N next · Esc stop · Ctrl+D detach"), rows[3]);
             if rows[2].width > 2 && rows[2].height > 2 {
                 f.set_cursor_position((rows[2].x + 1 + col as u16, rows[2].y + 1 + (row - top) as u16));
             }
-            if let Some(links) = &links {
-                let area = f.area();
-                let width = area.width.saturating_sub(4).min(90);
-                let height = area.height.saturating_sub(4).min(16);
-                let area = Rect::new(area.x + (area.width - width) / 2, area.y + (area.height - height) / 2, width, height);
+            if let Some(p) = &picker {
+                let area = overlay(f.area());
+                f.render_widget(Clear, area);
+                let choices = matching(&pane.view, &p.query);
+                let list = List::new(choices.iter().map(|r| format!("{}{} · {}", if r["pinned"] == true { "◆ " } else { "" }, r["title"].as_str().unwrap_or(""), r["status"].as_str().unwrap_or(""))))
+                    .block(Block::bordered().title(format!("{}: {} · Alt+P pin · Esc close", if p.tile { "Tile session" } else { "Open session" }, p.query)))
+                    .highlight_symbol("› ")
+                    .highlight_style(Style::default().fg(Color::Black).bg(Color::LightYellow));
+                f.render_stateful_widget(list, area, &mut ListState::default().with_selected(Some(p.selected)));
+            } else if let Some(links) = &links {
+                let area = overlay(f.area());
                 f.render_widget(Clear, area);
                 let list = List::new(links.iter().map(|(label, url)| format!("{label}  {url}")))
                     .block(Block::bordered().title("Links · Enter open · Esc close"))
                     .highlight_symbol("› ")
-                    .highlight_style(Style::default().fg(Color::Black).bg(Color::LightYellow).add_modifier(Modifier::BOLD));
+                    .highlight_style(Style::default().fg(Color::Black).bg(Color::LightYellow));
                 f.render_stateful_widget(list, area, &mut ListState::default().with_selected(Some(selected_link)));
             }
         })?;
-        // No polling, no idle frames. Fold a burst before drawing once.
         let first = rx.recv()?;
         let mut inputs = vec![first];
         inputs.extend(rx.try_iter().take(256));
         let mut quit = false;
         for input in inputs {
-            if matches!(&input, Input::Upgrade) {
-                use std::os::unix::process::CommandExt as _;
-                let state = serde_json::json!({"session":view.id,"draft":draft,"scroll":scroll}).to_string();
-                let exe = std::env::current_exe()?;
-                let exe = PathBuf::from(exe.to_string_lossy().trim_end_matches(" (deleted)"));
-                let mut command = std::process::Command::new(exe);
-                command.args(std::env::args_os().skip(1));
-                olo_kit_base::restore::hand_over(&mut command, Some(&state));
-                drop(restore);
-                return Err(command.exec().into());
-            }
-            if let Input::Key(Event::Key(k)) = &input {
-                if k.kind != KeyEventKind::Release {
+            match input {
+                Input::Upgrade => {
+                    use std::os::unix::process::CommandExt as _;
+                    let state = serde_json::json!({"active":active,"panes":panes.iter().map(Pane::snapshot).collect::<Vec<_>>()}).to_string();
+                    let exe = std::env::current_exe()?;
+                    let exe = PathBuf::from(exe.to_string_lossy().trim_end_matches(" (deleted)"));
+                    let mut command = std::process::Command::new(exe);
+                    command.args(std::env::args_os().skip(1));
+                    olo_kit_base::restore::hand_over(&mut command, Some(&state));
+                    drop(restore);
+                    return Err(command.exec().into());
+                }
+                Input::Update { pane, update } => {
+                    let focused = panes[active].key == pane;
+                    if let Some(p) = panes.iter_mut().find(|p| p.key == pane) {
+                        let selected = picker.as_ref().filter(|_| focused).and_then(|pick| matching(&p.view, &pick.query).get(pick.selected).map(|r| r["id"].clone()));
+                        p.update(update);
+                        if let Some(pick) = picker.as_mut().filter(|_| focused) {
+                            if let Some(id) = selected {
+                                if let Some(at) = matching(&p.view, &pick.query).iter().position(|r| r["id"] == id) {
+                                    pick.selected = at;
+                                }
+                            }
+                        }
+                    }
+                }
+                Input::Wrapped { pane, document, width, lines } => {
+                    if let Some(p) = panes.iter_mut().find(|p| p.key == pane) {
+                        if std::sync::Arc::ptr_eq(&document, &p.view.rich) && width == p.width {
+                            p.lines = lines;
+                        }
+                    }
+                }
+                Input::Key(Event::Paste(text)) => {
+                    let p = &mut panes[active];
+                    p.draft.insert_str(p.cursor, &text);
+                    p.cursor += text.len();
+                }
+                Input::Key(Event::Key(k)) if k.kind != KeyEventKind::Release => {
+                    if let Some(p) = &mut picker {
+                        let choices = matching(&panes[active].view, &p.query);
+                        match k.code {
+                            KeyCode::Esc => picker = None,
+                            KeyCode::Up => p.selected = p.selected.saturating_sub(1),
+                            KeyCode::Down => p.selected = (p.selected + 1).min(choices.len().saturating_sub(1)),
+                            KeyCode::Char('p') if k.modifiers.contains(KeyModifiers::ALT) => {
+                                if let Some(row) = choices.get(p.selected) {
+                                    panes[active].client.submit(format!("/api {}", serde_json::json!({"op":"organize","session":row["id"],"pinned":row["pinned"]!=true})));
+                                }
+                            }
+                            KeyCode::Enter => {
+                                if let Some(id) = choices.get(p.selected).and_then(|r| r["id"].as_str()) {
+                                    if p.tile && panes.len() < 4 {
+                                        panes.push(Pane::open(next, dir.clone(), workspace.clone(), Some(id.into()), serde_json::Value::Null, tx.clone()));
+                                        next += 1;
+                                        active = panes.len() - 1;
+                                    } else if !p.tile {
+                                        panes[active].client.submit(format!("/open {id}"));
+                                    } else {
+                                        panes[active].view.apply(Update::Notice("Four tiles are open. Ctrl+W closes the active tile.".into()));
+                                    }
+                                }
+                                picker = None;
+                            }
+                            KeyCode::Char(c) if !k.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) => {
+                                p.query.push(c);
+                                p.selected = 0;
+                                let _ = panes[active].client.tx.send(Action::Browse(olo_coder_core::SessionFilter { query: p.query.clone(), ..Default::default() }));
+                            }
+                            KeyCode::Backspace => {
+                                p.query.pop();
+                                p.selected = 0;
+                                let _ = panes[active].client.tx.send(Action::Browse(olo_coder_core::SessionFilter { query: p.query.clone(), ..Default::default() }));
+                            }
+                            _ => {}
+                        }
+                        continue;
+                    }
                     if let Some(choices) = &links {
                         match k.code {
                             KeyCode::Esc => links = None,
@@ -146,7 +314,7 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) -> Result<
                             KeyCode::Enter => {
                                 if let Some((_, link)) = choices.get(selected_link) {
                                     if let Some(id) = link.strip_prefix("olo-coder:event/").and_then(|s| s.parse::<i64>().ok()) {
-                                        client.submit(format!("/event {id}"));
+                                        panes[active].client.submit(format!("/event {id}"));
                                     } else if link.starts_with("https://") || link.starts_with("http://") {
                                         let link = link.clone();
                                         std::thread::spawn(move || {
@@ -160,110 +328,146 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) -> Result<
                         }
                         continue;
                     }
-                }
-            }
-            match input {
-                Input::Update(u) => view.apply(u),
-                Input::Wrapped { document, width, lines } => {
-                    if std::sync::Arc::ptr_eq(&document, &view.rich) && width == render_width {
-                        rich_lines = lines;
-                    }
-                }
-                Input::Key(Event::Paste(text)) => {
-                    draft.insert_str(cursor, &text);
-                    cursor += text.len();
-                }
-                Input::Key(Event::Key(k)) if k.kind != KeyEventKind::Release => match k.code {
-                    KeyCode::Char('o') if k.modifiers.contains(KeyModifiers::CONTROL) => {
-                        let mut seen = std::collections::HashSet::new();
-                        links = Some(
-                            view.rich
-                                .runs
-                                .iter()
-                                .filter_map(|r| r.style.link.as_ref().filter(|l| seen.insert((*l).clone())).map(|l| (view.rich.text[r.range.clone()].to_string(), l.clone())))
-                                .take(200)
-                                .collect(),
-                        );
-                        selected_link = 0;
-                    }
-                    KeyCode::Char('d') if k.modifiers.contains(KeyModifiers::CONTROL) => quit = true,
-                    KeyCode::Esc | KeyCode::Char('c') if k.code == KeyCode::Esc || k.modifiers.contains(KeyModifiers::CONTROL) => {
-                        let _ = client.tx.send(Action::Stop);
-                    }
-                    KeyCode::Enter if k.modifiers.intersects(KeyModifiers::ALT | KeyModifiers::SHIFT) => {
-                        draft.insert(cursor, '\n');
-                        cursor += 1;
-                    }
-                    KeyCode::Enter => {
-                        if draft.trim() == "/quit" {
-                            quit = true;
-                        } else if !draft.trim().is_empty() {
-                            history.push(draft.clone());
-                            history_at = history.len();
-                            client.submit(std::mem::take(&mut draft));
-                            cursor = 0;
-                            scroll = 0;
+                    if k.modifiers.contains(KeyModifiers::CONTROL) {
+                        match k.code {
+                            KeyCode::Char('p') | KeyCode::Char('t') => {
+                                picker = Some(Picker { query: String::new(), selected: 0, tile: k.code == KeyCode::Char('t') });
+                                let _ = panes[active].client.tx.send(Action::Browse(Default::default()));
+                                continue;
+                            }
+                            KeyCode::Char('n') => {
+                                active = (active + 1) % panes.len();
+                                continue;
+                            }
+                            KeyCode::Char('w') if panes.len() > 1 => {
+                                panes.remove(active);
+                                active = active.min(panes.len() - 1);
+                                continue;
+                            }
+                            KeyCode::Char('d') => {
+                                quit = true;
+                                continue;
+                            }
+                            _ => {}
                         }
                     }
-                    KeyCode::Char(c) if !k.modifiers.contains(KeyModifiers::CONTROL) => {
-                        draft.insert(cursor, c);
-                        cursor += c.len_utf8();
-                    }
-                    KeyCode::Backspace if cursor > 0 => {
-                        let at = draft[..cursor].char_indices().last().unwrap().0;
-                        draft.drain(at..cursor);
-                        cursor = at;
-                    }
-                    KeyCode::Delete if cursor < draft.len() => {
-                        let end = cursor + draft[cursor..].chars().next().unwrap().len_utf8();
-                        draft.drain(cursor..end);
-                    }
-                    KeyCode::Left if cursor > 0 => cursor = draft[..cursor].char_indices().last().unwrap().0,
-                    KeyCode::Right if cursor < draft.len() => cursor += draft[cursor..].chars().next().unwrap().len_utf8(),
-                    KeyCode::Home => cursor = 0,
-                    KeyCode::End => cursor = draft.len(),
-                    KeyCode::Up if history_at > 0 => {
-                        history_at -= 1;
-                        draft = history[history_at].clone();
-                        cursor = draft.len();
-                    }
-                    KeyCode::Down if history_at < history.len() => {
-                        history_at += 1;
-                        draft = history.get(history_at).cloned().unwrap_or_default();
-                        cursor = draft.len();
-                    }
-                    KeyCode::PageUp => scroll = scroll.saturating_add(10).min(rich_lines.len().saturating_sub(1)),
-                    KeyCode::PageDown => scroll = scroll.saturating_sub(10),
-                    KeyCode::Tab => {
-                        let commands = [
-                            "/help",
-                            "/status",
-                            "/sessions",
-                            "/stop",
-                            "/resume",
-                            "/model",
-                            "/goal",
-                            "/spec",
-                            "/accept",
-                            "/approval",
-                            "/guidance",
-                            "/agents",
-                            "/compact",
-                            "/config",
-                            "/history",
-                            "/memory",
-                            "/git",
-                            "/github",
-                            "/event",
-                            "/tool",
-                        ];
-                        if let Some(c) = commands.iter().find(|c| c.starts_with(&draft) && **c != draft) {
-                            draft = format!("{c} ");
-                            cursor = draft.len();
+                    let p = &mut panes[active];
+                    match k.code {
+                        KeyCode::Char('a') if k.modifiers.contains(KeyModifiers::CONTROL) => p.cursor = 0,
+                        KeyCode::Char('e') if k.modifiers.contains(KeyModifiers::CONTROL) => p.cursor = p.draft.len(),
+                        KeyCode::Char('u') if k.modifiers.contains(KeyModifiers::CONTROL) => {
+                            p.draft.drain(..p.cursor);
+                            p.cursor = 0;
                         }
+                        KeyCode::Char('k') if k.modifiers.contains(KeyModifiers::CONTROL) => {
+                            p.draft.truncate(p.cursor);
+                        }
+                        KeyCode::Char('m') if k.modifiers.contains(KeyModifiers::ALT) => {
+                            use olo_coder_core::Delivery::*;
+                            p.delivery = match p.delivery {
+                                AfterTool => Queue,
+                                Queue => Interrupt,
+                                Interrupt => AfterTool,
+                            };
+                        }
+                        KeyCode::Char('o') if k.modifiers.contains(KeyModifiers::CONTROL) => {
+                            let mut seen = std::collections::HashSet::new();
+                            links = Some(
+                                p.view
+                                    .rich
+                                    .runs
+                                    .iter()
+                                    .filter_map(|r| r.style.link.as_ref().filter(|l| seen.insert((*l).clone())).map(|l| (p.view.rich.text[r.range.clone()].to_string(), l.clone())))
+                                    .take(200)
+                                    .collect(),
+                            );
+                            selected_link = 0;
+                        }
+                        KeyCode::Esc | KeyCode::Char('c') if k.code == KeyCode::Esc || k.modifiers.contains(KeyModifiers::CONTROL) => {
+                            let _ = p.client.tx.send(Action::Stop);
+                        }
+                        KeyCode::Enter if k.modifiers.intersects(KeyModifiers::ALT | KeyModifiers::SHIFT) => {
+                            p.draft.insert(p.cursor, '\n');
+                            p.cursor += 1;
+                        }
+                        KeyCode::Enter => {
+                            if p.draft.trim() == "/quit" {
+                                quit = true;
+                            } else if !p.draft.trim().is_empty() {
+                                p.history.push(p.draft.clone());
+                                p.history_at = p.history.len();
+                                let _ = p.client.tx.send(Action::Steer(std::mem::take(&mut p.draft), p.delivery));
+                                p.cursor = 0;
+                                p.scroll = 0;
+                            }
+                        }
+                        KeyCode::Char(c) if !k.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) => {
+                            p.draft.insert(p.cursor, c);
+                            p.cursor += c.len_utf8();
+                        }
+                        KeyCode::Backspace if p.cursor > 0 => {
+                            let at = p.draft[..p.cursor].char_indices().last().unwrap().0;
+                            p.draft.drain(at..p.cursor);
+                            p.cursor = at;
+                        }
+                        KeyCode::Delete if p.cursor < p.draft.len() => {
+                            let end = p.cursor + p.draft[p.cursor..].chars().next().unwrap().len_utf8();
+                            p.draft.drain(p.cursor..end);
+                        }
+                        KeyCode::Left if p.cursor > 0 => p.cursor = p.draft[..p.cursor].char_indices().last().unwrap().0,
+                        KeyCode::Right if p.cursor < p.draft.len() => p.cursor += p.draft[p.cursor..].chars().next().unwrap().len_utf8(),
+                        KeyCode::Home => p.cursor = 0,
+                        KeyCode::End => p.cursor = p.draft.len(),
+                        KeyCode::Up if p.history_at > 0 => {
+                            p.history_at -= 1;
+                            p.draft = p.history[p.history_at].clone();
+                            p.cursor = p.draft.len();
+                        }
+                        KeyCode::Down if p.history_at < p.history.len() => {
+                            p.history_at += 1;
+                            p.draft = p.history.get(p.history_at).cloned().unwrap_or_default();
+                            p.cursor = p.draft.len();
+                        }
+                        KeyCode::PageUp => p.scroll = p.scroll.saturating_add(10).min(p.lines.len().saturating_sub(1)),
+                        KeyCode::PageDown => p.scroll = p.scroll.saturating_sub(10),
+                        KeyCode::Tab => {
+                            let commands = [
+                                "/help",
+                                "/status",
+                                "/sessions",
+                                "/stop",
+                                "/resume",
+                                "/model",
+                                "/goal",
+                                "/spec",
+                                "/accept",
+                                "/approval",
+                                "/guidance",
+                                "/agents",
+                                "/compact",
+                                "/config",
+                                "/history",
+                                "/memory",
+                                "/git",
+                                "/github",
+                                "/event",
+                                "/tool",
+                                "/inbox",
+                                "/message",
+                                "/connect",
+                                "/pin",
+                                "/interrupt",
+                                "/queue",
+                                "/after-tool",
+                            ];
+                            if let Some(c) = commands.iter().find(|c| c.starts_with(&p.draft) && **c != p.draft) {
+                                p.draft = format!("{c} ");
+                                p.cursor = p.draft.len();
+                            }
+                        }
+                        _ => {}
                     }
-                    _ => {}
-                },
+                }
                 _ => {}
             }
         }
@@ -271,10 +475,13 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) -> Result<
             break;
         }
     }
-    let _ = client.tx.send(Action::Quit);
     Ok(())
 }
-
+fn overlay(area: Rect) -> Rect {
+    let width = area.width.saturating_sub(4).min(90);
+    let height = area.height.saturating_sub(4).min(16);
+    Rect::new(area.x + (area.width - width) / 2, area.y + (area.height - height) / 2, width, height)
+}
 /// Wrap at terminal cell boundaries, keeping combined characters and emoji intact.
 fn wrapped(text: &str, width: usize) -> Vec<String> {
     let width = width.max(1);
@@ -472,4 +679,43 @@ fn styled_lines(doc: &olo_ui::rich_text::Text, width: usize) -> Vec<Line<'static
         at += text.len();
     }
     lines
+}
+
+#[cfg(test)]
+mod session_tests {
+    use super::*;
+    #[test]
+    fn switching_tiles_preserves_drafts_and_failed_input() {
+        let (tx, _) = mpsc::channel();
+        let mut pane = Pane {
+            key: 0,
+            client: client::Handle { tx },
+            view: View::default(),
+            draft: String::new(),
+            drafts: Default::default(),
+            cursor: 0,
+            scroll: 0,
+            delivery: Default::default(),
+            history: vec![],
+            history_at: 0,
+            rendered: Default::default(),
+            width: 0,
+            lines: vec![],
+        };
+        pane.update(Update::Opened("first".into()));
+        pane.draft = "unfinished λ".into();
+        pane.cursor = pane.draft.len();
+        pane.update(Update::Opened("second".into()));
+        assert!(pane.draft.is_empty());
+        pane.draft = "another task".into();
+        pane.update(Update::InputResult { session: "first".into(), text: "failed submission".into(), error: Some("offline".into()) });
+        assert_eq!(pane.draft, "another task");
+        pane.update(Update::Opened("first".into()));
+        assert_eq!(pane.draft, "failed submission\n\nunfinished λ");
+        assert_eq!(pane.cursor, pane.draft.len());
+        pane.update(Update::Opened("second".into()));
+        assert_eq!(pane.draft, "another task");
+        let state = pane.snapshot();
+        assert_eq!(state["drafts"]["first"], "failed submission\n\nunfinished λ");
+    }
 }

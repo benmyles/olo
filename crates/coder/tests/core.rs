@@ -877,3 +877,368 @@ fn repository_status_exposes_stageable_files_inside_untracked_directories() {
     assert_eq!(status["truncated"], false);
     olo_coder_core::git::run(&dir.0, &call("repository_write", json!({"operation":"stage","paths":[status["files"][0]["path"]]})), stop).unwrap();
 }
+
+#[tokio::test]
+async fn steering_modes_finish_skip_or_interrupt_the_correct_tool_batch() {
+    for delivery in [Delivery::AfterTool, Delivery::Queue, Delivery::Interrupt] {
+        let dir = Scratch::new();
+        let (fake, base, server) = server().await;
+        let e = Engine::open_at(dir.0.join("state"), Some(base)).unwrap();
+        let sid =
+            e.command(Command::Create { workspace: dir.0.clone(), config: Some(Config { approval: ApprovalMode::Allow, ..Default::default() }) }).await.unwrap()["id"].as_str().unwrap().to_owned();
+        let mut second = tool("write_file", json!({"path":"stale.txt","content":"old plan"}));
+        second["call_id"] = json!("call2");
+        fake.replies.lock().unwrap().push_back(response(vec![tool("execute", json!({"program":"/usr/bin/sleep","args":["0.2"]})), second]));
+        let mut events = e.events.subscribe();
+        e.command(Command::Send { session: sid.clone(), text: "Initial task".into() }).await.unwrap();
+        loop {
+            let event = tokio::time::timeout(std::time::Duration::from_secs(5), events.recv()).await.unwrap().unwrap();
+            if event.kind == "tool_started" {
+                break;
+            }
+        }
+        let receipt = e.command(Command::Steer { session: sid.clone(), text: "STEERING: use the new plan".into(), delivery, message_id: None }).await.unwrap();
+        finish(&e).await;
+        assert_eq!(dir.0.join("stale.txt").exists(), delivery == Delivery::Queue, "{delivery:?}");
+        assert_eq!(e.command(Command::Receipt { message: receipt["message"]["id"].as_str().unwrap().into() }).await.unwrap()["state"], "delivered");
+        let requests = fake.requests.lock().unwrap();
+        let after = &requests[if delivery == Delivery::Queue { 2 } else { 1 }].1["input"];
+        assert!(after.to_string().contains("STEERING"));
+        for call in ["call1", "call2"] {
+            assert!(after.as_array().unwrap().iter().any(|v| v["type"] == "function_call_output" && v["call_id"] == call));
+        }
+        if delivery == Delivery::Queue {
+            assert!(!requests[1].1["input"].to_string().contains("STEERING"));
+        }
+        assert_eq!(e.get(&sid).unwrap().status, Status::Idle);
+        server.abort();
+    }
+}
+
+#[tokio::test]
+async fn pinned_catalog_and_inbox_are_durable_and_idempotent() {
+    let dir = Scratch::new();
+    let e = Engine::open(dir.0.join("state")).unwrap();
+    let mut ids = Vec::new();
+    for _ in 0..2 {
+        ids.push(e.command(Command::Create { workspace: dir.0.clone(), config: None }).await.unwrap()["id"].as_str().unwrap().to_owned());
+    }
+    e.command(Command::Organize { session: ids[0].clone(), title: Some("Compiler work".into()), pinned: Some(true), archived: None, tags: Some(vec!["rust".into()]) }).await.unwrap();
+    let rows = e.command(Command::Browse { filter: SessionFilter { query: "rust".into(), ..Default::default() } }).await.unwrap();
+    assert_eq!(rows["sessions"][0]["id"], ids[0]);
+    let message_id = id();
+    let command = Command::SendMessage {
+        session: ids[1].clone(),
+        target: ids[0].clone(),
+        peer: None,
+        text: "Please review the ABI".into(),
+        delivery: Delivery::Queue,
+        wake: true,
+        message_id: Some(message_id.clone()),
+    };
+    e.command(command.clone()).await.unwrap();
+    assert_eq!(e.get(&ids[0]).unwrap().status, Status::Idle, "incoming wake is off by default");
+    e.command(Command::EditMessage { session: ids[0].clone(), message: message_id.clone(), text: Some("Review the ABI after tests".into()), delivery: None }).await.unwrap();
+    e.command(command).await.unwrap();
+    assert_eq!(e.get(&ids[0]).unwrap().inbox.len(), 1, "retry deduplicates the original request even after recipient edits it");
+    assert!(e.command(Command::Organize { session: ids[0].clone(), title: None, pinned: None, archived: Some(true), tags: None }).await.is_err());
+    e.command(Command::CancelMessage { session: ids[0].clone(), message: message_id.clone() }).await.unwrap();
+    assert_eq!(e.command(Command::Receipt { message: message_id }).await.unwrap()["state"], "cancelled");
+    e.command(Command::Organize { session: ids[0].clone(), title: None, pinned: None, archived: Some(true), tags: None }).await.unwrap();
+    drop(e);
+    let e = Engine::open(dir.0.join("state")).unwrap();
+    assert!(e.get(&ids[0]).unwrap().pinned);
+    assert_eq!(e.command(Command::Browse { filter: Default::default() }).await.unwrap()["sessions"].as_array().unwrap().len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn linked_instances_exchange_and_retry_messages_without_duplicate_delivery() {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    async fn rpc_at(path: &std::path::Path, cmd: Value) -> Value {
+        let mut stream = tokio::net::UnixStream::connect(rpc::socket(path)).await.unwrap();
+        stream.write_all(format!("{cmd}\n").as_bytes()).await.unwrap();
+        let mut line = String::new();
+        BufReader::new(stream).read_line(&mut line).await.unwrap();
+        serde_json::from_str::<Value>(&line).unwrap()
+    }
+    let dir = Scratch::new();
+    let a = dir.0.join("a");
+    let b = dir.0.join("b");
+    let sa = tokio::spawn(rpc::serve(a.clone()));
+    let sb = tokio::spawn(rpc::serve(b.clone()));
+    for _ in 0..200 {
+        if rpc::socket(&a).exists() && rpc::socket(&b).exists() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    let from = rpc_at(&a, json!({"op":"create","workspace":dir.0})).await["result"]["id"].as_str().unwrap().to_owned();
+    let to = rpc_at(&b, json!({"op":"create","workspace":dir.0})).await["result"]["id"].as_str().unwrap().to_owned();
+    let linked = rpc_at(&a, json!({"op":"link_peer","name":"review","directory":b,"reciprocal":true})).await;
+    assert!(linked.get("error").is_none(), "{linked}");
+    let mid = id();
+    let send = json!({"op":"send_message","session":from,"target":to,"peer":"review","text":"Review these findings","message_id":mid});
+    let first = rpc_at(&a, send.clone()).await;
+    assert_eq!(first["result"]["state"], "queued", "{first}");
+    rpc_at(&a, json!({"op":"retry_message","session":from,"message":mid})).await;
+    let state = rpc_at(&b, json!({"op":"get","session":to})).await;
+    assert_eq!(state["result"]["inbox"].as_array().unwrap().len(), 1);
+    assert_eq!(state["result"]["inbox"][0]["message"]["from"]["session"], from);
+    assert_eq!(state["result"]["status"], "idle");
+    rpc_at(&b, json!({"op":"shutdown"})).await;
+    sb.await.unwrap().unwrap();
+    let offline_id = id();
+    let failed = rpc_at(&a, json!({"op":"send_message","session":from,"target":to,"peer":"review","text":"Retained while offline","message_id":offline_id})).await;
+    assert!(failed.get("error").is_some());
+    assert_eq!(rpc_at(&a, json!({"op":"receipt","message":offline_id})).await["result"]["state"], "uncertain");
+    let sb = tokio::spawn(rpc::serve(b.clone()));
+    for _ in 0..200 {
+        if rpc::socket(&b).exists() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    let retry = rpc_at(&a, json!({"op":"retry_message","session":from,"message":offline_id})).await;
+    assert_eq!(retry["result"]["state"], "queued", "{retry}");
+    assert_eq!(rpc_at(&b, json!({"op":"get","session":to})).await["result"]["inbox"].as_array().unwrap().len(), 2);
+    rpc_at(&a, json!({"op":"shutdown"})).await;
+    rpc_at(&b, json!({"op":"shutdown"})).await;
+    sa.await.unwrap().unwrap();
+    sb.await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn steering_during_manual_work_is_delivered_and_stop_preserves_the_inbox() {
+    for delivery in [Delivery::AfterTool, Delivery::Queue, Delivery::Interrupt] {
+        let dir = Scratch::new();
+        let (fake, base, server) = server().await;
+        let e = Engine::open_at(dir.0.join("state"), Some(base)).unwrap();
+        let sid =
+            e.command(Command::Create { workspace: dir.0.clone(), config: Some(Config { approval: ApprovalMode::Allow, ..Default::default() }) }).await.unwrap()["id"].as_str().unwrap().to_owned();
+        let mut events = e.events.subscribe();
+        e.command(Command::Tool { session: sid.clone(), name: "execute".into(), arguments: json!({"program":"/usr/bin/sleep","args":["0.2"]}) }).await.unwrap();
+        loop {
+            if events.recv().await.unwrap().kind == "tool_started" {
+                break;
+            }
+        }
+        e.command(Command::Steer { session: sid.clone(), text: "Follow up after manual work".into(), delivery, message_id: None }).await.unwrap();
+        finish(&e).await;
+        let s = e.get(&sid).unwrap();
+        assert_eq!(s.status, Status::Idle, "{delivery:?}");
+        assert!(s.inbox.is_empty());
+        assert!(!s.manual);
+        assert!(fake.requests.lock().unwrap().iter().any(|r| r.1["input"].to_string().contains("Follow up after manual work")));
+        server.abort();
+    }
+}
+
+#[tokio::test]
+async fn inbox_reordering_limits_and_recipient_policy_are_enforced() {
+    let dir = Scratch::new();
+    let e = Engine::open(dir.0.join("state")).unwrap();
+    let a = e.command(Command::Create { workspace: dir.0.clone(), config: None }).await.unwrap()["id"].as_str().unwrap().to_owned();
+    let b = e.command(Command::Create { workspace: dir.0.clone(), config: None }).await.unwrap()["id"].as_str().unwrap().to_owned();
+    let mut ids = Vec::new();
+    for text in ["one", "two", "three"] {
+        let receipt = e.command(Command::SendMessage { session: a.clone(), target: b.clone(), peer: None, text: text.into(), delivery: Delivery::Queue, wake: false, message_id: None }).await.unwrap();
+        ids.push(receipt["message"]["id"].as_str().unwrap().to_owned());
+    }
+    e.command(Command::MoveMessage { session: b.clone(), message: ids[2].clone(), before: Some(ids[0].clone()) }).await.unwrap();
+    assert_eq!(e.get(&b).unwrap().inbox.iter().map(|p| p.message.text.as_str()).collect::<Vec<_>>(), ["three", "one", "two"]);
+    assert!(e.command(Command::MoveMessage { session: b.clone(), message: ids[2].clone(), before: Some("missing".into()) }).await.is_err());
+    assert_eq!(e.get(&b).unwrap().inbox.len(), 3);
+    let mut config = e.get(&b).unwrap().config;
+    config.accept_messages = false;
+    e.command(Command::Configure { session: b.clone(), config }).await.unwrap();
+    assert!(e.command(Command::SendMessage { session: a, target: b.clone(), peer: None, text: "four".into(), delivery: Delivery::Queue, wake: false, message_id: None }).await.is_err());
+    e.command(Command::Organize { session: b.clone(), title: None, pinned: Some(true), archived: None, tags: None }).await.unwrap();
+    let rows = e.command(Command::Browse { filter: Default::default() }).await.unwrap();
+    assert_eq!(rows["sessions"][0]["pinned"], true);
+    assert!(e.command(Command::Browse { filter: SessionFilter { offset: usize::MAX, ..Default::default() } }).await.is_err());
+}
+
+#[tokio::test]
+async fn stop_holds_queued_messages_until_explicit_resume() {
+    let dir = Scratch::new();
+    let (fake, base, server) = server().await;
+    let e = Engine::open_at(dir.0.join("state"), Some(base)).unwrap();
+    let sid = e.command(Command::Create { workspace: dir.0.clone(), config: Some(Config { approval: ApprovalMode::Allow, ..Default::default() }) }).await.unwrap()["id"].as_str().unwrap().to_owned();
+    fake.replies.lock().unwrap().push_back(response(vec![tool("execute", json!({"program":"/usr/bin/sleep","args":["30"]}))]));
+    let mut events = e.events.subscribe();
+    e.command(Command::Send { session: sid.clone(), text: "Initial".into() }).await.unwrap();
+    loop {
+        if events.recv().await.unwrap().kind == "tool_started" {
+            break;
+        }
+    }
+    let receipt = e.command(Command::Steer { session: sid.clone(), text: "Saved for later".into(), delivery: Delivery::Queue, message_id: None }).await.unwrap();
+    e.command(Command::Stop { session: sid.clone() }).await.unwrap();
+    finish(&e).await;
+    assert_eq!(e.get(&sid).unwrap().status, Status::Paused);
+    assert_eq!(e.get(&sid).unwrap().inbox.len(), 1);
+    assert_eq!(fake.requests.lock().unwrap().len(), 1);
+    assert_eq!(e.command(Command::Receipt { message: receipt["message"]["id"].as_str().unwrap().into() }).await.unwrap()["state"], "queued");
+    e.command(Command::Resume { session: sid.clone() }).await.unwrap();
+    finish(&e).await;
+    assert_eq!(e.get(&sid).unwrap().status, Status::Idle);
+    assert!(e.get(&sid).unwrap().inbox.is_empty());
+    assert!(fake.requests.lock().unwrap()[1].1["input"].to_string().contains("Saved for later"));
+    server.abort();
+}
+
+#[tokio::test]
+async fn interrupt_replaces_unapproved_calls_without_executing_them() {
+    let dir = Scratch::new();
+    let (fake, base, server) = server().await;
+    let e = Engine::open_at(dir.0.join("state"), Some(base)).unwrap();
+    let sid = e.command(Command::Create { workspace: dir.0.clone(), config: None }).await.unwrap()["id"].as_str().unwrap().to_owned();
+    fake.replies.lock().unwrap().push_back(response(vec![tool("write_file", json!({"path":"must-not-exist","content":"stale"}))]));
+    let mut events = e.events.subscribe();
+    e.command(Command::Send { session: sid.clone(), text: "Initial".into() }).await.unwrap();
+    loop {
+        if events.recv().await.unwrap().kind == "approval" {
+            break;
+        }
+    }
+    e.command(Command::Steer { session: sid.clone(), text: "Do something else".into(), delivery: Delivery::Interrupt, message_id: None }).await.unwrap();
+    finish(&e).await;
+    let s = e.get(&sid).unwrap();
+    assert_eq!(s.status, Status::Idle);
+    assert!(s.pending.is_none());
+    assert!(!dir.0.join("must-not-exist").exists());
+    assert!(s.calls.is_empty());
+    let input = fake.requests.lock().unwrap()[1].1["input"].clone();
+    assert!(input.to_string().contains("Skipped before execution"));
+    assert!(input.to_string().contains("Do something else"));
+    server.abort();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn cancelling_an_unconfirmed_peer_send_is_prompt_and_retryable() {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    let dir = Scratch::new();
+    let peer = dir.0.join("peer");
+    std::fs::create_dir(&peer).unwrap();
+    let listener = tokio::net::UnixListener::bind(peer.join("service.sock")).unwrap();
+    let remote = id();
+    let release = tokio_util::sync::CancellationToken::new();
+    let close = release.clone();
+    let server = tokio::spawn(async move {
+        loop {
+            let (stream, _) = tokio::select! {_ = close.cancelled()=>break,r=listener.accept()=>r.unwrap()};
+            let remote = remote.clone();
+            let close = close.clone();
+            tokio::spawn(async move {
+                let mut stream = BufReader::new(stream);
+                let mut line = String::new();
+                stream.read_line(&mut line).await.unwrap();
+                let request: Value = serde_json::from_str(&line).unwrap();
+                if request["command"]["op"] == "info" {
+                    stream.get_mut().write_all(format!("{}\n", json!({"result":{"instance":remote}})).as_bytes()).await.unwrap();
+                } else {
+                    close.cancelled().await;
+                }
+            });
+        }
+    });
+    let e = Engine::open_at(dir.0.join("state"), Some("http://127.0.0.1:1".into())).unwrap();
+    let sid = e.command(Command::Create { workspace: dir.0.clone(), config: Some(Config { approval: ApprovalMode::Allow, ..Default::default() }) }).await.unwrap()["id"].as_str().unwrap().to_owned();
+    e.command(Command::LinkPeer { name: "slow".into(), directory: peer, reciprocal: false }).await.unwrap();
+    let message = id();
+    let mut events = e.events.subscribe();
+    e.command(Command::Tool { session: sid.clone(), name: "send_message".into(), arguments: json!({"peer":"slow","target":id(),"text":"hello","message_id":message}) }).await.unwrap();
+    loop {
+        if events.recv().await.unwrap().kind == "message_outgoing" {
+            break;
+        }
+    }
+    e.command(Command::Stop { session: sid.clone() }).await.unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(1), e.quiesce()).await.unwrap();
+    assert_eq!(e.command(Command::Receipt { message }).await.unwrap()["state"], "uncertain");
+    assert_eq!(e.get(&sid).unwrap().status, Status::Paused);
+    release.cancel();
+    server.await.unwrap();
+}
+
+#[test]
+fn restart_marks_unconfirmed_outgoing_messages_for_safe_retry() {
+    let dir = Scratch::new();
+    let state = dir.0.join("state");
+    let e = Engine::open(state.clone()).unwrap();
+    drop(e);
+    let instance: String = serde_json::from_slice(&std::fs::read(state.join("instance.json")).unwrap()).unwrap();
+    let mut db = Store::open(&state).unwrap();
+    let mut session = Session::new(dir.0.clone(), Default::default());
+    db.save(&mut session, "created", json!({})).unwrap();
+    let message = Message {
+        id: id(),
+        from: Some(Sender { instance, session: session.id.clone(), title: "Sender".into() }),
+        to_instance: id(),
+        to: id(),
+        text: "Saved before transmission".into(),
+        delivery: Delivery::Queue,
+        created: now(),
+        wake: false,
+    };
+    db.save(&mut session, "message_outgoing", json!({"message":message})).unwrap();
+    drop(db);
+    let e = Engine::open(state.clone()).unwrap();
+    drop(e);
+    let db = Store::open(&state).unwrap();
+    assert_eq!(db.receipt(&message.id).unwrap().unwrap()["state"], "uncertain");
+    assert_eq!(db.original_message(&message.id).unwrap().unwrap(), message);
+}
+
+#[tokio::test]
+async fn a_manual_action_does_not_wake_older_collaborator_messages() {
+    let dir = Scratch::new();
+    let (fake, base, server) = server().await;
+    let e = Engine::open_at(dir.0.join("state"), Some(base)).unwrap();
+    let config = Config { approval: ApprovalMode::Allow, ..Default::default() };
+    let a = e.command(Command::Create { workspace: dir.0.clone(), config: Some(config.clone()) }).await.unwrap()["id"].as_str().unwrap().to_owned();
+    let b = e.command(Command::Create { workspace: dir.0.clone(), config: Some(config) }).await.unwrap()["id"].as_str().unwrap().to_owned();
+    for delivery in [Delivery::Queue, Delivery::AfterTool, Delivery::Interrupt] {
+        e.command(Command::SendMessage { session: a.clone(), target: b.clone(), peer: None, text: "Wait for an explicit model turn".into(), delivery, wake: false, message_id: None }).await.unwrap();
+    }
+    e.command(Command::Tool { session: b.clone(), name: "write_file".into(), arguments: json!({"path":"manual.txt","content":"manual action only"}) }).await.unwrap();
+    finish(&e).await;
+    let s = e.get(&b).unwrap();
+    assert_eq!(s.status, Status::Idle);
+    assert_eq!(s.inbox.len(), 3);
+    assert!(fake.requests.lock().unwrap().is_empty());
+    assert_eq!(std::fs::read_to_string(dir.0.join("manual.txt")).unwrap(), "manual action only");
+    e.command(Command::Resume { session: b.clone() }).await.unwrap();
+    finish(&e).await;
+    assert_eq!(e.get(&b).unwrap().inbox.len(), 0);
+    assert_eq!(fake.requests.lock().unwrap().len(), 1);
+    server.abort();
+}
+
+#[test]
+fn pre_coordination_stores_upgrade_without_losing_provider_context() {
+    let dir = Scratch::new();
+    let mut db = Store::open(&dir.0).unwrap();
+    let mut s = Session::new(dir.0.clone(), Default::default());
+    s.context = vec![json!({"type":"reasoning","encrypted_content":"opaque-preserved"})];
+    db.save(&mut s, "created", json!({})).unwrap();
+    drop(db);
+    let mut old = serde_json::to_value(&s).unwrap();
+    for key in ["pinned", "archived", "tags", "inbox", "tool_sequence", "interrupt_requested", "continue_requested"] {
+        old.as_object_mut().unwrap().remove(key);
+    }
+    old["config"].as_object_mut().unwrap().remove("accept_messages");
+    old["config"].as_object_mut().unwrap().remove("wake_on_message");
+    let db = rusqlite::Connection::open(dir.0.join("sessions.sqlite3")).unwrap();
+    db.execute("UPDATE sessions SET body=? WHERE id=?", rusqlite::params![old.to_string(), s.id]).unwrap();
+    db.execute_batch("DROP TABLE messages; PRAGMA user_version=3;").unwrap();
+    drop(db);
+    let e = Engine::open(dir.0.clone()).unwrap();
+    let upgraded = e.get(&s.id).unwrap();
+    assert_eq!(upgraded.context, s.context);
+    assert!(!upgraded.continue_requested);
+    assert!(!upgraded.pinned);
+    assert!(upgraded.inbox.is_empty());
+    assert!(upgraded.config.accept_messages);
+    assert!(!upgraded.config.wake_on_message);
+}

@@ -9,8 +9,11 @@ use tokio_util::sync::CancellationToken;
 type ApprovalSender = oneshot::Sender<bool>;
 pub struct Engine {
     pub store: Arc<Mutex<Store>>,
+    pub(crate) directory: PathBuf,
+    pub(crate) instance: String,
+    pub(crate) peers: Mutex<Vec<Peer>>,
     pub events: broadcast::Sender<Event>,
-    active: Mutex<HashMap<String, CancellationToken>>,
+    pub(crate) active: Mutex<HashMap<String, CancellationToken>>,
     approvals: Mutex<HashMap<(String, String), ApprovalSender>>,
     artifacts: PathBuf,
     defaults: Mutex<Config>,
@@ -26,6 +29,21 @@ impl Engine {
     }
     pub fn open_at(dir: PathBuf, pool: Option<String>) -> Result<Arc<Self>> {
         let store = Store::open(&dir)?;
+        let dir = dir.canonicalize()?;
+        let identity_path = dir.join("instance.json");
+        let instance = if identity_path.exists() {
+            serde_json::from_slice::<String>(&std::fs::read(&identity_path)?)?
+        } else {
+            let value = id();
+            tools::atomic_write(&identity_path, &serde_json::to_vec(&value)?)?;
+            value
+        };
+        ensure!(uuid::Uuid::parse_str(&instance).is_ok(), "invalid service identity");
+        let peers = match std::fs::read(dir.join("peers.json")) {
+            Ok(bytes) => serde_json::from_slice::<Vec<Peer>>(&bytes)?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => vec![],
+            Err(e) => return Err(e.into()),
+        };
         let defaults_path = dir.join("defaults.json");
         let defaults = match std::fs::read(&defaults_path) {
             Ok(b) => serde_json::from_slice::<Config>(&b)?,
@@ -38,6 +56,9 @@ impl Engine {
         let (events, _) = broadcast::channel(1024);
         let e = Arc::new(Self {
             store: Arc::new(Mutex::new(store)),
+            directory: dir,
+            instance,
+            peers: Mutex::new(peers),
             events,
             active: Mutex::new(HashMap::new()),
             approvals: Mutex::new(HashMap::new()),
@@ -56,6 +77,8 @@ impl Engine {
             if matches!(s.status, Status::Running | Status::Approval) {
                 s.status = Status::Interrupted;
                 s.pending = None;
+                s.interrupt_requested = false;
+                s.continue_requested = false;
                 s.error = Some(
                     if s.in_flight.is_some() {
                         "The service stopped during a tool action. Its outcome is unknown; inspect the workspace before resuming."
@@ -67,6 +90,10 @@ impl Engine {
                 let reason = s.error.clone();
                 e.save(&mut s, "interrupted", json!({"reason":reason}))?;
             }
+        }
+        let unconfirmed = e.store.lock().unwrap().unconfirmed_messages()?;
+        for (session, id) in unconfirmed {
+            e.change(&session, "message_uncertain", |_| Ok(json!({"id":id,"error":"service restarted before delivery was confirmed; retry with the same message ID"})))?;
         }
         Ok(e)
     }
@@ -87,7 +114,7 @@ impl Engine {
         let _ = self.events.send(event);
         Ok(())
     }
-    fn change(&self, id: &str, kind: &str, f: impl FnOnce(&mut Session) -> Result<Value>) -> Result<Value> {
+    pub(crate) fn change(&self, id: &str, kind: &str, f: impl FnOnce(&mut Session) -> Result<Value>) -> Result<Value> {
         let mut db = self.store.lock().unwrap();
         let mut s = db.get(id)?;
         let value = f(&mut s)?;
@@ -102,7 +129,17 @@ impl Engine {
     pub async fn command(self: &Arc<Self>, cmd: Command) -> Result<Value> {
         if self.upgrading.load(std::sync::atomic::Ordering::Acquire) {
             ensure!(
-                !matches!(&cmd, Command::Send { .. } | Command::Resume { .. } | Command::Tool { .. } | Command::Compact { .. }),
+                !matches!(
+                    &cmd,
+                    Command::Send { .. }
+                        | Command::Steer { .. }
+                        | Command::SendMessage { .. }
+                        | Command::ReceiveMessage { .. }
+                        | Command::RetryMessage { .. }
+                        | Command::Resume { .. }
+                        | Command::Tool { .. }
+                        | Command::Compact { .. }
+                ),
                 "service upgrade is finishing active work; retry after it reconnects"
             );
         }
@@ -139,6 +176,7 @@ impl Engine {
                 self.change(&session, "manual_tool", |s| {
                     ensure!(s.calls.is_empty() && s.in_flight.is_none(), "resume interrupted work before starting another operation");
                     s.manual = true;
+                    s.continue_requested = false;
                     s.calls.push(ToolCall { id: crate::model::id(), name, arguments });
                     Ok(json!({"call":s.calls[0]}))
                 })?;
@@ -153,22 +191,23 @@ impl Engine {
                 Ok(serde_json::to_value(s)?)
             }
             Command::Export { session } => Ok(serde_json::to_value(self.get(&session)?)?),
-            Command::Send { session, text } => {
-                ensure!(!text.trim().is_empty(), "message is empty");
-                ensure!(text.len() <= 1_000_000, "message too large");
-                self.change(&session, "user", |s| {
-                    if s.title == "New session" {
-                        s.title = text.chars().take(72).collect();
-                    }
-                    if let Some(goal) = s.goal.as_mut().filter(|g| g.status == "blocked") {
-                        goal.status = "active".into();
-                    }
-                    s.queued.push(text.clone());
-                    Ok(json!({"text":text}))
-                })?;
-                self.start(session, false)?;
-                Ok(json!({"queued":true}))
-            }
+            Command::Send { session, text } => self.steer(&session, text, Delivery::AfterTool, None),
+            Command::Steer { session, text, delivery, message_id } => self.steer(&session, text, delivery, message_id),
+            Command::Info => Ok(json!({"instance":self.instance,"directory":self.directory,"protocol":1,"capabilities":["messages","steering","catalog"]})),
+            Command::Browse { filter } => self.store.lock().unwrap().browse(&filter),
+            Command::Organize { session, title, pinned, archived, tags } => self.organize(&session, title, pinned, archived, tags),
+            Command::EditMessage { session, message, text, delivery } => self.edit_message(&session, &message, text, delivery),
+            Command::CancelMessage { session, message } => self.cancel_message(&session, &message),
+            Command::MoveMessage { session, message, before } => self.move_message(&session, &message, before.as_deref()),
+            Command::Messages { session, after, limit } => Ok(self.store.lock().unwrap().messages(&session, after, limit)?.into()),
+            Command::Receipt { message } => self.store.lock().unwrap().receipt(&message)?.context("message not found"),
+            Command::Peers => Ok(serde_json::to_value(self.peers.lock().unwrap().clone())?),
+            Command::LinkPeer { name, directory, reciprocal } => self.link_peer(name, directory, reciprocal).await,
+            Command::UnlinkPeer { name } => self.unlink_peer(&name),
+            Command::PeerSessions { peer, filter } => self.peer_call(&peer, Command::Browse { filter }).await,
+            Command::SendMessage { session, target, peer, text, delivery, wake, message_id } => self.send_message(&session, &target, peer.as_deref(), text, delivery, wake, message_id).await,
+            Command::ReceiveMessage { message } => self.receive_message(message),
+            Command::RetryMessage { session, message } => self.retry_message(&session, &message).await,
             Command::Resume { session } => {
                 let idle = self.idle_guard(&session)?;
                 self.change(&session, "resume", |s| {
@@ -194,6 +233,8 @@ impl Engine {
                 self.cancel_tree(&session);
                 self.change(&session, "stop", |s| {
                     s.status = Status::Paused;
+                    s.interrupt_requested = false;
+                    s.continue_requested = false;
                     Ok(json!({"stopped":true}))
                 })
             }
@@ -271,6 +312,11 @@ impl Engine {
                 s.created = now();
                 s.pending = None;
                 s.queued.clear();
+                s.inbox.clear();
+                s.interrupt_requested = false;
+                s.continue_requested = false;
+                s.pinned = false;
+                s.archived = false;
                 s.turns = 0;
                 s.usage = Usage::default();
                 let parent = s.parent.clone();
@@ -334,7 +380,7 @@ impl Engine {
             }
         }
     }
-    fn idle_guard(&self, id: &str) -> Result<olo_sync::MutexGuard<'_, HashMap<String, CancellationToken>>> {
+    pub(crate) fn idle_guard(&self, id: &str) -> Result<olo_sync::MutexGuard<'_, HashMap<String, CancellationToken>>> {
         let active = self.active.lock().unwrap();
         ensure!(!active.contains_key(id), "stop the running turn before this operation");
         Ok(active)
@@ -352,44 +398,65 @@ impl Engine {
             }
         }
     }
-    fn start(self: &Arc<Self>, id: String, compact: bool) -> Result<()> {
+    pub(crate) fn start(self: &Arc<Self>, id: String, compact: bool) -> Result<()> {
         let mut active = self.active.lock().unwrap();
         if active.contains_key(&id) {
             return Ok(());
         }
         let s = self.get(&id)?;
+        ensure!(!s.archived, "restore the archived session before starting work");
         ensure!(s.in_flight.is_none(), "an interrupted tool has an unknown outcome; inspect it, then use Resume");
         let cancel = CancellationToken::new();
         active.insert(id.clone(), cancel.clone());
         drop(active);
         let e = self.clone();
         tokio::spawn(async move {
-            let result = e.run(&id, &cancel, compact).await;
-            if let Err(error) = result {
-                let message = error.to_string();
-                let _ = e.change(&id, if cancel.is_cancelled() { "paused" } else { "error" }, |s| {
-                    s.status = if cancel.is_cancelled() { Status::Paused } else { Status::Failed };
-                    s.error = Some(message.clone());
-                    s.pending = None;
-                    Ok(json!({"message":message}))
-                });
-            }
-            e.approvals.lock().unwrap().retain(|(s, _), _| s != &id);
-            e.active.lock().unwrap().remove(&id);
-            e.changed.notify_waiters();
-            if let Ok(child) = e.get(&id) {
-                if let Some(parent) = &child.parent {
-                    let _ = e.change(parent, "child_finished", |_| Ok(json!({"session":id,"status":child.status,"error":child.error})));
+            let mut cancel = cancel;
+            let mut compact = compact;
+            loop {
+                let manual = e.get(&id).is_ok_and(|s| s.manual);
+                let result = e.run(&id, &cancel, compact).await;
+                if let Err(error) = result {
+                    let message = error.to_string();
+                    let _ = e.change(&id, if cancel.is_cancelled() { "paused" } else { "error" }, |s| {
+                        s.status = if cancel.is_cancelled() { Status::Paused } else { Status::Failed };
+                        s.error = Some(message.clone());
+                        s.pending = None;
+                        Ok(json!({"message":message}))
+                    });
                 }
-            }
-            // A prompt arriving just as a turn ended must not be stranded.
-            if !cancel.is_cancelled() && e.get(&id).is_ok_and(|s| !s.queued.is_empty() && s.status != Status::Failed) {
-                let _ = e.start(id, false);
+                e.approvals.lock().unwrap().retain(|(s, _), _| s != &id);
+                // Keep the active reservation across an interrupt/restart. A
+                // sender and quiesce can never observe a false idle gap.
+                let mut active = e.active.lock().unwrap();
+                let restart = !e.shutdown.is_cancelled()
+                    && !e.upgrading.load(std::sync::atomic::Ordering::Acquire)
+                    && e.get(&id).is_ok_and(|s| {
+                        s.interrupt_requested
+                            || ((!manual || s.continue_requested) && !cancel.is_cancelled() && (!s.queued.is_empty() || !s.inbox.is_empty()) && !matches!(s.status, Status::Failed | Status::Paused))
+                    });
+                if restart {
+                    cancel = CancellationToken::new();
+                    active.insert(id.clone(), cancel.clone());
+                    compact = false;
+                    drop(active);
+                    continue;
+                }
+                active.remove(&id);
+                drop(active);
+                e.changed.notify_waiters();
+                if let Ok(child) = e.get(&id) {
+                    if let Some(parent) = &child.parent {
+                        let _ = e.change(parent, "child_finished", |_| Ok(json!({"session":id,"status":child.status,"error":child.error})));
+                    }
+                }
+                break;
             }
         });
         Ok(())
     }
     async fn run(self: &Arc<Self>, id: &str, cancel: &CancellationToken, compact_only: bool) -> Result<()> {
+        self.deliver_messages(id, crate::coordination::Boundary::Start)?;
         self.change(id, "running", |s| {
             s.status = Status::Running;
             s.error = None;
@@ -430,7 +497,8 @@ impl Engine {
             if cancel.is_cancelled() {
                 bail!("cancelled");
             }
-            // Consume queued steering at a tool boundary, after prior results are complete.
+            self.deliver_messages(id, crate::coordination::Boundary::Tool)?;
+            // Legacy queued prompts remain readable after upgrading older stores.
             self.change(id, "boundary", |s| {
                 if s.calls.is_empty() {
                     let queued = std::mem::take(&mut s.queued);
@@ -509,8 +577,9 @@ impl Engine {
             if has_calls || pause_turn {
                 continue;
             }
+            let delivered = self.deliver_messages(id, crate::coordination::Boundary::Turn)?;
             let s = self.get(id)?;
-            if !s.queued.is_empty() {
+            if !s.queued.is_empty() || !s.inbox.is_empty() || delivered {
                 continue;
             }
             if s.config.keep_going && !s.spec_mode && s.goal.as_ref().is_some_and(|g| g.status == "active") {
@@ -529,7 +598,7 @@ impl Engine {
         if s.config.denied_tools.contains(name) {
             return Ok(false);
         }
-        if (s.config.read_only || s.spec_mode) && !tools::readonly(name) && !tools::internal(name) && !matches!(name.as_str(), "fetch_url" | "github_read") {
+        if (s.config.read_only || s.spec_mode) && !tools::readonly(name) && !tools::internal(name) && !matches!(name.as_str(), "fetch_url" | "github_read" | "send_message") {
             return Ok(false);
         }
         if tools::readonly(name) || tools::internal(name) {
@@ -574,6 +643,7 @@ impl Engine {
         if !self.allowed(&s, &call, cancel, client).await? {
             self.change(id, "tool_denied", |s| {
                 s.calls.remove(0);
+                s.tool_sequence += 1;
                 if !s.manual {
                     s.result(&call, "Denied by session policy. Do not bypass this decision with another tool.", true);
                 }
@@ -583,7 +653,7 @@ impl Engine {
         }
         self.change(id, "tool_started", |s| {
             ensure!(
-                !(s.spec_mode || s.config.read_only) || tools::readonly(&call.name) || tools::internal(&call.name) || matches!(call.name.as_str(), "fetch_url" | "github_read"),
+                !(s.spec_mode || s.config.read_only) || tools::readonly(&call.name) || tools::internal(&call.name) || matches!(call.name.as_str(), "fetch_url" | "github_read" | "send_message"),
                 "session became read-only before execution"
             );
             s.calls.remove(0);
@@ -608,6 +678,7 @@ impl Engine {
         let text = tools::clip(&output.to_string(), s.config.max_tool_bytes);
         self.change(id, "tool_result", |s| {
             s.in_flight = None;
+            s.tool_sequence += 1;
             if s.manual {
                 s.user(&format!("Manually requested {} completed (error={error}): {text}", call.name));
             } else {
@@ -643,6 +714,29 @@ impl Engine {
         let a = &call.arguments;
         let sid = &s.id;
         match call.name.as_str() {
+            "sessions" => self.store.lock().unwrap().browse(&serde_json::from_value(a.clone())?),
+            "session_messages" => Ok(self.store.lock().unwrap().messages(sid, a["after"].as_i64().unwrap_or(0), 100)?.into()),
+            "send_message" => {
+                let message_id = a["message_id"].as_str().map(str::to_owned).unwrap_or_else(crate::model::id);
+                let sending = self.send_message(
+                    sid,
+                    tools::string(a, "target")?,
+                    a["peer"].as_str(),
+                    tools::string(a, "text")?.into(),
+                    a.get("delivery").map(|v| serde_json::from_value(v.clone())).transpose()?.unwrap_or(Delivery::AfterTool),
+                    a["wake"].as_bool().unwrap_or(false),
+                    Some(message_id.clone()),
+                );
+                tokio::select! {
+                    result=sending=>result,
+                    _=cancel.cancelled()=>{
+                        let pending=self.store.lock().unwrap().receipt(&message_id)?.is_some_and(|r|r["state"]=="sending" && r["message"]["from"]["session"]==*sid && r["message"]["from"]["instance"]==self.instance);
+                        if pending {self.change(sid,"message_uncertain",|_|Ok(json!({"id":message_id,"error":"cancelled before confirmation"})))?;}
+                        bail!("Sending cancelled before confirmation. Message {message_id} may have been accepted; inspect its receipt and retry with the same ID.")
+                    }
+                }
+            }
+            "peers" => Ok(serde_json::to_value(self.peers.lock().unwrap().clone())?),
             "repository_read" | "repository_write" => {
                 let root = s.workspace.clone();
                 let call = call.clone();

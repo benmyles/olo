@@ -28,6 +28,20 @@ fn def(name: &str, description: &str, properties: Value, required: &[&str]) -> T
 }
 pub fn definitions() -> Vec<ToolDef> {
     vec![
+        def(
+            "sessions",
+            "Discover local sessions, pinned first. Query title/workspace/tags; paginate with offset.",
+            json!({"query":{"type":"string"},"archived":{"type":"boolean"},"offset":{"type":"integer"},"limit":{"type":"integer"}}),
+            &[],
+        ),
+        def("peers", "List explicitly linked local Coder service instances.", json!({}), &[]),
+        def("session_messages", "Read this session's durable message receipts and conversation with collaborators.", json!({"after":{"type":"integer"}}), &[]),
+        def(
+            "send_message",
+            "Send an attributed message to another session or a linked service. Requires approval. Wake is honored only if the recipient opted in. Delivery is not proof of task completion. Use a stable UUID message_id when retrying.",
+            json!({"target":{"type":"string"},"peer":{"type":"string"},"text":{"type":"string"},"delivery":{"type":"string","enum":["interrupt","after_tool","queue"]},"wake":{"type":"boolean"},"message_id":{"type":"string"}}),
+            &["target", "text"],
+        ),
         def("create_directory", "Create a workspace directory and its missing parents natively.", json!({"path":{"type":"string"}}), &["path"]),
         def(
             "delete_file",
@@ -227,7 +241,22 @@ pub fn instructions(root: &Path, target: &Path) -> Result<String> {
     Ok(out)
 }
 pub fn readonly(name: &str) -> bool {
-    matches!(name, "checkpoints" | "repository_read" | "read_file" | "list_files" | "search" | "read_skill" | "history_search" | "agent_status" | "wait_agent" | "read_artifact")
+    matches!(
+        name,
+        "sessions"
+            | "peers"
+            | "session_messages"
+            | "checkpoints"
+            | "repository_read"
+            | "read_file"
+            | "list_files"
+            | "search"
+            | "read_skill"
+            | "history_search"
+            | "agent_status"
+            | "wait_agent"
+            | "read_artifact"
+    )
 }
 pub fn internal(name: &str) -> bool {
     matches!(name, "pause_work" | "present" | "set_todos" | "update_spec" | "remember" | "complete_goal" | "update_criterion" | "spawn_agent" | "message_agent" | "stop_agent")

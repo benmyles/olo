@@ -3892,5 +3892,17 @@
   "title": "Coder: native repository forms",
   "caption": "Commit, branch, worktree, approval guidance and draft pull-request forms use native controls. Mixed single-line and multiline rows align at 1.75\u00d7; unfinished form text survives an upgrade.",
   "image": "2026-11-10/010552-coder-native-repository-forms.png"
+ },
+ {
+  "time": "2026-11-10T02:42:43",
+  "title": "Coder: four sessions, one desktop",
+  "caption": "Independent native windows fit beside Deskbar at 1280\u00d7800 points. Sessions, pins, pending-message editing, model settings and repository changes remain available in compact tiles; drafts and window positions survive upgrades. Reviewed in light, dark and night at five scales.",
+  "image": "2026-11-10/024243-coder-four-sessions-one-desktop.png"
+ },
+ {
+  "time": "2026-11-10T02:42:44",
+  "title": "Coder: independent terminal tiles",
+  "caption": "Ratatui views share the durable session service, with independent transcripts, syntax colors, drafts, delivery modes and a searchable session picker. Reconnection is a temporary status, not repeated transcript noise; terminal upgrades restore every tile.",
+  "image": "2026-11-10/024244-coder-independent-terminal-tiles.png"
  }
 ]

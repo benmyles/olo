@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-10
 
+### Coder: independent terminal tiles
+
+*02:42* — Ratatui views share the durable session service, with independent transcripts, syntax colors, drafts, delivery modes and a searchable session picker. Reconnection is a temporary status, not repeated transcript noise; terminal upgrades restore every tile.
+
+![Coder: independent terminal tiles](2026-11-10/024244-coder-independent-terminal-tiles.png)
+
+### Coder: four sessions, one desktop
+
+*02:42* — Independent native windows fit beside Deskbar at 1280×800 points. Sessions, pins, pending-message editing, model settings and repository changes remain available in compact tiles; drafts and window positions survive upgrades. Reviewed in light, dark and night at five scales.
+
+![Coder: four sessions, one desktop](2026-11-10/024243-coder-four-sessions-one-desktop.png)
+
 ### Coder: native repository forms
 
 *01:05* — Commit, branch, worktree, approval guidance and draft pull-request forms use native controls. Mixed single-line and multiline rows align at 1.75×; unfinished form text survives an upgrade.

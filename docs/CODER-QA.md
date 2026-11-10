@@ -123,3 +123,60 @@ elicitation or resumable GET streams. Developer commands use cancellable argv
 processes with captured streams, not interactive PTYs. History/artifacts have
 bounded individual items but no automatic lifetime pruning. The process sandbox
 confines writes; it does not isolate host reads or networking.
+
+## Coordination and multi-session follow-up — 2026-11-10
+
+This follow-up adds durable addressed messages, three steering boundaries,
+searchable live session catalogs, pins/archive/tags, native tiled windows and
+independent Ratatui tiles. [Detailed measurements](coder-coordination-qa.json)
+retain the visual cases, benchmark runs and recovery evidence.
+
+Validation:
+
+- Final focused release suite: **84 passed**, zero failures (43 core, five app,
+  36 UI tests); nine intentionally ignored live/doctest cases. Tests cover
+  queued/after-tool/interrupt boundaries, skipped provider call results,
+  Stop/Resume, inbox limits and edits, receipt idempotence, peer identity,
+  offline delivery retry, cancellation of stalled peer requests, upgrade
+  recovery and legacy schema-3 stores with opaque native context.
+- A manual tool action cannot consume dormant collaborator messages or start
+  inference because they exist. Both a regression fixture and a live local
+  service check verified the pending inbox and model usage remained unchanged.
+- An earlier full release workspace run passed 1,648 tests. A later full run
+  passed 1,651 with one failure in unchanged `olo-net` code:
+  `tests::a_nudge_wakes_a_waiter`. Rerunning that exact workspace-built test
+  binary passed all nine tests. The final focused suite includes later fixes;
+  the final `cargo build --release --workspace` also passed.
+- **225 visual cases, zero findings:** six panels in 1040×700 and 530×357
+  windows, plus Rename, Connect and Message forms, in light/dark/night at
+  1×, 1.25×, 1.5×, 1.75× and 2×. Scale changed with the app running.
+  Release layout lint at 1×/1.5×/2× reported zero errors. Four simultaneous
+  530×357 windows fit beside Deskbar on a 1280×800 screen and also reviewed
+  cleanly. Screenshots are in the [journal](journal/README.md).
+- Four native windows restored their sessions, drafts and exact positions
+  after binary re-exec. Two windows retained their drafts across two compositor
+  reloads. Two TUI tiles retained their sessions, drafts, focus and delivery
+  mode after re-exec; color and `NO_COLOR` were inspected. Initial startup
+  with the service lock held retained the requested session and unsent draft
+  through a client re-exec, then connected when the service became available.
+- Cross-instance transport is currently owner-local Unix sockets with explicit
+  links; remote-host transport is not implemented. Receipts describe admission,
+  not task completion. Retries retain message IDs; collaborator messages never
+  grant approvals. Waking an idle collaborator is opt-in at the recipient.
+
+Release benchmark baseline is commit `da8583f0`, not another coding agent.
+At 120 Hz and 1×/1.5×/2×, the baseline recorded 341 frames and one failing step
+(slowest non-transition draw 9.67 ms, hover). The first follow-up recorded
+335 frames and two failing steps (18.14 ms, resize); a repeat recorded 339 frames
+and zero failing steps (4.83 ms, typing). Baseline typing medians were
+1.14 / 1.00 / 1.23 ms; the repeat's were 0.87 / 1.01 / 1.42 ms. The panel selector
+replaces three benchmark tab-click steps, so total steps differ (33 versus 30).
+These shared-host samples do not establish a hard worst-case latency bound.
+Three-second connected idle samples measured 0.0% CPU, zero wakeups and zero
+frames before and after at 2×; the service and two-tile TUI also measured 0.0%
+CPU and zero wakeups. The final build's separate idle sample was unchanged.
+
+After the temporary reconnect-status change, the final build recorded 335 frames
+and zero failing steps; its slowest non-transition draw was 6.68 ms (hover).
+All four benchmark runs, including the initial failures, are retained in the
+machine-readable report.

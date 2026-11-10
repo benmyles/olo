@@ -93,7 +93,26 @@ async fn connection(stream: UnixStream, e: Arc<Engine>) -> Result<()> {
     }
     let request: Value = serde_json::from_slice(&line)?;
     ensure!(request.get("version").is_none_or(|v| v == 1), "unsupported protocol version");
-    if request["subscribe"] == true {
+    if request["subscribe_sessions"] == true {
+        let filter: crate::SessionFilter = request.get("filter").map(|v| serde_json::from_value(v.clone())).transpose()?.unwrap_or_default();
+        let mut live = e.events.subscribe();
+        loop {
+            let catalog = e.store.lock().unwrap().browse(&filter)?;
+            send(&mut write, &json!({"catalog":catalog})).await?;
+            loop {
+                tokio::select! {
+                    _=e.shutdown.cancelled()=>return Ok(()), _=reader.read_u8()=>return Ok(()),
+                    event=live.recv()=>match event {
+                        Ok(event) if event.seq>0 && matches!(event.kind.as_str(),"created"|"forked"|"organized"|"running"|"idle"|"approval"|"paused"|"error"|"stop"|"message_queued"|"message_cancelled"|"message_edited"|"message_moved"|"messages_delivered"|"configured") => break,
+                        Err(_)=>break, _=>{}
+                    }
+                }
+            }
+            // One short debounce only after a change, never an idle timer.
+            tokio::select! { _=e.shutdown.cancelled()=>return Ok(()), _=tokio::time::sleep(std::time::Duration::from_millis(100))=>{} }
+            while live.try_recv().is_ok() {}
+        }
+    } else if request["subscribe"] == true {
         let session = request["session"].as_str().context("subscription requires session")?;
         let mut live = e.events.subscribe();
         let mut cursor = request["after"].as_i64().unwrap_or(-1);
@@ -135,10 +154,20 @@ async fn connection(stream: UnixStream, e: Arc<Engine>) -> Result<()> {
 /// Blocking client, used only on a frontend's worker thread or a CLI invocation.
 pub fn call(dir: &Path, command: &Command) -> Result<Value> {
     let mut stream = std::os::unix::net::UnixStream::connect(socket(dir)).context("connect to Coder service")?;
+    use std::os::fd::AsRawFd;
+    let mut cred: libc::ucred = unsafe { std::mem::zeroed() };
+    let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+    ensure!(
+        unsafe { libc::getsockopt(stream.as_raw_fd(), libc::SOL_SOCKET, libc::SO_PEERCRED, (&mut cred as *mut libc::ucred).cast(), &mut len) } == 0 && cred.uid == unsafe { libc::geteuid() },
+        "Coder service is not owned by this user"
+    );
     stream.set_read_timeout(Some(std::time::Duration::from_secs(45)))?;
+    stream.set_write_timeout(Some(std::time::Duration::from_secs(45)))?;
     writeln!(stream, "{}", json!({"version":1,"command":command}))?;
     let mut line = String::new();
-    std::io::BufReader::new(stream).read_line(&mut line)?;
+    use std::io::Read;
+    std::io::BufReader::new(stream.take(128 * 1024 * 1024 + 1)).read_line(&mut line)?;
+    ensure!(line.len() <= 128 * 1024 * 1024, "response exceeds 128 MB");
     let v: Value = serde_json::from_str(&line)?;
     if let Some(e) = v.get("error") {
         anyhow::bail!("{}", e.as_str().unwrap_or("command failed"));

@@ -13,3 +13,5 @@ pub mod store;
 pub mod tools;
 pub use engine::Engine;
 pub use model::*;
+
+mod coordination;

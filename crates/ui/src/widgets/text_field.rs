@@ -248,6 +248,10 @@ impl TextField {
         self
     }
 
+    pub(crate) fn is_multiline(&self) -> bool {
+        self.multiline
+    }
+
     /// Return is its own (`Entered`), even in a window with a default
     /// button, which otherwise takes it (a first password field whose
     /// Return goes on to the second).

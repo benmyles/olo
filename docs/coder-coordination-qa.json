@@ -1,0 +1,7071 @@
+{
+  "date": "2026-11-10",
+  "baseline_commit": "da8583f0",
+  "baseline_sha256": "fcda37e168bb86ff28868eba23c97918dab9be747b97edda6af525d392724d50",
+  "release_sha256": "dfdeef074f72c10afb107f523a5547d22e9dad16987fb54a840797fa0e2dcd07",
+  "tests": {
+    "focused_final": {
+      "suites": 7,
+      "passed": 84,
+      "failed": 0,
+      "ignored": 9
+    },
+    "workspace_earlier": {
+      "suites": 204,
+      "passed": 1648,
+      "failed": 0,
+      "ignored": 138
+    },
+    "workspace_later": {
+      "suites": 204,
+      "passed": 1651,
+      "failed": 1,
+      "ignored": 138
+    },
+    "workspace_failure": "olo-net tests::a_nudge_wakes_a_waiter: !rest(Duration::ZERO)",
+    "exact_workspace_net_binary_recheck": {
+      "suites": 1,
+      "passed": 9,
+      "failed": 0,
+      "ignored": 0
+    },
+    "release_workspace_build": "passed"
+  },
+  "visual": {
+    "cases": [
+      {
+        "scale": 1,
+        "theme": "light",
+        "size": "1040x700",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "light",
+        "size": "1040x700",
+        "panel": "work",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "light",
+        "size": "1040x700",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "light",
+        "size": "1040x700",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "light",
+        "size": "1040x700",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "light",
+        "size": "1040x700",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "light",
+        "size": "530x357",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "light",
+        "size": "530x357",
+        "panel": "work",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "light",
+        "size": "530x357",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "light",
+        "size": "530x357",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "light",
+        "size": "530x357",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "light",
+        "size": "530x357",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "light",
+        "form": "rename",
+        "review": [
+          {
+            "title": "Rename Session",
+            "width": 580,
+            "height": 200,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "light",
+        "form": "connect",
+        "review": [
+          {
+            "title": "Link Coder Instance",
+            "width": 580,
+            "height": 200,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "light",
+        "form": "message",
+        "review": [
+          {
+            "title": "Message Another Session",
+            "width": 580,
+            "height": 244,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "dark",
+        "size": "1040x700",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "dark",
+        "size": "1040x700",
+        "panel": "work",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "dark",
+        "size": "1040x700",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "dark",
+        "size": "1040x700",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "dark",
+        "size": "1040x700",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "dark",
+        "size": "1040x700",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "dark",
+        "size": "530x357",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "dark",
+        "size": "530x357",
+        "panel": "work",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "dark",
+        "size": "530x357",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "dark",
+        "size": "530x357",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "dark",
+        "size": "530x357",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "dark",
+        "size": "530x357",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "dark",
+        "form": "rename",
+        "review": [
+          {
+            "title": "Rename Session",
+            "width": 580,
+            "height": 200,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "dark",
+        "form": "connect",
+        "review": [
+          {
+            "title": "Link Coder Instance",
+            "width": 580,
+            "height": 200,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "dark",
+        "form": "message",
+        "review": [
+          {
+            "title": "Message Another Session",
+            "width": 580,
+            "height": 244,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "night",
+        "size": "1040x700",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "night",
+        "size": "1040x700",
+        "panel": "work",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "night",
+        "size": "1040x700",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "night",
+        "size": "1040x700",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "night",
+        "size": "1040x700",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "night",
+        "size": "1040x700",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "night",
+        "size": "530x357",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "night",
+        "size": "530x357",
+        "panel": "work",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "night",
+        "size": "530x357",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "night",
+        "size": "530x357",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "night",
+        "size": "530x357",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "night",
+        "size": "530x357",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "night",
+        "form": "rename",
+        "review": [
+          {
+            "title": "Rename Session",
+            "width": 580,
+            "height": 200,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "night",
+        "form": "connect",
+        "review": [
+          {
+            "title": "Link Coder Instance",
+            "width": 580,
+            "height": 200,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "night",
+        "form": "message",
+        "review": [
+          {
+            "title": "Message Another Session",
+            "width": 580,
+            "height": 244,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "light",
+        "size": "1040x700",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "light",
+        "size": "1040x700",
+        "panel": "work",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "light",
+        "size": "1040x700",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "light",
+        "size": "1040x700",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "light",
+        "size": "1040x700",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "light",
+        "size": "1040x700",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "light",
+        "size": "530x357",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 356,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "light",
+        "size": "530x357",
+        "panel": "work",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 356,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "light",
+        "size": "530x357",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 356,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "light",
+        "size": "530x357",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 356,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "light",
+        "size": "530x357",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 356,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "light",
+        "size": "530x357",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 356,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "light",
+        "form": "rename",
+        "review": [
+          {
+            "title": "Rename Session",
+            "width": 580,
+            "height": 200,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "light",
+        "form": "connect",
+        "review": [
+          {
+            "title": "Link Coder Instance",
+            "width": 580,
+            "height": 200,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "light",
+        "form": "message",
+        "review": [
+          {
+            "title": "Message Another Session",
+            "width": 580,
+            "height": 244,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "dark",
+        "size": "1040x700",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "dark",
+        "size": "1040x700",
+        "panel": "work",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "dark",
+        "size": "1040x700",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "dark",
+        "size": "1040x700",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "dark",
+        "size": "1040x700",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "dark",
+        "size": "1040x700",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "dark",
+        "size": "530x357",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 356,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "dark",
+        "size": "530x357",
+        "panel": "work",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 356,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "dark",
+        "size": "530x357",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 356,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "dark",
+        "size": "530x357",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 356,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "dark",
+        "size": "530x357",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 356,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "dark",
+        "size": "530x357",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 356,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "dark",
+        "form": "rename",
+        "review": [
+          {
+            "title": "Rename Session",
+            "width": 580,
+            "height": 200,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "dark",
+        "form": "connect",
+        "review": [
+          {
+            "title": "Link Coder Instance",
+            "width": 580,
+            "height": 200,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "dark",
+        "form": "message",
+        "review": [
+          {
+            "title": "Message Another Session",
+            "width": 580,
+            "height": 244,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "night",
+        "size": "1040x700",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "night",
+        "size": "1040x700",
+        "panel": "work",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "night",
+        "size": "1040x700",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "night",
+        "size": "1040x700",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "night",
+        "size": "1040x700",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "night",
+        "size": "1040x700",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "night",
+        "size": "530x357",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 356,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "night",
+        "size": "530x357",
+        "panel": "work",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 356,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "night",
+        "size": "530x357",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 356,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "night",
+        "size": "530x357",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 356,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "night",
+        "size": "530x357",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 356,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "night",
+        "size": "530x357",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 356,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "night",
+        "form": "rename",
+        "review": [
+          {
+            "title": "Rename Session",
+            "width": 580,
+            "height": 200,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "night",
+        "form": "connect",
+        "review": [
+          {
+            "title": "Link Coder Instance",
+            "width": 580,
+            "height": 200,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "night",
+        "form": "message",
+        "review": [
+          {
+            "title": "Message Another Session",
+            "width": 580,
+            "height": 244,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "light",
+        "size": "1040x700",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "light",
+        "size": "1040x700",
+        "panel": "work",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "light",
+        "size": "1040x700",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "light",
+        "size": "1040x700",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "light",
+        "size": "1040x700",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "light",
+        "size": "1040x700",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "light",
+        "size": "530x357",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "light",
+        "size": "530x357",
+        "panel": "work",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "light",
+        "size": "530x357",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "light",
+        "size": "530x357",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "light",
+        "size": "530x357",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "light",
+        "size": "530x357",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "light",
+        "form": "rename",
+        "review": [
+          {
+            "title": "Rename Session",
+            "width": 580,
+            "height": 200,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "light",
+        "form": "connect",
+        "review": [
+          {
+            "title": "Link Coder Instance",
+            "width": 580,
+            "height": 200,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "light",
+        "form": "message",
+        "review": [
+          {
+            "title": "Message Another Session",
+            "width": 580,
+            "height": 248,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "dark",
+        "size": "1040x700",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "dark",
+        "size": "1040x700",
+        "panel": "work",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "dark",
+        "size": "1040x700",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "dark",
+        "size": "1040x700",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "dark",
+        "size": "1040x700",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "dark",
+        "size": "1040x700",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "dark",
+        "size": "530x357",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "dark",
+        "size": "530x357",
+        "panel": "work",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "dark",
+        "size": "530x357",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "dark",
+        "size": "530x357",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "dark",
+        "size": "530x357",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "dark",
+        "size": "530x357",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "dark",
+        "form": "rename",
+        "review": [
+          {
+            "title": "Rename Session",
+            "width": 580,
+            "height": 200,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "dark",
+        "form": "connect",
+        "review": [
+          {
+            "title": "Link Coder Instance",
+            "width": 580,
+            "height": 200,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "dark",
+        "form": "message",
+        "review": [
+          {
+            "title": "Message Another Session",
+            "width": 580,
+            "height": 248,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "night",
+        "size": "1040x700",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "night",
+        "size": "1040x700",
+        "panel": "work",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "night",
+        "size": "1040x700",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "night",
+        "size": "1040x700",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "night",
+        "size": "1040x700",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "night",
+        "size": "1040x700",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "night",
+        "size": "530x357",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "night",
+        "size": "530x357",
+        "panel": "work",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "night",
+        "size": "530x357",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "night",
+        "size": "530x357",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "night",
+        "size": "530x357",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "night",
+        "size": "530x357",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "night",
+        "form": "rename",
+        "review": [
+          {
+            "title": "Rename Session",
+            "width": 580,
+            "height": 200,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "night",
+        "form": "connect",
+        "review": [
+          {
+            "title": "Link Coder Instance",
+            "width": 580,
+            "height": 200,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "night",
+        "form": "message",
+        "review": [
+          {
+            "title": "Message Another Session",
+            "width": 580,
+            "height": 248,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "light",
+        "size": "1040x700",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "light",
+        "size": "1040x700",
+        "panel": "work",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "light",
+        "size": "1040x700",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "light",
+        "size": "1040x700",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "light",
+        "size": "1040x700",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "light",
+        "size": "1040x700",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "light",
+        "size": "530x357",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "light",
+        "size": "530x357",
+        "panel": "work",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "light",
+        "size": "530x357",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "light",
+        "size": "530x357",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "light",
+        "size": "530x357",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "light",
+        "size": "530x357",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "light",
+        "form": "rename",
+        "review": [
+          {
+            "title": "Rename Session",
+            "width": 580,
+            "height": 200,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "light",
+        "form": "connect",
+        "review": [
+          {
+            "title": "Link Coder Instance",
+            "width": 580,
+            "height": 200,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "light",
+        "form": "message",
+        "review": [
+          {
+            "title": "Message Another Session",
+            "width": 580,
+            "height": 246,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "dark",
+        "size": "1040x700",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "dark",
+        "size": "1040x700",
+        "panel": "work",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "dark",
+        "size": "1040x700",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "dark",
+        "size": "1040x700",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "dark",
+        "size": "1040x700",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "dark",
+        "size": "1040x700",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "dark",
+        "size": "530x357",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "dark",
+        "size": "530x357",
+        "panel": "work",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "dark",
+        "size": "530x357",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "dark",
+        "size": "530x357",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "dark",
+        "size": "530x357",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "dark",
+        "size": "530x357",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "dark",
+        "form": "rename",
+        "review": [
+          {
+            "title": "Rename Session",
+            "width": 580,
+            "height": 200,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "dark",
+        "form": "connect",
+        "review": [
+          {
+            "title": "Link Coder Instance",
+            "width": 580,
+            "height": 200,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "dark",
+        "form": "message",
+        "review": [
+          {
+            "title": "Message Another Session",
+            "width": 580,
+            "height": 246,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "night",
+        "size": "1040x700",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "night",
+        "size": "1040x700",
+        "panel": "work",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "night",
+        "size": "1040x700",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "night",
+        "size": "1040x700",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "night",
+        "size": "1040x700",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "night",
+        "size": "1040x700",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "night",
+        "size": "530x357",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "night",
+        "size": "530x357",
+        "panel": "work",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "night",
+        "size": "530x357",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "night",
+        "size": "530x357",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "night",
+        "size": "530x357",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "night",
+        "size": "530x357",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "night",
+        "form": "rename",
+        "review": [
+          {
+            "title": "Rename Session",
+            "width": 580,
+            "height": 200,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "night",
+        "form": "connect",
+        "review": [
+          {
+            "title": "Link Coder Instance",
+            "width": 580,
+            "height": 200,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "night",
+        "form": "message",
+        "review": [
+          {
+            "title": "Message Another Session",
+            "width": 580,
+            "height": 246,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "light",
+        "size": "1040x700",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "light",
+        "size": "1040x700",
+        "panel": "work",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "light",
+        "size": "1040x700",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "light",
+        "size": "1040x700",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "light",
+        "size": "1040x700",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "light",
+        "size": "1040x700",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "light",
+        "size": "530x357",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "light",
+        "size": "530x357",
+        "panel": "work",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "light",
+        "size": "530x357",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "light",
+        "size": "530x357",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "light",
+        "size": "530x357",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "light",
+        "size": "530x357",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "light",
+        "form": "rename",
+        "review": [
+          {
+            "title": "Rename Session",
+            "width": 580,
+            "height": 200,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "light",
+        "form": "connect",
+        "review": [
+          {
+            "title": "Link Coder Instance",
+            "width": 580,
+            "height": 200,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "light",
+        "form": "message",
+        "review": [
+          {
+            "title": "Message Another Session",
+            "width": 580,
+            "height": 247,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "dark",
+        "size": "1040x700",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "dark",
+        "size": "1040x700",
+        "panel": "work",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "dark",
+        "size": "1040x700",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "dark",
+        "size": "1040x700",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "dark",
+        "size": "1040x700",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "dark",
+        "size": "1040x700",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "dark",
+        "size": "530x357",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "dark",
+        "size": "530x357",
+        "panel": "work",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "dark",
+        "size": "530x357",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "dark",
+        "size": "530x357",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "dark",
+        "size": "530x357",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "dark",
+        "size": "530x357",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "dark",
+        "form": "rename",
+        "review": [
+          {
+            "title": "Rename Session",
+            "width": 580,
+            "height": 200,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "dark",
+        "form": "connect",
+        "review": [
+          {
+            "title": "Link Coder Instance",
+            "width": 580,
+            "height": 200,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "dark",
+        "form": "message",
+        "review": [
+          {
+            "title": "Message Another Session",
+            "width": 580,
+            "height": 247,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "night",
+        "size": "1040x700",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "night",
+        "size": "1040x700",
+        "panel": "work",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "night",
+        "size": "1040x700",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "night",
+        "size": "1040x700",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "night",
+        "size": "1040x700",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "night",
+        "size": "1040x700",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "night",
+        "size": "530x357",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "night",
+        "size": "530x357",
+        "panel": "work",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "night",
+        "size": "530x357",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "night",
+        "size": "530x357",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "night",
+        "size": "530x357",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "night",
+        "size": "530x357",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+            "width": 530,
+            "height": 357,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "night",
+        "form": "rename",
+        "review": [
+          {
+            "title": "Rename Session",
+            "width": 580,
+            "height": 200,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "night",
+        "form": "connect",
+        "review": [
+          {
+            "title": "Link Coder Instance",
+            "width": 580,
+            "height": 200,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "night",
+        "form": "message",
+        "review": [
+          {
+            "title": "Message Another Session",
+            "width": 580,
+            "height": 247,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      }
+    ],
+    "four_windows": [
+      {
+        "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+        "width": 530,
+        "height": 357,
+        "scale": 1.0,
+        "dark": true,
+        "findings": []
+      },
+      {
+        "title": "Review \u00b7 workspace isolation \u2014 Olo Coder",
+        "width": 530,
+        "height": 357,
+        "scale": 1.0,
+        "dark": true,
+        "findings": []
+      },
+      {
+        "title": "Design \u00b7 collaborative specification \u2014 Olo Coder",
+        "width": 530,
+        "height": 357,
+        "scale": 1.0,
+        "dark": true,
+        "findings": []
+      },
+      {
+        "title": "Tests \u00b7 recovery and concurrency \u2014 Olo Coder",
+        "width": 530,
+        "height": 357,
+        "scale": 1.0,
+        "dark": true,
+        "findings": []
+      }
+    ],
+    "lint": "zero errors at 1, 1.5, 2; physical screen 2560x1600"
+  },
+  "recovery": {
+    "four_window_binary_upgrade": {
+      "before": {
+        "Compiler \u00b7 incremental builds \u2014 Olo Coder": {
+          "content": {
+            "x": 13,
+            "y": 34,
+            "width": 530,
+            "height": 357
+          },
+          "draft": "Unsent draft 1"
+        },
+        "Review \u00b7 workspace isolation \u2014 Olo Coder": {
+          "content": {
+            "x": 13,
+            "y": 430,
+            "width": 530,
+            "height": 357
+          },
+          "draft": "Unsent draft 2"
+        },
+        "Design \u00b7 collaborative specification \u2014 Olo Coder": {
+          "content": {
+            "x": 561,
+            "y": 34,
+            "width": 530,
+            "height": 357
+          },
+          "draft": "Unsent draft 3"
+        },
+        "Tests \u00b7 recovery and concurrency \u2014 Olo Coder": {
+          "content": {
+            "x": 561,
+            "y": 430,
+            "width": 530,
+            "height": 357
+          },
+          "draft": "Unsent draft 4"
+        }
+      },
+      "after": {
+        "Compiler \u00b7 incremental builds \u2014 Olo Coder": {
+          "content": {
+            "x": 13,
+            "y": 34,
+            "width": 530,
+            "height": 357
+          },
+          "draft": "Unsent draft 1"
+        },
+        "Review \u00b7 workspace isolation \u2014 Olo Coder": {
+          "content": {
+            "x": 13,
+            "y": 430,
+            "width": 530,
+            "height": 357
+          },
+          "draft": "Unsent draft 2"
+        },
+        "Design \u00b7 collaborative specification \u2014 Olo Coder": {
+          "content": {
+            "x": 561,
+            "y": 34,
+            "width": 530,
+            "height": 357
+          },
+          "draft": "Unsent draft 3"
+        },
+        "Tests \u00b7 recovery and concurrency \u2014 Olo Coder": {
+          "content": {
+            "x": 561,
+            "y": 430,
+            "width": 530,
+            "height": 357
+          },
+          "draft": "Unsent draft 4"
+        }
+      },
+      "passed": true
+    },
+    "two_window_compositor_reload": {
+      "passed": true,
+      "reloads": 2,
+      "before": [
+        [
+          "New session \u2014 Olo Coder",
+          "Second compositor recovery draft"
+        ],
+        [
+          "Review \u00b7 workspace isolation \u2014 Olo Coder",
+          "First compositor recovery draft"
+        ]
+      ],
+      "after": [
+        [
+          "New session \u2014 Olo Coder",
+          "Second compositor recovery draft"
+        ],
+        [
+          "Review \u00b7 workspace isolation \u2014 Olo Coder",
+          "First compositor recovery draft"
+        ]
+      ]
+    },
+    "startup_unavailable": {
+      "passed": true,
+      "requested_session": "ca488676-f362-4c29-9a7c-0f1d614e1e3e",
+      "service_initially_locked": true,
+      "client_reexec_while_unavailable": true,
+      "restored_title": "Startup recovery \u2014 Olo Coder",
+      "draft": "Draft retained through service startup"
+    },
+    "terminal_upgrade": {
+      "tiles": 2,
+      "sessions_drafts_focus_delivery_restored": true
+    }
+  },
+  "manual_effect_live_check": {
+    "pending_messages_before": 2,
+    "pending_messages_after": 2,
+    "model_usage_unchanged": true
+  },
+  "benchmarks": {
+    "bench-before": [
+      {
+        "app": "session",
+        "step": "scale to 1",
+        "transition": true,
+        "frames": 3,
+        "p50_ms": 0.69,
+        "p99_ms": 3.27,
+        "max_ms": 3.27,
+        "ui_max_ms": 2.76,
+        "server": {
+          "frame_max_ms": 0.52,
+          "loop_late_ms": 2.8,
+          "slowest": [
+            "flushing to clients",
+            2842
+          ],
+          "frames": 18
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "launch and load",
+        "transition": true,
+        "frames": 9,
+        "p50_ms": 1.0,
+        "p99_ms": 12.13,
+        "max_ms": 12.13,
+        "ui_max_ms": 1.03,
+        "server": {
+          "frame_max_ms": 8.38,
+          "loop_late_ms": 4.9,
+          "slowest": [
+            "flushing to clients",
+            2869
+          ],
+          "frames": 44
+        },
+        "notes": [
+          "slowest 12.1 ms: setup 0.0, ui 1.0, tessellate 0.0, acquire 0.0, submit 11.1"
+        ],
+        "failures": [],
+        "launch_ms": 452
+      },
+      {
+        "app": "coder",
+        "step": "idle 1 s",
+        "transition": false,
+        "frames": 3,
+        "p50_ms": 0.96,
+        "p99_ms": 1.16,
+        "max_ms": 1.16,
+        "ui_max_ms": 0.89,
+        "server": {
+          "frame_max_ms": 0.51,
+          "loop_late_ms": 2.8,
+          "slowest": [
+            "tick",
+            3246
+          ],
+          "frames": 17
+        },
+        "notes": [],
+        "failures": [],
+        "idle_fps": 3
+      },
+      {
+        "app": "coder",
+        "step": "pointer over it",
+        "transition": false,
+        "frames": 14,
+        "p50_ms": 1.24,
+        "p99_ms": 4.87,
+        "max_ms": 4.87,
+        "ui_max_ms": 1.03,
+        "server": {
+          "frame_max_ms": 1.11,
+          "loop_late_ms": 2.7,
+          "slowest": [
+            "flushing to clients",
+            1340
+          ],
+          "frames": 172
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 1",
+        "transition": false,
+        "frames": 4,
+        "p50_ms": 1.18,
+        "p99_ms": 1.34,
+        "max_ms": 1.34,
+        "ui_max_ms": 0.93,
+        "server": {
+          "frame_max_ms": 2.08,
+          "loop_late_ms": 2.9,
+          "slowest": [
+            "flushing to clients",
+            2903
+          ],
+          "frames": 436
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 2",
+        "transition": false,
+        "frames": 0,
+        "p50_ms": 0.0,
+        "p99_ms": 0.0,
+        "max_ms": 0,
+        "ui_max_ms": 0.0,
+        "server": {
+          "frame_max_ms": 1.17,
+          "loop_late_ms": 10.5,
+          "slowest": [
+            "flushing to clients",
+            2716
+          ],
+          "frames": 432
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "3 tabs",
+        "transition": false,
+        "frames": 9,
+        "p50_ms": 1.31,
+        "p99_ms": 5.11,
+        "max_ms": 5.11,
+        "ui_max_ms": 4.5,
+        "server": {
+          "frame_max_ms": 0.49,
+          "loop_late_ms": 2.0,
+          "slowest": [
+            "flushing to clients",
+            1372
+          ],
+          "frames": 55
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "5 menus",
+        "transition": false,
+        "frames": 15,
+        "p50_ms": 1.02,
+        "p99_ms": 3.93,
+        "max_ms": 3.93,
+        "ui_max_ms": 1.01,
+        "server": {
+          "frame_max_ms": 1.8,
+          "loop_late_ms": 2.8,
+          "slowest": [
+            "flushing to clients",
+            2207
+          ],
+          "frames": 517
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "typing",
+        "transition": false,
+        "frames": 13,
+        "p50_ms": 1.14,
+        "p99_ms": 3.28,
+        "max_ms": 3.28,
+        "ui_max_ms": 0.93,
+        "server": {
+          "frame_max_ms": 0.51,
+          "loop_late_ms": 3.0,
+          "slowest": [
+            "tick",
+            5146
+          ],
+          "frames": 66
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "live resize",
+        "transition": false,
+        "frames": 37,
+        "p50_ms": 0.87,
+        "p99_ms": 2.2,
+        "max_ms": 2.2,
+        "ui_max_ms": 1.25,
+        "server": {
+          "frame_max_ms": 4.72,
+          "loop_late_ms": 2.8,
+          "slowest": [
+            "request place",
+            3342
+          ],
+          "frames": 120
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "theme light, dark",
+        "transition": true,
+        "frames": 6,
+        "p50_ms": 0.93,
+        "p99_ms": 1.86,
+        "max_ms": 1.86,
+        "ui_max_ms": 0.75,
+        "server": {
+          "frame_max_ms": 5.86,
+          "loop_late_ms": 5.8,
+          "slowest": [
+            "tick",
+            725
+          ],
+          "frames": 42
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "session",
+        "step": "scale to 1.5",
+        "transition": true,
+        "frames": 3,
+        "p50_ms": 0.57,
+        "p99_ms": 3.24,
+        "max_ms": 3.24,
+        "ui_max_ms": 2.55,
+        "server": {
+          "frame_max_ms": 0.41,
+          "loop_late_ms": 8.7,
+          "slowest": [
+            "request set_settings",
+            822
+          ],
+          "frames": 10
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "launch and load",
+        "transition": true,
+        "frames": 8,
+        "p50_ms": 1.39,
+        "p99_ms": 2.81,
+        "max_ms": 2.81,
+        "ui_max_ms": 0.93,
+        "server": {
+          "frame_max_ms": 0.86,
+          "loop_late_ms": 4.7,
+          "slowest": [
+            "tick",
+            747
+          ],
+          "frames": 41
+        },
+        "notes": [],
+        "failures": [],
+        "launch_ms": 197
+      },
+      {
+        "app": "coder",
+        "step": "idle 1 s",
+        "transition": false,
+        "frames": 2,
+        "p50_ms": 5.76,
+        "p99_ms": 5.76,
+        "max_ms": 5.76,
+        "ui_max_ms": 0.92,
+        "server": {
+          "frame_max_ms": 0.48,
+          "loop_late_ms": 2.8,
+          "slowest": [
+            "tick",
+            1106
+          ],
+          "frames": 13
+        },
+        "notes": [],
+        "failures": [],
+        "idle_fps": 2
+      },
+      {
+        "app": "coder",
+        "step": "pointer over it",
+        "transition": false,
+        "frames": 22,
+        "p50_ms": 1.21,
+        "p99_ms": 5.91,
+        "max_ms": 5.91,
+        "ui_max_ms": 2.58,
+        "server": {
+          "frame_max_ms": 1.0,
+          "loop_late_ms": 5.5,
+          "slowest": [
+            "flushing to clients",
+            1371
+          ],
+          "frames": 186
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 1",
+        "transition": false,
+        "frames": 4,
+        "p50_ms": 2.24,
+        "p99_ms": 4.82,
+        "max_ms": 4.82,
+        "ui_max_ms": 1.11,
+        "server": {
+          "frame_max_ms": 6.28,
+          "loop_late_ms": 12.3,
+          "slowest": [
+            "tick",
+            14426
+          ],
+          "frames": 424
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 2",
+        "transition": false,
+        "frames": 0,
+        "p50_ms": 0.0,
+        "p99_ms": 0.0,
+        "max_ms": 0,
+        "ui_max_ms": 0.0,
+        "server": {
+          "frame_max_ms": 1.85,
+          "loop_late_ms": 3.2,
+          "slowest": [
+            "flushing to clients",
+            2908
+          ],
+          "frames": 417
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "3 tabs",
+        "transition": false,
+        "frames": 9,
+        "p50_ms": 1.13,
+        "p99_ms": 5.94,
+        "max_ms": 5.94,
+        "ui_max_ms": 1.26,
+        "server": {
+          "frame_max_ms": 0.45,
+          "loop_late_ms": 3.5,
+          "slowest": [
+            "tick",
+            3762
+          ],
+          "frames": 49
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "5 menus",
+        "transition": false,
+        "frames": 15,
+        "p50_ms": 1.07,
+        "p99_ms": 4.91,
+        "max_ms": 4.91,
+        "ui_max_ms": 0.94,
+        "server": {
+          "frame_max_ms": 1.48,
+          "loop_late_ms": 12.4,
+          "slowest": [
+            "tick",
+            1943
+          ],
+          "frames": 519
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "typing",
+        "transition": false,
+        "frames": 13,
+        "p50_ms": 1.0,
+        "p99_ms": 1.96,
+        "max_ms": 1.96,
+        "ui_max_ms": 0.92,
+        "server": {
+          "frame_max_ms": 0.87,
+          "loop_late_ms": 8.3,
+          "slowest": [
+            "tick",
+            1535
+          ],
+          "frames": 69
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "live resize",
+        "transition": false,
+        "frames": 38,
+        "p50_ms": 1.3,
+        "p99_ms": 5.16,
+        "max_ms": 5.16,
+        "ui_max_ms": 2.93,
+        "server": {
+          "frame_max_ms": 2.73,
+          "loop_late_ms": 2.8,
+          "slowest": [
+            "flushing to clients",
+            971
+          ],
+          "frames": 129
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "theme light, dark",
+        "transition": true,
+        "frames": 7,
+        "p50_ms": 0.96,
+        "p99_ms": 5.94,
+        "max_ms": 5.94,
+        "ui_max_ms": 0.72,
+        "server": {
+          "frame_max_ms": 2.97,
+          "loop_late_ms": 2.8,
+          "slowest": [
+            "request set_settings",
+            3345
+          ],
+          "frames": 48
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "session",
+        "step": "scale to 2",
+        "transition": true,
+        "frames": 4,
+        "p50_ms": 0.58,
+        "p99_ms": 0.89,
+        "max_ms": 0.89,
+        "ui_max_ms": 0.66,
+        "server": {
+          "frame_max_ms": 2.01,
+          "loop_late_ms": 5.8,
+          "slowest": [
+            "tick",
+            1639
+          ],
+          "frames": 17
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "launch and load",
+        "transition": true,
+        "frames": 8,
+        "p50_ms": 1.51,
+        "p99_ms": 4.16,
+        "max_ms": 4.16,
+        "ui_max_ms": 1.46,
+        "server": {
+          "frame_max_ms": 4.63,
+          "loop_late_ms": 7.2,
+          "slowest": [
+            "flushing to clients",
+            932
+          ],
+          "frames": 52
+        },
+        "notes": [],
+        "failures": [],
+        "launch_ms": 322
+      },
+      {
+        "app": "coder",
+        "step": "idle 1 s",
+        "transition": false,
+        "frames": 2,
+        "p50_ms": 1.45,
+        "p99_ms": 1.45,
+        "max_ms": 1.45,
+        "ui_max_ms": 0.96,
+        "server": {
+          "frame_max_ms": 0.62,
+          "loop_late_ms": 2.8,
+          "slowest": [
+            "tick",
+            172
+          ],
+          "frames": 10
+        },
+        "notes": [],
+        "failures": [],
+        "idle_fps": 2
+      },
+      {
+        "app": "coder",
+        "step": "pointer over it",
+        "transition": false,
+        "frames": 29,
+        "p50_ms": 1.18,
+        "p99_ms": 9.67,
+        "max_ms": 9.67,
+        "ui_max_ms": 3.68,
+        "server": {
+          "frame_max_ms": 1.44,
+          "loop_late_ms": 3.1,
+          "slowest": [
+            "flushing to clients",
+            2146
+          ],
+          "frames": 206
+        },
+        "notes": [],
+        "failures": [
+          "1 of 29 frames over 8.3 ms (slowest 9.7 ms: setup 0.0, ui 3.7, tessellate 0.0, acquire 0.0, submit 6.0)"
+        ]
+      },
+      {
+        "app": "coder",
+        "step": "scroll 1",
+        "transition": false,
+        "frames": 4,
+        "p50_ms": 1.3,
+        "p99_ms": 1.39,
+        "max_ms": 1.39,
+        "ui_max_ms": 1.03,
+        "server": {
+          "frame_max_ms": 2.61,
+          "loop_late_ms": 7.0,
+          "slowest": [
+            "flushing to clients",
+            2894
+          ],
+          "frames": 428
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 2",
+        "transition": false,
+        "frames": 0,
+        "p50_ms": 0.0,
+        "p99_ms": 0.0,
+        "max_ms": 0,
+        "ui_max_ms": 0.0,
+        "server": {
+          "frame_max_ms": 1.93,
+          "loop_late_ms": 8.5,
+          "slowest": [
+            "flushing to clients",
+            736
+          ],
+          "frames": 424
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "3 tabs",
+        "transition": false,
+        "frames": 9,
+        "p50_ms": 1.68,
+        "p99_ms": 6.87,
+        "max_ms": 6.87,
+        "ui_max_ms": 1.59,
+        "server": {
+          "frame_max_ms": 0.63,
+          "loop_late_ms": 3.4,
+          "slowest": [
+            "tick",
+            183
+          ],
+          "frames": 55
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "5 menus",
+        "transition": false,
+        "frames": 15,
+        "p50_ms": 1.18,
+        "p99_ms": 5.94,
+        "max_ms": 5.94,
+        "ui_max_ms": 4.02,
+        "server": {
+          "frame_max_ms": 2.89,
+          "loop_late_ms": 6.6,
+          "slowest": [
+            "tick",
+            1478
+          ],
+          "frames": 521
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "typing",
+        "transition": false,
+        "frames": 13,
+        "p50_ms": 1.23,
+        "p99_ms": 4.96,
+        "max_ms": 4.96,
+        "ui_max_ms": 0.87,
+        "server": {
+          "frame_max_ms": 0.6,
+          "loop_late_ms": 2.7,
+          "slowest": [
+            "flushing to clients",
+            1247
+          ],
+          "frames": 66
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "live resize",
+        "transition": false,
+        "frames": 17,
+        "p50_ms": 0.89,
+        "p99_ms": 3.4,
+        "max_ms": 3.4,
+        "ui_max_ms": 1.11,
+        "server": {
+          "frame_max_ms": 4.86,
+          "loop_late_ms": 5.7,
+          "slowest": [
+            "flushing to clients",
+            980
+          ],
+          "frames": 116
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "theme light, dark",
+        "transition": true,
+        "frames": 6,
+        "p50_ms": 0.99,
+        "p99_ms": 1.2,
+        "max_ms": 1.2,
+        "ui_max_ms": 0.96,
+        "server": {
+          "frame_max_ms": 6.21,
+          "loop_late_ms": 13.9,
+          "slowest": [
+            "request set_settings",
+            1528
+          ],
+          "frames": 48
+        },
+        "notes": [],
+        "failures": []
+      }
+    ],
+    "bench-after": [
+      {
+        "app": "session",
+        "step": "scale to 1",
+        "transition": true,
+        "frames": 3,
+        "p50_ms": 0.79,
+        "p99_ms": 2.69,
+        "max_ms": 2.69,
+        "ui_max_ms": 2.27,
+        "server": {
+          "frame_max_ms": 0.51,
+          "loop_late_ms": 2.8,
+          "slowest": [
+            "request set_settings",
+            1114
+          ],
+          "frames": 14
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "launch and load",
+        "transition": true,
+        "frames": 8,
+        "p50_ms": 1.24,
+        "p99_ms": 3.64,
+        "max_ms": 3.64,
+        "ui_max_ms": 3.24,
+        "server": {
+          "frame_max_ms": 14.82,
+          "loop_late_ms": 12.2,
+          "slowest": [
+            "tick",
+            343
+          ],
+          "frames": 41
+        },
+        "notes": [],
+        "failures": [],
+        "launch_ms": 151
+      },
+      {
+        "app": "coder",
+        "step": "idle 1 s",
+        "transition": false,
+        "frames": 2,
+        "p50_ms": 4.52,
+        "p99_ms": 4.52,
+        "max_ms": 4.52,
+        "ui_max_ms": 0.61,
+        "server": {
+          "frame_max_ms": 0.51,
+          "loop_late_ms": 9.1,
+          "slowest": [
+            "tick",
+            202
+          ],
+          "frames": 13
+        },
+        "notes": [],
+        "failures": [],
+        "idle_fps": 2
+      },
+      {
+        "app": "coder",
+        "step": "pointer over it",
+        "transition": false,
+        "frames": 20,
+        "p50_ms": 1.11,
+        "p99_ms": 3.35,
+        "max_ms": 3.35,
+        "ui_max_ms": 2.0,
+        "server": {
+          "frame_max_ms": 1.12,
+          "loop_late_ms": 2.8,
+          "slowest": [
+            "flushing to clients",
+            1254
+          ],
+          "frames": 181
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 1",
+        "transition": false,
+        "frames": 4,
+        "p50_ms": 1.2,
+        "p99_ms": 1.21,
+        "max_ms": 1.21,
+        "ui_max_ms": 0.94,
+        "server": {
+          "frame_max_ms": 2.5,
+          "loop_late_ms": 8.0,
+          "slowest": [
+            "tick",
+            2324
+          ],
+          "frames": 432
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 2",
+        "transition": false,
+        "frames": 0,
+        "p50_ms": 0.0,
+        "p99_ms": 0.0,
+        "max_ms": 0,
+        "ui_max_ms": 0.0,
+        "server": {
+          "frame_max_ms": 2.78,
+          "loop_late_ms": 3.5,
+          "slowest": [
+            "tick",
+            3490
+          ],
+          "frames": 421
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "5 menus",
+        "transition": false,
+        "frames": 15,
+        "p50_ms": 1.06,
+        "p99_ms": 2.78,
+        "max_ms": 2.78,
+        "ui_max_ms": 2.57,
+        "server": {
+          "frame_max_ms": 0.89,
+          "loop_late_ms": 2.8,
+          "slowest": [
+            "flushing to clients",
+            2612
+          ],
+          "frames": 512
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "typing",
+        "transition": false,
+        "frames": 13,
+        "p50_ms": 0.83,
+        "p99_ms": 1.71,
+        "max_ms": 1.71,
+        "ui_max_ms": 0.99,
+        "server": {
+          "frame_max_ms": 0.48,
+          "loop_late_ms": 2.8,
+          "slowest": [
+            "flushing to clients",
+            1053
+          ],
+          "frames": 65
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "live resize",
+        "transition": false,
+        "frames": 37,
+        "p50_ms": 1.22,
+        "p99_ms": 4.22,
+        "max_ms": 4.22,
+        "ui_max_ms": 1.28,
+        "server": {
+          "frame_max_ms": 1.53,
+          "loop_late_ms": 12.4,
+          "slowest": [
+            "clients' requests",
+            3126
+          ],
+          "frames": 123
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "theme light, dark",
+        "transition": true,
+        "frames": 6,
+        "p50_ms": 0.86,
+        "p99_ms": 0.94,
+        "max_ms": 0.94,
+        "ui_max_ms": 0.74,
+        "server": {
+          "frame_max_ms": 13.38,
+          "loop_late_ms": 10.1,
+          "slowest": [
+            "request set_settings",
+            1759
+          ],
+          "frames": 45
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "session",
+        "step": "scale to 1.5",
+        "transition": true,
+        "frames": 2,
+        "p50_ms": 4.29,
+        "p99_ms": 4.29,
+        "max_ms": 4.29,
+        "ui_max_ms": 1.63,
+        "server": {
+          "frame_max_ms": 0.43,
+          "loop_late_ms": 6.6,
+          "slowest": [
+            "flushing to clients",
+            2186
+          ],
+          "frames": 11
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "launch and load",
+        "transition": true,
+        "frames": 9,
+        "p50_ms": 1.24,
+        "p99_ms": 16.86,
+        "max_ms": 16.86,
+        "ui_max_ms": 6.29,
+        "server": {
+          "frame_max_ms": 4.0,
+          "loop_late_ms": 14.0,
+          "slowest": [
+            "clients' requests",
+            2284
+          ],
+          "frames": 45
+        },
+        "notes": [
+          "slowest 16.9 ms: setup 0.0, ui 0.6, tessellate 0.0, acquire 0.0, submit 16.2"
+        ],
+        "failures": [],
+        "launch_ms": 254
+      },
+      {
+        "app": "coder",
+        "step": "idle 1 s",
+        "transition": false,
+        "frames": 2,
+        "p50_ms": 1.33,
+        "p99_ms": 1.33,
+        "max_ms": 1.33,
+        "ui_max_ms": 0.98,
+        "server": {
+          "frame_max_ms": 0.42,
+          "loop_late_ms": 2.5,
+          "slowest": [
+            "tick",
+            211
+          ],
+          "frames": 11
+        },
+        "notes": [],
+        "failures": [],
+        "idle_fps": 2
+      },
+      {
+        "app": "coder",
+        "step": "pointer over it",
+        "transition": false,
+        "frames": 21,
+        "p50_ms": 0.85,
+        "p99_ms": 1.65,
+        "max_ms": 1.65,
+        "ui_max_ms": 0.98,
+        "server": {
+          "frame_max_ms": 2.41,
+          "loop_late_ms": 3.8,
+          "slowest": [
+            "request synthetic",
+            1403
+          ],
+          "frames": 191
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 1",
+        "transition": false,
+        "frames": 4,
+        "p50_ms": 1.11,
+        "p99_ms": 1.2,
+        "max_ms": 1.2,
+        "ui_max_ms": 0.9,
+        "server": {
+          "frame_max_ms": 1.13,
+          "loop_late_ms": 5.8,
+          "slowest": [
+            "tick",
+            2879
+          ],
+          "frames": 443
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 2",
+        "transition": false,
+        "frames": 0,
+        "p50_ms": 0.0,
+        "p99_ms": 0.0,
+        "max_ms": 0,
+        "ui_max_ms": 0.0,
+        "server": {
+          "frame_max_ms": 3.08,
+          "loop_late_ms": 11.3,
+          "slowest": [
+            "flushing to clients",
+            5857
+          ],
+          "frames": 425
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "5 menus",
+        "transition": false,
+        "frames": 15,
+        "p50_ms": 0.95,
+        "p99_ms": 3.74,
+        "max_ms": 3.74,
+        "ui_max_ms": 1.21,
+        "server": {
+          "frame_max_ms": 2.03,
+          "loop_late_ms": 2.7,
+          "slowest": [
+            "flushing to clients",
+            2131
+          ],
+          "frames": 509
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "typing",
+        "transition": false,
+        "frames": 13,
+        "p50_ms": 1.12,
+        "p99_ms": 1.4,
+        "max_ms": 1.4,
+        "ui_max_ms": 1.16,
+        "server": {
+          "frame_max_ms": 1.19,
+          "loop_late_ms": 2.7,
+          "slowest": [
+            "flushing to clients",
+            2562
+          ],
+          "frames": 69
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "live resize",
+        "transition": false,
+        "frames": 37,
+        "p50_ms": 1.23,
+        "p99_ms": 18.14,
+        "max_ms": 18.14,
+        "ui_max_ms": 6.06,
+        "server": {
+          "frame_max_ms": 3.99,
+          "loop_late_ms": 3.8,
+          "slowest": [
+            "flushing to clients",
+            2833
+          ],
+          "frames": 125
+        },
+        "notes": [],
+        "failures": [
+          "1 of 37 frames over 8.3 ms (slowest 18.1 ms: setup 0.0, ui 6.1, tessellate 0.0, acquire 0.0, submit 12.1)"
+        ]
+      },
+      {
+        "app": "coder",
+        "step": "theme light, dark",
+        "transition": true,
+        "frames": 6,
+        "p50_ms": 1.18,
+        "p99_ms": 1.3,
+        "max_ms": 1.3,
+        "ui_max_ms": 1.02,
+        "server": {
+          "frame_max_ms": 13.06,
+          "loop_late_ms": 18.8,
+          "slowest": [
+            "request set_settings",
+            1455
+          ],
+          "frames": 47
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "session",
+        "step": "scale to 2",
+        "transition": true,
+        "frames": 3,
+        "p50_ms": 0.5,
+        "p99_ms": 1.9,
+        "max_ms": 1.9,
+        "ui_max_ms": 1.05,
+        "server": {
+          "frame_max_ms": 0.46,
+          "loop_late_ms": 4.1,
+          "slowest": [
+            "request set_settings",
+            1046
+          ],
+          "frames": 15
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "launch and load",
+        "transition": true,
+        "frames": 8,
+        "p50_ms": 1.12,
+        "p99_ms": 5.83,
+        "max_ms": 5.83,
+        "ui_max_ms": 5.37,
+        "server": {
+          "frame_max_ms": 5.42,
+          "loop_late_ms": 2.8,
+          "slowest": [
+            "clients' requests",
+            206
+          ],
+          "frames": 45
+        },
+        "notes": [],
+        "failures": [],
+        "launch_ms": 173
+      },
+      {
+        "app": "coder",
+        "step": "idle 1 s",
+        "transition": false,
+        "frames": 2,
+        "p50_ms": 2.21,
+        "p99_ms": 2.21,
+        "max_ms": 2.21,
+        "ui_max_ms": 0.95,
+        "server": {
+          "frame_max_ms": 0.55,
+          "loop_late_ms": 30.4,
+          "slowest": [
+            "tick",
+            643
+          ],
+          "frames": 13
+        },
+        "notes": [],
+        "failures": [
+          "app_server's loop stalled 30 ms (['tick', 643])"
+        ],
+        "idle_fps": 2
+      },
+      {
+        "app": "coder",
+        "step": "pointer over it",
+        "transition": false,
+        "frames": 28,
+        "p50_ms": 1.14,
+        "p99_ms": 4.45,
+        "max_ms": 4.45,
+        "ui_max_ms": 1.28,
+        "server": {
+          "frame_max_ms": 7.0,
+          "loop_late_ms": 6.7,
+          "slowest": [
+            "flushing to clients",
+            4254
+          ],
+          "frames": 206
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 1",
+        "transition": false,
+        "frames": 4,
+        "p50_ms": 1.19,
+        "p99_ms": 1.19,
+        "max_ms": 1.19,
+        "ui_max_ms": 0.94,
+        "server": {
+          "frame_max_ms": 1.74,
+          "loop_late_ms": 10.3,
+          "slowest": [
+            "flushing to clients",
+            2901
+          ],
+          "frames": 439
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 2",
+        "transition": false,
+        "frames": 0,
+        "p50_ms": 0.0,
+        "p99_ms": 0.0,
+        "max_ms": 0,
+        "ui_max_ms": 0.0,
+        "server": {
+          "frame_max_ms": 1.89,
+          "loop_late_ms": 3.0,
+          "slowest": [
+            "tick",
+            2449
+          ],
+          "frames": 425
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "5 menus",
+        "transition": false,
+        "frames": 15,
+        "p50_ms": 1.11,
+        "p99_ms": 6.27,
+        "max_ms": 6.27,
+        "ui_max_ms": 2.21,
+        "server": {
+          "frame_max_ms": 1.21,
+          "loop_late_ms": 2.6,
+          "slowest": [
+            "flushing to clients",
+            1506
+          ],
+          "frames": 512
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "typing",
+        "transition": false,
+        "frames": 13,
+        "p50_ms": 1.21,
+        "p99_ms": 3.11,
+        "max_ms": 3.11,
+        "ui_max_ms": 0.96,
+        "server": {
+          "frame_max_ms": 0.48,
+          "loop_late_ms": 3.6,
+          "slowest": [
+            "flushing to clients",
+            1452
+          ],
+          "frames": 66
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "live resize",
+        "transition": false,
+        "frames": 39,
+        "p50_ms": 0.95,
+        "p99_ms": 3.0,
+        "max_ms": 3.0,
+        "ui_max_ms": 1.48,
+        "server": {
+          "frame_max_ms": 1.23,
+          "loop_late_ms": 2.2,
+          "slowest": [
+            "flushing to clients",
+            1831
+          ],
+          "frames": 124
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "theme light, dark",
+        "transition": true,
+        "frames": 6,
+        "p50_ms": 0.89,
+        "p99_ms": 0.9,
+        "max_ms": 0.9,
+        "ui_max_ms": 0.75,
+        "server": {
+          "frame_max_ms": 11.94,
+          "loop_late_ms": 12.2,
+          "slowest": [
+            "request set_settings",
+            4119
+          ],
+          "frames": 40
+        },
+        "notes": [],
+        "failures": []
+      }
+    ],
+    "bench-repeat": [
+      {
+        "app": "session",
+        "step": "scale to 1",
+        "transition": true,
+        "frames": 2,
+        "p50_ms": 2.35,
+        "p99_ms": 2.35,
+        "max_ms": 2.35,
+        "ui_max_ms": 2.15,
+        "server": {
+          "frame_max_ms": 0.37,
+          "loop_late_ms": 0.9,
+          "slowest": [
+            "request set_settings",
+            445
+          ],
+          "frames": 8
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "launch and load",
+        "transition": true,
+        "frames": 10,
+        "p50_ms": 1.09,
+        "p99_ms": 2.81,
+        "max_ms": 2.81,
+        "ui_max_ms": 2.33,
+        "server": {
+          "frame_max_ms": 10.81,
+          "loop_late_ms": 8.8,
+          "slowest": [
+            "tick",
+            246
+          ],
+          "frames": 47
+        },
+        "notes": [],
+        "failures": [],
+        "launch_ms": 147
+      },
+      {
+        "app": "coder",
+        "step": "idle 1 s",
+        "transition": false,
+        "frames": 2,
+        "p50_ms": 0.77,
+        "p99_ms": 0.77,
+        "max_ms": 0.77,
+        "ui_max_ms": 0.61,
+        "server": {
+          "frame_max_ms": 0.49,
+          "loop_late_ms": 0.2,
+          "slowest": [
+            "tick",
+            256
+          ],
+          "frames": 13
+        },
+        "notes": [],
+        "failures": [],
+        "idle_fps": 2
+      },
+      {
+        "app": "coder",
+        "step": "pointer over it",
+        "transition": false,
+        "frames": 20,
+        "p50_ms": 1.0,
+        "p99_ms": 1.27,
+        "max_ms": 1.27,
+        "ui_max_ms": 1.04,
+        "server": {
+          "frame_max_ms": 0.59,
+          "loop_late_ms": 0.7,
+          "slowest": [
+            "flushing to clients",
+            728
+          ],
+          "frames": 181
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 1",
+        "transition": false,
+        "frames": 4,
+        "p50_ms": 0.86,
+        "p99_ms": 1.22,
+        "max_ms": 1.22,
+        "ui_max_ms": 0.99,
+        "server": {
+          "frame_max_ms": 0.76,
+          "loop_late_ms": 9.1,
+          "slowest": [
+            "tick",
+            2208
+          ],
+          "frames": 433
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 2",
+        "transition": false,
+        "frames": 0,
+        "p50_ms": 0.0,
+        "p99_ms": 0.0,
+        "max_ms": 0,
+        "ui_max_ms": 0.0,
+        "server": {
+          "frame_max_ms": 5.66,
+          "loop_late_ms": 4.1,
+          "slowest": [
+            "request synthetic",
+            435
+          ],
+          "frames": 420
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "5 menus",
+        "transition": false,
+        "frames": 15,
+        "p50_ms": 0.75,
+        "p99_ms": 1.16,
+        "max_ms": 1.16,
+        "ui_max_ms": 0.95,
+        "server": {
+          "frame_max_ms": 1.39,
+          "loop_late_ms": 6.6,
+          "slowest": [
+            "request synthetic",
+            7137
+          ],
+          "frames": 501
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "typing",
+        "transition": false,
+        "frames": 13,
+        "p50_ms": 0.87,
+        "p99_ms": 1.3,
+        "max_ms": 1.3,
+        "ui_max_ms": 1.03,
+        "server": {
+          "frame_max_ms": 0.45,
+          "loop_late_ms": 13.3,
+          "slowest": [
+            "tick",
+            244
+          ],
+          "frames": 65
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "live resize",
+        "transition": false,
+        "frames": 38,
+        "p50_ms": 1.0,
+        "p99_ms": 1.49,
+        "max_ms": 1.49,
+        "ui_max_ms": 1.28,
+        "server": {
+          "frame_max_ms": 2.41,
+          "loop_late_ms": 2.5,
+          "slowest": [
+            "clients' requests",
+            570
+          ],
+          "frames": 112
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "theme light, dark",
+        "transition": true,
+        "frames": 5,
+        "p50_ms": 1.02,
+        "p99_ms": 1.17,
+        "max_ms": 1.17,
+        "ui_max_ms": 1.04,
+        "server": {
+          "frame_max_ms": 2.34,
+          "loop_late_ms": 2.0,
+          "slowest": [
+            "request set_settings",
+            484
+          ],
+          "frames": 40
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "session",
+        "step": "scale to 1.5",
+        "transition": true,
+        "frames": 2,
+        "p50_ms": 1.95,
+        "p99_ms": 1.95,
+        "max_ms": 1.95,
+        "ui_max_ms": 1.7,
+        "server": {
+          "frame_max_ms": 0.37,
+          "loop_late_ms": 1.4,
+          "slowest": [
+            "request set_settings",
+            512
+          ],
+          "frames": 8
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "launch and load",
+        "transition": true,
+        "frames": 9,
+        "p50_ms": 0.85,
+        "p99_ms": 4.4,
+        "max_ms": 4.4,
+        "ui_max_ms": 0.82,
+        "server": {
+          "frame_max_ms": 2.57,
+          "loop_late_ms": 13.5,
+          "slowest": [
+            "tick",
+            275
+          ],
+          "frames": 45
+        },
+        "notes": [],
+        "failures": [],
+        "launch_ms": 83
+      },
+      {
+        "app": "coder",
+        "step": "idle 1 s",
+        "transition": false,
+        "frames": 2,
+        "p50_ms": 0.75,
+        "p99_ms": 0.75,
+        "max_ms": 0.75,
+        "ui_max_ms": 0.62,
+        "server": {
+          "frame_max_ms": 0.52,
+          "loop_late_ms": 0.2,
+          "slowest": [
+            "tick",
+            428
+          ],
+          "frames": 10
+        },
+        "notes": [],
+        "failures": [],
+        "idle_fps": 2
+      },
+      {
+        "app": "coder",
+        "step": "pointer over it",
+        "transition": false,
+        "frames": 21,
+        "p50_ms": 0.75,
+        "p99_ms": 1.1,
+        "max_ms": 1.1,
+        "ui_max_ms": 0.78,
+        "server": {
+          "frame_max_ms": 0.47,
+          "loop_late_ms": 2.1,
+          "slowest": [
+            "tick",
+            217
+          ],
+          "frames": 195
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 1",
+        "transition": false,
+        "frames": 4,
+        "p50_ms": 1.28,
+        "p99_ms": 1.69,
+        "max_ms": 1.69,
+        "ui_max_ms": 0.96,
+        "server": {
+          "frame_max_ms": 3.15,
+          "loop_late_ms": 5.0,
+          "slowest": [
+            "tick",
+            2930
+          ],
+          "frames": 432
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 2",
+        "transition": false,
+        "frames": 0,
+        "p50_ms": 0.0,
+        "p99_ms": 0.0,
+        "max_ms": 0,
+        "ui_max_ms": 0.0,
+        "server": {
+          "frame_max_ms": 0.66,
+          "loop_late_ms": 2.9,
+          "slowest": [
+            "flushing to clients",
+            1182
+          ],
+          "frames": 425
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "5 menus",
+        "transition": false,
+        "frames": 15,
+        "p50_ms": 0.88,
+        "p99_ms": 1.32,
+        "max_ms": 1.32,
+        "ui_max_ms": 0.92,
+        "server": {
+          "frame_max_ms": 0.89,
+          "loop_late_ms": 3.5,
+          "slowest": [
+            "tick",
+            2894
+          ],
+          "frames": 508
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "typing",
+        "transition": false,
+        "frames": 13,
+        "p50_ms": 1.01,
+        "p99_ms": 3.05,
+        "max_ms": 3.05,
+        "ui_max_ms": 1.4,
+        "server": {
+          "frame_max_ms": 0.42,
+          "loop_late_ms": 2.7,
+          "slowest": [
+            "tick",
+            393
+          ],
+          "frames": 66
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "live resize",
+        "transition": false,
+        "frames": 38,
+        "p50_ms": 1.14,
+        "p99_ms": 4.35,
+        "max_ms": 4.35,
+        "ui_max_ms": 4.07,
+        "server": {
+          "frame_max_ms": 3.14,
+          "loop_late_ms": 2.8,
+          "slowest": [
+            "flushing to clients",
+            1345
+          ],
+          "frames": 114
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "theme light, dark",
+        "transition": true,
+        "frames": 6,
+        "p50_ms": 1.6,
+        "p99_ms": 3.41,
+        "max_ms": 3.41,
+        "ui_max_ms": 1.38,
+        "server": {
+          "frame_max_ms": 4.06,
+          "loop_late_ms": 3.9,
+          "slowest": [
+            "tick",
+            1106
+          ],
+          "frames": 37
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "session",
+        "step": "scale to 2",
+        "transition": true,
+        "frames": 4,
+        "p50_ms": 0.99,
+        "p99_ms": 1.16,
+        "max_ms": 1.16,
+        "ui_max_ms": 0.6,
+        "server": {
+          "frame_max_ms": 0.61,
+          "loop_late_ms": 2.9,
+          "slowest": [
+            "flushing to clients",
+            1903
+          ],
+          "frames": 14
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "launch and load",
+        "transition": true,
+        "frames": 9,
+        "p50_ms": 1.35,
+        "p99_ms": 2.6,
+        "max_ms": 2.6,
+        "ui_max_ms": 1.46,
+        "server": {
+          "frame_max_ms": 7.33,
+          "loop_late_ms": 8.2,
+          "slowest": [
+            "flushing to clients",
+            3022
+          ],
+          "frames": 39
+        },
+        "notes": [],
+        "failures": [],
+        "launch_ms": 165
+      },
+      {
+        "app": "coder",
+        "step": "idle 1 s",
+        "transition": false,
+        "frames": 2,
+        "p50_ms": 1.47,
+        "p99_ms": 1.47,
+        "max_ms": 1.47,
+        "ui_max_ms": 1.2,
+        "server": {
+          "frame_max_ms": 0.61,
+          "loop_late_ms": 3.1,
+          "slowest": [
+            "tick",
+            764
+          ],
+          "frames": 10
+        },
+        "notes": [],
+        "failures": [],
+        "idle_fps": 2
+      },
+      {
+        "app": "coder",
+        "step": "pointer over it",
+        "transition": false,
+        "frames": 28,
+        "p50_ms": 1.31,
+        "p99_ms": 4.26,
+        "max_ms": 4.26,
+        "ui_max_ms": 2.38,
+        "server": {
+          "frame_max_ms": 1.88,
+          "loop_late_ms": 3.1,
+          "slowest": [
+            "tick",
+            3021
+          ],
+          "frames": 206
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 1",
+        "transition": false,
+        "frames": 4,
+        "p50_ms": 1.35,
+        "p99_ms": 1.56,
+        "max_ms": 1.56,
+        "ui_max_ms": 1.29,
+        "server": {
+          "frame_max_ms": 3.12,
+          "loop_late_ms": 4.5,
+          "slowest": [
+            "flushing to clients",
+            2957
+          ],
+          "frames": 435
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 2",
+        "transition": false,
+        "frames": 0,
+        "p50_ms": 0.0,
+        "p99_ms": 0.0,
+        "max_ms": 0,
+        "ui_max_ms": 0.0,
+        "server": {
+          "frame_max_ms": 3.85,
+          "loop_late_ms": 4.8,
+          "slowest": [
+            "tick",
+            2073
+          ],
+          "frames": 424
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "5 menus",
+        "transition": false,
+        "frames": 15,
+        "p50_ms": 1.43,
+        "p99_ms": 4.55,
+        "max_ms": 4.55,
+        "ui_max_ms": 4.33,
+        "server": {
+          "frame_max_ms": 2.19,
+          "loop_late_ms": 6.3,
+          "slowest": [
+            "clients' requests",
+            2653
+          ],
+          "frames": 514
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "typing",
+        "transition": false,
+        "frames": 13,
+        "p50_ms": 1.42,
+        "p99_ms": 4.83,
+        "max_ms": 4.83,
+        "ui_max_ms": 4.46,
+        "server": {
+          "frame_max_ms": 0.64,
+          "loop_late_ms": 2.8,
+          "slowest": [
+            "flushing to clients",
+            1540
+          ],
+          "frames": 66
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "live resize",
+        "transition": false,
+        "frames": 39,
+        "p50_ms": 1.37,
+        "p99_ms": 4.65,
+        "max_ms": 4.65,
+        "ui_max_ms": 3.21,
+        "server": {
+          "frame_max_ms": 3.45,
+          "loop_late_ms": 3.2,
+          "slowest": [
+            "flushing to clients",
+            2203
+          ],
+          "frames": 114
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "theme light, dark",
+        "transition": true,
+        "frames": 6,
+        "p50_ms": 1.68,
+        "p99_ms": 3.7,
+        "max_ms": 3.7,
+        "ui_max_ms": 2.05,
+        "server": {
+          "frame_max_ms": 2.44,
+          "loop_late_ms": 3.8,
+          "slowest": [
+            "request set_settings",
+            692
+          ],
+          "frames": 39
+        },
+        "notes": [],
+        "failures": []
+      }
+    ],
+    "bench-latest": [
+      {
+        "app": "session",
+        "step": "scale to 1",
+        "transition": true,
+        "frames": 3,
+        "p50_ms": 2.7,
+        "p99_ms": 4.5,
+        "max_ms": 4.5,
+        "ui_max_ms": 4.13,
+        "server": {
+          "frame_max_ms": 2.15,
+          "loop_late_ms": 7.6,
+          "slowest": [
+            "tick",
+            4026
+          ],
+          "frames": 13
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "launch and load",
+        "transition": true,
+        "frames": 9,
+        "p50_ms": 1.43,
+        "p99_ms": 8.97,
+        "max_ms": 8.97,
+        "ui_max_ms": 3.26,
+        "server": {
+          "frame_max_ms": 6.84,
+          "loop_late_ms": 5.2,
+          "slowest": [
+            "flushing to clients",
+            681
+          ],
+          "frames": 53
+        },
+        "notes": [
+          "slowest 9.0 ms: setup 0.0, ui 3.0, tessellate 0.0, acquire 0.0, submit 6.0"
+        ],
+        "failures": [],
+        "launch_ms": 197
+      },
+      {
+        "app": "coder",
+        "step": "idle 1 s",
+        "transition": false,
+        "frames": 2,
+        "p50_ms": 2.03,
+        "p99_ms": 2.03,
+        "max_ms": 2.03,
+        "ui_max_ms": 1.75,
+        "server": {
+          "frame_max_ms": 0.71,
+          "loop_late_ms": 3.2,
+          "slowest": [
+            "tick",
+            686
+          ],
+          "frames": 15
+        },
+        "notes": [],
+        "failures": [],
+        "idle_fps": 2
+      },
+      {
+        "app": "coder",
+        "step": "pointer over it",
+        "transition": false,
+        "frames": 20,
+        "p50_ms": 1.39,
+        "p99_ms": 4.74,
+        "max_ms": 4.74,
+        "ui_max_ms": 3.03,
+        "server": {
+          "frame_max_ms": 1.28,
+          "loop_late_ms": 9.1,
+          "slowest": [
+            "clients' requests",
+            2863
+          ],
+          "frames": 176
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 1",
+        "transition": false,
+        "frames": 4,
+        "p50_ms": 1.35,
+        "p99_ms": 1.58,
+        "max_ms": 1.58,
+        "ui_max_ms": 1.07,
+        "server": {
+          "frame_max_ms": 5.37,
+          "loop_late_ms": 10.5,
+          "slowest": [
+            "request synthetic",
+            4753
+          ],
+          "frames": 439
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 2",
+        "transition": false,
+        "frames": 0,
+        "p50_ms": 0.0,
+        "p99_ms": 0.0,
+        "max_ms": 0,
+        "ui_max_ms": 0.0,
+        "server": {
+          "frame_max_ms": 3.11,
+          "loop_late_ms": 12.3,
+          "slowest": [
+            "tick",
+            3095
+          ],
+          "frames": 429
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "5 menus",
+        "transition": false,
+        "frames": 15,
+        "p50_ms": 1.33,
+        "p99_ms": 3.61,
+        "max_ms": 3.61,
+        "ui_max_ms": 3.34,
+        "server": {
+          "frame_max_ms": 1.7,
+          "loop_late_ms": 6.2,
+          "slowest": [
+            "flushing to clients",
+            1816
+          ],
+          "frames": 516
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "typing",
+        "transition": false,
+        "frames": 13,
+        "p50_ms": 1.32,
+        "p99_ms": 1.69,
+        "max_ms": 1.69,
+        "ui_max_ms": 1.38,
+        "server": {
+          "frame_max_ms": 0.53,
+          "loop_late_ms": 3.5,
+          "slowest": [
+            "flushing to clients",
+            2724
+          ],
+          "frames": 67
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "live resize",
+        "transition": false,
+        "frames": 37,
+        "p50_ms": 1.41,
+        "p99_ms": 4.42,
+        "max_ms": 4.42,
+        "ui_max_ms": 2.02,
+        "server": {
+          "frame_max_ms": 0.88,
+          "loop_late_ms": 3.8,
+          "slowest": [
+            "request place",
+            2290
+          ],
+          "frames": 123
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "theme light, dark",
+        "transition": true,
+        "frames": 6,
+        "p50_ms": 1.49,
+        "p99_ms": 2.0,
+        "max_ms": 2.0,
+        "ui_max_ms": 1.61,
+        "server": {
+          "frame_max_ms": 13.61,
+          "loop_late_ms": 9.7,
+          "slowest": [
+            "tick",
+            999
+          ],
+          "frames": 40
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "session",
+        "step": "scale to 1.5",
+        "transition": true,
+        "frames": 3,
+        "p50_ms": 0.62,
+        "p99_ms": 4.69,
+        "max_ms": 4.69,
+        "ui_max_ms": 4.19,
+        "server": {
+          "frame_max_ms": 0.73,
+          "loop_late_ms": 3.2,
+          "slowest": [
+            "tick",
+            1597
+          ],
+          "frames": 16
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "launch and load",
+        "transition": true,
+        "frames": 8,
+        "p50_ms": 2.08,
+        "p99_ms": 6.04,
+        "max_ms": 6.04,
+        "ui_max_ms": 1.36,
+        "server": {
+          "frame_max_ms": 13.59,
+          "loop_late_ms": 12.6,
+          "slowest": [
+            "clients' requests",
+            2917
+          ],
+          "frames": 38
+        },
+        "notes": [],
+        "failures": [],
+        "launch_ms": 220
+      },
+      {
+        "app": "coder",
+        "step": "idle 1 s",
+        "transition": false,
+        "frames": 3,
+        "p50_ms": 1.34,
+        "p99_ms": 1.92,
+        "max_ms": 1.92,
+        "ui_max_ms": 1.54,
+        "server": {
+          "frame_max_ms": 0.87,
+          "loop_late_ms": 3.2,
+          "slowest": [
+            "tick",
+            1094
+          ],
+          "frames": 17
+        },
+        "notes": [],
+        "failures": [],
+        "idle_fps": 3
+      },
+      {
+        "app": "coder",
+        "step": "pointer over it",
+        "transition": false,
+        "frames": 20,
+        "p50_ms": 1.34,
+        "p99_ms": 2.83,
+        "max_ms": 2.83,
+        "ui_max_ms": 2.31,
+        "server": {
+          "frame_max_ms": 1.26,
+          "loop_late_ms": 2.8,
+          "slowest": [
+            "tick",
+            1900
+          ],
+          "frames": 189
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 1",
+        "transition": false,
+        "frames": 4,
+        "p50_ms": 1.02,
+        "p99_ms": 1.33,
+        "max_ms": 1.33,
+        "ui_max_ms": 1.05,
+        "server": {
+          "frame_max_ms": 3.1,
+          "loop_late_ms": 4.7,
+          "slowest": [
+            "tick",
+            2944
+          ],
+          "frames": 436
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 2",
+        "transition": false,
+        "frames": 0,
+        "p50_ms": 0.0,
+        "p99_ms": 0.0,
+        "max_ms": 0,
+        "ui_max_ms": 0.0,
+        "server": {
+          "frame_max_ms": 3.36,
+          "loop_late_ms": 11.1,
+          "slowest": [
+            "tick",
+            3140
+          ],
+          "frames": 428
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "5 menus",
+        "transition": false,
+        "frames": 15,
+        "p50_ms": 1.34,
+        "p99_ms": 2.23,
+        "max_ms": 2.23,
+        "ui_max_ms": 1.45,
+        "server": {
+          "frame_max_ms": 1.68,
+          "loop_late_ms": 4.0,
+          "slowest": [
+            "flushing to clients",
+            2901
+          ],
+          "frames": 513
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "typing",
+        "transition": false,
+        "frames": 13,
+        "p50_ms": 1.38,
+        "p99_ms": 5.29,
+        "max_ms": 5.29,
+        "ui_max_ms": 1.78,
+        "server": {
+          "frame_max_ms": 0.68,
+          "loop_late_ms": 2.8,
+          "slowest": [
+            "flushing to clients",
+            1447
+          ],
+          "frames": 67
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "live resize",
+        "transition": false,
+        "frames": 37,
+        "p50_ms": 1.47,
+        "p99_ms": 3.68,
+        "max_ms": 3.68,
+        "ui_max_ms": 1.9,
+        "server": {
+          "frame_max_ms": 1.09,
+          "loop_late_ms": 4.5,
+          "slowest": [
+            "flushing to clients",
+            1604
+          ],
+          "frames": 117
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "theme light, dark",
+        "transition": true,
+        "frames": 6,
+        "p50_ms": 1.7,
+        "p99_ms": 3.73,
+        "max_ms": 3.73,
+        "ui_max_ms": 1.77,
+        "server": {
+          "frame_max_ms": 12.85,
+          "loop_late_ms": 10.7,
+          "slowest": [
+            "tick",
+            3062
+          ],
+          "frames": 41
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "session",
+        "step": "scale to 2",
+        "transition": true,
+        "frames": 2,
+        "p50_ms": 3.92,
+        "p99_ms": 3.92,
+        "max_ms": 3.92,
+        "ui_max_ms": 0.67,
+        "server": {
+          "frame_max_ms": 1.39,
+          "loop_late_ms": 4.1,
+          "slowest": [
+            "request set_settings",
+            886
+          ],
+          "frames": 11
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "launch and load",
+        "transition": true,
+        "frames": 9,
+        "p50_ms": 1.29,
+        "p99_ms": 7.05,
+        "max_ms": 7.05,
+        "ui_max_ms": 1.36,
+        "server": {
+          "frame_max_ms": 0.98,
+          "loop_late_ms": 3.0,
+          "slowest": [
+            "tick",
+            675
+          ],
+          "frames": 41
+        },
+        "notes": [],
+        "failures": [],
+        "launch_ms": 226
+      },
+      {
+        "app": "coder",
+        "step": "idle 1 s",
+        "transition": false,
+        "frames": 2,
+        "p50_ms": 1.22,
+        "p99_ms": 1.22,
+        "max_ms": 1.22,
+        "ui_max_ms": 0.98,
+        "server": {
+          "frame_max_ms": 0.85,
+          "loop_late_ms": 2.8,
+          "slowest": [
+            "tick",
+            2914
+          ],
+          "frames": 10
+        },
+        "notes": [],
+        "failures": [],
+        "idle_fps": 2
+      },
+      {
+        "app": "coder",
+        "step": "pointer over it",
+        "transition": false,
+        "frames": 28,
+        "p50_ms": 1.36,
+        "p99_ms": 6.68,
+        "max_ms": 6.68,
+        "ui_max_ms": 2.07,
+        "server": {
+          "frame_max_ms": 1.49,
+          "loop_late_ms": 6.4,
+          "slowest": [
+            "flushing to clients",
+            1117
+          ],
+          "frames": 204
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 1",
+        "transition": false,
+        "frames": 4,
+        "p50_ms": 1.46,
+        "p99_ms": 1.58,
+        "max_ms": 1.58,
+        "ui_max_ms": 1.36,
+        "server": {
+          "frame_max_ms": 3.64,
+          "loop_late_ms": 6.9,
+          "slowest": [
+            "flushing to clients",
+            2044
+          ],
+          "frames": 432
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 2",
+        "transition": false,
+        "frames": 0,
+        "p50_ms": 0.0,
+        "p99_ms": 0.0,
+        "max_ms": 0,
+        "ui_max_ms": 0.0,
+        "server": {
+          "frame_max_ms": 3.09,
+          "loop_late_ms": 3.7,
+          "slowest": [
+            "flushing to clients",
+            2985
+          ],
+          "frames": 420
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "5 menus",
+        "transition": false,
+        "frames": 15,
+        "p50_ms": 1.33,
+        "p99_ms": 4.75,
+        "max_ms": 4.75,
+        "ui_max_ms": 2.34,
+        "server": {
+          "frame_max_ms": 1.31,
+          "loop_late_ms": 4.1,
+          "slowest": [
+            "clients' requests",
+            3268
+          ],
+          "frames": 514
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "typing",
+        "transition": false,
+        "frames": 13,
+        "p50_ms": 1.27,
+        "p99_ms": 6.42,
+        "max_ms": 6.42,
+        "ui_max_ms": 1.81,
+        "server": {
+          "frame_max_ms": 0.85,
+          "loop_late_ms": 2.8,
+          "slowest": [
+            "flushing to clients",
+            1489
+          ],
+          "frames": 68
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "live resize",
+        "transition": false,
+        "frames": 39,
+        "p50_ms": 1.22,
+        "p99_ms": 4.36,
+        "max_ms": 4.36,
+        "ui_max_ms": 3.94,
+        "server": {
+          "frame_max_ms": 3.96,
+          "loop_late_ms": 3.8,
+          "slowest": [
+            "flushing to clients",
+            1706
+          ],
+          "frames": 113
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "theme light, dark",
+        "transition": true,
+        "frames": 5,
+        "p50_ms": 1.45,
+        "p99_ms": 2.66,
+        "max_ms": 2.66,
+        "ui_max_ms": 2.21,
+        "server": {
+          "frame_max_ms": 3.89,
+          "loop_late_ms": 2.9,
+          "slowest": [
+            "tick",
+            2993
+          ],
+          "frames": 37
+        },
+        "notes": [],
+        "failures": []
+      }
+    ]
+  },
+  "idle": {
+    "idle-before": {
+      "seconds": 3.0,
+      "total": {
+        "cpu": 0.0,
+        "wakeups": 0
+      },
+      "threads": [
+        {
+          "tid": 4000683,
+          "name": "coder-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4000685,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4000687,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4000688,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4000689,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4000690,
+          "name": "coder-rich-text",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4000691,
+          "name": "coder-client",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4000699,
+          "name": "coder-client",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4000700,
+          "name": "coder-events",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4000707,
+          "name": "coder-b:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4000711,
+          "name": "coder-:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4000726,
+          "name": "olo-icons",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Olo Coder",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "idle-after-connected": {
+      "seconds": 3.0,
+      "total": {
+        "cpu": 0.0,
+        "wakeups": 0
+      },
+      "threads": [
+        {
+          "tid": 3799860,
+          "name": "olo-coder",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4076825,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4076829,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4076833,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4076835,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4076837,
+          "name": "coder-rich-text",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4076839,
+          "name": "coder-client",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4076841,
+          "name": "coder-events",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4076842,
+          "name": "coder-events",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4076852,
+          "name": "olo-cod:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4076901,
+          "name": "olo-co:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4076931,
+          "name": "olo-icons",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4076932,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "idle-service": {
+      "seconds": 3.0,
+      "total": {
+        "cpu": 0.0,
+        "wakeups": 0
+      },
+      "threads": [
+        {
+          "tid": 4011099,
+          "name": "olo-coder",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4011100,
+          "name": "upgrade",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4011101,
+          "name": "tokio-rt-worker",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4011102,
+          "name": "tokio-rt-worker",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4011103,
+          "name": "tokio-rt-worker",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4011104,
+          "name": "tokio-rt-worker",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": []
+    },
+    "idle-tui": {
+      "seconds": 3.0,
+      "total": {
+        "cpu": 0.0,
+        "wakeups": 0
+      },
+      "threads": [
+        {
+          "tid": 3979979,
+          "name": "olo-coder",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979982,
+          "name": "coder-terminal-",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979983,
+          "name": "upgrade",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979984,
+          "name": "coder-keys",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979985,
+          "name": "coder-rich-text",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979986,
+          "name": "coder-client",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979987,
+          "name": "coder-events",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3985092,
+          "name": "coder-events",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3985093,
+          "name": "coder-rich-text",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3985094,
+          "name": "coder-client",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3985095,
+          "name": "coder-events",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3985096,
+          "name": "coder-events",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4011105,
+          "name": "coder-events",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": []
+    },
+    "idle-latest": {
+      "seconds": 3.0,
+      "total": {
+        "cpu": 0.0,
+        "wakeups": 0
+      },
+      "threads": [
+        {
+          "tid": 3799860,
+          "name": "olo-coder",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4091869,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4091871,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4091873,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4091874,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4091875,
+          "name": "coder-rich-text",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4091876,
+          "name": "coder-client",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4091878,
+          "name": "coder-events",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4091879,
+          "name": "coder-events",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4091944,
+          "name": "olo-cod:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4091971,
+          "name": "olo-co:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4092012,
+          "name": "olo-icons",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Compiler \u00b7 incremental builds \u2014 Olo Coder",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    }
+  },
+  "limits": [
+    "Shared host; no worst-case latency guarantee.",
+    "Benchmark selector changed: baseline 33 steps, follow-up 30.",
+    "Provider live evidence and remaining product limits are documented in CODER-QA.md.",
+    "Accelerated long-session fixture is not a weeks-long live soak.",
+    "Owner-local peer transport only; no remote-host transport."
+  ]
+}

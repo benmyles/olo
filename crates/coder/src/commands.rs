@@ -3,7 +3,7 @@
 use crate::model::*;
 use anyhow::{Context, Result, bail};
 
-pub const HELP: &str = "Messages go to the agent. Enter sends; Escape stops.\n\n/new [workspace] · /sessions · /open ID · /status · /stop · /resume\n/model MODEL [EFFORT] · /provider codex|claude · /models\n/goal OBJECTIVE · /todos JSON · /memory TEXT · /attach PATH\n/spec on|off · /spec TEXT · /accept [REVISION]\n/keep on|off · /approval ask|auto|allow · /guidance TEXT\n/agents on|off · /readonly on|off · /compact\n/config [JSON] · /defaults [JSON] · /set KEY JSON · /fork [TITLE] · /history [QUERY] · /undo EDIT · /checkpoints · /event SEQUENCE\n/git OP [JSON] · /github OP JSON · /tool NAME JSON\n/api JSON (every command) · /help · /quit\n\nChanges to model and configuration require a stopped turn.\nApproval: /approve CALL_ID or /deny CALL_ID.\nFull configuration includes budgets, timeouts, model provider fields,\nMCP servers, hooks, subagent limits and review model.\nAn execute or MCP tool has host access when approved.";
+pub const HELP: &str = "Messages go to the agent. Enter sends; Escape stops.\n\n/new [workspace] · /sessions · /open ID · /status · /stop · /resume\n/model MODEL [EFFORT] · /provider codex|claude · /models\n/goal OBJECTIVE · /todos JSON · /memory TEXT · /attach PATH\n/spec on|off · /spec TEXT · /accept [REVISION]\n/keep on|off · /approval ask|auto|allow · /guidance TEXT\n/agents on|off · /readonly on|off · /compact\n/config [JSON] · /defaults [JSON] · /set KEY JSON · /fork [TITLE] · /history [QUERY] · /undo EDIT · /checkpoints · /event SEQUENCE\n/git OP [JSON] · /github OP JSON · /tool NAME JSON\n/pin [on|off] · /rename TITLE · /tags WORDS · /archive · /restore\n/interrupt TEXT · /after-tool TEXT · /queue TEXT · /inbox\n/cancel-message ID · /retry-message ID\n/message [PEER/]SESSION TEXT · /peers · /connect NAME STORE · /disconnect NAME · /peer-sessions NAME\n/api JSON (every command) · /help · /quit\n\nChanges to model and configuration require a stopped turn.\nApproval: /approve CALL_ID or /deny CALL_ID.\nFull configuration includes budgets, timeouts, model provider fields,\nMCP servers, hooks, subagent limits and review model.\nAn execute or MCP tool has host access when approved.";
 pub enum Input {
     Command(Command),
     Open(String),
@@ -47,7 +47,36 @@ pub fn parse(text: &str, s: &Session) -> Result<Input> {
         "/quit" => return Ok(Input::Quit),
         "/open" => return Ok(Input::Open(arg.into())),
         "/new" => return Ok(Input::New(arg.into())),
-        "/sessions" => Command::List,
+        "/sessions" => Command::Browse { filter: SessionFilter { query: arg.into(), ..Default::default() } },
+        "/pin" => Command::Organize { session, title: None, pinned: Some(if arg.is_empty() { !s.pinned } else { on(arg)? }), archived: None, tags: None },
+        "/archive" | "/restore" => Command::Organize { session, title: None, pinned: None, archived: Some(name == "/archive"), tags: None },
+        "/rename" => Command::Organize { session, title: Some(arg.into()), pinned: None, archived: None, tags: None },
+        "/tags" => Command::Organize { session, title: None, pinned: None, archived: None, tags: Some(arg.split_whitespace().map(str::to_owned).collect()) },
+        "/interrupt" | "/queue" | "/after-tool" => Command::Steer {
+            session,
+            text: arg.into(),
+            delivery: match name {
+                "/interrupt" => Delivery::Interrupt,
+                "/queue" => Delivery::Queue,
+                _ => Delivery::AfterTool,
+            },
+            message_id: None,
+        },
+        "/inbox" => Command::Messages { session, after: 0, limit: 100 },
+        "/cancel-message" => Command::CancelMessage { session, message: arg.into() },
+        "/retry-message" => Command::RetryMessage { session, message: arg.into() },
+        "/peers" => Command::Peers,
+        "/connect" => {
+            let (name, path) = arg.split_once(char::is_whitespace).context("expected NAME SERVICE_DIRECTORY")?;
+            Command::LinkPeer { name: name.into(), directory: path.trim().into(), reciprocal: true }
+        }
+        "/disconnect" => Command::UnlinkPeer { name: arg.into() },
+        "/peer-sessions" => Command::PeerSessions { peer: arg.into(), filter: Default::default() },
+        "/message" => {
+            let (target, text) = arg.split_once(char::is_whitespace).context("expected [PEER/]SESSION MESSAGE")?;
+            let (peer, target) = target.split_once('/').map(|(p, s)| (Some(p.to_owned()), s)).unwrap_or((None, target));
+            Command::SendMessage { session, target: target.into(), peer, text: text.into(), delivery: Delivery::AfterTool, wake: false, message_id: None }
+        }
         "/status" => Command::Get { session },
         "/stop" => Command::Stop { session },
         "/resume" => Command::Resume { session },

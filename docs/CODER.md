@@ -22,8 +22,9 @@ loopback Olo Token Pool, `OLO_POOL_PORT` (17891 by default).
 
 ## Workflows
 
-Type a request and press Enter. Messages sent during work are queued and applied
-at the next safe boundary after outstanding tool results. Escape stops the TUI's
+Type a request and press Enter. The delivery selector controls when new input
+enters the running conversation: after the next tool, after the current response,
+or immediately by interrupting current work. The default is after the next tool. Escape stops the TUI's
 turn; the GUI has Stop and Agent ▸ Stop. Closing a view leaves the turn running.
 TUI Ctrl+D detaches, PgUp/PgDn scroll, Alt+Enter inserts a newline, Up/Down recall
 input, Tab completes command names, and Ctrl+O opens transcript links (including action details). The GUI composer uses Shift+Enter for a newline. In the GUI, the transcript supports
@@ -34,7 +35,13 @@ Both composers accept these commands:
 
 | Command | Effect |
 | --- | --- |
-| `/new [directory]`, `/sessions`, `/open ID` | Create, list, attach |
+| `/new [directory]`, `/sessions [query]`, `/open ID` | Create, search, attach |
+| `/pin [on\|off]`, `/rename TITLE`, `/tags TAG…` | Organize a session |
+| `/archive`, `/restore` | Hide finished work; restore it before resuming |
+| `/interrupt TEXT`, `/after-tool TEXT`, `/queue TEXT` | Choose an explicit delivery boundary |
+| `/inbox`, `/cancel-message ID`, `/retry-message ID` | Inspect receipts; cancel pending input; retry an unconfirmed peer send |
+| `/connect ALIAS STORE`, `/peers`, `/peer-sessions ALIAS`, `/disconnect ALIAS` | Link and inspect separate local services |
+| `/message [ALIAS/]SESSION TEXT` | Send an attributed collaborator message |
 | `/status`, `/stop`, `/resume` | Inspect, cancel, resume |
 | `/goal objective`, `/keep on` | Track a goal; continue after answers until completed or a run budget stops work |
 | `/todos JSON`, `/memory text` | Set tracked work and durable handoff notes |
@@ -63,6 +70,84 @@ thinking is explicitly configurable (for example `{"type":"adaptive"}`, or a
 legacy budget on models that support it). `model.max_output_tokens` is the
 Claude Messages output limit; the Codex subscription endpoint controls its own
 per-response limit. Run token and turn budgets apply to both providers.
+
+## Sessions, tiles and steering
+
+The native Sessions panel searches titles, tags and workspaces, sorts pinned
+sessions first, and includes archived sessions on request. Open a session here
+or in another window. Session ▸ New Window starts an independent view; View ▸
+Tile Coder Windows separates Olo's window groups and tiles the windows on the
+current workspace. Compact windows use a panel selector to keep every operation
+available. Four windows fit the minimum 1280×800-point screen beside Deskbar.
+Windows, attached sessions, unsent drafts, selected panels and delivery modes
+survive an in-place upgrade. Switching a view retains its draft for each session.
+
+In the TUI, **Ctrl+P** opens the searchable session picker; **Alt+P** pins the
+selected row. **Ctrl+T** opens a session in another conversation tile (up to four),
+**Ctrl+N** focuses the next tile, and **Ctrl+W** closes the active tile when there
+is more than one. Each tile has its own transcript, scroll position and drafts.
+**Alt+M** cycles delivery modes. An upgrade restores all tiles. Ctrl+D detaches
+all of them without stopping work. `NO_COLOR` is respected; the active tile and
+selected row still have text markers. Ctrl+A/E move to the beginning/end of the
+composer; Ctrl+U/K remove text before/after its cursor.
+
+| Delivery | Running session | Idle session |
+| --- | --- | --- |
+| After next tool | Finish the current/next tool, record skipped results for the rest of its old batch, then admit the message | Admit on starting work |
+| Queue after response | Finish the current tool chain and assistant response, then admit the message | Admit on starting work |
+| Interrupt now | Cancel current work, journal its outcome, skip unstarted calls, then restart with the new message | Admit on starting work |
+
+Pending messages are durable. The Inbox panel lets you edit, reorder, cancel, or
+retime an unconsumed message. An interrupt cannot be edited or cancelled after
+cancellation has begun; Stop prevents the restart and allows editing or cancelling
+the pending interrupt. Stop leaves pending input
+available for explicit Resume. Archiving requires stopped work and no unresolved
+calls or messages. Skipped provider calls always receive matching tool results,
+so steering preserves valid provider history, including opaque reasoning items.
+
+## Communication between instances
+
+Windows and terminals attached to the same store already share one service.
+Sessions address each other by ID. Separate `--data` stores have distinct,
+persistent instance identities and independent journals. Link them explicitly:
+
+```text
+/connect review /path/to/review-service-store
+/peer-sessions review
+/message review/SESSION_ID Please review the cancellation behavior.
+```
+
+The other service must be running. Linking from the composer establishes the
+reverse link too (named `peer-` followed by the initiating instance's short ID).
+Links use owner-checked local Unix sockets; they are not a network transport.
+Unlinking removes the local contact. Each outgoing message carries its immutable
+sender instance/session, destination, UUID, text and delivery mode. A replaced
+store with a different identity is rejected until deliberately linked again.
+
+Collaborator text is explicitly identified as untrusted data. It cannot grant
+approval or change session policy. `accept_messages` defaults to true;
+`wake_on_message` defaults to false. Starting idle work requires both the
+recipient's opt-in and the sender's `wake: true`. The `/message` shortcut leaves
+idle work asleep. Model `send_message` calls pass through normal approval policy.
+The `sessions`, `peers` and `session_messages` tools expose structured discovery.
+
+Receipts distinguish `queued`, `delivered` (admitted into context), `cancelled`,
+`sending`, `sent` (peer acceptance confirmed) and `uncertain`. They do not claim
+that requested work was completed. A timeout, cancellation or service restart
+can leave delivery uncertain. `/retry-message ID` resends the original message
+with its original UUID; the recipient deduplicates it even if its pending copy
+was edited or has already been consumed. Retry never wakes a recipient that
+has not opted in. A rejected request is not silently retried with a new ID.
+
+The API exposes `browse`, `organize`, `steer`, `edit_message`, `move_message`,
+`cancel_message`, `messages`, `receipt`, `send_message`, `retry_message`, `peers`,
+`link_peer`, `unlink_peer` and `peer_sessions`. Supply `message_id` when retrying
+a `steer` or `send_message` request after an ambiguous transport failure. Reusing
+an ID for different content fails. `messages` pages by sequence; `browse` pages
+by offset (100 by default, at most 500). A `subscribe_sessions` JSON-line request
+with a `filter` streams catalog snapshots after changes, without idle polling.
+An inbox accepts at most 128 messages and 4 MB of pending text; each message is
+limited to 1 MB. These bounds protect other sessions from an unattended sender.
 
 ## Specs, goals and children
 
@@ -201,7 +286,9 @@ Idle clients and service workers sleep on sockets/channels, without polling.
 On Olo's upgrade signal, the service drains active turns and pending approvals,
 rejects new turns temporarily, then re-executes. It marks itself as waiting so
 the desktop does not kill an in-progress operation. Clients reconnect and replay
-from their cursors. The GUI and TUI preserve the attached session and draft;
+from their cursors. Initial connection failures retry with bounded backoff while
+retaining the requested session and composer draft. Reconnection appears as a
+temporary status rather than repeated transcript entries. The GUI and TUI preserve the attached session and draft;
 the GUI also restores its selected pane, follow setting, and unfinished forms
 (including the original session and expected commit head). Compositor reloads
 use the kit's state restoration.

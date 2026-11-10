@@ -30,12 +30,22 @@ impl Field {
 }
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub enum Submission {
+    Coordination { operation: String, session: String, message: Option<String> },
     Repository { operation: String, session: String, head: String },
     Guidance { session: String, config: olo_coder_core::Config },
 }
 impl Submission {
     fn command(&self, v: Vec<String>) -> String {
         let command = match self {
+            Self::Coordination { operation, session, message } => match operation.as_str() {
+                "rename" => serde_json::json!({"op":"organize","session":session,"title":v[0]}),
+                "connect" => serde_json::json!({"op":"link_peer","name":v[0],"directory":v[1],"reciprocal":true}),
+                "edit" => serde_json::json!({"op":"edit_message","session":session,"message":message,"text":v[0]}),
+                _ => {
+                    let (peer, target) = v[0].split_once('/').map(|(p, t)| (Some(p), t)).unwrap_or((None, v[0].as_str()));
+                    serde_json::json!({"op":"send_message","session":session,"target":target,"peer":peer,"text":v[1],"delivery":"after_tool","wake":false})
+                }
+            },
             Self::Repository { operation, session, head } => {
                 let (name, arguments) = match operation.as_str() {
                     "git_commit" => ("repository_write", serde_json::json!({"operation":"commit","message":v[0],"expected_head":head})),

@@ -56,7 +56,7 @@ impl RenderOnce for TextControl {
         // its label and well faded.
         let enabled = self.field.read(cx).enabled();
         let label = self.label.clone();
-        let multiline = self.rows > 1;
+        let multiline = self.field.read(cx).is_multiline();
         let first_baseline = multiline.then(|| self.field.read(cx).first_line_baseline(window));
         let line_height = self.field.read(cx).line_height(window);
         // Match a standard control's first baseline, including in mixed forms.
