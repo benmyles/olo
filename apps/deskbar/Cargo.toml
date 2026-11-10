@@ -10,9 +10,7 @@ name = "olo-deskbar"
 path = "src/main.rs"
 
 [dependencies]
-# AppImages' own names and icons (`appimages.rs`): their SquashFS read in
-# process.
-backhand = { version = "0.25", default-features = false, features = ["xz", "gzip", "zstd", "lz4"] }
+olo-appimage.workspace = true
 olo-crash.workspace = true
 olo-sync.workspace = true
 olo-ui.workspace = true

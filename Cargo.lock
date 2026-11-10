@@ -7393,6 +7393,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-appimage"
+version = "0.1.0"
+dependencies = [
+ "backhand",
+ "libc",
+ "olo-xdg",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "olo-brush"
 version = "0.1.0"
 dependencies = [
@@ -7529,9 +7541,9 @@ dependencies = [
 name = "olo-deskbar"
 version = "0.1.0"
 dependencies = [
- "backhand",
  "image",
  "libc",
+ "olo-appimage",
  "olo-crash",
  "olo-protocol",
  "olo-sync",
@@ -8634,6 +8646,7 @@ dependencies = [
  "ignore",
  "image",
  "libc",
+ "olo-appimage",
  "olo-crash",
  "olo-images",
  "olo-kit-base",

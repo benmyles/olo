@@ -33,7 +33,16 @@ pub fn app_dirs() -> Vec<PathBuf> {
     let sys = std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".into());
     v.extend(sys.split(':').filter(|s| !s.is_empty()).map(|s| Path::new(s).join("applications")));
     v.push("/var/lib/flatpak/exports/share/applications".into());
+    // AppImages' (last: one installed wins).
+    v.push(appimages_dir());
     v
+}
+
+/// Where the entries made for AppImages are (`olo_appimage`): each
+/// `NoDisplay`, naming its AppImage and the icon taken out of it, so a
+/// running one is found by its app id as an installed app is.
+pub fn appimages_dir() -> PathBuf {
+    crate::cache_dir().join("appimages/applications")
 }
 
 /// The entry in the file at `path` (an autostart entry, one dropped on
@@ -101,7 +110,7 @@ pub(crate) fn parse(path: &Path) -> Option<DesktopEntry> {
 pub fn all_cached() -> std::sync::Arc<Vec<DesktopEntry>> {
     type Kept = olo_sync::Mutex<Option<(Vec<Option<std::time::SystemTime>>, std::sync::Arc<Vec<DesktopEntry>>)>>;
     static KEPT: std::sync::OnceLock<Kept> = std::sync::OnceLock::new();
-    let stamps: Vec<Option<std::time::SystemTime>> = app_dirs().iter().map(|d| std::fs::metadata(d).and_then(|m| m.modified()).ok()).collect();
+    let stamps = stamps();
     let kept = KEPT.get_or_init(Default::default);
     if let Some((s, all)) = kept.lock().unwrap().as_ref()
         && *s == stamps
@@ -111,6 +120,12 @@ pub fn all_cached() -> std::sync::Arc<Vec<DesktopEntry>> {
     let fresh = std::sync::Arc::new(all());
     *kept.lock().unwrap() = Some((stamps, fresh.clone()));
     fresh
+}
+
+/// When each applications folder last changed (an entry added, removed
+/// or replaced): what was read of them is good while these are the same.
+pub fn stamps() -> Vec<Option<std::time::SystemTime>> {
+    app_dirs().iter().map(|d| std::fs::metadata(d).and_then(|m| m.modified()).ok()).collect()
 }
 
 pub fn all() -> Vec<DesktopEntry> {

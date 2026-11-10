@@ -27,6 +27,7 @@ olo-preview = { path = "crates/preview" }
 olo-richtext = { path = "crates/richtext" }
 olo-print = { path = "crates/print" }
 olo-xdg = { path = "crates/xdg" }
+olo-appimage = { path = "crates/appimage" }
 olo-system = { path = "crates/system" }
 olo-onepassword = { path = "crates/onepassword" }
 olo-keychain = { path = "crates/keychain" }

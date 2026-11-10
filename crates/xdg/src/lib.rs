@@ -183,7 +183,10 @@ pub fn load_icon_in(theme: &str, name: &str, px: u32) -> Option<Image> {
 }
 
 pub fn decode_png(path: &Path) -> Option<Image> {
-    let decoder = png::Decoder::new(std::io::BufReader::new(std::fs::File::open(path).ok()?));
+    let mut decoder = png::Decoder::new(std::io::BufReader::new(std::fs::File::open(path).ok()?));
+    // Any PNG as 8 bits a channel: a palette's (an AppImage's icon), 16
+    // bits' and a transparent colour's too.
+    decoder.set_transformations(png::Transformations::normalize_to_color8());
     let mut reader = decoder.read_info().ok()?;
     let mut buf = vec![0; reader.output_buffer_size()?];
     let info = reader.next_frame(&mut buf).ok()?;

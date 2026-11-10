@@ -22,11 +22,13 @@
 //! pointer moves onto something else in it, and the clock ticks on the
 //! minute (or second): nothing runs while nothing changes.
 
-mod appimages;
 mod approve;
 mod sni;
 mod status;
 mod widgets;
+
+/// AppImages (`~/AppImages` in the Olo menu; running ones as themselves).
+use olo_appimage as appimages;
 
 use std::{
     collections::HashMap,
@@ -272,7 +274,13 @@ struct Deskbar {
     /// when the last one started.
     scanning: bool,
     scanned_at: Option<Instant>,
+    /// What is installed has been looked for once.
+    installed_known: bool,
     entries: HashMap<String, Option<DesktopEntry>>,
+    /// App ids of windows looked at for an entry, and with none, at their
+    /// process (`appimages::of_process`: an AppImage's, its entry not
+    /// saying it).
+    asked_process: std::collections::HashSet<String>,
     /// The window that last had the focus: still "this window" for the
     /// Olo menu's commands while the menu holds the keyboard.
     last_focused: Option<u64>,
@@ -604,6 +612,39 @@ impl Deskbar {
         let focused = windows.iter().find(|w| w.focused).map(|w| w.id);
         self.last_focused = focused.or(self.last_focused.filter(|id| windows.iter().any(|w| w.id == *id && !w.minimized)));
         self.windows = windows;
+        self.ask_processes();
+    }
+
+    /// Windows of an app no entry gives (once what is installed is
+    /// known): an AppImage's whose own entry doesn't say its app id is
+    /// found by its process, on a worker, and the id kept for it; its
+    /// entry then says it, and the folder's change brings it here (and
+    /// to every other app) with its name and icon. Each id looked at once.
+    fn ask_processes(&mut self) {
+        if !self.installed_known {
+            return;
+        }
+        let mut ask = Vec::new();
+        for w in &self.windows {
+            let Some(pid) = w.pid else { continue };
+            // (Each id once: a window event costs a lookup for each window.)
+            if w.app_id.is_empty() || self.asked_process.contains(&w.app_id) {
+                continue;
+            }
+            self.asked_process.insert(w.app_id.clone());
+            if our_app(&w.app_id).is_none() && desktop_entry::find_among(&self.installed.entries, &w.app_id).is_none() {
+                ask.push((w.app_id.clone(), pid));
+            }
+        }
+        if !ask.is_empty() {
+            std::thread::spawn(move || {
+                for (app_id, pid) in ask {
+                    if let Some(path) = appimages::of_process(pid) {
+                        appimages::learn(&path, &app_id);
+                    }
+                }
+            });
+        }
     }
 
     fn olo_menu(&self, mode: WindowingMode) -> Menu {
@@ -1439,7 +1480,9 @@ impl Deskbar {
             Msg::Installed(installed) => {
                 self.installed = installed;
                 self.scanning = false;
+                self.installed_known = true;
                 self.entries.clear();
+                self.ask_processes();
             }
             Msg::Meters(batch) => {
                 self.live.add(batch);
@@ -3351,6 +3394,8 @@ fn main() {
                 appimages: None,
                 scanned_at: Some(Instant::now()),
                 entries: HashMap::new(),
+                installed_known: false,
+                asked_process: Default::default(),
                 last_focused: None,
                 tiling: Default::default(),
                 menu_output: None,

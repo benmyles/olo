@@ -1050,6 +1050,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// presses walk it; the arrows move about the rows (`twitch_move`).
     pub fn twitch_step(&mut self, apps: bool, all: bool, back: bool) {
         if self.twitch.as_ref().is_none_or(|t| (t.apps, t.all) != (apps, all)) {
+            crate::twitcher::recheck();
             let (rows, displays, on) = self.twitch_rows(apps, all);
             let mut order: Vec<(usize, usize)> = rows.iter().enumerate().flat_map(|(r, row)| (0..row.1.len()).map(move |i| (r, i))).collect();
             if order.len() < 2 {

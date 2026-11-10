@@ -4082,7 +4082,8 @@ recorded otherwise.
     the window, or cut off: give it room or `style::fit` it; it says how
     much shows across, and the line's and its clip's tops and bottoms,
     for a line cut above or below),
-    `text-over-text`, `text-over-control` (a line laid out past the room
+    `text-over-text` (not the same words a point or less off: a shadow,
+    as the desktop's labels have), `text-over-control` (a line laid out past the room
     it was given, running over a control it doesn't start in: a title
     over the buttons beside it; a layout box stays where it was put, so
     only the text's own extent shows it. Ben, 2026-11-09, of DiskBackup's
@@ -12754,24 +12755,67 @@ only if that changed. Measured beside the old Wi-Fi-only watch over
 60 s, idle on Ben's machine (Ethernet and Wi-Fi both up): under one
 wakeup a second, against about two.
 
-**AppImages** (`appimages.rs`): with a `~/AppImages` folder, the Olo
-menu has an AppImages item under Applications, each AppImage in it by
-the name its own desktop entry gives (else its file's, a version and
-machine trimmed: "Obsidian-1.5.12.AppImage", Obsidian) with its own
-icon. A type 2 AppImage is an ELF runtime with a SquashFS image after
-its section headers; that's read in process (`backhand`, no mounting),
-for the entry and `.DirIcon` (followed through links), else the entry's
-`Icon=` by name (at the top, or the largest in its hicolor theme). What
-was read is kept in `~/.cache/olo/appimages` (the icon, PNG or SVG as
-given, and an index by path, size and time), so each is read once. The
-folder is followed (inotify, `olo_ui::watch`: made later, removed,
-renamed back too), and a change lists it again on a worker, one scan
-at a time with one more after it if it changed meanwhile (an AppImage
-still downloading). Chosen, it runs; one not executable yet (just
-downloaded) is made so first. Tried in a tsession with a real AppImage
-(DBDelve): its name and 256 × 256 icon came out, added and removed
-copies showed and went at once, and the item went with the folder and
-came back with it.
+**AppImages** (`olo_appimage`, crates/appimage, shared with Tracker):
+with a `~/AppImages` folder, the Olo menu has an AppImages item under
+Applications, each AppImage in it by the name its own desktop entry
+gives (else its file's, a version and machine trimmed:
+"Obsidian-1.5.12.AppImage", Obsidian) with its own icon. A type 2
+AppImage is an ELF runtime with a SquashFS image after its section
+headers; that's read in process (`backhand`, no mounting), for the entry
+and `.DirIcon` (followed through links), else the entry's `Icon=` by
+name (at the top, or the largest in its hicolor theme). What was read is
+kept in `~/.cache/olo/appimages` (the icon, PNG or SVG as given, named
+by its bytes so copies share one, and `apps.json`, by path, size and
+time, changed under an `flock` as Deskbar and Tracker both write it), so
+each version of an AppImage is read once, by whichever app comes to it
+first. The folder is followed (inotify, `olo_ui::watch`: made later,
+removed, renamed back too), and a change lists it again on a worker, one
+scan at a time with one more after it if it changed meanwhile (an
+AppImage still downloading). Chosen, it runs; one not executable yet
+(just downloaded) is made so first.
+
+AppImages are themselves wherever an app shows (Ben, 2026-11-09: "if an
+appimage has an icon in it for the app show that icon in the tracker,
+when running in the deskbar apps, and anywhere else an icon is shown for
+the app"). For each AppImage known, a desktop entry is kept in
+`~/.cache/olo/appimages/applications`
+(`olo_xdg::desktop_entry::appimages_dir`, the last of `app_dirs()`, so
+an installed app of the same id wins): named by the AppImage's own
+entry's id (`dbdelve.desktop`), `NoDisplay` (the Applications menu, the
+palette and Open With leave it out: `~/AppImages` is listed on its own),
+with `Exec` the AppImage (quoted for `sh -c`, its own `%f`/`%U` kept),
+`Icon` the file taken out of it, its `StartupWMClass` and
+`X-Olo-AppImage`. So every lookup of an app id (`find`, `find_among`,
+`icon_for_app`) finds a running AppImage's name and icon as it finds an
+installed app's: Deskbar's running apps, the Twitcher, the window
+menu's Quit, notifications, the palette's windows. Of two with one id,
+the one in `~/AppImages` is named, then the newest; an AppImage gone is
+let go of (entry and icon) at the next change, and only entries that
+changed are written. A window whose app id no entry gives is looked at
+once by Deskbar, on a worker (`ask_processes`, each id once, not on
+every window event): if its process is an AppImage's
+(`olo_appimage::of_process`: the runtime's `APPIMAGE` and `APPDIR` in
+`/proc/PID/environ`, and the program in that mount, so a program an
+AppImage started isn't taken for it), that AppImage is read, and an id
+its own entry doesn't give is kept for it (`learn`: another entry by that
+name). The Twitcher, which looks each app up once, looks those no entry
+gave up again as it's shown, on a worker, if an applications folder
+changed since (`twitcher::recheck`, `desktop_entry::stamps`): an
+AppImage's entry is made a moment after its first window. Tracker shows an AppImage's file (`.AppImage`, or an
+extension-less program with the AppImage mark) with its icon
+(`apps/tracker/src/appimages.rs`): asked for as an item is drawn,
+read on a thread of its own (`olo_appimage::info`), the windows drawn
+again only when an icon came; the kind's icon meanwhile. Third-party
+PNG icons decode whatever their format (`olo_xdg::decode_png`
+normalizes to 8 bits a channel: palettes, 16 bits, a transparent
+colour): of the 3,980 PNG icons on Ben's machine (ours, /usr/share's,
+the cache's), the 3,836 that decoded before are byte for byte the same,
+and 144 more (palette ones, Adwaita's 16 px among them) now decode.
+Tried in a tsession with a real AppImage (DBDelve) in `~/AppImages`,
+in Downloads (with and without its extension) and in a folder nothing
+looked at: Tracker showed each with its icon, and run from any of them
+Deskbar listed it as DBDelve with its icon and the window menu said
+"Quit DBDelve", at 1×, 1.25×, 1.5×, 1.75× and 2×, light and dark.
 
 ### Live widgets (widgets.rs, Preferences ▸ Deskbar)
 

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-09
 
+### AppImages show their own icons everywhere
+
+*18:04* — An AppImage's icon, read out of its image, now shows for its file in Tracker (with or without the .AppImage extension), for its running windows in Deskbar and the Twitcher, and under its own name in the window menu. Each AppImage known gets a hidden desktop entry, so every app lookup finds it; one run from a folder nothing looked at is found by its process (here DBDelve, run from a folder of its own).
+
+![AppImages show their own icons everywhere](2026-11-09/180432-appimages-show-their-own-icons-everywhere.png)
+
 ### Window tab menu: Close Others in a group
 
 *16:01* — A window in a group: Close Others after Close closes every other window of its group, each as its close box would (one with unsaved work asks).

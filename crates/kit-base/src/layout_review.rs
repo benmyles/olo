@@ -497,7 +497,10 @@ fn texts_over(p: &Parts, screen: Rect, out: &mut Vec<Finding>) {
             // (Lines' boxes touch by their leading, and keys' symbols set
             // closer than their advance by a point or so; their ink
             // doesn't.)
-            if over.width() > 2.0 && over.height() > a.size.min(b.size) * 0.4 {
+            // (The same words a point or less off are a shadow: the
+            // desktop's labels have one.)
+            let shadow = a.label == b.label && (a.rect.min.x - b.rect.min.x).abs() <= 1.5 && (a.rect.min.y - b.rect.min.y).abs() <= 1.5;
+            if over.width() > 2.0 && over.height() > a.size.min(b.size) * 0.4 && !shadow {
                 push(out, finding(Level::Error, "text-over-text", format!("{} and {} overlap by {:.1}×{:.1}", quote(a), quote(b), over.width(), over.height()), over));
             }
         }
@@ -1215,6 +1218,20 @@ mod tests {
         // cut by nothing would: that's `text-cut`'s, not this.)
         p.texts = vec![text("Restore…", 258.0, 64.0)];
         assert!(found(&p).is_empty());
+    }
+
+    /// Words over others are found; the same words a point off (the
+    /// desktop's labels' shadow) aren't.
+    #[test]
+    fn a_shadow_is_not_text_over_text() {
+        let found = |p: &Parts| review(p, 400.0, 300.0, 2.0).into_iter().filter(|f| f.kind == "text-over-text").count();
+        let mut shadowed = text("System", 21.0, 60.0);
+        shadowed.rect.min.y += 1.0;
+        shadowed.rect.max.y += 1.0;
+        let p = Parts { texts: vec![shadowed, text("System", 20.0, 60.0)], ..Parts::default() };
+        assert_eq!(found(&p), 0);
+        let p = Parts { texts: vec![text("Home", 24.0, 60.0), text("System", 20.0, 60.0)], ..Parts::default() };
+        assert_eq!(found(&p), 1);
     }
 
     /// Two buttons with one element id (a Remove in each of two boxes,
