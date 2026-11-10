@@ -96,6 +96,10 @@ pub(crate) struct Notes {
     /// (true) that are cut only if what holds the drawing cuts them at a
     /// side, where they are.
     pub(crate) cuts: Vec<(Bounds<Pixels>, SharedString, bool)>,
+    /// It moves with time: drawn again within this many seconds
+    /// (`Painter::paint_again_within`; taken by the window's clock as
+    /// the drawing is kept).
+    pub(crate) again: Option<f64>,
 }
 
 impl Notes {
@@ -308,6 +312,20 @@ impl<'a> Painter<'a> {
     /// being decoded): the view is drawn again when it has.
     pub fn paint_unfinished(&mut self) {
         self.notes.unfinished = true;
+    }
+
+    /// What's being painted moves with time (a graph scrolling, a
+    /// clock's hand): it's drawn again, alone, within `seconds` (how
+    /// long until it would look different: a graph's samples a device
+    /// pixel along). The window has one clock for all that ask: it
+    /// ticks at the finest step asked, and each tick draws them all, so
+    /// they move together in one frame. Each drawing asks for the next;
+    /// what stops asking stops, and nothing runs while the window isn't
+    /// shown (the clock waits for the frame its drawings went in).
+    pub fn paint_again_within(&mut self, seconds: f64) {
+        if seconds.is_finite() {
+            self.notes.again = Some(self.notes.again.map_or(seconds, |s| s.min(seconds)).max(0.0));
+        }
     }
 
     /// The pointer's shape while it's over `bounds`.

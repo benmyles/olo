@@ -3,8 +3,10 @@
 pub mod alert;
 pub mod banner;
 pub mod buttons;
+pub mod charts;
 pub mod color;
 pub mod control;
+pub mod dashboard;
 pub mod find_bar;
 pub mod key_hint;
 pub mod list;
@@ -28,6 +30,7 @@ pub use alert::{
 };
 pub use banner::{Banner, Tone, banner_back, banner_height, verdict_mark};
 pub use buttons::{Button, CheckBox, LinkButton, RadioButton, SMALL_BUTTON_HEIGHT, button_width, check_box_look, link_button_width};
+pub use charts::{CellGrid, Graph, GridCell, LegendItem, SPECTRUM_LABELS, Series, Spectrum, SpectrumSeries, legend, legend_height, nice_ceiling};
 pub use color::{ColorControl, ColorWell, color_control_height};
 pub use control::{Control, ControlState, DISABLED_OPACITY, control};
 pub use find_bar::{find_bar, find_said};

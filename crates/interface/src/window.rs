@@ -170,6 +170,8 @@ pub(crate) struct WindowCore {
     /// The node whose handler is running now.
     pub(crate) current: Option<NodeId>,
     pub(crate) next_frame: Vec<NextFrame>,
+    /// When what moves with time is drawn again.
+    pub(crate) clock: Clock,
     /// The pointer's shape, as last asked for.
     pub(crate) cursor: crate::CursorStyle,
     /// Scenes let go of, to record into again.
@@ -281,6 +283,44 @@ pub(crate) fn with_window<R>(looper: &mut Looper, id: WindowId, f: impl FnOnce(&
         windows.map.insert(id, core);
     }
     Some(result)
+}
+
+/// When a window's drawings that move with time are drawn again
+/// (`Painter::paint_again_within`): one clock for all of them, so they
+/// move together. Each says, as it's drawn, how long until it would look
+/// different (a graph: until its samples have moved a device pixel); the
+/// clock ticks at the finest of those (a minute across 600 pixels is 10
+/// frames a second, not 120 that would draw the same pixels), and each
+/// tick draws all that asked. Graphs of many sizes ticking on their own
+/// made a frame each (twelve small ones and a large one: twice the
+/// frames). It's set going by the frame the drawings went in, so a
+/// window that isn't shown (it gets no frames) has no clock; once
+/// nothing asks, it stops.
+pub(crate) struct Clock {
+    /// The finest step asked before the last tick, and since.
+    pace: f64,
+    finest: f64,
+    /// What asked since the last tick, and when the first of it did.
+    nodes: Vec<NodeId>,
+    asked_at: Option<Instant>,
+    /// Waiting for the frame they were drawn in.
+    waiting: bool,
+    timer: Option<olo_app::TimerId>,
+}
+
+impl Clock {
+    fn new() -> Clock {
+        Clock { pace: f64::MAX, finest: f64::MAX, nodes: Vec::new(), asked_at: None, waiting: false, timer: None }
+    }
+
+    /// A node drawn just now is to be drawn again within `seconds`.
+    pub(crate) fn ask(&mut self, node: NodeId, seconds: f64) {
+        self.finest = self.finest.min(seconds);
+        if !self.nodes.contains(&node) {
+            self.nodes.push(node);
+        }
+        self.asked_at.get_or_insert_with(Instant::now);
+    }
 }
 
 /// Does something with a window on a looper, by its number (from a
@@ -433,6 +473,7 @@ impl WindowCore {
             default_prevented: false,
             current: None,
             next_frame: Vec::new(),
+            clock: Clock::new(),
             cursor: crate::CursorStyle::Arrow,
             recycled: Vec::new(),
             kept: HashMap::new(),
@@ -1011,6 +1052,38 @@ impl<'a> WindowCx<'a> {
         }
     }
 
+    /// The frame that what moves with time was drawn in is showing: the
+    /// clock is set for its next tick (what's left of the finest step
+    /// asked, a 240th of a second to a minute).
+    fn wind_clock(&mut self) {
+        let clock = &mut self.core.clock;
+        clock.waiting = false;
+        if clock.nodes.is_empty() || clock.timer.is_some() {
+            return;
+        }
+        let step = clock.pace.min(clock.finest).clamp(1.0 / 240.0, 60.0);
+        let since = clock.asked_at.map_or(0.0, |at| at.elapsed().as_secs_f64());
+        let id = self.core.id;
+        let timer = self.looper.after(Duration::from_secs_f64((step - since).max(0.0)), move |looper| {
+            with_window(looper, id, |cx| cx.tick_clock());
+        });
+        self.core.clock.timer = Some(timer);
+    }
+
+    /// The clock ticks: all that asked is drawn again (and asks again as
+    /// it is, if it still moves).
+    fn tick_clock(&mut self) {
+        let clock = &mut self.core.clock;
+        clock.timer = None;
+        clock.asked_at = None;
+        clock.pace = std::mem::replace(&mut clock.finest, f64::MAX);
+        for id in std::mem::take(&mut clock.nodes) {
+            if self.core.nodes.contains_key(id) {
+                self.core.mark_paint(id);
+            }
+        }
+    }
+
     /// What was drawn while something it shows was still coming (a
     /// picture being decoded: `Painter::paint_unfinished`) is drawn
     /// again: it has come.
@@ -1180,6 +1253,13 @@ impl<'a> WindowCx<'a> {
         }
         if drew > 0 {
             core.gfx.text_system.finish_frame();
+        }
+        // What moves with time is drawn again in a while, counted from
+        // the frame this drawing goes in.
+        if !core.clock.nodes.is_empty() && core.clock.timer.is_none() && !core.clock.waiting {
+            core.clock.waiting = true;
+            core.next_frame.push(Box::new(|cx| cx.wind_clock()));
+            core.needs_commit = true;
         }
         let paint_done = flushing.elapsed();
         if !core.needs_commit {

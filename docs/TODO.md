@@ -62,13 +62,12 @@ something nobody here has is in "Blocked", with what it waits for.
      upgrade), and the widgets control, buttons, views, text_field,
      text_control, menu_field, scroll, list, alert, status, key_hint,
      banner, find_bar, slider, tabs, side_pane, sidebar, color, thumbs,
-     toolbar, text_view: each pixel for pixel the same as olo-ui's at
+     toolbar, text_view, charts, dashboard: each pixel for pixel the same as olo-ui's at
      1×, 1.5× and 2×, light and dark (`tools/dev/kit-compare`, the
      `*_gpui` examples beside the kit's). Tips are `tip::on` everywhere
      (a popup under its widget, free of its window's edges; olo-ui's
      tool bar used GPUI's, at the pointer, inside the window). *Still
-     to do:* strip, image_view,
-     charts, dashboard, ruler, slim_scroll; undo, spotlight,
+     to do:* strip, image_view, ruler, slim_scroll; undo, spotlight,
      dnd, open_with, file_panel, search, code, brand, pictures,
      workspaces, lock, copy, due, part, spell, lint; the editor;
      `crates/preview`, `print`, `screensavers`.

@@ -729,7 +729,11 @@ impl WindowCore {
                 self.by_visible.push(id);
             }
         }
+        let again = notes.again.take();
         node.notes = (!notes.is_empty()).then(|| Box::new(notes));
+        if let Some(seconds) = again {
+            self.clock.ask(id, seconds);
+        }
     }
 
     /// What can be seen of a node, where it's drawn: the window, within
