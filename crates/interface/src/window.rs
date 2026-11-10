@@ -61,6 +61,11 @@ pub(crate) struct WindowCore {
     pub(crate) remeasured: Vec<NodeId>,
     /// Something that shows changed: there's a commit to make.
     pub(crate) needs_commit: bool,
+    /// Everything that shows, in painting order, as last committed, and
+    /// whether it's to be made again (what shows or where changed, not
+    /// only what something drew).
+    pub(crate) items: Vec<Item>,
+    pub(crate) items_stale: bool,
     /// Layout is to be worked out again though nothing in the tree says
     /// so (the window's size changed).
     pub(crate) relayout: bool,
@@ -89,7 +94,6 @@ pub(crate) struct WindowCore {
     pub(crate) cursor: crate::CursorStyle,
     /// Scenes let go of, to record into again.
     pub(crate) recycled: Vec<crate::Scene>,
-    last_items: usize,
 }
 
 /// A window, as whatever is running on its looper is handed it: the
@@ -201,6 +205,8 @@ impl WindowCore {
             paint_queue: Vec::new(),
             remeasured: Vec::new(),
             needs_commit: true,
+            items: Vec::new(),
+            items_stale: true,
             relayout: true,
             everything: true,
             started: Some(Instant::now()),
@@ -217,7 +223,6 @@ impl WindowCore {
             next_frame: Vec::new(),
             cursor: crate::CursorStyle::Arrow,
             recycled: Vec::new(),
-            last_items: 0,
         }
     }
 
@@ -267,17 +272,17 @@ impl WindowCore {
     }
 
     /// Works out where everything under `id` is, from what layout made
-    /// of it.
-    fn place(&mut self, id: NodeId, parent_origin: Point<Pixels>) {
+    /// of it. What it and all it holds reach.
+    fn place(&mut self, id: NodeId, parent_origin: Point<Pixels>) -> Bounds<Pixels> {
         let scale = self.gfx.scale_factor;
-        let Some(node) = self.nodes.get_mut(id) else { return };
+        let Some(node) = self.nodes.get_mut(id) else { return Bounds::default() };
         let (rel, content) = self.layout.placed(node.layout, scale);
         let bounds = Bounds { origin: parent_origin + rel.origin, size: rel.size };
         let moved = bounds != node.bounds;
         let resized = bounds.size != node.bounds.size;
         node.bounds = bounds;
         node.content_size = content;
-        let mut repaint = resized && node.behind.is_some() | node.over.is_some();
+        let mut repaint = resized && (node.behind.is_some() || node.over.is_some());
         if moved && !repaint {
             // What it drew is moved with it, if that's by whole device
             // pixels (it nearly always is: layout lands on them).
@@ -288,58 +293,95 @@ impl WindowCore {
             repaint = off(bounds.origin.x, node.painted_at.x) || off(bounds.origin.y, node.painted_at.y);
         }
         if moved {
-            self.needs_commit = true;
+            self.reshaped();
         }
         if repaint {
             self.mark_paint(id);
         }
+        let mut reach = bounds;
         let count = self.nodes[id].children.len();
         for i in 0..count {
             let child = self.nodes[id].children[i];
-            self.place(child, bounds.origin);
+            let theirs = self.place(child, bounds.origin);
+            if !theirs.is_empty() {
+                reach = reach.union(&theirs);
+            }
         }
+        self.nodes[id].reach = reach;
+        reach
     }
 
-    /// Everything that shows, in painting order, for the stage.
-    fn items(&self) -> Vec<Item> {
-        let mut items = Vec::with_capacity(self.last_items + 8);
+    /// Makes the list of everything that shows, in painting order, for
+    /// the stage (and notes where each node's drawings are in it).
+    fn list_items(&mut self) {
+        let mut items = std::mem::take(&mut self.items);
+        items.clear();
         let scale = self.gfx.scale_factor;
         let window = Bounds { origin: point(ScaledPixels(0.), ScaledPixels(0.)), size: size(ScaledPixels(self.size.width.0 * scale), ScaledPixels(self.size.height.0 * scale)) };
         if let Some(root) = self.root {
             self.collect(root, window, &mut items);
         }
-        items
+        self.items = items;
+        self.items_stale = false;
     }
 
-    fn collect(&self, id: NodeId, clip: Bounds<ScaledPixels>, items: &mut Vec<Item>) {
-        let Some(node) = self.nodes.get(id) else { return };
+    fn collect(&mut self, id: NodeId, clip: Bounds<ScaledPixels>, items: &mut Vec<Item>) {
+        let scale = self.gfx.scale_factor;
+        let rem = self.gfx.rem_size;
+        let Some(node) = self.nodes.get_mut(id) else { return };
+        node.slots = [u32::MAX; 2];
         if node.style.visibility == crate::Visibility::Hidden {
             return;
         }
-        let scale = self.gfx.scale_factor;
         let by = point(ScaledPixels(((node.bounds.origin.x.0 - node.painted_at.x.0) * scale).round()), ScaledPixels(((node.bounds.origin.y.0 - node.painted_at.y.0) * scale).round()));
         let shows = |list: &Arc<crate::stage::Recording>| !Bounds { origin: list.bounds.origin + by, size: list.bounds.size }.intersect(&clip).is_empty();
         if let Some(list) = &node.behind
             && shows(list)
         {
+            node.slots[0] = items.len() as u32;
             items.push(Item { list: list.clone(), by, clip, layer: 0 });
         }
-        if !node.children.is_empty() {
-            let inner = match node.style.overflow_mask(node.bounds, self.gfx.rem_size) {
+        let count = node.children.len();
+        if count > 0 {
+            let inner = match node.style.overflow_mask(node.bounds, rem) {
                 Some(mask) => clip.intersect(&mask.scale(scale).bounds),
                 None => clip,
             };
             if !inner.is_empty() {
-                for child in &node.children {
-                    self.collect(*child, inner, items);
+                for i in 0..count {
+                    let child = self.nodes[id].children[i];
+                    self.collect(child, inner, items);
                 }
             }
         }
+        let node = &mut self.nodes[id];
         if let Some(list) = &node.over
             && shows(list)
         {
+            node.slots[1] = items.len() as u32;
             items.push(Item { list: list.clone(), by, clip, layer: 0 });
         }
+    }
+
+    /// A node drew again and nothing else about it changed: its place in
+    /// the list of what shows takes the new drawing. False if the list
+    /// has to be made again (it now draws something where it drew
+    /// nothing, or the other way).
+    fn patch_items(&mut self, id: NodeId) -> bool {
+        let Some(node) = self.nodes.get(id) else { return true };
+        for (slot, list) in [(node.slots[0], &node.behind), (node.slots[1], &node.over)] {
+            match (self.items.get_mut(slot as usize), list) {
+                (Some(item), Some(list)) => {
+                    item.list = list.clone();
+                    item.by = Point::default();
+                }
+                (None, None) => {}
+                // (Drawn where nothing was, or nothing where something
+                // was; or it was clipped away whole before.)
+                _ => return false,
+            }
+        }
+        true
     }
 
     /// The window is gone: what it held goes, and the program hears.
@@ -422,7 +464,7 @@ impl<'a> WindowCx<'a> {
         if core.size != size {
             core.size = size;
             core.relayout = true;
-            core.needs_commit = true;
+            core.reshaped();
         }
     }
 
@@ -433,7 +475,7 @@ impl<'a> WindowCx<'a> {
         let core = &mut *self.core;
         core.gfx.glyph_memo.clear();
         core.everything = true;
-        core.needs_commit = true;
+        core.reshaped();
         let views: Vec<ViewId> = core.views.keys().collect();
         for view in views {
             core.invalidate_view(view);
@@ -450,6 +492,7 @@ impl<'a> WindowCx<'a> {
             return;
         }
         let flushing = Instant::now();
+        let phases = crate::stats::frame_phases();
         // What changed says what it shows now.
         let mut turns = 0;
         while let Some(view) = self.core.dirty_views.pop() {
@@ -482,6 +525,7 @@ impl<'a> WindowCx<'a> {
             }
         }
         let core = &mut *self.core;
+        let bodies_done = flushing.elapsed();
         // Where everything goes.
         if let Some(root) = core.root {
             let root_layout = core.nodes[root].layout;
@@ -498,13 +542,16 @@ impl<'a> WindowCx<'a> {
                 }
             }
         }
+        let layout_done = flushing.elapsed();
         // What changed is drawn.
         let mut drew = 0;
+        let mut recorded: Vec<NodeId> = Vec::new();
         while !core.paint_queue.is_empty() {
             for id in std::mem::take(&mut core.paint_queue) {
                 if core.nodes.get(id).is_some_and(|n| n.paint_dirty) {
                     if core.attached(id) {
                         core.record(id);
+                        recorded.push(id);
                         drew += 1;
                     } else {
                         // (Drawn when it's shown again.)
@@ -518,13 +565,43 @@ impl<'a> WindowCx<'a> {
         if drew > 0 {
             core.gfx.text_system.finish_frame();
         }
+        let paint_done = flushing.elapsed();
         if !core.needs_commit {
             core.started = None;
             return;
         }
         core.needs_commit = false;
-        let items = core.items();
-        core.last_items = items.len();
+        if !core.items_stale {
+            // Only drawings changed: each takes its place in the list.
+            for id in &recorded {
+                if !core.patch_items(*id) {
+                    core.items_stale = true;
+                    break;
+                }
+            }
+        }
+        if core.items_stale {
+            core.list_items();
+        }
+        let items = core.items.clone();
+        if phases {
+            let ms = |d: Duration| d.as_secs_f64() * 1000.0;
+            let work = crate::stats::FRAME_WORK.take();
+            eprintln!(
+                "flush {:.3} ms: bodies {:.3} ({turns}), layout {:.3}, paint {:.3} ({drew} of {} nodes), items {:.3} ({}); shaped {} lines in {:.2} ms, drew {} glyphs in {:.2} ms",
+                ms(flushing.elapsed()),
+                ms(bodies_done),
+                ms(layout_done - bodies_done),
+                ms(paint_done - layout_done),
+                core.nodes.len(),
+                ms(flushing.elapsed() - paint_done),
+                items.len(),
+                work[0].0,
+                work[0].1,
+                work[1].0,
+                work[1].1,
+            );
+        }
         let scale = core.gfx.scale_factor;
         let layers = vec![Layer {
             id: 0,

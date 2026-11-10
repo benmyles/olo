@@ -2111,6 +2111,14 @@ impl PlatformWindow for WaylandWindow {
         self.0.callbacks.borrow_mut().ime = Some(callback);
     }
 
+    fn begin_frame(&self, damage: Option<Bounds<crate::ScaledPixels>>) -> crate::FrameRegion {
+        // (As `draw`: nothing before the first configure.)
+        if self.0.frames.closed.get() || !self.0.state.borrow().acknowledged_first_configure {
+            return crate::FrameRegion::None;
+        }
+        self.borrow_mut().renderer.begin_frame(damage)
+    }
+
     fn draw(&self, scene: &Scene) {
         // Olo: nothing may be attached before the surface's first configure
         // is acknowledged, whatever asked for the frame (the first draw at

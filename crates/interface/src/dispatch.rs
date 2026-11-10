@@ -40,7 +40,7 @@ impl WindowCore {
 
     fn gather(&self, id: NodeId, at: Point<Pixels>, clip: Bounds<Pixels>, found: &mut Vec<NodeId>) {
         let Some(node) = self.nodes.get(id) else { return };
-        if node.style.visibility == crate::Visibility::Hidden {
+        if node.style.visibility == crate::Visibility::Hidden || !node.reach.contains(&at) {
             return;
         }
         if node.bounds.contains(&at) && clip.contains(&at) && node.inter.as_ref().is_some_and(|i| i.takes_pointer() && !i.disabled) {

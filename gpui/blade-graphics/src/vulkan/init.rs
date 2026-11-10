@@ -57,6 +57,9 @@ struct AdapterCapabilities {
     buffer_marker: bool,
     shader_info: bool,
     full_screen_exclusive: bool,
+    /// Olo: a present can say which rectangles changed
+    /// (VK_KHR_incremental_present).
+    incremental_present: bool,
     external_memory: bool,
     /// Olo: the host's memory imported as buffers (VK_EXT_external_memory_host):
     /// the alignment its pointers and sizes need.
@@ -278,6 +281,7 @@ unsafe fn inspect_adapter(
     let buffer_marker = supported_extensions.contains(&vk::AMD_BUFFER_MARKER_NAME);
     let shader_info = supported_extensions.contains(&vk::AMD_SHADER_INFO_NAME);
     let full_screen_exclusive = supported_extensions.contains(&vk::EXT_FULL_SCREEN_EXCLUSIVE_NAME);
+    let incremental_present = supported_extensions.contains(&vk::KHR_INCREMENTAL_PRESENT_NAME);
 
     let device_information = crate::DeviceInformation {
         is_software_emulated: properties.device_type == vk::PhysicalDeviceType::CPU,
@@ -302,6 +306,7 @@ unsafe fn inspect_adapter(
         buffer_marker,
         shader_info,
         full_screen_exclusive,
+        incremental_present,
         external_memory,
         host_memory,
         timing,
@@ -508,6 +513,9 @@ impl super::Context {
             if capabilities.full_screen_exclusive {
                 device_extensions.push(vk::EXT_FULL_SCREEN_EXCLUSIVE_NAME);
             }
+            if desc.presentation && capabilities.incremental_present {
+                device_extensions.push(vk::KHR_INCREMENTAL_PRESENT_NAME);
+            }
             if capabilities.host_memory.is_some() {
                 if !capabilities.external_memory {
                     device_extensions.push(vk::KHR_EXTERNAL_MEMORY_NAME);
@@ -625,6 +633,7 @@ impl super::Context {
             } else {
                 None
             },
+            incremental_present: desc.presentation && capabilities.incremental_present,
             full_screen_exclusive: if desc.presentation && capabilities.full_screen_exclusive {
                 Some(ext::full_screen_exclusive::Device::new(
                     &instance.core,

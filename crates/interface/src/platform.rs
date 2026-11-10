@@ -318,6 +318,12 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn on_appearance_changed(&self, callback: Box<dyn FnMut()>);
     /// What an input method does is handed to `callback`.
     fn on_ime(&self, _callback: Box<dyn FnMut(ImeInput)>) {}
+    /// Begins a frame that shows `damage` (what changed since the last,
+    /// in device pixels; None: everything): how much of it is to be
+    /// drawn. The scene then drawn need hold no more.
+    fn begin_frame(&self, _damage: Option<Bounds<crate::ScaledPixels>>) -> FrameRegion {
+        FrameRegion::All
+    }
     fn draw(&self, scene: &Scene);
     fn completed_frame(&self) {}
     fn sprite_atlas(&self) -> Arc<dyn PlatformAtlas>;

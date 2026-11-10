@@ -401,12 +401,53 @@ pub struct BladeSurfaceConfig {
 // so that they are shared between windows. E.g. `pipelines`.
 // But that is complicated by the fact that pipelines depend on
 // the format and alpha mode.
+/// What one of a swapchain's images holds, for drawing only what a
+/// frame needs.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Held {
+    /// Not known (never drawn, or the swapchain was made again): drawn
+    /// whole.
+    Nothing,
+    /// The window as it was, but for this rectangle, changed since
+    /// (None: all of it is as the window is now).
+    AllBut(Option<[i32; 4]>),
+}
+
+/// How much of a frame is to be drawn (`BladeRenderer::begin_frame`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum FrameRegion {
+    /// No frame can be drawn now.
+    None,
+    All,
+    /// Only this, in device pixels (the rest is kept).
+    Part(Bounds<ScaledPixels>),
+}
+
+/// Whether frames draw only what changed (`OLO_DAMAGE=0`: all of the
+/// window every frame, to compare).
+pub(crate) fn damage_enabled() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("OLO_DAMAGE").map_or(true, |v| v != "0"))
+}
+
+fn union(a: [i32; 4], b: [i32; 4]) -> [i32; 4] {
+    let (x0, y0) = (a[0].min(b[0]), a[1].min(b[1]));
+    let (x1, y1) = ((a[0] + a[2]).max(b[0] + b[2]), (a[1] + a[3]).max(b[1] + b[3]));
+    [x0, y0, x1 - x0, y1 - y0]
+}
+
 pub struct BladeRenderer {
     gpu: Arc<gpu::Context>,
     surface: gpu::Surface,
     surface_config: gpu::SurfaceConfig,
     command_encoder: gpu::CommandEncoder,
     last_sync_point: Option<gpu::SyncPoint>,
+    /// What each of the swapchain's images holds (`Held`).
+    images: Vec<Held>,
+    /// A frame begun (`begin_frame`) and not drawn yet: its image, the
+    /// part of it to draw (None: all), and what changed in it for the
+    /// compositor.
+    begun: Option<(gpu::Frame, Option<[i32; 4]>, Option<[i32; 4]>)>,
     /// Olo: the part of the swapchain drawn in: all of it, or less while
     /// it has room to grow (`update_drawable_size_within`).
     drawn: gpu::Extent,
@@ -504,6 +545,7 @@ impl BladeRenderer {
             self.surface_config.color_space = space;
             let format = self.surface.info().format;
             self.gpu.reconfigure_surface(&mut self.surface, self.surface_config);
+            self.images.clear();
             // (P3's swapchain is ten bits a channel where offered: the
             // pipelines made again for it, as for a change of alpha.)
             if self.surface.info().format != format {
@@ -556,6 +598,8 @@ impl BladeRenderer {
             surface_config,
             command_encoder,
             last_sync_point: None,
+            images: Vec::new(),
+            begun: None,
             drawn: surface_config.size,
             pipelines,
             pipeline_cache: context.pipelines.clone(),
@@ -711,6 +755,7 @@ impl BladeRenderer {
         let format = self.surface.info().format;
         self.gpu.destroy_surface(&mut self.surface);
         self.gpu.reconfigure_surface(&mut surface, self.surface_config);
+        self.images.clear();
         if surface.info().format != format {
             log::warn!("the window's new surface is {:?}, its pipelines {format:?}", surface.info().format);
         }
@@ -779,6 +824,7 @@ impl BladeRenderer {
             self.wait_for_gpu();
             self.surface_config.size = gpu_size;
             self.gpu.reconfigure_surface(&mut self.surface, self.surface_config);
+            self.images.clear();
             self.destroy_path_targets();
         }
         self.drawn = gpu_size;
@@ -789,6 +835,7 @@ impl BladeRenderer {
             self.wait_for_gpu();
             self.surface_config.transparent = transparent;
             self.gpu.reconfigure_surface(&mut self.surface, self.surface_config);
+            self.images.clear();
             self.pipelines = shared_pipelines(&self.gpu, &self.pipeline_cache, self.surface.info(), self.rendering_parameters.path_sample_count);
             self.subpixel_sprites = None;
         }
@@ -939,12 +986,77 @@ impl BladeRenderer {
         }
     }
 
+    /// Takes the next of the swapchain's images and works out how much
+    /// of it a frame showing `damage` (what changed since the last
+    /// frame, in device pixels; None: everything) has to draw: an image
+    /// keeps what was drawn into it, so only what changed since it was
+    /// last drawn is missing from it.
+    fn acquire(&mut self, damage: Option<Bounds<ScaledPixels>>) -> (gpu::Frame, Option<[i32; 4]>, Option<[i32; 4]>) {
+        let frame = {
+            profiling::scope!("acquire frame");
+            self.surface.acquire_frame()
+        };
+        let (width, height) = (self.surface_config.size.width as i32, self.surface_config.size.height as i32);
+        let changed = damage.filter(|_| damage_enabled()).map(|d| {
+            let (x0, y0) = ((d.origin.x.0.floor() as i32).clamp(0, width), (d.origin.y.0.floor() as i32).clamp(0, height));
+            let (x1, y1) = (((d.origin.x.0 + d.size.width.0).ceil() as i32).clamp(0, width), ((d.origin.y.0 + d.size.height.0).ceil() as i32).clamp(0, height));
+            [x0, y0, x1 - x0, y1 - y0]
+        });
+        let Some(index) = frame.image_index().filter(|_| !frame.is_lost()) else {
+            self.images.clear();
+            return (frame, None, None);
+        };
+        let index = index as usize;
+        if self.images.len() <= index {
+            self.images.resize(index + 1, Held::Nothing);
+        }
+        // Every image misses what this frame changes, on top of what it
+        // missed already.
+        for image in &mut self.images {
+            *image = match (*image, changed) {
+                (Held::AllBut(missing), Some(now)) => Held::AllBut(Some(missing.map_or(now, |m| union(m, now)))),
+                _ => Held::Nothing,
+            };
+        }
+        let part = match self.images[index] {
+            Held::AllBut(missing) => Some(missing.unwrap_or([0, 0, 0, 0])),
+            Held::Nothing => None,
+        };
+        self.images[index] = Held::AllBut(None);
+        (frame, part, changed.filter(|_| part.is_some()))
+    }
+
+    /// Begins a frame that shows `damage` (what changed since the last
+    /// one; None: everything): how much of it is to be drawn. The scene
+    /// then handed to [`Self::draw`] need hold no more than that.
+    pub fn begin_frame(&mut self, damage: Option<Bounds<ScaledPixels>>) -> FrameRegion {
+        if gpu::device_lost() {
+            return FrameRegion::None;
+        }
+        if self.begun.is_none() {
+            self.begun = Some(self.acquire(damage));
+        }
+        match self.begun {
+            Some((frame, _, _)) if frame.is_lost() => FrameRegion::All,
+            Some((_, Some(part), _)) => FrameRegion::Part(Bounds {
+                origin: crate::point(ScaledPixels(part[0] as f32), ScaledPixels(part[1] as f32)),
+                size: crate::size(ScaledPixels(part[2] as f32), ScaledPixels(part[3] as f32)),
+            }),
+            _ => FrameRegion::All,
+        }
+    }
+
     pub fn draw(&mut self, scene: &Scene) {
         // Olo: nothing to draw with (a driver reset); the program starts
         // anew at the end of this turn of its loop.
         if gpu::device_lost() {
+            self.begun = None;
             return;
         }
+        let (frame, part, shown) = match self.begun.take() {
+            Some(begun) => begun,
+            None => self.acquire(None),
+        };
         self.prepare_subpixel_sprites(scene);
         self.command_encoder.start();
         if super::gpu_timings() {
@@ -994,10 +1106,6 @@ impl BladeRenderer {
         #[cfg(not(target_os = "macos"))]
         self.upload_yuv(scene);
 
-        let frame = {
-            profiling::scope!("acquire frame");
-            self.surface.acquire_frame()
-        };
         // Olo: no image to draw into (the surface is lost): what's
         // recorded (the atlas's uploads) goes, nothing is drawn, and the
         // surface is made again for the next frame.
@@ -1012,7 +1120,12 @@ impl BladeRenderer {
             self.remake_surface();
             return;
         }
-        self.command_encoder.init_texture(frame.texture());
+        let scissor = part.map(|[x, y, w, h]| gpu::ScissorRect { x, y, w: w.max(0) as u32, h: h.max(0) as u32 });
+        match scissor {
+            // (Its contents are kept: only `scissor` is drawn again.)
+            Some(_) => self.command_encoder.init_texture_kept(frame.texture()),
+            None => self.command_encoder.init_texture(frame.texture()),
+        }
 
         let globals = GlobalParams {
             viewport_size: [self.surface_config.size.width as f32, self.surface_config.size.height as f32],
@@ -1031,10 +1144,22 @@ impl BladeRenderer {
         let mut pass = self.command_encoder.render(
             "main",
             gpu::RenderTargetSet {
-                colors: &[gpu::RenderTarget { view: frame.texture_view(), init_op: gpu::InitOp::Clear(gpu::TextureColor::TransparentBlack), finish_op: gpu::FinishOp::Store }],
+                colors: &[gpu::RenderTarget {
+                    view: frame.texture_view(),
+                    init_op: if scissor.is_some() { gpu::InitOp::Load } else { gpu::InitOp::Clear(gpu::TextureColor::TransparentBlack) },
+                    finish_op: gpu::FinishOp::Store,
+                }],
                 depth_stencil: None,
             },
         );
+        if let Some(rect) = &scissor {
+            // What changed starts afresh, as a whole frame's clear would
+            // have it; nothing outside it is touched.
+            pass.set_scissor_rect(rect);
+            if rect.w > 0 && rect.h > 0 {
+                pass.clear_rect(rect);
+            }
+        }
 
         profiling::scope!("render pass");
         for batch in scene.batches() {
@@ -1062,6 +1187,9 @@ impl BladeRenderer {
                         "main",
                         gpu::RenderTargetSet { colors: &[gpu::RenderTarget { view: frame.texture_view(), init_op: gpu::InitOp::Load, finish_op: gpu::FinishOp::Store }], depth_stencil: None },
                     );
+                    if let Some(rect) = &scissor {
+                        pass.set_scissor_rect(rect);
+                    }
                     let mut encoder = pass.with(&self.pipelines.paths);
                     // When copying paths from the intermediate texture to the drawable,
                     // each pixel must only be copied once, in case of transparent paths.
@@ -1233,6 +1361,9 @@ impl BladeRenderer {
         }
         drop(pass);
 
+        if let Some(shown) = shown {
+            self.command_encoder.set_present_damage(&[shown]);
+        }
         self.command_encoder.present(frame);
         let sync_point = self.gpu.submit(&mut self.command_encoder);
 

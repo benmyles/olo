@@ -93,6 +93,10 @@ pub(crate) struct Node {
     /// Where it is in the window.
     pub(crate) bounds: Bounds<Pixels>,
     pub(crate) content_size: Size<Pixels>,
+    /// What it and everything it holds reach (a child may lie outside
+    /// its parent): where the pointer can't be over any of them, none is
+    /// looked at.
+    pub(crate) reach: Bounds<Pixels>,
     pub(crate) hovered: bool,
     pub(crate) pressed: bool,
     pub(crate) focused: bool,
@@ -104,6 +108,9 @@ pub(crate) struct Node {
     pub(crate) notes: Option<Box<Notes>>,
     /// It's to be drawn again.
     pub(crate) paint_dirty: bool,
+    /// Where what it drew is in the window's list of what shows (behind
+    /// what it holds, and over it), if it is.
+    pub(crate) slots: [u32; 2],
 }
 
 impl Node {
@@ -153,6 +160,13 @@ impl WindowCore {
             self.paint_queue.push(id);
         }
         self.needs_commit = true;
+    }
+
+    /// What shows, or where, changed (not only what something drew): the
+    /// list of what shows is made again.
+    pub(crate) fn reshaped(&mut self) {
+        self.needs_commit = true;
+        self.items_stale = true;
     }
 
     /// Everything under `id` (and it) is to be drawn again; text is to
@@ -207,6 +221,7 @@ impl WindowCore {
             inter,
             bounds: Bounds::default(),
             content_size: Size::default(),
+            reach: Bounds::default(),
             hovered: false,
             pressed: false,
             focused: false,
@@ -215,6 +230,7 @@ impl WindowCore {
             painted_at: Point::default(),
             notes: None,
             paint_dirty: false,
+            slots: [u32::MAX; 2],
         });
         if measured {
             self.layout.set_measured(layout, Some(id));
@@ -268,6 +284,7 @@ impl WindowCore {
             inter: None,
             bounds: Bounds::default(),
             content_size: Size::default(),
+            reach: Bounds::default(),
             hovered: false,
             pressed: false,
             focused: false,
@@ -276,6 +293,7 @@ impl WindowCore {
             painted_at: Point::default(),
             notes: None,
             paint_dirty: false,
+            slots: [u32::MAX; 2],
         });
         if let Some(slot) = self.views.get_mut(view) {
             slot.root = Some(root);
@@ -292,7 +310,7 @@ impl WindowCore {
             // (Not shown now; kept, with what it holds, for when it's
             // placed again.)
             self.nodes[id].parent = None;
-            self.needs_commit = true;
+            self.reshaped();
             return;
         }
         let Some(node) = self.nodes.remove(id) else { return };
@@ -301,7 +319,7 @@ impl WindowCore {
             self.destroy(child);
         }
         self.forget(id);
-        self.needs_commit = true;
+        self.reshaped();
     }
 
     /// A node is gone: nothing points at it any more.
@@ -408,7 +426,7 @@ impl WindowCore {
                     subtree |= text || opacity;
                     text_changed |= text;
                     if clips {
-                        self.needs_commit = true;
+                        self.reshaped();
                     }
                 }
             }
@@ -464,7 +482,7 @@ impl WindowCore {
             let layouts: SmallVec<[LayoutId; 16]> = now.iter().map(|c| self.nodes[*c].layout).collect();
             let layout = self.nodes[id].layout;
             self.layout.set_children(layout, &layouts);
-            self.needs_commit = true;
+            self.reshaped();
         }
         self.nodes[id].children = now;
     }

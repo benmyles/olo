@@ -19,7 +19,8 @@ use std::{
 use olo_app::{Latest, LooperHandle};
 
 use crate::{
-    Bounds, FrameStats, GpuSpecs, ImeInput, Pixels, PlatformAtlas, PlatformInput, PlatformWindow, Point, RequestFrameOptions, ScaledPixels, Scene, Size, TextRendering, WindowId, point, px, size,
+    Bounds, FrameRegion, FrameStats, GpuSpecs, ImeInput, Pixels, PlatformAtlas, PlatformInput, PlatformWindow, Point, RequestFrameOptions, ScaledPixels, Scene, Size, TextRendering, WindowId, point,
+    px, size,
 };
 
 /// What a view drew, kept: its display list. Made on the window's
@@ -405,20 +406,49 @@ impl Stage {
             }
             return false;
         }
-        let scene = &mut showing.scene;
-        scene.clear();
-        assemble(commit, scene);
-        scene.finish();
+        // What changed, as one rectangle (None: all of it), and how much
+        // of the image the renderer hands out has to be drawn for it: an
+        // image keeps what it last held, so most frames draw a small
+        // part of the window, and tell app_server only that changed.
+        let changed = showing.damage.iter().copied().reduce(|a, b| a.union(&b));
         let work = commit.work;
         let began = commit.started;
-        showing.dirty = false;
-        showing.damage.clear();
         {
             let window = self.window.borrow();
             let Some(window) = window.as_ref() else { return false };
+            let part = match window.begin_frame(changed) {
+                FrameRegion::None => return false,
+                FrameRegion::All => None,
+                FrameRegion::Part(part) => Some(part),
+            };
+            let scene = &mut showing.scene;
+            scene.clear();
+            assemble(commit, scene, part);
+            scene.finish();
+            let assembled = started.elapsed();
             window.draw(scene);
             window.completed_frame();
+            if crate::stats::frame_phases() {
+                let ms = |d: Duration| d.as_secs_f64() * 1000.0;
+                let part = match part {
+                    Some(p) => format!("{}×{} at {},{}", p.size.width.0, p.size.height.0, p.origin.x.0, p.origin.y.0),
+                    None => "all".to_owned(),
+                };
+                eprintln!(
+                    "frame {:.3} ms: assemble {:.3}, draw {:.3}; {part}; {} of {} items, {} sprites, {} quads; looper {:.3} ms",
+                    ms(started.elapsed()),
+                    ms(assembled),
+                    ms(started.elapsed() - assembled),
+                    scene.len(),
+                    commit.items.len(),
+                    scene.monochrome_sprites.len() + scene.polychrome_sprites.len(),
+                    scene.quads.len(),
+                    ms(work),
+                );
+            }
         }
+        showing.dirty = false;
+        showing.damage.clear();
         let whole = work + started.elapsed();
         showing.stats.record(began, work, whole, Vec::new());
         if animating {
@@ -461,13 +491,17 @@ fn layer_places(layers: &[Layer]) -> Vec<(Point<ScaledPixels>, Bounds<ScaledPixe
     places
 }
 
-/// Puts a frame together from what's committed.
-fn assemble(commit: &Commit, scene: &mut Scene) {
+/// Puts a frame together from what's committed: all of it, or only
+/// what shows in `part`.
+fn assemble(commit: &Commit, scene: &mut Scene, part: Option<Bounds<ScaledPixels>>) {
     let places = layer_places(&commit.layers);
     for item in &commit.items {
         let (shift, layer_clip) = places.get(item.layer as usize).copied().unwrap_or(places[0]);
         let by = item.by + shift;
-        let clip = Bounds { origin: item.clip.origin + shift, size: item.clip.size }.intersect(&layer_clip);
+        let mut clip = Bounds { origin: item.clip.origin + shift, size: item.clip.size }.intersect(&layer_clip);
+        if let Some(part) = &part {
+            clip = clip.intersect(part);
+        }
         if clip.is_empty() {
             continue;
         }
