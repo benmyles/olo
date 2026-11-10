@@ -10,7 +10,7 @@ use olo_ui::{
 
 use crate::{
     PanelView, about, ai, airpods, appearance, backup, bluetooth, datetime, default_apps, deskbar, display, form::Ui, integrations, keyboard, network, notifications, performance, power, screensaver,
-    security, security_keys, sound, terminal, themes, touchid, touchpad, tracker, windows, workspaces,
+    security, sound, terminal, themes, touchpad, tracker, windows, workspaces,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,7 +40,6 @@ pub enum Panel {
     Sound,
     Terminal,
     Themes,
-    TouchId,
     Touchpad,
     Tracker,
     Windows,
@@ -70,7 +69,6 @@ impl Panel {
         Panel::Sound,
         Panel::Terminal,
         Panel::Themes,
-        Panel::TouchId,
         Panel::Touchpad,
         Panel::Tracker,
         Panel::Windows,
@@ -87,7 +85,9 @@ impl Panel {
             "screen-saver" | "screensavers" => Some(Panel::ScreenSaver),
             "background" => Some(Panel::Backgrounds),
             "export" | "import" | "backups" => Some(Panel::Backup),
-            "fingerprint" | "touch-id" | "fingerprints" => Some(Panel::TouchId),
+            // (Touch ID was a panel of its own: Security's Sign In now,
+            // with the face and security keys.)
+            "touchid" | "fingerprint" | "touch-id" | "fingerprints" | "face" | "face-unlock" | "security-keys" | "yubikey" | "sign-in" => Some(Panel::Security),
             "bt" => Some(Panel::Bluetooth),
             "airpods" | "airpod" | "headphones" => Some(Panel::AirPods),
             "wifi" | "wi-fi" | "networks" => Some(Panel::Network),
@@ -127,7 +127,6 @@ impl Panel {
             Panel::Sound => "sound",
             Panel::Terminal => "terminal",
             Panel::Themes => "themes",
-            Panel::TouchId => "touchid",
             Panel::Touchpad => "touchpad",
             Panel::Tracker => "tracker",
             Panel::Windows => "windows",
@@ -159,7 +158,6 @@ impl Panel {
             Panel::Sound => "Sound",
             Panel::Terminal => "Terminal",
             Panel::Themes => "Themes",
-            Panel::TouchId => "Touch ID",
             Panel::Touchpad => "Touchpad & Mouse",
             Panel::Tracker => "Tracker",
             Panel::Windows => "Windows",
@@ -193,7 +191,6 @@ impl Panel {
             Panel::Sound => "sound",
             Panel::Terminal => "terminal",
             Panel::Themes => "themes",
-            Panel::TouchId => "fingerprint",
             Panel::Touchpad => "touchpad",
             Panel::Tracker => "tracker",
             Panel::Windows => "windows",
@@ -236,10 +233,10 @@ impl Panel {
             // Passwords' settings, security keys beside them.
             Panel::Security => (880, 440),
             Panel::Sound => (800, 466),
-            Panel::Terminal => (520, 692),
+            // Coding Agents beside Git Worktrees and Command Suggestions.
+            Panel::Terminal => (900, 600),
             // The themes, the chosen one's colour sets beside them.
             Panel::Themes => (800, 600),
-            Panel::TouchId => (420, 330),
             // Tall enough for Touch with both of its notes (a pad with no
             // pressure and the Apple driver's click thresholds).
             Panel::Touchpad => (784, 600),
@@ -253,17 +250,7 @@ impl Panel {
     pub fn needs_server(self) -> bool {
         !matches!(
             self,
-            Panel::About
-                | Panel::AirPods
-                | Panel::Sound
-                | Panel::Network
-                | Panel::Bluetooth
-                | Panel::TouchId
-                | Panel::Notifications
-                | Panel::Performance
-                | Panel::Backup
-                | Panel::Integrations
-                | Panel::DefaultApps
+            Panel::About | Panel::AirPods | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::Notifications | Panel::Performance | Panel::Backup | Panel::Integrations | Panel::DefaultApps
         )
     }
 
@@ -277,7 +264,6 @@ impl Panel {
                 | Panel::Sound
                 | Panel::Network
                 | Panel::Bluetooth
-                | Panel::TouchId
                 | Panel::Notifications
                 | Panel::Performance
                 | Panel::Backup
@@ -338,7 +324,6 @@ impl Panel {
             | Panel::Sound
             | Panel::Network
             | Panel::Bluetooth
-            | Panel::TouchId
             | Panel::Notifications
             | Panel::Performance
             | Panel::Integrations
@@ -363,13 +348,12 @@ pub enum State {
     Backup(Box<backup::State>),
     Bluetooth(Box<bluetooth::State>),
     AirPods(Box<airpods::State>),
-    TouchId(Box<touchid::State>),
     Touchpad(touchpad::State),
     Power(power::State),
     ScreenSaver(screensaver::State),
     About(about::State),
     Integrations(Box<integrations::State>),
-    Security(Box<security_keys::State>),
+    Security(Box<security::State>),
 }
 
 impl State {
@@ -388,13 +372,12 @@ impl State {
             Panel::Backup => State::Backup(Box::new(backup::State::new(cx))),
             Panel::Bluetooth => State::Bluetooth(Box::new(bluetooth::State::new(cx))),
             Panel::AirPods => State::AirPods(Box::new(airpods::State::new(cx))),
-            Panel::TouchId => State::TouchId(Box::new(touchid::State::new(cx))),
             Panel::Touchpad => State::Touchpad(touchpad::State::new(cx)),
             Panel::Power => State::Power(power::State::new(cx)),
             Panel::ScreenSaver => State::ScreenSaver(screensaver::State::new(window, cx)),
             Panel::About => State::About(about::State::new(cx)),
             Panel::Integrations => State::Integrations(Box::new(integrations::State::new(cx))),
-            Panel::Security => State::Security(Box::new(security_keys::State::new(cx))),
+            Panel::Security => State::Security(Box::new(security::State::new(cx))),
             _ => State::None,
         }
     }
@@ -455,7 +438,6 @@ fn layout(v: &mut PanelView, window: &mut Window, cx: &mut Context<PanelView>) -
         (Panel::Backup, State::Backup(st)) => backup::ui(&mut ui, st),
         (Panel::Bluetooth, State::Bluetooth(st)) => bluetooth::ui(&mut ui, st),
         (Panel::AirPods, State::AirPods(st)) => airpods::ui(&mut ui, st),
-        (Panel::TouchId, State::TouchId(st)) => touchid::ui(&mut ui, st),
         (Panel::Touchpad, State::Touchpad(st)) => touchpad::ui(&mut ui, st),
         (Panel::Tracker, _) => tracker::ui(&mut ui),
         (Panel::Terminal, _) => terminal::ui(&mut ui),

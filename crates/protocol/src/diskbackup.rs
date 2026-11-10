@@ -67,6 +67,10 @@ pub struct Settings {
     pub exclude_groups: Option<Vec<String>>,
     /// The person's own patterns left out (`~/Videos/raw`, `**/*.iso`).
     pub excludes: Vec<String>,
+    /// Back up on a schedule (every `every_minutes`); off, only when asked
+    /// (Back Up Now). Ben, 2026-11-08: "i should also be able to choose if
+    /// i even want auto backups or only when i click backup".
+    pub automatic: bool,
     /// How often, minutes.
     pub every_minutes: u32,
     pub keep: Keep,
@@ -76,6 +80,9 @@ pub struct Settings {
     pub download_kbs: u64,
     /// Back up on battery too (else it waits for power).
     pub on_battery: bool,
+    /// How much a backup gives way to the person's own work (the CPU's and
+    /// the disks' priority).
+    pub priority: Priority,
     /// Stay on each folder's own disk (not into what's mounted inside).
     pub one_file_system: bool,
     /// The key is kept in Passwords too (the app keeps it there: so the
@@ -93,11 +100,13 @@ impl Default for Settings {
             paths: vec!["~".into()],
             exclude_groups: None,
             excludes: Vec::new(),
+            automatic: true,
             every_minutes: 60,
             keep: Keep::default(),
             upload_kbs: 0,
             download_kbs: 0,
             on_battery: true,
+            priority: Priority::Idle,
             one_file_system: true,
             key_in_passwords: false,
             in_deskbar: true,
@@ -128,6 +137,34 @@ impl Settings {
     }
 }
 
+/// How much a backup gives way to whatever else the computer does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Priority {
+    /// Only what nothing else wants (the CPU's and the disks' idle class):
+    /// never in the way, slowest while you work.
+    #[default]
+    Idle,
+    /// Below your work, but steadily (nice 19, the disks' lowest
+    /// best-effort level).
+    Low,
+    /// As any program (a backup done soonest).
+    Normal,
+}
+
+impl Priority {
+    pub const ALL: [Priority; 3] = [Priority::Idle, Priority::Low, Priority::Normal];
+
+    /// As the window says it.
+    pub fn label(self) -> &'static str {
+        match self {
+            Priority::Idle => "Only when the computer is idle",
+            Priority::Low => "Gently, below my own work",
+            Priority::Normal => "At full speed",
+        }
+    }
+}
+
 /// What the service is doing.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(tag = "doing", rename_all = "kebab-case")]
@@ -143,6 +180,16 @@ pub enum Doing {
     Restoring,
     /// Letting go of snapshots past keeping, and what only they used.
     Pruning,
+    /// Every backup there deleted (Erase All Backups), to start fresh.
+    Erasing,
+    /// Backups read back and checked (Validate).
+    Validating,
+    /// Backups deleted as asked (Delete…): `what` (“the unfinished
+    /// backup”, “2 backups”), then the space only they took freed, said as
+    /// it goes (a tidy's steps).
+    Deleting {
+        what: String,
+    },
 }
 
 /// A backup or restore under way.
@@ -158,6 +205,44 @@ pub struct Progress {
     pub uploaded: u64,
     /// The file being read (or written).
     pub current: String,
+    /// The whole of it: the files and bytes there are to go through (the
+    /// last backup's, so `estimated`; or counted first, for the first).
+    pub total_files: u64,
+    pub total_bytes: u64,
+    pub estimated: bool,
+    pub stage: Stage,
+    /// Going on from a backup that didn't finish (`State::unfinished`).
+    pub resuming: bool,
+    /// Tidying (or deleting): its step, of how many (0: not tidying).
+    pub step: u32,
+    pub steps: u32,
+    /// The pack being sent (its size; 0: none), and how much of it has
+    /// gone: what a stop waits for.
+    pub sending: u64,
+    pub sending_done: u64,
+    /// Bytes a second it may send (0: no limit), to say how long that
+    /// takes.
+    pub upload_limit: u64,
+    /// No network now: waiting for one, to go on by itself once it's back.
+    pub offline: bool,
+}
+
+/// Where a backup is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Stage {
+    /// Counting what there is (the first backup: nothing to go by).
+    Counting,
+    /// Going through the files, reading what's new.
+    #[default]
+    Reading,
+    /// The folders' lists and the snapshot written.
+    Saving,
+    /// The backup just made checked: everything it needs in the store.
+    Checking,
+    /// Stopped: what's done so far being kept (what's waiting to go up
+    /// sent first), for the next to go on from.
+    Stopping,
 }
 
 /// The last backup that ended.
@@ -177,6 +262,81 @@ pub struct Last {
     pub seconds: f64,
     /// Files that couldn't be read.
     pub unreadable: u64,
+    /// It checked after (None: not, stopped first).
+    pub check: Option<Check>,
+}
+
+/// A backup checked (Ben, 2026-11-08: "backups also need to be
+/// validatable and should be validated at the end of each backup but i
+/// should be able to manually trigger a re-validate of any backup at any
+/// time"; "add a fast validate option which compares checksums and just
+/// spot-checks some samples … fast validate should be the default and the
+/// one that is done automatically after a backup. full validate is only
+/// when explicitly requested"). Fast: everything it needs in the store as
+/// long as it was written, its lists read back whole, the store's
+/// checksums compared with what was sent, a few packs read back as
+/// samples. Full (`full`): every byte of it read back and checked, as a
+/// restore would.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Check {
+    /// When, seconds since 1970.
+    pub time: i64,
+    /// Every byte read back (Validate), not only its lists.
+    pub full: bool,
+    /// What's wrong, said plainly (none: it restores whole).
+    pub problems: Vec<String>,
+    /// Files it can't bring back as they were: the first few, and how many.
+    pub files: Vec<String>,
+    pub files_affected: u64,
+    /// What was read back.
+    pub bytes_read: u64,
+    /// Packs the store's checksums showed as sent, and packs read back as
+    /// samples (fast).
+    pub by_checksum: u64,
+    pub sampled: u64,
+    pub seconds: f64,
+    /// Why it couldn't be checked (no finding either way).
+    pub error: Option<String>,
+}
+
+impl Check {
+    /// Checked, and nothing wrong.
+    pub fn whole(&self) -> bool {
+        self.error.is_none() && self.problems.is_empty()
+    }
+}
+
+/// What [`Last::error`] says when the person stopped it (Stop, `--stop`):
+/// not a failure.
+pub const STOPPED: &str = "stopped";
+
+impl Last {
+    /// Stopped by the person (not failed: said calmly, not as trouble).
+    pub fn stopped(&self) -> bool {
+        self.error.as_deref() == Some(STOPPED)
+    }
+}
+
+/// A backup that didn't finish (stopped, failed, or the computer turned
+/// off part way): what it got through is kept, and the next goes on from
+/// there (Ben, 2026-11-08: "it needs to track in-progress / unfinished
+/// backups too and they need to resume if i start again and i need the
+/// ability to clean it up").
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Unfinished {
+    /// When it got that far, seconds since 1970.
+    pub time: i64,
+    /// Files backed up so far, and their bytes (0: it stopped before
+    /// keeping a list of them; what it sent is still there).
+    pub files: u64,
+    pub bytes: u64,
+    /// New content read so far, before compression.
+    pub new_bytes: u64,
+    /// What it sent (compressed and sealed): about what deleting it frees.
+    pub sent: u64,
+    pub seconds: f64,
 }
 
 /// The last tidy: snapshots past keeping let go of, and the space only
@@ -216,6 +376,8 @@ pub struct State {
     /// grown by each backup since).
     pub size: Option<u64>,
     pub tidied: Option<Tidied>,
+    /// This computer's backup that didn't finish, if one is kept.
+    pub unfinished: Option<Unfinished>,
 }
 
 impl State {
@@ -260,6 +422,49 @@ pub enum Request {
     /// The versions of `path` (absolute) this computer's snapshots kept
     /// (Tracker's Older Versions…).
     Versions { path: String },
+    /// This computer's backups (snapshots), newest first.
+    Snapshots,
+    /// Delete these backups (snapshot ids, hex), and the unfinished one
+    /// (`State::unfinished`) if `unfinished`, and free the space only they
+    /// took.
+    Delete {
+        snapshots: Vec<String>,
+        #[serde(default)]
+        unfinished: bool,
+    },
+    /// Delete every backup there (this computer's and any other's) and
+    /// start again, empty, with the same key.
+    EraseAll,
+    /// Validate these backups (snapshot ids, hex): fast (checksums, and
+    /// samples read back), or `full`, every byte read back; what's damaged
+    /// is repaired as far as it can be (the next backup sends again what it
+    /// still can).
+    Validate {
+        snapshots: Vec<String>,
+        #[serde(default)]
+        full: bool,
+    },
+}
+
+/// One backup (`Reply::Snapshots`).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SnapshotInfo {
+    /// Its id, in hex.
+    pub id: String,
+    /// When it was taken, seconds since 1970.
+    pub time: i64,
+    pub files: u64,
+    pub bytes: u64,
+    pub new_files: u64,
+    pub changed_files: u64,
+    pub new_bytes: u64,
+    pub stored_bytes: u64,
+    pub seconds: f64,
+    /// Files it couldn't read.
+    pub unreadable: u64,
+    /// Its last check (after it was made, or Validate's).
+    pub check: Option<Check>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -280,6 +485,9 @@ pub enum Reply {
     },
     Versions {
         versions: Vec<Version>,
+    },
+    Snapshots {
+        snapshots: Vec<SnapshotInfo>,
     },
 }
 
@@ -313,5 +521,196 @@ pub fn call(request: &Request) -> Result<Reply, String> {
         Ok(Reply::Error { message }) => Err(message),
         Ok(r) => Ok(r),
         Err(e) => Err(e.to_string()),
+    }
+}
+
+/// How DiskBackup says what it's doing, the same in its window and in
+/// Deskbar (Ben, 2026-11-08: "it's also not entirely clear to me what it
+/// means and what it's doing like what is read vs new and i'm backing up
+/// my whole home dir which is hundreds of gigs so why doesn't it say
+/// anything about that"). A backup goes *through* everything it backs up
+/// (a file unchanged since the last backup is taken as it was, not read
+/// again); what the backup didn't have yet is *new to the backup*; that
+/// is *sent*, compressed and encrypted.
+pub mod words {
+    use super::{Progress, Settings, Stage};
+
+    /// "820 KB", "12.4 MB", "2.31 GB", "1.20 TB".
+    pub fn size(b: u64) -> String {
+        match b {
+            0..1_000_000 => format!("{} KB", b.div_ceil(1000)),
+            1_000_000..1_000_000_000 => format!("{:.1} MB", b as f64 / 1e6),
+            1_000_000_000..1_000_000_000_000 => format!("{:.2} GB", b as f64 / 1e9),
+            _ => format!("{:.2} TB", b as f64 / 1e12),
+        }
+    }
+
+    /// "312,004".
+    pub fn count(n: u64) -> String {
+        let s = n.to_string();
+        let mut out = String::new();
+        for (i, ch) in s.chars().enumerate() {
+            if i > 0 && (s.len() - i).is_multiple_of(3) {
+                out.push(',');
+            }
+            out.push(ch);
+        }
+        out
+    }
+
+    /// "1 file", "12 files".
+    pub fn plural(n: u64, what: &str) -> String {
+        if n == 1 { format!("1 {what}") } else { format!("{} {what}s", count(n)) }
+    }
+
+    /// What's backed up: "your home folder", "~/Documents", "3 folders".
+    pub fn what(s: &Settings) -> String {
+        match s.paths.as_slice() {
+            [p] if p == "~" => "your home folder".into(),
+            [p] => p.clone(),
+            ps => format!("{} folders", ps.len()),
+        }
+    }
+
+    /// "about 6 minutes left", "about 2 hours left", "less than a minute
+    /// left".
+    pub fn left(secs: i64) -> String {
+        let minutes = |n: i64| if n == 1 { "a minute".to_owned() } else { format!("{n} minutes") };
+        match secs {
+            ..60 => "less than a minute left".into(),
+            60..5400 => format!("about {} left", minutes((secs + 30) / 60)),
+            _ => format!("about {} hours left", (secs + 1800) / 3600),
+        }
+    }
+
+    /// What's said while there's no network.
+    pub const OFFLINE: &str = "Waiting for the network: it goes on by itself once it’s back";
+
+    impl Progress {
+        /// How much is gone through, of how much: "2.30 GB of 412.00 GB
+        /// gone through", "of about" by the last backup's, and past that,
+        /// "660.6 MB gone through, more than the last backup's 524.3 MB".
+        pub fn gone_through(&self) -> String {
+            match (self.estimated, self.bytes > self.total_bytes) {
+                (true, true) => format!("{} gone through, more than the last backup’s {}", size(self.bytes), size(self.total_bytes)),
+                (true, false) => format!("{} of about {} gone through", size(self.bytes), size(self.total_bytes)),
+                _ => format!("{} of {} gone through", size(self.bytes), size(self.total_bytes)),
+            }
+        }
+
+        /// Files, the same way: "1,651 of 312,004 files", "126 files, more
+        /// than the last backup’s 100".
+        pub fn of_files(&self) -> String {
+            match (self.estimated, self.files > self.total_files) {
+                (true, true) => format!("{}, more than the last backup’s {}", plural(self.files, "file"), count(self.total_files)),
+                (true, false) => format!("{} of about {}", count(self.files), plural(self.total_files, "file")),
+                _ => format!("{} of {}", count(self.files), plural(self.total_files, "file")),
+            }
+        }
+
+        /// A pack being sent: how much of it has gone, and (with an upload
+        /// limit) about how long the rest takes, seconds.
+        pub fn sending_left(&self) -> Option<(u64, Option<i64>)> {
+            if self.sending == 0 {
+                return None;
+            }
+            let done = self.sending_done.min(self.sending);
+            let left = (self.upload_limit > 0).then(|| ((self.sending - done) / self.upload_limit) as i64);
+            Some((done, left))
+        }
+
+        /// How a backup under way stands at `at` (seconds since 1970): how
+        /// much of it is gone through (0 to 1), and, once there's enough
+        /// to go by, how long is left (seconds).
+        pub fn how_far(&self, at: i64) -> (f32, Option<i64>) {
+            if self.total_bytes == 0 {
+                return (0.0, None);
+            }
+            // (The plan was the last backup's: never more than all of it,
+            // while it's still going.)
+            let done = (self.bytes as f64 / self.total_bytes as f64).min(0.99);
+            let spent = (at - self.started).max(0) as f64;
+            let left = (done > 0.02 && spent >= 10.0).then(|| (spent * (1.0 - done) / done).round() as i64);
+            (done as f32, left)
+        }
+
+        /// The backup under way in lines, plainly (`s`: what it backs up),
+        /// at `at`: what it's doing; how far through how much, and how long
+        /// is left; files of files; what's new to the backup, and sent.
+        pub fn lines(&self, s: &Settings, at: i64) -> Vec<String> {
+            let mut lines = self.stage_lines(s, at);
+            if self.offline {
+                lines.insert(0, OFFLINE.into());
+            }
+            lines
+        }
+
+        fn stage_lines(&self, s: &Settings, at: i64) -> Vec<String> {
+            match self.stage {
+                Stage::Counting => {
+                    vec![format!("Getting ready to back up {}: counting what’s there", what(s)), format!("{} and {} found so far", plural(self.total_files, "file"), size(self.total_bytes))]
+                }
+                Stage::Saving => vec!["Finishing the backup: writing its lists".into()],
+                Stage::Checking => vec!["Validating the backup just made".into()],
+                Stage::Stopping => match self.sending_left() {
+                    Some((done, left)) => vec![
+                        format!("Stopping: finishing sending a pack, {} of {}{}", size(done), size(self.sending), left.map(|l| format!(" ({})", self::left(l))).unwrap_or_default()),
+                        "Then what’s done is kept, so the next backup goes on from there".into(),
+                    ],
+                    None => vec!["Stopping: keeping what’s done, so the next goes on from there".into()],
+                },
+                Stage::Reading => {
+                    let (done, left) = self.how_far(at);
+                    let mut through = format!("{} ({:.0}%)", self.gone_through(), done * 100.0);
+                    if let Some(l) = left {
+                        through.push_str(&format!(" · {}", self::left(l)));
+                    }
+                    vec![
+                        format!("{} {}", if self.resuming { "Resuming the backup of" } else { "Backing up" }, what(s)),
+                        through,
+                        self.of_files(),
+                        format!("{} new to the backup · {} sent", size(self.new_bytes), size(self.uploaded)),
+                    ]
+                }
+            }
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        /// Plain words: what, how far through how much, how long, files,
+        /// what's new and sent.
+        #[test]
+        fn a_backup_said_plainly() {
+            let s = Settings::default();
+            let p = Progress {
+                started: 1000,
+                files: 1651,
+                bytes: 23_000_000_000,
+                new_bytes: 1_600_000_000,
+                uploaded: 1_200_000_000,
+                total_files: 312_004,
+                total_bytes: 412_000_000_000,
+                stage: Stage::Reading,
+                ..Default::default()
+            };
+            assert_eq!(
+                p.lines(&s, 1600),
+                ["Backing up your home folder", "23.00 GB of 412.00 GB gone through (6%) · about 3 hours left", "1,651 of 312,004 files", "1.60 GB new to the backup · 1.20 GB sent",]
+            );
+            let more = Progress { estimated: true, files: 126, total_files: 100, bytes: 660_600_000, total_bytes: 524_300_000, ..p.clone() };
+            assert_eq!(more.gone_through(), "660.6 MB gone through, more than the last backup’s 524.3 MB");
+            assert_eq!(more.of_files(), "126 files, more than the last backup’s 100");
+            // No network: said first, the rest as it was.
+            let offline = Progress { offline: true, ..p.clone() };
+            assert_eq!(offline.lines(&s, 1600)[0], "Waiting for the network: it goes on by itself once it’s back");
+            assert_eq!(offline.lines(&s, 1600)[1..], p.lines(&s, 1600)[..]);
+            let counting = Progress { stage: Stage::Counting, total_files: 120_345, total_bytes: 210_400_000_000, ..Default::default() };
+            assert_eq!(counting.lines(&s, 0)[1], "120,345 files and 210.40 GB found so far");
+            assert_eq!(left(50), "less than a minute left");
+            assert_eq!(left(6 * 60), "about 6 minutes left");
+        }
     }
 }

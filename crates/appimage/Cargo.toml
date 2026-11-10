@@ -1,0 +1,15 @@
+[package]
+name = "olo-appimage"
+description = "AppImages: their names and icons read out of them, and desktop entries made for them so that Olo shows each as itself"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+# Their SquashFS image read in process.
+backhand = { version = "0.25", default-features = false, features = ["xz", "gzip", "zstd", "lz4"] }
+olo-xdg.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+libc = "0.2"

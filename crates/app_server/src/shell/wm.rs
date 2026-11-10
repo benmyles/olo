@@ -275,7 +275,53 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             let Some((_, child)) = under else { break };
             self.space.raise_element(&child.clone(), false);
         }
+        self.keep_on_top_above();
         self.keep_pips_above();
+    }
+
+    /// The windows kept on top (Always on Top) over the others, each with
+    /// its own children (its dialogs over it still), in the order they
+    /// are; picture in picture is raised over them after.
+    fn keep_on_top_above(&mut self) {
+        // (Once a turn: nothing to do, nothing made, with none on top.)
+        if !self.space.elements().any(|w| w.meta().on_top.get()) {
+            return;
+        }
+        let order: Vec<WindowElement> = self.space.elements().cloned().collect();
+        let Some(first) = order.iter().position(|w| w.meta().on_top.get()) else { return };
+        let on_top = |w: &WindowElement| -> bool {
+            // Its own, or a parent's up the line (a dialog of one kept on top).
+            let mut at = w.clone();
+            for _ in 0..8 {
+                if at.meta().on_top.get() {
+                    return true;
+                }
+                let Some(parent) = at.0.toplevel().and_then(|t| t.parent()) else { return false };
+                let Some(p) = order.iter().find(|o| o.wl_surface().as_deref() == Some(&parent)) else { return false };
+                at = p.clone();
+            }
+            false
+        };
+        if order[first..].iter().all(|w| on_top(w) || w.meta().pip.get()) {
+            return;
+        }
+        let raise: Vec<WindowElement> = order.iter().filter(|w| on_top(w)).cloned().collect();
+        for w in &raise {
+            self.space.raise_element(w, false);
+        }
+    }
+
+    /// Always on Top on, off, or (`on` left out) the other way.
+    pub fn set_on_top(&mut self, window: &WindowElement, on: Option<bool>) {
+        let on = on.unwrap_or(!window.meta().on_top.get());
+        window.meta().on_top.set(on);
+        tracing::info!(window = window.id(), on, "always on top");
+        if on {
+            self.space.raise_element(window, false);
+        }
+        self.keep_children_above();
+        // (Its window info says so at the next tick.)
+        self.backend_data.wake(None);
     }
 
     /// Roll a window up to just its tab, or back down.

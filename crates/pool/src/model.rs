@@ -78,8 +78,23 @@ impl Window {
         self.used >= 100.0 && self.resets_at.is_none_or(|r| r > now)
     }
 
-    /// How long it runs, in seconds, known from its name.
+    /// How long it runs, in seconds: by what it's called ("5-hour",
+    /// "Weekly", "GPT-5.3-Codex-Spark 5-hour", "3-day": Codex's primary
+    /// window is a week long on some plans), else by its name.
     pub fn length(&self) -> Option<i64> {
+        let label = self.label.as_str();
+        let words: Vec<&str> = label.split_whitespace().collect();
+        if words.contains(&"Weekly") {
+            return Some(7 * 86400);
+        }
+        for w in &words {
+            if let Some(n) = w.strip_suffix("-hour").and_then(|n| n.parse::<i64>().ok()) {
+                return Some(n * 3600);
+            }
+            if let Some(n) = w.strip_suffix("-day").and_then(|n| n.parse::<i64>().ok()) {
+                return Some(n * 86400);
+            }
+        }
         let n = self.name.as_str();
         if n.contains("five_hour") || n.contains("primary") {
             Some(5 * 3600)
@@ -413,6 +428,13 @@ mod tests {
     #[test]
     fn merging_keeps_known_resets() {
         let mut a = Account::new("a".into(), "a".into(), Provider::Claude);
+        // A window's length by what it's called (Codex's primary can be
+        // a week), else by its name.
+        let w = |name: &str, label: &str| Window { name: name.into(), label: label.into(), used: 0.0, resets_at: None, models: vec![] };
+        assert_eq!(w("primary_window", "Weekly").length(), Some(7 * 86400));
+        assert_eq!(w("x/primary_window", "GPT-5.3-Codex-Spark 5-hour").length(), Some(5 * 3600));
+        assert_eq!(w("primary_window", "3-day").length(), Some(3 * 86400));
+        assert_eq!(w("seven_day_fable", "").length(), Some(7 * 86400));
         a.merge_windows(vec![Window { name: "five_hour".into(), label: "5-hour".into(), used: 10.0, resets_at: Some(500), models: vec![] }]);
         a.merge_windows(vec![Window { name: "five_hour".into(), label: String::new(), used: 30.0, resets_at: None, models: vec![] }]);
         assert_eq!(a.windows, vec![Window { name: "five_hour".into(), label: "5-hour".into(), used: 30.0, resets_at: Some(500), models: vec![] }]);

@@ -22,6 +22,36 @@ pub fn power_off() -> Result<()> {
     manager("PowerOff")
 }
 
+/// Restart at once (the power button held: `PowerAction::RestartNow`):
+/// Olo's helper unit (`olo-power-now@reboot.service`, which the person at
+/// the computer may start without a password: `systemctl --force reboot`,
+/// programs ended, disks written out, no orderly stop), else as
+/// [`reboot`] if it isn't installed or isn't let.
+pub fn reboot_now() -> Result<()> {
+    at_once("reboot").or_else(|e| {
+        tracing::info!("power: Olo's helper didn't restart at once ({e}): restarting in order");
+        reboot()
+    })
+}
+
+/// Shut down at once, as [`reboot_now`] restarts.
+pub fn power_off_now() -> Result<()> {
+    at_once("poweroff").or_else(|e| {
+        tracing::info!("power: Olo's helper didn't shut down at once ({e}): shutting down in order");
+        power_off()
+    })
+}
+
+fn at_once(what: &str) -> Result<()> {
+    crate::systemd::start_stop(&format!("olo-power-now@{what}.service"), true)
+}
+
+/// Olo's helper for restarting and shutting down at once is installed
+/// (Olo Doctor's "power-now").
+pub fn helper_installed() -> bool {
+    std::path::Path::new(olo_protocol::power_button::HELPER_UNIT_PATH).exists()
+}
+
 pub fn suspend() -> Result<()> {
     manager("Suspend")
 }

@@ -461,11 +461,15 @@ fn agent() -> ureq::Agent {
 }
 
 fn get_json(agent: &ureq::Agent, url: &str, token: Option<&str>) -> Result<serde_json::Value, String> {
-    let mut req = agent.get(url).header("Accept", "application/vnd.github+json").header("X-GitHub-Api-Version", "2022-11-28");
-    if let Some(t) = token {
-        req = req.header("Authorization", &format!("Bearer {t}"));
-    }
-    let resp = req.call().map_err(|e| e.to_string())?;
+    // (Asked again across a network change: `olo_net`.)
+    let resp = olo_net::across_changes(Duration::from_secs(10), || {
+        let mut req = agent.get(url).header("Accept", "application/vnd.github+json").header("X-GitHub-Api-Version", "2022-11-28");
+        if let Some(t) = token {
+            req = req.header("Authorization", &format!("Bearer {t}"));
+        }
+        req.call()
+    })
+    .map_err(|e| e.to_string())?;
     let status = resp.status().as_u16();
     let body = resp.into_body().into_with_config().limit(4 << 20).read_to_string().map_err(|e| e.to_string())?;
     if status != 200 {
@@ -633,6 +637,14 @@ impl Watcher {
                 seen.retain(|shell, _| tabs.iter().any(|(s, _)| s == shell));
                 for (shell, shared) in &tabs {
                     let Some(shared) = shared.upgrade() else { continue };
+                    // Not attached yet (Terminal started again takes its
+                    // shells back from termd one by one): where it is isn't
+                    // known, which isn't "in no repository", so the group
+                    // its tab joined on its own isn't let go for it. Looked
+                    // at once it attaches (session.rs pokes).
+                    if shared.shell().is_none() {
+                        continue;
+                    }
                     let w = seen.entry(*shell).or_default();
                     let cwd = shared.foreground().or(shared.shell()).and_then(|pid| std::fs::read_link(format!("/proc/{pid}/cwd")).ok());
                     // Read again only what may have changed.

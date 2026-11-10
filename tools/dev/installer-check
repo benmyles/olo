@@ -50,7 +50,10 @@ repo --name=updates --mirrorlist="https://mirrors.fedoraproject.org/mirrorlist?r
 zerombr
 clearpart --all --initlabel
 autopart
-bootloader --timeout=1
+# As a graphical install leaves it (the boot splash shown: rhgb quiet),
+# not the text one this is (the installer's serial console kept, no
+# splash: Olo's never showed in this machine).
+bootloader --timeout=1 --append="rhgb quiet"
 rootpw --lock
 user --name=olo --password=olo --plaintext --groups=wheel --gecos="Olo Tester"
 firstboot --disable
@@ -62,6 +65,8 @@ poweroff
 %end
 
 %post
+# (Stock: the installer's own serial console, carried over, goes.)
+grubby --update-kernel=ALL --remove-args=console=ttyS0
 # (For the test, not stock: the tester logged in by itself, no tour.)
 cat > /etc/gdm/custom.conf <<EOF
 [daemon]

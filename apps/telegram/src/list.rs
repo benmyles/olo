@@ -42,6 +42,41 @@ pub struct View {
     pub query: String,
 }
 
+/// Chats the list shows as one, acted on together from its menu (a
+/// right-click on the archive's row, Unknown Senders', a folder's chip or
+/// the back row above them; Chat ▸ Mark All as Read for the one shown):
+/// Mark All as Read, Mute All, Unmute All, the archive's Unarchive All…,
+/// Unknown Senders' Archive All.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Group {
+    Archive,
+    Unknown,
+    /// A folder (its id), or all chats.
+    Folder(Option<i32>),
+}
+
+impl Group {
+    /// The view that shows its chats (all of them: no search).
+    pub fn view(self) -> View {
+        match self {
+            Group::Archive => View { archive: true, ..View::default() },
+            Group::Unknown => View { unknown: true, ..View::default() },
+            Group::Folder(folder) => View { folder, ..View::default() },
+        }
+    }
+
+    /// The group a view shows.
+    pub fn of(view: &View) -> Group {
+        if view.archive {
+            Group::Archive
+        } else if view.unknown {
+            Group::Unknown
+        } else {
+            Group::Folder(view.folder)
+        }
+    }
+}
+
 pub enum Act {
     Open(ChatId),
     OpenAt(ChatId, MsgId),
@@ -56,28 +91,34 @@ pub struct Found {
     pub msgs: Vec<Message>,
 }
 
+/// Whether a view shows chat `c`: one searching for `q` (lowercase), by
+/// its name; else in `folder`, or as the view has it.
+fn admits(folder: Option<&olo_tg::Folder>, view: &View, q: &str, c: &Chat) -> bool {
+    if !q.is_empty() {
+        return c.title.to_lowercase().contains(q) || c.username.as_ref().is_some_and(|u| u.to_lowercase().contains(q));
+    }
+    match folder {
+        Some(f) => f.admits(c),
+        // The archive has its own, unknown or not; unknown senders
+        // theirs; all chats the rest.
+        None if view.archive => c.archived,
+        None => !c.archived && c.unknown == view.unknown,
+    }
+}
+
+/// Whether any of `group`'s chats is unread (or marked so): for the menu
+/// bar, built as the app changes, so without a list of them.
+pub fn any_unread(store: &Store, group: Group) -> bool {
+    let view = group.view();
+    let folder = view.folder.and_then(|id| store.folders.iter().find(|f| f.id == id));
+    store.chats.values().any(|c| (c.unread > 0 || c.marked) && admits(folder, &view, "", c))
+}
+
 /// The chats the view shows, in order.
 pub fn shown(store: &Store, view: &View) -> Vec<ChatId> {
     let folder = view.folder.and_then(|id| store.folders.iter().find(|f| f.id == id));
     let q = view.query.trim().to_lowercase();
-    let mut out: Vec<ChatId> = store
-        .order
-        .iter()
-        .filter(|id| {
-            let Some(c) = store.chats.get(id) else { return false };
-            if !q.is_empty() {
-                return c.title.to_lowercase().contains(&q) || c.username.as_ref().is_some_and(|u| u.to_lowercase().contains(&q));
-            }
-            match folder {
-                Some(f) => f.admits(c),
-                // The archive has its own, unknown or not; unknown
-                // senders theirs; all chats the rest.
-                None if view.archive => c.archived,
-                None => !c.archived && c.unknown == view.unknown,
-            }
-        })
-        .copied()
-        .collect();
+    let mut out: Vec<ChatId> = store.order.iter().filter(|id| store.chats.get(id).is_some_and(|c| admits(folder, view, &q, c))).copied().collect();
     // A folder's own pins first, in its order.
     if let Some(f) = folder.filter(|_| q.is_empty()) {
         out.sort_by_key(|id| f.pinned.iter().position(|p| p == id).unwrap_or(usize::MAX));
@@ -197,7 +238,8 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
         let row = r(x0, top, w, FOLDERS);
         if tg.view.archive || tg.view.unknown {
             let title = if tg.view.archive { "Archived Chats" } else { "Unknown Senders" };
-            let t = me.clone();
+            let (t, tm) = (me.clone(), me.clone());
+            let group = Group::of(&tg.view);
             hits.push(
                 crate::hit(&me, "archive-back", row)
                     .on_click(move |_, _, cx| {
@@ -207,6 +249,7 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
                             cx.notify();
                         })
                     })
+                    .on_mouse_down(MouseButton::Right, move |e: &MouseDownEvent, window, cx| group_menu(&tm, group, e.position, window, cx))
                     .into_any_element(),
             );
             paint.push(Box::new(move |window, cx| {
@@ -253,7 +296,7 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
                 let chip = r(x, top + 3.0, widths[i] - 4.0, 22.0);
                 x += widths[i];
                 let key = format!("folder:{}", id.unwrap_or(0));
-                let (t, id) = (me.clone(), *id);
+                let (t, tm, id) = (me.clone(), me.clone(), *id);
                 hits.push(
                     crate::hit(&me, &key, chip)
                         .on_click(move |_, _, cx| {
@@ -262,6 +305,7 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
                                 cx.notify();
                             })
                         })
+                        .on_mouse_down(MouseButton::Right, move |e: &MouseDownEvent, window, cx| group_menu(&tm, Group::Folder(id), e.position, window, cx))
                         .into_any_element(),
                 );
                 drawn.push((chip, title.clone(), *unread, current == id, is_hot(&key), false));
@@ -272,10 +316,21 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
                 let unread: u32 = hidden.iter().map(|h| h.2).sum();
                 let cw = width_of(window, &label, unread) + 12.0;
                 let chip = r(x, top + 3.0, cw, 22.0);
-                let t = me.clone();
+                let (t, tm) = (me.clone(), me.clone());
                 let hidden2 = hidden.clone();
+                let hidden3: Vec<(i32, String)> = hidden.iter().filter_map(|(id, title, _)| Some(((*id)?, title.clone()))).collect();
                 hits.push(
                     crate::hit(&me, "folder:more", chip)
+                        // Each folder behind it, its menu as a submenu.
+                        .on_mouse_down(MouseButton::Right, move |e: &MouseDownEvent, window, cx| {
+                            let menu = hidden3.iter().fold(Menu::new(""), |m, (id, title)| m.submenu(tm.read(cx).group_menu(Group::Folder(Some(*id)), title, &format!("{id}|"))));
+                            let to = tm.clone();
+                            olo_ui::menu::context_menu(window, cx, menu, e.position, move |cmd, _, cx| {
+                                let Some((id, cmd)) = cmd.split_once('|') else { return };
+                                let Ok(id) = id.parse() else { return };
+                                to.update(cx, |tg, cx| tg.group_command(Group::Folder(Some(id)), cmd, cx));
+                            });
+                        })
                         .on_click(move |_, window, cx| {
                             let current = t.read(cx).view.folder;
                             let mut menu = Menu::new("");
@@ -501,6 +556,17 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
             })
         })
         .on_mouse_down(MouseButton::Right, move |e: &MouseDownEvent, window, cx| {
+            // The archive's row and Unknown Senders': what's done to all
+            // their chats.
+            let pile = t_menu.read(cx).list_row_at(e.position).and_then(|i| t_menu.read(cx).list_rows.get(i).copied()).and_then(|r| match r {
+                Row::Archive => Some(Group::Archive),
+                Row::Unknown => Some(Group::Unknown),
+                _ => None,
+            });
+            if let Some(g) = pile {
+                group_menu(&t_menu, g, e.position, window, cx);
+                return;
+            }
             let menu = t_menu.update(cx, |tg, _| {
                 let Row::Chat(id) = tg.list_row_at(e.position).and_then(|i| tg.list_rows.get(i).copied())? else { return None };
                 // On one of several chosen: what's done to them all.
@@ -576,6 +642,13 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
         .child(list_el)
         .children(hits)
         .into_any_element()
+}
+
+/// `group`'s menu at `at`: what's done to all its chats.
+fn group_menu(tg: &olo_ui::gpui::Entity<Tg>, group: Group, at: Point<Pixels>, window: &mut Window, cx: &mut App) {
+    let menu = tg.read(cx).group_menu(group, "", "");
+    let to = tg.clone();
+    olo_ui::menu::context_menu(window, cx, menu, at, move |cmd, _, cx| to.update(cx, |tg, cx| tg.group_command(group, cmd, cx)));
 }
 
 impl Tg {
@@ -846,4 +919,64 @@ fn pin(window: &mut Window, cc: Point<Pixels>, ink: Hsla) {
 fn back_arrow(window: &mut Window, cc: Point<Pixels>, ink: Hsla) {
     window.paint_segment(point(cc.x + px(4.0), cc.y - px(5.0)), point(cc.x - px(1.0), cc.y), px(1.6), true, ink);
     window.paint_segment(point(cc.x - px(1.0), cc.y), point(cc.x + px(4.0), cc.y + px(5.0)), px(1.6), true, ink);
+}
+
+#[cfg(test)]
+mod tests {
+    use olo_tg::Folder;
+
+    use super::*;
+
+    fn store() -> Store {
+        let mut s = Store::default();
+        let chat = |id, kind, archived, unknown, unread| Chat { id, kind, archived, unknown, unread, order: id, title: format!("Chat {id}"), ..Chat::default() };
+        s.put_chat(chat(1, ChatKind::User, false, false, 2));
+        s.put_chat(chat(2, ChatKind::Group, false, false, 0));
+        s.put_chat(chat(3, ChatKind::Group, true, false, 5));
+        s.put_chat(chat(4, ChatKind::User, true, true, 0));
+        s.put_chat(chat(5, ChatKind::User, false, true, 1));
+        s.folders.push(Folder { id: 7, title: "Groups".into(), groups: true, exclude_archived: true, ..Folder::default() });
+        s.sort();
+        s
+    }
+
+    /// A group's chats are the ones its view shows: the archive's
+    /// (unknown or not), unknown senders' outside it, a folder's, all
+    /// chats' the rest.
+    #[test]
+    fn a_group_is_what_its_view_shows() {
+        let s = store();
+        let ids = |g: Group| {
+            let mut v = shown(&s, &g.view());
+            v.sort();
+            v
+        };
+        assert_eq!(ids(Group::Archive), [3, 4]);
+        assert_eq!(ids(Group::Unknown), [5]);
+        assert_eq!(ids(Group::Folder(Some(7))), [2]);
+        assert_eq!(ids(Group::Folder(None)), [1, 2]);
+        assert!(any_unread(&s, Group::Archive) && any_unread(&s, Group::Unknown) && any_unread(&s, Group::Folder(None)));
+        assert!(!any_unread(&s, Group::Folder(Some(7))));
+        let archive = View { archive: true, ..View::default() };
+        assert_eq!(Group::of(&archive), Group::Archive);
+        assert_eq!(Group::of(&View { folder: Some(7), ..View::default() }), Group::Folder(Some(7)));
+    }
+
+    /// What the menu bar's Mark All as Read costs each time it's built:
+    /// one pass over the chats, stopping at the first unread one.
+    #[test]
+    fn any_unread_is_cheap() {
+        let mut s = Store::default();
+        for id in 1..=2000 {
+            s.put_chat(Chat { id, order: id, archived: id % 3 == 0, title: format!("Chat {id}"), ..Chat::default() });
+        }
+        s.sort();
+        let t = std::time::Instant::now();
+        let mut n = 0;
+        for _ in 0..1000 {
+            n += usize::from(any_unread(&s, Group::Archive));
+        }
+        eprintln!("any_unread, 2000 chats none unread: {:.1} µs", t.elapsed().as_secs_f64() * 1e3);
+        assert_eq!(n, 0);
+    }
 }

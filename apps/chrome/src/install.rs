@@ -75,8 +75,9 @@ fn agent() -> ureq::Agent {
     ureq::Agent::config_builder().tls_config(tls).max_redirects(10).user_agent("Olo").timeout_connect(Some(Duration::from_secs(30))).timeout_per_read(Some(Duration::from_secs(60))).build().into()
 }
 
+/// `url`'s answer (asked again across a network change: `olo_net`).
 fn get(agent: &ureq::Agent, url: &str) -> Result<ureq::Body, String> {
-    agent.get(url).call().map(|r| r.into_body()).map_err(|e| match e {
+    olo_net::across_changes(Duration::from_secs(30), || agent.get(url).call()).map(|r| r.into_body()).map_err(|e| match e {
         ureq::Error::StatusCode(code) => format!("Google's server answered {code} for {url}."),
         e => format!("Couldn't reach Google's server: {e}."),
     })
@@ -317,13 +318,14 @@ fn put_in(package: Package, cancel: &AtomicBool, tell: &dyn Fn(Progress)) -> Res
     Ok(Some(dest.join("google-chrome")))
 }
 
-/// Into `to`, checking the sha256; None if cancelled.
+/// Into `to`, checking the sha256; None if cancelled. Across a network
+/// change (a cable pulled, Wi-Fi left) it goes on where it broke off, on
+/// the new one (`olo_net::http::Download`; Cancel ends a wait for one).
 fn download(package: &Package, to: &Path, cancel: &AtomicBool, tell: &dyn Fn(Progress)) -> Result<Option<()>, String> {
     let agent = agent();
     let url = format!("{REPO}/{}/{}", arch()?, package.href);
-    let response = agent.get(&url).call().map_err(|e| format!("Couldn't download Chrome: {e}."))?;
-    let total = response.headers().get("content-length").and_then(|v| v.to_str().ok()).and_then(|v| v.parse().ok()).unwrap_or(package.size);
-    let mut body = response.into_body().into_with_config().limit(u64::MAX).reader();
+    let mut body = olo_net::http::Download::start(&agent, &url, None, Some(cancel)).map_err(|e| format!("Couldn't download Chrome: {e}."))?;
+    let total = body.total().unwrap_or(package.size);
     let mut file = fs::File::create(to).map_err(|e| e.to_string())?;
     let mut hash = Sha256::new();
     let mut buf = vec![0u8; 256 * 1024];

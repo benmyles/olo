@@ -48,6 +48,11 @@ const SECURITY_KEY_RULE_PATH: &str = "etc/udev/rules.d/74-olo-security-keys.rule
 
 /// The presence sensor's buffer for the session (`presence_rule`).
 pub const PRESENCE_RULE: &str = include_str!("../../../data/udev/73-olo-presence.rules");
+/// Olo's helper for the power button's "Immediately" (Preferences ▸
+/// Keyboard): its unit and the polkit rule that lets the person at the
+/// computer start it.
+pub const POWER_NOW_UNIT: &str = include_str!("../../../data/systemd/olo-power-now@.service");
+pub const POWER_NOW_RULES: &str = include_str!("../../../data/polkit/49-olo-power-now.rules");
 const PRESENCE_RULE_PATH: &str = "etc/udev/rules.d/73-olo-presence.rules";
 /// Where the login screen's entry goes (tools/install-session.sh): where
 /// GDM and SDDM always look, or on an atomic system (its /usr read-only)
@@ -227,6 +232,9 @@ pub struct Roots {
     pub units: Box<dyn Fn(&str) -> Result<UnitState, String> + Send + Sync>,
     /// AirPods are paired here (the AirPods service's state).
     pub airpods: bool,
+    /// Bluetooth controllers that don't answer (BlueZ's adapter powered
+    /// and its power off, or the other way round), by name ("hci0").
+    pub bluetooth_stuck: Vec<String>,
     /// The system's packages (PackageKit's word): which of these names
     /// there are, newest, and whether installed. None: no PackageKit.
     pub packages: Box<dyn Fn(&[&str]) -> Option<Vec<(String, bool)>> + Send + Sync>,
@@ -318,7 +326,20 @@ impl Roots {
         let scope = scope_of(&std::fs::read_to_string("/proc/self/cgroup").unwrap_or_default());
         // AirPods paired, as BlueZ says (the service needn't be running).
         let airpods = olo_system::bluetooth::status().map(|s| s.devices.iter().any(|d| d.paired && d.modalias.as_deref().is_some_and(olo_system::airpods::is_airpods))).unwrap_or(false);
-        Roots { fs: PathBuf::from("/"), bin, uid, scope, units: Box::new(crate::fix::unit_state), airpods, packages: Box::new(real_packages), updates: Box::new(real_updates), temp: TempFiles::real() }
+        let bluetooth_stuck =
+            olo_system::bluetooth::status().ok().and_then(|s| s.adapter).filter(|a| a.not_answering()).map(|a| a.path.rsplit('/').next().unwrap_or_default().to_owned()).into_iter().collect();
+        Roots {
+            fs: PathBuf::from("/"),
+            bin,
+            uid,
+            scope,
+            units: Box::new(crate::fix::unit_state),
+            airpods,
+            bluetooth_stuck,
+            packages: Box::new(real_packages),
+            updates: Box::new(real_updates),
+            temp: TempFiles::real(),
+        }
     }
 }
 
@@ -547,6 +568,7 @@ pub fn scan(roots: &Roots) -> Report {
     autosuspend(roots, rule_current, &mut r);
     display_rule(roots, &mut r);
     wifi(roots, &mut r);
+    bluetooth(roots, &mut r);
     rtkit(roots, &mut r);
     voice_realtime(roots, &procs, &mut r);
     airpods_listening(roots, &procs, &mut r);
@@ -562,6 +584,7 @@ pub fn scan(roots: &Roots) -> Report {
     login_keyring(roots, &mut r);
     secrets_store(roots, &procs, &mut r);
     presence_rule(roots, &mut r);
+    power_now(roots, &mut r);
     security_keys(roots, &mut r);
     panel_hdr(roots, &mut r);
     stale(roots, &procs, &mut r);
@@ -617,15 +640,25 @@ fn diskbackup(roots: &Roots, r: &mut Report) {
             fix: start("Resume Backups", &["olo-diskbackup", "--set", "enabled=on"]),
         });
     } else {
-        // Nothing whole for three days, or three of its intervals.
-        let overdue = (3 * 86_400).max(3 * 60 * settings.every_minutes as i64);
+        // Nothing whole for three days, or three of its intervals; backing
+        // up only when asked, a week (advice: it's the person's to do).
+        let manual = !settings.automatic;
+        let overdue = if manual { 7 * 86_400 } else { (3 * 86_400).max(3 * 60 * settings.every_minutes as i64) };
         let since = state.last_ok.map(|t| now - t);
-        if since.is_none_or(|s| s > overdue) && state.doing == olo_protocol::diskbackup::Doing::Idle {
+        if manual && since.is_some_and(|s| s > overdue) && state.doing == olo_protocol::diskbackup::Doing::Idle {
+            r.findings.push(Finding {
+                id: "diskbackup:overdue".into(),
+                severity: Severity::Advice,
+                title: format!("Not backed up for {} days", since.unwrap_or_default() / 86_400),
+                detail: format!("DiskBackup backs up to {} when you ask it to, and hasn't for a while.", settings.target.describe()),
+                fix: start("Back Up Now", &["olo-diskbackup", "--now"]),
+            });
+        } else if !manual && since.is_none_or(|s| s > overdue) && state.doing == olo_protocol::diskbackup::Doing::Idle {
             let when = match since {
                 Some(s) => format!("for {} days", s / 86_400),
                 None => "yet".into(),
             };
-            let why = state.last.as_ref().and_then(|l| l.error.clone()).map(|e| format!(" The last didn't finish: {e}.")).unwrap_or_default();
+            let why = state.last.as_ref().filter(|l| !l.stopped()).and_then(|l| l.error.clone()).map(|e| format!(" The last didn't finish: {e}.")).unwrap_or_default();
             r.findings.push(Finding {
                 id: "diskbackup:overdue".into(),
                 severity: Severity::Problem,
@@ -644,6 +677,19 @@ fn diskbackup(roots: &Roots, r: &mut Report) {
             };
             r.fine.push(Fine { title: "Your files are backed up".into(), detail: format!("DiskBackup last backed up to {} {ago}.", settings.target.describe()) });
         }
+    }
+    // The last backup, checked once it was made, found not whole.
+    if let Some(c) = state.last.as_ref().and_then(|l| l.check.as_ref()).filter(|c| !c.problems.is_empty()) {
+        r.findings.push(Finding {
+            id: "diskbackup:damaged".into(),
+            severity: Severity::Problem,
+            title: "The last backup isn't whole".into(),
+            detail: format!(
+                "Checked once it was made, it was missing what some files need ({}): those can't be restored as they were. The damaged parts are let go of, and the next backup sends again what it can.",
+                c.problems.join("; ")
+            ),
+            fix: start("Back Up Now", &["olo-diskbackup", "--now"]),
+        });
     }
     if !settings.key_in_passwords {
         r.findings.push(Finding {
@@ -1061,9 +1107,49 @@ fn same_contents(a: &Path, b: &Path) -> bool {
     ma.len() == mb.len() && std::fs::read(a).ok() == std::fs::read(b).ok()
 }
 
-/// Olo's Wi-Fi healer, on a chip whose firmware can stop joining.
+/// The Bluetooth controllers here, by name ("hci0").
+fn bluetooth_controllers(fs: &Path) -> Vec<String> {
+    let mut v: Vec<String> = std::fs::read_dir(fs.join("sys/class/bluetooth"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with("hci") && !n.contains(':'))
+        .collect();
+    v.sort();
+    v
+}
+
+/// A Bluetooth controller that doesn't answer: nothing connects (AirPods
+/// sit at Connecting…, Ben, 2026-11-09) until its hardware starts again.
+/// The fix does what Olo's healer does by itself once it's installed.
+fn bluetooth(roots: &Roots, r: &mut Report) {
+    for hci in &roots.bluetooth_stuck {
+        let base = roots.fs.join("sys/class/bluetooth").join(hci).join("device");
+        let (Ok(device), Ok(driver)) = (std::fs::canonicalize(&base), std::fs::canonicalize(base.join("driver"))) else { continue };
+        let name = driver.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
+        let healer = (roots.units)("olo-wifi-heal.service").is_ok_and(|s| s.active);
+        r.findings.push(Finding {
+            id: format!("bluetooth-stuck-{hci}"),
+            severity: Severity::Problem,
+            title: "Bluetooth's hardware isn't answering".into(),
+            detail: format!(
+                "Its controller ({hci}, {name}) fails everything it's asked, so nothing connects: AirPods and other devices stay at Connecting…. Turning Bluetooth off and on doesn't reach it; starting its hardware again does (its driver lets go of it and takes it up again, the device reset where it can be). {}",
+                if healer { "Olo's healer does this by itself; this one it couldn't, or not yet." } else { "Olo's healer, once installed, does it by itself the moment it happens." }
+            ),
+            fix: Some(Fix { label: "Restart Bluetooth".into(), root: true, steps: vec![Step::RestartBluetooth { device, driver }] }),
+        });
+    }
+}
+
+/// Olo's Wi-Fi and Bluetooth healer, on a machine with Bluetooth or a
+/// Wi-Fi chip whose firmware can stop joining.
 fn wifi(roots: &Roots, r: &mut Report) {
-    let Some((iface, driver)) = wifi_chips(&roots.fs).into_iter().find(|(_, d)| HEALED_DRIVERS.contains(&d.as_str())) else { return };
+    let chip = wifi_chips(&roots.fs).into_iter().find(|(_, d)| HEALED_DRIVERS.contains(&d.as_str()));
+    let bluetooth = !bluetooth_controllers(&roots.fs).is_empty();
+    if chip.is_none() && !bluetooth {
+        return;
+    }
     let source = roots.bin.join("olo-wifi-heal");
     if !source.exists() {
         // Not installed (a build tree): nothing to install it from.
@@ -1077,15 +1163,23 @@ fn wifi(roots: &Roots, r: &mut Report) {
         && read(&roots.fs.join(HEAL_UNIT_PATH)).as_deref() == Some(HEAL_UNIT.trim())
         && read(&roots.fs.join(BRCMFMAC_CONF_PATH)).as_deref() == Some(BRCMFMAC_CONF.trim());
     if current && state.active && state.enabled {
-        r.fine.push(Fine { title: format!("Olo's Wi-Fi healer watches {iface}"), detail: "If the chip's firmware stops joining, it is started again and the network joined again.".into() });
+        let watches = match &chip {
+            Some((iface, _)) if bluetooth => format!("{iface} and Bluetooth"),
+            Some((iface, _)) => iface.clone(),
+            None => "Bluetooth".into(),
+        };
+        r.fine.push(Fine {
+            title: format!("Olo's healer watches {watches}"),
+            detail: "A Wi-Fi chip whose firmware stops joining, or a Bluetooth controller that stops answering, is started again by itself.".into(),
+        });
         return;
     }
     let (title, label) = if !installed.exists() {
-        ("Olo's Wi-Fi healer isn't installed", "Install the Healer")
+        ("Olo's Wi-Fi and Bluetooth healer isn't installed", "Install the Healer")
     } else if !current {
-        ("Olo's Wi-Fi healer is out of date", "Update the Healer")
+        ("Olo's Wi-Fi and Bluetooth healer is out of date", "Update the Healer")
     } else {
-        ("Olo's Wi-Fi healer isn't running", "Start the Healer")
+        ("Olo's Wi-Fi and Bluetooth healer isn't running", "Start the Healer")
     };
     let unit = "olo-wifi-heal.service".to_owned();
     let steps = vec![
@@ -1101,10 +1195,21 @@ fn wifi(roots: &Roots, r: &mut Report) {
         id: "wifi-heal".into(),
         severity: Severity::Problem,
         title: title.into(),
-        detail: format!(
-            "This Mac's Wi-Fi chip ({driver}, {iface}) can get stuck in its firmware after failed joins: every join then fails, as if the password were wrong, until the chip is started again. Olo's healer, a small system service, notices, starts the chip again, joins the network again and tells you. The fix installs it as a program only the administrator can change ({}), and has NetworkManager keep the chip's own address while it scans.",
-            Path::new("/").join(HEAL_BIN_PATH).display()
-        ),
+        detail: {
+            let mut d = String::new();
+            if let Some((iface, driver)) = &chip {
+                d.push_str(&format!("This Mac's Wi-Fi chip ({driver}, {iface}) can get stuck in its firmware after failed joins: every join then fails, as if the password were wrong, until the chip is started again. "));
+            }
+            if bluetooth {
+                d.push_str("A Bluetooth controller can stop answering (its driver failing everything it's asked), and nothing connects until its hardware starts again. ");
+            }
+            d.push_str(&format!(
+                "Olo's healer, a small system service, notices, starts it again (and joins the network again) and tells you. The fix installs it as a program only the administrator can change ({}){}.",
+                Path::new("/").join(HEAL_BIN_PATH).display(),
+                if chip.is_some() { ", and has NetworkManager keep the chip's own address while it scans" } else { "" }
+            ));
+            d
+        },
         fix: Some(Fix { label: label.into(), root: true, steps }),
     });
 }
@@ -1806,6 +1911,40 @@ fn secrets_store(roots: &Roots, procs: &[Proc], r: &mut Report) {
 
 /// A human presence sensor (a ThinkPad's "prox"), and Olo's rule that
 /// gives the session its buffer (Preferences ▸ Power ▸ Presence).
+/// The power button's "Restart Immediately" and "Shut Down Immediately"
+/// (a hold, by default ten seconds' shuts down at once): done by Olo's
+/// helper unit, which only root can install. Its unit is what's checked:
+/// polkit's rules folder isn't readable by the person, and the fix writes
+/// both.
+fn power_now(roots: &Roots, r: &mut Report) {
+    let input = roots.fs.join("sys/class/input");
+    let button = std::fs::read_dir(&input).into_iter().flatten().flatten().any(|e| read(&e.path().join("name")).is_some_and(|n| n.trim() == "Power Button"));
+    if !button {
+        return;
+    }
+    let unit = roots.fs.join(olo_protocol::power_button::HELPER_UNIT_PATH.trim_start_matches('/'));
+    let installed = std::fs::read_to_string(&unit).ok();
+    if installed.as_deref() == Some(POWER_NOW_UNIT) {
+        r.fine.push(Fine { title: "The power button can restart and shut down at once".into(), detail: "Olo's helper is installed (olo-power-now@.service).".into() });
+        return;
+    }
+    r.findings.push(Finding {
+        id: "power-now".into(),
+        severity: Severity::Advice,
+        title: if installed.is_some() { "Olo's power button helper is out of date".into() } else { "The power button can't restart or shut down at once".into() },
+        detail: "Held, the power button can restart or shut the computer down immediately (Preferences ▸ Keyboard: by default, held ten seconds): every program ended and the disks written out, without waiting for the orderly stop. That takes a small system helper, which only the administrator can install; without it, Immediately does what Restart and Shut Down do. The fix installs olo-power-now@.service and a polkit rule that lets the person at the computer start it, nothing else.".into(),
+        fix: Some(Fix {
+            label: if installed.is_some() { "Update the Helper".into() } else { "Install the Helper".into() },
+            root: true,
+            steps: vec![
+                Step::WriteFile { path: PathBuf::from(olo_protocol::power_button::HELPER_UNIT_PATH), content: POWER_NOW_UNIT.into(), mode: 0o644 },
+                Step::WriteFile { path: PathBuf::from(olo_protocol::power_button::HELPER_RULES_PATH), content: POWER_NOW_RULES.into(), mode: 0o644 },
+                Step::Unit { name: "olo-power-now@.service".into(), action: UnitAction::Reload },
+            ],
+        }),
+    });
+}
+
 fn presence_rule(roots: &Roots, r: &mut Report) {
     let iio = roots.fs.join("sys/bus/iio/devices");
     let Some(sensor) = std::fs::read_dir(&iio).into_iter().flatten().flatten().map(|e| e.path()).find(|p| read(&p.join("name")).is_some_and(|n| n.trim() == "prox")) else { return };
@@ -2241,6 +2380,32 @@ mod tests {
         }
     }
 
+    /// A Bluetooth controller that doesn't answer: a finding whose fix
+    /// starts its hardware again (its device and driver, as sysfs has
+    /// them); one that answers, none.
+    #[test]
+    fn a_bluetooth_controller_that_doesnt_answer() {
+        let (fs, mut roots) = machine("bluetooth");
+        let device = fs.join("sys/devices/pci0000:00/0000:00:14.7");
+        let driver = fs.join("sys/bus/pci/drivers/btintel_pcie");
+        std::fs::create_dir_all(&device).unwrap();
+        std::fs::create_dir_all(&driver).unwrap();
+        std::os::unix::fs::symlink(&driver, device.join("driver")).unwrap();
+        std::fs::create_dir_all(fs.join("sys/class/bluetooth/hci0")).unwrap();
+        std::os::unix::fs::symlink(&device, fs.join("sys/class/bluetooth/hci0/device")).unwrap();
+        assert!(scan(&roots).findings.iter().all(|f| !f.id.starts_with("bluetooth-stuck")));
+        roots.bluetooth_stuck = vec!["hci0".into()];
+        let r = scan(&roots);
+        let f = r.findings.iter().find(|f| f.id == "bluetooth-stuck-hci0").expect("found");
+        assert_eq!(f.title, "Bluetooth's hardware isn't answering");
+        assert!(f.detail.contains("btintel_pcie"), "{}", f.detail);
+        let fix = f.fix.as_ref().unwrap();
+        assert!(fix.root);
+        assert_eq!(fix.steps, [Step::RestartBluetooth { device: device.canonicalize().unwrap(), driver: driver.canonicalize().unwrap() }]);
+        // (Bluetooth here: the healer is for it too, Wi-Fi chip or not.)
+        assert!(r.findings.iter().any(|f| f.id == "wifi-heal") || r.fine.iter().any(|f| f.title.starts_with("Olo's healer watches")), "{:?}", r.findings.iter().map(|f| &f.title).collect::<Vec<_>>());
+    }
+
     /// A machine in a folder: a keyd running from /usr/local, a mouse
     /// receiver allowed to sleep, a Studio Display, no rules, a stale
     /// Deskbar.
@@ -2308,8 +2473,18 @@ mod tests {
         });
         // SAFETY: getuid has no preconditions.
         let uid = unsafe { libc::getuid() };
-        let roots =
-            Roots { fs: fs.clone(), bin, uid, scope: Some("session-2.scope".into()), units, airpods: true, packages: Box::new(|_| None), updates: Box::new(|| None), temp: TempFiles::default() };
+        let roots = Roots {
+            fs: fs.clone(),
+            bin,
+            uid,
+            scope: Some("session-2.scope".into()),
+            units,
+            airpods: true,
+            bluetooth_stuck: Vec::new(),
+            packages: Box::new(|_| None),
+            updates: Box::new(|| None),
+            temp: TempFiles::default(),
+        };
         (fs, roots)
     }
 
@@ -2561,7 +2736,7 @@ mod tests {
         assert!(uclamp.detail.starts_with("kernel.sched_util_clamp_min is 512"));
         assert_eq!(uclamp.fix.as_ref().unwrap().steps[1], Step::WriteSysfs { path: "/proc/sys/kernel/sched_util_clamp_min".into(), value: "1024".into() });
         let heal = r.find("wifi-heal").unwrap();
-        assert_eq!(heal.title, "Olo's Wi-Fi healer isn't installed");
+        assert_eq!(heal.title, "Olo's Wi-Fi and Bluetooth healer isn't installed");
         assert!(heal.detail.contains("brcmfmac, wld0"));
         let steps = &heal.fix.as_ref().unwrap().steps;
         assert_eq!(steps[0], Step::CopyFile { from: roots.bin.join("olo-wifi-heal"), to: "/usr/local/libexec/olo-wifi-heal".into(), mode: 0o755 });
@@ -2648,7 +2823,7 @@ mod tests {
                 "Olo's input rule is installed",
                 "1 USB input device stays awake",
                 "Olo's display rule is installed",
-                "Olo's Wi-Fi healer watches wld0",
+                "Olo's healer watches wld0",
                 "rtkit is running",
                 "Voice processing's sound is realtime",
                 "Bluetooth listens for the AirPods",
@@ -2690,6 +2865,35 @@ mod tests {
             assert!(matches!(&steps[1], Step::WriteSysfs { path, .. } if path == Path::new("/sys/class/hidraw/hidraw4/uevent")));
             assert_eq!(steps.len(), 2);
         }
+        let _ = std::fs::remove_dir_all(&fs);
+    }
+
+    /// The power button's helper: offered where there's a power button,
+    /// its unit and rule written and systemd reloaded; fine once its unit
+    /// is this build's; an older unit, updated.
+    #[test]
+    fn the_power_buttons_helper() {
+        let (fs, roots) = machine("power-now");
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        let ours = |r: &Report| r.findings.iter().find(|f| f.id == "power-now").cloned();
+        // No power button (an agent's screen, a server): nothing said.
+        assert!(ours(&scan(&roots)).is_none());
+        w("sys/class/input/input2/name", "Power Button\n");
+        let f = ours(&scan(&roots)).expect("offered");
+        assert_eq!(f.title, "The power button can't restart or shut down at once");
+        let steps = &f.fix.as_ref().unwrap().steps;
+        assert!(matches!(&steps[0], Step::WriteFile { path, content, .. } if path == Path::new("/etc/systemd/system/olo-power-now@.service") && content == POWER_NOW_UNIT));
+        assert!(matches!(&steps[1], Step::WriteFile { path, content, .. } if path == Path::new("/etc/polkit-1/rules.d/49-olo-power-now.rules") && content == POWER_NOW_RULES));
+        assert!(matches!(&steps[2], Step::Unit { action: UnitAction::Reload, .. }));
+        w("etc/systemd/system/olo-power-now@.service", "an older one");
+        assert_eq!(ours(&scan(&roots)).unwrap().title, "Olo's power button helper is out of date");
+        w("etc/systemd/system/olo-power-now@.service", POWER_NOW_UNIT);
+        let r = scan(&roots);
+        assert!(ours(&r).is_none() && r.fine.iter().any(|f| f.title == "The power button can restart and shut down at once"));
         let _ = std::fs::remove_dir_all(&fs);
     }
 
@@ -3094,6 +3298,7 @@ mod tests {
                 scope: None,
                 units: Box::new(|_| Err("none".into())),
                 airpods: false,
+                bluetooth_stuck: Vec::new(),
                 packages: Box::new(|_| None),
                 updates: Box::new(|| None),
                 temp: TempFiles {

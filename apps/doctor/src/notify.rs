@@ -57,6 +57,9 @@ struct Heals {
 #[serde(default)]
 struct Heal {
     at: u64,
+    /// What was reset: a network interface, or a Bluetooth controller
+    /// ("hci0").
+    interface: String,
     why: String,
     rejoined: Option<String>,
     error: Option<String>,
@@ -185,14 +188,18 @@ fn open_logs(c: &crate::crashes::Crash) {
     let _ = olo_xdg::open::spawn_app(&[exe.into_os_string(), "--query".into(), crate::crashes::logs_query(c, now).into()], "olo.logs");
 }
 
-/// What the Wi-Fi healer did since last told, in a notification each.
+/// What the healer did since last told (Wi-Fi's or Bluetooth's), in a
+/// notification each.
 fn tell_heals(notes: &Notifier) {
     let Some(report) = std::fs::read_to_string(HEAL_REPORT).ok().and_then(|t| serde_json::from_str::<Heals>(&t).ok()) else { return };
     let mut told = read_told();
     let since = told.heals;
     for h in report.heals.iter().filter(|h| h.at > since) {
+        let bluetooth = h.interface.starts_with("hci");
         let note = match (&h.rejoined, &h.error) {
+            (Some(_), _) if bluetooth => Note::new("Olo fixed Bluetooth").body(format!("Bluetooth's hardware had stopped answering ({}). Olo started it again: devices connect again.", h.why)),
             (Some(network), _) => Note::new("Olo fixed the Wi-Fi").body(format!("The Wi-Fi chip had stopped joining networks ({}). Olo started it again and joined {network}.", h.why)),
+            (None, Some(e)) if bluetooth => Note::new("Bluetooth isn't answering").body(format!("{e}.")),
             (None, Some(e)) => Note::new("Wi-Fi couldn't join").body(format!("{e}.")),
             // Under way: told once it has come to something.
             (None, None) => return,

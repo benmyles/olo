@@ -1,0 +1,14 @@
+# Olo: the power button held (Preferences ▸ Keyboard), "Restart
+# Immediately" or "Shut Down Immediately": %i is reboot or poweroff.
+# --force: every program ended and the disks written out and unmounted,
+# then at once, without the orderly stop of services that Restart and
+# Shut Down wait for. Started by the person at the computer without a
+# password (/etc/polkit-1/rules.d/49-olo-power-now.rules); installed by
+# Olo Doctor ("power-now").
+[Unit]
+Description=Olo: %i at once (the power button held)
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl --force %i

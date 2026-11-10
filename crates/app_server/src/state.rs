@@ -213,6 +213,10 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub dnd_icon: Option<DndIcon>,
     /// A Wayland drag-and-drop is under way (Escape ends it: `escape_drag`).
     pub dragging: bool,
+    /// The tab a drag rests on, its window to come forward (shell/spring.rs),
+    /// and the count its waits go by.
+    pub spring: Option<crate::shell::spring::Spring>,
+    pub spring_token: u64,
     /// Escape ended a drag or a move: its release reaches nobody either,
     /// and the move grab, ending, puts its window back (`MoveCancelled`).
     pub escaped: bool,
@@ -296,6 +300,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub showing: HashMap<String, u32>,
     /// A timer is set for a recording's zoom's hold (`zoom`).
     pub zoom_timer: bool,
+    /// The built-in power button while it's down (power_button.rs).
+    pub power_held: crate::power_button::Held,
     /// Olo Rescue, while it's on (rescue.rs), and its keys followed.
     pub rescue: Option<crate::rescue::Rescue>,
     pub rescue_chord: crate::rescue::Chord,
@@ -344,8 +350,11 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// Where each window coming back was put, to check once they're all
     /// back (`layout::check_restored`).
     pub restored: Vec<(crate::shell::WindowElement, crate::layout::Placement)>,
-    /// Night-light colour temperature in effect, if any.
-    pub night_light: Option<u32>,
+    /// Night-light colour temperature in effect, if any (between neutral
+    /// and the night's while it shifts gradually), and the timer for its
+    /// next step meanwhile.
+    pub night_light: Option<f64>,
+    pub night_shift: Option<smithay::reexports::calloop::RegistrationToken>,
     /// The screens' gamma gains now (none until first set), and the fade
     /// toward new ones (see `night`).
     pub white_point: Option<[f64; 3]>,
@@ -423,11 +432,13 @@ impl<BackendData: Backend> DndGrabHandler for AnvilState<BackendData> {
     fn dropped(&mut self, _target: Option<DndTarget<'_, Self>>, _validated: bool, _seat: Seat<Self>, _location: Point<f64, Logical>) {
         self.dnd_icon = None;
         self.dragging = false;
+        self.spring = None;
     }
 
     fn cancelled(&mut self, _seat: Seat<Self>, _location: Point<f64, Logical>) {
         self.dnd_icon = None;
         self.dragging = false;
+        self.spring = None;
     }
 }
 
@@ -1223,6 +1234,8 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             toplevel_handles: HashMap::new(),
             dnd_icon: None,
             dragging: false,
+            spring: None,
+            spring_token: 0,
             escaped: false,
             move_cancelled: false,
             suppressed_keys: Vec::new(),
@@ -1267,6 +1280,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             parked: Default::default(),
             showing: HashMap::new(),
             zoom_timer: false,
+            power_held: Default::default(),
             rescue: None,
             rescue_chord: Default::default(),
             security_key_ids: Vec::new(),
@@ -1295,6 +1309,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             display_wait_until: None,
             restored: Vec::new(),
             night_light: None,
+            night_shift: None,
             white_point: None,
             night_fade: None,
             mirrors: Vec::new(),
@@ -1387,6 +1402,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         }
         state.presence_settings();
         state.keymap.set_bindings(olo_protocol::shortcuts::bindings(&state.settings.keyboard.profile));
+        state.keymap.set_chrome(olo_protocol::app_keys::chrome_keys(&state.settings.keyboard.profile));
         if let Some(found) = state.power.displays_found.take() {
             let _ = state.handle.insert_source(found, |event, _, state| {
                 if let smithay::reexports::calloop::channel::Event::Msg(found) = event {

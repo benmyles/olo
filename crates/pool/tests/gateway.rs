@@ -232,3 +232,177 @@ async fn redeems_a_credit_when_all_are_out() {
     assert!(a.credits.iter().all(|c| c.remaining <= 1));
     assert_eq!((a.redeeming.is_none(), a.cooldown_until), (true, None));
 }
+
+/// Quota by model (Ben, 2026-11-08: "make sure too that token pooler
+/// switches accounts when the model in use is the one that the limit hits
+/// like it needs to be quota-model aware"). "a"'s report says its Fable
+/// week is used up: a Fable request skips it (never tried) and an Opus one
+/// still uses it; "c" is refused for Fable when it's tried (its Fable
+/// meter, says the claim): the request goes on to "b", and "c" waits for
+/// Fable only.
+#[tokio::test(flavor = "multi_thread")]
+async fn switches_by_the_model_whose_meter_ran_out() {
+    type Asked = Arc<Mutex<Vec<(String, String)>>>;
+    let asked: Asked = Default::default();
+    let seen = asked.clone();
+    let iso = |secs: i64| chrono::DateTime::from_timestamp(now() + secs, 0).unwrap().to_rfc3339();
+    let fake = Router::new()
+        .route(
+            "/v1/messages",
+            post(move |h: HeaderMap, body: axum::body::Bytes| {
+                let seen = seen.clone();
+                async move {
+                    let (t, model) = (token(&h), serde_json::from_slice::<Value>(&body).unwrap()["model"].as_str().unwrap_or("").to_owned());
+                    seen.lock().unwrap().push((t.clone(), model.clone()));
+                    if t == "c" && model.contains("fable") {
+                        return Response::builder()
+                            .status(429)
+                            .header("anthropic-ratelimit-unified-status", "rejected")
+                            .header("anthropic-ratelimit-unified-representative-claim", "seven_day_fable")
+                            .header("anthropic-ratelimit-unified-reset", (now() + 7200).to_string())
+                            .body(Body::from("{}"))
+                            .unwrap();
+                    }
+                    Response::builder().header("content-type", "text/event-stream").body(Body::from("data: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":1}}\n\n")).unwrap()
+                }
+            }),
+        )
+        .route(
+            "/api/oauth/usage",
+            get(move |h: HeaderMap| async move {
+                // Each account's own: "a" first to reset, then "c", then "b";
+                // "a"'s Fable week used up.
+                let (session, fable) = match token(&h).as_str() {
+                    "a" => (100, 100.0),
+                    "c" => (200, 20.0),
+                    _ => (300, 10.0),
+                };
+                axum::Json(json!({
+                    "five_hour": {"utilization": 10.0, "resets_at": now() + session},
+                    "limits": [{"kind": "weekly_scoped", "group": "weekly", "percent": fable, "resets_at": iso(3 * 86400), "scope": {"model": {"display_name": "Fable"}}}],
+                }))
+            }),
+        );
+    let base = format!("http://{}", serve(fake).await);
+    let up = Upstreams { claude: base.clone(), codex: base.clone(), chatgpt: base.clone(), claude_oauth: format!("{base}/oauth"), codex_oauth: format!("{base}/oauth"), origin: None };
+    let mut saved = Saved::default();
+    for (id, created) in [("a", 1), ("b", 2), ("c", 3)] {
+        saved.accounts.push(account(id, created, 1000));
+        saved.credentials.insert(id.into(), Credential { access: id.into(), refresh: None, expires_at: Some(now() + 3600), account_id: None });
+    }
+    let shared = Shared::new(saved, None, up, || {});
+    for id in ["a", "b", "c"] {
+        shared.sync(Some(id)).await;
+    }
+    let fable = shared.snapshot().account("a").unwrap().windows.iter().find(|w| w.label == "Weekly Fable").cloned().unwrap();
+    assert_eq!((fable.used, fable.models.as_slice()), (100.0, ["fable".to_owned()].as_slice()), "the report's Fable week, for Fable");
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = l.local_addr().unwrap();
+    let app = gateway::router(shared.clone(), addr.port());
+    tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
+    let client = reqwest::Client::new();
+    let ask = |model: &'static str| {
+        let (client, addr) = (client.clone(), addr);
+        async move {
+            let r = client.post(format!("http://{addr}/claude/v1/messages")).json(&json!({"model": model, "messages": []})).send().await.unwrap();
+            let who = r.headers().get("x-olo-pool-account").and_then(|v| v.to_str().ok()).unwrap_or("").to_owned();
+            (r.status().as_u16(), who)
+        }
+    };
+
+    // Fable: not "a" (its Fable week is out), not "c" (refused for Fable):
+    // "b"; "a" never asked.
+    assert_eq!(ask("claude-fable-5-1").await, (200, "b".to_owned()));
+    let tried: Vec<(String, String)> = asked.lock().unwrap().drain(..).collect();
+    assert_eq!(tried, [("c".to_owned(), "claude-fable-5-1".to_owned()), ("b".to_owned(), "claude-fable-5-1".to_owned())]);
+    // Opus: "a" still, first to reset; and "c" was held back for Fable only.
+    assert_eq!(ask("claude-opus-5-5").await, (200, "a".to_owned()));
+    let p = shared.snapshot();
+    let c = p.account("c").unwrap();
+    assert!(c.cooldown_until.is_none_or(|t| t <= now()) && c.model_cooldowns.get("fable").is_some_and(|&t| t > now()), "{:?} {:?}", c.cooldown_until, c.model_cooldowns);
+    // Fable again: straight to "b", neither "a" nor "c" tried.
+    asked.lock().unwrap().clear();
+    assert_eq!(ask("claude-fable-5-1").await, (200, "b".to_owned()));
+    assert_eq!(asked.lock().unwrap().iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>(), ["b"]);
+    // And with "b" off too, Fable waits (until "c"'s Fable resets) while
+    // Opus is served.
+    shared.set_enabled("b", false);
+    assert_eq!(ask("claude-fable-5-1").await.0, 429);
+    assert_eq!(ask("claude-opus-5-5").await, (200, "a".to_owned()));
+}
+
+/// The network changes while a request waits for its answer (Ben,
+/// 2026-11-09: a cable pulled, Wi-Fi left): its connection is cut, as one
+/// on a network that went is (`olo_net`), and the gateway asks again on
+/// the network there is now, so the client gets its answer, not an error;
+/// with no network at all, it waits for one, then asks.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_request_goes_on_across_a_network_change() {
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::SeqCst};
+    let asked = Arc::new(AtomicUsize::new(0));
+    let slow = Arc::new(AtomicBool::new(true));
+    let fake = Router::new().route(
+        "/v1/messages",
+        post({
+            let (asked, slow) = (asked.clone(), slow.clone());
+            move || {
+                let (asked, slow) = (asked.clone(), slow.clone());
+                async move {
+                    asked.fetch_add(1, SeqCst);
+                    // (Thinking: long enough for the network to change.)
+                    if slow.load(SeqCst) {
+                        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                    }
+                    Response::builder().header("content-type", "text/event-stream").body(Body::from("data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"hello\"}}\n\n")).unwrap()
+                }
+            }
+        }),
+    );
+    let up_addr = serve(fake).await;
+    let base = format!("http://{up_addr}");
+    let up = Upstreams { claude: base.clone(), codex: base.clone(), chatgpt: base.clone(), claude_oauth: format!("{base}/oauth"), codex_oauth: format!("{base}/oauth"), origin: None };
+    let mut saved = Saved::default();
+    saved.accounts.push(account("a", 1, 100));
+    saved.credentials.insert("a".into(), cred("ok"));
+    let shared = Shared::new(saved, None, up, || {});
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = l.local_addr().unwrap();
+    let app = gateway::router(shared.clone(), addr.port());
+    tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
+    let ask = move || async move { reqwest::Client::new().post(format!("http://{addr}/claude/v1/messages")).json(&json!({"model": "claude-opus-5-5"})).send().await.unwrap() };
+    let until = |n: usize, asked: Arc<AtomicUsize>| async move {
+        let t = std::time::Instant::now();
+        while asked.load(SeqCst) < n {
+            assert!(t.elapsed().as_secs() < 10, "asked {} times, not {n}", asked.load(SeqCst));
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    };
+
+    // Changed under it: asked again, on the new network.
+    let started = std::time::Instant::now();
+    let pending = tokio::spawn(ask());
+    until(1, asked.clone()).await;
+    slow.store(false, SeqCst);
+    let cut = olo_net::pretend_change(true, Some(up_addr.port()));
+    assert!(cut >= 1, "the gateway's connection upstream was cut");
+    let r = pending.await.unwrap();
+    assert_eq!(r.status(), 200);
+    assert!(r.text().await.unwrap().contains("hello"));
+    assert_eq!(asked.load(SeqCst), 2);
+    println!("answered {:?} after it was sent, the network changing under it", started.elapsed());
+
+    // No network: it waits for one, then asks.
+    slow.store(true, SeqCst);
+    let pending = tokio::spawn(ask());
+    until(3, asked.clone()).await;
+    slow.store(false, SeqCst);
+    olo_net::pretend_change(false, Some(up_addr.port()));
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    assert!(!pending.is_finished(), "it waits for the network, not fails");
+    assert_eq!(asked.load(SeqCst), 3);
+    olo_net::pretend_change(true, None);
+    let r = pending.await.unwrap();
+    assert_eq!(r.status(), 200);
+    assert_eq!(asked.load(SeqCst), 4);
+    assert_eq!(shared.snapshot().in_flight.values().sum::<u32>(), 0);
+}

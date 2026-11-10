@@ -477,15 +477,77 @@ fn lerp(a: Hsla, b: Hsla, t: f32) -> Hsla {
     Hsla::from(gpui::Rgba { r: a.r + (b.r - a.r) * t, g: a.g + (b.g - a.g) * t, b: a.b + (b.b - a.b) * t, a: a.a + (b.a - a.a) * t })
 }
 
+/// Auto Approve's countdown over `screen`'s bottom right corner: "Yes in
+/// N s" and Stop (the question is then the person's). Agents read it as a
+/// Status, its Stop a button.
+fn auto_approve_box(screen: Bounds<Pixels>, shell: u64, left: u32, me: gpui::WeakEntity<Terminal>) -> AnyElement {
+    let text: SharedString = format!("Auto Approve: Yes in {left} s").into();
+    let name = text.clone();
+    let back = canvas(
+        |_, _, _| {},
+        move |b, _, window, cx| {
+            let p = theme::palette(cx);
+            widgets::banner_back(window, b, None, &p);
+            olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Status", name: Some(name.clone()), bounds: b, enabled: true, ..Default::default() });
+        },
+    )
+    .absolute()
+    .inset_0();
+    let stop = Button::new("Stop").small().id(SharedString::from(format!("auto-approve-stop-{shell}"))).on_click(move |_, cx| {
+        let _ = me.update(cx, |t, cx| t.auto_approve_stop(cx, shell));
+    });
+    let inset = px(m::SPACING);
+    div()
+        .absolute()
+        .left(screen.left())
+        .top(screen.top())
+        .w(screen.size.width)
+        .h(screen.size.height)
+        .child(
+            div()
+                .absolute()
+                .right(inset)
+                .bottom(inset)
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(m::SPACING))
+                .pl(px(m::SPACING))
+                .pr(px(m::TIGHT))
+                .py(px(m::TIGHT))
+                .child(back)
+                .child(widgets::StringView::new(text))
+                .child(stop),
+        )
+        .into_any_element()
+}
+
 /// A tab's icon: Terminal's, with a badge at its corner: a turning arc
 /// while an agent works, an orange "!" when it needs an answer, a green
 /// dot when it's done and no one has looked, a blue dot for an unseen
 /// bell; and at its bottom corner, while Keep It Going is on, a blue
-/// disc with a "go on" triangle.
-pub fn tab_icon(rang: bool, agent: Option<State>, attention: bool, keep_going: bool) -> widgets::strip::PaintFn {
+/// disc with a "go on" triangle; at its other bottom corner, while Auto
+/// Approve is on, a green one with a check.
+pub fn tab_icon(rang: bool, agent: Option<State>, attention: bool, keep_going: bool, auto_approve: bool) -> widgets::strip::PaintFn {
     Rc::new(move |window: &mut Window, cx: &mut App, r: Bounds<Pixels>| {
         icons::paint(window, r, "terminal");
         let p = theme::palette(cx);
+        if auto_approve {
+            let c = point(r.left() + px(1.5), r.bottom() - px(3.5));
+            let disc = |window: &mut Window, radius: f32, color: Hsla| {
+                let b = Bounds { origin: point(c.x - px(radius), c.y - px(radius)), size: size(px(2.0 * radius), px(2.0 * radius)) };
+                window.paint_quad(gpui::fill(b, color).corner_radii(px(radius)));
+            };
+            disc(window, 5.5, style::c(p.panel_background));
+            disc(window, 4.5, style::c(p.success));
+            let mut path = gpui::PathBuilder::stroke(px(1.25));
+            path.move_to(point(c.x - px(2.0), c.y));
+            path.line_to(point(c.x - px(0.5), c.y + px(1.5)));
+            path.line_to(point(c.x + px(2.0), c.y - px(1.5)));
+            if let Ok(path) = path.build() {
+                window.paint_path(path, style::ink_on(p.success));
+            }
+        }
         if keep_going {
             // A disc in the accent colour with a "go on" triangle, as the
             // question's is orange with a "!".
@@ -619,6 +681,7 @@ impl Terminal {
             Some(Win::Term(_)) => self.render_term(id, focus, view, window, cx),
             Some(Win::ConfirmClose { message, .. }) => self.render_alert(id, "terminal", message.clone(), &["Cancel", "Close"], focus, cx),
             Some(Win::ConfirmStartOver { .. }) => self.render_alert(id, "terminal", crate::START_OVER.to_owned(), &["Cancel", "Start Over"], focus, cx),
+            Some(Win::ConfirmAutoApprove { message, .. }) => self.render_alert_with(id, "warning", message.clone(), &["Turn On", "Cancel"], 1, 1, focus, cx),
             Some(Win::ConfirmRemove { message, .. }) => self.render_alert(id, "warning", message.clone(), &["Cancel", "Remove"], focus, cx),
             Some(Win::Failed { message }) => self.render_alert(id, "warning", message.clone(), &["OK"], focus, cx),
             Some(Win::Find { .. }) => self.render_find(id, focus, window, cx),
@@ -634,19 +697,28 @@ impl Terminal {
     /// default: Return; Escape the first).
     fn render_alert(&mut self, id: WindowId, icon: &str, message: String, buttons: &[&str], focus: FocusHandle, cx: &mut Cx) -> AnyElement {
         let n = buttons.len();
+        self.render_alert_with(id, icon, message, buttons, n.saturating_sub(1), 0, focus, cx)
+    }
+
+    /// An alert whose Return chooses button `default` and Escape `cancel`
+    /// (one a program can bring up, as Auto Approve's: Cancel both, so a
+    /// Return typed as it comes doesn't say yes).
+    #[allow(clippy::too_many_arguments)]
+    fn render_alert_with(&mut self, id: WindowId, icon: &str, message: String, buttons: &[&str], default: usize, cancel: usize, focus: FocusHandle, cx: &mut Cx) -> AnyElement {
+        let n = buttons.len();
         let mut row = widgets::button_row();
         for (i, label) in buttons.iter().enumerate() {
             let choose = cx.listener(move |t, _: &(), _, cx| t.alert_chosen(cx, id, i));
-            row = row.child(Button::new(label.to_string()).default(i + 1 == n).on_click(move |window, cx| choose(&(), window, cx)));
+            row = row.child(Button::new(label.to_string()).default(i == default).on_click(move |window, cx| choose(&(), window, cx)));
         }
         div()
             .size_full()
             .key_context(widgets::alert::CONTEXT)
             .track_focus(&focus)
-            .on_action(cx.listener(move |t, _: &widgets::alert::Default, _, cx| t.alert_chosen(cx, id, n.saturating_sub(1))))
+            .on_action(cx.listener(move |t, _: &widgets::alert::Default, _, cx| t.alert_chosen(cx, id, default)))
             .on_action(cx.listener(move |t, _: &widgets::alert::Cancel, _, cx| {
                 if n > 1 {
-                    t.alert_chosen(cx, id, 0);
+                    t.alert_chosen(cx, id, cancel);
                 }
             }))
             .child(widgets::AlertFrame::new(icon.to_owned()).child(widgets::paragraph(message)).child(div().flex_1()).child(row))
@@ -809,13 +881,13 @@ impl Terminal {
             .iter()
             .map(|tab| {
                 let pr = repos::pr_of(&self.prs, tab);
-                let status = match (tab.status(), pr.map(|p| p.describe())) {
+                let status = match (tab.status(&self.keep_going_says), pr.map(|p| p.describe())) {
                     (Some(a), Some(b)) => Some(format!("{a}; {b}")),
                     (a, b) => a.or(b),
                 };
                 StripTab {
                     label: tab.title.clone().into(),
-                    icon: Some(tab_icon(tab.rang, tab.agent.map(|(_, s)| s), tab.attention, tab.keep_going.is_some())),
+                    icon: Some(tab_icon(tab.rang, tab.agent.map(|(_, s)| s), tab.attention, tab.keep_going.is_some(), tab.auto_approve.is_some())),
                     status: status.map(Into::into),
                     badge: pr.map(repos::pr_badge),
                     group: tab.group,
@@ -863,11 +935,17 @@ impl Terminal {
             let pane_cache = tab.pane.clone();
             let hover = tab.mouse.hover.clone();
             let scheme = scheme.clone();
-            let head =
-                several.then(|| (tab.title.clone(), tab_icon(tab.rang, tab.agent.map(|(_, s)| s), tab.attention, tab.keep_going.is_some()), tab.group.and_then(|g| group_chips.get(g).cloned())));
+            let head = several.then(|| {
+                (
+                    tab.title.clone(),
+                    tab_icon(tab.rang, tab.agent.map(|(_, s)| s), tab.attention, tab.keep_going.is_some(), tab.auto_approve.is_some()),
+                    tab.group.and_then(|g| group_chips.get(g).cloned()),
+                )
+            });
             let dim = (several && !active).then(|| view::screen_colors(&tab.session, &scheme).0);
             let preedit = preedit.clone().filter(|_| active);
             let input = active.then(|| (view.clone(), focus.clone()));
+            let stop_to = me.clone();
             let me = me.clone();
             let el = canvas(
                 move |_, window, _| window.insert_hitbox(screen, HitboxBehavior::Normal),
@@ -961,6 +1039,12 @@ impl Terminal {
                 }
             });
             root = root.child(div().absolute().left(screen.left()).top(screen.top()).w(screen.size.width).h(screen.size.height).child(bar));
+            // Auto Approve waiting on a question: its countdown, in the
+            // pane's corner, with Stop.
+            if let Some(p) = tab.auto_approve.as_ref().and_then(|a| a.pending.as_ref()).filter(|p| !p.stopped) {
+                let left = p.due.saturating_duration_since(std::time::Instant::now()).as_secs_f32().ceil() as u32;
+                root = root.child(auto_approve_box(screen, shell, left, stop_to));
+            }
         }
         // Between rows, the divider and the head of the row under it drag
         // the rows' heights (the pointer shows it on the divider); clicked,
@@ -1095,6 +1179,13 @@ impl Terminal {
         if let Some(k) = tab.keep_going.as_mut() {
             k.since = std::time::Instant::now();
         }
+        // (And a question Auto Approve waits on is the person's now.)
+        let waiting = tab.auto_approve.as_ref().and_then(|a| a.pending.as_ref()).is_some_and(|p| !p.stopped).then_some(tab.session.id);
+        if let Some(shell) = waiting {
+            self.auto_approve_stop(cx, shell);
+        }
+        let Some(Win::Term(t)) = self.windows.get_mut(&id) else { return };
+        let tab = t.tab_mut();
         if view::key(&tab.session, key, true, e.is_held) {
             tab.mouse.hover = None;
             cx.stop_propagation();
@@ -1118,6 +1209,12 @@ impl Terminal {
         if let Some(k) = tab.keep_going.as_mut() {
             k.since = std::time::Instant::now();
         }
+        let waiting = tab.auto_approve.as_ref().and_then(|a| a.pending.as_ref()).is_some_and(|p| !p.stopped).then_some(tab.session.id);
+        if let Some(shell) = waiting {
+            self.auto_approve_stop(cx, shell);
+        }
+        let Some(Win::Term(t)) = self.windows.get_mut(&id) else { return };
+        let tab = t.tab_mut();
         view::text(&tab.session, text);
         tab.mouse.hover = None;
         cx.redraw(id);
@@ -1272,6 +1369,8 @@ impl Terminal {
         let Some(m) = self.metrics else { return };
         let Some(layout) = self.lay_out(id, window, &m) else { return };
         let least = least_pane(self.settings.side_tabs, &m);
+        // (For a group's menu: the windows its tabs could go to.)
+        let others = self.other_windows(id);
         let Some(Win::Term(t)) = self.windows.get_mut(&id) else { return };
         let row = match divider {
             Divider::Row(r) | Divider::Pane(r, _) => r,
@@ -1280,7 +1379,7 @@ impl Terminal {
             let group = layout.rows.get(row).and_then(|row| row.tabs.first()).and_then(|&i| t.tabs[i].group);
             let changed = t.sizes_changed();
             let menu = match group {
-                Some(g) => crate::group_menu(g, t),
+                Some(g) => crate::group_menu(g, t, crate::group_to_window_menu(Some(g), others)),
                 None => Menu::new("").item("Tile All Tabs", "tile-tabs").checked(t.tiled),
             };
             let menu = menu.item("Reset Pane Sizes", "tile-reset-heights").enabled(changed);
@@ -1358,6 +1457,8 @@ impl Terminal {
     }
 
     fn strip_did(&mut self, id: WindowId, action: StripAction, side: bool, window: &mut Window, cx: &mut Cx) {
+        // (For a group's menu: the windows its tabs could go to.)
+        let others = if matches!(action, StripAction::Group(..)) { self.other_windows(id) } else { Vec::new() };
         let Some(Win::Term(t)) = self.windows.get_mut(&id) else { return };
         match action {
             StripAction::Select(i) => {
@@ -1372,8 +1473,8 @@ impl Terminal {
             StripAction::Move { from, to, group } => {
                 let shown = t.tab().session.id;
                 let mut tab = t.tabs.remove(from);
-                if tab.group.is_some() && group.is_none() {
-                    // Dragged out of its group by the person.
+                if tab.group != group {
+                    // Dragged out of its group, or into one, by the person.
                     tab.own_grouping = true;
                 }
                 tab.group = group;
@@ -1398,7 +1499,7 @@ impl Terminal {
             }
             StripAction::Group(g, pos) => {
                 let tiling_rows = t.tiled && t.tabs.len() > 1 && t.tile_rows().len() > 1;
-                let mut menu = crate::group_menu(g, t);
+                let mut menu = crate::group_menu(g, t, crate::group_to_window_menu(Some(g), others));
                 if tiling_rows {
                     menu = menu.item("Reset Pane Sizes", "tile-reset-heights").enabled(t.sizes_changed());
                 }
@@ -1458,7 +1559,12 @@ impl Terminal {
                 // A tab with a coding agent in it: told "please continue"
                 // when it stops (Keep It Going).
                 let keep = t.tabs[i].keep_going.is_some();
-                let menu = if t.tabs[i].agent.is_some() || keep { menu.separator().item("Keep It Going", format!("tab-keep-going:{shell}")).checked(keep) } else { menu };
+                let approve = t.tabs[i].auto_approve.is_some();
+                let menu = if t.tabs[i].agent.is_some() || keep || approve {
+                    menu.separator().item("Keep It Going", format!("tab-keep-going:{shell}")).checked(keep).item("Auto Approve", format!("tab-auto-approve:{shell}")).checked(approve)
+                } else {
+                    menu
+                };
                 self.popup(id, menu, pos, window, cx);
             }
         }

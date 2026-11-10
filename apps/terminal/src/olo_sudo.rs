@@ -5,8 +5,9 @@
 //! reading /dev/null), so there sudo alone can only fail.
 //!
 //! When sudo needs a password, we ask Terminal for a window and have sudo
-//! check it (`sudo -S -v`: sudo's own PAM, so Touch ID first where PAM
-//! has it, then the password), passing on what sudo says and the answer.
+//! check it (`sudo -S -v`: sudo's own PAM, the face and Touch ID where PAM
+//! has them, and the password at the same time, `ask`), passing on what
+//! sudo says and the answer.
 //! Then the command runs on the credential sudo just cached: the
 //! terminal's, or with no terminal, its parent process's (so we stay the
 //! parent). Whatever we can't help with (no Terminal, `-S`, `-A`, `-k`,
@@ -25,7 +26,7 @@ use std::{
         process::{CommandExt, ExitStatusExt},
     },
     path::{Path, PathBuf},
-    process::{Child, Command, ExitCode, ExitStatus, Stdio},
+    process::{Child, ChildStdin, Command, ExitCode, ExitStatus, Stdio},
     sync::{
         atomic::{AtomicI32, Ordering},
         mpsc,
@@ -205,20 +206,20 @@ enum Outcome {
 }
 
 enum Event {
-    Info(String),
+    Info(usize, String),
     Error(String),
-    Prompt(String),
+    Prompt(usize, String),
     Reply(Reply),
     /// Terminal went away.
     Gone,
-    /// `sudo -v` is done: whether it said yes.
-    Exit(bool),
+    /// A `sudo -v` is done: whether it said yes.
+    Exit(usize, bool),
 }
 
 /// What sudo wrote to its error output, so far: whole lines are messages;
 /// what's left once it stops writing is a prompt (it waits for the
 /// answer).
-fn split(pending: &mut Vec<u8>) -> Vec<Event> {
+fn split(run: usize, pending: &mut Vec<u8>) -> Vec<Event> {
     let mut out = Vec::new();
     while let Some(i) = pending.iter().position(|&b| b == b'\n') {
         let line: Vec<u8> = pending.drain(..=i).collect();
@@ -230,7 +231,7 @@ fn split(pending: &mut Vec<u8>) -> Vec<Event> {
     if !pending.is_empty() {
         let s = String::from_utf8_lossy(pending).trim().to_owned();
         pending.clear();
-        out.push(Event::Prompt(if s == PROMPT.trim() { "Password:".to_owned() } else { s }));
+        out.push(Event::Prompt(run, if s == PROMPT.trim() { "Password:".to_owned() } else { s }));
     }
     out
 }
@@ -250,8 +251,62 @@ fn read_reply(r: &mut impl BufRead) -> Option<Reply> {
     }
 }
 
+/// Start a `sudo -S -v` checking (run `run`), what it says going to `tx`.
+fn check(sudo: &Path, run: usize, tx: &mpsc::Sender<Event>) -> Option<ChildStdin> {
+    let mut child = sudo_command(sudo).args(["-S", "-v", "-p", PROMPT]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().ok()?;
+    if run == 0 {
+        CHILD.store(child.id() as i32, Ordering::Relaxed);
+    }
+    let stdin = child.stdin.take();
+    let readers = [
+        child.stdout.take().map(|o| {
+            let tx = tx.clone();
+            std::thread::spawn(move || {
+                for l in BufReader::new(o).lines().map_while(Result::ok) {
+                    if !l.trim().is_empty() {
+                        let _ = tx.send(Event::Info(run, l.trim().to_owned()));
+                    }
+                }
+            })
+        }),
+        child.stderr.take().map(|mut e| {
+            let tx = tx.clone();
+            std::thread::spawn(move || {
+                let (mut pending, mut buf) = (Vec::new(), [0u8; 4096]);
+                while let Ok(n @ 1..) = e.read(&mut buf) {
+                    pending.extend_from_slice(&buf[..n]);
+                    for ev in split(run, &mut pending) {
+                        let _ = tx.send(ev);
+                    }
+                }
+            })
+        }),
+    ];
+    let tx = tx.clone();
+    std::thread::spawn(move || {
+        let ok = child.wait().is_ok_and(|s| s.success());
+        // Everything sudo said comes before its end.
+        for r in readers.into_iter().flatten() {
+            let _ = r.join();
+        }
+        let _ = tx.send(Event::Exit(run, ok));
+    });
+    stdin
+}
+
 /// Ask in a window: Terminal shows it while `sudo -v` checks. `quiet`
 /// (`-n`): only if approved without asking, never in a window.
+///
+/// Every way in at once: sudo's PAM goes one way at a time (the face,
+/// then the fingerprint, then the password), so a security key's
+/// password (or one typed) would wait until the fingerprint sensor gave
+/// up. Once the first check says it listens for a finger (pam_fprintd
+/// has the sensor), a second starts: its pam_fprintd finds the sensor
+/// taken and asks for the password at once. Answers go to whichever asks;
+/// the first to say yes counts. The other is left without input: a check
+/// at the password gives up at once; one still listening for the finger
+/// (root's: it can't be stopped) gives up when pam_fprintd does (30 s),
+/// or a finger in that time only validates sudo's credential again.
 fn ask(sudo: &Path, stream: UnixStream, args: &[OsString], quiet: bool) -> Outcome {
     let Ok(mut out) = stream.try_clone() else { return Outcome::Pass };
     let mut say = move |a: Ask| {
@@ -263,36 +318,13 @@ fn ask(sudo: &Path, stream: UnixStream, args: &[OsString], quiet: bool) -> Outco
     if read_reply(&mut replies) != Some(Reply::Go) {
         return Outcome::Pass;
     }
-    let spawned = sudo_command(sudo).args(["-S", "-v", "-p", PROMPT]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn();
-    let Ok(mut child) = spawned else { return Outcome::Pass };
-    CHILD.store(child.id() as i32, Ordering::Relaxed);
-    pass_signals_on();
-    let mut stdin = child.stdin.take();
     let (tx, rx) = mpsc::channel();
-    let readers = [
-        child.stdout.take().map(|o| {
-            let tx = tx.clone();
-            std::thread::spawn(move || {
-                for l in BufReader::new(o).lines().map_while(Result::ok) {
-                    if !l.trim().is_empty() {
-                        let _ = tx.send(Event::Info(l.trim().to_owned()));
-                    }
-                }
-            })
-        }),
-        child.stderr.take().map(|mut e| {
-            let tx = tx.clone();
-            std::thread::spawn(move || {
-                let (mut pending, mut buf) = (Vec::new(), [0u8; 4096]);
-                while let Ok(n @ 1..) = e.read(&mut buf) {
-                    pending.extend_from_slice(&buf[..n]);
-                    for ev in split(&mut pending) {
-                        let _ = tx.send(ev);
-                    }
-                }
-            })
-        }),
-    ];
+    // Each check's input, while it may still ask.
+    let mut stdins: Vec<Option<ChildStdin>> = vec![check(sudo, 0, &tx)];
+    if stdins[0].is_none() {
+        return Outcome::Pass;
+    }
+    pass_signals_on();
     {
         let tx = tx.clone();
         std::thread::spawn(move || {
@@ -311,26 +343,42 @@ fn ask(sudo: &Path, stream: UnixStream, args: &[OsString], quiet: bool) -> Outco
             }
         });
     }
-    std::thread::spawn(move || {
-        let ok = child.wait().is_ok_and(|s| s.success());
-        // Everything sudo said comes before its end.
-        for r in readers.into_iter().flatten() {
-            let _ = r.join();
-        }
-        let _ = tx.send(Event::Exit(ok));
-    });
+    // Which check's prompt an answer goes to; whether the first listens
+    // for a finger while the second asks; which have ended.
+    let (mut asking, mut finger, mut ended) = (0, false, [false; 2]);
     loop {
         let Ok(e) = rx.recv() else { return Outcome::No(1) };
         match e {
-            Event::Info(t) => say(Ask::Info(t)),
+            Event::Info(run, t) => {
+                let second = run == 0 && stdins.len() == 1 && olo_system::fingerprint::listening(&t);
+                say(Ask::Info(t));
+                if second {
+                    stdins.push(check(sudo, 1, &tx));
+                    if stdins[1].is_some() {
+                        finger = true;
+                        say(Ask::Finger(true));
+                    }
+                }
+            }
             Event::Error(t) => {
                 eprintln!("{t}");
                 say(Ask::Error(t));
             }
-            Event::Prompt(t) => say(Ask::Prompt(t)),
+            // The first is past the finger and asks itself: the second
+            // asks instead, so the first goes without.
+            Event::Prompt(0, _) if stdins.len() > 1 => {
+                drop(stdins[0].take());
+                if std::mem::take(&mut finger) {
+                    say(Ask::Finger(false));
+                }
+            }
+            Event::Prompt(run, t) => {
+                asking = run;
+                say(Ask::Prompt(t));
+            }
             Event::Reply(Reply::Answer(mut a)) => {
                 a.push('\n');
-                if let Some(i) = stdin.as_mut() {
+                if let Some(i) = stdins.get_mut(asking).and_then(Option::as_mut) {
                     let _ = i.write_all(a.as_bytes());
                 }
                 // SAFETY: zero bytes keep the string valid UTF-8.
@@ -339,7 +387,7 @@ fn ask(sudo: &Path, stream: UnixStream, args: &[OsString], quiet: bool) -> Outco
             Event::Reply(Reply::Cancel) | Event::Gone => {
                 // sudo can't be stopped (it is root's now), but with no
                 // answer coming it gives up.
-                drop(stdin.take());
+                stdins.clear();
                 // Plain enough for an agent to tell the person said no.
                 if matches!(e, Event::Gone) {
                     eprintln!("sudo: not run: Terminal closed before a password was given");
@@ -349,9 +397,25 @@ fn ask(sudo: &Path, stream: UnixStream, args: &[OsString], quiet: bool) -> Outco
                 return Outcome::No(1);
             }
             Event::Reply(_) => {}
-            Event::Exit(ok) => {
-                say(Ask::Done(ok));
-                return if ok { Outcome::Yes } else { Outcome::No(1) };
+            Event::Exit(_, true) => {
+                stdins.clear();
+                say(Ask::Done(true));
+                return Outcome::Yes;
+            }
+            Event::Exit(run, false) => {
+                ended[run.min(1)] = true;
+                // The first's finger is over (it matched nothing, or the
+                // sensor gave up); the second asks on.
+                if run == 0 && stdins.len() > 1 && !ended[1] {
+                    drop(stdins[0].take());
+                    if std::mem::take(&mut finger) {
+                        say(Ask::Finger(false));
+                    }
+                    continue;
+                }
+                stdins.clear();
+                say(Ask::Done(false));
+                return Outcome::No(1);
             }
         }
     }
@@ -398,15 +462,146 @@ mod tests {
         assert!(!through(&["--", "-n"]));
     }
 
+    /// A stand-in for `sudo -S -v`, as sudo's PAM goes with Touch ID:
+    /// the sensor (a folder in `$OLO_TEST_DIR`) free, it takes it, says
+    /// so and listens (a finger: `finger` there) for `$OLO_TEST_LISTEN`
+    /// tenths of a second, then the password; taken, or no finger
+    /// enrolled (`$OLO_TEST_NO_FINGER`), the password at once ("right"),
+    /// three tries.
+    const STAND_IN: &str = r#"#!/bin/bash
+D="$OLO_TEST_DIR"
+if [ -z "$OLO_TEST_NO_FINGER" ] && mkdir "$D/sensor" 2>/dev/null; then
+  echo "Place your finger on the fingerprint reader"
+  for i in $(seq 1 "$OLO_TEST_LISTEN"); do
+    if [ -e "$D/finger" ]; then rmdir "$D/sensor"; exit 0; fi
+    sleep 0.1
+  done
+  rmdir "$D/sensor"
+fi
+for try in 1 2 3; do
+  printf '%s' "$4" >&2
+  read -r pw || exit 1
+  [ "$pw" = right ] && exit 0
+  echo "Sorry, try again." >&2
+done
+exit 1
+"#;
+
+    /// Terminal's side of a conversation, as a test drives it.
+    struct Window {
+        lines: std::io::Lines<BufReader<UnixStream>>,
+        out: UnixStream,
+        dir: PathBuf,
+        asked: std::thread::JoinHandle<bool>,
+    }
+
+    impl Window {
+        fn open(name: &str, env: &[(&str, &str)]) -> Window {
+            let dir = std::env::temp_dir().join(format!("olo-sudo-test-{name}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            let sudo = dir.join("sudo");
+            std::fs::write(&sudo, STAND_IN).unwrap();
+            std::fs::set_permissions(&sudo, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+            // (The stand-in reads these; tests in one process share them,
+            // so each sets its own before its checks start.)
+            // SAFETY: the tests that set them run one at a time (TESTS).
+            unsafe {
+                std::env::set_var("OLO_TEST_DIR", &dir);
+                std::env::set_var("OLO_TEST_LISTEN", "40");
+                std::env::remove_var("OLO_TEST_NO_FINGER");
+                for (k, v) in env {
+                    std::env::set_var(k, v);
+                }
+            }
+            let (ours, theirs) = UnixStream::pair().unwrap();
+            let asked = std::thread::spawn(move || matches!(ask(&sudo, theirs, &[OsString::from("true")], false), Outcome::Yes));
+            let mut w = Window { lines: BufReader::new(ours.try_clone().unwrap()).lines(), out: ours, dir, asked };
+            assert!(matches!(w.next(), Ask::Begin { .. }));
+            w.reply(Reply::Go);
+            w
+        }
+
+        fn next(&mut self) -> Ask {
+            serde_json::from_str(&self.lines.next().unwrap().unwrap()).unwrap()
+        }
+
+        fn reply(&mut self, r: Reply) {
+            self.out.write_all(&sudo_wire::line(&r)).unwrap();
+        }
+
+        /// What it says until `until` matches (that included).
+        fn until(&mut self, until: impl Fn(&Ask) -> bool) -> Vec<Ask> {
+            let mut seen = Vec::new();
+            loop {
+                let a = self.next();
+                let done = until(&a);
+                seen.push(a);
+                if done {
+                    return seen;
+                }
+            }
+        }
+
+        fn finish(self) -> bool {
+            let ok = self.asked.join().unwrap();
+            // The first check, left listening, gives up on its own.
+            std::thread::sleep(std::time::Duration::from_millis(4500));
+            let _ = std::fs::remove_dir_all(&self.dir);
+            ok
+        }
+    }
+
+    /// The stand-in's environment is the process's: one test at a time.
+    static TESTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn every_way_in_at_once() {
+        let _one = TESTS.lock().unwrap_or_else(|e| e.into_inner());
+        // A finger: the first check, while the second asks for the
+        // password.
+        let mut w = Window::open("finger", &[]);
+        let said = w.until(|a| matches!(a, Ask::Prompt(_)));
+        assert_eq!(said, [Ask::Info("Place your finger on the fingerprint reader".into()), Ask::Finger(true), Ask::Prompt("Password:".into())]);
+        std::fs::write(w.dir.join("finger"), "").unwrap();
+        assert_eq!(w.next(), Ask::Done(true));
+        assert!(w.finish());
+
+        // The password (a security key's, or typed) while the finger is
+        // listened for: wrong, then right.
+        let mut w = Window::open("password", &[]);
+        w.until(|a| matches!(a, Ask::Prompt(_)));
+        w.reply(Reply::Answer("wrong".into()));
+        assert_eq!(w.until(|a| matches!(a, Ask::Prompt(_))), [Ask::Error("Sorry, try again.".into()), Ask::Prompt("Password:".into())]);
+        w.reply(Reply::Answer("right".into()));
+        assert_eq!(w.next(), Ask::Done(true));
+        assert!(w.finish());
+
+        // The finger gives up: the second asks on, alone.
+        let mut w = Window::open("gives-up", &[("OLO_TEST_LISTEN", "5")]);
+        w.until(|a| matches!(a, Ask::Prompt(_)));
+        assert_eq!(w.next(), Ask::Finger(false));
+        w.reply(Reply::Answer("right".into()));
+        assert_eq!(w.next(), Ask::Done(true));
+        assert!(w.finish());
+
+        // No finger enrolled: one check, the password at once.
+        let mut w = Window::open("no-finger", &[("OLO_TEST_NO_FINGER", "1")]);
+        assert_eq!(w.next(), Ask::Prompt("Password:".into()));
+        w.reply(Reply::Answer("right".into()));
+        assert_eq!(w.next(), Ask::Done(true));
+        assert!(w.finish());
+    }
+
     #[test]
     fn prompts_and_messages() {
         let mut p = b"Place your finger\nSorry, try again.\n[olo-sudo] Password: ".to_vec();
-        let ev = split(&mut p);
-        assert!(matches!(&ev[..], [Event::Error(a), Event::Error(b), Event::Prompt(c)] if a == "Place your finger" && b == "Sorry, try again." && c == "Password:"));
+        let ev = split(0, &mut p);
+        assert!(matches!(&ev[..], [Event::Error(a), Event::Error(b), Event::Prompt(0, c)] if a == "Place your finger" && b == "Sorry, try again." && c == "Password:"));
         assert!(p.is_empty());
         let mut p = b"Verification code: ".to_vec();
-        assert!(matches!(&split(&mut p)[..], [Event::Prompt(c)] if c == "Verification code:"));
+        assert!(matches!(&split(1, &mut p)[..], [Event::Prompt(1, c)] if c == "Verification code:"));
         let mut p = b"\n".to_vec();
-        assert!(split(&mut p).is_empty());
+        assert!(split(0, &mut p).is_empty());
     }
 }

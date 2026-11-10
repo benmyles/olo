@@ -1,12 +1,13 @@
 //! Windows: the windowing mode a workspace has until one is chosen for it
-//! in Deskbar's tray (`TilingSettings::default_mode`), and the space Olo
+//! in Deskbar's tray (`TilingSettings::default_mode`), how auto-tiling
+//! lays windows out (`TilingSettings::layout`), and the space Olo
 //! leaves around the windows it arranges (`Settings::tiling`): a margin at
 //! the display's edges and a gap between windows, kept by tiling, zooming,
 //! Tile All, Smart Tile, cascading and fanning out. app_server fits tiled
 //! and zoomed windows to it as it changes, so the sliders move them live;
 //! the miniature shows the main display with three windows tiled.
 
-use olo_protocol::{OutputInfo, Settings, WindowingMode};
+use olo_protocol::{OutputInfo, Settings, TilingLayout, WindowingMode};
 use olo_ui::{
     gpui::{Bounds, ContentMask, Pixels, SharedString, Styled as _, Window, canvas, point, px, rgb, size},
     metrics::DESKBAR_WIDTH,
@@ -41,6 +42,10 @@ pub fn ui(ui: &mut Ui, outputs: &[OutputInfo]) {
         };
         // Two lines for each mode, so nothing below moves as it changes.
         ui.note(format!("{what} Choose a workspace's own from Deskbar's tray."));
+        let layouts: Vec<SharedString> = TilingLayout::ALL.iter().map(|l| SharedString::from(l.title())).collect();
+        let i = TilingLayout::ALL.iter().position(|l| *l == s.tiling.layout).unwrap_or(0);
+        ui.menu("tiling-layout", layouts, i, |f| f.label("Auto-tiling layout:"), |s, i| s.tiling.layout = TilingLayout::ALL[i]);
+        ui.note(s.tiling.layout.detail());
     });
     ui.bbox("Space Around Arranged Windows", |ui| {
         let margin = s.tiling.margin as f32;

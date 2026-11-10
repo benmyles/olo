@@ -28,6 +28,14 @@ pub fn init(proxy: Proxy) {
     let _ = WAKE.set(proxy);
 }
 
+/// Draw the windows again: a picture is ready (a thumbnail, an
+/// AppImage's icon).
+pub fn wake() {
+    if let Some(p) = WAKE.get() {
+        p.send(crate::Msg::Thumb);
+    }
+}
+
 fn worker() -> &'static Mutex<mpsc::Sender<Key>> {
     static TX: OnceLock<Mutex<mpsc::Sender<Key>>> = OnceLock::new();
     TX.get_or_init(|| {
@@ -38,9 +46,7 @@ fn worker() -> &'static Mutex<mpsc::Sender<Key>> {
                 if let Ok(mut c) = CACHE.lock() {
                     c.get_or_insert_with(HashMap::new).insert(key, Slot::Ready(img));
                 }
-                if let Some(p) = WAKE.get() {
-                    p.send(crate::Msg::Thumb);
-                }
+                wake();
             }
         });
         Mutex::new(tx)

@@ -134,7 +134,7 @@ impl Subscriber {
         match &self.kinds {
             Some(k) => k.contains(&kind),
             // (Frames only by name: they come as often as frames do.)
-            None => !matches!(kind, EventKind::Painted | EventKind::TouchContacts),
+            None => !matches!(kind, EventKind::Painted | EventKind::TouchContacts | EventKind::PowerButton),
         }
     }
 }
@@ -415,6 +415,13 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
                 Reply::Ok
             }
+            Request::SetOnTop { id, on } => match self.window_by_id(id) {
+                Some(w) => {
+                    self.set_on_top(&w, on);
+                    Reply::Ok
+                }
+                None => not_found(),
+            },
             Request::SendToBack { id } => match self.window_by_id(id) {
                 Some(w) => {
                     self.send_to_back(&w);
@@ -439,6 +446,13 @@ impl<B: Backend + 'static> AnvilState<B> {
                 Some(_) => Reply::Error { message: format!("window {id} isn't in a group") },
                 None => not_found(),
             },
+            Request::GroupApp { app_id, grouped } => {
+                if self.group_app(&app_id, grouped) {
+                    Reply::Ok
+                } else {
+                    Reply::Error { message: format!("{app_id} has no windows") }
+                }
+            }
             Request::MoveTab { id, index } => match self.window_by_id(id) {
                 Some(w) if self.move_tab(&w, index as usize) => Reply::Ok,
                 Some(_) => Reply::Error { message: format!("window {id} isn't in a group") },
@@ -515,6 +529,15 @@ impl<B: Backend + 'static> AnvilState<B> {
                 let ws = workspace.or_else(|| o.clone().or_else(|| self.active_output()).map(|o| self.showing(&o))).unwrap_or(0);
                 self.set_windowing_mode(mode, workspace, o);
                 Reply::WindowingMode { workspace: ws, displays: self.windowing_mode_infos(workspace) }
+            }
+            Request::SetTilingLayout { layout } => {
+                if self.settings.tiling.layout != layout {
+                    info!(layout = layout.id(), "tiling layout");
+                    self.settings.tiling.layout = layout;
+                    self.settings_changed();
+                    self.auto.changed();
+                }
+                Reply::Ok
             }
             Request::AutoTiling { workspace } => Reply::AutoTiling { workspace: workspace.unwrap_or_else(|| self.workspace()), displays: self.auto_tiling_infos(workspace) },
             Request::SetAutoTiling { on, workspace, output } => {
@@ -751,6 +774,14 @@ impl<B: Backend + 'static> AnvilState<B> {
             Request::ConfigureOutput { name, config } => match self.configure_output(&name, config) {
                 Ok(()) => Reply::Ok,
                 Err(message) => Reply::Error { message },
+            },
+            Request::TileWith { id, with } => match (self.window_by_id(id), self.window_by_id(with)) {
+                (Some(w), Some(other)) if id != with => {
+                    self.tile_with(&w, &other);
+                    Reply::Ok
+                }
+                (Some(_), Some(_)) => Reply::Error { message: "a window can't be tiled with itself".into() },
+                _ => Reply::Error { message: "no such window".into() },
             },
             Request::RunShortcut { id, window } => match olo_protocol::shortcuts::by_id(&id) {
                 Some(info) => {

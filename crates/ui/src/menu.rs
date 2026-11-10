@@ -183,6 +183,29 @@ impl Menu {
         m.item("New Agent Screen", format!("{prefix}{}", olo_kit_base::moving::NEW_SCREEN_COMMAND))
     }
 
+    /// Move to Window ▸ (titled `title`): every tabbed app's tab, and tab
+    /// group, offers its app's other windows by their titles, in
+    /// alphabetical order, each item's command what `others` gives with
+    /// it; with none, "No Other Windows", greyed. Moved there, the tab (or
+    /// the group's tabs) goes in after the window's own and shows; a
+    /// window whose last tab went closes (Ben, 2026-11-08: "a pattern and
+    /// works for all tabbed olo apps … if that leaves no more tabs in the
+    /// origin window then that window should close"). Terminal's tabs and
+    /// tab groups, and a window's own tab (the window menu: into that
+    /// window's group) use it.
+    pub fn move_to_window(title: &str, others: impl IntoIterator<Item = (String, String)>) -> Menu {
+        let mut others: Vec<(String, String)> = others.into_iter().collect();
+        others.sort_by(|a, b| olo_kit_base::files::natural_cmp(&a.0, &b.0));
+        let mut m = Menu::new(title);
+        if others.is_empty() {
+            return m.item("No Other Windows", "none").enabled(false);
+        }
+        for (label, command) in others {
+            m = m.item(label, command);
+        }
+        m
+    }
+
     /// Its items in alphabetical order by what they say (natural order,
     /// case aside: "Item 2" before "item 10"), each run between
     /// separators on its own, and its submenus' the same, all the way
@@ -1411,6 +1434,25 @@ impl RenderOnce for MenuBar {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every tabbed app's Move to Window ▸: the other windows by title in
+    /// natural order, each its command; none, a greyed line.
+    #[test]
+    fn move_to_window_lists_the_others() {
+        let m = Menu::move_to_window("Move to Window", [("Notes 10".to_owned(), "to:10".to_owned()), ("notes 2".to_owned(), "to:2".to_owned()), ("Build".to_owned(), "to:b".to_owned())]);
+        assert_eq!(m.title, "Move to Window");
+        let items: Vec<(String, String, bool)> = m
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                MenuItem::Action(a) => Some((a.label.to_string(), a.command.clone(), a.enabled)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(items, [("Build".into(), "to:b".into(), true), ("notes 2".into(), "to:2".into(), true), ("Notes 10".into(), "to:10".into(), true)]);
+        let none = Menu::move_to_window("Move Group to Window", std::iter::empty());
+        assert!(matches!(&none.items[..], [MenuItem::Action(a)] if a.label.to_string() == "No Other Windows" && !a.enabled));
+    }
 
     #[test]
     fn sorted_by_what_they_say_within_separators_and_down() {

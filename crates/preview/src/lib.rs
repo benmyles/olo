@@ -16,6 +16,7 @@ pub mod load;
 pub mod media;
 pub mod opus;
 pub mod pdf;
+pub mod stretch;
 pub mod table;
 pub mod text;
 #[cfg(feature = "gpui")]

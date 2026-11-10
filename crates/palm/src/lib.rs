@@ -1004,8 +1004,8 @@ mod tests {
 mod captures {
     use super::*;
 
-    /// Every run kept, as the tracker follows contacts now
-    /// ([`Run::on_the_glass`]), by name, oldest first: from
+    /// Every run kept on a MacBook's pad, as the tracker follows contacts
+    /// now ([`Run::on_the_glass`]), by name, oldest first: from
     /// `OLO_PALM_CAPTURES`, or where the trainer keeps them (and where it
     /// kept them until 2026-11-03, `olo/olo/palm`).
     pub(super) fn runs() -> Vec<(String, Vec<Labelled>)> {
@@ -1014,12 +1014,27 @@ mod captures {
             Some(d) => vec![std::path::PathBuf::from(d)],
             None => vec![home.join(".local/state/olo/palm"), home.join(".local/state/olo/olo/palm")],
         };
-        let mut out: Vec<(String, Vec<Labelled>)> = dirs
+        let all: Vec<(String, Run)> = dirs
             .iter()
             .flat_map(|d| std::fs::read_dir(d).into_iter().flatten().flatten())
             .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
-            .filter_map(|e| Some((e.file_name().to_string_lossy().into_owned(), Run::parse(&std::fs::read(e.path()).ok()?)?.on_the_glass())))
+            .filter_map(|e| Some((e.file_name().to_string_lossy().into_owned(), Run::parse(&std::fs::read(e.path()).ok()?)?)))
             .collect();
+        // Only a MacBook's: these are the MacBook's model's runs, and
+        // another pad's contacts have that pad's features (a ThinkPad's
+        // run judged by the MacBook's model lost every finger), its model
+        // made and judged by kind.rs's.
+        let (mut out, mut other) = (Vec::new(), 0);
+        for (name, run) in all {
+            if Kind::from_id(&run.kind) == Kind::MacBook {
+                out.push((name, run.on_the_glass()));
+            } else {
+                other += 1;
+            }
+        }
+        if other > 0 {
+            println!("({other} runs on other pads left out: kind.rs's tests are theirs)");
+        }
         out.sort_by(|a, b| a.0.cmp(&b.0));
         out
     }
@@ -1095,6 +1110,7 @@ mod captures {
     #[ignore]
     fn what_the_runs_dont_show() {
         let runs = runs();
+        assert!(!runs.is_empty(), "no captures: OLO_PALM_CAPTURES=dir");
         let all: Vec<Labelled> = runs.iter().flat_map(|(_, r)| r.iter().cloned()).collect();
         let fingers: Vec<&Labelled> = all.iter().filter(|c| !c.palm).collect();
         let palms: Vec<&Labelled> = all.iter().filter(|c| c.palm).collect();

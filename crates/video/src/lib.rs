@@ -11,6 +11,7 @@ pub mod export;
 pub mod gif;
 pub mod nvdec;
 pub mod nvenc;
+pub mod opus;
 pub mod read;
 pub use olo_vaapi as vaapi;
 pub mod trim;

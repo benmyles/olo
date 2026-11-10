@@ -9,12 +9,14 @@ mod bubble;
 mod conv;
 mod list;
 mod pics;
+mod stickers;
 mod store;
+mod voice;
 mod when;
 
 use std::{
     cell::Cell,
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     path::PathBuf,
     rc::Rc,
     time::{Duration, Instant},
@@ -27,8 +29,8 @@ use olo_ui::{
     file_panel::{self, FilePanel, PanelResult},
     gpui::{
         AnyElement, AnyView, App, AppContext as _, Bounds, ClipboardItem, Context, CursorStyle, Div, Entity, EntityId, ExternalPaths, FocusHandle, FontWeight, Hitbox, HitboxBehavior,
-        InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, Render, ScrollHandle, SharedString, Stateful,
-        StatefulInteractiveElement as _, StyleRefinement, Styled as _, Task, WeakEntity, Window, WindowHandle, canvas, div, point, px, size, white,
+        InteractiveElement as _, IntoElement, KeyDownEvent, MouseMoveEvent, ParentElement as _, Pixels, Point, Render, ScrollHandle, SharedString, Stateful, StatefulInteractiveElement as _,
+        StyleRefinement, Styled as _, Task, WeakEntity, Window, WindowHandle, canvas, div, point, px, size, white,
     },
     instance::{self, Launch},
     metrics as m,
@@ -51,6 +53,9 @@ struct Saved {
     topic: Option<MsgId>,
     folder: Option<i32>,
     list_width: Option<f32>,
+    /// The chat list put away (View ▸ Hide Chat List).
+    #[serde(default)]
+    list_hidden: bool,
 }
 
 /// The Deskbar clock's style (24-hour or not).
@@ -61,12 +66,15 @@ pub struct Tg {
     backend: Backend,
     store: store::Store,
     pics: pics::Pics,
+    /// Animated stickers playing.
+    stickers: stickers::Stickers,
     status: Status,
     me: Option<Me>,
     view: list::View,
     found: list::Found,
     conv: Option<conv::Conv>,
-    list_width: f32,
+    /// The chat list beside the conversation: its width, or put away.
+    side: Entity<olo_ui::widgets::SidePane>,
     h24: bool,
     notes: Notifier,
     /// Each chat's notification, updated as more come.
@@ -82,6 +90,13 @@ pub struct Tg {
     /// Play or open this once it's downloaded.
     when_fetched: Option<(Pic, bool)>,
     next_local: u64,
+    /// A voice message being recorded, and the last one's token.
+    pub voice: Option<Recording>,
+    voice_token: u64,
+    /// Voice messages ended before the microphone opened (sent or not),
+    /// and those finishing to be sent: where to.
+    voice_ended: HashMap<u64, bool>,
+    voice_to: HashMap<u64, (ChatId, Option<MsgId>, Option<MsgId>)>,
     focused: bool,
     /// What's typed in each chat's field, kept when switching.
     drafts: HashMap<ChatId, String>,
@@ -109,8 +124,6 @@ pub struct Tg {
     chosen_from: Option<ChatId>,
     list_hover: Option<usize>,
     list_top: Rc<Cell<f32>>,
-    /// The divider being dragged: where it was pressed and the width then.
-    grip: Option<(f32, f32)>,
     /// A redraw due (a flash going out, typing gone quiet, a voice
     /// message's progress).
     wake: Due,
@@ -126,6 +139,28 @@ pub struct Tg {
     /// Quitting, once they're sent or by then.
     quitting: Option<Instant>,
 }
+
+/// A voice message being recorded (`voice.rs`), in the chat open.
+pub struct Recording {
+    pub token: u64,
+    chat: ChatId,
+    topic: Option<MsgId>,
+    pub since: Instant,
+    /// Held down: let go on the button it's sent, away from it thrown
+    /// away. Not held (a click started it, or Chat ▸ Record Voice
+    /// Message): Send or Cancel ends it.
+    pub held: bool,
+    rec: Option<voice::Recorder>,
+    /// The last levels (0–1), newest last, and the seconds so far.
+    pub levels: VecDeque<f32>,
+    pub seconds: f32,
+    typing_sent: f64,
+}
+
+/// Levels the composer keeps for its bars.
+pub const LEVELS: usize = 120;
+/// Let go sooner than this, the press was a click: it goes on recording.
+const HOLD: Duration = Duration::from_millis(300);
 
 /// How long quitting waits for the changes still on their way (they're
 /// kept and sent next time if it gives up).
@@ -274,6 +309,10 @@ impl Tg {
     }
 
     fn open_chat(&mut self, chat: ChatId, topic: Option<MsgId>, cx: &mut Context<Self>) {
+        // A voice message being recorded is for the chat it was begun in.
+        if self.voice.as_ref().is_some_and(|v| v.chat != chat || v.topic != topic) {
+            self.voice_end(false, cx);
+        }
         // Keep what was being written in the chat we leave.
         let text = self.field.read(cx).text().to_owned();
         if let Some(mut c) = self.conv.take() {
@@ -360,6 +399,167 @@ impl Tg {
         self.store.pending(pending);
         self.field.update(cx, |f, cx| f.set_text("", cx));
         cx.notify();
+    }
+
+    /// After `wait`, the frame due for an animated sticker (`stickers.rs`).
+    pub fn sticker_timer(&mut self, (key, wait): (stickers::Key, Duration), cx: &mut Context<Self>) {
+        cx.spawn(async move |tg, cx| {
+            cx.background_executor().timer(wait).await;
+            let _ = tg.update(cx, |tg, cx| {
+                tg.stickers.ask(key, Instant::now());
+                for due in tg.stickers.take_due() {
+                    tg.sticker_timer(due, cx);
+                }
+            });
+        })
+        .detach();
+    }
+
+    /// Redraw the composer alone (a voice message's level, ten a second).
+    fn redraw_composer(&self, cx: &mut Context<Self>) {
+        if let Some(p) = self.pane(Kind::Composer) {
+            let app: &mut App = cx;
+            app.notify(p);
+        }
+    }
+
+    /// Start recording a voice message in the chat open: `held` while
+    /// the button is held down, else until Send or Cancel.
+    pub fn voice_start(&mut self, held: bool, cx: &mut Context<Self>) {
+        let Some(c) = &self.conv else { return };
+        if self.voice.is_some() || c.edit.is_some() {
+            return;
+        }
+        self.voice_token += 1;
+        let token = self.voice_token;
+        // (What's playing would be recorded too.)
+        self.player = None;
+        self.backend.send(Cmd::Typing { chat: c.chat, topic: c.topic, doing: Doing::RecordingVoice });
+        self.voice = Some(Recording { token, chat: c.chat, topic: c.topic, since: Instant::now(), held, rec: None, levels: VecDeque::new(), seconds: 0.0, typing_sent: now() });
+        // The field keeps the keyboard (pressing the button took it), for
+        // Escape.
+        if let Some(c) = &mut self.conv {
+            c.focus_field = true;
+        }
+        voice::start(token, olo_ui::proxy(cx));
+        cx.notify();
+    }
+
+    /// The button let go, over it or not.
+    pub fn voice_release(&mut self, over: bool, cx: &mut Context<Self>) {
+        let Some(v) = &mut self.voice else { return };
+        if !v.held {
+            return;
+        }
+        if v.since.elapsed() < HOLD {
+            // A click: it goes on till Send or Cancel.
+            v.held = false;
+            return self.redraw_composer(cx);
+        }
+        self.voice_end(over, cx);
+    }
+
+    /// End the recording: sent, or thrown away.
+    pub fn voice_end(&mut self, send: bool, cx: &mut Context<Self>) {
+        let Some(mut v) = self.voice.take() else { return };
+        if let Some(c) = &mut self.conv {
+            c.focus_field = true;
+        }
+        if send {
+            let reply = self.conv.as_mut().filter(|c| c.chat == v.chat).and_then(|c| c.reply.take());
+            self.voice_to.insert(v.token, (v.chat, v.topic, reply));
+        } else {
+            self.backend.send(Cmd::Typing { chat: v.chat, topic: v.topic, doing: Doing::Stopped });
+        }
+        match v.rec.take() {
+            Some(rec) if send => rec.finish(v.token, olo_ui::proxy(cx)),
+            Some(rec) => rec.cancel(),
+            // Still opening the microphone: done once it's open.
+            None => _ = self.voice_ended.insert(v.token, send),
+        }
+        cx.notify();
+    }
+
+    fn voice_msg(&mut self, msg: voice::Msg, cx: &mut Context<Self>) {
+        match msg {
+            voice::Msg::Started(token, Ok(rec)) => {
+                if let Some(v) = self.voice.as_mut().filter(|v| v.token == token) {
+                    v.rec = Some(rec);
+                } else if let Some(send) = self.voice_ended.remove(&token) {
+                    if send { rec.finish(token, olo_ui::proxy(cx)) } else { rec.cancel() }
+                } else {
+                    rec.cancel();
+                }
+            }
+            voice::Msg::Started(token, Err(why)) => {
+                self.voice_ended.remove(&token);
+                self.voice_to.remove(&token);
+                if let Some(v) = self.voice.take_if(|v| v.token == token) {
+                    self.backend.send(Cmd::Typing { chat: v.chat, topic: v.topic, doing: Doing::Stopped });
+                    self.banner.say(format!("The microphone can’t be recorded ({why})."), Duration::from_secs(8));
+                    cx.notify();
+                }
+            }
+            voice::Msg::Level(token, level, seconds) => {
+                let Some(v) = self.voice.as_mut().filter(|v| v.token == token) else { return };
+                v.levels.push_back(level);
+                while v.levels.len() > LEVELS {
+                    v.levels.pop_front();
+                }
+                v.seconds = seconds;
+                // Telegram's "recording a voice message", kept up.
+                if now() - v.typing_sent > 5.0 {
+                    v.typing_sent = now();
+                    self.backend.send(Cmd::Typing { chat: v.chat, topic: v.topic, doing: Doing::RecordingVoice });
+                }
+                if seconds >= voice::LONGEST {
+                    return self.voice_end(true, cx);
+                }
+                self.redraw_composer(cx);
+            }
+            voice::Msg::Done(token, result) => {
+                let Some((chat, topic, reply)) = self.voice_to.remove(&token) else { return };
+                let note = match result {
+                    Ok(note) if note.seconds >= voice::SHORTEST => note,
+                    Ok(note) => {
+                        let _ = std::fs::remove_file(&note.path);
+                        self.backend.send(Cmd::Typing { chat, topic, doing: Doing::Stopped });
+                        self.banner.say("Hold the microphone button down while you speak, or click it to record until you click Send.".to_owned(), Duration::from_secs(6));
+                        return cx.notify();
+                    }
+                    Err(why) => {
+                        self.banner.say(format!("The voice message couldn’t be recorded ({why})."), Duration::from_secs(8));
+                        return cx.notify();
+                    }
+                };
+                self.next_local += 1;
+                let local = self.next_local;
+                let size = std::fs::metadata(&note.path).map_or(0, |m| m.len());
+                let reply_to = reply.and_then(|r| {
+                    let m = self.store.threads.get(&(chat, None))?.msgs.get(&r)?;
+                    Some(olo_tg::model::ReplyTo { id: r, from: m.from.as_ref().map(|f| f.name.clone()), text: Some(m.summary()) })
+                });
+                let pending = Message {
+                    id: i32::MAX,
+                    chat,
+                    from: self.me.as_ref().map(|m| olo_tg::model::Sender { id: m.id, name: "You".into(), photo: None }),
+                    date: when::now(),
+                    out: true,
+                    reply_to,
+                    media: Some(Media::Voice { duration: note.seconds, waveform: note.waveform.clone(), size }),
+                    topic,
+                    pending: Some((local, Pending::Sending)),
+                    ..Message::default()
+                };
+                let voice = Some((note.path, note.seconds, note.waveform));
+                self.backend.send(Cmd::Send(Outgoing { chat, topic, reply_to: reply, voice, local, ..Outgoing::default() }));
+                if let Some(c) = self.conv.as_mut().filter(|c| c.chat == chat) {
+                    c.at_bottom = true;
+                }
+                self.store.pending(pending);
+                cx.notify();
+            }
+        }
     }
 
     fn notify_new(&mut self, m: &Message) {
@@ -698,8 +898,61 @@ impl Tg {
     /// not, read, muted or not, deleted (asked first).
     fn chats_command(&mut self, cmd: &str, cx: &mut Context<Self>) {
         let chats = self.chosen_chats();
-        if chats.is_empty() {
+        if self.chats_do(chats, cmd, cx) {
+            self.chosen.clear();
+            cx.notify();
+        }
+    }
+
+    /// The chats of `group` (all of them, as its view shows them).
+    pub fn group_chats(&self, group: list::Group) -> Vec<Chat> {
+        list::shown(&self.store, &group.view()).iter().filter_map(|id| self.store.chats.get(id).cloned()).collect()
+    }
+
+    /// `group`'s menu (a right-click on its row or chip): what's done to
+    /// all its chats, titled `title` (a submenu's), its commands after
+    /// `prefix`.
+    pub fn group_menu(&self, group: list::Group, title: &str, prefix: &str) -> Menu {
+        let chats = self.group_chats(group);
+        let mut menu = Menu::new(title).item("Mark All as Read", format!("{prefix}chats:read")).enabled(chats.iter().any(|c| c.unread > 0 || c.marked));
+        if chats.iter().any(|c| !c.muted) {
+            menu = menu.item("Mute All", format!("{prefix}chats:mute"));
+        }
+        if chats.iter().any(|c| c.muted) {
+            menu = menu.item("Unmute All", format!("{prefix}chats:unmute"));
+        }
+        match group {
+            list::Group::Archive => menu.separator().item("Unarchive All…", format!("{prefix}group:unarchive")).enabled(!chats.is_empty()),
+            list::Group::Unknown => menu.separator().item("Archive All", format!("{prefix}chats:archive")).enabled(!chats.is_empty()),
+            list::Group::Folder(_) => menu,
+        }
+    }
+
+    /// `cmd` from `group`'s menu, done to all its chats (Unarchive All
+    /// asks first, saying how many).
+    pub fn group_command(&mut self, group: list::Group, cmd: &str, cx: &mut Context<Self>) {
+        let chats = self.group_chats(group);
+        if cmd == "group:unarchive" {
+            let n = chats.len();
+            let message = match n {
+                1 => "Move the archived chat back to your chat list?".to_owned(),
+                2 => "Move both archived chats back to your chat list?".to_owned(),
+                n => format!("Move all {n} archived chats back to your chat list?"),
+            };
+            let cmds = chats.iter().map(|c| Cmd::Archive { chat: c.id, on: false }).collect();
+            self.ask("Unarchive All Chats", message, "Unarchive", cmds, cx);
             return;
+        }
+        eprintln!("telegram: {cmd} on {group:?}: {} chats", chats.len());
+        self.chats_do(chats, cmd, cx);
+        cx.notify();
+    }
+
+    /// `cmd` (`chats:…`) done to `chats`: false if it wasn't (none, or
+    /// it asks first).
+    fn chats_do(&mut self, chats: Vec<Chat>, cmd: &str, cx: &mut Context<Self>) -> bool {
+        if chats.is_empty() {
+            return false;
         }
         let send = |tg: &mut Tg, f: &dyn Fn(&Chat) -> Option<Cmd>| {
             for c in &chats {
@@ -720,12 +973,11 @@ impl Tg {
                 let message = format!("Delete {n} chats? Their messages go from this account{}. This can’t be undone.", if leaves { ", and you leave the groups and channels among them" } else { "" });
                 let cmds = chats.iter().map(|c| Cmd::DeleteChat { chat: c.id }).collect();
                 self.ask("Delete Chats", message, "Delete", cmds, cx);
-                return;
+                return false;
             }
-            _ => return,
+            _ => return false,
         }
-        self.chosen.clear();
-        cx.notify();
+        true
     }
 
     /// The menu for the chats chosen together (the list's, the Chat
@@ -1005,7 +1257,7 @@ impl Tg {
         cx.notify();
     }
 
-    fn menus(&self) -> Vec<Menu> {
+    fn menus(&self, cx: &App) -> Vec<Menu> {
         let ready = matches!(self.status, Status::Online | Status::Updating | Status::Connecting | Status::Offline(_) | Status::Waiting(_));
         let chat = self.conv.as_ref().and_then(|c| self.store.chats.get(&c.chat));
         let file = Menu::new("File").item("Contacts", "contacts").key("k").enabled(ready).separator().item("Close", "close").key("w").item("Quit", "quit").key("q");
@@ -1017,7 +1269,12 @@ impl Tg {
             .enabled(ready)
             .item("Deselect All Chats", "deselect-chats")
             .enabled(!self.chosen.is_empty());
-        let mut chat_menu = Menu::new("Chat").item("Attach Files…", "attach").key("o").enabled(chat.is_some()).item("Chat Info", "info").key("i").enabled(chat.is_some()).separator();
+        let mut chat_menu = Menu::new("Chat").item("Attach Files…", "attach").key("o").enabled(chat.is_some());
+        chat_menu = match &self.voice {
+            None => chat_menu.item("Record Voice Message", "record-voice").enabled(chat.is_some() && self.conv.as_ref().is_some_and(|c| c.edit.is_none())),
+            Some(_) => chat_menu.item("Send Voice Message", "send-voice").item("Cancel Recording", "cancel-voice"),
+        };
+        chat_menu = chat_menu.item("Chat Info", "info").key("i").enabled(chat.is_some()).separator();
         if self.chosen.len() > 1 {
             chat_menu = self.chats_menu(chat_menu);
         } else if let Some(c) = chat {
@@ -1027,6 +1284,10 @@ impl Tg {
                 .item(if c.unread > 0 || c.marked { "Mark as Read" } else { "Mark as Unread" }, "chat:read")
                 .item(if c.archived { "Unarchive" } else { "Archive" }, "chat:archive");
         }
+        // Every chat the list shows (its folder, the archive, unknown
+        // senders), as its right-click menu's.
+        let unread = ready && list::any_unread(&self.store, list::Group::of(&self.view));
+        chat_menu = chat_menu.separator().item("Mark All as Read", "mark-all-read").enabled(unread);
         let mut view = Menu::new("View").item("All Chats", "folder:all").key("0").checked(self.view.folder.is_none() && !self.view.archive);
         for (i, f) in self.store.folders.iter().enumerate().take(8) {
             view = view.item(f.title.clone(), format!("folder:{}", i + 1)).key(&(i + 1).to_string()).checked(self.view.folder == Some(f.id));
@@ -1041,7 +1302,11 @@ impl Tg {
             .item("Previous Chat", "prev")
             .key("up")
             .item("Next Chat", "next")
-            .key("down");
+            .key("down")
+            .separator()
+            .item(if self.side.read(cx).collapsed() { "Show Chat List" } else { "Hide Chat List" }, "sidebar")
+            // (Every app's keys for it: `app.sidebar`, ⌥⌘S.)
+            .key("s");
         let account = Menu::new("Account")
             .item(self.me.as_ref().map_or_else(|| "Not Signed In".into(), |m| m.name.clone()), "me")
             .enabled(false)
@@ -1059,12 +1324,16 @@ impl Tg {
             "contacts" => self.open_contacts(cx),
             "find" => self.search.update(cx, |s, cx| s.focus(window, cx)),
             "attach" => self.attach(cx),
+            "record-voice" => self.voice_start(false, cx),
+            "send-voice" => self.voice_end(true, cx),
+            "cancel-voice" => self.voice_end(false, cx),
             "info" => {
                 if let Some(chat) = self.conv.as_ref().map(|c| c.chat) {
                     self.open_info(chat, cx);
                 }
             }
             c if c.starts_with("chats:") => self.chats_command(c, cx),
+            "mark-all-read" => self.group_command(list::Group::of(&self.view), "chats:read", cx),
             "select-all-chats" => {
                 self.chosen = list::shown(&self.store, &self.view);
                 self.chosen_from = self.chosen.first().copied();
@@ -1080,6 +1349,10 @@ impl Tg {
                 self.view.archive = false;
                 self.view.unknown = false;
             }
+            "sidebar" => self.side.update(cx, |s, cx| {
+                s.toggle();
+                cx.notify();
+            }),
             "archive" => {
                 self.view.archive = true;
                 self.view.unknown = false;
@@ -1121,6 +1394,24 @@ impl Tg {
     fn message(&mut self, message: Box<dyn std::any::Any + Send>, cx: &mut Context<Self>) {
         let message = match message.downcast::<Event>() {
             Ok(e) => return self.event(*e, cx),
+            Err(m) => m,
+        };
+        let message = match message.downcast::<stickers::Msg>() {
+            Ok(m) => {
+                let (redraw, next) = self.stickers.message(*m);
+                if let Some(next) = next {
+                    self.sticker_timer(next, cx);
+                }
+                if redraw && let Some(p) = self.pane(Kind::Conv) {
+                    let app: &mut App = cx;
+                    app.notify(p);
+                }
+                return;
+            }
+            Err(m) => m,
+        };
+        let message = match message.downcast::<voice::Msg>() {
+            Ok(m) => return self.voice_msg(*m, cx),
             Err(m) => m,
         };
         let message = match message.downcast::<pics::Decoded>() {
@@ -1186,8 +1477,14 @@ impl Tg {
         }
     }
 
-    fn saved(&self) -> Saved {
-        Saved { chat: self.conv.as_ref().map(|c| c.chat), topic: self.conv.as_ref().and_then(|c| c.topic), folder: self.view.folder, list_width: Some(self.list_width) }
+    fn saved(&self, cx: &App) -> Saved {
+        Saved {
+            chat: self.conv.as_ref().map(|c| c.chat),
+            topic: self.conv.as_ref().and_then(|c| c.topic),
+            folder: self.view.folder,
+            list_width: Some(self.side.read(cx).width()),
+            list_hidden: self.side.read(cx).collapsed(),
+        }
     }
 }
 
@@ -1196,7 +1493,7 @@ impl Render for Tg {
         let me = cx.entity();
         self.focused = window.is_window_active();
         let bar_me = me.clone();
-        let bar = MenuBar::of(&me, |tg: &Self, _| tg.menus(), move |cmd, window, cx| bar_me.update(cx, |tg, cx| tg.command(cmd, window, cx)));
+        let bar = MenuBar::of(&me, |tg: &Self, cx| tg.menus(cx), move |cmd, window, cx| bar_me.update(cx, |tg, cx| tg.command(cmd, window, cx)));
         let p = theme::palette(cx);
         let vs = window.viewport_size();
         let top = olo_ui::menu::BAR_HEIGHT;
@@ -1230,17 +1527,20 @@ impl Render for Tg {
                 ));
             }
             _ => {
-                // The list, a grip, the conversation; on the 2-point grid,
-                // so the panes' edges are on device pixels at 1.5×.
+                // The list, a grip, the conversation; every pane's edges on
+                // device pixels, at every scale (on the 2-point grid they
+                // were at 1.5× only: at 1.25× the list's pane, laid out as a
+                // root of its own, ran a pixel past the window).
                 let fw = f32::from(full.size.width);
-                let lw = (self.list_width.clamp(list::MIN_WIDTH, (fw - 320.0).max(list::MIN_WIDTH)) / 2.0).round() * 2.0;
-                let left = Bounds { origin: full.origin, size: size(px(lw), full.size.height) };
-                let rx = style::snap_coord(window, px(lw) + style::hairline(window));
-                let right = Bounds::from_corners(point(rx, full.origin.y), full.bottom_right());
+                // (Away: none of it, the conversation the whole width.)
+                let lw = (self.side.read(cx).shown(fw, 320.0) / 2.0).round() * 2.0;
+                let left = style::snap(window, Bounds { origin: full.origin, size: size(px(lw), full.size.height) });
+                let rx = if lw > 0.0 { style::snap_coord(window, px(lw) + style::hairline(window)) } else { full.origin.x };
+                let right = style::snap(window, Bounds::from_corners(point(rx, full.origin.y), full.bottom_right()));
                 // Changes on their way to Telegram: a line under the list.
                 let (pending, total, waiting) = self.sync;
                 self.list_rect = if pending > 0 {
-                    let line = Bounds::from_corners(point(left.origin.x, left.bottom() - px(SYNC_H)), left.bottom_right());
+                    let line = Bounds::from_corners(point(left.origin.x, style::snap_coord(window, left.bottom() - px(SYNC_H))), left.bottom_right());
                     let done = total.saturating_sub(pending) as f32 / total.max(1) as f32;
                     let label = if pending == 1 { "Sending a change to Telegram…".to_owned() } else { format!("Sending {pending} changes to Telegram…") };
                     let trailing = match (&self.status, waiting) {
@@ -1266,16 +1566,18 @@ impl Render for Tg {
                 } else {
                     left
                 };
-                if let Some((_, p)) = self.panes.iter().find(|p| p.0 == Kind::List) {
-                    layer = layer.child(pane(p, self.list_rect));
+                if lw > 0.0 {
+                    if let Some((_, p)) = self.panes.iter().find(|p| p.0 == Kind::List) {
+                        layer = layer.child(pane(p, self.list_rect));
+                    }
+                    let shadow = c(p.shadow);
+                    layer = layer.child(canvas(|_, _, _| {}, move |_, _, window, _| style::vline(window, left.right(), left.origin.y, left.bottom(), shadow)).absolute().inset_0());
                 }
-                let shadow = c(p.shadow);
-                layer = layer.child(canvas(|_, _, _| {}, move |_, _, window, _| style::vline(window, left.right(), left.origin.y, left.bottom(), shadow)).absolute().inset_0());
                 if self.conv.is_some() {
                     // The conversation over its composer, as tall as its
                     // text (up to eight lines).
                     let (_, composer_h, _) = conv::composer_size(self, f32::from(right.size.width), window, cx);
-                    let split = right.bottom() - px(composer_h);
+                    let split = style::snap_coord(window, right.bottom() - px(composer_h));
                     self.conv_rect = Bounds::from_corners(right.origin, point(right.right(), split));
                     self.composer_rect = Bounds::from_corners(point(right.origin.x, split), right.bottom_right());
                     for (kind, p) in &self.panes {
@@ -1305,32 +1607,11 @@ impl Render for Tg {
                             .child(EmptyState::new("No chat selected").icon("telegram").detail(detail)),
                     );
                 }
-                // The divider between them, dragged to size the list.
-                let grip = Bounds { origin: point(px(lw - 2.0), full.origin.y), size: size(px(5.0), full.size.height) };
-                let t = me.clone();
-                layer = layer.child(
-                    div()
-                        .id("list-grip")
-                        .absolute()
-                        .left(grip.origin.x)
-                        .top(grip.origin.y)
-                        .w(grip.size.width)
-                        .h(grip.size.height)
-                        .cursor(CursorStyle::ResizeLeftRight)
-                        .on_mouse_down(MouseButton::Left, move |e: &MouseDownEvent, _, cx| {
-                            t.update(cx, |tg, _| tg.grip = Some((f32::from(e.position.x), lw)));
-                            cx.stop_propagation();
-                        })
-                        .child(
-                            canvas(
-                                |_, _, _| {},
-                                move |b, _, window, cx| {
-                                    olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Splitter", name: Some("Chat List Width".into()), bounds: b, enabled: true, ..Default::default() })
-                                },
-                            )
-                            .size_full(),
-                        ),
-                );
+                // The divider between them: dragged to size the list, or
+                // put it away for the conversation's room (the kit's
+                // SidePane: past its narrowest, a double click, View ▸
+                // Hide Chat List), and out again from the window's edge.
+                layer = layer.child(olo_ui::widgets::side_divider(&self.side, lw, f32::from(full.origin.y), f32::from(full.size.height), "Chat List"));
                 // A problem to tell, across the conversation's top.
                 if let (Some(text), Some(until)) = (self.banner.text().cloned(), self.banner.until()) {
                     self.wake_in(until.saturating_duration_since(Instant::now()), cx);
@@ -1391,26 +1672,10 @@ impl Render for Tg {
                 .child(button_row().child(Button::new("Quit Now").on_click(move |_, cx| quit_now.update(cx, |_, cx| cx.quit()))));
             layer = layer.child(div().absolute().inset_0().flex().items_center().justify_center().bg(c(p.shadow).opacity(0.25)).child(sheet));
         }
-        let (t_move, t_up, t_drop) = (me.clone(), me.clone(), me.clone());
+        let t_drop = me.clone();
         div()
             .size_full()
             .relative()
-            .on_mouse_move(move |e: &MouseMoveEvent, _, cx| {
-                t_move.update(cx, |tg, cx| {
-                    if let Some((x, w)) = tg.grip {
-                        if e.pressed_button != Some(MouseButton::Left) {
-                            tg.grip = None;
-                            return;
-                        }
-                        let nw = (w + f32::from(e.position.x) - x).max(list::MIN_WIDTH);
-                        if (nw - tg.list_width).abs() >= 0.5 {
-                            tg.list_width = nw;
-                            cx.notify();
-                        }
-                    }
-                })
-            })
-            .on_mouse_up(MouseButton::Left, move |_: &MouseUpEvent, _, cx| t_up.update(cx, |tg, _| tg.grip = None))
             .on_drop(move |paths: &ExternalPaths, _, cx| {
                 t_drop.update(cx, |tg, cx| {
                     if let Some(c) = &mut tg.conv {
@@ -1811,6 +2076,7 @@ fn main() {
                 backend,
                 store: store::Store::default(),
                 pics: pics::Pics::new(olo_ui::proxy(cx)),
+                stickers: stickers::Stickers::new(olo_ui::proxy(cx)),
                 status: Status::Connecting,
                 sync: (0, 0, None),
                 quitting: None,
@@ -1818,7 +2084,11 @@ fn main() {
                 view: list::View { folder: restored.folder, ..list::View::default() },
                 found: list::Found::default(),
                 conv: None,
-                list_width: restored.list_width.unwrap_or(list::WIDTH),
+                side: {
+                    let side = cx.new(|_| olo_ui::widgets::SidePane::new(list::WIDTH, list::MIN_WIDTH).restored(restored.list_width, restored.list_hidden));
+                    cx.observe(&side, |_, _, cx| cx.notify()).detach();
+                    side
+                },
                 h24: false,
                 notes: Notifier::new(olo_ui::proxy(cx), "Telegram", "olo-telegram"),
                 chat_notes: HashMap::new(),
@@ -1831,6 +2101,10 @@ fn main() {
                 player: None,
                 when_fetched: None,
                 next_local: 0,
+                voice: None,
+                voice_token: 0,
+                voice_ended: HashMap::new(),
+                voice_to: HashMap::new(),
                 focused: true,
                 drafts: HashMap::new(),
                 kept: Vec::new(),
@@ -1848,7 +2122,6 @@ fn main() {
                 chosen_from: None,
                 list_hover: None,
                 list_top: Rc::default(),
-                grip: None,
                 wake: Due::default(),
                 title: "Telegram".into(),
                 panes: Vec::new(),
@@ -1905,6 +2178,6 @@ fn main() {
         let messages = tg.clone();
         olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |t, cx| t.message(message, cx)));
         let saving = tg.clone();
-        olo_ui::on_upgrade(cx, move |cx| serde_json::to_string(&saving.read(cx).saved()).ok());
+        olo_ui::on_upgrade(cx, move |cx| serde_json::to_string(&saving.read(cx).saved(cx)).ok());
     });
 }

@@ -1,9 +1,10 @@
-# Olo: watch Wi-Fi and reset a chip whose firmware has stopped joining
+# Olo: watch Wi-Fi and reset a chip whose firmware has stopped joining,
+# and Bluetooth, resetting a controller that stops answering
 # (apps/wifi-heal). Installed by Olo Doctor, with its program as a
 # root-owned copy: never run from the person's home.
 [Unit]
-Description=Olo Wi-Fi healer
-After=NetworkManager.service wpa_supplicant.service
+Description=Olo Wi-Fi and Bluetooth healer
+After=NetworkManager.service wpa_supplicant.service bluetooth.service
 
 [Service]
 ExecStart=/usr/local/libexec/olo-wifi-heal

@@ -196,7 +196,7 @@ impl State {
 
 fn state_of(v: &mut PanelView) -> Option<&mut State> {
     match &mut v.state {
-        panel::State::Security(st) => Some(&mut st.face),
+        panel::State::Security(st) => Some(&mut st.keys.face),
         _ => None,
     }
 }

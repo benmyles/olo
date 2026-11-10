@@ -241,6 +241,28 @@ fn default_path() -> PathBuf {
 
 /// A picture waiting for the encoder: its pixels (or its dmabuf, lent
 /// by the capture: then no pixels) and when it came.
+/// Frames' buffers the encoder is done with, for the next frames: a 4K
+/// frame is 33 MB, and one made new each frame was zeroed by the kernel
+/// page by page (a recording copied to NVENC: 9% of a core in page faults
+/// alone).
+static SPARES: Mutex<Vec<Vec<u8>>> = Mutex::new(Vec::new());
+
+/// A buffer of `len` bytes for a frame (one given back, if any; what was
+/// in it is written over).
+fn frame_buffer(len: usize) -> Vec<u8> {
+    let mut v = SPARES.lock().unwrap_or_else(|e| e.into_inner()).pop().unwrap_or_default();
+    v.resize(len, 0);
+    v
+}
+
+/// A frame's buffer back, for the next (a few kept).
+fn give_back(v: Vec<u8>) {
+    let mut spares = SPARES.lock().unwrap_or_else(|e| e.into_inner());
+    if v.capacity() > 0 && spares.len() < 3 {
+        spares.push(v);
+    }
+}
+
 struct Waiting {
     data: Vec<u8>,
     lent: Option<olo_capture::Lent>,
@@ -951,7 +973,7 @@ fn record_into(
                     let [x, y, w, h] = crop_within(crop, fw, fh);
                     let stride = w as usize * 4;
                     let data = if [x, y, w, h] == [0, 0, fw, fh] {
-                        let mut data = vec![0u8; stride * h as usize];
+                        let mut data = frame_buffer(stride * h as usize);
                         capture.copy_into(&mut data, stride)?;
                         data
                     } else {
@@ -959,7 +981,7 @@ fn record_into(
                         let whole_stride = fw as usize * 4;
                         whole.resize(whole_stride * fh as usize, 0);
                         capture.copy_into(&mut whole, whole_stride)?;
-                        let mut data = Vec::with_capacity(stride * h as usize);
+                        let mut data = frame_buffer(0);
                         for row in y as usize..(y + h) as usize {
                             let from = row * whole_stride + x as usize * 4;
                             data.extend_from_slice(&whole[from..from + stride]);
@@ -967,7 +989,11 @@ fn record_into(
                         data
                     };
                     let (m, cv) = &*slot;
-                    *m.lock().unwrap_or_else(|e| e.into_inner()) = Some(Waiting { data, lent: None, stride, width: w, height: h, at });
+                    // (One the encoder didn't get to in time: its buffer
+                    // kept for the next.)
+                    if let Some(old) = m.lock().unwrap_or_else(|e| e.into_inner()).replace(Waiting { data, lent: None, stride, width: w, height: h, at }) {
+                        give_back(old.data);
+                    }
                     cv.notify_one();
                 }
                 // (A size changed: the next request makes a new buffer.)
@@ -1144,6 +1170,7 @@ fn encode(
             }
             None => encode_copied(enc, &w, &mut backdrop, &mut inset, canvas, fps, fail_at.filter(|(n, _)| *n == frames)),
         };
+        give_back(std::mem::take(&mut w.data));
         let coded = match coded {
             Ok(c) => c,
             Err(e) => {
@@ -1216,6 +1243,10 @@ fn encode_copied(
     failing: Option<(usize, usize)>,
 ) -> Result<Coded, String> {
     let (vw, vh) = enc.size();
+    let stride = vw as usize * 4;
+    // A frame the video's size as it is, encoded from where it is (not
+    // copied into the canvas first: at 4K, 33 MB a frame).
+    let whole = backdrop.is_none() && (w.width, w.height) == (vw, vh) && w.stride == stride && w.data.len() >= stride * vh as usize;
     match backdrop.as_mut() {
         Some(b) => {
             let (anew, window) = b.compose(&w.data, w.stride, w.width, w.height, canvas);
@@ -1224,9 +1255,10 @@ fn encode_copied(
                 i.draw(canvas, vw as usize, window, anew);
             }
         }
+        None if whole => {}
         None => fit(w, canvas, vw, vh),
     }
-    let stride = vw as usize * 4;
+    let canvas: &[u8] = if whole { &w.data } else { canvas };
     let order = olo_video::Order::Bgra;
     // How many encoders fail on purpose: this one, the same again, all.
     let fails = failing.map_or(0, |(_, bangs)| bangs + 1);

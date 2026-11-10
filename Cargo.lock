@@ -912,6 +912,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "backhand"
+version = "0.25.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72e7812fe72262dd26c2b4309c8e8f2c028db1ffbeb21054f009f847f09ca92c"
+dependencies = [
+ "deku",
+ "flate2",
+ "liblzma",
+ "lz4_flex 0.12.2",
+ "no_std_io2",
+ "solana-nohash-hasher",
+ "thiserror 2.0.21",
+ "tracing",
+ "xxhash-rust",
+ "zstd 0.13.4",
+ "zstd-safe 7.4.0",
+]
+
+[[package]]
 name = "backtrace"
 version = "0.3.77"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1139,6 +1158,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7eff00be299a18769011411c9def0d827e8f2d7bf0c3dbf53633147a8867fd1f"
 dependencies = [
  "no_std_io2",
+]
+
+[[package]]
+name = "bitvec"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ddcec3d12c579d40898fe0a9a358a803c23e9c52ca3c425707f81c9436211837"
+dependencies = [
+ "funty",
+ "radium",
+ "tap",
+ "wyz",
 ]
 
 [[package]]
@@ -2058,8 +2089,8 @@ dependencies = [
  "compression-core",
  "flate2",
  "memchr",
- "zstd",
- "zstd-safe",
+ "zstd 0.14.3",
+ "zstd-safe 8.2.0",
 ]
 
 [[package]]
@@ -2882,6 +2913,31 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "71958f69fb2de856c5dd51ac9377e986ca1aa5919f931bf5395a807277f889a0"
 dependencies = [
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "deku"
+version = "0.20.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ebf55291257a2a5c90cf50ae17b6bbaabc3fd13642cf3895a71c412513c19630"
+dependencies = [
+ "bitvec",
+ "deku_derive",
+ "no_std_io2",
+ "rustversion",
+]
+
+[[package]]
+name = "deku_derive"
+version = "0.20.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bec2a42b511fc5efd9183f4f71c17885d627b17e7fd9a61a92089406caa4397e"
+dependencies = [
+ "darling 0.21.3",
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -3919,6 +3975,12 @@ dependencies = [
  "libc",
  "winapi",
 ]
+
+[[package]]
+name = "funty"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6d5a32815ae3f33302d95fdcb2ce17862f8c65363dcfd29360480ba1001fc9c"
 
 [[package]]
 name = "futures"
@@ -6563,6 +6625,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "373f5eceeeab7925e0c1098212f2fbc4d416adec9d35051a6ab251e824c1854a"
 
 [[package]]
+name = "lz4_flex"
+version = "0.12.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "90071f8077f8e40adfc4b7fe9cd495ce316263f19e75c2211eeff3fdf475a3d9"
+
+[[package]]
 name = "lzma-rust2"
 version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6811,8 +6879,6 @@ dependencies = [
 [[package]]
 name = "mp4"
 version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c9ef834d5ed55e494a2ae350220314dc4aacd1c43a9498b00e320e0ea352a5c3"
 dependencies = [
  "byteorder",
  "bytes",
@@ -7512,6 +7578,7 @@ name = "olo-ai"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "olo-net",
  "olo-protocol",
  "olo-xdg",
  "reqwest",
@@ -7535,6 +7602,18 @@ dependencies = [
  "serde_json",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "olo-appimage"
+version = "0.1.0"
+dependencies = [
+ "backhand",
+ "libc",
+ "olo-xdg",
+ "serde",
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]
@@ -7633,6 +7712,7 @@ dependencies = [
  "olo-crash",
  "olo-keychain",
  "olo-kit-base",
+ "olo-net",
  "olo-protocol",
  "olo-sync",
  "olo-system",
@@ -7650,7 +7730,7 @@ dependencies = [
  "zbus",
  "zeroize",
  "zip",
- "zstd",
+ "zstd 0.14.3",
 ]
 
 [[package]]
@@ -7705,12 +7785,14 @@ version = "0.1.0"
 dependencies = [
  "image",
  "libc",
+ "olo-appimage",
  "olo-crash",
  "olo-protocol",
  "olo-sync",
  "olo-system",
  "olo-ui",
  "olo-xdg",
+ "serde",
  "serde_json",
  "tracing",
  "zbus",
@@ -7757,12 +7839,15 @@ dependencies = [
  "hkdf 0.13.0",
  "hmac 0.13.0",
  "libc",
+ "md-5 0.11.0",
+ "olo-net",
  "rustls",
  "serde",
  "serde_json",
  "sha2 0.11.1",
+ "tracing",
  "ureq",
- "zstd",
+ "zstd 0.14.3",
 ]
 
 [[package]]
@@ -7772,10 +7857,12 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "libc",
+ "md-5 0.11.0",
  "olo-crash",
  "olo-diskbackup",
  "olo-keychain",
  "olo-kit-base",
+ "olo-net",
  "olo-protocol",
  "olo-system",
  "olo-ui",
@@ -7797,6 +7884,7 @@ dependencies = [
  "olo-crash",
  "olo-fido",
  "olo-kit-base",
+ "olo-net",
  "olo-protocol",
  "olo-sync",
  "olo-system",
@@ -7951,10 +8039,12 @@ version = "0.1.0"
 dependencies = [
  "avif-parse",
  "filmcraft-vp9",
+ "flate2",
  "half",
  "heifer",
  "image",
  "jxl-oxide",
+ "matroska-demuxer",
  "moxcms",
  "olo-color",
  "olo-crash",
@@ -7962,6 +8052,8 @@ dependencies = [
  "rust_h265",
  "serde_json",
  "sha2 0.10.9",
+ "velato",
+ "vello_cpu 0.3.0",
 ]
 
 [[package]]
@@ -7971,6 +8063,7 @@ dependencies = [
  "libc",
  "olo-crash",
  "olo-doctor",
+ "olo-net",
  "olo-system",
  "olo-theme",
  "olo-ui",
@@ -7983,7 +8076,7 @@ dependencies = [
  "tracing-subscriber",
  "ureq",
  "zbus",
- "zstd",
+ "zstd 0.14.3",
 ]
 
 [[package]]
@@ -8089,7 +8182,7 @@ version = "0.1.0"
 dependencies = [
  "libc",
  "liblzma",
- "lz4_flex",
+ "lz4_flex 0.11.6",
  "memchr",
  "olo-crash",
  "olo-kit-base",
@@ -8098,12 +8191,23 @@ dependencies = [
  "olo-xdg",
  "serde",
  "serde_json",
- "zstd",
+ "zstd 0.14.3",
 ]
 
 [[package]]
 name = "olo-mse"
 version = "0.1.0"
+
+[[package]]
+name = "olo-net"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "olo-sync",
+ "tracing",
+ "tracing-subscriber",
+ "ureq",
+]
 
 [[package]]
 name = "olo-notifications"
@@ -8319,6 +8423,7 @@ dependencies = [
  "olo-crash",
  "olo-fido",
  "olo-keychain",
+ "olo-net",
  "olo-palm",
  "olo-protocol",
  "olo-screensavers",
@@ -8339,7 +8444,7 @@ dependencies = [
  "tracing",
  "ureq",
  "zeroize",
- "zstd",
+ "zstd 0.14.3",
 ]
 
 [[package]]
@@ -8383,7 +8488,7 @@ dependencies = [
  "tracing",
  "ttf-parser",
  "zip",
- "zstd",
+ "zstd 0.14.3",
 ]
 
 [[package]]
@@ -8458,7 +8563,7 @@ dependencies = [
  "serde_json",
  "tracing",
  "zbus",
- "zstd",
+ "zstd 0.14.3",
 ]
 
 [[package]]
@@ -8574,6 +8679,7 @@ dependencies = [
  "libc",
  "olo-crash",
  "olo-images",
+ "olo-net",
  "olo-print",
  "olo-richtext",
  "olo-theme",
@@ -8703,8 +8809,10 @@ dependencies = [
  "olo-preview",
  "olo-protocol",
  "olo-sync",
+ "olo-system",
  "olo-tg",
  "olo-ui",
+ "olo-video",
  "olo-xdg",
  "serde",
  "serde_json",
@@ -8725,6 +8833,7 @@ dependencies = [
  "olo-crash",
  "olo-fido",
  "olo-kit-base",
+ "olo-net",
  "olo-protocol",
  "olo-sync",
  "olo-system",
@@ -8751,6 +8860,8 @@ dependencies = [
  "grammers-mtsender",
  "grammers-session",
  "grammers-tl-types",
+ "olo-images",
+ "olo-net",
  "olo-sync",
  "olo-system",
  "olo-xdg",
@@ -8786,6 +8897,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "libc",
+ "olo-net",
  "olo-sync",
  "olo-system",
  "olo-xdg",
@@ -8801,7 +8913,7 @@ dependencies = [
  "tracing",
  "tungstenite",
  "zeroize",
- "zstd",
+ "zstd 0.14.3",
 ]
 
 [[package]]
@@ -8814,6 +8926,7 @@ dependencies = [
  "ignore",
  "image",
  "libc",
+ "olo-appimage",
  "olo-crash",
  "olo-images",
  "olo-kit-base",
@@ -8871,6 +8984,7 @@ version = "0.1.0"
 dependencies = [
  "color_quant",
  "gbm 0.18.0",
+ "getrandom 0.3.4",
  "gif 0.14.2",
  "libc",
  "md5",
@@ -8880,7 +8994,9 @@ dependencies = [
  "olo-images",
  "olo-vaapi",
  "openh264",
+ "opus-decoder",
  "png 0.18.1",
+ "rusty-opus",
  "symphonia",
 ]
 
@@ -8970,6 +9086,7 @@ dependencies = [
 name = "olo-wifi-heal"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "olo-crash",
  "serde",
  "serde_json",
@@ -10231,6 +10348,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
+name = "radium"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc33ff2d4973d518d823d61aa239014831e521c75da58e3df4840d3f47749d09"
+
+[[package]]
 name = "radix_trie"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11100,6 +11223,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 
 [[package]]
+name = "rusty-opus"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "46604e6809c06441da1cfdde1f0cc25a4f2bf42c7d005aa387c2875c02d78762"
+
+[[package]]
 name = "rustybuzz"
 version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11706,6 +11835,7 @@ dependencies = [
  "scopeguard",
  "siphasher 1.0.4",
  "smallvec",
+ "smithay",
  "tempfile",
  "thiserror 2.0.21",
  "tracing",
@@ -11796,6 +11926,12 @@ dependencies = [
  "libc",
  "windows-sys 0.61.2",
 ]
+
+[[package]]
+name = "solana-nohash-hasher"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b8a731ed60e89177c8a7ab05fe0f1511cedd3e70e773f288f9de33a9cfdc21e"
 
 [[package]]
 name = "sonora"
@@ -12590,6 +12726,12 @@ dependencies = [
  "serde",
  "slotmap",
 ]
+
+[[package]]
+name = "tap"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 
 [[package]]
 name = "tar"
@@ -14268,6 +14410,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
+name = "velato"
+version = "0.12.0"
+dependencies = [
+ "kurbo 0.13.1",
+ "peniko",
+ "serde",
+ "serde_json",
+ "serde_repr",
+]
+
+[[package]]
 name = "vello_common"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -15413,6 +15566,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 
 [[package]]
+name = "wyz"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05f360fc0b24296329c78fda852a1e9ae82de9cf7b27dae4b7f62f118f77b9ed"
+dependencies = [
+ "tap",
+]
+
+[[package]]
 name = "x11-dl"
 version = "2.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -15537,6 +15699,12 @@ name = "xmp-writer"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9440ea3e5aeabb0ac63af70daf835274065238cdd0cec83418f417eae38bacee"
+
+[[package]]
+name = "xxhash-rust"
+version = "0.8.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "550a2b930b62486a393c52d5c3b84bff264b28aa437ed64694d31e93b1757af7"
 
 [[package]]
 name = "y4m"
@@ -15809,7 +15977,7 @@ dependencies = [
  "typed-path",
  "windows-sys 0.61.2",
  "zopfli",
- "zstd",
+ "zstd 0.14.3",
 ]
 
 [[package]]
@@ -15851,11 +16019,29 @@ dependencies = [
 
 [[package]]
 name = "zstd"
+version = "0.13.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cdb02c3132d251ab1606e9fc913a7da6c6ed08cc263df15edf082e1dc497d157"
+dependencies = [
+ "zstd-safe 7.4.0",
+]
+
+[[package]]
+name = "zstd"
 version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db3ae9bf90af6e40197bef767eeefc46ad6397420fe873830bd85e5fbbfb3c70"
 dependencies = [
- "zstd-safe",
+ "zstd-safe 8.2.0",
+]
+
+[[package]]
+name = "zstd-safe"
+version = "7.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c8ea04668f5de8d8d51051714ba560c9536519cadcdb8829bba4fe2ad159b03"
+dependencies = [
+ "zstd-sys",
 ]
 
 [[package]]

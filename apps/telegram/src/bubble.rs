@@ -900,9 +900,7 @@ pub fn paint(window: &mut Window, cx: &mut App, o: Point<Pixels>, m: &Message, l
             if let Some(r) = laid.media {
                 let r = r.at(o);
                 match &pp.picture {
-                    Some(img) => {
-                        let _ = window.paint_image(style::snap(window, r), Corners::default(), img.clone(), 0, false);
-                    }
+                    Some(img) => sticker_picture(window, r, img),
                     None => {
                         let label = match &m.media {
                             Some(Media::Sticker { emoji, .. }) | Some(Media::Dice { emoji, .. }) => emoji.clone(),
@@ -1164,9 +1162,7 @@ fn paint_media(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, m: &Message
             }
         }
         Some(Media::Sticker { .. }) => match &pp.picture {
-            Some(img) => {
-                let _ = window.paint_image(style::snap(window, r), Corners::default(), img.clone(), 0, false);
-            }
+            Some(img) => sticker_picture(window, r, img),
             None => fill(window, r, px(8.0), look.text.opacity(0.06)),
         },
         _ => {
@@ -1176,6 +1172,24 @@ fn paint_media(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, m: &Message
             }
         }
     }
+}
+
+/// A sticker's picture in its box `r`: an animated one's frame, drawn
+/// for that box at the window's scale (`stickers.rs`), at whole device
+/// pixels its own size, one to one; anything else fitted, its own shape
+/// kept (a video sticker's file may not be the shape Telegram says).
+fn sticker_picture(window: &mut Window, r: Bounds<Pixels>, img: &Arc<RenderImage>) {
+    let px = img.size(0);
+    let (iw, ih) = ((px.width.0 as f32).max(1.0), (px.height.0 as f32).max(1.0));
+    let (w, h) = (f32::from(r.size.width), f32::from(r.size.height));
+    let s = window.scale_factor();
+    let (dw, dh) = if (iw - w * s).abs() <= 1.0 && (ih - h * s).abs() <= 1.0 {
+        (iw / s, ih / s)
+    } else {
+        let k = (w / iw).min(h / ih);
+        (iw * k, ih * k)
+    };
+    let _ = window.paint_image(style::snap_centred(window, r.center(), dw, dh), Corners::default(), img.clone(), 0, false);
 }
 
 /// One tick (sent) or two (read); a clock while sending, "!" if it failed.

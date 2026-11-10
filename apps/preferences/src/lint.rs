@@ -117,7 +117,7 @@ fn ui_lint_every_panel() {
         // Room kept for what the lint doesn't draw.
         match panel {
             Panel::Integrations => lint.keeps_room(240.0, "Telegram's sign-in: a QR code to scan, and the code and password steps"),
-            Panel::TouchId => lint.keeps_room(100.0, "a finger being enrolled: what to do, a progress bar and Cancel"),
+            Panel::Security => lint.keeps_room(100.0, "a finger being enrolled in Touch ID: what to do, a progress bar and Cancel"),
             _ => &mut lint,
         };
         for f in lint.window(&options, move |window, cx| {
@@ -286,10 +286,11 @@ fn ui_lint_settings_index() {
                     continue;
                 }
                 // Not settings: a scroll bar's arrows, every panel's
-                // Defaults and Revert, a state shown as a button, a
-                // problem's fix (there only while it is), the made-up
-                // displays' buttons.
-                if (n.role == "Button" && (name.starts_with("Scroll ") || matches!(name.as_str(), "Defaults" | "Revert" | "Searching…" | "Fix in Olo Doctor…"))) || this_machines(&name) {
+                // Defaults and Revert, a field's own Use Default, a state
+                // shown as a button, a problem's fix (there only while it
+                // is), the made-up displays' buttons.
+                if (n.role == "Button" && (name.starts_with("Scroll ") || matches!(name.as_str(), "Defaults" | "Revert" | "Use Default" | "Searching…" | "Fix in Olo Doctor…"))) || this_machines(&name)
+                {
                     continue;
                 }
                 // The innermost box round it, by a name that is the same

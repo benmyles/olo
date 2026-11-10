@@ -171,6 +171,7 @@ fn panel(icon_name: &'static str, heading: &str, message: String, extra: impl In
     let column = div()
         .w(px(380.0))
         .max_w_full()
+        .flex_shrink_0()
         .flex()
         .flex_col()
         .gap(px(m::SPACING))
@@ -178,7 +179,18 @@ fn panel(icon_name: &'static str, heading: &str, message: String, extra: impl In
         .child(div().w_full().text_center().child(StringView::new(message).wrap(true)))
         .child(div().h(px(m::SPACING)))
         .child(extra);
-    div().size_full().flex().flex_col().items_center().px(px(m::WINDOW_INSET)).child(div().w_full().h(relative(0.22)).min_h(px(m::WINDOW_INSET)).flex_shrink_0()).child(column).into_any_element()
+    // Let the space above the panel shrink before its controls do, so
+    // setup still fits the main window at its minimum height.
+    div()
+        .size_full()
+        .flex()
+        .flex_col()
+        .items_center()
+        .px(px(m::WINDOW_INSET))
+        .pb(px(m::WINDOW_INSET))
+        .child(div().w_full().h(relative(0.22)).min_h(px(m::WINDOW_INSET)))
+        .child(column)
+        .into_any_element()
 }
 
 /// Small text in the disabled text's colour, wrapped (a note under a

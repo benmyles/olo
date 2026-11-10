@@ -781,6 +781,51 @@ impl WindowingMode {
     }
 }
 
+/// How auto-tiling lays a display's windows out.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TilingLayout {
+    /// Each new window takes half of the tile that had the focus, cut
+    /// along its longer side (as bspwm and Hyprland's dwindle do).
+    #[default]
+    Halves,
+    /// One main window on the left, the rest stacked on the right, each
+    /// as tall as the others; a new window is the main one (as dwm's).
+    MainAndStack,
+}
+
+impl TilingLayout {
+    pub const ALL: [TilingLayout; 2] = [TilingLayout::Halves, TilingLayout::MainAndStack];
+
+    /// Its name in menus.
+    pub fn title(self) -> &'static str {
+        match self {
+            TilingLayout::Halves => "Halves",
+            TilingLayout::MainAndStack => "Main and Stack",
+        }
+    }
+
+    /// What it does, in a sentence.
+    pub fn detail(self) -> &'static str {
+        match self {
+            TilingLayout::Halves => "Each new window takes half of the one you were using.",
+            TilingLayout::MainAndStack => "A new window is the main one, on the left; the others stack on the right.",
+        }
+    }
+
+    /// Its name in commands and the IPC: `halves`, `main_and_stack`.
+    pub fn id(self) -> &'static str {
+        match self {
+            TilingLayout::Halves => "halves",
+            TilingLayout::MainAndStack => "main_and_stack",
+        }
+    }
+
+    pub fn from_id(id: &str) -> Option<TilingLayout> {
+        TilingLayout::ALL.into_iter().find(|l| l.id() == id)
+    }
+}
+
 /// Space around arranged windows (Preferences ▸ Windows), grouping, and
 /// windowing modes.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -797,6 +842,9 @@ pub struct TilingSettings {
     /// The windowing mode of every workspace (and display) that hasn't
     /// one of its own (Preferences ▸ Windows).
     pub default_mode: WindowingMode,
+    /// How auto-tiling lays windows out, everywhere it's on (Preferences
+    /// ▸ Windows, Deskbar's Window Arrangement menu).
+    pub layout: TilingLayout,
     /// The workspaces (and displays of them) whose mode isn't the
     /// default (see [`TilingSettings::mode`]). app_server keeps it as
     /// modes are chosen (`Request::SetWindowingMode`): a copy sent back
@@ -811,7 +859,7 @@ pub struct TilingSettings {
 
 impl Default for TilingSettings {
     fn default() -> Self {
-        TilingSettings { gap: 8, margin: 8, ungrouped_apps: Vec::new(), default_mode: WindowingMode::Standard, modes: Vec::new(), auto: Vec::new() }
+        TilingSettings { gap: 8, margin: 8, ungrouped_apps: Vec::new(), default_mode: WindowingMode::Standard, layout: TilingLayout::Halves, modes: Vec::new(), auto: Vec::new() }
     }
 }
 
@@ -1009,6 +1057,27 @@ mod tests {
         assert_eq!(assign(&mut p, "viewer.crop", "Cmd+L".parse().ok()), ["Rotate Left"]);
         assert_eq!(entry("logs.live").unwrap().keys(&p), ["Cmd+L".parse::<Chord>().unwrap()]);
         assert!(assign(&mut p, "viewer.crop", "Cmd+T".parse().ok()).is_empty());
+    }
+
+    /// Each of Chrome's commands says what Chrome takes for it, and a
+    /// profile's keys for them come with that.
+    #[test]
+    fn chrome_keys_say_what_chrome_takes() {
+        let chrome: Vec<&str> = crate::app_keys::APP_KEYS.iter().filter(|k| k.app == Some("google-chrome")).map(|k| k.id).collect();
+        let native: Vec<&str> = crate::app_keys::CHROME_NATIVE.iter().map(|(id, _)| *id).collect();
+        assert_eq!(chrome, native);
+        for (id, n) in crate::app_keys::CHROME_NATIVE {
+            assert!(n.parse::<Chord>().is_ok(), "{id}: {n}");
+        }
+        let keys = crate::app_keys::chrome_keys(&KeyboardProfile::default());
+        assert!(keys.contains(&("Cmd+Y".parse().unwrap(), "Ctrl+H".parse().unwrap())));
+        assert!(keys.contains(&("Ctrl+Cmd+F".parse().unwrap(), "F11".parse().unwrap())));
+        // Changed in the profile: the new keys stand for it.
+        let mut p = KeyboardProfile::default();
+        assign(&mut p, "chrome.history", "Shift+Cmd+H".parse().ok());
+        let keys = crate::app_keys::chrome_keys(&p);
+        assert!(keys.contains(&("Shift+Cmd+H".parse().unwrap(), "Ctrl+H".parse().unwrap())));
+        assert!(!keys.iter().any(|(from, _)| *from == "Cmd+Y".parse().unwrap()));
     }
 
     #[test]

@@ -14,7 +14,9 @@ use olo_ui::{
 use super::{Extra, Request, State, field, state_of};
 use crate::{PanelView, form::Ui};
 
-const DIVIDER: f32 = 130.0;
+// (On the 4-point grid: whole device pixels at every scale, so a menu's
+// text and a field's under it line up at 1.25× too.)
+const DIVIDER: f32 = 132.0;
 
 pub struct Edit {
     device: usize,

@@ -170,7 +170,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             |_, _, _| {},
             move |b, _, window, _| {
                 let at = Bounds { origin: point(b.left(), b.top()), size: size(px(w), px(30.0)) };
-                brand::wordmark_centred(window, at, dark);
+                brand::wordmark_left(window, at, dark);
             },
         )
         .w(px(w))

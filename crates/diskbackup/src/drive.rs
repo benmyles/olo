@@ -12,11 +12,23 @@
 //! goes, 64 KiB at a time (`Paced`), so the network never sees a burst at
 //! full speed. Each file's id is kept from listings (found by name if
 //! need be), so reading one is one request.
+//!
+//! The network may change under it (a cable pulled, Wi-Fi joined: Ben,
+//! 2026-11-09, "seamlessly start using the new network and not hang or
+//! error"): a connection on one that's gone is cut at once (`olo_net`), a
+//! request that failed because of it is tried again on the new one without
+//! counting against its tries (an upload asked where it got to, and on
+//! from there), the agent and its idle connections are made again for the
+//! new network, and with no network at all it waits for one to come (as
+//! long as it takes, for the service's backups: until stopped).
 
 use std::{
     collections::HashMap,
     io::{self, Read},
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -30,13 +42,19 @@ pub const FOLDER: &str = "Olo DiskBackup";
 /// What goes up in one request; resumably, in pieces this big, above it.
 const SIMPLE: usize = 5 << 20;
 const PIECE: usize = 8 << 20;
-/// How many times a request is tried.
+/// How many times a request is tried (failures the network's changes
+/// caused not counted).
 const TRIES: u32 = 8;
+/// How long a Drive no one can stop waits for a network to come.
+const PATIENCE: Duration = Duration::from_secs(30);
 
 type Response = ureq::http::Response<ureq::Body>;
 
 pub struct Drive {
-    http: ureq::Agent,
+    /// The agent for the network there is now.
+    http: olo_net::PerNetwork<ureq::Agent>,
+    /// What ends a wait for the network; None: it waits [`PATIENCE`].
+    stop: Option<Arc<AtomicBool>>,
     endpoints: Endpoints,
     client: Client,
     refresh: String,
@@ -82,22 +100,139 @@ fn message(body: &str) -> String {
     v.pointer("/error/message").and_then(|m| m.as_str()).map(str::to_owned).unwrap_or_else(|| body.chars().take(200).collect())
 }
 
+/// What Google says of a Drive: whose it is, and its space (bytes used,
+/// and its limit: none for unlimited).
+#[derive(Debug, Clone, PartialEq)]
+pub struct About {
+    pub email: String,
+    pub used: u64,
+    pub limit: Option<u64>,
+}
+
 impl Drive {
-    /// The store in folder `folder` (its id) of `account`'s Drive.
-    pub fn new(client: Client, refresh: String, account: String, folder: String, up: Arc<Limit>, down: Arc<Limit>, endpoints: Endpoints) -> Drive {
-        Drive { http: oauth::agent(), endpoints, client, refresh, account, folder, token: Mutex::new(None), ids: Mutex::new(HashMap::new()), up, down }
+    /// Whose Drive it is and its space, as Google says (so the sign-in is
+    /// known to work).
+    pub fn about(&self) -> io::Result<About> {
+        let url = format!("{}/drive/v3/about?fields=user(emailAddress),storageQuota(limit,usage)", self.endpoints.api);
+        let v = self.json(self.call(|http, token| http.get(&url).header("Authorization", format!("Bearer {token}")).call())?)?;
+        // (Google gives its numbers as strings.)
+        let number = |at: &str| v.pointer(at).and_then(|n| n.as_str()).and_then(|n| n.parse().ok());
+        Ok(About {
+            email: v.pointer("/user/emailAddress").and_then(|e| e.as_str()).unwrap_or_default().to_owned(),
+            used: number("/storageQuota/usage").unwrap_or(0),
+            limit: number("/storageQuota/limit"),
+        })
     }
 
-    /// The backups' folder in `account`'s Drive (found, else made): its id.
-    pub fn folder(client: &Client, refresh: &str, endpoints: &Endpoints) -> Result<String, String> {
+    /// The files of folder `dir` (as `Store::list`), each with its size and,
+    /// if `md5`, the checksum Google keeps of it.
+    fn listing(&self, dir: &str, md5: bool) -> io::Result<Vec<(String, u64, Option<String>)>> {
+        let prefix = if dir.is_empty() { String::new() } else { format!("{}/", dir.trim_end_matches('/')) };
+        // (Drive's `contains` on a name matches its start.)
+        let mut q = format!("'{}' in parents and trashed = false", self.folder);
+        if !prefix.is_empty() {
+            q.push_str(&format!(" and name contains '{prefix}'"));
+        }
+        let mut out = Vec::new();
+        let mut page: Option<String> = None;
+        loop {
+            let mut url =
+                format!("{}/drive/v3/files?q={}&fields=nextPageToken,files(id,name,size{})&pageSize=1000&spaces=drive", self.endpoints.api, oauth::escape(&q), if md5 { ",md5Checksum" } else { "" });
+            if let Some(p) = &page {
+                url.push_str(&format!("&pageToken={}", oauth::escape(p)));
+            }
+            let v = self.json(self.call(|http, token| http.get(&url).header("Authorization", format!("Bearer {token}")).call())?)?;
+            if let (Some(files), Ok(mut ids)) = (v.get("files").and_then(|f| f.as_array()), self.ids.lock()) {
+                for f in files {
+                    let (Some(name), Some(id)) = (f.get("name").and_then(|n| n.as_str()), f.get("id").and_then(|i| i.as_str())) else { continue };
+                    ids.insert(name.to_owned(), id.to_owned());
+                    if name.starts_with(&prefix) {
+                        let size = f.get("size").and_then(|s| s.as_str()).and_then(|s| s.parse().ok()).unwrap_or(0);
+                        let sum = f.get("md5Checksum").and_then(|s| s.as_str()).map(str::to_owned);
+                        out.push((name.to_owned(), size, sum));
+                    }
+                }
+            }
+            match v.get("nextPageToken").and_then(|p| p.as_str()) {
+                Some(p) => page = Some(p.to_owned()),
+                None => break,
+            }
+        }
+        out.sort();
+        out.dedup_by(|a, b| a.0 == b.0);
+        Ok(out)
+    }
+
+    /// The store in folder `folder` (its id) of `account`'s Drive.
+    pub fn new(client: Client, refresh: String, account: String, folder: String, up: Arc<Limit>, down: Arc<Limit>, endpoints: Endpoints) -> Drive {
+        Drive { http: olo_net::PerNetwork::new(oauth::agent), stop: None, endpoints, client, refresh, account, folder, token: Mutex::new(None), ids: Mutex::new(HashMap::new()), up, down }
+    }
+
+    /// It waits for the network for as long as it takes, until `stop` (and
+    /// `olo_net::nudge`).
+    pub fn stopped_by(mut self, stop: Option<Arc<AtomicBool>>) -> Drive {
+        self.stop = stop;
+        self
+    }
+
+    fn stopped(&self) -> bool {
+        self.stop.as_ref().is_some_and(|s| s.load(Ordering::Relaxed))
+    }
+
+    /// There's a network, or one came (after waiting: as long as it takes
+    /// if it can be stopped, else [`PATIENCE`]).
+    fn network(&self) -> io::Result<()> {
+        if olo_net::online() {
+            return Ok(());
+        }
+        tracing::info!("diskbackup: no network: waiting for one");
+        let until = if self.stop.is_some() { None } else { Some(Instant::now() + PATIENCE) };
+        if olo_net::wait_online(until, &|| self.stopped()) {
+            tracing::info!("diskbackup: the network's back: going on");
+            return Ok(());
+        }
+        if self.stopped() {
+            return Err(io::Error::new(io::ErrorKind::Interrupted, "stopped while waiting for the network"));
+        }
+        Err(io::Error::new(io::ErrorKind::NotConnected, "there's no network"))
+    }
+
+    /// Whether a failure since `seen` was the network's: it changed, or
+    /// there's none.
+    fn network_failed(seen: u64) -> bool {
+        olo_net::generation() != seen || !olo_net::online()
+    }
+
+    /// The backups' folder in `account`'s Drive, if it's there: its id.
+    pub fn find_folder(client: &Client, refresh: &str, endpoints: &Endpoints) -> Result<Option<String>, String> {
         let d = Drive::new(client.clone(), refresh.to_owned(), String::new(), String::new(), Arc::default(), Arc::default(), endpoints.clone());
         let q = format!("name = '{FOLDER}' and mimeType = 'application/vnd.google-apps.folder' and 'root' in parents and trashed = false");
         let url = format!("{}/drive/v3/files?q={}&fields=files(id)&spaces=drive", d.endpoints.api, oauth::escape(&q));
         let resp = d.call(|http, token| http.get(&url).header("Authorization", format!("Bearer {token}")).call()).map_err(|e| e.to_string())?;
         let v = d.json(resp).map_err(|e| e.to_string())?;
-        if let Some(id) = v.pointer("/files/0/id").and_then(|i| i.as_str()) {
-            return Ok(id.to_owned());
+        Ok(v.pointer("/files/0/id").and_then(|i| i.as_str()).map(str::to_owned))
+    }
+
+    /// The backups' folder deleted, everything in it with it, for good (not
+    /// to the trash): Erase All Backups in one request, not one a file.
+    pub fn delete_folder(&self) -> io::Result<()> {
+        let url = format!("{}/drive/v3/files/{}", self.endpoints.api, self.folder);
+        let resp = self.call(|http, token| http.delete(&url).header("Authorization", format!("Bearer {token}")).call())?;
+        if let Ok(mut ids) = self.ids.lock() {
+            ids.clear();
         }
+        match resp.status().as_u16() {
+            200..300 | 404 => Ok(()),
+            s => Err(other(format!("Google Drive: {s} {}", message(&text(resp))))),
+        }
+    }
+
+    /// The backups' folder in `account`'s Drive (found, else made): its id.
+    pub fn folder(client: &Client, refresh: &str, endpoints: &Endpoints) -> Result<String, String> {
+        if let Some(id) = Drive::find_folder(client, refresh, endpoints)? {
+            return Ok(id);
+        }
+        let d = Drive::new(client.clone(), refresh.to_owned(), String::new(), String::new(), Arc::default(), Arc::default(), endpoints.clone());
         let meta = serde_json::json!({ "name": FOLDER, "mimeType": "application/vnd.google-apps.folder" }).to_string();
         let url = format!("{}/drive/v3/files?fields=id", d.endpoints.api);
         let resp = d
@@ -115,7 +250,20 @@ impl Drive {
         {
             return Ok(token.clone());
         }
-        let (token, lasts) = oauth::access_token(&self.http, &self.endpoints, &self.client, &self.refresh).map_err(|e| io::Error::new(io::ErrorKind::PermissionDenied, e))?;
+        let mut tries = 0;
+        let (token, lasts) = loop {
+            let seen = olo_net::generation();
+            match oauth::access_token(&self.http.get(), &self.endpoints, &self.client, &self.refresh) {
+                Ok(t) => break t,
+                // (The network, not the sign-in: again, once there's one.)
+                Err(e) if Drive::network_failed(seen) && tries < 100 => {
+                    tries += 1;
+                    tracing::info!("diskbackup: the network changed fetching a token ({e}): again");
+                    self.network()?;
+                }
+                Err(e) => return Err(io::Error::new(io::ErrorKind::PermissionDenied, e)),
+            }
+        };
         if let Ok(mut t) = self.token.lock() {
             *t = Some((token.clone(), Instant::now() + lasts.saturating_sub(Duration::from_secs(60))));
         }
@@ -129,15 +277,21 @@ impl Drive {
     fn call(&self, mut make: impl FnMut(&ureq::Agent, &str) -> Result<Response, ureq::Error>) -> io::Result<Response> {
         let mut wait = Duration::from_secs(1);
         let mut last = String::new();
-        for attempt in 0..TRIES {
-            if attempt > 0 {
+        let (mut tries, mut changes, mut pause) = (0, 0, false);
+        while tries < TRIES {
+            if pause {
                 let mut r = [0u8; 2];
                 let _ = getrandom::fill(&mut r);
-                std::thread::sleep(wait + Duration::from_millis(u16::from_le_bytes(r) as u64 % 1000));
+                // (Cut short by the network changing: on, the new way.)
+                olo_net::rest(wait + Duration::from_millis(u16::from_le_bytes(r) as u64 % 1000));
                 wait = (wait * 2).min(Duration::from_secs(64));
             }
+            pause = true;
+            self.network()?;
+            let seen = olo_net::generation();
             let token = self.token()?;
-            match make(&self.http, &token) {
+            tries += 1;
+            match make(&self.http.get(), &token) {
                 Ok(r) if r.status() == 401 => {
                     last = "the sign-in ran out".into();
                     if let Ok(mut t) = self.token.lock() {
@@ -154,6 +308,12 @@ impl Drive {
                     return Err(io::Error::new(io::ErrorKind::PermissionDenied, format!("Google Drive: {}", message(&body))));
                 }
                 Ok(r) => return Ok(r),
+                // The network changed under it, or went: not a try of its
+                // own (again at once on the new one, or once there's one).
+                Err(e) if Drive::network_failed(seen) && changes < 100 => {
+                    tracing::info!("diskbackup: the network changed under a request ({e}): again");
+                    (tries, changes, pause, wait) = (tries - 1, changes + 1, false, Duration::from_secs(1));
+                }
                 Err(e) => last = e.to_string(),
             }
         }
@@ -186,18 +346,68 @@ impl Drive {
         Ok(id)
     }
 
-    /// A body fetched, paced as it comes.
-    fn read_paced(&self, resp: Response, expect: usize) -> io::Result<Vec<u8>> {
-        let mut out = Vec::with_capacity(expect);
+    /// A body read onto `out`, paced as it comes (what came before a
+    /// failure kept).
+    fn read_paced(&self, resp: Response, out: &mut Vec<u8>) -> io::Result<()> {
         let mut r = resp.into_body().into_reader();
         let mut buf = vec![0u8; 64 << 10];
         loop {
             let n = r.read(&mut buf)?;
             if n == 0 {
-                return Ok(out);
+                return Ok(());
             }
             self.down.take(n as u64);
             out.extend_from_slice(&buf[..n]);
+        }
+    }
+
+    /// File `id` (`name`), or `range` of it (from, length): broken off by
+    /// the network changing, the rest asked for on the new one.
+    fn fetch(&self, id: &str, name: &str, range: Option<(u64, u64)>) -> io::Result<Vec<u8>> {
+        let url = format!("{}/drive/v3/files/{id}?alt=media", self.endpoints.api);
+        let (start, len) = range.map_or((0, None), |(o, l)| (o, Some(l)));
+        let mut out = Vec::with_capacity(len.unwrap_or(0) as usize);
+        let mut changes = 0;
+        loop {
+            let from = start + out.len() as u64;
+            let asked = match len {
+                Some(l) => Some(format!("bytes={from}-{}", start + l - 1)),
+                None if from == 0 => None,
+                None => Some(format!("bytes={from}-")),
+            };
+            let seen = olo_net::generation();
+            let resp = self.call(|http, token| {
+                let mut req = http.get(&url).header("Authorization", format!("Bearer {token}"));
+                if let Some(r) = &asked {
+                    req = req.header("Range", r);
+                }
+                req.call()
+            })?;
+            let read = match resp.status().as_u16() {
+                206 => self.read_paced(resp, &mut out),
+                200 if asked.is_none() => self.read_paced(resp, &mut out),
+                // (The whole file, taking no range: the part wanted, from it.)
+                200 => {
+                    let mut whole = Vec::new();
+                    self.read_paced(resp, &mut whole).and_then(|()| {
+                        let end = len.map_or(whole.len() as u64, |l| start + l) as usize;
+                        let rest = whole.get(from as usize..end).ok_or_else(|| other(format!("{name} is shorter than asked")))?;
+                        out.extend_from_slice(rest);
+                        Ok(())
+                    })
+                }
+                404 => return Err(io::Error::new(io::ErrorKind::NotFound, format!("{name} isn't in Google Drive"))),
+                s => return Err(other(format!("Google Drive: {s} {}", message(&text(resp))))),
+            };
+            match read {
+                Ok(()) => return Ok(out),
+                Err(e) if Drive::network_failed(seen) && changes < 100 => {
+                    changes += 1;
+                    tracing::info!("diskbackup: the network changed fetching {name} ({e}): the rest, from {}", out.len());
+                    self.network()?;
+                }
+                Err(e) => return Err(e),
+            }
         }
     }
 
@@ -222,38 +432,45 @@ impl Drive {
         }
         let session = resp.headers().get("location").and_then(|l| l.to_str().ok()).map(str::to_owned).ok_or_else(|| other("Google Drive gave no upload address"))?;
         let mut at = 0usize;
-        let mut failures = 0;
+        let (mut failures, mut changes) = (0, 0);
+        let got_to = |r: &Response| r.headers().get("range").and_then(|v| v.to_str().ok()).and_then(|v| v.rsplit('-').next()).and_then(|n| n.parse::<usize>().ok()).map_or(0, |n| n + 1);
         loop {
             let end = (at + PIECE).min(total);
             let piece = &data[at..end];
             let range = if piece.is_empty() { format!("bytes */{total}") } else { format!("bytes {at}-{}/{total}", end - 1) };
             let mut body = Paced { data: piece, at: 0, limit: &self.up };
-            let sent = self.http.put(&session).header("Content-Range", &range).header("Content-Length", piece.len().to_string()).send(ureq::SendBody::from_reader(&mut body));
+            let seen = olo_net::generation();
+            let sent = self.http.get().put(&session).header("Content-Range", &range).header("Content-Length", piece.len().to_string()).send(ureq::SendBody::from_reader(&mut body));
             match sent {
                 Ok(r) if matches!(r.status().as_u16(), 200 | 201) => return Ok(self.json(r)?.get("id").and_then(|i| i.as_str()).unwrap_or_default().to_owned()),
                 // Taken up to its Range: on from there.
                 Ok(r) if r.status() == 308 => {
-                    at = r.headers().get("range").and_then(|v| v.to_str().ok()).and_then(|v| v.rsplit('-').next()).and_then(|n| n.parse::<usize>().ok()).map_or(0, |n| n + 1);
+                    at = got_to(&r);
                     failures = 0;
                 }
                 Ok(r) if r.status() == 404 || r.status() == 410 => return Err(other("Google Drive let the upload go: it starts again next time")),
                 Ok(r) if r.status().is_client_error() && r.status() != 429 => return Err(other(format!("Google Drive: {} {}", r.status(), message(&text(r))))),
-                // Failed part way: asked where it got to, after a while.
+                // Failed part way: asked where it got to (after a while, or
+                // at once on the new network), and on from there.
                 other_result => {
-                    failures += 1;
-                    if failures > TRIES {
-                        let why = match other_result {
-                            Ok(r) => format!("{}", r.status()),
-                            Err(e) => e.to_string(),
-                        };
-                        return Err(other(format!("Google Drive's upload kept failing: {why}")));
-                    }
-                    std::thread::sleep(Duration::from_secs(1 << failures.min(6)));
-                    match self.http.put(&session).header("Content-Range", format!("bytes */{total}")).header("Content-Length", "0").send(&[][..]) {
-                        Ok(r) if matches!(r.status().as_u16(), 200 | 201) => return Ok(self.json(r)?.get("id").and_then(|i| i.as_str()).unwrap_or_default().to_owned()),
-                        Ok(r) if r.status() == 308 => {
-                            at = r.headers().get("range").and_then(|v| v.to_str().ok()).and_then(|v| v.rsplit('-').next()).and_then(|n| n.parse::<usize>().ok()).map_or(0, |n| n + 1);
+                    let why = match other_result {
+                        Ok(r) => format!("{}", r.status()),
+                        Err(e) => e.to_string(),
+                    };
+                    if Drive::network_failed(seen) && changes < 100 {
+                        changes += 1;
+                        tracing::info!("diskbackup: the network changed sending a piece ({why}): on from where it got to");
+                        self.network()?;
+                    } else {
+                        failures += 1;
+                        if failures > TRIES {
+                            return Err(other(format!("Google Drive's upload kept failing: {why}")));
                         }
+                        olo_net::rest(Duration::from_secs(1 << failures.min(6)));
+                    }
+                    match self.http.get().put(&session).header("Content-Range", format!("bytes */{total}")).header("Content-Length", "0").send(&[][..]) {
+                        Ok(r) if matches!(r.status().as_u16(), 200 | 201) => return Ok(self.json(r)?.get("id").and_then(|i| i.as_str()).unwrap_or_default().to_owned()),
+                        Ok(r) if r.status() == 308 => at = got_to(&r),
                         _ => {}
                     }
                 }
@@ -301,13 +518,7 @@ impl Store for Drive {
 
     fn get(&self, name: &str) -> io::Result<Vec<u8>> {
         let id = self.id_of(name)?.ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, format!("{name} isn't in Google Drive")))?;
-        let url = format!("{}/drive/v3/files/{id}?alt=media", self.endpoints.api);
-        let resp = self.call(|http, token| http.get(&url).header("Authorization", format!("Bearer {token}")).call())?;
-        match resp.status().as_u16() {
-            200 => self.read_paced(resp, 0),
-            404 => Err(io::Error::new(io::ErrorKind::NotFound, format!("{name} isn't in Google Drive"))),
-            s => Err(other(format!("Google Drive: {s} {}", message(&text(resp))))),
-        }
+        self.fetch(&id, name, None)
     }
 
     fn get_range(&self, name: &str, offset: u64, len: u64) -> io::Result<Vec<u8>> {
@@ -315,16 +526,7 @@ impl Store for Drive {
             return Ok(Vec::new());
         }
         let id = self.id_of(name)?.ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, format!("{name} isn't in Google Drive")))?;
-        let url = format!("{}/drive/v3/files/{id}?alt=media", self.endpoints.api);
-        let range = format!("bytes={offset}-{}", offset + len - 1);
-        let resp = self.call(|http, token| http.get(&url).header("Authorization", format!("Bearer {token}")).header("Range", &range).call())?;
-        let out = match resp.status().as_u16() {
-            206 => self.read_paced(resp, len as usize)?,
-            // (The whole file, if it took no range: the part asked for.)
-            200 => self.read_paced(resp, 0)?.get(offset as usize..(offset + len) as usize).map(<[u8]>::to_vec).ok_or_else(|| other(format!("{name} is shorter than asked")))?,
-            404 => return Err(io::Error::new(io::ErrorKind::NotFound, format!("{name} isn't in Google Drive"))),
-            s => return Err(other(format!("Google Drive: {s} {}", message(&text(resp))))),
-        };
+        let out = self.fetch(&id, name, Some((offset, len)))?;
         if out.len() as u64 != len {
             return Err(io::Error::new(io::ErrorKind::UnexpectedEof, format!("{name}: {} of {len} bytes", out.len())));
         }
@@ -332,38 +534,15 @@ impl Store for Drive {
     }
 
     fn list(&self, dir: &str) -> io::Result<Vec<(String, u64)>> {
-        let prefix = if dir.is_empty() { String::new() } else { format!("{}/", dir.trim_end_matches('/')) };
-        // (Drive's `contains` on a name matches its start.)
-        let mut q = format!("'{}' in parents and trashed = false", self.folder);
-        if !prefix.is_empty() {
-            q.push_str(&format!(" and name contains '{prefix}'"));
-        }
-        let mut out = Vec::new();
-        let mut page: Option<String> = None;
-        loop {
-            let mut url = format!("{}/drive/v3/files?q={}&fields=nextPageToken,files(id,name,size)&pageSize=1000&spaces=drive", self.endpoints.api, oauth::escape(&q));
-            if let Some(p) = &page {
-                url.push_str(&format!("&pageToken={}", oauth::escape(p)));
-            }
-            let v = self.json(self.call(|http, token| http.get(&url).header("Authorization", format!("Bearer {token}")).call())?)?;
-            if let (Some(files), Ok(mut ids)) = (v.get("files").and_then(|f| f.as_array()), self.ids.lock()) {
-                for f in files {
-                    let (Some(name), Some(id)) = (f.get("name").and_then(|n| n.as_str()), f.get("id").and_then(|i| i.as_str())) else { continue };
-                    ids.insert(name.to_owned(), id.to_owned());
-                    if name.starts_with(&prefix) {
-                        let size = f.get("size").and_then(|s| s.as_str()).and_then(|s| s.parse().ok()).unwrap_or(0);
-                        out.push((name.to_owned(), size));
-                    }
-                }
-            }
-            match v.get("nextPageToken").and_then(|p| p.as_str()) {
-                Some(p) => page = Some(p.to_owned()),
-                None => break,
-            }
-        }
-        out.sort();
-        out.dedup_by(|a, b| a.0 == b.0);
-        Ok(out)
+        Ok(self.listing(dir, false)?.into_iter().map(|(n, size, _)| (n, size)).collect())
+    }
+
+    fn keeps_checksums(&self) -> bool {
+        true
+    }
+
+    fn checksums(&self, dir: &str) -> io::Result<Option<HashMap<String, String>>> {
+        Ok(Some(self.listing(dir, true)?.into_iter().filter_map(|(n, _, sum)| sum.map(|s| (n, s.to_ascii_lowercase()))).collect()))
     }
 
     fn delete(&self, name: &str) -> io::Result<()> {

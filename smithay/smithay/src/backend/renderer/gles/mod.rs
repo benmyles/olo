@@ -85,7 +85,8 @@ enum CleanupResource {
     FramebufferObject(ffi::types::GLuint),
     RenderbufferObject(ffi::types::GLuint),
     EGLImage(EGLImage),
-    Mapping(ffi::types::GLuint, *const std::ffi::c_void),
+    /// A read-back's buffer, its mapping (if mapped) and its size in bytes.
+    Mapping(ffi::types::GLuint, *const std::ffi::c_void, isize),
     Program(ffi::types::GLuint),
     Sync(ffi::types::GLsync),
 }
@@ -314,6 +315,28 @@ struct GlesCleanup {
     // (std's: its poison is cleared, which tracing-mutex can't do.)
     receiver: std::sync::Mutex<mpsc::Receiver<CleanupResource>>,
     sender: mpsc::Sender<CleanupResource>,
+    /// Olo: the last read-back's buffer, its size in bytes, and when it
+    /// was let go, kept for the next read-back of that size (a
+    /// screenshot's: 33 MB at 4K) rather than made for each, and deleted
+    /// `SPARE_KEPT` after (as cleanup next runs).
+    spare: std::sync::Mutex<Option<(ffi::types::GLuint, isize, std::time::Instant)>>,
+}
+
+/// Olo: how long a read-back's buffer is kept for the next one.
+const SPARE_KEPT: std::time::Duration = std::time::Duration::from_secs(10);
+
+impl GlesCleanup {
+    /// Olo: the kept read-back buffer, if it is `bytes` long.
+    fn take_spare(&self, bytes: isize) -> Option<ffi::types::GLuint> {
+        let mut spare = self.spare.lock().unwrap_or_else(|e| e.into_inner());
+        match *spare {
+            Some((pbo, b, _)) if b == bytes => {
+                *spare = None;
+                Some(pbo)
+            }
+            _ => None,
+        }
+    }
 }
 
 impl Default for GlesCleanup {
@@ -322,6 +345,7 @@ impl Default for GlesCleanup {
         Self {
             receiver: std::sync::Mutex::new(receiver),
             sender,
+            spare: std::sync::Mutex::new(None),
         }
     }
 }
@@ -364,13 +388,18 @@ impl GlesCleanup {
                 CleanupResource::RenderbufferObject(rbo) => unsafe {
                     gl.DeleteRenderbuffers(1, &rbo);
                 },
-                CleanupResource::Mapping(pbo, mapping) => unsafe {
+                CleanupResource::Mapping(pbo, mapping, bytes) => unsafe {
                     if !mapping.is_null() {
                         gl.BindBuffer(ffi::PIXEL_PACK_BUFFER, pbo);
                         gl.UnmapBuffer(ffi::PIXEL_PACK_BUFFER);
                         gl.BindBuffer(ffi::PIXEL_PACK_BUFFER, 0);
                     }
-                    gl.DeleteBuffers(1, &pbo);
+                    // Olo: kept for the next read-back, in place of the one
+                    // kept before.
+                    let mut spare = self.spare.lock().unwrap_or_else(|e| e.into_inner());
+                    if let Some((old, _, _)) = spare.replace((pbo, bytes, std::time::Instant::now())) {
+                        gl.DeleteBuffers(1, &old);
+                    }
                 },
                 CleanupResource::Program(program) => unsafe {
                     gl.DeleteProgram(program);
@@ -379,6 +408,14 @@ impl GlesCleanup {
                     gl.DeleteSync(sync);
                 },
             }
+        }
+        // Olo: the kept read-back buffer, long unused, goes.
+        let mut spare = self.spare.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((pbo, _, since)) = *spare
+            && since.elapsed() >= SPARE_KEPT
+        {
+            unsafe { gl.DeleteBuffers(1, &pbo) };
+            *spare = None;
         }
         Ok(())
     }
@@ -1466,14 +1503,21 @@ impl ExportMem for GlesRenderer {
         let (_, format, layout) = fourcc_to_gl_formats(fourcc).ok_or(GlesError::UnknownPixelFormat)?;
         let bpp = gl_bpp(format, layout).ok_or(GlesError::UnsupportedPixelLayout)? / 8;
 
-        let mut pbo = 0;
+        let size = (region.size.w * region.size.h * bpp as i32) as isize;
+        // Olo: the last read-back's buffer, if it's this size (its storage
+        // as it is).
+        let reused = self.gles_cleanup().take_spare(size);
+        let mut pbo = reused.unwrap_or(0);
         let err = unsafe {
             self.gl.GetError(); // clear errors
-            self.gl.GenBuffers(1, &mut pbo);
+            if reused.is_none() {
+                self.gl.GenBuffers(1, &mut pbo);
+            }
             self.gl.BindBuffer(ffi::PIXEL_PACK_BUFFER, pbo);
-            let size = (region.size.w * region.size.h * bpp as i32) as isize;
-            self.gl
-                .BufferData(ffi::PIXEL_PACK_BUFFER, size, ptr::null(), ffi::STREAM_DRAW);
+            if reused.is_none() {
+                self.gl
+                    .BufferData(ffi::PIXEL_PACK_BUFFER, size, ptr::null(), ffi::STREAM_DRAW);
+            }
             self.gl
                 .ReadBuffer(if matches!(target.0, GlesTargetInternal::Surface { .. }) {
                     ffi::BACK
@@ -1501,6 +1545,7 @@ impl ExportMem for GlesRenderer {
                 layout,
                 has_alpha,
                 size: region.size,
+                bytes: size,
                 mapping: AtomicPtr::new(ptr::null_mut()),
                 destruction_callback_sender: self.gles_cleanup().sender.clone(),
             }),
@@ -1567,6 +1612,7 @@ impl ExportMem for GlesRenderer {
                 layout,
                 has_alpha: texture.0.has_alpha,
                 size: region.size,
+                bytes: (region.size.w * region.size.h * bpp as i32) as isize,
                 mapping: AtomicPtr::new(ptr::null_mut()),
                 destruction_callback_sender: self.gles_cleanup().sender.clone(),
             }),

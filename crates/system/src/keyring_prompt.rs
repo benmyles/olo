@@ -771,6 +771,16 @@ mod tests {
         let (dismissed, _, _) = run(prompt, &mut vec![Answer::Cancel]);
         assert!(dismissed);
         assert!(locked());
+        // Gone again: another test on this private keyring (olo-secrets'
+        // takeover unlocks every keyring, its prompter knowing only the
+        // login one's password) would be asked for this one forever.
+        let col = zbus::blocking::Proxy::new(&conn, SS, collection.as_str(), "org.freedesktop.Secret.Collection").unwrap();
+        let prompt: OwnedObjectPath = col.call("Delete", &()).unwrap();
+        if prompt.as_str() != "/" {
+            run(prompt, &mut Vec::new());
+        }
+        let left: Vec<OwnedObjectPath> = zbus::blocking::Proxy::new(&conn, SS, "/org/freedesktop/secrets", "org.freedesktop.Secret.Service").unwrap().get_property("Collections").unwrap();
+        assert!(!left.contains(&collection), "deleted: {left:?}");
     }
 
     #[test]

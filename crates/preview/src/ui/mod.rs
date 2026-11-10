@@ -117,6 +117,9 @@ pub struct PreviewView {
     /// decode it last (`PreviewEvent::Decoding`).
     decode_with: video::Device,
     decoding_said: Option<&'static str>,
+    /// How fast sound and video play (Playback Speed), kept from file to
+    /// file: Quick Look stepping through a folder of lectures keeps 1.5×.
+    rate: f64,
     /// Its video is known to be HDR (told as `PreviewEvent::Gamut`: its
     /// window may draw in HDR10).
     video_hdr: bool,
@@ -202,6 +205,7 @@ impl PreviewView {
             yuv_frame: None,
             first_page: false,
             decode_with: video::Device::default(),
+            rate: 1.0,
             decoding_said: None,
             video_hdr: false,
             art: None,
@@ -303,7 +307,11 @@ impl PreviewView {
                     && md.playable
                     && !md.video
                 {
-                    self.player = Some(audio::Player::start(&input::Input::file(&self.item.path)));
+                    let player = audio::Player::start(&input::Input::file(&self.item.path));
+                    if self.rate != 1.0 {
+                        player.set_rate(self.rate);
+                    }
+                    self.player = Some(player);
                 }
                 self.video = match &b {
                     // (Frames as GPUI takes them: BGRA.)
@@ -314,6 +322,11 @@ impl PreviewView {
                     )),
                     _ => None,
                 };
+                if let Some(v) = &self.video
+                    && self.rate != 1.0
+                {
+                    v.set_rate(self.rate);
+                }
                 // A video's poster shows until its first frame comes.
                 if let Body::Media(md) = &b
                     && md.video
@@ -482,6 +495,9 @@ impl PreviewView {
         drop(old);
         let v = video::Video::start_with(&input::Input::file(&self.item.path), duration, video::Options { playing, picture: true, sound: true, bgra: true, yuv: true, device });
         Transport::seek(&v, at);
+        if self.rate != 1.0 {
+            v.set_rate(self.rate);
+        }
         self.video = Some(v);
         cx.notify();
     }
@@ -620,6 +636,48 @@ impl PreviewView {
         };
         cx.notify();
         done
+    }
+
+    /// The speeds offered (Playback Speed; Ben, 2026-11-09: "the ability
+    /// to watch videos at custom speeds from 0.25x up to 2x").
+    pub const SPEEDS: [f64; 8] = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+
+    /// The speed chosen here (`set_playback_rate`), whether or not what
+    /// it shows now plays: the next file plays at it.
+    pub fn chosen_rate(&self) -> f64 {
+        self.rate
+    }
+
+    /// How fast its sound or video plays (1: as recorded), if it has one.
+    pub fn playback_rate(&self) -> Option<f64> {
+        (self.video.is_some() || self.player.is_some()).then_some(self.rate)
+    }
+
+    /// Play its sound or video at `rate` (0.25 to 2), the sound's pitch
+    /// kept, from now on, and the files shown here after it too.
+    pub fn set_playback_rate(&mut self, rate: f64, cx: &mut Context<Self>) {
+        let rate = rate.clamp(audio::MIN_RATE, audio::MAX_RATE);
+        if rate == self.rate {
+            return;
+        }
+        self.rate = rate;
+        // (A video's sound is its own.)
+        if let Some(v) = &self.video {
+            v.set_rate(rate);
+        } else if let Some(p) = &self.player {
+            p.set_rate(rate);
+        }
+        cx.notify();
+    }
+
+    /// The next speed of [`Self::SPEEDS`] up (`by` 1: `>`) or down (-1:
+    /// `<`); false with nothing playing, or at the end.
+    pub fn step_playback_rate(&mut self, by: i32, cx: &mut Context<Self>) -> bool {
+        let Some(now) = self.playback_rate() else { return false };
+        let next = if by > 0 { Self::SPEEDS.iter().find(|&&r| r > now + 1e-6) } else { Self::SPEEDS.iter().rev().find(|&&r| r < now - 1e-6) };
+        let Some(&next) = next else { return false };
+        self.set_playback_rate(next, cx);
+        true
     }
 
     /// Toggle sound or video playback (Space or P in a viewer).
@@ -1280,6 +1338,7 @@ trait Transport {
     fn duration(&self) -> f64;
     fn playing(&self) -> bool;
     fn error(&self) -> Option<String>;
+    fn rate(&self) -> f64;
 }
 
 impl Transport for audio::Player {
@@ -1300,6 +1359,9 @@ impl Transport for audio::Player {
     }
     fn error(&self) -> Option<String> {
         self.state.error.lock().unwrap().clone()
+    }
+    fn rate(&self) -> f64 {
+        audio::Player::rate(self)
     }
 }
 
@@ -1322,6 +1384,47 @@ impl Transport for video::Video {
     fn error(&self) -> Option<String> {
         video::Video::error(self)
     }
+    fn rate(&self) -> f64 {
+        video::Video::rate(self)
+    }
+}
+
+/// A speed as said: "1×", "0.25×", "1.5×".
+pub fn speed_label(rate: f64) -> String {
+    let s = format!("{rate:.2}");
+    format!("{}×", s.trim_end_matches('0').trim_end_matches('.'))
+}
+
+/// The speeds as menu items (commands "speed-1.5"), `current` checked:
+/// the transport's speed button's menu, and the Viewer's View ▸ Playback
+/// Speed.
+pub fn speed_items(mut menu: olo_ui::Menu, current: f64) -> olo_ui::Menu {
+    for r in PreviewView::SPEEDS {
+        let label = if r == 1.0 { "1× (Normal)".to_owned() } else { speed_label(r) };
+        menu = menu.item(label, format!("speed-{r}")).checked((current - r).abs() < 1e-6);
+    }
+    menu
+}
+
+/// The speed a command of [`speed_items`]' asks for.
+pub fn speed_command(command: &str) -> Option<f64> {
+    command.strip_prefix("speed-")?.parse().ok().filter(|r: &f64| (audio::MIN_RATE..=audio::MAX_RATE).contains(r))
+}
+
+/// `>` a speed faster (1), `<` slower (-1), as YouTube's keys: Shift
+/// and the key only.
+pub fn speed_key(k: &gpui::Keystroke) -> Option<i32> {
+    let m = &k.modifiers;
+    if m.control || m.alt || m.platform || m.function {
+        return None;
+    }
+    match k.key.as_str() {
+        ">" => Some(1),
+        "<" => Some(-1),
+        "." if m.shift => Some(1),
+        "," if m.shift => Some(-1),
+        _ => None,
+    }
 }
 
 /// Where the transport's parts are, as drawn.
@@ -1329,7 +1432,12 @@ impl Transport for video::Video {
 struct TransportAt {
     button: Bounds<Pixels>,
     bar: Bounds<Pixels>,
+    /// Its speed's button (Playback Speed).
+    speed: Bounds<Pixels>,
 }
+
+/// The speed button's width: room for the longest, "0.25×".
+const SPEED_W: f32 = 44.0;
 
 /// Play/pause, elapsed time, a seek bar and the time left, centred on
 /// `y` between `x` and `right`.
@@ -1376,6 +1484,15 @@ fn paint_transport(
         }
     }
     agent::record(window, cx, agent::Node::button(if playing { "Pause" } else { "Play" }, br));
+    // Its speed, at the right end: a button showing it, its menu the
+    // speeds.
+    let rate = t.rate();
+    let sr = style::snap_centred(window, point(right - px(SPEED_W / 2.0), y), SPEED_W, 22.0);
+    style::raised(window, sr, &p);
+    let said = speed_label(rate);
+    style::label(window, cx, sr.center().x, y, Align::Center, said.clone(), 11.0, style::ui_font(FontWeight::NORMAL), ink);
+    agent::record(window, cx, agent::Node { role: "Button", name: Some("Playback Speed".into()), value: Some(said.into()), bounds: sr, enabled: true, clickable: true, ..Default::default() });
+    let right = sr.left() - px(8.0);
     let pos = t.position();
     let dur = duration.unwrap_or_else(|| t.duration()).max(0.001);
     let font = style::mono_font(FontWeight::NORMAL);
@@ -1430,7 +1547,7 @@ fn paint_transport(
             },
         );
     }
-    TransportAt { button: br, bar }
+    TransportAt { button: br, bar, speed: sr }
 }
 
 impl PreviewView {
@@ -1501,7 +1618,9 @@ impl PreviewView {
             self.video_played = !self.video_played;
             cx.on_next_frame(window, |_, _, cx| cx.notify());
         }
-        let playing = self.player.as_ref().is_some_and(Transport::playing) || self.video.as_ref().is_some_and(Transport::playing);
+        // (A sound still opening is drawn again too: it says it's playing
+        // only once its first sound is sent, after this was drawn.)
+        let playing = self.player.as_ref().is_some_and(|p| Transport::playing(p) || p.opening()) || self.video.as_ref().is_some_and(Transport::playing);
         if playing && self.video.is_none() {
             self.tick_in(Duration::from_millis(100), cx);
         }
@@ -1535,8 +1654,21 @@ impl PreviewView {
             .child(paint)
             .on_mouse_down(
                 MouseButton::Left,
-                cx.listener(move |v, e: &MouseDownEvent, _, cx| {
+                cx.listener(move |v, e: &MouseDownEvent, window, cx| {
                     let t = at.get();
+                    // Its speed: the speeds, the one playing over the
+                    // button (a menu field's way).
+                    if t.speed.contains(&e.position) {
+                        let current = PreviewView::SPEEDS.iter().position(|&r| (r - v.rate).abs() < 1e-6).unwrap_or(3);
+                        let me = cx.entity();
+                        olo_ui::menu::popup_over(window, cx, speed_items(olo_ui::Menu::new("Playback Speed"), v.rate), t.speed, current, move |command, _, cx| {
+                            if let Some(rate) = speed_command(command) {
+                                me.update(cx, |v, cx| v.set_playback_rate(rate, cx));
+                            }
+                        });
+                        cx.stop_propagation();
+                        return;
+                    }
                     let transport: Option<&dyn Transport> = match (&v.video, &v.player) {
                         (Some(vid), _) => Some(vid),
                         (None, Some(p)) => Some(p),

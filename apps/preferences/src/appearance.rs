@@ -1,5 +1,5 @@
 //! Appearance: light, dark or automatic theme; night mode (warmer colours
-//! in the evening); the window tab font size and longest title; icons in
+//! in the evening, at once or gradually from its start); the window tab font size and longest title; icons in
 //! Deskbar's menu; new windows glowing a moment.
 
 use olo_protocol::{NightLightMode, ThemePreference};
@@ -29,6 +29,21 @@ pub fn ui(ui: &mut Ui) {
             ui.row(|ui| {
                 ui.text("night-start", &night.start, |f| f, |c| c.label("From:").width(110.0), |s, v| s.appearance.night_light.start = v);
                 ui.text("night-end", &night.end, |f| f, |c| c.label("To:").width(90.0), |s, v| s.appearance.night_light.end = v);
+            });
+        });
+        // Warming gradually from the start (Ben, 2026-11-08), back to
+        // neutral at the end as ever.
+        ui.enabled_if(night.mode == NightLightMode::Scheduled, |ui| {
+            ui.check("Shift gradually, starting at From", night.gradual, |s, v| s.appearance.night_light.gradual = v);
+            ui.enabled_if(night.gradual, |ui| {
+                let n = night.gradual_minutes.clamp(1, 180);
+                ui.slider(
+                    "night-gradual",
+                    n as f32,
+                    1.0..=180.0,
+                    |s| s.step(1.0).label("Shift over").value_text(minutes_text(n)).limits("1 minute", "3 hours"),
+                    |s, v| s.appearance.night_light.gradual_minutes = (v.round() as u32).clamp(1, 180),
+                );
             });
         });
         ui.enabled_if(night.mode != NightLightMode::Off, |ui| {
@@ -73,4 +88,26 @@ pub fn ui(ui: &mut Ui) {
             );
         });
     });
+}
+
+/// "45 minutes", "1 hour", "2 hours 30 minutes".
+fn minutes_text(n: u32) -> String {
+    let plural = |n: u32, one: &str| if n == 1 { format!("1 {one}") } else { format!("{n} {one}s") };
+    match (n / 60, n % 60) {
+        (0, m) => plural(m, "minute"),
+        (h, 0) => plural(h, "hour"),
+        (h, m) => format!("{} {}", plural(h, "hour"), plural(m, "minute")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn minutes_said_plainly() {
+        assert_eq!(super::minutes_text(1), "1 minute");
+        assert_eq!(super::minutes_text(45), "45 minutes");
+        assert_eq!(super::minutes_text(60), "1 hour");
+        assert_eq!(super::minutes_text(90), "1 hour 30 minutes");
+        assert_eq!(super::minutes_text(180), "3 hours");
+    }
 }

@@ -1,7 +1,8 @@
 //! Reading pictures for thumbnails, Quick Look and the like: everything the
 //! `image` crate reads, plus JPEG XL (what Fedora ships its backgrounds
-//! as), AVIF (avif-parse and the rav1d AV1 decoder) and HEIC / HEIF (heifer,
-//! iPhone photos), all in Rust, the right way up and within a memory
+//! as), AVIF (avif-parse and the rav1d AV1 decoder), HEIC / HEIF (heifer,
+//! iPhone photos) and Lottie animations' first frames (`.tgs`, [`lottie`]),
+//! all in Rust, the right way up and within a memory
 //! limit.
 
 use std::{io::Read, path::Path};
@@ -61,6 +62,8 @@ fn avif_parsed(parsed: &avif_parse::AvifData) -> Result<DynamicImage, String> {
 
 pub mod gain;
 pub mod hdr;
+pub mod lottie;
+pub mod webm;
 
 /// Bounded byte-backed still images for resource workers.
 pub mod raster;
@@ -292,6 +295,26 @@ pub mod av1 {
             let (sx, sy) = if plane == 0 { (0, 0) } else { self.chroma.unwrap_or((0, 0)) };
             let i = (y >> sy) as usize * self.stride[plane] + (x >> sx) as usize;
             planes!(&self.planes, p => p[plane][i] as f32)
+        }
+
+        /// This frame's luma as the alpha of `rgba` (RGBA rows of the
+        /// same size, or as much of them as there is): a WebM alpha
+        /// stream's picture, whose luma is the alpha itself, 0 to the
+        /// top, whatever range the stream says (libvpx's decoders copy
+        /// it so; read as video's limited range, Chromium's test file's
+        /// 68 came out 61).
+        pub fn luma_into_alpha(&self, rgba: &mut [u8], width: u32) {
+            let shift = self.bpc.saturating_sub(8);
+            let table: Vec<u8> = (0..1u32 << self.bpc).map(|v| (v >> shift) as u8).collect();
+            let (w, h) = (self.width.min(width) as usize, self.height as usize);
+            planes!(&self.planes, p => {
+                for (y, row) in rgba.chunks_exact_mut(width as usize * 4).take(h).enumerate() {
+                    let ly = &p[0][y * self.stride[0]..][..w];
+                    for (px, &l) in row.as_chunks_mut::<4>().0.iter_mut().zip(ly) {
+                        px[3] = table[(l as usize).min(table.len() - 1)];
+                    }
+                }
+            });
         }
 
         /// Luma as an 8-bit value: an alpha plane.
@@ -962,6 +985,10 @@ fn decode(path: &Path) -> Result<(DynamicImage, String, Option<Vec<u8>>), String
             // Some HEIF files hold AV1 under a generic brand.
             Heif::Hevc => heic(&data).map(|i| (i, "HEIC".into(), icc.clone())).or_else(|e| avif(&data).map(|i| (i, "AVIF".into(), icc)).map_err(|_| e)),
         };
+    }
+    // A Telegram sticker (or a Lottie animation, gzipped): its first frame.
+    if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("tgs")) {
+        return lottie::first_frame(path).map(|i| (i, "Lottie".into(), None));
     }
     let mut reader = ImageReader::open(path).map_err(|e| e.to_string())?.with_guessed_format().map_err(|e| e.to_string())?;
     let format = reader.format().map(|f| format!("{f:?}").to_uppercase()).unwrap_or_else(|| "Image".into());

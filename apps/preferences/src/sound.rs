@@ -339,6 +339,13 @@ fn airpods_output(ui: &mut Ui, dev: &audio::Device) {
         if bt.high_quality() { format!("{} · {} · music quality", a.model, bt.codec_name()) } else { format!("{} · {} · call quality while the microphone is used", a.model, bt.codec_name()) };
     ui.note(quality);
     let address = Some(a.address.clone());
+    // (Under what it's about, on a line of its own: beside the noise
+    // control and AirPods Settings… there was no room, and the menu was
+    // squeezed to nothing, its label over the button.)
+    if !bt.high_quality() {
+        let address = address.clone();
+        ui.add(div().flex().flex_row().child(Button::new("Use Music Quality").on_click(move |_, cx| crate::airpods::ask(cx, Request::Quality { address: address.clone(), high: true }))));
+    }
     let mut row = div().flex().flex_row().items_center().gap(px(olo_ui::metrics::SPACING));
     if a.abilities.noise_control && a.linked {
         let modes: Vec<ListeningMode> = ListeningMode::ALL.into_iter().filter(|m| *m != ListeningMode::Adaptive || a.abilities.adaptive).collect();
@@ -348,10 +355,6 @@ fn airpods_output(ui: &mut Ui, dev: &audio::Device) {
         row = row.child(MenuField::new("sound-noise-control", names, at).label("Noise control:").on_change(move |i, _, cx| {
             crate::airpods::ask(cx, Request::Set { address: address.clone(), change: Change::ListeningMode(modes[i]) });
         }));
-    }
-    if !bt.high_quality() {
-        let address = address.clone();
-        row = row.child(Button::new("Use Music Quality").on_click(move |_, cx| crate::airpods::ask(cx, Request::Quality { address: address.clone(), high: true })));
     }
     let prefs = ui.prefs();
     row = row.child(div().flex_1()).child(Button::new("AirPods Settings…").on_click(move |_, cx| {

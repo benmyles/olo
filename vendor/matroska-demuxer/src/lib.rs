@@ -87,6 +87,9 @@ pub struct Frame {
     ///
     /// Used when there is a break in a track like for subtitle tracks.
     pub duration: Option<u64>,
+    /// Olo: the block's BlockAdditional with BlockAddID 1 (WebM's alpha:
+    /// a second VP8 or VP9 stream whose luma is the frame's alpha).
+    pub additional: Option<Vec<u8>>,
 }
 
 impl From<Vec<u8>> for Frame {
@@ -1565,6 +1568,8 @@ impl<R: Read + Seek> MatroskaFile<R> {
 
         // Search for the next block and read it.
         let mut block_end = None;
+        // Olo: the BlockMore being read: its BlockAddID (1 unless said).
+        let mut add_id = 1;
         loop {
             match next_element(&mut self.file) {
                 Ok((element_id, element_data)) => match element_id {
@@ -1608,6 +1613,37 @@ impl<R: Read + Seek> MatroskaFile<R> {
                         } else {
                             return Err(DemuxError::UnexpectedDataType);
                         };
+                    }
+                    // Olo: a block's additions, kept with its frame
+                    // (upstream skipped them, and WebM's alpha with them).
+                    ElementId::BlockAdditions => {
+                        self.enter_data_location(&element_data)?;
+                    }
+                    ElementId::BlockMore => {
+                        add_id = 1;
+                        self.enter_data_location(&element_data)?;
+                    }
+                    ElementId::BlockAddId => {
+                        if let ElementData::Unsigned(id) = element_data {
+                            add_id = id;
+                        }
+                    }
+                    ElementId::BlockAdditional => {
+                        if let ElementData::Location { offset, size } = element_data {
+                            let available = remaining_len(&mut self.file)?;
+                            if size > available {
+                                return Err(DemuxError::ElementSizeExceedsStream { declared: size, available });
+                            }
+                            if add_id == 1 {
+                                self.file.seek(SeekFrom::Start(offset))?;
+                                let mut data = vec![0_u8; size.try_into()?];
+                                self.file.read_exact(&mut data)?;
+                                frame.additional = Some(data);
+                            }
+                            self.file.seek(SeekFrom::Start(offset + size))?;
+                        } else {
+                            return Err(DemuxError::UnexpectedDataType);
+                        }
                     }
                     ElementId::BlockDuration => {
                         if let ElementData::Unsigned(duration) = element_data {
@@ -1657,6 +1693,7 @@ impl<R: Read + Seek> MatroskaFile<R> {
             frame.is_invisible = queued_frame.is_invisible;
             frame.is_keyframe = queued_frame.is_keyframe;
             frame.duration = None; // Clean duration, as it's reported in different block than other frame content
+            frame.additional = None; // (Olo: as the duration is.)
 
             let available = remaining_len(&mut self.file)?;
             if queued_frame.size > available {

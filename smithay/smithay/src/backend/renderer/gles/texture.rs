@@ -239,6 +239,8 @@ pub struct GlesMapping {
     pub(super) layout: ffi::types::GLenum,
     pub(super) has_alpha: bool,
     pub(super) size: Size<i32, BufferCoord>,
+    /// (Olo: its buffer's size, to be kept for a read-back of that size.)
+    pub(super) bytes: isize,
     pub(super) mapping: AtomicPtr<std::ffi::c_void>,
     pub(super) destruction_callback_sender: Sender<CleanupResource>,
 }
@@ -276,6 +278,7 @@ impl Drop for GlesMapping {
         let _ = self.destruction_callback_sender.send(CleanupResource::Mapping(
             self.pbo,
             self.mapping.load(Ordering::SeqCst),
+            self.bytes,
         ));
     }
 }

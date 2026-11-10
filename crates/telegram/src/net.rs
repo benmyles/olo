@@ -95,6 +95,44 @@ fn id_of(peer: &tl::enums::Peer) -> ChatId {
     PeerId::from(peer).bot_api_dialog_id_unchecked()
 }
 
+/// Whether a dialog is in the archive: its own `folder_id` when Telegram
+/// gives it (1 is the archive, anything else the main list), else the list
+/// it was asked for, as Telegram's own apps place a dialog. A chat the
+/// main list gave already isn't moved by the archive's pages unless its
+/// own folder says so: asked for the archive, Telegram gives the main
+/// list's pinned chats again (Ben, 2026-11-09: "my conversations STILL
+/// keep moving to archived even when i don't archive them and after i
+/// have unarchived them": his two pinned chats, filed as archived by every
+/// load of the list since it was read in two parts; Telegram never had
+/// them archived, so unarchiving them changed nothing there).
+fn in_archive(asked: Option<i32>, own: Option<i32>, in_main_already: bool) -> bool {
+    match own {
+        Some(f) => f == 1,
+        None => asked == Some(1) && !in_main_already,
+    }
+}
+
+/// What an answer's updates are, by name (for the log: never their
+/// content).
+fn update_names(r: &tl::enums::Updates) -> Vec<&'static str> {
+    use tl::Serializable as _;
+    let name = |u: &tl::enums::Update| {
+        let b = u.to_bytes();
+        b.get(..4).map_or("?", |id| tl::name_for_id(u32::from_le_bytes([id[0], id[1], id[2], id[3]])))
+    };
+    match r {
+        tl::enums::Updates::Updates(u) => u.updates.iter().map(name).collect(),
+        tl::enums::Updates::Combined(u) => u.updates.iter().map(name).collect(),
+        tl::enums::Updates::UpdateShort(u) => vec![name(&u.update)],
+        tl::enums::Updates::TooLong => vec!["updatesTooLong"],
+        _ => vec!["(short)"],
+    }
+}
+
+fn place(archived: bool) -> &'static str {
+    if archived { "archived" } else { "the main list" }
+}
+
 /// The folder `chat` is in, as Telegram's answer to moving it says (its
 /// `updateFolderPeers`), if it says.
 fn folder_in(r: &tl::enums::Updates, chat: ChatId) -> Option<i32> {
@@ -126,12 +164,37 @@ fn params() -> ConnectionParams {
 }
 
 /// A client for `api` on `store`, its sender pool running; and the
-/// updates that come in.
+/// updates that come in. When the network changes (Ben, 2026-11-09: a
+/// cable pulled, Wi-Fi left), the connection on the old one is cut
+/// (`olo_net`) and the updates would stop until grammers next looks
+/// (fifteen minutes on): so a change, with a network to go on with, is
+/// passed in as Telegram's own "too many to send" (`updatesTooLong`), and
+/// the stream catches up at once (getDifference, on a new connection, the
+/// new network's), what came meanwhile included.
 pub fn connect(store: Arc<Store>, api: &account::Api) -> (Client, tokio::sync::mpsc::Receiver<grammers_session::updates::UpdatesLike>) {
+    use grammers_session::updates::UpdatesLike;
     let pool = SenderPool::with_configuration(store, api.id, params());
     let client = Client::new(pool.handle);
     tokio::spawn(pool.runner.run());
-    (client, pool.updates)
+    let (tx, rx) = tokio::sync::mpsc::channel(256);
+    let mut from = pool.updates;
+    let catch_up = tx.downgrade();
+    tokio::spawn(async move {
+        while let Some(u) = from.recv().await {
+            if tx.send(u).await.is_err() {
+                break;
+            }
+        }
+    });
+    olo_net::on_change(move || {
+        if olo_net::online()
+            && let Some(tx) = catch_up.upgrade()
+        {
+            tracing::info!("telegram: the network changed: catching up on the new one");
+            let _ = tx.try_send(UpdatesLike::Updates(tl::enums::Updates::TooLong));
+        }
+    });
+    (client, rx)
 }
 
 /// What an error from Telegram means for the person.
@@ -255,6 +318,33 @@ async fn run(mut from: UnboundedReceiver<Cmd>, sink: Sink) {
         list_whole: std::sync::atomic::AtomicBool::new(false),
     });
     ctx.emit_sync(None);
+    // The account's own archive settings, for the log: Telegram archives
+    // (and keeps archived) by itself as they say.
+    {
+        let client = ctx.client.clone();
+        tokio::spawn(async move {
+            match client.invoke(&tl::functions::account::GetGlobalPrivacySettings {}).await {
+                Ok(tl::enums::GlobalPrivacySettings::Settings(g)) => tracing::info!(
+                    "telegram: archive: the account's settings: new chats from non-contacts archived and muted {}, unmuted chats kept archived when a message comes {}, chats in folders kept archived {}",
+                    g.archive_and_mute_new_noncontact_peers,
+                    g.keep_archived_unmuted,
+                    g.keep_archived_folders
+                ),
+                Err(e) => tracing::info!("telegram: archive: the account's settings couldn't be read: {e}"),
+            }
+        });
+    }
+    // A network again (a change, or one back): what's waiting to go, now.
+    olo_net::on_change({
+        let ctx = Arc::downgrade(&ctx);
+        move || {
+            if olo_net::online()
+                && let Some(ctx) = ctx.upgrade()
+            {
+                ctx.outbox_due.notify_one();
+            }
+        }
+    });
     // Chats' states as Telegram has them now, for those updates changed.
     {
         let ctx = ctx.clone();
@@ -395,6 +485,10 @@ async fn run(mut from: UnboundedReceiver<Cmd>, sink: Sink) {
                     }
                     Err(e) => {
                         (ctx.sink)(Event::Status(Status::Offline(explain(&e))));
+                        // No network: until there's one (not every 2 s).
+                        if !olo_net::online() {
+                            let _ = tokio::task::spawn_blocking(|| olo_net::wait_online(None, &|| false)).await;
+                        }
                         tokio::time::sleep(Duration::from_secs(2)).await;
                         (ctx.sink)(Event::Status(Status::Online));
                         // Back: the changes waiting go now.
@@ -713,7 +807,7 @@ impl Ctx {
             mentions: d.unread_mentions_count.max(0) as u32,
             marked: d.unread_mark,
             pinned: d.pinned,
-            archived: archived || d.folder_id == Some(1),
+            archived,
             muted,
             verified: w.verified,
             contact: w.contact,
@@ -731,8 +825,10 @@ impl Ctx {
         }
     }
 
-    /// One page of dialogs: the chats and the offset for the next page.
-    async fn dialogs(&self, folder: Option<i32>, offset: (i32, i32, tl::enums::InputPeer)) -> Result<(Vec<Chat>, Option<(i32, i32, tl::enums::InputPeer)>), InvocationError> {
+    /// One page of dialogs: the chats (each with the folder its dialog
+    /// names, if it names one; placed as `in_archive` says, as if the main
+    /// list hadn't given it) and the offset for the next page.
+    async fn dialogs(&self, folder: Option<i32>, offset: (i32, i32, tl::enums::InputPeer)) -> Result<(Vec<(Chat, Option<i32>)>, Option<(i32, i32, tl::enums::InputPeer)>), InvocationError> {
         let r = self
             .client
             .invoke(&tl::functions::messages::GetDialogs { exclude_pinned: false, folder_id: folder, offset_date: offset.0, offset_id: offset.1, offset_peer: offset.2, limit: 100, hash: 0 })
@@ -752,7 +848,7 @@ impl Ctx {
             let tl::enums::Dialog::Dialog(d) = d else { continue };
             let id = id_of(&d.peer);
             let last = msgs.get(&(id, d.top_message));
-            let mut c = self.chat_of(d, last, folder == Some(1));
+            let mut c = self.chat_of(d, last, in_archive(folder, d.folder_id, false));
             if c.pinned {
                 c.pin_order = pin;
                 pin += 1;
@@ -761,7 +857,7 @@ impl Ctx {
                 let peer = self.peer(id).await.ok();
                 last_offset = peer.map(|p| (m.date as i32, m.id, Self::input_peer(&p)));
             }
-            out.push(c);
+            out.push((c, d.folder_id));
         }
         let more = match total {
             Some(n) => dialogs.len() == 100 && (out.len() as i32) < n,
@@ -1080,6 +1176,10 @@ impl Ctx {
                 for p in f.folder_peers {
                     let tl::enums::FolderPeer::Peer(p) = p;
                     let id = id_of(&p.peer);
+                    // (Moved by Telegram's word: this app's own move, another
+                    // of the account's devices, or Telegram itself, as when it
+                    // archives a new chat from someone not in the contacts.)
+                    tracing::info!("telegram: archive: chat {id} into folder {}: Telegram's update (was {})", p.folder_id, self.known_chat(id).map_or("not known", |c| place(c.archived)));
                     if let Some(mut c) = self.known_chat(id) {
                         c.archived = p.folder_id == 1;
                         self.put_chat(c);
@@ -1179,18 +1279,43 @@ impl Ctx {
             self.emit(Event::Folders(f));
         }
         let mut live = HashSet::new();
-        let (mut main, mut archived, mut pages) = (0, 0, 0);
+        let mut pages = 0;
+        // Where each chat was before this load (the cache's, or the last
+        // load's), to say what moved and why.
+        let before: HashMap<ChatId, bool> = self.chats.lock().unwrap().iter().map(|(id, c)| (*id, c.archived)).collect();
+        // The main list's chats, and those the archive's pages gave too.
+        let mut in_main: HashSet<ChatId> = HashSet::new();
+        let mut twice: Vec<(ChatId, Option<i32>)> = Vec::new();
+        // Each chat's own folder, as its dialog named it (None: not named).
+        let mut own: HashMap<ChatId, Option<i32>> = HashMap::new();
         // The main list (folder 0), then the archive (1): each chat's
         // place as Telegram has it. (No folder asks for every chat at
         // once, archived ones in among the rest.)
         for folder in [Some(0), Some(1)] {
             let mut offset = (0, 0, tl::enums::InputPeer::Empty);
             loop {
-                let (mut page, next) = self.dialogs_retrying(folder, offset).await.map_err(|e| {
+                let (given, next) = self.dialogs_retrying(folder, offset).await.map_err(|e| {
                     tracing::warn!("telegram: the chat list stopped after {pages} pages: {e}");
                     explain(&e)
                 })?;
                 pages += 1;
+                let mut page = Vec::with_capacity(given.len());
+                for (mut c, folder_id) in given {
+                    if folder == Some(0) {
+                        in_main.insert(c.id);
+                    } else if in_main.contains(&c.id) {
+                        // Given by the main list and again with the archive
+                        // (its pinned chats): where the main list has it,
+                        // unless its own folder says the archive.
+                        twice.push((c.id, folder_id));
+                        c.archived = in_archive(folder, folder_id, true);
+                        if !c.archived {
+                            continue;
+                        }
+                    }
+                    own.insert(c.id, folder_id);
+                    page.push(c);
+                }
                 {
                     let o = self.outbox.lock().unwrap();
                     for c in &mut page {
@@ -1201,7 +1326,6 @@ impl Ctx {
                     let mut known = self.chats.lock().unwrap();
                     for c in &page {
                         live.insert(c.id);
-                        *(if c.archived { &mut archived } else { &mut main }) += 1;
                         known.insert(c.id, c.clone());
                     }
                 }
@@ -1216,14 +1340,40 @@ impl Ctx {
         }
         // What Telegram no longer gives (left, deleted, an id it no longer
         // goes by) goes, as from the list (`Store::whole`).
-        self.chats.lock().unwrap().retain(|id, _| live.contains(id));
+        let (main, archived) = {
+            let mut known = self.chats.lock().unwrap();
+            known.retain(|id, _| live.contains(id));
+            // What moved since this app last knew, and by what.
+            let waiting = self.outbox.lock().unwrap();
+            for (id, c) in known.iter() {
+                if let Some(&was) = before.get(id)
+                    && was != c.archived
+                {
+                    let why = if waiting.changes().iter().any(|w| w.chat() == *id && matches!(w, Change::Archive { .. })) {
+                        "your change, still to be sent".to_owned()
+                    } else {
+                        format!("the chat list (its own folder {:?}, from the {})", own.get(id).copied().flatten(), if in_main.contains(id) { "main list" } else { "archive" })
+                    };
+                    tracing::info!("telegram: archive: chat {id} from {} to {}: {why}", place(was), place(c.archived));
+                }
+            }
+            let archived = known.values().filter(|c| c.archived).count();
+            (known.len() - archived, archived)
+        };
+        for (id, folder_id) in &twice {
+            tracing::info!(
+                "telegram: archive: chat {id} given in the main list and again with the archive (its own folder {folder_id:?}): kept in {}; asked about again",
+                place(in_archive(Some(1), *folder_id, true))
+            );
+            self.confirm(*id);
+        }
         self.cache_ready.store(true, Ordering::Relaxed);
         self.list_whole.store(true, Ordering::Relaxed);
         // Changes waiting for a chat not known till now go.
         self.outbox_due.notify_one();
         self.cache_due.notify_one();
         self.cache_soon.notify_one();
-        tracing::info!("telegram: the chat list: {main} in the main list, {archived} archived, in {pages} pages");
+        tracing::info!("telegram: the chat list: {main} in the main list, {archived} archived, in {pages} pages ({} given in both)", twice.len());
         self.emit(Event::Status(Status::Online));
         Ok(())
     }
@@ -1232,7 +1382,7 @@ impl Ctx {
     /// leaving the rest of the list as the cache had it: after the wait
     /// Telegram asks for (FLOOD_WAIT, however long: shown as Waiting), else
     /// 2, 4, 8… seconds; six tries at most.
-    async fn dialogs_retrying(&self, folder: Option<i32>, offset: (i32, i32, tl::enums::InputPeer)) -> Result<(Vec<Chat>, Option<(i32, i32, tl::enums::InputPeer)>), InvocationError> {
+    async fn dialogs_retrying(&self, folder: Option<i32>, offset: (i32, i32, tl::enums::InputPeer)) -> Result<(Vec<(Chat, Option<i32>)>, Option<(i32, i32, tl::enums::InputPeer)>), InvocationError> {
         let mut tries = 0u32;
         loop {
             match self.dialogs(folder, offset.clone()).await {
@@ -1386,7 +1536,12 @@ impl Ctx {
                 let r = self.client.invoke(&tl::functions::folders::EditPeerFolders { folder_peers: peers }).await.map_err(|e| Failed::of(&e))?;
                 for (c, _) in &resolved {
                     if let Change::Archive { chat, on } = *c {
-                        tracing::info!("telegram: chat {chat} into folder {}: Telegram says {:?}", i32::from(on), folder_in(&r, chat));
+                        match folder_in(&r, chat) {
+                            Some(f) => tracing::info!("telegram: archive: chat {chat} into folder {}: Telegram moved it into {f}", i32::from(on)),
+                            // (Nothing to move: Telegram had it there already,
+                            // whatever this app showed.)
+                            None => tracing::info!("telegram: archive: chat {chat} into folder {}: Telegram moved nothing (its answer: {:?})", i32::from(on), update_names(&r)),
+                        }
                     }
                 }
             }
@@ -1451,8 +1606,11 @@ impl Ctx {
         for d in &d.dialogs {
             let tl::enums::Dialog::Dialog(d) = d else { continue };
             let Some(mut c) = self.known_chat(id_of(&d.peer)) else { continue };
-            let now = self.chat_of(d, None, false);
+            let now = self.chat_of(d, None, in_archive(None, d.folder_id, false));
             let was = c.clone();
+            if was.archived != now.archived {
+                tracing::info!("telegram: archive: chat {} from {} to {}: Telegram, asked about it (getPeerDialogs: folder {:?})", c.id, place(was.archived), place(now.archived), d.folder_id);
+            }
             c.archived = now.archived;
             c.unread = now.unread;
             c.mentions = now.mentions;
@@ -2207,6 +2365,26 @@ mod replay_tests {
     /// Updates caught up on after the chat list was read change nothing
     /// they already account for: Justin's 35 unread came from old
     /// messages counted again on every start.
+    /// A dialog's place: its own folder when it names one; else the list
+    /// asked for, except that the archive's pages don't move a chat the
+    /// main list gave (its pinned chats, given again with the archive).
+    #[test]
+    fn pinned_chats_given_with_the_archive_stay_in_the_main_list() {
+        // The main list's pinned chat, given again with the archive and
+        // naming no folder of its own: the main list's (was: archived).
+        assert!(!in_archive(Some(1), None, true));
+        // Naming the archive itself: archived, wherever else it came.
+        assert!(in_archive(Some(1), Some(1), true));
+        // Naming the main list, though given with the archive.
+        assert!(!in_archive(Some(1), Some(0), false));
+        // An archived chat, from the archive alone.
+        assert!(in_archive(Some(1), None, false));
+        // The main list's own, and a chat asked about alone (getPeerDialogs).
+        assert!(!in_archive(Some(0), None, false));
+        assert!(in_archive(None, Some(1), false));
+        assert!(!in_archive(None, None, false));
+    }
+
     #[test]
     fn replayed_updates_change_nothing() {
         let msg = |id, out| Message { id, chat: 5, out, ..Message::default() };

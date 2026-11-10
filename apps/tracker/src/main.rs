@@ -3,6 +3,7 @@
 //! On Olo's GPUI: the [`Tracker`] keeps the windows and does what opens
 //! windows or touches files; each window's view does the rest.
 
+mod appimages;
 mod backups;
 mod columns;
 mod desktop;
@@ -72,7 +73,7 @@ pub enum Msg {
     Edited(PathBuf, quicklook::EditEvent),
     /// Preferences ▸ Tracker changed (or was first read).
     Settings(olo_protocol::TrackerSettings),
-    /// A thumbnail is ready.
+    /// A picture is ready: a thumbnail, an AppImage's icon.
     Thumb,
     /// DiskBackup's service said which of a folder's files are backed up
     /// as they are now (None: it couldn't).

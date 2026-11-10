@@ -17,9 +17,194 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-(Nothing yet.)
+(Nothing: the leftovers the 2026-11-08 audit found in finished entries
+are all done, and are in Done, newest first.)
 
 ## Done, waiting for Ben to try or confirm
+
+(Audited again 2026-11-08, all 51: each is done, and what's left in
+each is Ben's alone: his accounts (Google, GitHub, 1Password), his
+hands, face, keys, dock or displays at the machine, his upgrade, or his
+say on how it looks and sounds. Their checks re-run the same day on the
+final release build: the whole workspace's tests, 1,546 passed, 0
+failed (two test targets that no longer built or matched, and six of
+smithay's doctests, fixed first); agent-title-check, hdr-check,
+order-check, rescue-check, outside-check (GTK, Slack, Chrome through
+three restarts), layout-check (plain, auto-tiled, unplugged, and each
+with the screens found late), upgrade-check --auto-tiled (15 rounds),
+wm-sweep (510 steps), plymouth-check at 1×, 1.5× and 2×,
+voice-latency (0.0 ms added, no dropouts), the Slack status check, and
+the layout lint with review at 1×, 1.5× and 2× (40 windows, 0 errors, 0
+to look at). upgrade-check found a Terminal tab coming back out of its
+repository's group: fixed (Done). Then the ignored tests, by hand:
+every timing, against HACKING's figures (one out of date, corrected);
+the keyring tests on private keyrings; recording in a PipeWire
+sandbox; the read-only live ones; Doctor's and xdg's; the encoders and
+4K60 clips (the Viewer played each to its end on Intel's GPU, nothing
+dropped or late); the reference streams on Intel's and NVIDIA's
+decoders; face recognition on NASA's portraits; Chromium's and
+libheif's samples; a GTK app's tree read and typed into on an agent
+screen; and the installer check from scratch in a VM. Found and fixed
+(Done): threads rtkit made realtime seen as not (a0dad3dc), MP4s with
+a pasp before their avcC not opening (66af29d4), the MacBook palm
+model's tests judging a ThinkPad run (138f0c16), two keyring tests
+(4b4ed710), the Opus file test's track (f9536320), the seek tests
+hanging on a decoder's error. Then the rest that could run without
+Ben: the sound tests that change settings, in a private PipeWire
+sandbox (mute, no output, the input rewritten, devices, who
+listens); dconf's write on a private bus (read back there, Ben's own
+untouched); the backlight and the Studio Display written as they
+were (full, nothing seen to change); the presence sensor read (the
+sensor hub's, not a camera); the fingerprint start and stop against
+fake-readers (fixed to report a stopped scan as fprintd does,
+3948c7e6) and a wrong password against a PAM stand-in, neither
+touching Ben's reader or PAM; gcr's own handshake (it reads
+"olo-secret" from Olo's reply); and every Viewer sample test on the
+samples made as HACKING says (ffmpeg's testsrc2 through SVT-AV1,
+libvpx, NVENC; the JCT-VC stream remuxed): all pass, and the 4K60
+VP9 from make_4k60_y4m played by the Viewer to its end on Intel's
+GPU, nothing dropped. And the ones that looked as if they did need
+him but don't: Token Pool's three client tests (the real Claude Code
+and Codex, signed in with fake subscriptions, through the pool to a
+fake provider: every model request signed with the pool's token),
+DiskBackup's `serve_google` (its fake Google: the Google Drive setup
+window driven on an agent screen, sandboxed, from the client's ID
+through the sign-in to a backup in the fake Drive), `replay_capture`
+(Ben's ThinkPad capture in the repo, as raw events: 12,360 frames,
+none too big, libinput's touches always the filter's), the AirPods
+decoder against libfdk (a speech stream libfdk encoded with the
+AirPods' config, f8e63000: 82.6 dB SNR, 50 wanted) and the
+accessibility tree test on an agent screen (GTK's Text Editor, 30
+nodes). What's left needs Ben: in Blocked, "The ignored tests that
+need Ben".)
+
+- **DiskBackup: unfinished backups, validation, the Drive connection**
+  (Ben, 2026-11-08: "it needs to track in-progress / unfinished backups
+  too and they need to resume if i start again and i need the ability to
+  clean it up"; "when i'm connected it should show the details of that
+  connection and a button to disconnect it"; "backups also need to be
+  validatable … validated at the end of each backup … re-validate of any
+  backup at any time"; "add a fast validate option which compares
+  checksums and just spot-checks some samples"; "fast validate should be
+  the default … full validate is only when explicitly requested"). Done:
+  a stopped backup keeps what it got through (an unfinished snapshot,
+  every five minutes and when stopped) and the next goes on from it,
+  listed first in Backups and deletable; each backup validated fast once
+  made (lists, every piece there, Google Drive's checksums against what
+  was sent, a sample read back), Validate for any, Validate Fully reads
+  every byte back; damage repaired by the next tidy and sent again by the
+  next backup; Destination says whose Drive, its space, with
+  Disconnect… (connecting again fills in the sign-in from before). Its
+  Google Drive setup window fits 1280 × 800 now. Checked in a sandbox
+  with a folder and our own Google. Left (Ben): upgrade; what your
+  stopped backup left in Drive shows as Unfinished, and Back Up Now goes
+  on from it.
+
+- **DiskBackup, redesigned** (Ben, 2026-11-08: "generally improve the
+  ux in diskbackup … where are the settings for limiting up/down speed
+  and resource usage and knowing exactly what's being backed up now what
+  the plan is what's still remaining … choose if i even want auto
+  backups or only when i click backup … clear out / remove old backups
+  to start fresh"). Done (30a80ef6): one question until it's set up;
+  a header saying whether your files are safe, and while it runs the
+  file it's at, a bar against the plan, files, time left, what's new and
+  sent against the limit; tabs Schedule (automatic, or only when you
+  click Back Up Now; what's kept), Files, Backups (every snapshot;
+  delete some, erase all to start fresh), Speed & Resources (upload and
+  download limits; idle, gently or full speed), Destination. Checked in
+  a sandbox (deleting, erasing, manual mode, the priorities), every tab
+  fitting 1280 × 800 while backing up, the review clean at 1×, 1.5× and
+  2×. Left (Ben): upgrade, then open DiskBackup and try it.
+
+- **DiskBackup: Agent Setup, and Claude Code's model** (Ben, 2026-11-08:
+  "add an "Agent Setup" feature to disk backup where an agent can do the
+  google drive oauth/app setup …"; "have the claude code model
+  selectable in the ai prefs, default to opus 5.5 on medium"). Done
+  (e1ba11cc): Back Up to Google Drive ▸ Let an Agent Do It…, the login
+  shared with its agent screen, Claude Code in Terminal with the task,
+  `olo-diskbackup --agent-setup-done` keeping the client in Passwords
+  and signing in; Preferences ▸ AI ▸ Claude Code. Tried live on Ben's
+  testing screen with real Claude Code: in 9 minutes it made the
+  project, the Drive API, the sign-in (Internal: Google now publishes an
+  External app only with a homepage and privacy-policy address, so the
+  steps say so), the client (`~/Downloads/client_secret_161753405295-…
+  .json`), and DiskBackup signed in as ben@2q31.com; the test stopped
+  there (no backup made in his Drive with a test's key). Left (Ben):
+  upgrade, then finish with that client (Back Up To ▸ Google Drive… ▸
+  Choose File…, or Agent Setup again, which finds it made), or run Agent
+  Setup from scratch and follow along; the testing screen (`agent`) still
+  shows the client's secret in a Google Cloud tab, and its history keeps
+  the run.
+
+- **DiskBackup showed no window** (Ben, 2026-11-08: "i opened the app and
+  i see it has an entry in the deskbar but no windows for it"). Done
+  (0296d2d2): a window that fits what it shows, opened zoomed (Focus) or
+  tiled, never drew (it waited for a size the compositor kept from it);
+  now it lays out at the size given. Left (Ben): upgrade, then open
+  DiskBackup in Focus.
+
+- **Move to Window for every tab** (Ben, 2026-11-08: "a pattern and
+  works for all tabbed olo apps … move to window -> <window name>. if that
+  leaves no more tabs in the origin window then that window should
+  close"). Done (9ae5c484): the kit's `Menu::move_to_window`; Terminal's
+  tabs and tab groups (Move Group to Window), the window closing when
+  emptied; a window's own tab into another of its app's windows (the
+  window menu). Left (Ben): upgrade, then try it in Terminal.
+
+- **Night Mode: shift gradually** (Ben, 2026-11-08: "an extra checkbox
+  option for having it gradually shift over n minutes (between 1 and
+  180) …"). Done (92281cbf): Appearance ▸ Night Mode ▸ Shift gradually,
+  starting at From, over 1 minute to 3 hours; steps too small to see;
+  neutral at To as before. Left (Ben): upgrade, then a scheduled night
+  with a short shift to watch it.
+
+- **Deskbar: Group All Windows / Ungroup All Windows** (Ben, 2026-11-08:
+  "it should not be checked unless they are all grouped … so no
+  checks/ticks just the option changes based on the state"). Done
+  (6d1b147e). Left (Ben): upgrade, then Terminal's team menu.
+
+- **Every way in at once; Touch ID, face and keys in Security** (Ben,
+  2026-11-08: "after setting up the touch id fingerprint now my yubikey
+  isn't working. ALL enabled modes should work … also, centralize the
+  settings for all of these under prefs -> security"). Done (f1e3f934):
+  sudo's window and the polkit agent take the password (or the key's)
+  while the finger is listened for (a second PAM conversation once the
+  first holds the sensor); Preferences ▸ Security ▸ Sign In has Touch ID,
+  Face Unlock and Security Keys. Left (Ben): upgrade, then sudo in
+  Terminal and an administrator request with the YubiKey, the finger and
+  the face, each.
+
+- **The power button: Preferences ▸ Keyboard ▸ Power Button** (Ben,
+  2026-11-08: "under prefs -> keyboard please add an option for
+  choosing what the power button on the built in keyboard does when
+  pressed and when held down for n seconds ... by default, a single
+  press should do nothing. a 3s hold down should restart gracefully
+  with a warning/confirmation. a 10s hold down should shutdown
+  immediately."). Done (ec89e3b3): a tab of its own, a press and each
+  hold from Nothing, Lock the Screen, Log Out, and Restart and Shut
+  Down asking first, not asking, or immediately; app_server takes the
+  key from logind and does it; asking first is Deskbar's alert;
+  immediately is Olo's helper unit, installed by Doctor's power-now
+  fix (HACKING's "The power button"). Tested on a headless session
+  with a synthetic power key (a press nothing, 3 s the Restart alert,
+  10 s Shut Down Immediately, said and not done), the layout lint and
+  review at every scale. Left (Ben): upgrade (until then a press still
+  shuts the computer down: logind's own `HandlePowerKey=poweroff`);
+  then Preferences ▸ Keyboard ▸ Power Button ▸ Install the Helper…
+  (or `olo-doctor --fix power-now`; it asks for the password), and try
+  a press, a 3 s hold (the alert; Cancel), and whether the ThinkPad's
+  firmware cuts the power before 10 s (Lenovo's ThinkPad manuals say 4
+  s or more: if so, 10 s never reaches Olo, the firmware's own cut
+  comes first, and the 3 s alert has about a second before it).
+
+- **Telegram's video stickers: their see-through parts on real ones**
+  (2026-11-08; Done has the work): WebM stickers play, their alpha the
+  second stream's luma as it is (0–255, as libvpx's decoders take it).
+  The only VP9 files with alpha to be had here (Chromium's test bear,
+  and its odd-sized one) carry a flat alpha (68 throughout), and nothing
+  here encodes VP9 to make one that varies, so a sticker's transparent
+  background has only been seen flat. Left (Ben): a video sticker in one
+  of his chats, its edges against the chat's ground.
 
 - **DiskBackup** (Ben, 2026-11-07, after the work items before it):
   "build DiskBackup which is an olo native app and service for
@@ -181,7 +366,8 @@ something nobody here has is in "Blocked", with what it waits for.
   know: Performance mode puts Intel's GPU on Fastest, its lowest clock
   held at 1600 MHz (`/etc/olo/gpus.json`), so whenever it wakes it runs
   fast; Balanced and Power Saver don't. What it did find: app_server's
-  100 ms look at resting displays (Not started).
+  100 ms look at resting displays (done since, 7af77a04: "A resting
+  display still looked every 100 ms" in Done).
 
 - **Syntax colouring for justfiles in the Viewer** (Ben, 2026-11-07:
   "add syntax highlighting for justfiles to viewer"). A just grammar of
@@ -321,7 +507,25 @@ something nobody here has is in "Blocked", with what it waits for.
   Updated as v2026.11.07.2 (a1e08944: the day's later fixes), tried from
   GitHub in the VM over the first: Setup found it, updated it and the
   login screen's own copies, restarted, logged in, nothing of GNOME's
-  running.
+  running. Run again from scratch 2026-11-08 (the login-screen stage
+  had moved into olo_doctor::login_screen since, 3a040276, untried on a
+  stock Fedora): a fresh Fedora 45 Workstation (5.2 minutes), the
+  release 2026.11.08-66af29d4 served to it, Setup from GNOME's
+  terminal, the login screen and boot splash chosen, one password,
+  all eight steps, Olo's login screen after the restart, logged in,
+  Tracker, StyledEdit, Olo Doctor (two suggestions, nothing wrong, no
+  other desktop's daemons) and Preferences in dark. Three of the
+  2026-11-07 journal pictures were broken (1× shots cropped as if 2×):
+  retaken. Then the boot splash, never seen in that VM: its text-mode
+  kickstart had left the installer's serial console and no rhgb on the
+  kernel's line (fixed in the check's kickstart; the VM's own set as a
+  stock install's), after which Plymouth showed Olo's theme there, from
+  the start-up image Setup made (`plymouth-set-default-theme`: olo; the
+  theme in the initramfs). Booted on a GPU Olo can't draw on, the seat
+  never went to GDM: SELinux kept olo-login (xdm_t) from it, fixed
+  (a6e4f95d: systemd starts GDM through olo-login's OnFailure=; GDM's
+  login screen 6 s after Olo's splash there). The desktop at 2× (the
+  VM's own), 1.5× and 1×, changed while it ran: crisp at each.
   Left for Ben: publishing a release (a GitHub release of
   benmyles/olo with tools/release.sh's four files: Setup takes the
   newest one's archive; until then it needs `--bundle URL`), then a
@@ -593,9 +797,10 @@ something nobody here has is in "Blocked", with what it waits for.
   2026-11-07: app_server restarting (an upgrade's reload, a crash) still cut
   every stream ("Connection lost mid-response"): the kit re-executed the
   pool at once when the compositor went. It now hands over first (35ee3e09;
-  a tunnel across `tsession reload` broke before, held after). *Left*: the
-  next upgrades on the machine with no agent's answer cut (the first may
-  still be, run by the old pool).
+  a tunnel across `tsession reload` broke before, held after). *Left*
+  (Ben's upgrades, seen as they happen): the next upgrades on the
+  machine with no agent's answer cut (the first may still be, run by
+  the old pool).
 - **Passwords in Chrome: credit cards filled** (Ben, 2026-11-06): "olo
   passwords chrome integration should recognize credit card forms and
   show the credit cards in the olo context menu for filling". Olo's
@@ -851,8 +1056,8 @@ something nobody here has is in "Blocked", with what it waits for.
     2026-10-30: fonts hinted as the kit, slight and grayscale, and Olo's
     Haiku cursors as an XCursor theme for programs that draw their own
     pointer; Olo's icons in the look as the icon theme, for the
-    freedesktop names it has pictures for). Left, both waiting on Olo
-    itself: `contrast` (once Olo has a high-contrast look) and
+    freedesktop names it has pictures for). Not followed, as Olo has
+    nothing for them to follow: `contrast` (once Olo has a high-contrast look) and
     `text-scaling-factor` (once Olo has a text size of its own; today
     the kit's text is one size, `fonts::PLAIN_SIZE`, which GTK already
     gets as its font size, so there is nothing to scale to).
@@ -1340,8 +1545,9 @@ something nobody here has is in "Blocked", with what it waits for.
   and Forget My Model; walked through headless with synthetic touches at
   2× dark). Found on the way: a w's points spilled out of its glyph's
   bitmap when emboldened (a grey box round the letter, any app), fixed
-  in GPUI. Left: QA at 1 and 1.5×, light and night, and the trainer's
-  screens as `ui_lint` tests with the new checks.
+  in GPUI. Then (done 2026-11-03, the status below): QA at 1 and 1.5×,
+  light and night, and the trainer's screens as `ui_lint` tests with the
+  new checks.
   - QA every screen and state at 1, 1.5 and 2×, light, dark and night.
   *Status* (2026-11-03): every step in every state is a `ui_lint` test
   (`ui_lint_the_palm_trainer`: 36 states, at 1280 × 800 and 1512 × 982,
@@ -1403,6 +1609,16 @@ something nobody here has is in "Blocked", with what it waits for.
     stays: the keyboard itself in Preferences ▸ Keyboard (its picture,
     function row, Fn/Globe, keypad), and Touch ID left out, said so
     there. (Apple: support.apple.com/guide/security/secf60513daa)
+    *Listened to* (2026-11-08, Ben asking again: "make sure the apple
+    external keyboard works too with touch id"; one sudo, his OK): its
+    Touch ID interface (2) claimed alone as root, its bulk endpoint
+    (0x85) read for 45 s while he touched the sensor: nothing at all.
+    Unpaired it says nothing; pairing needs a Secure Enclave Apple
+    attests. Nothing published since has a way in either (the one
+    userspace driver for these keyboards leaves Touch ID alone: "only
+    authenticates against a paired Mac"). At a desk with it, Olo's
+    other ways stand in: the ThinkPad's reader (a finger enrolled
+    2026-11-08), the face, a YubiKey.
   - *Done* (2026-11-04): Preferences ▸ Keyboard ▸ Keyboards knows it
     (`olo_protocol::keyboards`): a box with its picture, maker and model,
     keypad and connection, and why its Touch ID isn't used. Its own
@@ -1567,8 +1783,14 @@ something nobody here has is in "Blocked", with what it waits for.
     The cursor sent as metadata done too (2026-11-06, HACKING's "The
     cursor as metadata": app_server's cursor capture sessions, the
     capture following the pointer, the stream's `SPA_META_Cursor`;
-    tried headless with a reader). *Left*: a real app's go with it
-    (OBS, Chrome Remote Desktop). Zoom's launcher quirk done (`olo_xdg::quirks`: Zoom's app
+    tried headless with a reader). Tried with a real app (2026-11-08):
+    Olo's Chrome on an agent screen, a page's getDisplayMedia, Chrome's
+    picker's Entire Screen, then Olo's portal picker (a live thumbnail),
+    Share. The page got 1280 × 800 frames at the screen's rate with the
+    pointer in them (`cursor: always`, displaySurface monitor), and
+    Deskbar showed the share. *Left* (blocked: an account, or a program
+    not installed here): Chrome Remote Desktop's remote control (a Google
+    account and its host) and OBS. Zoom's launcher quirk done (`olo_xdg::quirks`: Zoom's app
     started by Olo is told it's on GNOME, so it offers Wayland sharing;
     untried, Zoom isn't installed here).
   - **The Olo touches**: the picker, a kit dialog with Screens and
@@ -1726,10 +1948,16 @@ something nobody here has is in "Blocked", with what it waits for.
     2560 × 1600 screen in about 8.5 ms a frame), `--encoder vaapi`, auto
     falling back to it for AV1, and Preferences ▸ GPUs offering it where
     the driver says it encodes AV1 (asked on the panel's thread, about
-    15 ms: no cache needed). *Left*: the frames as dmabufs (CUDA's
-    external memory; VA-API's DRM PRIME import with its video processor
-    making NV12) rather than copied; auto preferring the Intel GPU on
-    battery.
+    15 ms: no cache needed). Then: the frames as dmabufs to VA-API
+    (DRM PRIME import, its video processor making NV12: 0676a351, 2.2%
+    of a core recording 4K), and auto preferring the Intel GPU for AV1 on
+    battery, both done. NVENC (2026-11-08): CUDA imports only its own
+    GPU's memory and app_server draws on the Intel GPU, so frames cross
+    to the NVIDIA GPU through the processor either way. The crossing was
+    made half as dear: a 4K recording on NVENC went from 40.1% of a core
+    to 20.2%, with frame buffers reused (each new one had been zeroed
+    page by page) and a frame the video's size encoded from where it is,
+    not copied into the canvas first.
 
 - **Terminal: light mode hard to read** (*better* 2026-11-02: text kept
   at 4.5:1 from its cell, `colors::legible`, so a dark terminal's pale
@@ -1806,6 +2034,7 @@ something nobody here has is in "Blocked", with what it waits for.
     configuration" and "CODEC DAI cs35l56-ot25 not registered": no
     sound card but the NVIDIA HDMI one. A kernel gap (kernel
     7.2.11-300.fc45); Olo Doctor should say so plainly, with what to do.
+    (Since 7.2.15, they do: see below.)
   - **The NVIDIA GPU (RTX PRO 2000 Blackwell, GB206)**: nouveau's GSP
     fails ("gsp: init failed, -22"), so no driver has it, and with
     `power/control` "on" it stays powered (D0) the whole time, draining
@@ -1931,15 +2160,15 @@ something nobody here has is in "Blocked", with what it waits for.
     surface GTK had let go of); the NVIDIA GPU woke as the session
     reloaded; a headless app_server crashed on exit in libnvidia-eglcore's
     thread-exit destructor (its dmabuf-check thread had NVIDIA's EGL in
-    it: glvnd asks `10_nvidia.json` before Mesa's). Left: each found
-    and fixed.
+    it: glvnd asks `10_nvidia.json` before Mesa's). Each found and
+    fixed.
   - Windows fit what they show: `WindowOptions::fits_content` in the
     kit (every alert and dialog, Preferences' panels, Drive Setup's forms,
     the network sheet), `TabView::grows`, whole-panel scroll views gone,
     Display side by side, Performance in two tabs; the lint on a
     1280 × 800 screen, following windows that resize themselves;
-    `ui-lint --screen`; the rule in CLAUDE.md and HACKING. Left: the
-    live lint's findings on every app at 1280 × 800: none (2026-11-05:
+    `ui-lint --screen`; the rule in CLAUDE.md and HACKING. The live
+    lint's findings on every app at 1280 × 800: none (2026-11-05:
     `--screen 2560x1600` at 2×, 1920x1200 at 1.5× and 1280x800 at 1×
     all clean; the lint now opens apps at the first scale asked for
     when 2× isn't one, as 1280x800 opened at 2× was 640 × 400 points).
@@ -1950,10 +2179,17 @@ something nobody here has is in "Blocked", with what it waits for.
     NVIDIA's driver to install (akmod-nvidia, PackageKit), built-in
     sound with no driver (kernel 7.2.15 and firmware updates offered),
     with progress; a look at login and every 15 minutes; its bag in
-    Deskbar's tray while there's something to fix. Left: Ben to press
-    Install Driver Updates and see whether 7.2.15 brings the speakers;
-    else a kernel bug report for the P1 Gen 9 (17aa:235c, cs42l43 +
-    2× CS35L57 on SoundWire link 2).
+    Deskbar's tray while there's something to fix. 7.2.15 is installed
+    and running now (checked 2026-11-08, read-only: /proc/asound and the
+    kernel's log): a `sof-soundwire` card for the P1 Gen 9 with Speaker,
+    Microphone, Jack In/Out and three HDMI devices, the CS35L56
+    amplifiers' tuning and calibration applied, so the driver is there;
+    PipeWire offers the Speaker, Headphones and HDMI outputs and the Mic
+    input (`pactl list short sinks/sources`), and Olo Doctor's "no driver"
+    finding is cleared (the card's device is the DSP's, 0000:00:1f.3).
+    Not played: a sound out of the speakers unasked, at 6 a.m., would be
+    in Ben's room. Left: Ben to hear them (the speakers and microphone in
+    use).
   - Sound: None as the output (the Sonos isn't forced on), kept across
     logins.
   - The microphone key (F4) mutes the microphone in use, shown on
@@ -2017,7 +2253,9 @@ something nobody here has is in "Blocked", with what it waits for.
     its buffer: `olo_system::presence`), and the udev rule that gives
     the session the sensor (Olo Doctor installs it). Left: try it in
     front of the machine (Ben: install the rule from Doctor, turn it
-    on); dim when looking away.
+    on), dimming included. Dim when looking away: done (2026-11-08,
+    Presence's "Dim the display while you look away"; tried headless
+    with synthetic readings).
   - The IR camera (face sign-in): built, see "Face unlock" above.
 
 - **x86 machines, starting with Ben's ThinkPad P1 Gen 9** (Ben; it
@@ -2098,6 +2336,32 @@ Each waits for what its entry's "Left" says: Ben at the machine (a
 password, a touch, a camera, a reboot he agrees to), hardware nobody
 here has plugged in, an account to sign in with, or data from more
 people.
+
+- **The DRM backend's screenshots read back asynchronously too** (the
+  rest of "A screenshot holds app_server's loop", in Done): headless's
+  shots no longer wait on the GPU; the DRM backend's (the person's own
+  Screenshot app, now and then: ~5 ms of one frame at 4K) still do,
+  through MultiRenderer's mapping, re-acquired per GPU. Blocked on trying
+  it: only a DRM seat runs that path (vkms, which needs root: Ben's OK
+  for vkms stands, but sudo here asks for his face or approval, and he
+  isn't at the computer), and his own session isn't for trying it. The
+  kept screenshot buffers (the target texture, smithay's spare
+  read-back) run on that path too and were tried only headless: a shot
+  of his screen after the upgrade is their first there.
+
+- **The ignored tests that need Ben** (2026-11-08: every other one has
+  run to a verdict, each listed with how and its result in
+  [IGNORED-TESTS.md](IGNORED-TESTS.md)): each wants what only he has.
+  - His cameras: olo-face's `this_machines_units` opens every
+    `/dev/video` node to find the infrared one (his rule: his cameras
+    aren't opened without him).
+  - Data on the Mac: the MacBook's palm captures (`on_real_hands`,
+    `what_the_runs_dont_show`, `make_default_model`, which makes the
+    shipped model from them).
+  (Run since, with Ben's OK: `live_start_and_stop` on his reader, a
+  finger enrolled for it; `live_wrong_password` on the real stack. The
+  Viewer's sample tests count on clips made as HACKING says: the
+  originals were the Mac's scratch, Ben, 2026-11-08.)
 
 - **The ThinkPad's leftovers that are work, not a try** (from its entry
   above; each blocked on the hardware in hand or Ben's say):
@@ -2320,6 +2584,123 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**A computer Olo's login screen can't show on was left at the
+  console**~~ (found 2026-11-08 in the installer check's VM on a plain
+  GPU). *Done* (same day, a6e4f95d): olo-login stepped aside but, as a
+  display manager to SELinux, may not start GDM or even see its unit;
+  its unit's OnFailure= has systemd do it. Olo Doctor's Update fixes
+  login screens already installed.
+
+- ~~**What the ignored tests found, run for the waiting entries**~~
+  (2026-11-08). *Done* (same day): olo-system's `is_realtime` read
+  rtkit's SCHED_RR|SCHED_RESET_ON_FORK as not realtime, so the
+  supervisor asked rtkit again for olo-voice's already realtime sound
+  (87 notes since 2026-11-01) and app_server's touch health said its
+  thread wasn't (a0dad3dc); the mp4 crate wouldn't open an H.264 MP4
+  with its `pasp` or `colr` before its avcC, vendored and fixed with
+  hev1 and vp09 alike (66af29d4); the MacBook palm model's capture
+  tests (and make_default_model) took a ThinkPad run too (138f0c16);
+  olo-secrets' takeover test still named the private keyring's old
+  /tmp folder, and keyring_prompt's left a keyring behind (4b4ed710);
+  the Opus file test took a picture stream for its sound (f9536320);
+  the seek tests' helper hung when the decoder failed (66af29d4).
+
+- ~~**A Terminal tab came back from an upgrade out of its repository's
+  group**~~ (found 2026-11-08 by upgrade-check, re-run for the waiting
+  entries). *Done* (same day, 7a3d6640): a shell not attached yet after
+  Terminal starts again counted as "in no repository", so its tab's own
+  group went, and an idle one stayed so; and a window's title caught up
+  with its group only at the next output. Now upgrade-check
+  --auto-tiled has 0 changed in 15 rounds (2 of 10 before), and a new
+  window shows its group in its title within about a second.
+
+- ~~**A screenshot holds app_server's loop ~5 ms at 4K**~~ (found
+  2026-11-08, measuring the buffers below). *Done* (same day): headless
+  (agent screens' looks, tsession) draws the shot and queues its
+  read-back in the frame, and finishes it when an EGL native fence after
+  it signals (its fd in the event loop): the frame's part 5.3–5.5 → 0.35
+  ms, the read-back 1.6 ms (the copy) when the GPU is done. The DRM
+  backend (the person's Screenshot app, now and then) still takes shots
+  at once: that part is in Blocked (it can only be tried on a DRM seat).
+
+- ~~**app_server keeps its big buffers**~~ (its "Left", 2026-11-02).
+  *Done* (2026-11-08): a screenshot's target texture is kept for the
+  next of its size, and smithay keeps the last read-back's buffer, each
+  let go 10 s after its last use. Measured honestly on the Intel GPU:
+  the texture's 30–70 µs saved, the read-back unchanged (A/B), the shot
+  the same 5.3–5.5 ms of app_server's loop; the 18–21 ms it was about
+  was the M2's, gone since 2026-11-02. What a shot cost then was the
+  GPU wait and the copy (done above).
+
+- ~~**Shortcuts for programs that aren't Olo's**~~ (the shortcut
+  profiles' "Not yet"). *Done* (2026-11-08): Chrome's own keys are in
+  every profile (Preferences lists and changes them), sent to Chrome
+  (and Chromium, Brave, Edge) as Linux Chrome takes them, and on the
+  shortcuts sheet when Chrome is in front.
+
+- ~~**Window menu: tile with…**~~ (the window menu's other "Not yet").
+  *Done* (2026-11-08): Tile With ▸ lists the other windows on the
+  display's workspace; chosen, the two are tiled side by side (halves,
+  or beside it in its auto-tiled tile).
+
+- ~~**Auto-tiling: master and stack, one transaction, a layout
+  picker**~~ (its "Not yet", 2026-10-28). *Done* (2026-11-08): Main and
+  Stack (dwm's: a new window the main one, the rest stacked each as
+  tall), chosen from Deskbar's windowing mode menu or Preferences ▸
+  Windows; every tile changing size sent in one round, landing together.
+  Each picker tried: Deskbar's submenu, and Preferences ▸ Windows's
+  pop-up (four tiles two by two: chosen, the setting saved, the note
+  changed, the tiles laid out again at once; a stack of three at 800
+  points too short for Activity Monitor's and Logs' least heights, so
+  the fitting rearranged them, as least sizes always win).
+
+- ~~**Telegram: video stickers move**~~ (the rest of its "Not yet",
+  2026-10-29). *Done* (2026-11-08): WebM stickers (VP9 with its alpha
+  stream, which the vendored demuxer now keeps) play as Lottie ones do,
+  their own shape kept.
+
+- ~~**Telegram: animated stickers move**~~ (Lottie; its "Not yet",
+  2026-10-29). *Done* (2026-11-08): `.tgs` stickers play once as they
+  come into view and again under the pointer, drawn at their device size
+  (velato, vendored with its panics on real files fixed, on vello_cpu);
+  `.tgs` files open as pictures too. Video stickers followed the same
+  day.
+
+- ~~**Telegram: record voice notes**~~ (its "Not yet", 2026-10-29).
+  *Done* (2026-11-08): with nothing to send, the send button is a
+  microphone; hold it to record (let go on it to send, away to cancel),
+  or click it to record until Send, × or Escape; Opus in Ogg coded in
+  process (rusty-opus, kept to SILK after measuring it against libopus).
+  Every path tried: hold and let go on it (sent) or away (thrown away);
+  click then Send, ×, Escape; a hold of 0.4 s (timed on the socket: not
+  sent, the banner saying how) against 1.0 s (sent).
+
+- ~~**Passwords' SSH agent: allow with a touch or a look**~~ (its "Left",
+  2026-11-05). *Done* (2026-11-08): the Allow alert for a terminal
+  session's `op` or first signature is answered too by Touch ID, a
+  touch of a security key set up, or a look, waited for while it's open,
+  and says so; and Passwords' lock, Terminal's sudo and the polkit agent
+  no longer wait on the person's reader, key or camera from a test
+  session or an agent's screen. Each tried end to end headless: the soft
+  key's touch; a look and Touch ID through stand-ins for olo-faced and
+  fprintd on the session's own bus (`fake-readers`): with no finger
+  enrolled the alert offered the camera and a matching look allowed op;
+  with the look finding no face, the finger's match allowed it (claimed,
+  stopped, released).
+
+- ~~**The overview: drag a window to another workspace; add a
+  workspace**~~ (its "Not yet", 2026-10-28). *Done* (2026-11-08): a
+  window dragged onto another workspace's pane (any display's) goes
+  there; New Workspace, a pane at the side of each display's, takes one
+  to an empty workspace (made if every one has windows), and a click on
+  it shows one; the overview stays out and lays itself out again.
+
+- ~~**Always on Top, from a window's menu**~~ (the window menu's "Not
+  yet", 2026-10-28). *Done* (2026-11-08): the tab's menu's Always on Top
+  keeps a window above the others (its dialogs over it, picture in
+  picture over it) until chosen again, across an in-place reload;
+  `Request::SetOnTop` and `WindowInfo::on_top` for agents.
 
 - ~~**Lock screens and screen savers of ended agent screens lingered**~~
   (found 2026-11-07: eleven olo-lock and an olo-screensaver, 54 MB, of

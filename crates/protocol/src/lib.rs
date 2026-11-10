@@ -24,6 +24,7 @@ pub mod mice;
 pub mod notifications;
 pub mod panels;
 pub mod performance;
+pub mod power_button;
 pub mod recording;
 pub mod rescue;
 pub mod sharing;
@@ -33,7 +34,7 @@ pub mod touchpad;
 pub mod voice;
 pub use notifications::{AppNotifications, CardSize, HistoryView, NoteApp, NoteLook, NoteStyle, NotificationSettings, NotificationState};
 pub use sharing::SharingState;
-pub use shortcuts::{AutoTiling, Chord, CommandKey, KeyboardProfile, ModeChoice, Platform, Shortcut, ShortcutSettings, Tile, TilingSettings, WindowingMode};
+pub use shortcuts::{AutoTiling, Chord, CommandKey, KeyboardProfile, ModeChoice, Platform, Shortcut, ShortcutSettings, Tile, TilingLayout, TilingSettings, WindowingMode};
 
 pub const SOCKET_ENV: &str = "OLO_SOCKET";
 
@@ -100,6 +101,13 @@ pub enum Request {
     SendToBack {
         id: WindowId,
     },
+    /// Keep a window above the others on its workspace (`on`: or not;
+    /// left out, the other way), as its menu's Always on Top.
+    SetOnTop {
+        id: WindowId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        on: Option<bool>,
+    },
     /// The windows being shared now (olo-portal's window shares): each
     /// ringed on screen while it is, so the person knows (none: none).
     SharedWindows {
@@ -121,6 +129,15 @@ pub enum Request {
     /// out so the group shows, in front.
     UngroupWindow {
         id: WindowId,
+    },
+    /// All of an app's windows grouped (each grouping by itself again,
+    /// wherever it was: taken out, or put in another group by hand) or
+    /// all taken out, each on its own, and the app's grouping
+    /// (`TilingSettings::ungrouped_apps`) on or off to match: Deskbar's
+    /// Group All Windows and Ungroup All Windows.
+    GroupApp {
+        app_id: String,
+        grouped: bool,
     },
     /// Move a window's tab to `index` among its group's tabs.
     MoveTab {
@@ -378,6 +395,15 @@ pub enum Request {
         #[serde(default)]
         window: Option<WindowId>,
     },
+    /// Tile window `id` beside window `with` (the window menu's Tile
+    /// With): the one further left now on the left. Auto-tiled on the
+    /// same display, `with` moves into a tile beside `id`'s (as a tile
+    /// dropped on its edge, one step Undo takes back); else they take the
+    /// display's left and right halves, as Tile Left and Tile Right.
+    TileWith {
+        id: WindowId,
+        with: WindowId,
+    },
     /// Tile the resizable windows of app `app_id` on this workspace in a
     /// grid on the active display, in front of the rest.
     TileApp {
@@ -413,6 +439,13 @@ pub enum Request {
         workspace: Option<u32>,
         #[serde(default)]
         output: Option<String>,
+    },
+    /// How auto-tiling lays windows out (`TilingSettings::layout`),
+    /// everywhere it's on: each display's tiles are laid out again in it
+    /// (Main and Stack: in reading order, the first the main window).
+    /// Saved; answered `Reply::Ok`.
+    SetTilingLayout {
+        layout: TilingLayout,
     },
     /// Whether auto-tiling is on for each display on a workspace (each
     /// display's showing unless given).
@@ -536,6 +569,14 @@ pub enum SyntheticEvent {
         dy: f64,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         at_us: Option<u64>,
+    },
+    /// What a presence sensor would say (someone there; looking at the
+    /// screen, if it says): for tests and agents, as the sensor's own
+    /// readings are taken. Not input: it wakes nothing by itself.
+    Presence {
+        present: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        attentive: Option<bool>,
     },
     /// Turn a mouse wheel by whole notches (positive: down / right).
     Wheel {
@@ -931,6 +972,9 @@ pub enum EventKind {
     /// [`Event::TouchContacts`]: only by name, as it comes with each of
     /// the pad's reports (Preferences' palm trainer).
     TouchContacts,
+    /// [`Event::PowerButton`]: only by name (Deskbar's), so a program
+    /// from before it, subscribed to all, never meets it.
+    PowerButton,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -1003,6 +1047,15 @@ pub enum Event {
         #[serde(default)]
         button: bool,
     },
+    /// The built-in power button did `action` (pressed, or held for its
+    /// seconds): Deskbar asks first for the "Asking First" ones; the rest
+    /// app_server has done. `done`: false where app_server only says it
+    /// (a headless session never restarts the computer).
+    PowerButton {
+        action: power_button::PowerAction,
+        #[serde(default)]
+        done: bool,
+    },
 }
 
 fn no_key() -> u64 {
@@ -1024,6 +1077,7 @@ impl Event {
             Event::Painted { .. } => EventKind::Painted,
             Event::TouchContacts { .. } => EventKind::TouchContacts,
             Event::InputDevicesChanged { .. } => EventKind::InputDevices,
+            Event::PowerButton { .. } => EventKind::PowerButton,
             Event::KeyGrab { .. } => return None,
         })
     }
@@ -1061,6 +1115,10 @@ pub struct PowerStatus {
     /// the epoch; [`Request::SetAutoApprove`]).
     #[serde(default)]
     pub auto_approve_until: Option<u64>,
+    /// The built-in display is dimmed: the person looked away
+    /// (`PowerSettings::dim_when_looking_away`).
+    #[serde(default)]
+    pub dimmed: bool,
 }
 
 /// The way a window is zoomed alone (`WindowInfo::zoomed_along`).
@@ -1087,6 +1145,9 @@ pub struct WindowInfo {
     /// Rolled up to just its tab.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub rolled: bool,
+    /// Kept above the others ([`Request::SetOnTop`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub on_top: bool,
     /// Behind the window Focus mode shows on its display
     /// ([`WindowingMode::Focus`]): not drawn until it is activated.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -1524,7 +1585,31 @@ pub struct AiSettings {
     /// (0: for ever).
     pub screen_history_mb: u32,
     pub screen_history_days: u32,
+    /// Claude Code, when Olo starts it for a task in a Terminal window
+    /// (DiskBackup's Agent Setup): its model and effort.
+    pub claude_code: ClaudeCode,
 }
+
+/// The model and effort Olo starts Claude Code with (`claude --model
+/// MODEL --effort EFFORT`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct ClaudeCode {
+    /// A model id ([`CLAUDE_MODELS`]).
+    pub model: String,
+    /// An effort id ([`AI_EFFORTS`]: Claude Code's own levels).
+    pub effort: String,
+}
+
+impl Default for ClaudeCode {
+    /// Ben, 2026-11-08: "default to opus 5.5 on medium".
+    fn default() -> Self {
+        ClaudeCode { model: CLAUDE_MODELS[0].0.into(), effort: "medium".into() }
+    }
+}
+
+/// Claude's models Claude Code can be started with: id, name.
+pub const CLAUDE_MODELS: &[(&str, &str)] = &[("claude-opus-5-5", "Opus 5.5"), ("claude-sonnet-5-5", "Sonnet 5.5"), ("claude-haiku-5-5", "Haiku 5.5"), ("claude-fable-5-1", "Fable 5.1")];
 
 impl Default for AiSettings {
     fn default() -> Self {
@@ -1538,6 +1623,7 @@ impl Default for AiSettings {
             ask: AiFeature { enabled: true, model: AI_MODELS[0].0.into(), effort: "low".into() },
             screen_history_mb: 512,
             screen_history_days: 30,
+            claude_code: ClaudeCode::default(),
         }
     }
 }
@@ -1781,11 +1867,46 @@ pub struct TerminalSettings {
     /// anything graphical, and how, Olo's Chrome included (Terminal's
     /// agent_context.rs, apps/screen/agent-context.md; off by default).
     pub agent_screens: bool,
+    /// What Keep It Going (a tab's menu) types to a coding agent that has
+    /// stopped (Ben, 2026-11-08: "make the keep going message
+    /// configurable, by default it should be "Please continue""): empty,
+    /// the default.
+    pub keep_going_says: String,
+}
+
+impl TerminalSettings {
+    /// Keep It Going's message, unless the person changed it.
+    pub const KEEP_GOING_SAYS: &str = "Please continue";
+
+    /// What Keep It Going says: the person's, else the default (never
+    /// nothing).
+    pub fn keep_going_says(&self) -> &str {
+        let says = self.keep_going_says.trim();
+        if says.is_empty() { Self::KEEP_GOING_SAYS } else { says }
+    }
 }
 
 impl Default for TerminalSettings {
     fn default() -> Self {
-        TerminalSettings { worktrees: "~/worktrees".into(), agent_context: false, agent_titles: false, agent_screens: false }
+        TerminalSettings { worktrees: "~/worktrees".into(), agent_context: false, agent_titles: false, agent_screens: false, keep_going_says: Self::KEEP_GOING_SAYS.into() }
+    }
+}
+
+#[cfg(test)]
+mod keep_going_tests {
+    use super::TerminalSettings;
+
+    /// "Please continue" unless changed; the person's own, trimmed; never
+    /// nothing (left empty, or settings from before it, the default).
+    #[test]
+    fn keep_going_says() {
+        assert_eq!(TerminalSettings::default().keep_going_says(), "Please continue");
+        let own = TerminalSettings { keep_going_says: "  Keep at it, thanks \n".into(), ..Default::default() };
+        assert_eq!(own.keep_going_says(), "Keep at it, thanks");
+        let empty = TerminalSettings { keep_going_says: "   ".into(), ..Default::default() };
+        assert_eq!(empty.keep_going_says(), "Please continue");
+        let before: TerminalSettings = serde_json::from_str(r#"{"worktrees":"~/w"}"#).unwrap();
+        assert_eq!(before.keep_going_says(), "Please continue");
     }
 }
 
@@ -1882,11 +2003,23 @@ pub struct PowerSettings {
     /// With a presence sensor: wake the displays (asleep for idleness)
     /// when the person comes back.
     pub wake_on_return: bool,
+    /// With a presence sensor that sees attention: dim the built-in
+    /// display while the person in front of it looks away, back as they
+    /// look again (or touch anything).
+    pub dim_when_looking_away: bool,
 }
 
 impl Default for PowerSettings {
     fn default() -> Self {
-        PowerSettings { display_off_minutes: 10, sleep_minutes: 30, sleep_on_battery_only: false, lock_on_display_off: true, lock_when_away_seconds: 0, wake_on_return: false }
+        PowerSettings {
+            display_off_minutes: 10,
+            sleep_minutes: 30,
+            sleep_on_battery_only: false,
+            lock_on_display_off: true,
+            lock_when_away_seconds: 0,
+            wake_on_return: false,
+            dim_when_looking_away: false,
+        }
     }
 }
 
@@ -2070,6 +2203,11 @@ pub struct NightLight {
     pub end: String,
     /// Kelvin; 6500 is neutral.
     pub temperature: u32,
+    /// Scheduled, it warms gradually from `start`, reaching `temperature`
+    /// `gradual_minutes` later (1 to 180); at `end` it's back to neutral
+    /// as ever, there or not (no shift out).
+    pub gradual: bool,
+    pub gradual_minutes: u32,
 }
 
 impl Default for Appearance {
@@ -2136,7 +2274,7 @@ impl LookInfo {
 
 impl Default for NightLight {
     fn default() -> Self {
-        NightLight { mode: NightLightMode::Off, start: "20:00".into(), end: "07:00".into(), temperature: 3600 }
+        NightLight { mode: NightLightMode::Off, start: "20:00".into(), end: "07:00".into(), temperature: 3600, gradual: false, gradual_minutes: 30 }
     }
 }
 
@@ -2148,6 +2286,19 @@ impl NightLight {
             return false;
         };
         if start <= end { minutes >= start && minutes < end } else { minutes >= start || minutes < end }
+    }
+
+    /// How far into its gradual shift a scheduled night is, `seconds`
+    /// (since local midnight, with their fraction: a minute's shift steps
+    /// ten times a second) in: seconds since `start`, while that is under
+    /// `gradual_minutes` (and it shifts gradually at all).
+    pub fn shifting(&self, seconds: f64) -> Option<f64> {
+        if self.mode != NightLightMode::Scheduled || !self.gradual {
+            return None;
+        }
+        let start = (parse_hhmm(&self.start)? * 60) as f64;
+        let into = (seconds - start).rem_euclid(86_400.0);
+        (into < (self.gradual_minutes.clamp(1, 180) * 60) as f64 && self.in_window((seconds / 60.0) as u32)).then_some(into)
     }
 }
 
@@ -2265,6 +2416,8 @@ pub struct KeyboardSettings {
     /// How quickly a double press (Control twice, for hints) must come,
     /// in milliseconds: the second press within this of the first.
     pub double_press_ms: u32,
+    /// What the built-in power button does, pressed and held.
+    pub power_button: power_button::PowerButton,
 }
 
 /// [`Request::Overview`]'s answer: what the overview shows.
@@ -2285,6 +2438,10 @@ pub struct OverviewPane {
     pub workspace: u32,
     /// The workspace showing.
     pub current: bool,
+    /// The New Workspace pane (`workspace`: the empty one it stands for):
+    /// a window dragged onto it goes there.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub new: bool,
     pub frame: Frame,
 }
 
@@ -2407,6 +2564,7 @@ impl Default for KeyboardSettings {
             find_on_command_tap: None,
             hints: false,
             double_press_ms: 400,
+            power_button: power_button::PowerButton::default(),
             terminal_apps: ["olo.terminal", "org.gnome.Ptyxis", "org.gnome.Console", "org.gnome.Terminal", "com.mitchellh.ghostty", "foot", "kitty", "Alacritty", "org.wezfurlong.wezterm"]
                 .map(String::from)
                 .to_vec(),
@@ -2757,6 +2915,37 @@ mod tests {
         assert!(n.in_window(3 * 60));
         assert!(!n.in_window(12 * 60));
         assert!(!n.in_window(7 * 60));
+    }
+
+    /// Ben, 2026-11-08: "gradually ... starting at the from time so that it
+    /// will get to the target warmth at from + n minutes (if from + n
+    /// minutes is > to time then it still just goes back to normal at the
+    /// to time no gradual shift out just in)".
+    #[test]
+    fn a_gradual_night_shifts_in_only() {
+        let h = |h: u32, m: u32, s: u32| (h * 3600 + m * 60 + s) as f64;
+        let mut n = NightLight { mode: NightLightMode::Scheduled, gradual: true, gradual_minutes: 45, ..NightLight::default() };
+        assert_eq!(n.shifting(h(19, 59, 59)), None, "before its start");
+        assert_eq!(n.shifting(h(20, 0, 0)), Some(0.0));
+        assert_eq!(n.shifting(h(20, 30, 15) + 0.25), Some((30 * 60 + 15) as f64 + 0.25));
+        assert_eq!(n.shifting(h(20, 45, 0)), None, "there: its warmth");
+        assert_eq!(n.shifting(h(3, 0, 0)), None);
+        // Across midnight.
+        n.start = "23:50".into();
+        assert_eq!(n.shifting(h(0, 10, 0)), Some((20 * 60) as f64));
+        // A night shorter than the shift: neutral at its end, mid-shift.
+        n.end = "00:20".into();
+        assert_eq!(n.shifting(h(0, 19, 59)), Some((29 * 60 + 59) as f64));
+        assert_eq!(n.shifting(h(0, 20, 0)), None);
+        // Not gradual, or not scheduled: never.
+        n.gradual = false;
+        assert_eq!(n.shifting(h(23, 55, 0)), None);
+        n.gradual = true;
+        n.mode = NightLightMode::On;
+        assert_eq!(n.shifting(h(23, 55, 0)), None);
+        // Settings from before it: off, 30 minutes.
+        let old: NightLight = serde_json::from_str(r#"{"mode":"scheduled","start":"20:00","end":"07:00","temperature":3600}"#).unwrap();
+        assert_eq!((old.gradual, old.gradual_minutes), (false, 30));
     }
 
     #[test]

@@ -153,7 +153,9 @@ fn corner_monitor(ui: &mut Ui, corner: Option<Corner>, label: &str, desktop: [u8
             let [r, g, b] = desktop;
             style::fill_rect(window, screen, rgb((u32::from(r) << 16) | (u32::from(g) << 8) | u32::from(b)).into());
             style::frame_rect(window, screen, c(p.frame_focused[0]));
-            let stand = Bounds::centered_at(point(body.center().x, body.bottom() + px(4.0)), size(px(24.0), px(4.0)));
+            // The stand hangs from the case's edge, on device pixels (it
+            // was a pixel off it at 1.25×).
+            let stand = style::snap(window, Bounds::from_corners(point(body.center().x - px(12.0), edge.bottom()), point(body.center().x + px(12.0), edge.bottom() + px(4.0))));
             window.paint_quad(olo_ui::gpui::fill(stand, style::shade(&p, p.control_background, 1.2)).corner_radii(px(1.0)));
             style::frame_rect(window, stand, c(p.control_border));
             match corner {

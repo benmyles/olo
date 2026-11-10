@@ -2050,6 +2050,15 @@ impl PlatformWindow for WaylandWindow {
             size.height = state.bounds.size.height;
         }
         if held_w && held_h {
+            // (A frame skipped for this resize (`Window::skip_present`) is
+            // drawn now, at the size it has: else it never is, and a window
+            // fitting what it shows, opened zoomed, never showed: Ben's
+            // DiskBackup in Focus, 2026-11-08.)
+            let executor = state.globals.executor.clone();
+            drop(state);
+            executor
+                .spawn(async move { state_ptr.schedule_frame() })
+                .detach();
             return;
         }
         // (Its geometry is told as its size changes: `set_geometry`.)

@@ -26,6 +26,10 @@ use crate::state::{AnvilState, Backend};
 
 /// How often idleness is checked.
 pub const TICK: Duration = Duration::from_secs(5);
+/// Looking away this long, the built-in display dims (to [`DIM_TO`] of
+/// its brightness): a glance aside doesn't.
+const DIM_AFTER: Duration = Duration::from_secs(8);
+const DIM_TO: f32 = 0.3;
 /// One press of a brightness or volume key.
 const STEP: f32 = 1.0 / 16.0;
 /// After the displays change, how long to keep looking for their USB
@@ -136,6 +140,10 @@ pub struct Power {
     presence_stop: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     pub present: Option<olo_system::presence::Presence>,
     away_since: Option<Instant>,
+    /// Since when the person in front looks away, and whether the built-in
+    /// display is dimmed for it (`dim_when_looking_away`).
+    looked_away_since: Option<Instant>,
+    dimmed: bool,
     jobs: Option<Sender<Job>>,
     /// Displays found with a USB brightness control, and their levels
     /// (from the worker; taken by state set-up).
@@ -187,6 +195,8 @@ impl Power {
             caffeinated_until: None,
             caffeinated_lid: false,
             display_asleep: false,
+            looked_away_since: None,
+            dimmed: false,
             slept: false,
             inhibitors: Vec::new(),
             keep_awake: Vec::new(),
@@ -252,6 +262,7 @@ impl Power {
             caffeinated: self.caffeinated,
             idle_seconds: self.last_activity.elapsed().as_secs(),
             display_asleep: self.display_asleep,
+            dimmed: self.dimmed,
             app_inhibitors: (self.inhibitors.len() + self.keep_awake.len()) as u32,
             brightness: self.brightness,
             screen_saver: false,
@@ -287,6 +298,10 @@ fn worker(rx: Receiver<Job>, feedback: calloop::channel::Sender<crate::osd::Indi
     let _sleep_key = olo_system::power::inhibit("handle-suspend-key", "Olo", "Olo handles the sleep key (a Magic Keyboard's Do Not Disturb sends it)", true)
         .map_err(|e| warn!("can't take the sleep key from logind: {e}"))
         .ok();
+    // The power button too: logind shut down on a press; Olo does what
+    // Preferences ▸ Keyboard says (power_button.rs). Held for the session.
+    let _power_key =
+        olo_system::power::inhibit("handle-power-key", "Olo", "Olo handles the power button (Preferences ▸ Keyboard)", true).map_err(|e| warn!("can't take the power button from logind: {e}")).ok();
     let mut w = Worker { inhibitor: None, feedback, found, displays: Default::default(), warned: Default::default() };
     while let Ok(mut job) = rx.recv() {
         // Only the newest brightness matters (a held key repeats).
@@ -439,7 +454,7 @@ impl<B: Backend> AnvilState<B> {
             atomic::{AtomicBool, Ordering},
         };
         let s = &self.settings.power;
-        let want = s.lock_when_away_seconds > 0 || s.wake_on_return;
+        let want = s.lock_when_away_seconds > 0 || s.wake_on_return || s.dim_when_looking_away;
         let p = &mut self.power;
         match (want, p.presence_stop.is_some()) {
             (true, false) => {
@@ -457,16 +472,68 @@ impl<B: Backend> AnvilState<B> {
                 if let Some(stop) = p.presence_stop.take() {
                     stop.store(true, Ordering::Relaxed);
                 }
-                (p.present, p.away_since) = (None, None);
+                (p.present, p.away_since, p.looked_away_since) = (None, None, None);
+                if p.dimmed {
+                    self.undim("dimming when looking away was turned off");
+                }
             }
             _ => {}
         }
+    }
+
+    /// The sensor said where the person looks: the built-in display dimmed
+    /// once they've looked away for [`DIM_AFTER`], back as they look again.
+    fn attention_changed(&mut self, now: olo_system::presence::Presence) {
+        let on = self.settings.power.dim_when_looking_away;
+        if !(on && now.present && now.attentive == Some(false)) {
+            self.power.looked_away_since = None;
+            // (Gone, they come back to it dimmed; looking, it's back.)
+            if self.power.dimmed && (now.attentive == Some(true) || !on) {
+                self.undim("the person looks at the screen again");
+            }
+            return;
+        }
+        if self.power.looked_away_since.is_some() {
+            return;
+        }
+        self.power.looked_away_since = Some(Instant::now());
+        let _ = self.handle.insert_source(calloop::timer::Timer::from_duration(DIM_AFTER), move |_, _, state| {
+            let p = &state.power;
+            if p.looked_away_since.is_some_and(|t| t.elapsed() >= DIM_AFTER) && state.settings.power.dim_when_looking_away && !p.display_asleep && !p.dimmed {
+                state.dim();
+            }
+            calloop::timer::TimeoutAction::Drop
+        });
+    }
+
+    fn dim(&mut self) {
+        let p = &mut self.power;
+        p.dimmed = true;
+        if let Some(level) = p.brightness {
+            p.apply_brightness(level * DIM_TO);
+        }
+        info!("the person looks away: the display dimmed");
+        self.power_changed();
+    }
+
+    fn undim(&mut self, why: &str) {
+        let p = &mut self.power;
+        p.dimmed = false;
+        p.looked_away_since = None;
+        if let Some(level) = p.brightness
+            && !p.display_asleep
+        {
+            p.apply_brightness(level);
+        }
+        info!("{why}: the display's brightness back");
+        self.power_changed();
     }
 
     /// The presence sensor said something new.
     pub fn presence_changed(&mut self, now: olo_system::presence::Presence) {
         let s = self.settings.power.clone();
         self.power.present = Some(now);
+        self.attention_changed(now);
         if now.present {
             self.power.away_since = None;
             // (Back: the displays wake, to the lock screen if locked.)
@@ -516,6 +583,19 @@ impl<B: Backend> AnvilState<B> {
         let p = &mut self.power;
         p.last_activity = Instant::now();
         p.slept = false;
+        // (Touching anything is looking: dimmed, it's back.)
+        if p.dimmed {
+            p.dimmed = false;
+            p.looked_away_since = None;
+            if let Some(level) = p.brightness
+                && !p.display_asleep
+            {
+                p.apply_brightness(level);
+            }
+            info!("input: the display's brightness back");
+            self.power_changed();
+        }
+        let p = &mut self.power;
         if p.display_asleep {
             p.display_asleep = false;
             if let Some(level) = p.brightness {

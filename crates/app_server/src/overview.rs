@@ -13,8 +13,15 @@
 //! showing glide from where they are into place and back; the rest, the
 //! panes and the letters fade in and out.
 //!
+//! A window dragged onto another pane goes to that workspace (another
+//! display's too), and onto the New Workspace pane at the end of each
+//! display's, to an empty one there (one more made if every one has
+//! windows); the overview stays out, its windows gliding to their new
+//! places. A click on New Workspace shows an empty workspace and leaves.
+//!
 //! Agents: `{"type":"overview"}` says what it shows (each window's place
-//! and letter, each pane), `{"show":true}` opens it and `false` leaves it.
+//! and letter, each pane), `{"show":true}` opens it and `false` leaves it;
+//! dragging is the pointer's (`synthetic` down, moves, up).
 
 use std::{
     cell::RefCell,
@@ -69,6 +76,12 @@ const RING: f64 = 2.0;
 const DIM: f32 = 0.5;
 const PANE_FILL: f32 = 0.08;
 const PANE_LINE: f32 = 0.35;
+/// Half the New Workspace pane's plus, in points.
+const PLUS: f64 = 12.0;
+/// The New Workspace pane's strip: this much of the display's width, at
+/// most so many points.
+const NEW_STRIP: f64 = 0.16;
+const NEW_MOST: f64 = 240.0;
 
 pub type Rect = Rectangle<f64, Logical>;
 
@@ -83,6 +96,9 @@ pub struct Pane {
     pub rect: Rect,
     /// The workspace its display shows.
     pub current: bool,
+    /// The New Workspace pane: `workspace` is the empty one it stands for
+    /// (one past the last if every one has windows).
+    pub new: bool,
 }
 
 /// A window, where it goes.
@@ -98,7 +114,23 @@ pub struct Cell {
     pub letter: Option<char>,
     /// Its place in the stacking, front highest, while it glides.
     z: usize,
+    /// Where it was in the overview before a window was moved (it glides
+    /// from there, `Overview::moved_at`).
+    prev: Option<Rect>,
 }
+
+/// A window being dragged: which, where the press was, where the pointer
+/// is, and whether it has moved enough to be a drag (not a click).
+#[derive(Debug, Clone)]
+struct Drag {
+    id: u64,
+    grab: Point<f64, Logical>,
+    at: Point<f64, Logical>,
+    moved: bool,
+}
+
+/// Past this (points), a press on a window is a drag.
+const DRAG_START: f64 = 4.0;
 
 impl std::fmt::Debug for Overview {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -121,6 +153,13 @@ pub struct Overview {
     buttons: Vec<u32>,
     /// Something else chose a window or workspace: it leaves next frame.
     interrupted: bool,
+    /// A window held down on, maybe being dragged to another workspace.
+    drag: Option<Drag>,
+    /// When a window was dropped on another workspace: the windows glide
+    /// from where they were (`Cell::prev`).
+    moved_at: Option<Instant>,
+    /// Moving a window itself (what that sets off doesn't make it leave).
+    moving: bool,
     drawn: RefCell<HashMap<String, Drawn>>,
 }
 
@@ -278,6 +317,29 @@ impl Overview {
         self.cells.iter().find(|c| c.to.contains(pos))
     }
 
+    /// The pane at `pos` (global).
+    fn pane_at(&self, pos: Point<f64, Logical>) -> Option<&Pane> {
+        self.panes.iter().find(|p| p.rect.contains(pos))
+    }
+
+    /// Where `cell` is drawn now: under the pointer while dragged, gliding
+    /// to its place after a move, else from the desktop into it.
+    fn drawn_at(&self, cell: &Cell, t: f64, now: Instant) -> Rect {
+        if let Some(d) = self.drag.as_ref().filter(|d| d.moved && d.id == cell.window.id()) {
+            return Rectangle::new(cell.to.loc + (d.at - d.grab), cell.to.size);
+        }
+        if let (Some(at), Some(prev)) = (self.moved_at, cell.prev) {
+            let k = ease(now.saturating_duration_since(at).as_secs_f64() / OPEN.as_secs_f64());
+            if k < 1.0 {
+                return lerp(prev, cell.to, k);
+            }
+        }
+        match cell.from {
+            Some(from) => lerp(from, cell.to, t),
+            None => cell.to,
+        }
+    }
+
     /// The window ringed: the pointer's, else the arrows'.
     fn chosen(&self) -> Option<u64> {
         self.hovered.or(self.selected)
@@ -326,18 +388,24 @@ impl Overview {
         let mut front = Vec::new();
         let mut windows = Vec::new();
         let mut back = Vec::new();
+        let mut ring_over = Vec::new();
+        let dragged = self.drag.as_ref().filter(|d| d.moved).map(|d| d.id);
         let cells: Vec<&Cell> = {
-            let mut c: Vec<&Cell> = self.cells.iter().filter(|c| c.output == name && c.window.alive()).collect();
-            c.sort_by_key(|c| std::cmp::Reverse(c.z));
+            // (A window dragged from another display's pane is drawn here
+            // too, under the pointer.)
+            let mut c: Vec<&Cell> = self.cells.iter().filter(|c| (c.output == name || dragged == Some(c.window.id())) && c.window.alive()).collect();
+            c.sort_by_key(|c| (dragged != Some(c.window.id()), std::cmp::Reverse(c.z)));
             c
         };
-        let settled = !self.leaving();
+        let settled = !self.leaving() && dragged.is_none();
         let chosen = self.chosen();
+        // The pane a dragged window would go to (not its own).
+        let target = self.drag.as_ref().filter(|d| d.moved).and_then(|d| {
+            let from = self.cells.iter().find(|c| c.window.id() == d.id)?;
+            self.pane_at(d.at).filter(|p| p.new || p.output != from.output || p.workspace != from.workspace).map(|p| (p.output.clone(), p.workspace, p.new))
+        });
         for cell in &cells {
-            let rect = match cell.from {
-                Some(from) => lerp(from, cell.to, t),
-                None => cell.to,
-            };
+            let rect = self.drawn_at(cell, t, now);
             let alpha = if cell.from.is_some() { 1.0 } else { fade };
             let reference = SpaceElement::bbox(&cell.window).to_physical_precise_round(scale);
             let constrain = device(rect);
@@ -393,22 +461,40 @@ impl Overview {
             let at = phys(pane.rect.loc.x, pane.rect.loc.y - (LABEL + *h as f64 / scale) / 2.0);
             back.extend(crate::render::picture(renderer, at, buffer, (*w, *h), Some(fade), Kind::Unspecified).map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))));
             let r = device(pane.rect);
-            let (c, k, a) = if pane.current { (palette.keyboard_navigation, ((RING * scale).round() as i32).max(1), 1.0) } else { (palette.desktop_text, line, PANE_LINE) };
+            // The one a dragged window would go to: ringed, as the one
+            // showing is.
+            let aimed = target.as_ref().is_some_and(|(o, ws, new)| *o == pane.output && *ws == pane.workspace && *new == pane.new);
+            let (c, k, a) = if pane.current || aimed { (palette.keyboard_navigation, ((RING * scale).round() as i32).max(1), 1.0) } else { (palette.desktop_text, line, PANE_LINE) };
+            // New Workspace: a plus in its middle.
+            if pane.new {
+                let k = ((RING * scale).round() as i32).max(1);
+                let arm = ((PLUS * scale).round() as i32).max(4);
+                let mid = device(pane.rect);
+                let (cx, cy) = (mid.loc.x + mid.size.w / 2, mid.loc.y + mid.size.h / 2);
+                for bar in [Rectangle::new((cx - arm, cy - k / 2).into(), (2 * arm, k).into()), Rectangle::new((cx - k / 2, cy - arm).into(), (k, 2 * arm).into())] {
+                    back.extend(solid(renderer, drawn, palette.desktop_text, bar, fade * PANE_LINE));
+                }
+            }
             for edge in [
                 Rectangle::new(r.loc, (r.size.w, k).into()),
                 Rectangle::new((r.loc.x, r.loc.y + r.size.h - k).into(), (r.size.w, k).into()),
                 Rectangle::new(r.loc, (k, r.size.h).into()),
                 Rectangle::new((r.loc.x + r.size.w - k, r.loc.y).into(), (k, r.size.h).into()),
             ] {
-                back.extend(solid(renderer, drawn, c, edge, fade * a));
+                // (The target's ring over the windows: the one dragged
+                // would hide it.)
+                let e = solid(renderer, drawn, c, edge, fade * a);
+                if aimed { ring_over.extend(e) } else { back.extend(e) }
             }
             back.extend(solid(renderer, drawn, [255, 255, 255, 255], r, fade * PANE_FILL));
         }
         let whole = device(Rectangle::new(origin.to_f64(), screen.to_f64()));
         back.extend(solid(renderer, drawn, [0, 0, 0, 255], whole, fade * DIM));
-        front.extend(windows);
-        front.extend(back);
-        front
+        let mut all = ring_over;
+        all.extend(front);
+        all.extend(windows);
+        all.extend(back);
+        all
     }
 }
 
@@ -450,6 +536,32 @@ impl<B: Backend + 'static> AnvilState<B> {
         if self.hints.active() {
             self.hints.close();
         }
+        let (panes_out, cells) = self.overview_layout();
+        let focused = self.focused_window().map(|w| w.id());
+        self.overview = Some(Overview {
+            opened: Instant::now(),
+            closing: None,
+            panes: panes_out,
+            cells,
+            hovered: None,
+            selected: focused,
+            swallowed: Vec::new(),
+            buttons: Vec::new(),
+            interrupted: false,
+            drag: None,
+            moved_at: None,
+            moving: false,
+            drawn: RefCell::new(HashMap::new()),
+        });
+        // Off whatever window the pointer was over.
+        self.warp_pointer(self.pointer.current_location());
+        self.overview_hover();
+    }
+
+    /// The panes and where each window goes in them, as things are now:
+    /// each display's workspaces with windows (and the one it shows), and
+    /// its New Workspace pane in a strip at the side.
+    fn overview_layout(&self) -> (Vec<Pane>, Vec<Cell>) {
         let windows = self.all_windows();
         let infos = self.output_infos();
         let stacking: Vec<WindowElement> = self.space.elements().cloned().collect();
@@ -484,6 +596,16 @@ impl<B: Backend + 'static> AnvilState<B> {
             workspaces.sort();
             workspaces.dedup();
             let aspect = geo.size.w as f64 / geo.size.h.max(1) as f64;
+            // New Workspace: a strip at the side, a pane of the display's
+            // shape in its middle (the workspaces keep the rest).
+            let strip = (area.size.w * NEW_STRIP).min(NEW_MOST);
+            let new_w = strip - GAP;
+            let new_h = (new_w / aspect).min(area.size.h);
+            let new_rect = Rectangle::new((area.loc.x + area.size.w - new_w, area.loc.y + (area.size.h - new_h) / 2.0).into(), (new_w, new_h).into());
+            let area = Rectangle::new(area.loc, ((area.size.w - strip).max(1.0), area.size.h).into());
+            let count = self.settings.workspace_count.max(1);
+            let empty = (0..count).find(|i| !workspaces.contains(i)).unwrap_or(count);
+            panes_out.push(Pane { output: output.name(), workspace: empty, name: "New Workspace".into(), rect: new_rect, current: false, new: true });
             for (ws, rect) in workspaces.iter().zip(panes(area, workspaces.len(), aspect)) {
                 let in_it: Vec<_> = mine.iter().filter(|m| m.1 == *ws).collect();
                 let frames: Vec<Rect> = in_it.iter().map(|m| m.2).collect();
@@ -496,31 +618,73 @@ impl<B: Backend + 'static> AnvilState<B> {
                 placed.sort_by(|a, b| (a.1.loc.y + a.1.size.h / 2.0).total_cmp(&(b.1.loc.y + b.1.size.h / 2.0)).then(a.1.loc.x.total_cmp(&b.1.loc.x)));
                 for (m, to) in placed {
                     let z = stacking.iter().position(|s| s == &m.0).map_or(0, |i| i + 1);
-                    cells.push(Cell { window: m.0.clone(), output: output.name(), workspace: *ws, from: m.3, to, letter: None, z });
+                    cells.push(Cell { window: m.0.clone(), output: output.name(), workspace: *ws, from: m.3, to, letter: None, z, prev: None });
                 }
                 let name = olo_protocol::workspace_name(number, *ws);
-                panes_out.push(Pane { output: output.name(), workspace: *ws, name, rect, current: *ws == current });
+                panes_out.push(Pane { output: output.name(), workspace: *ws, name, rect, current: *ws == current, new: false });
             }
         }
         for (cell, c) in cells.iter_mut().zip(crate::hints::LETTERS.chars()) {
             cell.letter = Some(c);
         }
-        let focused = self.focused_window().map(|w| w.id());
-        self.overview = Some(Overview {
-            opened: Instant::now(),
-            closing: None,
-            panes: panes_out,
-            cells,
-            hovered: None,
-            selected: focused,
-            swallowed: Vec::new(),
-            buttons: Vec::new(),
-            interrupted: false,
-            drawn: RefCell::new(HashMap::new()),
-        });
-        // Off whatever window the pointer was over.
-        self.warp_pointer(self.pointer.current_location());
-        self.overview_hover();
+        (panes_out, cells)
+    }
+
+    /// Laid out again where things are now (a window moved to another
+    /// workspace), each window gliding from where it was in it
+    /// (`dropped`: the one just let go, from where it was let go).
+    fn overview_relayout(&mut self, dropped: Option<(u64, Rect)>) {
+        let (panes, mut cells) = self.overview_layout();
+        let Some(o) = self.overview.as_mut() else { return };
+        for c in &mut cells {
+            // (Out all the way: from the overview, not the desktop.)
+            c.from = None;
+            c.prev = match dropped {
+                Some((id, r)) if id == c.window.id() => Some(r),
+                _ => o.cells.iter().find(|x| x.window == c.window).map(|x| x.to),
+            };
+        }
+        (o.panes, o.cells, o.moved_at, o.hovered) = (panes, cells, Some(Instant::now()), None);
+        self.backend_data.wake(None);
+    }
+
+    /// A press on a window let go: picked, if it didn't move; else put on
+    /// the workspace of the pane it was let go over (New Workspace: an
+    /// empty one, made if need be), or back where it was.
+    fn overview_drop(&mut self, d: Drag) {
+        let Some(o) = self.overview.as_ref() else { return };
+        let Some(cell) = o.cells.iter().find(|c| c.window.id() == d.id).cloned() else { return };
+        if !d.moved {
+            self.close_overview(Some(cell.window));
+            return;
+        }
+        let dropped = Rectangle::new(cell.to.loc + (d.at - d.grab), cell.to.size);
+        let pane = o.pane_at(d.at).cloned().filter(|p| p.new || p.output != cell.output || p.workspace != cell.workspace);
+        let to = pane.as_ref().and_then(|p| self.space.outputs().find(|o| o.name() == p.output).cloned());
+        let (Some(pane), Some(output)) = (pane, to) else {
+            // Nowhere else: back to its place.
+            self.overview_relayout(Some((d.id, dropped)));
+            return;
+        };
+        let index = pane.workspace;
+        if index >= self.settings.workspace_count.max(1) {
+            let mut s = self.settings.clone();
+            s.workspace_count = index + 1;
+            self.set_settings(s);
+        }
+        let w = cell.window.clone();
+        w.meta().moved_on_purpose.set(true);
+        self.remember_moves(std::slice::from_ref(&w), &format!("Move to Workspace {}", index + 1));
+        // (Its own move: the overview stays out.)
+        if let Some(o) = self.overview.as_mut() {
+            o.moving = true;
+        }
+        self.move_to_display_workspace(&w, &output, index);
+        if let Some(o) = self.overview.as_mut() {
+            o.moving = false;
+        }
+        tracing::info!(window = d.id, output = output.name(), workspace = index, "moved in the overview");
+        self.overview_relayout(Some((d.id, dropped)));
     }
 
     /// Leave: with `chosen`, that window made the active one (on its
@@ -549,7 +713,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// a shortcut): it steps aside, once that is done, gliding back to the
     /// desktop as it is then.
     pub fn overview_interrupted(&mut self) {
-        if let Some(o) = self.overview.as_mut().filter(|o| !o.leaving()) {
+        if let Some(o) = self.overview.as_mut().filter(|o| !o.leaving() && !o.moving) {
             o.interrupted = true;
         }
     }
@@ -579,8 +743,21 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
     }
 
-    /// The pointer moved, while it may be out.
+    /// The pointer moved, while it may be out: a window held down on
+    /// follows it once it has gone far enough.
     pub fn overview_pointer(&mut self) {
+        let pos = self.pointer.current_location();
+        if let Some(d) = self.overview.as_mut().and_then(|o| o.drag.as_mut()) {
+            d.at = pos;
+            if !d.moved && (pos.x - d.grab.x).hypot(pos.y - d.grab.y) > DRAG_START {
+                d.moved = true;
+            }
+            if let Some(o) = self.overview.as_mut() {
+                o.hovered = None;
+            }
+            self.backend_data.wake(None);
+            return;
+        }
         if self.overview.is_some() {
             self.overview_hover();
         }
@@ -589,10 +766,16 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// A button, while it may be out: true if it was its. A click on a
     /// window picks it; on nothing, leaves.
     pub fn overview_button(&mut self, button: u32, pressed: bool) -> bool {
+        const LEFT: u32 = 0x110;
         let Some(o) = self.overview.as_mut() else { return false };
         if !pressed {
             let Some(i) = o.buttons.iter().position(|b| *b == button) else { return false };
             o.buttons.swap_remove(i);
+            if button == LEFT
+                && let Some(d) = o.drag.take()
+            {
+                self.overview_drop(d);
+            }
             return true;
         }
         if o.leaving() {
@@ -605,6 +788,28 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
         let Some(o) = self.overview.as_mut() else { return false };
         o.buttons.push(button);
+        // The left button on a window: picked as it's let go, or dragged
+        // to another workspace.
+        if button == LEFT
+            && let Some(id) = o.cell_at(pos).map(|c| c.window.id())
+        {
+            o.drag = Some(Drag { id, grab: pos, at: pos, moved: false });
+            return true;
+        }
+        // New Workspace: an empty one shown, and out.
+        if let Some(p) = o.pane_at(pos).filter(|p| p.new && o.cell_at(pos).is_none()).cloned() {
+            if p.workspace >= self.settings.workspace_count.max(1) {
+                let mut s = self.settings.clone();
+                s.workspace_count = p.workspace + 1;
+                self.set_settings(s);
+            }
+            self.close_overview(None);
+            let output = self.space.outputs().find(|o| o.name() == p.output).cloned();
+            if let Some(output) = output {
+                self.switch_workspace_on(&output, p.workspace);
+            }
+            return true;
+        }
         let chosen = o.cell_at(pos).map(|c| c.window.clone());
         self.close_overview(chosen);
         true
@@ -686,7 +891,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         let Some(o) = self.overview.as_ref().filter(|o| !o.leaving()) else { return olo_protocol::OverviewInfo::default() };
         olo_protocol::OverviewInfo {
             shown: true,
-            panes: o.panes.iter().map(|p| olo_protocol::OverviewPane { output: p.output.clone(), workspace: p.workspace, current: p.current, frame: frame(p.rect) }).collect(),
+            panes: o.panes.iter().map(|p| olo_protocol::OverviewPane { output: p.output.clone(), workspace: p.workspace, current: p.current, new: p.new, frame: frame(p.rect) }).collect(),
             windows: o
                 .cells
                 .iter()

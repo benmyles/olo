@@ -461,6 +461,9 @@ fn window_bar(p: &olo_ui::palette::Palette, w: &QuotaWindow, t: i64) -> StatusBa
     let mut trailing = format!("{:.0}% used", w.used.clamp(0.0, 999.0));
     if let Some(r) = w.resets_at.filter(|&r| r > t) {
         trailing.push_str(&format!(" · resets {} ({})", clock(r), span(r - t)));
+    } else if w.used <= 0.0 {
+        // (Nothing used in it yet: it starts with the next request.)
+        trailing.push_str(" · not started");
     }
     let label = if w.label.is_empty() { plan_name(w.name.trim_end_matches("_window")) } else { w.label.clone() };
     let mut bar = StatusBar::new((w.used / 100.0) as f32).label(label).trailing(trailing).bar_height(10.0);

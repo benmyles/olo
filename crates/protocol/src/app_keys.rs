@@ -52,6 +52,10 @@ const NOTIFICATIONS: Option<&str> = Some("olo.notifications");
 const PALETTE: Option<&str> = Some("olo.palette");
 const TELEGRAM: Option<&str> = Some("olo.telegram");
 const DOCTOR: Option<&str> = Some("olo.doctor");
+/// Chrome's keys (its own, not Olo's: what Chrome takes on Linux is
+/// [`CHROME_NATIVE`]), kept in a profile under its app id, and used for
+/// every Chromium browser ([`CHROMIUM_APPS`]).
+const CHROME: Option<&str> = Some("google-chrome");
 
 /// The apps with keys of their own, as Preferences names them.
 pub const APPS: &[(&str, &str)] = &[
@@ -70,6 +74,47 @@ pub const APPS: &[(&str, &str)] = &[
     ("olo.palette", "Command Palette"),
     ("olo.telegram", "Telegram"),
     ("olo.doctor", "Olo Doctor"),
+    // (Slack is Chrome too, olo-slack: these are its keys as well.)
+    ("google-chrome", "Chrome and Slack"),
+];
+
+/// The browsers that are Chrome underneath (their app ids): Chrome's keys
+/// ([`CHROME_NATIVE`]) are theirs.
+pub const CHROMIUM_APPS: &[&str] = &["google-chrome", "google-chrome-beta", "google-chrome-unstable", "chromium", "chromium-browser", "brave-browser", "microsoft-edge"];
+
+/// What Chrome itself takes on Linux for each of its commands here: the
+/// keys a profile gives one are sent as these (app_server's keymap), so a
+/// Mac's ⌘Y opens History (Ctrl+H) and ⌥⌘I the developer tools. Written
+/// as clients see them: Ctrl, Alt, Shift.
+pub const CHROME_NATIVE: &[(&str, &str)] = &[
+    ("chrome.new-tab", "Ctrl+T"),
+    ("chrome.new-window", "Ctrl+N"),
+    ("chrome.incognito", "Ctrl+Shift+N"),
+    ("chrome.reopen-tab", "Ctrl+Shift+T"),
+    ("chrome.close-tab", "Ctrl+W"),
+    ("chrome.close-window", "Ctrl+Shift+W"),
+    ("chrome.quit", "Ctrl+Shift+Q"),
+    ("chrome.location", "Ctrl+L"),
+    ("chrome.reload", "Ctrl+R"),
+    ("chrome.hard-reload", "Ctrl+Shift+R"),
+    ("chrome.back", "Alt+Left"),
+    ("chrome.forward", "Alt+Right"),
+    ("chrome.home", "Alt+Home"),
+    ("chrome.find-next", "Ctrl+G"),
+    ("chrome.find-previous", "Ctrl+Shift+G"),
+    ("chrome.zoom-in", "Ctrl+Equal"),
+    ("chrome.zoom-out", "Ctrl+Minus"),
+    ("chrome.actual-size", "Ctrl+0"),
+    ("chrome.bookmark", "Ctrl+D"),
+    ("chrome.bookmarks-bar", "Ctrl+Shift+B"),
+    ("chrome.bookmark-manager", "Ctrl+Shift+O"),
+    ("chrome.history", "Ctrl+H"),
+    ("chrome.downloads", "Ctrl+J"),
+    ("chrome.clear-data", "Ctrl+Shift+Delete"),
+    ("chrome.devtools", "Ctrl+Shift+I"),
+    ("chrome.console", "Ctrl+Shift+J"),
+    ("chrome.view-source", "Ctrl+U"),
+    ("chrome.full-screen", "F11"),
 ];
 
 /// The name of the group of every app's commands.
@@ -96,6 +141,10 @@ pub const APP_KEYS: &[AppKey] = &[
     k("app.bigger", None, "bigger", "Bigger text", &["Cmd+Equal"], &["Ctrl+Equal"], &["Alt+Equal"]),
     k("app.smaller", None, "smaller", "Smaller text", &["Cmd+Minus"], &["Ctrl+Minus"], &["Alt+Minus"]),
     k("app.default-size", None, "default-size", "Text at its own size", &["Cmd+0"], &["Ctrl+0"], &["Alt+0"]),
+    // A side pane put away or brought back (`olo_ui::widgets::SidePane`):
+    // View ▸ Hide Sidebar, ⌥⌘S as Finder's was (⌃⌘S is ⌘S to a kit app:
+    // its keys have no Control of their own).
+    k("app.sidebar", None, "sidebar", "Hide or show the sidebar", &["Alt+Cmd+S"], &["Ctrl+Alt+S"], &["Alt+Cmd+S"]),
     // Tracker: Finder's on a Mac, Explorer's on Windows, Tracker's on BeOS.
     // (A new window: ⌘N as Finder's, Ctrl+N as Explorer's; BeOS's Tracker
     // had none, Alt+N its New Folder.)
@@ -236,7 +285,50 @@ pub const APP_KEYS: &[AppKey] = &[
     k("telegram.archive", TELEGRAM, "archive", "Archived Chats", &["Cmd+9"], &["Ctrl+9"], &["Alt+9"]),
     k("telegram.prev", TELEGRAM, "prev", "Previous Chat", &["Cmd+Up"], &["Alt+Up"], &["Alt+Up"]),
     k("telegram.next", TELEGRAM, "next", "Next Chat", &["Cmd+Down"], &["Alt+Down"], &["Alt+Down"]),
+    // Chrome's own, each platform's as Chrome has them there (BeOS's as a
+    // Mac's, Alt its command key); sent as Linux Chrome's (CHROME_NATIVE).
+    k("chrome.new-tab", CHROME, "new-tab", "New Tab", &["Cmd+T"], &["Ctrl+T"], &["Alt+T"]),
+    k("chrome.new-window", CHROME, "new-window", "New Window", &["Cmd+N"], &["Ctrl+N"], &["Alt+N"]),
+    k("chrome.incognito", CHROME, "incognito", "New Incognito Window", &["Shift+Cmd+N"], &["Ctrl+Shift+N"], &["Alt+Shift+N"]),
+    k("chrome.reopen-tab", CHROME, "reopen-tab", "Reopen Closed Tab", &["Shift+Cmd+T"], &["Ctrl+Shift+T"], &["Alt+Shift+T"]),
+    k("chrome.close-tab", CHROME, "close-tab", "Close Tab", &["Cmd+W"], &["Ctrl+W"], &["Alt+W"]),
+    k("chrome.close-window", CHROME, "close-window", "Close Window", &["Shift+Cmd+W"], &["Ctrl+Shift+W"], &["Alt+Shift+W"]),
+    k("chrome.quit", CHROME, "quit", "Quit Chrome", &["Cmd+Q"], &["Ctrl+Shift+Q"], &["Alt+Q"]),
+    k("chrome.location", CHROME, "location", "Open Location", &["Cmd+L"], &["Ctrl+L"], &["Alt+L"]),
+    k("chrome.reload", CHROME, "reload", "Reload", &["Cmd+R"], &["Ctrl+R", "F5"], &["Alt+R"]),
+    k("chrome.hard-reload", CHROME, "hard-reload", "Reload Without the Cache", &["Shift+Cmd+R"], &["Ctrl+Shift+R"], &["Alt+Shift+R"]),
+    k("chrome.back", CHROME, "back", "Back", &["Cmd+BracketLeft"], &["Alt+Left"], &["Alt+BracketLeft"]),
+    k("chrome.forward", CHROME, "forward", "Forward", &["Cmd+BracketRight"], &["Alt+Right"], &["Alt+BracketRight"]),
+    k("chrome.home", CHROME, "home", "Home Page", &["Shift+Cmd+H"], &["Alt+Home"], &["Alt+Shift+H"]),
+    k("chrome.find-next", CHROME, "find-next", "Find Next", &["Cmd+G"], &["Ctrl+G"], &["Alt+G"]),
+    k("chrome.find-previous", CHROME, "find-previous", "Find Previous", &["Shift+Cmd+G"], &["Ctrl+Shift+G"], &["Alt+Shift+G"]),
+    k("chrome.zoom-in", CHROME, "zoom-in", "Zoom In", &["Cmd+Equal"], &["Ctrl+Equal"], &["Alt+Equal"]),
+    k("chrome.zoom-out", CHROME, "zoom-out", "Zoom Out", &["Cmd+Minus"], &["Ctrl+Minus"], &["Alt+Minus"]),
+    k("chrome.actual-size", CHROME, "actual-size", "Actual Size", &["Cmd+0"], &["Ctrl+0"], &["Alt+0"]),
+    k("chrome.bookmark", CHROME, "bookmark", "Bookmark This Tab", &["Cmd+D"], &["Ctrl+D"], &["Alt+D"]),
+    k("chrome.bookmarks-bar", CHROME, "bookmarks-bar", "Show Bookmarks Bar", &["Shift+Cmd+B"], &["Ctrl+Shift+B"], &["Alt+Shift+B"]),
+    k("chrome.bookmark-manager", CHROME, "bookmark-manager", "Bookmark Manager", &["Alt+Cmd+B"], &["Ctrl+Shift+O"], &["Alt+Shift+O"]),
+    k("chrome.history", CHROME, "history", "History", &["Cmd+Y"], &["Ctrl+H"], &["Alt+Y"]),
+    k("chrome.downloads", CHROME, "downloads", "Downloads", &["Alt+Cmd+L"], &["Ctrl+J"], &["Alt+Shift+L"]),
+    k("chrome.clear-data", CHROME, "clear-data", "Clear Browsing Data", &["Shift+Cmd+Backspace"], &["Ctrl+Shift+Delete"], &["Alt+Shift+Backspace"]),
+    k("chrome.devtools", CHROME, "devtools", "Developer Tools", &["Alt+Cmd+I"], &["Ctrl+Shift+I", "F12"], &["Alt+Shift+I"]),
+    k("chrome.console", CHROME, "console", "JavaScript Console", &["Alt+Cmd+J"], &["Ctrl+Shift+J"], &["Alt+Shift+J"]),
+    k("chrome.view-source", CHROME, "view-source", "View Source", &["Alt+Cmd+U"], &["Ctrl+U"], &["Alt+U"]),
+    k("chrome.full-screen", CHROME, "full-screen", "Enter Full Screen", &["Ctrl+Cmd+F"], &["F11"], &["Alt+Shift+F"]),
 ];
+
+/// For a profile: each of Chrome's keys it has (its own, changed or not)
+/// and what Chrome takes for that command on Linux ([`CHROME_NATIVE`]).
+pub fn chrome_keys(profile: &crate::shortcuts::KeyboardProfile) -> Vec<(crate::Chord, crate::Chord)> {
+    let mut out = Vec::new();
+    for (id, native) in CHROME_NATIVE {
+        let (Some(e), Ok(to)) = (crate::shortcuts::entry(id), native.parse::<crate::Chord>()) else { continue };
+        for from in e.keys(profile) {
+            out.push((from, to));
+        }
+    }
+    out
+}
 
 /// The entry for `command` in app `app`: the app's own, else every app's.
 pub fn app_key(app: &str, command: &str) -> Option<&'static AppKey> {

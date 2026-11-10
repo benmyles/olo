@@ -320,9 +320,9 @@ fn upgrading(h: &HeaderMap) -> bool {
 /// ends.
 async fn upgrade_through(shared: &Arc<Shared>, host: &str, path: &str, query: Option<&str>, method: Method, headers: HeaderMap, on: hyper::upgrade::OnUpgrade) -> Response {
     // HTTP/1.1 (HTTP/2 has no 101), and no read timeout: a socket may be
-    // quiet for long.
-    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
-    let client = CLIENT.get_or_init(|| reqwest::Client::builder().http1_only().connect_timeout(Duration::from_secs(20)).build().expect("HTTP client"));
+    // quiet for long. (Made again for a new network: `olo_net`.)
+    static CLIENT: OnceLock<olo_net::PerNetwork<reqwest::Client>> = OnceLock::new();
+    let client = CLIENT.get_or_init(|| olo_net::PerNetwork::new(|| reqwest::Client::builder().http1_only().connect_timeout(Duration::from_secs(20)).build().expect("HTTP client"))).get();
     let url = format!("{}{path}{}", shared.upstream_origin(host), query.map(|q| format!("?{q}")).unwrap_or_default());
     let mut req = client.request(method, &url);
     for (k, v) in headers.iter().filter(|(k, _)| *k == CONNECTION || *k == UPGRADE || !hop(k.as_str())) {

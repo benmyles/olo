@@ -1,8 +1,9 @@
 //! AI: Olo's AI features, each on or off, with its model (OpenAI's,
 //! through the Token Pool's Codex accounts) and effort: Smart Tiling,
-//! the command palette's /ask, and the emoji picker's suggestions.
+//! the command palette's /ask, and the emoji picker's suggestions; and
+//! the model and effort Olo starts Claude Code with for a task.
 
-use olo_protocol::{AI_EFFORTS, AI_MODELS, AiFeature, Settings, shortcuts};
+use olo_protocol::{AI_EFFORTS, AI_MODELS, AiFeature, CLAUDE_MODELS, Settings, shortcuts};
 use olo_ui::gpui::SharedString;
 
 use crate::form::Ui;
@@ -48,6 +49,18 @@ pub fn ui(ui: &mut Ui) {
             let age = HISTORY_DAYS.iter().position(|&(d, _)| d == s.ai.screen_history_days).unwrap_or(2);
             let ages: Vec<SharedString> = HISTORY_DAYS.iter().map(|(_, n)| SharedString::from(*n)).collect();
             ui.menu("screen-history-age", ages, age, |f| f.label("For:").divider(94.0), |s, i| s.ai.screen_history_days = HISTORY_DAYS[i].0);
+        });
+        // (Ben, 2026-11-08: "have the claude code model selectable in the
+        // ai prefs, default to opus 5.5 on medium".)
+        ui.bbox("Claude Code", |ui| {
+            ui.note("When Olo starts Claude Code for a task (DiskBackup’s Agent Setup), in a Terminal window you can follow, it uses this model.");
+            let c = &s.ai.claude_code;
+            let models: Vec<SharedString> = CLAUDE_MODELS.iter().map(|(_, name)| SharedString::from(*name)).collect();
+            let m = CLAUDE_MODELS.iter().position(|(id, _)| *id == c.model).unwrap_or(0);
+            ui.menu("claude-code-model", models, m, |f| f.label("Model:").divider(70.0), |s, i| s.ai.claude_code.model = CLAUDE_MODELS[i].0.into());
+            let efforts: Vec<SharedString> = AI_EFFORTS.iter().map(|(_, name)| SharedString::from(*name)).collect();
+            let e = AI_EFFORTS.iter().position(|(id, _)| *id == c.effort).unwrap_or(1);
+            ui.menu("claude-code-effort", efforts, e, |f| f.label("Thinking:").divider(70.0), |s, i| s.ai.claude_code.effort = AI_EFFORTS[i].0.into());
         });
     });
     ui.add_columns(left, right);

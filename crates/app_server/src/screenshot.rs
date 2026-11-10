@@ -80,9 +80,17 @@ impl IpcState {
     }
 }
 
-/// Take `shot` with `output`'s renderer and hand it to a thread to save.
-/// `overlays` are what the backend draws over the windows (the lock screen,
-/// the twitcher), for whole-screen shots.
+/// A shot drawn, its pixels on their way back from the GPU ([`start`]):
+/// [`finish`] takes them and saves it.
+pub struct Pending<M> {
+    shot: Shot,
+    readback: Result<crate::render::Readback<M>, String>,
+    /// Where to draw the pointer, in pixels at a scale.
+    cursor: Option<(Point<f64, smithay::utils::Physical>, f64, crate::cursor::Shape)>,
+}
+
+/// Take `shot` with `output`'s renderer and hand it to a thread to save,
+/// waiting for the GPU (the DRM backend's).
 #[allow(clippy::too_many_arguments)]
 pub fn take<R, T>(
     ipc: &mut IpcState,
@@ -94,32 +102,74 @@ pub fn take<R, T>(
     overview: Option<&crate::overview::Overview>,
     clear_color: Color32F,
     locked: bool,
-    (pointer, shape): (Point<f64, Logical>, Option<crate::cursor::Shape>),
+    pointer: (Point<f64, Logical>, Option<crate::cursor::Shape>),
 ) where
     R: Renderer + ImportAll + ImportMem + Offscreen<T> + ExportMem,
+    T: Clone + 'static,
+    R::TextureId: Clone + Send + 'static,
+    R::Error: std::fmt::Display,
+{
+    let pending = start(shot, renderer, output, space, overlays, overview, clear_color, locked, pointer);
+    finish(ipc, renderer, pending);
+}
+
+/// Draw `shot` with `output`'s renderer and ask for its pixels, without
+/// waiting for them (headless: [`finish`] once a fence says the GPU is
+/// done, so a shot doesn't hold app_server's loop). `overlays` are what the
+/// backend draws over the windows (the lock screen, the twitcher), for
+/// whole-screen shots.
+#[allow(clippy::too_many_arguments)]
+pub fn start<R, T>(
+    shot: Shot,
+    renderer: &mut R,
+    output: &Output,
+    space: &Space<WindowElement>,
+    overlays: Vec<CustomRenderElements<R>>,
+    overview: Option<&crate::overview::Overview>,
+    clear_color: Color32F,
+    locked: bool,
+    (pointer, shape): (Point<f64, Logical>, Option<crate::cursor::Shape>),
+) -> Pending<R::TextureMapping>
+where
+    R: Renderer + ImportAll + ImportMem + Offscreen<T> + ExportMem,
+    T: Clone + 'static,
     R::TextureId: Clone + Send + 'static,
     R::Error: std::fmt::Display,
 {
     let scale = output.current_scale().fractional_scale();
-    let captured = match shot.window {
+    let started = match shot.window {
         _ if shot.window.is_some() && locked => Err("the screen is locked".to_owned()),
         Some(id) => capture_window(renderer, space, id, scale, shot.border),
-        None => crate::render::capture(renderer, output, space, overlays, overview, clear_color, locked).map(|img| (img, space.output_geometry(output).unwrap_or_default())),
+        None => crate::render::capture_start(renderer, output, space, overlays, overview, clear_color, locked).map(|r| (r, space.output_geometry(output).unwrap_or_default())),
     };
-    let captured = captured.map(|(img, rect)| {
+    let mut cursor = None;
+    let readback = started.map(|(r, rect)| {
         // Where the pointer is in the picture, in pixels (if it's in it).
         let at = ((pointer - rect.loc.to_f64()).to_physical(scale), scale);
-        let cursor = shape.filter(|_| shot.pointer && !locked && rect.to_f64().contains(pointer)).map(|shape| (at.0, at.1, shape));
-        (img, cursor)
+        cursor = shape.filter(|_| shot.pointer && !locked && rect.to_f64().contains(pointer)).map(|shape| (at.0, at.1, shape));
+        r
     });
+    Pending { shot, readback, cursor }
+}
+
+/// Take a started shot's pixels (at once if the GPU is done) and hand it
+/// to a thread to save.
+pub fn finish<R>(ipc: &mut IpcState, renderer: &mut R, pending: Pending<R::TextureMapping>)
+where
+    R: ExportMem,
+    R::Error: std::fmt::Display,
+{
+    let Pending { shot, readback, cursor } = pending;
+    let captured = readback.and_then(|r| crate::render::offscreen_finish(renderer, r)).map(|img| (img, cursor));
     save(ipc, shot, captured);
 }
 
 /// Render one window, alone over transparency: its tab and border too
 /// with `border` (the tab's shape is kept), or only what the client drew.
-fn capture_window<R, T>(renderer: &mut R, space: &Space<WindowElement>, id: u64, scale: f64, border: bool) -> Result<(image::RgbaImage, Rectangle<i32, Logical>), String>
+fn capture_window<R, T>(renderer: &mut R, space: &Space<WindowElement>, id: u64, scale: f64, border: bool) -> Result<(crate::render::Readback<R::TextureMapping>, Rectangle<i32, Logical>), String>
 where
     R: Renderer + ImportAll + ImportMem + Offscreen<T> + ExportMem,
+    T: Clone + 'static,
     R::TextureId: Clone + Send + 'static,
     R::Error: std::fmt::Display,
 {
@@ -135,8 +185,8 @@ where
     window.decoration().behind = false;
     let elements: Vec<WindowRenderElement<R>> = window.render_elements(renderer, location, scale.into(), 1.0);
     let size = rect.size.to_f64().to_physical(scale).to_i32_round();
-    let img = crate::render::offscreen(renderer, size, scale, &elements, Color32F::TRANSPARENT)?;
-    Ok((img, rect))
+    let readback = crate::render::offscreen_start(renderer, size, scale, &elements, Color32F::TRANSPARENT)?;
+    Ok((readback, rect))
 }
 
 /// A captured image, and where to draw the pointer (in pixels, at a scale).

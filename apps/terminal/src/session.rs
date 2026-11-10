@@ -79,12 +79,13 @@ impl Nudge {
 static ON_OUTPUT: OnceLock<olo_sync::Mutex<Vec<Nudge>>> = OnceLock::new();
 
 /// Poke `nudge` whenever any shell prints (once per burst of output, as
-/// it's coalesced).
+/// it's coalesced) or is attached (taken back from termd after Terminal
+/// starts again: where it is can be read only then).
 pub fn on_output(nudge: Nudge) {
     ON_OUTPUT.get_or_init(Default::default).lock().unwrap().push(nudge);
 }
 
-/// A shell printed: wake what watches.
+/// A shell printed, or attached: wake what watches.
 fn printed() {
     if let Some(all) = ON_OUTPUT.get() {
         for n in all.lock().unwrap().iter() {
@@ -425,6 +426,7 @@ fn spawn_feeder(
                         feeder = io::Feeder::default();
                         // Rebuilding the screen asks nothing of the program.
                         feeder.feed(&mut *term.lock(), &shared, &replay, &mut Vec::new());
+                        printed();
                         wake();
                     }
                     Chunk::Output(bytes) => {

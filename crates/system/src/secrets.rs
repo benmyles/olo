@@ -240,7 +240,7 @@ mod tests {
     #[ignore]
     fn round_trip() {
         let bus = std::env::var("DBUS_SESSION_BUS_ADDRESS").unwrap_or_default();
-        assert!(bus.contains("/tmp/olo-dev/"), "not a private test bus: {bus}");
+        assert!(bus.contains("/var/tmp/olo-dev/"), "not a private test bus: {bus}");
         let attrs = [("application", "olo-test"), ("purpose", "round-trip")];
         super::store("Olo test", &attrs, b"first").unwrap();
         assert_eq!(super::lookup(&attrs).unwrap().as_deref(), Some(&b"first"[..]));

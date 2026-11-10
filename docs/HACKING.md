@@ -390,6 +390,58 @@ overflow; no core, as `PR_SET_DUMPABLE` 0) and checks each report and
 how the program ended, and the journal stream against a stand-in
 socket.
 
+## The network changing (crates/net, applies to every program that uses it)
+
+A cable pulled, Wi-Fi joined or left, a VPN coming up: anything that
+talks over the network goes on, on the new one, without hanging or
+failing (Ben, 2026-11-09). A connection lives on the network it was made
+on (its address is that network's): when that address goes, nothing tells
+whoever is reading or writing it, who waits for TCP to give up, a quarter
+of an hour. `olo-net` follows the kernel's own news of links, addresses
+and routes (rtnetlink, a thread asleep until there is some: nothing
+polls), and on each change, in this order: `generation()` moves on and
+`online()` says whether there's a way out to the internet (the kernel
+asked which way a packet would go); this process's TCP connections whose
+address went are cut (`shutdown`, never `close`: whoever waits on one is
+told at once, and makes another); those whose way out changed but whose
+address is still there are watched closely (keepalive and
+`TCP_USER_TIMEOUT`: the kernel ends one whose peer stops answering for
+15 s, and leaves it be while it answers); then waiters are woken and the
+`on_change` hooks run. Loopback connections, listeners and other
+processes' sockets are never touched. So in a program that talks over the
+network:
+
+- keep an HTTP client for the network it was made on, `PerNetwork::new(||
+  make it)` and `.get()` for each request: after a change the next
+  request makes connections on the new network, not on idle ones left
+  from the old (what's under way keeps its own);
+- a request that fails because the network changed under it, or there
+  was none, is tried again, at once on the new one or once one comes,
+  without counting against its tries: `across_changes(patience, ||
+  request)`, or by hand with `generation()` taken before it (DiskBackup's
+  Drive, the Token Pool's gateway, both before anything of the answer is
+  passed on);
+- a download goes on where it broke off (`http::Download`: `Range` from
+  where it got to, `If-Range` so it's the same file, the whole file again
+  passed over to there from a server that takes no ranges), Chrome's,
+  Olo Setup's and Doctor's;
+- a wait for a network is `wait_online(until, stop)`, woken by a change
+  or `nudge()` (call it after asking a worker to stop); say so while it
+  waits (`waiting()`: DiskBackup's "Waiting for the network");
+- a long-lived connection that only hears what the other end pushes
+  (Telegram's updates) is asked again on a change (`on_change`):
+  Telegram's stream is handed its own "too many to send" (`updatesTooLong`)
+  and catches up at once, on a new connection.
+
+`pretend_change(online, port)` does what a change does, for tests of what
+uses it (DiskBackup's `tests/network.rs`, the Token Pool's
+`a_request_goes_on_across_a_network_change`); `tests/netns.rs` makes real
+changes in a network of the test's own (a user and network namespace, no
+privileges: addresses and routes on its loopback taken away and given
+back), and a connection on an address that went is cut 150 ms after (the
+burst a change comes in, waited out), a wait for the network ending as
+long after a way out comes back.
+
 ## Layout
 
 | Path | What |
@@ -404,6 +456,7 @@ socket.
 | `crates/kit-base` | `olo-kit-base`: what the kit has that doesn't draw, re-exported by olo-ui under the same names: `instance` (one process per app), `settings`, `notify`, `files`, `places`, `watch`, `tracker`, `metrics` (the spacing system), `Proxy`, `search` (the query language, facets and suggestions), `masonry` (cards in columns), and `store` (an app's own files, written whole), `commands`, the socket agents and the command palette read apps through (its protocol, server and client), with `review`'s findings and `layout_review`'s checks, `list` (a list's selection and type-select), `spell` and `keys` (the keyboard profile's keys). No GPUI. |
 | `gpui/` | Olo's GPUI, which the kit is built on: GPUI 0.2.2 and blade-graphics 0.7.1, Olo's own from now on (Wayland only, idle windows draw nothing); `gpui/README.md` says what changed. |
 | `crates/xdg` | `olo-xdg`: freedesktop plumbing shared by app_server and the kit: data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`, in the current theme: `themes`), our own apps (`apps::our_app`), MIME types (`mime::for_path`), opening files and URLs with the right app (`open::open`, `open::handler_cached`: never `xdg-open`; the person's own choice first (`open::set_default`, kept in `~/.config/olo/default-apps.list` in mimeapps.list's form and copied into `olo-mimeapps.list` for other programs; `handler_cached` notices it changed, in any process), then Olo's apps, except that links and web pages go to the browser chosen in mimeapps.list, else `olo-chrome`; Open With's few apps for a kind, `open::handlers_for`: as the person set them (`set_offered`, Preferences ▸ Default Apps ▸ Open With), else the one it opens in, Olo's own for it, then those whose entries claim it or a broader kind, by name, eight at most; worked out off the UI thread by `open::warm` (a folder's kinds, as Tracker lists it) and read by menus from `offer_cached`; `open::kind_of` names a kind by the file's name alone; `open::every_app` is every app whose command takes files (`DesktopEntry::takes_files`), Olo's first, and `Handler::icon` its icon; the person's own kinds of file are `mime::own_kinds` (`set_own_kinds`; `mime::type_for_extensions` keeps the type its extensions all share, else makes one of Olo's own, `application/x-olo-kind-EXT`, which `mime::from_name` gives first); desktop entries are kept until an applications folder changes, `desktop_entry::all_cached`; and the same for other programs: `open::for_others` gives the hidden `olo.viewer`, `olo.styled-edit` and `olo.tracker` desktop entries, each listing every type shared-mime-info knows that Olo opens with it, and an `olo-mimeapps.list` making them the defaults, which GIO, `gio open`/xdg-open and xdg-desktop-portal's OpenURI read before `mimeapps.list` while `XDG_CURRENT_DESKTOP` names Olo; olo-session writes them into `~/.local/share/applications` at start, makes that folder's `mimeinfo.cache` again when they change (`open::mime_cache`, as update-desktop-database would: GIO only finds an app for a type through it) and removes ones it wrote that are no longer wanted, `X-Olo-Written=true`; and, once Olo's Chrome is installed, `open::offer_browser` writes `~/.local/share/applications/olo-mimeapps.list` naming it for web pages and links, read after every `mimeapps.list` in the config directories so a browser the person chose wins, but ahead of the system's lists), `find_program`, `spawn_detached` (`spawn_detached_app` and `open::spawn_app` for a desktop entry's program, in a scope of its own: `scope`; Olo's own programs keep the launcher's stderr, the session's journal, so what Deskbar, Tracker or the palette starts logs like the rest; others' goes nowhere). |
+| `crates/net` | `olo-net`: the network changing under a program that talks over it (see "The network changing"): connections on a network that went cut at once, what's kept for the network (`PerNetwork`: an HTTP client) made again for the new one, requests tried again across a change (`across_changes`), waits for a network (`wait_online`), and with its `ureq` feature a download that goes on where it broke off (`http::Download`). |
 | `crates/system` | `olo-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
 | `apps/airpods` | `olo-airpods`: AirPods, natively (see "AirPods"): the session's service and its command line. |
 | `apps/voice` | `olo-voice`: the voice service (see "The voice service"): every microphone through voice processing, and its command line. |
@@ -809,6 +862,17 @@ fn main() {
 
 ### Drag and drop (`olo_ui::dnd`, GPUI's drops)
 
+**Spring-loaded tabs** (app_server shell/spring.rs): anything dragged
+and held 0.6 s (`SPRING`) over a window's yellow tab brings that window
+forward, to the front of its group if it's in one, as a click on its
+tab would, so what's dragged can be dropped into it; the drag goes on
+over it (Ben, 2026-11-09). A drag that leaves the tab sooner brings
+nothing forward; nothing waits while nothing is dragged. Tried in a
+tsession: a file dragged from Tracker onto the tab of a StyledEdit
+window behind it came forward after 0.6 s (not at 0.3) and the drop
+opened the file in it; onto a group's tab behind its front one, that
+tab came to the front.
+
 Over Wayland's data device, so it works within a window, between
 Olo's apps and with any other Wayland program. (app_server tells a drag
 where the pointer is as it starts, `dnd_requested`: an app asks once the
@@ -916,6 +980,26 @@ the rest fill the grid around them, and Clean Up in its menu puts every
 icon back on the grid. Terminal types dropped files as their
 shell-quoted paths (and text as if pasted), bracketed when the program
 asked for it: drag an image into Claude Code there.
+
+### Move to Window: every tabbed app's tabs (`Menu::move_to_window`)
+
+A pattern every app with tabs keeps (Ben, 2026-11-08: "a pattern and
+works for all tabbed olo apps: if that app has multiple windows open i
+should be able to right click on the tab or tab group and choose move
+to window -> <window name>. if that leaves no more tabs in the origin
+window then that window should close"). A tab's menu, and a tab group's,
+has Move to Window ▸ (a group's: Move Group to Window ▸) built by
+`Menu::move_to_window(title, others)`: the app's other windows by their
+titles, in natural order, each with the command that moves it there, or
+"No Other Windows", greyed. Moved there, the tab (a group's tabs, still a
+group) goes in after the window's own tabs and shows; the window it left
+closes if that was its last tab. The app's menu bar has the same under
+its Tabs menu, for the tab showing. Terminal's tabs and tab groups
+(`tab-to:SHELL:TARGET`, `group-to:GROUP:TARGET`, `move_group_to`) and a
+window's own tab (the window menu: into another of its app's windows'
+group where it shows, `GroupWindow`; a grouped window's whole group
+too) use it. An app with tabs of its own uses it on its tabs' and
+groups' menus.
 
 ### Ad-hoc popup menus (`menu::context_menu`, `menu::popup`)
 
@@ -1208,7 +1292,30 @@ against 93 and 68) and with threads (250 and 341 at four), and reading
 the range extensions too. Keep its
 dependencies permissive: zenavif / rav1d-safe were dropped for being
 AGPL. `OLO_SAMPLES=dir cargo test -p olo-images -- --ignored` decodes
-example.avif and example.heic from `dir`. Colour emoji are GPUI's text
+example.avif and example.heic from `dir`. Lottie animations
+(`olo_images::lottie`: Telegram's animated stickers, `.tgs`, gzipped
+Lottie JSON; `open` gives a `.tgs`'s first frame) are read by velato and
+drawn by vello_cpu (linebender's, pure Rust) through velato's
+`RenderSink`, a frame at a time at the size asked by a `Painter` that
+keeps its buffers; reading and drawing each `catch_unwind` (the files
+are anyone's), and a file over 16 MB unpacked isn't read. velato as
+released read 11 of Telegram Desktop's 52 animations (its `todo!()` on
+a transform with no rotation, 24 of them; a position it required, 17),
+and drew NaN for every frame landing on a property's last keyframe (0/0
+for its weight), each costing vello_cpu milliseconds to draw nothing:
+vendored with those fixed (vendor/README.md), it reads all 52, and they
+draw at 0.50 ms a frame on average at 336 pixels, 4.5 ms at worst
+(rlottie isn't here to compare against; each looked right on a contact
+sheet, Telegram's white line icons on grey). `lottie::HEART` is Olo's
+own (a heart that beats, a trimmed ring round it): the demo's sticker
+and the tests'. WebM with alpha (`olo_images::webm`: Telegram's video
+stickers) is demuxed whole (the vendored matroska-demuxer keeps each
+block's BlockAdditional, `Frame::additional`) and decoded in order by a
+`Player` on two VP9 decoders, the second's luma the alpha as it is, 0
+to 255 (`Frame::luma_into_alpha`, a table; libvpx's decoders copy it
+so, and read as video's limited range Chromium's test file's 68 came
+out 61). `OLO_SAMPLES=dir cargo test -p olo-images webm -- --ignored`
+plays `bear-vp9a.webm` from `dir`. Colour emoji are GPUI's text
 system's, drawn with the text; `olo-emoji` (`crates/emoji`) finds and
 paints clusters itself where that's wanted (Telegram's messages of
 emoji alone, shown big): it shapes with harfrust and paints COLRv0/v1
@@ -1693,7 +1800,11 @@ event reaches it.
   when it emits `Entered`), scrolled to keep the caret in view, each
   line's baseline on a device pixel; its owner sizes it from
   `rows_at(window, width)` and `TextField::line_height_for` (Telegram's
-  composer). ⌘↑ and ⌘↓ are left to the window's menu.
+  composer). Its hint is drawn as its first row of text is (GPUI's line
+  in the row's height), so the first letter typed lands where the hint
+  was (drawn as a label it sat a device pixel higher at 1.5×, and the
+  review found its line cut by the field's top). ⌘↑ and ⌘↓ are left to
+  the window's menu.
 - `widgets::find_bar` (with `find_said`): Find's bar over what it
   searches, a band as a tool bar is, the field's text under the menu
   bar's first title, how many it found ("3 of 90", "Not found",
@@ -1984,6 +2095,8 @@ event reaches it.
   shaped ellipsis and an automatic full-text tooltip; the agent label retains
   the full text; takes precedence over wrapping),
   `StringView::wrap(true)` (a paragraph, as tall as it wraps to),
+  `StringView::cut(true)` (one line as wide as it's given, cut short with
+  "…" and its whole in a tip and to agents: DiskBackup's changing path),
   `StringView::size(points)` (a title's or lead's size, its row grown to
   fit), `StringView::beside(points)` (on the baseline of the text of
   that size beside it in its row: a small one centred by itself sits a
@@ -2161,6 +2274,10 @@ event reaches it.
   nothing in it does and takes the bar's keys that nothing else took
   (a text field's ⌘C stays its own). With no `agent::set_menus`, the
   command palette reads and invokes the front window's bar.
+  `agent::invoking(cx)` says whether the command being run came through
+  the commands socket (an agent's `invoke`, the palette) rather than a
+  hand on the display (a click, a key): for the few a program mustn't
+  give itself (Terminal's Auto Approve asks the person first then).
 - `MenuBar::of(&app, |a, cx| a.menus(cx), on_command)`: the same bar,
   its menus built from `app` (the window's view) when it changes
   (`cx.notify()`), not each time the window draws. GPUI draws again
@@ -2495,6 +2612,19 @@ event reaches it.
   `.on_menu(f)` a secondary click (the row and where), and
   `.on_select_all(f)` ⌘A while it has the keyboard; a plain click with
   others chosen chooses that one alone (Agent Screens).
+- `widgets::SidePane` and `side_divider(&pane, x, top, height, name)`
+  (a pane beside the rest the person sizes and puts away: a chat list,
+  a source list, an inspector): the app keeps an `Entity<SidePane>`
+  (`SidePane::new(width, min).restored(width, collapsed)`, observed),
+  lays its pane out `pane.read(cx).shown(total, rest)` wide (0 put
+  away), and puts the divider at that edge; the divider sizes it
+  (down to `min`), puts it away dragged on past half that, brings it
+  back dragged out from the window's edge (a grip stays there), and a
+  double click does either. View ▸ Hide/Show Sidebar is `toggle()`,
+  its item `.key("s")` for every app's keys (`app.sidebar`: ⌥⌘S, as
+  Finder's was; a kit app's keys have no Control of their own, so ⌃⌘S
+  would be ⌘S). Agents read a Splitter (its width, or "hidden").
+  Telegram's chat list (View ▸ Hide Chat List).
 - `widgets::TabView::new(id, labels, selected).on_select(f)` with the
   chosen tab's content as its child (BTabView: slanted folder tabs over
   a raised panel, the content inside `WINDOW_INSET`; `Tab`s to agents).
@@ -3295,11 +3425,20 @@ from logging in):
 * **It steps aside where it can't show.** Its greeter's session ending
   three times in a row before the greeter ever connected (no GPU Olo
   can render on, a broken install) hands the seat to the computer's
-  other login screen for this boot (GDM, else SDDM, else the text
-  console's login), notes why in `/run/olo-login/handed-over` (Olo
-  Doctor says so) and exits 75, which its unit doesn't restart
-  (`RestartPreventExitStatus=75`); the next boot tries again
-  (`hand_over`).
+  other login screen for this boot: olo-login notes why in
+  `/run/olo-login/handed-over` (Olo Doctor says so) and exits 75, which
+  its unit doesn't restart (`RestartPreventExitStatus=75`), and the
+  unit's `OnFailure=gdm.service sddm.service` has systemd start
+  whichever is installed (also when olo-login keeps failing); the next
+  boot tries Olo's again (`hand_over`). systemd starts it, not
+  olo-login: to SELinux olo-login is a display manager (`xdm_t`), which
+  may start only display managers' own units (`xdm_unit_file_t`) and
+  may not even look at GDM's (`systemd_unit_file_t` on Fedora 45) or
+  getty's, so its own start found none and a stock Fedora 45 with a GPU
+  Olo can't draw on stayed on the console (found in the installer
+  check's VM with a plain virtio GPU, 2026-11-08; now GDM's login
+  screen there 6 s after Olo's splash). Olo Doctor's "older version"
+  finding counts an installed unit that isn't the build's.
 
 **The boot splash** (app_server `plymouth.rs`): `olo-app-server
 --plymouth-theme DIR [--scale S]` makes a theme for Plymouth's two-step
@@ -3345,14 +3484,16 @@ module's comment.
 
 ## Testing: headless sessions
 
-Every crate's tests at once: `cargo test --release --workspace --exclude
-gpui-macros --no-fail-fast` (1,459 pass, 2026-11-07). Left out and known
-to fail are vendored code's own tests needing features Olo doesn't build:
-gpui-macros' `derive_inspector_reflection` (its inspector; it doesn't
-compile, and would stop the whole run) and six of Smithay's doc examples
-(its `renderer_test`, which its own CI turns on); Smithay's 82 unit
-tests pass in the same run (not alone: `-p smithay` builds it without
-the features the workspace gives it). Run it after a change that crosses
+Every crate's tests at once: `cargo test --release --workspace
+--no-fail-fast` (1,546 pass, none fail, 2026-11-08). Nothing is left
+out: gpui-macros' `derive_inspector_reflection` is built only where its
+macro is (debug builds, or the inspector), and Smithay is its own
+dev-dependency with `renderer_test`, so its doc examples build in a
+workspace run (`-p smithay` alone still builds it without the features
+the workspace gives it). The tests marked `#[ignore]` (live, timing,
+sample-file and fixture-making ones) are in
+[IGNORED-TESTS.md](IGNORED-TESTS.md), each with how to run it without
+touching the person's session and how it last went. Run it after a change that crosses
 crates, and before saying a change is done.
 
 Never open windows on the user's screen. `tools/dev/tsession` runs a
@@ -3452,7 +3593,11 @@ a dead socket), so tests never reach the real speakers or volume. To
 test sound, run `olo-fakesound SOCKET` (olo-preview): it speaks the
 PulseAudio protocol, plays nothing, and logs each stream once a second
 (bytes consumed in real time, corked or not, loudness); start the app with
-`$T run NAME PULSE_SERVER=unix:SOCKET …`.
+`$T run NAME PULSE_SERVER=unix:SOCKET …`. Its microphone hears 440 Hz,
+or with `FAKESOUND_MIC=FILE` (16-bit mono at 48 kHz) that file from each
+recording's start: speech for a voice message (olo-voice's
+`tests/data/*.raw`, 16 kHz, brought up), never the person's own
+microphone.
 
 The headless server renders on the GPU's render node and announces it
 in dmabuf feedback, so GL clients (Chrome) get hardware GL
@@ -4005,8 +4150,17 @@ recorded otherwise.
     the viewport, or the viewport with its frame and bar, not any clip
     with a scroll view somewhere in it), `overlap` (two controls over each other,
     neither inside the other), `text-outside` and `text-cut` (text past
-    the window, or cut off: give it room or `style::fit` it),
-    `text-over-text`, `overflow` (anything that starts in a box or a tab
+    the window, or cut off: give it room or `style::fit` it; it says how
+    much shows across, and the line's and its clip's tops and bottoms,
+    for a line cut above or below),
+    `text-over-text` (not the same words a point or less off: a shadow,
+    as the desktop's labels have), `text-over-control` (a line laid out past the room
+    it was given, running over a control it doesn't start in: a title
+    over the buttons beside it; a layout box stays where it was put, so
+    only the text's own extent shows it. Ben, 2026-11-09, of DiskBackup's
+    "Getting ready: counting what to back up" over Restore…; it found
+    Preferences ▸ Sound's AirPods row squeezing its noise control's menu
+    to nothing, its label over Use Music Quality, at once), `overflow` (anything that starts in a box or a tab
     view's pane and runs past its inset, bottom or right: a tab's
     content under the panel's Defaults, a long check box into its box's
     frame; boxes and panes mark themselves, `review::container`,
@@ -4049,7 +4203,10 @@ A view tells it two things it can't see. `review::own_grid(window,
 bounds)`: text laid out on a grid of its own (Terminal's screen, a cell
 apart; a card in Notifications' history masonry, staggered in its
 column), not held level with what is beside it, nor in a row with
-what is above it. A scrolled `ScrollView` marks its content so itself:
+what is above it. Controls on that grid (Disk Usage's radial chart)
+also keep their own spacing and alignment, rather than a form's columns.
+Scroll arrows inside their bar are part of that widget, not a new form
+section after Apply or Save. A scrolled `ScrollView` marks its content so itself:
 a list's heading is a row apart from its first row only at whole-row
 offsets. `review::band(window, bounds)`: what is in `bounds` is centred
 across it though nothing fills it (a `TabStrip` tab, its top below the
@@ -4082,6 +4239,20 @@ display coming or going looks again): past that the Frame lays the
 content out at its own height and scrolls it, the window widened by the
 scroll bar. Layer surfaces, lock screens and full screen windows are
 the screen's or the app's to size.
+
+A window the compositor holds (a side of it in a tile, maximized or
+full screen: Focus's zoom, auto-tiling) isn't the window's to size: it
+asks for nothing and lays its content out at the size it's given,
+scrolled where it needs more (`held`); once let go, it follows its
+content again. And no resize it asks for holds its frames back past
+`RESIZE_WAIT` (300 ms: a compositor that keeps it at its size never
+makes the resize, and sends no frame), after which it's drawn as it is;
+GPUI's Wayland window draws a frame skipped for a resize it can't make
+(every side held) at once. Without these, DiskBackup opened in Focus
+showed nothing at all, its Deskbar entry the only sign of it (Ben,
+2026-11-08: "an entry in the deskbar but no windows"): the frame asked
+for its content's size, Focus kept it zoomed, and every frame was
+skipped while it waited.
 
 It opens at that size: nobody sees it at its designed size first and
 then grow. The Frame measures the content as each frame is painted; a
@@ -4191,7 +4362,13 @@ it under `cfg(test)`), and Train for Your Palm full screen at 1280 × 800
 and a MacBook's 1512 × 982, every step in every state
 (`palm_trainer::lint_states`: fresh, a touch judged, the longest miss,
 done, Esc pressed once; training; each of the summary's outcomes; the
-try). `tools/install-session.sh` runs it and stops if it fails. A
+try), and DiskBackup's window in each of its 25 states (`apps/diskbackup/src/lint.rs`:
+never backed up, backed up, failed, stopped, waiting, each stage of a
+backup with a folder named by a long path and a file deep in it,
+waiting for the network, tidying, deleting, erasing, validating, an
+unfinished backup left; `Disk::for_lint`). A window drawn only in the
+state it opens in can't show what goes wrong in another: lint each
+state a window shows. `tools/install-session.sh` runs it and stops if it fails. A
 window of a fixed size or a dialog gets a `ui_lint` test beside it:
 build its view with the longest things it can show. A full-screen one
 (`WindowOptions::fullscreen`) is centred in what the screen gives it,
@@ -4468,8 +4645,17 @@ opened, its own `panel::State` and text fields).
   this process only (never `RequestDefaultAgent`) and shows passkeys and
   PIN requests in the panel. **Tests only look and search: never Pair,
   Connect, Remove or toggle Bluetooth on the real machine.**
-* Touch ID (`touchid.rs`) lists, enrols (`fingerprint::enroll`, with a
-  StatusBar per touch, cancellable) and removes fingers through fprintd.
+* Security has two tabs (`security.rs`). Sign In holds every way in
+  besides the password, together (Ben, 2026-11-08: "centralize the
+  settings for all of these under prefs -> security"): Touch ID, Face
+  Unlock and Security Keys, each a box. Passwords holds Passwords' and
+  programs' secrets. Touch ID was a panel of its own: its names
+  (`touchid`, `fingerprint`, `face`, `security-keys`, `yubikey`) open
+  Sign In, and `passwords` and `privacy` open the Passwords tab
+  (`--tab` works too).
+* Touch ID (`touchid.rs`, Security ▸ Sign In's box) lists, enrols
+  (`fingerprint::enroll`, with a StatusBar per touch, cancellable) and
+  removes fingers through fprintd.
   fprintd only answers a process in an active local session; headless, the
   panel says so. `OLO_FAKE_FINGERS=right-index-finger,…` (debug builds)
   fakes a sensor so the whole panel can be exercised headless. **Never
@@ -5144,6 +5330,22 @@ The window chosen (under the pointer, else picked with the arrows, at
 first the focused one) is ringed in the focus colour with its title on a
 tooltip's plate at its foot.
 
+A window dragged (the left button held past `DRAG_START`, 4 points:
+less is a click) follows the pointer over everything, the pane under it
+ringed (over the windows: the one dragged would hide it), and let go
+over another workspace's pane goes there (`move_to_display_workspace`,
+another display's too, a step Undo takes back); over its own, or
+nothing, it glides back. Each display has a New Workspace pane, a plus
+in it, in a strip at the side (`NEW_STRIP` of its width, at most
+`NEW_MOST`, so the workspaces keep their room); it stands for the first
+empty workspace there, or one past the last, which `workspace_count`
+then makes room for. A window let go on it goes there; a click on it
+shows it and leaves. Either way the overview stays out and lays itself
+out again (`overview_relayout`), each window gliding from where it was
+in it (`Cell::prev`, `Overview::moved_at`); its own moves don't make it
+step aside (`Overview::moving`). Agents read the pane as
+`OverviewPane::new` and drag with `synthetic` down, moves and up.
+
 A click on a window, its letter or Return makes it the active window on
 its workspace (`close_overview(Some)`, which `restore`s it); Esc, its
 shortcut again or a click on nothing leaves everything as it was. Keys go to it before
@@ -5180,7 +5382,9 @@ gets a box of its own above, with its picture, what it is (maker,
 model, keypad, how it connects) and what of it Olo can't use: the Magic
 Keyboard with Touch ID's sensor (A2520) is sealed to the Mac it's
 paired with (`TouchId::SealedToAMac`; TODO's "Keyboards we know" has
-how that was found). An Apple Magic Keyboard (2021 or 2024, `fn_row`)
+how that was found: and, listened to unpaired, its Touch ID interface
+claimed alone and its endpoint read for 45 s with a finger on the
+sensor, it sent nothing at all, 2026-11-08). An Apple Magic Keyboard (2021 or 2024, `fn_row`)
 has its own there too: "Use F1, F2, etc. as standard function keys"
 (`KeyboardSettings::fkeys_first`, by its name: app_server turns its top
 row round, `apple_keys::fkeys_first`, from hid-apple's table, so it
@@ -5197,6 +5401,43 @@ a moon on screen), any other keyboard's sleep key suspending as logind
 would have. `OLO_KEYBOARDS_DEMO=1` lists the layout lint's
 made-up keyboards (a laptop's and the A2520), to look at headless;
 `ui_lint_keyboards_tab` lints the tab with them.
+
+**The power button** (Preferences ▸ Keyboard ▸ Power Button, Ben
+2026-11-08; `olo_protocol::power_button`, app_server's
+`power_button.rs`): what the computer's own button does pressed, and
+held for each hold's seconds (`KeyboardSettings::power_button`: a
+`press` and `holds`, each from `PowerAction`: Nothing, Lock the Screen,
+Log Out, and Restart and Shut Down three ways each: asking first, not
+asking, immediately). By default a press does nothing, 3 s restarts
+asking first and 10 s shuts down immediately. logind shut the computer
+down on a press (`HandlePowerKey=poweroff`); app_server holds its
+`handle-power-key` lock for the session (`power.rs`'s worker, beside
+`handle-suspend-key`) and takes KEY_POWER only from the computer's own
+devices (`built_in`: the ACPI button, Intel's HID events, the laptop's
+keyboard, by sysfs path, never a USB or Bluetooth keyboard's power key,
+which goes nowhere). Down, a calloop timer runs for the first hold and
+is set again for each next (`due`), so a hold is done as it's reached,
+still held (3 s asks, and held on, 10 s shuts down); up before the
+first, the press's action; a hold reached makes the let go no press.
+Nothing polls: no timer while it's up. Restart and Shut Down are
+logind's, as Deskbar's menu (every program asked to end, services
+stopped in order); asking first is Deskbar's own Restart or Shut Down
+alert (`Event::PowerButton { action, done }`, sent only to clients that
+ask for `EventKind::PowerButton` by name, so older ones never meet it;
+not while the screen is locked, nothing there to answer it);
+immediately is Olo's helper, `olo-power-now@reboot|poweroff.service`
+(`systemctl --force`: programs ended and the disks written, no orderly
+stop), which the person at the computer may start without a password
+(a polkit rule, `49-olo-power-now.rules`), installed by Doctor's
+`power-now` fix (the tab's Install the Helper… runs `olo-doctor --fix
+power-now`); without it, immediately is as Restart and Shut Down. A
+headless app_server (tests, agents' screens) takes a synthetic
+KEY_POWER and never acts: it says what it would have done (`done:
+false`, "not the session: not done" in its log). Firmware may cut the
+power on a long hold whatever is set (Lenovo's ThinkPad manuals say 4 s
+or more, for the P50 and L480), so a hold past that never reaches Olo. It's a tab of its own:
+in the Keyboard tab it made the panel 1028 points tall, past a 1280 ×
+800 screen.
 
 Every shortcut, app_server's and the apps', and how keys behave, are one
 keyboard profile (`KeyboardProfile`, in `KeyboardSettings::profile`),
@@ -5270,6 +5511,26 @@ in the editor, and left to the window's menu in a field). (The egui
 kit's `mac_text_keys` did this; it went with egui on 2026-11-02, and
 until 2026-11-03 ⌘← moved a word in Olo's own text.)
 
+Chrome's own keys are in the profile too (`app_keys`, app
+`google-chrome`, listed as Chrome and Slack in Preferences ▸ Keyboard ▸
+Shortcuts and changed there as any app's): New Tab, Reopen Closed Tab, Open
+Location, Back, History, Downloads, Developer Tools, Enter Full Screen
+and the rest, each platform's as Chrome has them there (BeOS's as a
+Mac's, Alt its command key). In Chrome and the browsers that are Chrome
+underneath (`CHROMIUM_APPS`: Chromium, Brave, Edge), and our web apps
+in it (`olo_xdg::apps::is_web_app`: olo-slack's window, which goes by
+`olo.slack` but is Chrome's, and had Olo's apps' keys: ⌥← reached it as
+Alt+←, Back, not a word; ⌘[ as Ctrl+[, nothing) (`keymap::Focus::of`,
+`Focus::Chrome`), each is sent as what Linux Chrome takes for that command
+(`CHROME_NATIVE`, `app_keys::chrome_keys`, `Keymap::set_chrome`, set
+with the bindings), before the other programs' translations: a Mac's
+⌘Y is History (Ctrl+H), ⌥⌘I the developer tools (Ctrl+Shift+I), ⌃⌘F
+full screen (F11), ⌘Q quits (Ctrl+Shift+Q), ⌥⌘L Downloads (Ctrl+J);
+one that's the same there passes as it is. Tried in a tsession with
+Chrome 157 (a scratch profile readied as on a screen): ⌘Y opened
+History, ⌥⌘I the developer tools, ⌃⌘F made it full screen; Firefox's ⌘Y
+is still Ctrl+Y (`chrome_gets_its_own_keys`).
+
 The kit (`keyboard.rs`) follows the profile from app_server's settings
 (`keyboard::profile`, `platform`, `command_key`). Every menu bar and
 context menu gets its keys from it (`keyboard::resolve`, in
@@ -5287,7 +5548,10 @@ Usage), and Terminal's own are `keyboard::is_own_shortcut`.
 
 The shortcuts sheet (`Shortcut::ShortcutHelp`: ⇧⌘/, Win+Shift+/,
 Alt+Shift+/) is the palette's (`olo-palette --shortcuts`, sheet.rs): the
-front app's menu keys (`commands::menus`, as it shows them), text
+front app's menu keys (`commands::menus`, as it shows them; for a
+Chromium browser, which has no menus to read, Chrome's keys from the
+profile in five cards: tabs and windows, going places, view, bookmarks
+and history, developer), text
 editing's for the platform, then app_server's by group, as cards in
 columns (`masonry`), in a scroll view when they don't all fit; Esc, a
 click outside or the keys again put it away. Its text is in the
@@ -5527,7 +5791,30 @@ has a smaller one.
 
 Auto-tiling (`shell/autotile.rs`; its module doc is the design) is the
 Auto-Tiling mode; `{"type":"set_auto_tiling","on":true}` and
-`{"type":"auto_tiling"}` still work, as the mode. While it is on, each display of the workspace has a
+`{"type":"auto_tiling"}` still work, as the mode. It has two layouts
+(`TilingSettings::layout`, everywhere it's on: Deskbar's windowing mode
+menu ▸ Auto-Tiling Layout, Preferences ▸ Windows, `{"type":
+"set_tiling_layout","layout":"main_and_stack"}`): Halves, below, and
+Main and Stack, as dwm's: one main window on the left (`MAIN_RATIO`,
+55% of the width, till its edge is dragged; least sizes win, as in
+Halves), the rest stacked on the right each as tall. It's the same tree,
+built in that shape from its tiles in reading order (`main_and_stack`)
+when the layout is chosen (`AutoTiler::built_as`) and whenever the
+number of tiles changes, a new window (not one going back into a place
+kept for it) first, the main one, the old main window at the top of the
+stack; between those the tree is the person's (edges dragged, tiles
+swapped, Tile All), kept as it is. Laying out, in either, sends every
+window changing size its size in one round (`auto_apply`: a collected
+round, as an edge drag's last, `rounds.rs`), so they land in the same
+frame, each held till the others have drawn or 50 ms pass; a drag's
+last round collecting already, they join it. Tried in a tsession: four
+apps opened in Main and Stack (the newest main; Telegram's least width
+holding the main edge at 624 rather than 55%); Tile All (three columns)
+then Main and Stack chosen again rebuilt it (the leftmost main at 691
+points, the other two 388 tall each); Halves chosen kept the tree as it
+was; a window opening shrank the two beside it in one round, shown 2.6
+ms later; app_server idle the same in both layouts (1.7–1.8% of a core,
+60 wakeups a second, the apps' carets and clock). While it is on, each display of the workspace has a
 tree of splits (`autotile::Node`, in `AutoTiler::trees` by workspace and
 connector), and every window there is a leaf of it, a window group one
 leaf. A new window fills an empty place if there is one, else splits
@@ -5807,8 +6094,21 @@ arranging command on a window behind brings it to the front first
 window leaving a group gets its own tab back and steps out by `CASCADE`
 so it isn't hidden. Grouping is on for every app; the ones a person
 turns off are `TilingSettings::ungrouped_apps` (app ids), toggled by
-Group Windows in Deskbar's team menu and in Tracker's menu for an app
-(`olo_ui::settings::groups_windows` / `set_groups_windows`). A group's
+Group Windows in Tracker's menu for an app
+(`olo_ui::settings::groups_windows` / `set_groups_windows`). Deskbar's
+team menu says what its windows are, not the setting (Ben, 2026-11-08:
+"it should not be checked unless they are all grouped … no checks/ticks
+just the option changes based on the state"): Ungroup All Windows when,
+wherever two or more of them show together, they're all in one group
+(with fewer showing, as the setting is), else Group All Windows.
+`Request::GroupApp` does it (`group_app`): grouped, every one of the
+app's windows groups by itself again (`Auto`, wherever it was: taken out,
+or put in another group by hand) and the setting goes on; ungrouped,
+each is taken out (`Alone`), the group's front window staying where it
+is and the others stepped out a `CASCADE` each, each brought in front
+of the last so every tab shows, and the setting goes off. Before this,
+the menu's tick was the setting alone, so it showed ticked with a window
+taken out by hand. A group's
 frame is never smaller than any of its windows can be (`least_frame`).
 A window that joins a group it can't be as small as draws bigger only
 on that side: `keep_on_screen` fits to the screen only the sides an app
@@ -5836,7 +6136,12 @@ that group's tabs and frame light up in the focus blue
 (`put_in_group`, showing only its tab for up to `DOCKING` while it draws
 at the group's size). Back over its own group, it goes back in. A plain
 drag still moves the whole group. The window menu (the palette's) has
-Remove from Group. Dialogs, fixed-size panels and fullscreen windows
+Remove from Group, and Move to Window ▸ (its app's other windows where
+it shows, a group's once: into its group) and, in a group, Move Group to
+Window ▸ (every window of its group, `GroupWindow` each) and Close
+Others after its Close (Ben, 2026-11-09: every other window of its
+group, `Close` each, as its close box does: one that asks first still
+asks). Dialogs, fixed-size panels and fullscreen windows
 never group (`groupable`). Agents do the same with `GroupWindow { id,
 with, index }` (into `with`'s group, or a new one with it), `UngroupWindow
 { id }` and `MoveTab { id, index }`; `WindowInfo` says `group` (a number
@@ -5921,7 +6226,13 @@ as keys.
 ## AI features (crates/ai, apps/smart-tile, Preferences ▸ AI)
 
 Preferences ▸ AI (`olo-preferences ai`) holds `Settings::ai`
-(`AiSettings`). Each feature is an `AiFeature { enabled, model, effort }`,
+(`AiSettings`). Its Claude Code box is the model (`CLAUDE_MODELS`: Opus
+5.5 by default, Sonnet 5.5, Haiku 5.5, Fable 5.1) and effort (`AI_EFFORTS`,
+Claude Code's own levels; Medium by default) Olo starts Claude Code with
+for a task in a Terminal window (`AiSettings::claude_code`: `claude
+--model … --effort …`; DiskBackup's Agent Setup; Ben, 2026-11-08: "have
+the claude code model selectable in the ai prefs, default to opus 5.5 on
+medium"). Each feature is an `AiFeature { enabled, model, effort }`,
 the model one of `AI_MODELS` and the effort one of `AI_EFFORTS`; the
 panel's `feature()` draws its switch and choosers, so the next feature
 is a struct field and a BBox: Smart Tiling, and Emoji (the emoji
@@ -6029,9 +6340,15 @@ module: the HID sensor hub's IIO device "prox", `proximity0` someone
 there, `attention` looking; `olo_system::presence`) locks the screen
 when the person walks away (`PowerSettings::lock_when_away_seconds`)
 and wakes the displays, asleep for idleness, when they come back
-(`wake_on_return`), from Preferences ▸ Power ▸ Presence, shown only on
-a computer with one. Both off by default; app_server watches the sensor
-only while one is on (`presence_settings`): a thread waits on its buffer
+(`wake_on_return`), and dims the built-in display while someone in
+front of it looks away (`dim_when_looking_away`: `attention` 0 for
+`DIM_AFTER`, 8 s, then the panel at `DIM_TO`, 30%, of its level; back as
+they look again or touch anything; `PowerStatus::dimmed` says so). All
+three are in Preferences ▸ Power ▸ Presence, shown only on a computer
+with one. All three are off by default. `SyntheticEvent::Presence` gives app_server
+a reading as the sensor would (tests, agents: it wakes nothing by
+itself). app_server watches the sensor only while one is on
+(`presence_settings`): a thread waits on its buffer
 (`/dev/iio:deviceN`, which carries a sample only as either changes),
 `_raw` read once at the start (each read asks the sensor). Walking away
 arms a one-shot timer, not a poll. `data/udev/73-olo-presence.rules`
@@ -6101,6 +6418,25 @@ every line and edge is a whole device pixel. This is how modern
 compositors and toolkits do it (KWin's pixel-grid snapping, Mutter,
 Chrome, GTK 4.16 text), and how Olo does it:
 
+- **Sizes in a row on the 4-point grid.** 4 points is a whole device
+  pixel at 1, 1.25, 1.5, 1.75 and 2×; 2 points only at 1, 1.5 and 2×. A
+  fixed width, a label column's divider, or an inset that the next thing
+  starts after, if it's off the 4-point grid, starts everything after it
+  on a half pixel at 1.25× and 1.75×. Layout and painting then round it
+  apart, a pixel at a time. Found so at 1.25× and 1.75×, and fixed
+  (2026-11-08):
+  - Power's grid of menus: gaps 11.2 and 12.8.
+  - Network's columns: a menu's text a pixel off a field's under it.
+  - Telegram's panes: laid out as roots of their own, a pixel past the
+    window.
+  - A 20-point check box centred beside a 24-point menu: their labels a
+    pixel off level. In a row, a check box takes the row's height (the
+    form's `row` does it).
+  - Right-aligned labels: `style::label` rounds their left edge down, so
+    they never run past their anchor.
+  - The review measures a text field by its frame.
+  `tools/dev/ui-lint --review --scales 1,1.25,1.5,1.75,2` checks every
+  app at all five.
 - **Clients draw at the device size.** Olo's GPUI asks app_server for
   wp-fractional-scale-v1 and wp-viewporter on every surface, draws into
   a buffer of `round(size × scale)` pixels and sets the viewport's
@@ -6228,7 +6564,7 @@ and any wait for the main thread, which draws too), typically, at the
 99th percentile and the longest; whether the filter and the person's
 palm model are in use (its training date and test numbers); and the
 main thread's nice, realtime or not and `uclamp.min`. Noting a report
-is 21 ns (`note_cost`); the minute's figures, 33 µs, are made when
+is 21 ns (`note_cost`; 15 on a performance core); the minute's figures, 44–68 µs on the ThinkPad (one computation, cold; 33 when first measured, 2026-11-03, the code the same), are made when
 asked. A 99th percentile over 4 ms (half a 120 Hz frame) is shown red:
 touches waiting on frames being drawn.
 
@@ -6386,7 +6722,7 @@ asking"). Never test with the real PAM: debug builds take
 Terminal's sudo `OLO_SUDO_REAL`, and `OLO_NO_FINGERPRINT=1` leaves
 fprintd alone.
 
-## Security keys (olo-fido; Preferences ▸ Security; app_server security_key.rs)
+## Security keys (olo-fido; Preferences ▸ Security ▸ Sign In; app_server security_key.rs)
 
 A security key set up (a YubiKey: any FIDO2 key with `hmac-secret`) is
 touched instead of typing the account password: Terminal's sudo window,
@@ -6397,7 +6733,7 @@ CTAPHID to the key's FIDO interface (its hidraw node, found by usage page
 uaccess) and CTAP2 itself (GetInfo, ClientPIN's key agreement in PIN
 protocol 2 or 1, MakeCredential, GetAssertion with `hmac-secret`).
 
-* **Setting up** (Preferences ▸ Security ▸ Security Keys, `security_keys.rs`):
+* **Setting up** (Preferences ▸ Security ▸ Sign In ▸ Security Keys, `security_keys.rs`):
   the box says the steps first (the password, then a touch when the
   key's light blinks, of its gold contact, on a Nano the gold edge at its
   end; a touch before it blinks types a code, which app_server swallows,
@@ -6421,7 +6757,11 @@ protocol 2 or 1, MakeCredential, GetAssertion with `hmac-secret`).
   (GetAssertion with `up` off). A key with a PIN set that wants it for a
   credential isn't supported yet (it says so).
 * **Unlocking** (`olo_fido::touch`): each window, as it asks for the
-  password, starts a wait on a thread of its own: if a key set up is
+  password, starts a wait on a thread of its own (alongside the finger
+  and the face: in sudo's window and the polkit agent a second PAM
+  conversation takes the key's password while the first listens for a
+  finger, so Touch ID set up doesn't hold the key back; see Terminal's
+  sudo and the polkit agent): if a key set up is
   plugged in it says `olo_fido::TOUCH_OR_TYPE` ("Touch your security key,
   or type your password.") beside the field, and the password the touch
   unseals goes where a typed one would (sudo's prompt, the polkit
@@ -6439,7 +6779,7 @@ protocol 2 or 1, MakeCredential, GetAssertion with `hmac-secret`).
   and passes its keys to nobody; three touches in a row (each within
   three seconds of the last) type the third's code into the focused
   window as the key would have (`SecurityKeySettings::three_touches_type`,
-  on by default: Preferences ▸ Security ▸ Three touches type a code).
+  on by default: Preferences ▸ Security ▸ Sign In ▸ Three touches type a code).
   While a window waits for the key a touch answers that instead (FIDO),
   typing nothing at all.
 * **Testing**: never with the person's key or password. Debug builds take
@@ -6450,7 +6790,10 @@ protocol 2 or 1, MakeCredential, GetAssertion with `hmac-secret`).
   ("never"), with a PIN if `OLO_FIDO_SOFT_PIN` is set (eight tries); with
   the PAM stand-in (`OLO_PAM_CONFDIR`/`OLO_PAM_SERVICE`, given to
   `tsession run` itself: it doesn't pass them on), `OLO_SUDO_REAL` and
-  `OLO_POLKIT_HELPER` the whole thing runs headless.
+  `OLO_POLKIT_HELPER` the whole thing runs headless. `cargo run -p
+  olo-fido --example soft-set-up [PASSWORD]` (with `OLO_FIDO_SOFT` and
+  the session's `XDG_CONFIG_HOME`) sets the soft key up as Preferences
+  does, sealing PASSWORD ("test"), for a window to wait on it.
 * **A key with a PIN**: setting it up asks for the PIN beside the
   password, once (Preferences knows from the key's info). `olo_fido::pin::
   token` gets a token for it (CTAP 2.1's with the make-credential
@@ -6472,7 +6815,7 @@ protocol 2 or 1, MakeCredential, GetAssertion with `hmac-secret`).
   and `uaccess`, for systems whose own rules don't), applied to the keys
   there with a `change`; one that is, a fine line.
 
-## Face unlock (olo-face, olo-faced, pam_olo_face; Preferences ▸ Security)
+## Face unlock (olo-face, olo-faced, pam_olo_face; Preferences ▸ Security ▸ Sign In)
 
 A look at the infrared camera stands for the account password: sudo
 (Terminal's window, any terminal), polkit's requests, Passwords' unlock
@@ -6537,7 +6880,7 @@ binaries, no linux-enable-ir-emitter.
   window takes the keyboard, the lock screen when someone is there (a
   key, the pointer) at most every 5 s, so the camera's light isn't left
   on.
-* **Installing** (Preferences ▸ Security ▸ Face Unlock ▸ Install…):
+* **Installing** (Preferences ▸ Security ▸ Sign In ▸ Face Unlock ▸ Install…):
   `pkexec olo-faced install --models DIR --pam FILE` (Olo's polkit agent
   asks) copies the service to /usr/local/libexec, the models to
   /usr/local/share/olo/face and the module to /usr/lib64/security,
@@ -7004,6 +7347,29 @@ identity back when it exits (the matrix outlives it). At start-up the
 gains are set at once, so a reload keeps the warmth without a flash. Headless logs each step ("white point") for
 tests.
 
+**Gradually** (Ben, 2026-11-08: "an extra checkbox option for having it
+gradually shift over n minutes (between 1 and 180) … starting at the
+from time so that it will get to the target warmth at from + n minutes
+(if from + n minutes is > to time then it still just goes back to
+normal at the to time no gradual shift out just in)"): Preferences ▸
+Appearance ▸ Night Mode's "Shift gradually, starting at From" and "Shift
+over" (`NightLight::gradual`, `gradual_minutes`, 30 by default),
+scheduled nights only. `NightLight::shifting` says how far in a night
+is (seconds since From, to the nanosecond: a minute's shift steps ten
+times a second), while under its minutes and inside its window; at To
+it's neutral as ever (the 1.5 s fade), shifted all the way or not.
+`night::shifted` eases in and out along a straight line in mireds (a
+million over the temperature, as the eye judges warmth), and
+`shift_every` spaces its steps so none moves a channel by more than
+`SHIFT_STEP` (1/1024, under a 10-bit signal's step): about 600, each
+100 ms over a minute or 18 s over three hours, each set at once (no
+fade) by a calloop timer that exists only while the night shifts. Tried
+live, headless, one minute to 3600 K: 686 steps 94 ms apart, the
+biggest 0.00098, blue only falling, ending exactly at 3600 K, none
+after; app_server 137 ms of CPU over the minute (each step about
+0.2 ms, the headless log included); idle with night light on the same
+before and after (9.4–11 ms and 61 wakeups in 30 s).
+
 ## Screenshots (app_server screenshot.rs, apps/screenshot)
 
 `Request::Screenshot { path, output, window, border, pointer, format }` (only
@@ -7017,7 +7383,33 @@ with that output's next frame (`screenshot::take`): the screen via
 shape, or only the client's area). A thread then draws the pointer in
 (the cursor it is showing, from `cursor.rs`), unpremultiplies, encodes and
 writes `NAME.part` and renames it, so readers never see half a file.
-Window shots are refused while the screen is locked.
+Window shots are refused while the screen is locked. The picture's
+target texture is kept for the next shot of its size in its GL context
+(`render::kept_target`), and smithay's GLES renderer keeps the last
+read-back's buffer for the next read-back of its size (`GlesCleanup::
+spare`, Olo's patch), each let go 10 s after its last use (as the next
+frame, or cleanup, comes): a 4K shot no longer makes and frees 66 MB.
+Measured, a 4K screen on the ThinkPad's Intel GPU (release, the
+`screenshot` timing phase, both backends): the texture's making 30–70 µs
+→ under 1 µs; the read-back the same either way (an A/B in one
+session: copying it out 1.46 against 1.45 ms); a shot holds app_server's
+loop 5.3–5.5 ms either way, 3.5 of them waiting on the GPU in
+`map_texture` and 1.5 copying 33 MB to the heap, so the round trip is
+the same 32 ms (the file written on a thread). The 18–21 ms this was
+about was the M2's Mesa freeing such buffers inside the renderer's next
+bind (gone since `dmabuf_check`, 2026-11-02). So the headless backend
+(agent screens' looks, tsession's shots) doesn't wait for the GPU: a shot
+is drawn and its read-back queued in the frame (`screenshot::start`,
+`render::offscreen_start`), an EGL native fence after it, and the fence's
+fd in the event loop finishes it when it signals (`headless::read_back`,
+`screenshot::finish`: mapped without waiting, copied, saved on a thread;
+with no fence to make, at once as before). The DRM backend still takes
+its shots at once (`screenshot::take`, the two together: the person's own
+Screenshot app, now and then; making it wait for a fence too needs a
+DRM seat to try it on, so it's in TODO's Blocked). Measured as above: the frame's part 5.3–5.5
+→ 0.35 ms (slowest 0.4), the read-back's 1.6 ms when the fence signals
+(the copy; slowest 1.95), so a shot holds the loop about 2 ms rather than
+5.4; the round trip the same 32 ms.
 
 The Screenshot app (`olo-screenshot`) follows Haiku's: it takes a
 picture as it starts, then shows it with Capture active window / Include
@@ -8094,6 +8486,45 @@ panels. The document has the keyboard from the moment its window opens
   Olo's own making (`cargo run -p olo-video --example test_clip OUT.mp4`:
   each second its own colour): paused at second 4, → 14, → 24, ← 14,
   the same file.
+- Playback speed (Ben, 2026-11-09: "in quick look and viewer add the
+  ability to watch videos at custom speeds from 0.25x up to 2x"): a
+  button at the transport's right end says the speed ("1×", "1.5×";
+  agents: Button "Playback Speed", its value the speed) and opens the
+  speeds over itself as a menu field does (`menu::popup_over`): 0.25×,
+  0.5×, 0.75×, 1× (Normal), 1.25×, 1.5×, 1.75×, 2×
+  (`PreviewView::SPEEDS`, `speed_items`, commands `speed-1.5`). `>` is a
+  speed faster, `<` slower (YouTube's keys, `speed_key`), in Quick Look
+  and the Viewer; the Viewer's View ▸ Playback Speed has Slower and
+  Faster and every speed (a sound's View menu is just that). The speed
+  is the view's (`PreviewView::set_playback_rate`), kept as Quick Look
+  or the Viewer goes to the file before or after, and the Viewer keeps
+  each window's over an upgrade (`Saved::speeds`). The video's clock
+  runs `rate` media seconds a second (`video::Video::set_rate`, its next
+  picture due sooner), and the sound (`audio::Player::set_rate`) is
+  time-stretched with its pitch kept (`stretch.rs`: WSOLA as SoundTouch's
+  `TDStretch`: pieces of 40 ms at 2× to 90 ms at half speed, each moved
+  within 15–20 ms to where it best continues the last, by correlation
+  weighted to the window's middle, a coarse search every 4 samples at
+  48 kHz then a fine one, and an 8 ms cross-fade; at 1× it isn't in the
+  way at all). A change of speed starts the sound again from where it's
+  heard (the server's buffer was made at the old speed) and the player
+  reports its position in the media's seconds (what's been heard ×
+  speed), so the picture still follows the sound. `rate_without_pitch`
+  checks 0.25× to 2× on a 440 Hz tone: as long as the speed says
+  (within 0.1 s of 2 s ÷ speed), its pitch within 2%, and no step
+  between samples steeper than the tone's own (no clicks where pieces
+  meet). Tried headless with a 40 s VP9 and Opus clip (a beep each
+  second) against `olo-fakesound`: the position ran 1.00, 1.25, 0.50,
+  0.25 and 2.00 media seconds a second at those speeds, the picture's
+  own clock beside it, the sound arriving at its full 192,000 bytes a
+  second all along (a change of speed costs one flush); Quick Look kept
+  1.5× from one file to the next; the layout review clean at 1×, 1.5×
+  and 2×.
+- A sound's transport is drawn again every 100 ms while it plays, and
+  while it opens (`audio::Player::opening`, `State::started`): the
+  player says it's playing only once its first sound is sent, after the
+  view was first drawn, so a sound opened in the Viewer used to show ▶
+  at 0:00 while it played. Once it ends, nothing is drawn (0 frames).
 - Pictures: Image ▸ Rotate, Flip, Crop… (⌘K: `crop.rs`'s `CropFrame`,
   an overlay pinned over the preview with `.inset_0()`, its pointer's
   shape set as it paints; drag out a frame, move it or its edges, Return
@@ -8664,6 +9095,13 @@ scan made for the sudo user). What it looks for:
   olo-session takes them from that file as it starts, before any thread
   (`take_tmpdir`), so Deskbar's apps and Terminal's shells have them.
   Programs already running keep theirs until they start again.
+- **The power button's helper** (`power_now`, on a computer with an
+  ACPI power button, `Power Button` in /sys/class/input): Olo's
+  `olo-power-now@.service` and its polkit rule (carried with
+  `include_str!` from data/systemd and data/polkit) missing or out of
+  date (advice: Install the Helper, Update the Helper): written, and
+  systemd reloaded. It's what lets Preferences ▸ Keyboard ▸ Power
+  Button's "immediately" restart or shut down at once.
 
 Drivers and firmware come through PackageKit (`olo_system::packages`,
 its D-Bus API: resolve, refresh, install, update, install a package
@@ -9008,7 +9446,30 @@ GDM logs the tester in and GNOME's first-run tour is skipped), `boot
 `http://10.0.2.2:8642/`, and `shot`, `type`, `key` and `click` look and
 act. Everything is kept in /var/tmp/olo-installer-check.
 
-## The Wi-Fi healer (apps/wifi-heal)
+## The Wi-Fi and Bluetooth healer (apps/wifi-heal)
+
+**Bluetooth** (`bluetooth.rs`): a controller that stops answering is
+reset: its driver unbound, the device reset where it can be (PCI's
+function reset, `reset`), and bound again; BlueZ takes it up as before.
+On 2026-11-09 Intel's PCIe Bluetooth (`btintel_pcie`, a ThinkPad) failed
+every command from the morning on ("Bluetooth: hci0: sending frame
+failed (-19)", ENODEV): AirPods sat at Connecting…, and rfkill's off and
+on didn't reach it (its driver couldn't send even the reset). What says
+so: the kernel's messages (`/dev/kmsg`, read as they come; root only, as
+`dmesg_restrict` is 1), a send failing with ENODEV, a command timing out
+or a hardware error, three within a minute (from before start only the
+last ten minutes'); and at start, BlueZ's adapter powered with its power
+off or the other way round (`Adapter::not_answering`), twice five
+seconds apart. Limited as Wi-Fi's resets are, apart from them; 15 s
+after one it looks whether BlueZ has it on again, and says so in the
+report (`interface` "hci0"), which Olo Doctor tells the person of ("Olo
+fixed Bluetooth"). Doctor installs the healer on any machine with
+Bluetooth (not only a Mac's Broadcom Wi-Fi), finds a controller that
+doesn't answer (`bluetooth-stuck-hci0`, from BlueZ: the person can't
+read the kernel's messages) and fixes it with `Step::RestartBluetooth`
+(as root, asking for the password), and Preferences ▸ Bluetooth says so
+over its list, with Open Olo Doctor.
+
 
 The Broadcom chips in Apple machines (brcmfmac; BCM4388 here) can get
 stuck in their firmware: every join fails without associating
@@ -9144,6 +9605,21 @@ one are always told apart:
   and show that microphone as the default; `devices_raw` has both.
   Turned off, stopped or quitting, the microphone is the default itself
   again; if it crashes, WirePlumber falls back to the microphone.
+- **Its mute and volume are the microphone's** (`main.rs`, `follow`),
+  both ways: muted or turned down on the source (an app, Chrome's own
+  gain control, the microphone key), the microphone is too; changed on
+  the microphone (Olo's controls, which show the microphone in the
+  source's place), the source follows. As PipeWire applies the source's
+  volume to what it gives, the engine gives that much more
+  (`Stats::volume`), so the voice is as loud as the microphone's volume
+  says, once. WirePlumber keeps nothing of the source's own
+  (`state.restore-props` false). (Ben, 2026-11-09: Chrome said the
+  processed microphone was muted and couldn't unmute it, while
+  Preferences said it wasn't: muted once, the source came back muted at
+  69% at every start, out of sight.) Tried in a pw-sandbox: a source
+  kept muted came up unmuted at the microphone's volume, mute and volume
+  went across both ways, and at 76% both read −22.4 dBFS (twice applied,
+  −29.5).
 - **What's behind the source** (`engine.rs`, PipeWire's thread): the
   microphone's capture and, for echo cancellation, the default output's
   monitor, only for an output the microphone can hear (not
@@ -9762,21 +10238,46 @@ with Remove from Group, or drag it: among a group's tabs it joins,
 past its group's edge it leaves (the kit's `dropped_into`). A new tab
 from a grouped one joins its group. Drag a group's chip to move the
 whole group; click it for its menu (Rename Group…, New Tab in Group,
-Save Group, Move Group to New Window, Ungroup, Close Group, Show All
+Save Group, Move Group to New Window, Move Group to Window ▸ (the kit's
+Move to Window; the group, still a group, at the end of that window's
+tabs, the window it left closing if that was all of it:
+`group-to:GROUP:TARGET`, `move_group_to`), Ungroup, Close Group, Show All
 Tabs, its repository's worktrees); Tabs ▸ Group has the same for the
 group of the tab showing (`group_command`; commands carry the group's
 index or the tab's shell). A tab or a group dragged out of the strip
 and let go becomes a window under the pointer; a tab's menu also has
 Move to New Window and Move to Window ▸ (Terminal's other windows,
-named by one of their shells: `tab-to:SHELL:TARGET`). The window's
+named by one of their shells: `tab-to:SHELL:TARGET`; the window it
+left closes with its last tab). The window's
 title is "group — tab" for the tab showing, set the moment a program
 retitles its tab (`retitle`: Claude Code's status glyph in it), not at
 the next frame. A tab in a git repository is in that repository's group
 on its own (repos.rs `auto_group`): the group beside it, else one made
 for it in the colour that repository's group has in another window;
 never one elsewhere in the window (a tab doesn't jump on `cd`), nor
-once the person took it out of a group (`Tab::own_grouping`); one that
-leaves the repository leaves a group it joined on its own. `--tab -w
+one the person grouped or took out of a group (`Tab::own_grouping`: Add
+to Group, dragged into or out of a group, New Group of it, ⌘T in a
+group). One leaves a group it joined on its own only as its own
+repository leaves that group's (`leaves_group`, at its own report), never
+because another tab's report came (Ben, 2026-11-09: ⌘T in his "bugs"
+group took a tab he'd put in another group, of a third repository, into
+"bugs", the group of its repository beside it; every report re-judged
+every tab, and on a restart did the same). The window's
+title follows at once (`auto_group` retitles: a new window's shell has
+printed its prompt by the time its repository is known). A shell not
+yet attached (Terminal started again, an upgrade, takes them back from
+termd one by one) is in no known folder, which isn't "in no
+repository": git.rs's watcher skips it, so its tab keeps its group, and
+looks once it attaches (attaching pokes it, as output does). Checked
+with `upgrade-check --auto-tiled --times 15`: before, a tab came back
+out of its group in 2 rounds of 10 and stayed so; now 0 of 15. What it
+costs, measured on release builds (4 windows in a repository, headless,
+old and new alternated twice): idle 0.0% of a core and 0 wakeups in 10
+s either way; a shell printing a line every 50 ms 1.3–1.7% of a core
+and 108–110 wakeups in 6 s either way; an upgrade (the file replaced,
+SIGURG) 110–140 ms of the process's time against 120–140, its windows'
+titles final 0.09 s after it either way, all 4 in their group (3 of 4
+before, the last opened). `--tab -w
 DIR` opens at the end of the group for DIR's repository, if one is
 here. Save Group keeps the group and each of its tabs' folders in
 `terminal-groups.json` (config dir); Open Saved Group shows its first
@@ -10003,7 +10504,13 @@ within 5 s.
 **Keep It Going** (Ben, 2026-11-06; `Tab::keep_going`, `KeepGoing`): on a
 tab with a coding agent, its menu (and Tabs ▸ Keep It Going, which
 agents reach through the commands socket, `tab-keep-going:SHELL`) has
-Terminal say "please continue" to the agent once it has stopped: after
+Terminal say "Please continue" (or what Preferences ▸ Terminal ▸ Coding
+Agents ▸ Keep It Going says has instead, `TerminalSettings::
+keep_going_says`, followed live; Use Default puts the default back;
+left empty, the default: Ben, 2026-11-08: "make the keep going message
+configurable, by default it should be "Please continue" but let the
+user change it to whatever they want, as well as revert back to the
+default") to the agent once it has stopped: after
 two minutes (`KEEP_GOING_QUIET`) with nothing at all changing on its
 screen and nothing typed, its turn over (`State::Idle`: not while it
 works, nor on a question, whose answer is the person's), at most once
@@ -10022,7 +10529,50 @@ the hour start again); `OLO_TERMINAL_KEEP_GOING_SECS` shortens the wait
 for a test. Tried headless with a stand-in named `claude` (an idle
 screen, a goal clock ticking every 2 s): one "please continue" after
 the quiet, none again within the hour, back after Terminal quit and
-started again.
+started again. And with the message set in Preferences ("Keep at it,
+thanks") a stand-in got that, the tab's name saying it too; Use
+Default put "Please continue" back, in the field and the setting.
+
+**Auto Approve** (Ben, 2026-11-09: "like the keep going option add one
+that is "Auto Approve" and when a "Do you want to proceed?" question
+like this comes up have it auto approve / select yes after 30s";
+`Tab::auto_approve`, `AutoApprove`): beside Keep It Going in a tab's
+menu and Tabs ▸ Auto Approve (`tab-auto-approve:SHELL`). A coding
+agent's question asking leave to go on (`agent::approvable`: the last
+line "Do you want to …?" or "Would you like to …?", its first answer
+"1. Yes" with the chooser, ❯ or ›, on it; Claude Code's permission
+dialogs, Codex's "Would you like to run the following command?") is
+answered with Return `AUTO_APPROVE_AFTER` (30 s) after it shows. Not a
+plan waiting to be approved ("No, keep planning"), not when another
+answer is chosen, not another question's answers under words that ask.
+The agent watcher reads it only while the agent asks (`State::Blocked`)
+and tells of a new one, or none, once read the same twice
+(`agent::Asking`; a screen read as it's drawn isn't a change); its key
+is the dialog's text with its digits aside, as Claude Code counts down
+"will automatically block this request in 1:50" under it. When it's
+due the screen is read again (a coding agent in the foreground, the same
+question, Yes chosen; a few looks 200 ms apart) before the Return goes.
+Typing in the tab, or Stop in the countdown at the pane's bottom right
+("Auto Approve: Yes in N s", a Status to agents, redrawn each second
+only while a question waits), makes the question the person's; one
+stopped stays theirs across a restart (kept with the window: Some(key)).
+The tab's icon carries a green disc with a check at its other bottom
+corner; its name says so ("auto approving: Yes to … in N s"); a
+"needs your answer" notification says when it'll answer; each answer is
+logged ("auto approve: answered Yes", with the question and tab, not
+the command). It's the person's to turn on: asked for through the
+commands socket (`olo_ui::agent::invoking`: an agent, the palette), it
+asks them in an alert whose Return and Escape are Cancel, so an agent
+can't answer its own questions and a Return typed as it comes doesn't
+say yes; turning it off needs no asking. `OLO_TERMINAL_AUTO_APPROVE_SECS`
+shortens the wait for a test. Tried headless with a stand-in `claude`
+drawing Claude Code's dialog at the bottom, its clock counting down
+(two questions in a row): each answered after the wait; one typed in
+not answered, the next one answered; Stop; on through the socket asked,
+Return cancelling, Turn On turning it on; back on after Terminal
+restarted, a stopped question still the person's. Cost: with a question
+waiting, 2 frames a second where its clock drew 1 (0.6 ms each, 0.2% of
+a core); with none, nothing (0 wakeups, 0 frames).
 
 **Repositories** (`src/git.rs`, `src/repos.rs`), in process through
 libgit2 (git2, vendored; no `git` or `gh`). A thread (`git::Watcher`)
@@ -10181,9 +10731,22 @@ Otherwise it asks Terminal, which opens an alert over the window of the
 tab it came from (found by walking up from the pid to a shell it
 owns) naming who asks (a coding agent by name, `agent.rs`) and the
 command, and relays sudo's own PAM conversation from `sudo -S -v`:
-the fingerprint first where `/etc/pam.d/sudo` has pam_fprintd and a
-finger is enrolled, then the password, its errors ("Sorry, try again.")
-in the alert. Cancel, Escape or the close box say no (exit 1, "sudo:
+the face and fingerprint where sudo's PAM has them, and the password,
+at once, its errors ("Sorry, try again.") in the alert. sudo's PAM goes
+one way at a time, so after Touch ID was set up a security key's
+password waited until pam_fprintd gave up (Ben, 2026-11-08: "after
+setting up the touch id fingerprint now my yubikey isn't working. ALL
+enabled modes should work"). So once the first `sudo -S -v` says it
+listens for a finger (`fingerprint::listening`: pam_fprintd says so only
+once it has claimed the sensor), olo-sudo starts a second, whose
+pam_fprintd finds the sensor taken and asks for the password at once:
+`Ask::Finger(true)`, and the window says both ways (`widgets::ways_in`,
+with the key's). Answers go to whichever asks, and the first yes counts.
+The first one, past the finger, would ask too: it gets no input and
+fails (`Finger(false)`, and the finger's own error goes). sudo is root's
+and can't be stopped, so a first check still listening when the
+password wins holds the sensor until pam_fprintd gives up (30 s). A
+finger in that time only validates sudo's credential again. Cancel, Escape or the close box say no (exit 1, "sudo:
 not run: cancelled in Terminal's password window"). Then the command runs on the credential sudo just
 cached: the terminal's, or with no terminal its parent's (olo-sudo stays
 the parent). Settings ▸ Ask for sudo Passwords in a Window
@@ -10219,6 +10782,16 @@ over the prompts of the session it was started from. It stays resident
 the cookie goes on its stdin, and its PAM conversation (`PAM_TEXT_INFO`
 from fprintd for Touch ID, then `PAM_PROMPT_ECHO_OFF` for the password)
 is relayed to the window; a failure starts it again for another try.
+Every way in counts at once, as in sudo's window: once the helper's
+PAM listens for a finger, a second helper starts, whose pam_fprintd
+finds the sensor taken and asks for the password (the key's goes there
+too). The first to succeed closes the window and the other is killed
+(the helper is the person's to stop). A wrong password starts the second
+again while the finger listens on; the first, past the finger, goes
+(`finger_over`). Tried with a fake helper that claims a made-up sensor
+(by its pid, freed when it dies, as fprintd frees a claim): a finger,
+the password while the finger listens, wrong then right, the finger
+giving up, no sensor.
 
 Test it with `tsession run NAME olo-polkit-agent --self-test ACTION`:
 it serves only its own process and asks polkitd about ACTION with
@@ -10873,7 +11446,13 @@ put it away.
   workspace count and the displays; the palette then opens a clear
   full-screen overlay on that output and pops an ordinary kit menu at
   the point: Hide, Zoom, Back to Its Own Size, Center, Tile ▸ (halves,
-  quarters, thirds), Move to Workspace ▸ (every display's workspaces,
+  quarters, thirds), Tile With ▸ (the other windows on its display's
+  workspace, by app and title, a group once; not minimized ones, nor
+  floating ones under auto-tiling; none in Focus: `Request::TileWith`,
+  `tile_with`: the one further left now on the left; auto-tiled on one
+  tree, the other moves into a tile beside it as a tile dropped on its
+  edge, one step Undo takes back; else the two take the halves, as Tile
+  Left and Tile Right do), Move to Workspace ▸ (every display's workspaces,
   left to right as Deskbar's heading menus list them, named as Deskbar
   names them, "D1 Workspace 2"; its own display's with their keys and a
   check; another's is `MoveToWorkspace { id, index, output }`), the
@@ -10881,7 +11460,11 @@ put it away.
   (each screen running and a new one; "Moving windows to and from
   screens"), Open in Tracker (when the window's program says
   what it shows: `commands::path`, asked of its pid with its
-  `WindowInfo::surface`), Send to Back (BeOS's right-click on the tab,
+  `WindowInfo::surface`), Always on Top (checked while it is:
+  `Request::SetOnTop`, `WindowInfo::on_top`, kept across a reload in the
+  saved layout; once a turn `keep_on_top_above` raises such windows over
+  the others, each with its own dialogs, and picture in picture over
+  them), Send to Back (BeOS's right-click on the tab,
   `Request::SendToBack`), then Close and Quit APP.
   Close and Quit are the app's own, as its keys press them:
   - A kit app's come from that window's menus (`commands::menus_in(pid,
@@ -11264,7 +11847,10 @@ whatever its settings say: the "agent" screen once started its saver
 after an in-place restart and locked itself, 2026-11-07; it locks only
 when asked, `Request::Lock`, and its lock screen leaves the person's
 fingerprint reader, security key and camera alone, as everything
-outside their own session does: `olo_system::env::at_the_computer`),
+outside their own session does: `olo_system::env::readers_here`, from
+`at_the_computer`, which the lock screen, Passwords' lock and Allow
+alert, Terminal's sudo and the polkit agent all ask; Passwords' lock,
+sudo's and polkit's waits didn't until 2026-11-08),
 silent unless `--sound` (`PULSE_SERVER` pointed at nothing),
 without `DISPLAY` (X programs would show on the person's screen), and on
 a D-Bus session bus of its own (below, "A screen's own bus"). Screens
@@ -11987,7 +12573,10 @@ are Slack's alone and the person's Chrome is untouched. It is one of
 window's Wayland app id after the URL and the profile folder
 (`chrome-app.slack.com__client-Default`); app_server reports it as
 `olo.slack` (`olo_xdg::apps::WEB_APPS`, `WindowElement::app_id`), so
-Deskbar, the palette, Twitcher and agents know it as Olo's Slack. It
+Deskbar, the palette, Twitcher and agents know it as Olo's Slack. Its
+keys are Chrome's as the keyboard profile has them ("Keyboard
+profiles": on a Mac ⌥← and ⌥→ a word, ⌘[ and ⌘] Back and Forward,
+whatever Chrome's are set to in Preferences). It
 always starts on the same page (the app id comes from it) and goes to a
 link once in: `olo-slack LINK` (a `slack://channel?team=T&id=C`, `open`,
 `user` link, or a Slack page) leaves it in the profile folder (`Olo Slack
@@ -12256,8 +12845,17 @@ when nothing finished for three days (or three of its intervals). Its
 status (`status::Backup`) holds only what the glyph and tip say, so the
 state file's progress every 2 s while it runs draws nothing (measured:
 5 frames in 20 s with a write every 2 s, 3 without, 0.0–0.1% of a
-core); the menu reads the state as it opens: what it's doing (files,
-read, new), the last and the next, Back Up Now or Stop, Pause or Resume
+core); the menu reads the state as it opens: what it's doing, in
+DiskBackup's own words (`Progress::lines`, `olo_protocol::diskbackup::
+words`, the window's too; Ben, 2026-11-08: "it's also not entirely clear
+to me what it means … what is read vs new and i'm backing up my whole
+home dir which is hundreds of gigs so why doesn't it say anything about
+that"): what it backs up (your home folder), how far through how much
+and how long is left, files of files, what's new to the backup and
+sent; counting what's there first; a stop finishing the pack it's
+sending; a stop said calmly, with what it got through; deleting, how
+many of how many; the last and the next, Back Up Now or Stop (Stop
+Tidying, Validating, Deleting), Pause or Resume
 Backups (`olo-diskbackup --now`, `--stop`, `--set enabled=…`), Restore
 Files… (`olo-diskbackup --restore-window`) and DiskBackup…. The speaker's menu has None first
 among the outputs (below). The tray's battery and links
@@ -12276,6 +12874,68 @@ calls, 3.5 ms here) and asks for the signals of what's connected again
 only if that changed. Measured beside the old Wi-Fi-only watch over
 60 s, idle on Ben's machine (Ethernet and Wi-Fi both up): under one
 wakeup a second, against about two.
+
+**AppImages** (`olo_appimage`, crates/appimage, shared with Tracker):
+with a `~/AppImages` folder, the Olo menu has an AppImages item under
+Applications, each AppImage in it by the name its own desktop entry
+gives (else its file's, a version and machine trimmed:
+"Obsidian-1.5.12.AppImage", Obsidian) with its own icon. A type 2
+AppImage is an ELF runtime with a SquashFS image after its section
+headers; that's read in process (`backhand`, no mounting), for the entry
+and `.DirIcon` (followed through links), else the entry's `Icon=` by
+name (at the top, or the largest in its hicolor theme). What was read is
+kept in `~/.cache/olo/appimages` (the icon, PNG or SVG as given, named
+by its bytes so copies share one, and `apps.json`, by path, size and
+time, changed under an `flock` as Deskbar and Tracker both write it), so
+each version of an AppImage is read once, by whichever app comes to it
+first. The folder is followed (inotify, `olo_ui::watch`: made later,
+removed, renamed back too), and a change lists it again on a worker, one
+scan at a time with one more after it if it changed meanwhile (an
+AppImage still downloading). Chosen, it runs; one not executable yet
+(just downloaded) is made so first.
+
+AppImages are themselves wherever an app shows (Ben, 2026-11-09: "if an
+appimage has an icon in it for the app show that icon in the tracker,
+when running in the deskbar apps, and anywhere else an icon is shown for
+the app"). For each AppImage known, a desktop entry is kept in
+`~/.cache/olo/appimages/applications`
+(`olo_xdg::desktop_entry::appimages_dir`, the last of `app_dirs()`, so
+an installed app of the same id wins): named by the AppImage's own
+entry's id (`dbdelve.desktop`), `NoDisplay` (the Applications menu, the
+palette and Open With leave it out: `~/AppImages` is listed on its own),
+with `Exec` the AppImage (quoted for `sh -c`, its own `%f`/`%U` kept),
+`Icon` the file taken out of it, its `StartupWMClass` and
+`X-Olo-AppImage`. So every lookup of an app id (`find`, `find_among`,
+`icon_for_app`) finds a running AppImage's name and icon as it finds an
+installed app's: Deskbar's running apps, the Twitcher, the window
+menu's Quit, notifications, the palette's windows. Of two with one id,
+the one in `~/AppImages` is named, then the newest; an AppImage gone is
+let go of (entry and icon) at the next change, and only entries that
+changed are written. A window whose app id no entry gives is looked at
+once by Deskbar, on a worker (`ask_processes`, each id once, not on
+every window event): if its process is an AppImage's
+(`olo_appimage::of_process`: the runtime's `APPIMAGE` and `APPDIR` in
+`/proc/PID/environ`, and the program in that mount, so a program an
+AppImage started isn't taken for it), that AppImage is read, and an id
+its own entry doesn't give is kept for it (`learn`: another entry by that
+name). The Twitcher, which looks each app up once, looks those no entry
+gave up again as it's shown, on a worker, if an applications folder
+changed since (`twitcher::recheck`, `desktop_entry::stamps`): an
+AppImage's entry is made a moment after its first window. Tracker shows an AppImage's file (`.AppImage`, or an
+extension-less program with the AppImage mark) with its icon
+(`apps/tracker/src/appimages.rs`): asked for as an item is drawn,
+read on a thread of its own (`olo_appimage::info`), the windows drawn
+again only when an icon came; the kind's icon meanwhile. Third-party
+PNG icons decode whatever their format (`olo_xdg::decode_png`
+normalizes to 8 bits a channel: palettes, 16 bits, a transparent
+colour): of the 3,980 PNG icons on Ben's machine (ours, /usr/share's,
+the cache's), the 3,836 that decoded before are byte for byte the same,
+and 144 more (palette ones, Adwaita's 16 px among them) now decode.
+Tried in a tsession with a real AppImage (DBDelve) in `~/AppImages`,
+in Downloads (with and without its extension) and in a folder nothing
+looked at: Tracker showed each with its icon, and run from any of them
+Deskbar listed it as DBDelve with its icon and the window menu said
+"Quit DBDelve", at 1×, 1.25×, 1.5×, 1.75× and 2×, light and dark.
 
 ### Live widgets (widgets.rs, Preferences ▸ Deskbar)
 
@@ -12511,10 +13171,23 @@ in layers; done so far, **the engine** (crates/diskbackup):
   the same content anywhere is kept once, and ids say nothing without
   the key). Each is compressed (zstd 3, unless that saves under 3%) and
   sealed (XChaCha20-Poly1305, a random nonce each).
-- **Packs** of about 16 MiB (`data/xx/<id>`): few large objects suit a
-  slow store; each ends with its own sealed list of what it holds, so the
-  index can be made again from the packs. Trees go in packs of their own,
-  which the local cache keeps whole (still sealed): walking a snapshot
+- **Packs** of about 128 MiB (`data/xx/<id>`; `PACK_TARGET`, Ben,
+  2026-11-08: "the link is pretty fast i think 128mb is fine"): few large
+  objects suit a slow store (a terabyte is about 8,000, listed by Drive
+  1,000 a request); each ends with its own sealed list of what it holds,
+  so the index can be made again from the packs. A pack is held whole in
+  memory till it's sent: its room is reserved at once and kept for the
+  next while a backup runs (`Repo::let_go` gives it back after), and the
+  service keeps glibc's thresholds where 16 MiB packs had them (blocks
+  under 16 MiB from the heap, its top trimmed past 32 MiB): else every
+  chunk's buffers are pages mapped and zeroed afresh. Measured (a first
+  backup of 313 MB to a folder): 0.92–1.02 s as with 16 MiB packs
+  (0.98–0.99), 38.6k page faults (36k; 289k before the fixes), 164 MB at
+  most while it runs (72), 33 MB once idle (47). Tests keep 16 MiB packs
+  (`Repo::set_pack_sizes`) to have several. Trees go in packs of their
+  own, of 16 MiB (`TREE_PACK_TARGET`: small, changing with every backup,
+  fetched whole to read one), which the local cache keeps whole (still
+  sealed): walking a snapshot
   (the next backup's unchanged files, browsing to restore, tidying) reads
   the disk, never a slow store. **The index** (`index/<id>`, sealed) says
   where each blob is; it's read at open (cached locally: index files never
@@ -12537,7 +13210,29 @@ in layers; done so far, **the engine** (crates/diskbackup):
   (`POSIX_FADV_DONTNEED`: the backup's reading isn't anyone's working
   set). Sockets, pipes and devices skipped; unreadable files said in the
   summary and left out; Stop at any point, and a failing store, stop the
-  backup (never taken for a file that couldn't be read). Files are read
+  backup (never taken for a file that couldn't be read). **Unfinished
+  backups** (Ben, 2026-11-08: "it needs to track in-progress / unfinished
+  backups too and they need to resume if i start again and i need the
+  ability to clean it up"): the walk keeps the folders under way as a
+  stack of levels (each folder's node and what's been gone through in it),
+  so what's done can be kept at any moment: every five minutes (between
+  files) and when it's stopped, each level's nodes so far, the one under
+  way below it last, become trees, and an *unfinished snapshot*
+  (`unfinished/<id>`, `Repo::save_unfinished`) holds them, with the
+  chunks of the file it was part way through (`Snapshot::extra`) and a
+  summary so far; it replaces the one it kept before. It's no backup to
+  restore from (`Repo::snapshots` doesn't list it). The next backup goes
+  on from this computer's that got furthest: a file it holds as it is
+  now is taken, not read (new or changed counted against the last
+  finished one), and its new, sent and time add to the finished one's;
+  once the walk is past where it stopped (a name after its last, on the
+  way down to it), the older unfinished ones go, and once one finishes,
+  all of them. A failure that isn't a stop keeps only the index of what
+  went up (the last checkpoint goes on). Tested: stopped once a pack went
+  up, an unfinished snapshot of part of a/, which tidying keeps whole;
+  the next backup reads only the 12 − done files it hadn't got to, sends
+  nothing again, and the unfinished one goes (`stopped_backup_kept_and_resumed`).
+  Files are read
   into one 8 MiB buffer for the whole backup (one zeroed for each cost
   more than reading and keeping a small file did), and one zstd context
   compresses every chunk.
@@ -12622,18 +13317,140 @@ in layers; done so far, **the engine** (crates/diskbackup):
   they go, then the packs: stopped anywhere, nothing is lost. The cache's
   copies of what's gone go too.
 
+  Unfinished snapshots count as snapshots here (and their `extra`
+  chunks): what a stopped backup sent stays for the next. `unused` says
+  what no snapshot uses (what a backup that stopped before keeping
+  anything of its own left), from the cache's trees. `repair` is tidying
+  with damaged packs (a check found them) copied from: what still opens
+  whole in each is kept, a blob kept elsewhere too is kept from there
+  (damaged packs are claimed last), and the pack goes; a pack missing is
+  let go of from the index as any tidy does. The next backup then sends
+  again what's lost, of the files still as they were, and an older backup
+  needing the same chunks is whole again with them (by content).
+- **Validating** (`verify.rs`, `check`; Ben, 2026-11-08: "backups also
+  need to be validatable and should be validated at the end of each
+  backup but i should be able to manually trigger a re-validate of any
+  backup at any time"; "add a fast validate option which compares
+  checksums and just spot-checks some samples … fast validate should be
+  the default and the one that is done automatically after a backup.
+  full validate is only when explicitly requested"): without restoring
+  it, that everything a backup needs is in the store, whole. Fast (after
+  each backup; Validate): its trees walked (from the cache), every blob
+  they need found in the index, every pack holding them listed in the
+  store and as long as it was written, and the tree packs fetched from the
+  store itself (not the cache) and checked against their ids (a keyed hash
+  of the whole pack: exactly as written), each tree in them opened (a pack
+  checked whole before is kept in the cache's `checked` list and not
+  fetched again); where the store keeps a checksum of each object
+  (`Store::keeps_checksums`, `Store::checksums`: Google Drive's
+  `md5Checksum`, listed with the files), each pack's compared with the MD5
+  summed as it was sent (`Repo::finish_pack`, in the cache's `sums`; or as
+  it was last read back whole): it arrived and stayed as sent, nothing
+  fetched; one that differs is fetched and checked; and a few data packs
+  read back whole as samples (one in a hundred, one to four: those never
+  read back first, so over time they go round all of them). Full
+  (Validate Fully): every pack it uses fetched and checked so, whatever
+  was checked before, and each blob of its opened and checked against its
+  own id, as a restore would.
+  `Checked` says what's wrong plainly (missing, cut short, damaged, lists
+  unreadable), the first twelve files (or folders) that can't come back as
+  they were and how many, the packs shown sent by checksum and sampled,
+  and the bad packs, for `repair`. Tested: whole after a backup, fast and
+  fully (every byte read back); in a folder (no checksums), a data pack
+  damaged found fully (fast, only if it's the sample), one gone found
+  either way; after `repair` and another backup, both backups whole and
+  the first restores (`checked_damaged_repaired`); on Google Drive (our
+  own), fast: every pack shown as sent by its checksum and one sample read
+  back, then a pack changed in Drive found by its checksum, fetched, and
+  found damaged (`tests/drive.rs`).
 - **Speed limits** (`store::Limit`; Ben: "make sure that i can also set
   a max upload/download speed"): bytes a second each way, 0 for none,
   changed live; a store paces its transfers a 256 KiB piece at a time
   (`Throttled` for one that doesn't pace itself), up to a quarter second's
-  worth at once, so the network never sees a burst at full speed.
+  worth at once, so the network never sees a burst at full speed. It
+  counts what it lets through (`Limit::passed`): what's sent, live, and a
+  pack's progress while a stop waits for it (`Repo::sending`).
 
 **The service** (apps/diskbackup, `olo-diskbackup --service`; olo-session
-runs it in the logged-in session): the whole process at the CPU's and the
-disks' idle priority (SCHED_IDLE, the idle I/O class: anything else that
-wants them goes first); asleep until a backup is due (`every_minutes`
-after the last), its settings change (inotify) or it's asked on its
-socket (`olo_protocol::diskbackup::Request`: Back Up Now, Stop, Tidy); waits
+runs it in the logged-in session): every thread at the priority chosen
+(`Settings::priority`, This Computer ▸ Back up): Idle (SCHED_IDLE and
+the idle I/O class: anything else that wants them goes first; the
+default), Low (SCHED_BATCH, nice 19, best-effort I/O 7) or Normal
+(SCHED_OTHER, nice 0, best-effort 4); a change follows at once when it
+lowers it, and when it raises it (the session's `RLIMIT_NICE` is 0: an
+unprivileged process can't) the service ends with 0, to be started again
+by olo-session at the session's own priority and lowered from there.
+Asleep until a backup is due (`every_minutes` after the last; never, if
+`automatic` is off: Back Up Now only, and Doctor says so only after a
+week), its settings change (inotify) or it's asked on its socket
+(`olo_protocol::diskbackup::Request`: Back Up Now, Stop, Tidy,
+Snapshots, Delete, Erase All). `Snapshots` lists this backup's snapshots
+(`SnapshotInfo`: when, files, size, new and changed, stored, how long),
+`Delete { snapshots }` forgets those (the exclusive lock) and tidies at
+once (`Doing::Deleting { what }`, said the moment it's asked: opening the
+backup, its lists, then the tidy's steps), `EraseAll` deletes everything
+the store holds (its config last: stopped half way, it's still a backup)
+and makes a new one there with the same key (`Doing::Erasing`, its
+progress files of all); on Google Drive it deletes the backups' folder
+whole, in one request however many files (`Drive::delete_folder`; Ben:
+"can we just have it delete the olo backup folder in gdrive then
+re-create it"), and makes it again, the settings following the new
+folder; another computer finds it by its name when its own is gone
+(`target::drive_folder_moved`, from `opened`). 6.7 s on our own Google
+at 400 ms a request, opening and all. Tidying says its step (1 to 5:
+what's kept, what the backups use, copying what's still used out of
+packs mostly unused, the index, deleting what isn't used), with how many
+of how many, and while deleting, what's freed of how much; it deletes 8
+at a time (`DELETERS`), each still under the only lock, Stop looked for
+before each (5.8 s → 3.8 s for 6 packs at 400 ms a request, the rest
+being listings; the more packs, the more it saves). The state is written
+every 2 s while something runs, and at once (within a quarter second)
+when its stage or tidying's step changes or Stop is asked. A backup's
+plan: the last snapshot's totals ("about", `Progress::estimated`), or,
+for the first, a count of what there is first (`backup::count`, the
+same walk without reading: `Stage::Counting`); then `Stage::Reading`
+(bytes and files against those totals, the file it's at, `uploaded`:
+what it has sent) and `Stage::Saving` (its trees and the snapshot). A
+backup the person stopped says `STOPPED` (`Last::stopped`): said calmly,
+never as trouble (DiskBackup, Deskbar, Doctor). What one that didn't
+finish got through is `State::unfinished` (`Unfinished`: when, files and
+bytes done, new, what it sent, time): this computer's unfinished
+snapshot that got furthest, or, found once when the service starts after
+one that stopped (since the last tidy) with nothing kept of its own,
+what no snapshot uses (`unused`: sent, in no snapshot). A resumed
+backup's progress says `resuming`; `Delete { unfinished: true }` forgets
+this computer's unfinished snapshots and tidies, freeing what they sent.
+Each backup is validated fast once it's made (`Stage::Checking`, `check`
+with the shared lock still held): the result is `Last::check` (Validate's
+of the newest too) and the snapshot's `SnapshotInfo::check`;
+`Request::Validate { snapshots, full }` validates chosen ones, fast or
+fully (`Doing::Validating`, its progress bytes read back of the packs'
+total, the pack it's at), one after another, each one's `Check` (`full`,
+`by_checksum`, `sampled`) kept by snapshot id across restarts (the state
+folder, forgotten with the snapshot). Stopped, a backup says
+`Stage::Stopping` at once (the service's state, from the stop itself:
+the backup sees it only once the pack it's sending has gone), with that
+pack's progress (`Progress::sending`, `sending_done`, and how long at the
+upload limit), then what's done is kept: up to a pack's worth to wait
+(at 2 MB/s, about a minute; the window says so the moment Stop is
+clicked, and Stop is off). **Upgrades** (Ben: "make sure that upgrades
+will work properly when a backup is underway it should seamlessly still
+move over to the new process and resume there"): olo-session's SIGURG
+(`olo_kit_base::restore::on_upgrade`) stops what's under way the way
+that keeps its place (erasing is let finish), marks the service as
+finishing something (`mark_waiting`, so olo-session doesn't stop it at
+90 s), notes what to go on with (`Kept::resume`: the backup, the tidy,
+the backups being validated, and what was asked and not done), and the
+loop becomes the new version in the same process
+(`exec_new_version`), which goes straight on: "Resuming the backup", no
+stop said. Checked: the binary replaced as an install does it, mid
+backup at 2 MB/s, Stopping within half a second, the pack it was sending
+15 → 127 of 134 MB in 55 s, then the same process as the new version,
+resuming; idle, at once. The bad packs a check finds are kept too, and the
+tidy right after repairs them (`repair`; a tidy that can't take the lock
+leaves them for the next). Doctor says when the last backup checked
+isn't whole (`diskbackup:damaged`, Back Up Now). With nowhere to back up
+(disconnected), the backup isn't kept open (nor Tracker's lookups). Waits
 for power on battery unless allowed (`on_battery`), looking again every
 five minutes then. A backup holds a shared lock, reads the index again if
 another computer changed it, and takes unchanged files from the last snapshot
@@ -12660,34 +13477,94 @@ Olo Doctor's fix), `--snapshots`, `--restore SNAPSHOT PATH [TO]` (a shared lock,
 for a tidy under way), `--tidy` (asked of the service if it runs, else
 done there), `--set KEY=VALUE…` (enabled, battery, every, upload,
 download, paths, exclude, groups, hourly, daily, weekly, monthly),
-`--groups`. For tests, `OLO_DISKBACKUP_DIR` keeps its settings, state and
+`--groups`, `--delete SNAPSHOT…` (an id's start is enough; `unfinished`
+the one that didn't finish), `--validate [--full] SNAPSHOT…` (`latest`,
+`all`),
+`--erase-all --yes`, `--set automatic=on|off`, `--set
+priority=idle|low|normal`; `--snapshots` says how each was last checked,
+and lists the unfinished ones. For
+tests, `OLO_DISKBACKUP_DIR` keeps its settings, state and
 socket apart and `OLO_DISKBACKUP_KEY` gives the key. Checked so (a
 sandbox HOME, a folder target): set up, the first backup at once (9
 files, node_modules left out), a change and Back Up Now (1 changed,
 nothing new), the older version restored, 5 MB new at a 500 KB/s upload
 limit in 10.06 s; its scheduling policy 5 (SCHED_IDLE).
 
-**The app** (`olo-diskbackup` with no arguments; `app.rs`; one window,
-three columns so it fits a 1280 × 800 screen): the backup (what the
-service is doing and did, live from its state file, followed by inotify:
-nothing ticks while nothing happens, times shown as clock times; Back Up
-Now or Stop), where backups go (Choose a Folder…: a backup there already
-opened with this computer's key, else a new one and a key), the key
-(Keep Key in Passwords: the keychain's `KeepSecret`, a Password item
-"DiskBackup Key" with a note saying what it is, synced to 1Password like
-any; Passwords started if it isn't running, unlocked if it asks), what's
-backed up (folders added and removed), what's left out (each group named
-for what it leaves out, its folders under it: Ben, "right now it looks
-like you're asking if i want to leave out the actual source code of all
-those langs"; the person's own patterns in a box of their own), when (every
-15 minutes to a day, on battery or not), how long snapshots are kept
-(hourly for 12 hours to a week, daily for 7 to 90 days, weekly for 4 to
-52 weeks, monthly for 6 months to forever; none for any), and how fast
-(upload and download limits). The status says what the backups take
-there and the last tidy that did something; Show in Deskbar puts DiskBackup's
-item in Deskbar's tray (see Deskbar: its glyph, its menu). Every change is written to the settings, which the service
-follows at once. The keychain's `Secrets` reads an Olo program's secrets
-back by title (another computer's setup, next).
+**The app** (`olo-diskbackup` with no arguments; `app.rs`, its window
+in `window.rs`; Ben, 2026-11-08: "improve the ux in diskbackup … it's
+complicated and not intuitive"; "where are the settings for limiting
+up/down speed and resource usage and knowing exactly what's being backed
+up now what the plan is what's still remaining"; "i should also be able
+to choose if i even want auto backups … clear out / remove old backups to
+start fresh"). Not set up, it asks one question, where backups go (A Disk
+or Folder, Google Drive: side by side), and says what happens then. Set
+up, a header says whether your files are safe (`headline`: "Backed up
+12 minutes ago", "Backup stopped", "The backup … didn't finish" in red,
+where to and when next, the last one's figures) beside Restore… and Back
+Up Now (Stop while it runs); while a backup runs, the file it's at is
+the header's second line (`StringView::cut`) and the whole width under
+it the plan: "Backing up your home folder" (what), a bar of what's gone
+through against the plan's (by the last backup's: "of about", and past
+it "more than the last backup's"), files of files, time left (once 2%
+and ten seconds are done), then what's new to the backup and what's sent,
+compressed and encrypted, how fast, against the upload limit (Ben: "what
+is read vs new"); each folder's turn (✓ ▸ ○) when there are several;
+stopping, the pack it's finishing sending, of how much, and how long;
+tidying and deleting, the step, how many of how many and what's freed;
+erasing, a bar of what's deleted; checking after a backup, and validating, a bar
+of what's read back and the pack it's at. "Resuming the backup" when it
+goes on from an unfinished one. Idle, a dim line under the last one's
+figures says what an unfinished backup got through and that the next
+goes on from there (`unfinished_words`), and "Checked: all there." ends
+the figures once the backup was checked. A slim reminder when the key is
+only on this computer (Keep Key in Passwords), and one when the last
+backup checked isn't whole (what's wrong; Back Up Now). Then five tabs: **Schedule** (When to
+Back Up: Automatically, every 15 minutes to a day, or Only when I click
+Back Up Now; on battery or not; Backups Kept: one an hour, a day, a week,
+a month, for how long, said plainly as a sentence, `keep_words`),
+**Files** (the folders, added and removed, and what the last backup
+held; Leave Out: each group a check box named for what it leaves out,
+its folders in its tip, and the person's own patterns, how they go in
+the field's tip), **Backups** (the unfinished one first, "Unfinished
+(14:05)", then every snapshot: When, Files, Size, New, Took, Validated:
+✓ Fast, ✓ Full, ✗ Damaged, Not checked or —; a line under the list says
+the one chosen in full, `check_words`, cut to a line with all of it in its tip:
+when and how it was validated, what's wrong and which files; Restore…
+opens the Restore window; Validate validates those chosen fast, at
+once; Validate Fully… reads every byte back, asked first; those
+chosen, one or several, the unfinished one too, deleted with Delete N
+Backups…, asked first, saying what deleting the unfinished one frees;
+Erase All Backups…, asked first, saying whether a fresh one starts at
+once),
+**Speed & Resources** (Network: upload and download limits; This
+Computer: the priority, each level explained) and **Destination** (what
+it's connected to, looked at each time the tab is chosen, on a worker,
+`target::look_at`: Google Drive's account and folder, "Connected", what
+the backups take there and the Drive's space, as Google's `about` says,
+or why it isn't connected, with Sign In Again…; a folder's name, path and
+its disk's space, `statvfs`, or that it isn't there; Disconnect… (Ben,
+2026-11-08: "when i'm connected it should show the details of that
+connection and a button to disconnect it if i want and then it shows the
+button to connect again": asked first; what's under way stopped, the
+sign-in forgotten on this computer, its refresh token gone from the
+keyring and the client kept, `target::forget_google`, not revoked at
+Google, which would sign out every computer using that client; the
+target none, so the window asks where backups go again, Connect Google
+Drive…, whose setup window fills in the client from before,
+`target::known_client`, with the steps to make one folded away, Show the
+Steps to see them), Use a Folder Instead… or Choose Another
+Folder… and Use Google Drive Instead…, Open in Google Drive or Show in
+Tracker; the key; Show DiskBackup in Deskbar). The window follows the chosen tab's height
+(`WindowOptions::fixed`): every tab fits 1280 × 800 while a backup runs
+(712 points at most, measured). Every change is written to the settings,
+which the service follows at once, and is a step for Edit ▸ Undo. Live
+from the state file (inotify: nothing ticks while nothing happens); the
+snapshots asked again when a backup, delete or erase ends. Keep Key in
+Passwords: the keychain's `KeepSecret`, a Password item "DiskBackup Key"
+with a note saying what it is, synced to 1Password like any; Passwords
+started if it isn't running, unlocked if it asks. The keychain's
+`Secrets` reads an Olo program's secrets back by title (another
+computer's setup, next).
 
 **Tracker's ticks and versions**: the service answers on its socket from
 a reader of this computer's snapshots' trees (`Repo::tree_reader`: where
@@ -12714,17 +13591,22 @@ Ben, 2026-11-07: "we should have each user setup their own desktop app
 person to make their own sign-in for an app like this, so the window
 walks them through it, a numbered step at a time, each with Open for its
 page (Google Cloud's: make a project; turn on the Drive API; set up its
-sign-in, Audience External; add the `drive.file` scope; publish it, or
-Google signs it out every 7 days; make a Desktop app client and
-download its JSON); then the client given (Choose File… for the JSON, or
+sign-in, Audience Internal for a Google Workspace account, which needs
+no publishing and never signs out, External for a Gmail one; add the
+`drive.file` scope; publish an External one, which Google now lets only
+with a homepage and a privacy-policy address, or it signs it out every
+7 days; make a Desktop app client and download its JSON; the agent of
+Agent Setup found the publishing rule, 2026-11-08); then the client given (Choose File… for the JSON, or
 its ID and secret typed: the secret a password field) and Sign In with
 Google: the browser to the consent page (Copy Address if it didn't
 open), the answer taken, the folder found or made, the backup there
 opened (this computer's key, the keys Passwords keeps) or made, the
 sign-in kept in the login keyring (`olo_system::secrets::DISKBACKUP_GOOGLE`)
 and the client in Passwords ("DiskBackup Google Client"): on another
-computer, Sign In with the One in Passwords skips the steps. As a tab of
-DiskBackup's frame it's as wide as that (640 points at least).
+computer, Sign In with the One in Passwords skips the steps. 720 points
+wide (as DiskBackup's window: its words wrap less, so with every step
+shown it's 708 points tall, inside 1280 × 800), and it follows what it
+shows (`fixed`).
 `--set-up-drive [CLIENT_FILE | ID SECRET]` does the same from the
 command line (none: the client Passwords keeps), the consent page's
 address printed. For tests, `OLO_DISKBACKUP_GOOGLE_API` is a Google of
@@ -12735,6 +13617,47 @@ browser, then the service backs up to it (`serve_google`, ignored,
 serves the fake for trying the window by hand). The layout review no
 longer counts a button's default ring as crowded lines, however wide the
 button (`layout_review::crowded_lines`).
+
+DiskBackup's window and the setup window are forms at the size of what
+they show, so they float (`WindowOptions::floating`): never zoomed by
+Focus or put in a tile (Ben, 2026-11-08: "diskbackup looks silly in focus
+mode"). Restore and Versions, browsers of what a backup holds, are
+windows like Tracker's.
+
+**Agent Setup** (`agent_setup.rs`; the setup window's Let an Agent Do
+It…; Ben, 2026-11-08: "an "Agent Setup" feature to disk backup where an
+agent can do the google drive oauth/app setup"): an agent does the steps.
+The person chooses the Google account's login from Passwords (its
+`Shares` items: those that say Google, else every login; no secrets
+read). DiskBackup starts its agent screen (`diskbackup-setup`; `olo-screen
+start` unless it's running) and shares the login with it (`SetShares`,
+besides what the screen has: `shared_too`). Then it opens a Terminal
+window running Claude Code (`olo-terminal -w DIR -e claude …`), with
+Preferences ▸ AI's Claude Code model and effort (`AiSettings::claude_code`:
+Opus 5.5 on Medium by default). It starts in a folder of its own
+(`$XDG_STATE_HOME/olo/diskbackup-agent-setup`, the task kept there as
+TASK.md; Claude Code asks once whether to trust it, and the home folder
+would be far more than the task needs). It may read the screens'
+pictures and ~/Downloads without asking (`--add-dir`), and run `olo-screen`
+and the done command (`--allowedTools`); `--no-chrome` keeps it off the
+person's own Chrome. The task (`brief`): the screen, how to sign in with
+the shared login there without seeing or typing its password (Olo's
+Chrome's Autofill with Passwords, or `op … | pbcopy` and ⌘V), the six
+steps, and the finish: `olo-diskbackup --agent-setup-done CLIENT_FILE
+--screen NAME`, run in the background. That keeps the client in Passwords
+("DiskBackup Google Client"), signs DiskBackup in with Google's consent
+page opened on the agent's screen (`olo-screen run NAME olo-chrome URL`)
+for the agent to allow, sets DiskBackup up (`set_up_drive`), prints how it
+went for the agent, and tells DiskBackup's window (forwarded
+`--agent-setup-done`), which says it's set up. The person follows along
+in Terminal and can talk to the agent there. Tests:
+`OLO_DISKBACKUP_AGENT_SCREEN` (another screen), `OLO_DISKBACKUP_AGENT_COMMAND`
+(a stand-in for `claude`), `OLO_KEYCHAIN_SOCKET` (a stand-in Passwords),
+and `OLO_DISKBACKUP_AGENT_CHECK_ONLY` (the done command stops once
+signed in: nothing made in the real Drive with a test's key, which would
+clash with the person's own setup later). `tests/set_up_drive.rs`'s
+`agent_setup_done` runs the done command against the fake Google and a
+stand-in Passwords.
 
 **Restore** (`restore.rs`; File ▸ Restore…, ⌘R, or Restore… beside Back
 Up Now): the snapshots newest first; the chosen one's folders browsed as
@@ -13060,6 +13983,32 @@ an alert names the command, the program that ran it and its folder, and
 Allow covers that terminal session (the caller's session id and
 terminal, from `/proc/PID/stat`) until Passwords locks or for 10 minutes
 after its last use (12 hours at most); Deny answers "not allowed".
+What unlocks Passwords allows it too (`apps/passwords/src/allow.rs`):
+Touch ID, a touch of a security key set up, or a look, each waited for
+on a thread of its own while the alert is open (the look once, up to
+3 s, as it opens; the sensor and the key 40 s at most, so an alert left
+open holds neither from sudo) and stopped as it's answered. What there
+is is found on the worker that asks app_server first (`Ways::find`:
+fprintd's and olo-faced's lists over D-Bus, the key's file and /sys;
+nothing asked of the sensor, key or camera themselves), and the alert
+says it ("To allow it, you can also touch your security key."). Allowed
+so, the alert goes, a quiet notification says how ("Allowed with Touch
+ID"), and the request goes on. None of the three where nobody sits at
+the computer (`olo_system::env::readers_here`: see Agent Screens); a test's soft
+key or face service (`key_here`, `face_here`) does. Tried headless: the
+soft key set up in the session (`cargo run -p olo-fido --example
+soft-set-up`), Passwords debug with it and the PAM stand-in; `op item
+list` showed the alert with the sentence, the key's touch 2.5 s later
+took it away and op printed the list; with a key that never touches,
+Allow still answered it and the key's wait ended with it. A look and
+Touch ID through stand-ins on the session's own bus (`cargo run -p
+olo-system --example fake-readers -- --bus ADDRESS --finger
+match|no-match|none --face match|no-face|none`, with `OLO_FACE_BUS` and,
+debug builds, `OLO_FPRINT_BUS` at that address: it prints what it's
+asked): with no finger enrolled the alert offered the camera and a
+matching look allowed op with no click; with the look finding no face,
+the finger's match did (Claim, VerifyStart, VerifyStatus match,
+VerifyStop, Release).
 `op run` passes the values in the environment and masks them in the
 command's output (`<concealed by 1Password>`, `text::Masker`) unless
 `--no-masking`; `inject` writes files 0600. Commands that change items,
@@ -13165,8 +14114,15 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   usable quota resets soonest serves, since quota that resets unused is
   lost; ties go to the older account, then the id. The account serving
   keeps serving unless another resets more than five minutes sooner.
-  Windows can be model-scoped (Weekly Opus): a Sonnet request isn't
-  held up by Opus's meter.
+  Windows can be model-scoped (Weekly Opus, Weekly Fable): a request
+  for another model isn't held up by that model's meter, and one for
+  that model goes to another account before it's even tried (Ben,
+  2026-11-08: "make sure too that token pooler switches accounts when
+  the model in use is the one that the limit hits"; `tests/gateway.rs`
+  `switches_by_the_model_whose_meter_ran_out`: an account whose report
+  says its Fable week is used up is never asked for Fable but still
+  serves Opus; one refused for Fable, claim `seven_day_fable`, waits for
+  Fable only; with none left Fable waits while Opus is served).
 - **Usage** is read from the answers as they stream through: only
   `usage` objects (SSE lines containing "usage", or a JSON body's), the
   content discarded as it passes. Quota comes from every answer's
@@ -13174,6 +14130,24 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   account every five minutes (`SYNC_EVERY`; reset credits every 30) and,
   when a report answers 429, at twice the last wait up to 30 minutes:
   reading them twice a minute per account was itself rate limited.
+  Every meter there is (Ben, 2026-11-08: "make all the quotas for an
+  account show up e.g. i think anthropic has a special fable quota and
+  codex might have a 5 hour quota … right now i only see weekly for
+  everything"; `upstream::parse_usage`): Claude's report's `limits`, the
+  server's list of every meter (kind, group, percent, reset, a model's or
+  a surface's scope), as Claude Code's own `/usage` reads it (2.1.319):
+  the session as 5-hour, the week as Weekly, a model's as "Weekly Fable"
+  for that model alone, a surface's (Cowork) shown and limiting nothing
+  here, one not known yet by its own words; the older fields for what the
+  rows don't say, one not started yet (`utilization: null`, how the
+  session showed before its first request: it had been left out, so
+  only Weekly showed) at 0%, "not started"; every
+  `anthropic-ratelimit-unified-*-utilization` header, not a list; Codex's
+  `rate_limit` windows, each `additional_rate_limits` entry's (a model's
+  own, "GPT-5.3-Codex-Spark 5-hour", for its requests) and code
+  review's. A window's length comes from what it's called (Codex's
+  primary can be a week), else its name. `examples/seed_vault.rs
+  --meters` makes accounts showing each kind, for the window.
 - **Store** (`store.rs`): `pool.vault` in the config directory, sealed
   as Passwords seals its own (XChaCha20-Poly1305, header as AAD); the key
   is 32 random bytes in the login keyring (`OLO_POOL_KEYFILE`: a file
@@ -13483,7 +14457,17 @@ A Telegram client of Olo's own: MTProto in process through grammers
   list shows; the Chat menu and a chosen row's menu then act on them
   all (Archive, Unarchive, Mark as Read, Mute, Unmute, Delete…, which
   asks, saying how many; `Cmd::DeleteChat` deletes a person's history
-  and leaves a group or channel, as Telegram's apps do). `conv` is the conversation: its header, a forum's
+  and leaves a group or channel, as Telegram's apps do).
+  **Groups** (`list::Group`: the archive, Unknown Senders, a folder or
+  All Chats): a right-click on the archive's row, Unknown Senders', a
+  folder's chip or the back row above them (the More chip: each folder
+  behind it as a submenu) acts on all its chats, as `list::shown` has
+  them for its view: Mark All as Read, Mute All, Unmute All, the
+  archive's Unarchive All… (asks, saying how many), Unknown Senders'
+  Archive All; Chat ▸ Mark All as Read does it to the group the list
+  shows (`mark-all-read`, for agents too), enabled while one of them is
+  unread (`list::any_unread`: one pass over the chats, no list made, as
+  the menu bar is built at every change). `conv` is the conversation: its header, a forum's
   topics as chips, the messages laid out once per message and width
   (`bubble::Laid`, kept by a digest of what the layout depends on) and
   painted in one canvas inside a `ScrollView`, only those within a
@@ -13530,8 +14514,84 @@ A Telegram client of Olo's own: MTProto in process through grammers
   and next chat), and
   every row, bubble and button in view is in the agents' tree (a
   scrolled list's rows painted beyond its edges aren't).
-* **Not yet**: recording voice notes (no Opus encoder in Rust yet), and
-  animated stickers show their first frame.
+* **Voice messages, recorded** (`apps/telegram/src/voice.rs`): with
+  nothing to send, the send button is a microphone. Held down, it
+  records: the field gives way to a strip (a red dot, the time, the last
+  levels as bars, a level every 100 ms, newest at the right, -50 dB to
+  the top) saying what letting go does; let go on the button it's sent,
+  away from it (the button pales) thrown away. Let go within `HOLD`
+  (300 ms), the press was a click: it goes on recording, the button a
+  paper plane (Send Voice Message) and the paperclip a × (Cancel
+  Recording), as Escape is; Chat ▸ Record Voice Message does the same
+  (and then Send Voice Message, Cancel Recording), for agents. Shorter
+  than half a second, it isn't sent (the banner says how; tried with a
+  hold timed on app_server's socket: 0.4 s not sent, 1.0 s sent). The default
+  microphone (`olo_system::recording::Capture`, mono 48 kHz, opened and
+  closed on a thread: each a round trip to the sound server) is coded as
+  it comes on the sound client's thread to Ogg Opus in the cache's
+  `voice/` (`olo_video::opus`, a page a second; left from before, gone
+  after a day), at 24 kb/s; its loudest sample each 100 ms makes the
+  waveform (100 bars, 0–31, packed by the backend) and the strip's bars.
+  The chat sees "recording a voice message" (every 5 s, `Doing::
+  RecordingVoice`; Stopped when it's thrown away); a voice message
+  playing stops (the microphone would hear it); switching chats throws
+  the recording away; it stops by itself after an hour. Sent, it's
+  `Outgoing::voice` (the file, seconds, waveform) and a pending bubble as
+  a text is. Measured (release, demo account, `olo-fakesound` with
+  `FAKESOUND_MIC` playing olo-voice's test speech, 2×): idle with the
+  chat open 0.0% of a core, no wakeups; recording 2.9% (the sound
+  thread 2.1%, coding and the fake server's 100 wakeups a second, a real
+  one's 40 ms fragments a quarter of that; the window 0.8%: 9.9 frames a
+  second of the composer alone, 0.69 ms each). The file, parsed (each
+  page's CRC) and decoded again: 11.23 s, 20 kb/s, lined up with the
+  speech to the sample at 5.6 dB, what the encoder gives (below).
+* **Animated stickers** (`stickers.rs`): a Lottie one's whole file is
+  fetched when it's first drawn, read once on a worker, and drawn there
+  a frame at a time at the size the bubble shows it (`snap_centred`'s
+  device pixels, one to one); each frame is drawn into the conversation
+  as it comes, and the next asked for at its time by a timer (nothing
+  polled; several playing still draw the conversation once a display
+  frame, GPUI drawing what was notified at its next frame). It plays
+  once as it comes into view, again while the pointer is over it, then
+  rests on its first frame (drawn at its size, sharper than Telegram's
+  thumbnail); out of view it stops and lets its frames go, and frames
+  replaced leave the window's atlas when the conversation next paints
+  (30 s of one looping: 88.5 → 88.7 MB). The demo account's is in
+  Mira's chat. Measured (release, 2×): resting 0.0% of a core; looping
+  8.4% (60 frames a second: the conversation drawn 60 times, 0.61 ms
+  each, 5.1–5.8%; the worker 2.2% after opaque and empty pixels were
+  left out of un-premultiplying, 3.0% before). A sticker drawn in its
+  own view would have had to be outside the conversation's pane (GPUI
+  marks a notified view's ancestors dirty) and a frame behind it while
+  scrolling, so it isn't.
+  Video stickers (WebM: VP9, 512 pixels, its alpha a second VP9 stream
+  in each block's BlockAdditional) are told from Lottie ones by the
+  file's first bytes (EBML's magic) and play the same way, decoded on
+  the worker at their own size (`olo_images::webm`; the bubble scales
+  them, as it does photos and videos, their own shape kept), each in
+  view keeping its two decoders there until it leaves. Every sticker's
+  picture goes through `bubble::sticker_picture`: a frame drawn for its
+  box at the window's scale is drawn exactly its pixels, anything else
+  fitted. `OLO_TELEGRAM_DEMO_STICKER=FILE` makes the demo's sticker that
+  file (a video sticker to test with: Chromium's `media/test/data/
+  bear-vp9a.webm`, 320 × 240, its alpha a flat 68). Measured looping
+  that one (release, 2×): 8.1% of a core (the worker 4.9%, both streams
+  at 30 frames a second, 1.4 ms a frame; the window 3.1%), 113.2 →
+  113.5 MB over 30 s.
+
+**Ogg Opus** (`olo_video::opus::OggOpus`): mono 48 kHz pushed in any
+amounts, coded in 20 ms frames by rusty-opus (pure Rust), written a page
+(RFC 7845) a second with OpusHead (the pre-skip, `PRE_SKIP`) and
+OpusTags first and the last page's position trimming the end to what
+was given. Kept to SILK (wideband, VoIP, the voice hint): measured
+against the system's libopus 1.6 in a scratch program (decoding
+rusty-opus's packets exactly as `opus-decoder` does), SILK matches
+libopus's own encoder (5.6 and 8.6 dB on olo-voice's two test voices,
+17 on a chirp, at 24, 32 and 64 kb/s), but rusty-opus's CELT and hybrid
+modes, which it chose at 64 kb/s or for a tone at 32, came out at −1
+to −3 dB where libopus had 6 to 17. Its speech comes 328 samples late,
+not libopus's 312, so that's the pre-skip (the test checks the decoded
+sound lines up).
 
 ## Native browser development shell (apps/browser)
 

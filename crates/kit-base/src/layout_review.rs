@@ -300,6 +300,7 @@ pub fn review(parts: &Parts, width: f32, height: f32, ppp: f32) -> Vec<Finding> 
     uneven_rows(parts, ppp, &mut out);
     controls(parts, screen, &mut out);
     texts_over(parts, screen, &mut out);
+    texts_over_controls(parts, &mut out);
     overflow(parts, ppp, &mut out);
     crowded(parts, screen, ppp, &mut out);
     window_edges(parts, screen, &mut out);
@@ -476,7 +477,16 @@ fn texts_over(p: &Parts, screen: Rect, out: &mut Vec<Finding>) {
             finding(
                 Level::Error,
                 kind,
-                format!("{:?} {said} (laid out {:.0} wide, {:.0} shows): give it room, or cut it short with an ellipsis (`style::fit`)", t.label, t.rect.width(), t.rect.intersect(t.clip).width()),
+                format!(
+                    "{:?} {said} (laid out {:.0} wide, {:.0} shows; its line {:.1}–{:.1} down, what it's in {:.1}–{:.1}): give it room, or cut it short with an ellipsis (`style::fit`)",
+                    t.label,
+                    t.rect.width(),
+                    t.rect.intersect(t.clip).width(),
+                    t.rect.min.y,
+                    t.rect.max.y,
+                    t.clip.min.y,
+                    t.clip.max.y
+                ),
                 t.rect,
             ),
         );
@@ -487,8 +497,44 @@ fn texts_over(p: &Parts, screen: Rect, out: &mut Vec<Finding>) {
             // (Lines' boxes touch by their leading, and keys' symbols set
             // closer than their advance by a point or so; their ink
             // doesn't.)
-            if over.width() > 2.0 && over.height() > a.size.min(b.size) * 0.4 {
+            // (The same words a point or less off are a shadow: the
+            // desktop's labels have one.)
+            let shadow = a.label == b.label && (a.rect.min.x - b.rect.min.x).abs() <= 1.5 && (a.rect.min.y - b.rect.min.y).abs() <= 1.5;
+            if over.width() > 2.0 && over.height() > a.size.min(b.size) * 0.4 && !shadow {
                 push(out, finding(Level::Error, "text-over-text", format!("{} and {} overlap by {:.1}×{:.1}", quote(a), quote(b), over.width(), over.height()), over));
+            }
+        }
+    }
+}
+
+/// Text that runs over a control it isn't in: a line laid out past the
+/// room it was given (a title as long as its window, with buttons beside
+/// it: DiskBackup's "Getting ready: counting what to back up" over its
+/// Restore… button, Ben, 2026-11-09). Its box stays where the layout put
+/// it, so only the text's own extent shows it. A control's own text
+/// starts in it (a button's label, a field's text, a row's cells) and
+/// isn't over it.
+fn texts_over_controls(p: &Parts, out: &mut Vec<Finding>) {
+    for t in &p.texts {
+        let start = Pos2::new(t.left + 0.5, t.middle);
+        for c in showing(p) {
+            let shown = c.shown();
+            if shown.expand(SAME).contains(start) || shown.expand(SAME).contains_rect(t.rect) {
+                continue;
+            }
+            let over = t.rect.intersect(shown);
+            // (A line's box reaches into what's under it by its leading;
+            // its ink doesn't.)
+            if over.width() > 2.0 && over.height() > t.size * 0.4 {
+                push(
+                    out,
+                    finding(
+                        Level::Error,
+                        "text-over-control",
+                        format!("{} runs over {} by {:.1}×{:.1}: give it room (wrap it, or cut it short: `StringView::cut`)", quote(t), c.said(), over.width(), over.height()),
+                        over,
+                    ),
+                );
             }
         }
     }
@@ -496,15 +542,20 @@ fn texts_over(p: &Parts, screen: Rect, out: &mut Vec<Finding>) {
 
 /// The parts of a list or a strip the kit lays out together (rows under
 /// their header, tabs side by side): spaced as the kit means them.
-fn part_of_a_whole(c: &Control) -> bool {
+fn part_of_a_whole(p: &Parts, c: &Control) -> bool {
     matches!(c.role.as_str(), "Row" | "ListItem" | "Cell" | "ColumnHeader" | "Tab" | "MenuItem" | "TreeItem")
+        // Scroll arrows belong to the bar, not the form beside it. The
+        // kit records the bar as a scroll area, including both arrows.
+        || c.role == "Button"
+            && matches!(c.name.as_str(), "Scroll Up" | "Scroll Down" | "Scroll Left" | "Scroll Right")
+            && p.scrolls.iter().any(|r| r.expand(SAME).contains_rect(c.rect))
 }
 
 /// What shows of text and controls, for spacing: (rect, name, is text,
 /// baseline).
 fn items(p: &Parts) -> Vec<(Rect, String, bool, f32)> {
     let mut out: Vec<(Rect, String, bool, f32)> = p.texts.iter().map(|t| (caps(t), quote(t), true, t.baseline)).collect();
-    out.extend(showing(p).filter(|c| !part_of_a_whole(c)).map(|c| (c.shown(), c.said(), false, 0.0)));
+    out.extend(showing(p).filter(|c| !part_of_a_whole(p, c)).map(|c| (c.shown(), c.said(), false, 0.0)));
     // Paragraphs (a note under a control) say themselves as labels only.
     out.extend(p.controls.iter().filter(|c| c.role == "Label" && c.shown().is_positive() && c.rect.height() > 20.0).map(|c| (c.shown(), c.said(), false, 0.0)));
     out
@@ -632,7 +683,7 @@ fn crowded_lines(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
 /// Controls down a column almost lined up, on the left or the right.
 fn control_edges(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
     // (A menu bar's titles are set by their lengths, as tabs are.)
-    let shown: Vec<&Control> = showing(p).filter(|c| !part_of_a_whole(c) && c.role != "MenuBarItem").collect();
+    let shown: Vec<&Control> = showing(p).filter(|c| !part_of_a_whole(p, c) && c.role != "MenuBarItem" && grid_of(p, &c.shown()).is_none()).collect();
     let right_room = SAME.max(1.0 / ppp + 0.01);
     // (A check box or radio button ends where its label does: its right
     // edge lines up with nothing.)
@@ -1153,6 +1204,41 @@ mod tests {
         Control { rect, clip: Rect::from_min_max(pos2(0.0, 0.0), pos2(400.0, 300.0)), role: "Button".into(), name: name.into(), clickable: true, element: Some(element.into()) }
     }
 
+    fn text(label: &str, x: f32, width: f32) -> Text {
+        Text { rect: Rect::from_min_max(pos2(x, 20.0), pos2(x + width, 52.0)), baseline: 44.0, middle: 36.0, left: x, label: label.into(), size: 26.0 }
+    }
+
+    /// A title laid out past its room, over the buttons beside it, is
+    /// found; one that fits, and a button's own label, aren't.
+    #[test]
+    fn text_over_a_control_is_found() {
+        let found = |p: &Parts| review(p, 400.0, 300.0, 2.0).into_iter().filter(|f| f.kind == "text-over-control").map(|f| f.text).collect::<Vec<_>>();
+        let mut p = Parts { controls: vec![button("Restore…", 250.0, "[restore]")], texts: vec![text("Getting ready: counting what to back up", 20.0, 300.0)], ..Parts::default() };
+        let said = found(&p);
+        assert_eq!(said.len(), 1, "{said:?}");
+        assert!(said[0].contains("Button \"Restore…\""), "{said:?}");
+        p.texts[0].rect.max.x = 240.0;
+        assert!(found(&p).is_empty());
+        // (Its own label: starts in it, and runs past it, as a long one
+        // cut by nothing would: that's `text-cut`'s, not this.)
+        p.texts = vec![text("Restore…", 258.0, 64.0)];
+        assert!(found(&p).is_empty());
+    }
+
+    /// Words over others are found; the same words a point off (the
+    /// desktop's labels' shadow) aren't.
+    #[test]
+    fn a_shadow_is_not_text_over_text() {
+        let found = |p: &Parts| review(p, 400.0, 300.0, 2.0).into_iter().filter(|f| f.kind == "text-over-text").count();
+        let mut shadowed = text("System", 21.0, 60.0);
+        shadowed.rect.min.y += 1.0;
+        shadowed.rect.max.y += 1.0;
+        let p = Parts { texts: vec![shadowed, text("System", 20.0, 60.0)], ..Parts::default() };
+        assert_eq!(found(&p), 0);
+        let p = Parts { texts: vec![text("Home", 24.0, 60.0), text("System", 20.0, 60.0)], ..Parts::default() };
+        assert_eq!(found(&p), 1);
+    }
+
     /// Two buttons with one element id (a Remove in each of two boxes,
     /// neither with an id of its own) are found; with ids of their own,
     /// not.
@@ -1162,6 +1248,41 @@ mod tests {
         let found = |p: &Parts| review(p, 400.0, 300.0, 2.0).into_iter().filter(|f| f.kind == "same-id").count();
         assert_eq!(found(&p), 1);
         p.controls[1].element = Some("[face-remove]".into());
+        assert_eq!(found(&p), 0);
+    }
+
+    #[test]
+    fn scroll_arrows_are_not_form_sections() {
+        let mut arrow = button("Scroll Down", 120.0, "[scroll]");
+        arrow.rect = Rect::from_min_max(pos2(120.0, 46.0), pos2(136.0, 62.0));
+        let mut p = Parts { controls: vec![button("Save", 20.0, "[save]"), arrow], scrolls: vec![Rect::from_min_max(pos2(120.0, 0.0), pos2(136.0, 62.0))], ..Parts::default() };
+        let found = |p: &Parts| {
+            let mut out = Vec::new();
+            after_commit(p, &mut out);
+            out.len()
+        };
+        assert_eq!(found(&p), 0);
+        // A real form button below Save still needs the section gap,
+        // even when its label happens to be a scrolling command.
+        p.scrolls.clear();
+        assert_eq!(found(&p), 1);
+        p.controls[1].name = "Next".into();
+        assert_eq!(found(&p), 1);
+    }
+
+    #[test]
+    fn controls_on_their_own_grid_are_not_form_columns() {
+        let mut lower = button("Folder", 23.0, "[folder]");
+        lower.rect.min.y += 30.0;
+        lower.rect.max.y += 30.0;
+        let mut p = Parts { controls: vec![button("Home", 20.0, "[home]"), lower], ..Parts::default() };
+        let found = |p: &Parts| {
+            let mut out = Vec::new();
+            control_edges(p, 1.0, &mut out);
+            out.len()
+        };
+        assert_eq!(found(&p), 1);
+        p.grids.push(Rect::from_min_max(pos2(0.0, 0.0), pos2(150.0, 100.0)));
         assert_eq!(found(&p), 0);
     }
 }

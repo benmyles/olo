@@ -109,6 +109,15 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     fn keyboard_key_to_action<B: InputBackend>(&mut self, evt: B::KeyboardKeyEvent) -> KeyAction {
         let key = evt.key_code().raw().saturating_sub(8);
+        // The power button: the computer's own does what Preferences ▸
+        // Keyboard says (power_button.rs); another keyboard's power key,
+        // nothing.
+        if key == crate::power_button::KEY_POWER {
+            if crate::power_button::built_in(evt.device().syspath().as_deref()) {
+                self.power_button(evt.state() == KeyState::Pressed);
+            }
+            return KeyAction::None;
+        }
         // A security key's typing goes to nobody, but three touches in a
         // row (security_key.rs).
         if !self.security_key_ids.is_empty() && evt.device().usb_id().is_some_and(|id| self.security_key_ids.contains(&id)) {
@@ -249,19 +258,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             return KeyAction::None;
         }
         let opts = crate::keymap::Options::from(&self.settings.keyboard);
-        let focus = self.focused_window().map_or(crate::keymap::Focus::Olo, |w| {
-            use crate::keymap::Focus;
-            let (id, keyboard) = (w.app_id(), &self.settings.keyboard);
-            if keyboard.terminal_apps.contains(&id) {
-                Focus::Terminal
-            } else if keyboard.browser_apps.contains(&id) {
-                Focus::Browser
-            } else if id.starts_with("olo.") {
-                Focus::Olo
-            } else {
-                Focus::Other
-            }
-        });
+        let focus = self.focused_window().map_or(crate::keymap::Focus::Olo, |w| crate::keymap::Focus::of(&w.app_id(), &self.settings.keyboard.terminal_apps, &self.settings.keyboard.browser_apps));
         let outs = self.keymap.feed(key, pressed, std::time::Instant::now(), opts, focus);
         // ⌘ on a tab's cut title: its tip at once (`tabtip`).
         if pressed && self.keymap.command_held() {
@@ -1151,6 +1148,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         pointer.frame(self);
         self.overview_pointer();
         self.twitch_pointer();
+        self.spring_pointer();
     }
 
     fn on_touch_down<B: InputBackend>(&mut self, evt: B::TouchDownEvent) {
@@ -1497,6 +1495,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         pointer.frame(self);
         self.overview_pointer();
         self.twitch_pointer();
+        self.spring_pointer();
     }
 
     /// Input injected over IPC by UI tests.
@@ -1607,6 +1606,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     pub fn synthetic_input(&mut self, event: olo_protocol::SyntheticEvent) {
         use olo_protocol::SyntheticEvent as S;
+        // (A sensor's reading, not input: nothing wakes for it.)
+        if let S::Presence { present, attentive } = event {
+            self.presence_changed(olo_system::presence::Presence { present, attentive });
+            return;
+        }
         // As real input wakes the displays (`process_input_event`).
         let before = self.pointer.current_location();
         let pointing = matches!(event, S::Move { .. } | S::MoveBy { .. } | S::MoveOn { .. } | S::Scroll { .. } | S::Touch { .. });
@@ -1635,6 +1639,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let time = InputTime::now();
         let pointer = self.pointer.clone();
         match event {
+            // (Taken in `synthetic_input`, before anything wakes.)
+            S::Presence { .. } => {}
             S::MoveBy { dx, dy } => {
                 let from = pointer.current_location();
                 let to = self.kept_on_screens(from, from + Point::from((dx, dy)));
@@ -1656,6 +1662,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 pointer.frame(self);
                 self.overview_pointer();
                 self.twitch_pointer();
+                self.spring_pointer();
             }
             S::Button { button, pressed } => {
                 if self.overview_button(button, pressed) || self.twitch_button(button, pressed) {
@@ -1670,6 +1677,13 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 let state = if pressed { smithay::backend::input::ButtonState::Pressed } else { smithay::backend::input::ButtonState::Released };
                 pointer.button(self, &ButtonEvent { button, state, serial, time });
                 pointer.frame(self);
+            }
+            // (A synthetic power key: a headless session's, for tests,
+            // which never restarts the computer; the session's is dropped.)
+            S::Key { key, pressed } if key == crate::power_button::KEY_POWER => {
+                if !BackendData::IS_SESSION {
+                    self.power_button(pressed);
+                }
             }
             S::Key { key, pressed } => {
                 let _ = serial;
@@ -2020,6 +2034,7 @@ impl AnvilState<UdevData> {
         pointer.frame(self);
         self.overview_pointer();
         self.twitch_pointer();
+        self.spring_pointer();
 
         // If pointer is now in a constraint region, activate it
         // TODO Anywhere else pointer is moved needs to do this
@@ -2056,6 +2071,7 @@ impl AnvilState<UdevData> {
         pointer.frame(self);
         self.overview_pointer();
         self.twitch_pointer();
+        self.spring_pointer();
     }
 
     fn on_tablet_tool_axis<B: InputBackend>(&mut self, evt: B::TabletToolAxisEvent) {

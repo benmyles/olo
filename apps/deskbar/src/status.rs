@@ -119,6 +119,9 @@ pub fn backup() -> Option<Backup> {
         Doing::BackingUp => Some("Backing up"),
         Doing::Pruning => Some("Tidying"),
         Doing::Restoring => Some("Restoring"),
+        Doing::Erasing => Some("Erasing"),
+        Doing::Validating => Some("Validating"),
+        Doing::Deleting { .. } => Some("Deleting"),
         _ => None,
     };
     let off = if st.pid == 0 {
@@ -133,7 +136,7 @@ pub fn backup() -> Option<Backup> {
     // intervals): said, if it isn't backing up now.
     let overdue = (3 * 86_400).max(3 * 60 * s.every_minutes as i64);
     let trouble = match (&st.last, st.last_ok) {
-        (Some(l), _) if l.error.is_some() => Some(format!("the last backup didn’t finish ({})", l.error.clone().unwrap_or_default())),
+        (Some(l), _) if l.error.is_some() && !l.stopped() => Some(format!("the last backup didn’t finish ({})", l.error.clone().unwrap_or_default())),
         (_, Some(ok)) if now - ok > overdue => Some(format!("nothing backed up for {} days", (now - ok) / 86_400)),
         _ => None,
     }

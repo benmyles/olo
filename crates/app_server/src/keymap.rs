@@ -19,6 +19,12 @@
 //! by word (Ctrl there), ⌘[ / ⌘] go back and forward (Alt+← / Alt+→:
 //! Chrome, Slack, GTK's Files), and in browsers ⌘⇧[ / ⌘⇧] change tabs.
 //! ⌘← / ⌘→ never navigate: they are the line's start and end everywhere.
+//! In Chrome and the browsers that are Chrome underneath ([`Focus::Chrome`],
+//! `app_keys::CHROMIUM_APPS`), each of Chrome's keys the profile has
+//! (`app_keys::chrome_keys`: its own, changed or not) is sent as what Linux
+//! Chrome takes for that command (`CHROME_NATIVE`): a Mac's ⌘Y is History
+//! (Ctrl+H), ⌥⌘I the developer tools (Ctrl+Shift+I), ⌃⌘F full screen (F11),
+//! ⌘Q quits (Ctrl+Shift+Q).
 //! With Alt (BeOS), Alt arrows are Ctrl arrows already (a word, the
 //! document, as on BeOS), the Super key is Option (Alt for apps), and
 //! the left Alt alone is the command key (the right one stays AltGr).
@@ -93,10 +99,35 @@ pub enum Focus {
     /// A web browser (`browser_apps`): as `Other`, and ⌘⇧[ / ⌘⇧] and
     /// ⌘⌥← / ⌘⌥→ are the tab before / after.
     Browser,
+    /// Chrome, or a browser that is Chrome underneath: a browser, and
+    /// Chrome's keys sent as Chrome takes them (`set_chrome`).
+    Chrome,
     /// Any other program (GTK, Qt, Electron): ⌥←/⌥→ and ⌥⌫/⌥⌦ move and
     /// delete by word, which is Ctrl there (Alt+← is Back), and ⌘[ / ⌘]
     /// are Back / Forward, which is Alt+← / Alt+→ there.
     Other,
+}
+
+impl Focus {
+    /// What a window of app `id` is, as far as keys go. Our web apps
+    /// (olo-slack: `olo_xdg::apps::WEB_APPS`) go by an `olo.` id but are
+    /// Chrome's windows, so they take Chrome's keys as the profile has
+    /// them (⌥← a word back, not Back; ⌘[ Back) (Ben, 2026-11-09: "in
+    /// slack option+left/right isn't moving back/forward a word it's
+    /// navigating back forward").
+    pub fn of(id: &str, terminal_apps: &[String], browser_apps: &[String]) -> Focus {
+        if terminal_apps.iter().any(|a| a == id) {
+            Focus::Terminal
+        } else if olo_protocol::app_keys::CHROMIUM_APPS.contains(&id) || olo_xdg::apps::is_web_app(id) {
+            Focus::Chrome
+        } else if browser_apps.iter().any(|a| a == id) {
+            Focus::Browser
+        } else if id.starts_with("olo.") {
+            Focus::Olo
+        } else {
+            Focus::Other
+        }
+    }
 }
 
 /// Modifier pairs, the one pressed for a chord first.
@@ -223,6 +254,9 @@ pub struct Keymap {
     switching: Option<Switching>,
     /// The shortcuts (from the settings).
     bindings: Vec<(Chord, Shortcut)>,
+    /// Chrome's keys as the profile has them, and what Chrome takes for
+    /// each (modifier pairs and the key), for [`Focus::Chrome`].
+    chrome: Vec<(Chord, Vec<[u32; 2]>, u32)>,
     /// Chords other programs took (their global shortcuts).
     grabs: Vec<Chord>,
     /// The next key is a shortcut being recorded.
@@ -315,9 +349,21 @@ impl Keymap {
         if self.switching.is_some() {
             out.push(Out::Action(Action::SwitchDone));
         }
-        let (bindings, grabs, recording) = (std::mem::take(&mut self.bindings), std::mem::take(&mut self.grabs), self.recording);
-        *self = Keymap { bindings, grabs, recording, ..Keymap::default() };
+        let (bindings, grabs, recording, chrome) = (std::mem::take(&mut self.bindings), std::mem::take(&mut self.grabs), self.recording, std::mem::take(&mut self.chrome));
+        *self = Keymap { bindings, grabs, recording, chrome, ..Keymap::default() };
         out
+    }
+
+    /// Chrome's keys as the profile has them, each with what Chrome takes
+    /// for its command (`app_keys::chrome_keys`).
+    pub fn set_chrome(&mut self, keys: Vec<(Chord, Chord)>) {
+        self.chrome = keys
+            .into_iter()
+            .map(|(from, to)| {
+                let mods = [(to.ctrl, CTRL), (to.alt, ALT), (to.shift, SHIFT)].into_iter().filter(|(on, _)| *on).map(|(_, pair)| pair).collect();
+                (from, mods, to.key)
+            })
+            .collect();
     }
 
     pub fn set_bindings(&mut self, bindings: Vec<(Chord, Shortcut)>) {
@@ -502,9 +548,9 @@ impl Keymap {
             return None;
         }
         let (cmd, ctrl, opt, shift) = (self.cmd_keys > 0, self.ctrl(), self.option(opts), self.shift());
-        let foreign = matches!(focus, Focus::Browser | Focus::Other);
+        let foreign = matches!(focus, Focus::Browser | Focus::Chrome | Focus::Other);
         let word = opts.mac() && foreign && opt && !cmd && !ctrl;
-        let browser = focus == Focus::Browser && cmd && !ctrl;
+        let browser = matches!(focus, Focus::Browser | Focus::Chrome) && cmd && !ctrl;
         let history = foreign && cmd && !ctrl && !opt && !shift;
         Some(match key {
             // A word back or on (selecting with ⇧), or deleted.
@@ -648,10 +694,17 @@ impl Keymap {
             return;
         }
         let tab = matches!(shortcut, Some(Shortcut::NextTab | Shortcut::PreviousTab));
-        let translated = if shortcut.is_none() { self.translate(key, focus, opts) } else { None };
+        // Chrome's own keys first, as Chrome takes them.
+        let chrome = if shortcut.is_none() && focus == Focus::Chrome { self.chrome.iter().find(|(c, ..)| *c == chord).map(|(_, with, to)| (with.clone(), *to)) } else { None };
+        let translated = if shortcut.is_none() && chrome.is_none() { self.translate(key, focus, opts) } else { None };
         // (⌥ stays up through a run of ⌥← words, as through Next Tabs.)
-        if !tab && translated.is_none() && !olo_protocol::shortcuts::MODIFIER_KEYS.contains(&key) {
+        if !tab && translated.is_none() && chrome.is_none() && !olo_protocol::shortcuts::MODIFIER_KEYS.contains(&key) {
             self.restore_lifted(out);
+        }
+        if let Some((with, to)) = chrome {
+            self.stand_for(&mut h, &with, to, out);
+            self.held.insert(key, h);
+            return;
         }
         if let Some((with, to)) = translated {
             self.stand_for(&mut h, with, to, out);
@@ -831,6 +884,7 @@ mod tests {
         fn with(profile: &KeyboardProfile) -> Self {
             let mut k = Keymap::default();
             k.set_bindings(olo_protocol::shortcuts::bindings(profile));
+            k.set_chrome(olo_protocol::app_keys::chrome_keys(profile));
             let opts = Options { command: profile.command_key, palette_on_tap: true, ..OPTS };
             Rig { k, t: Instant::now(), focus: Focus::Olo, opts }
         }
@@ -1209,6 +1263,77 @@ mod tests {
         assert_eq!(r.down(C), [Key(C, true)]);
         r.up(C);
         assert!(r.k.down.is_empty());
+    }
+
+    /// Slack (olo-slack: Chrome, under an `olo.` id) is Chrome: on a Mac,
+    /// ⌥← and ⌥→ move a word (Ctrl+← there), ⌘[ and ⌘] go back and on
+    /// (Alt+←), as the profile's Chrome keys say.
+    #[test]
+    fn slack_takes_chromes_keys() {
+        assert_eq!(Focus::of("olo.slack", &[], &[]), Focus::Chrome);
+        assert_eq!(Focus::of("google-chrome", &[], &[]), Focus::Chrome);
+        assert_eq!(Focus::of("olo.tracker", &[], &[]), Focus::Olo);
+        assert_eq!(Focus::of("org.gnome.Nautilus", &[], &[]), Focus::Other);
+        assert_eq!(Focus::of("olo.terminal", &["olo.terminal".to_owned()], &[]), Focus::Terminal);
+        let mut r = Rig::new();
+        r.focus = Focus::of("olo.slack", &[], &[]);
+        // ⌥←: a word back (Ctrl+←), ⌥ let go of meanwhile; ⌥⇧→ selects one.
+        r.down(LEFTALT);
+        assert_eq!(r.down(LEFT), [Key(LEFTCTRL, true), Key(LEFTALT, false), Key(LEFT, true)]);
+        r.up(LEFT);
+        r.down(LEFTSHIFT);
+        assert_eq!(r.down(RIGHT), [Key(LEFTCTRL, true), Key(RIGHT, true)]);
+        r.up(RIGHT);
+        r.up(LEFTSHIFT);
+        r.up(LEFTALT);
+        // ⌘[ and ⌘]: Back and Forward (Alt+← and Alt+→).
+        r.down(LEFTMETA);
+        assert_eq!(r.down(LEFTBRACE), [Key(RIGHTCTRL, false), Key(LEFTALT, true), Key(LEFT, true)]);
+        r.up(LEFTBRACE);
+        assert_eq!(r.down(RIGHTBRACE), [Key(RIGHTCTRL, false), Key(LEFTALT, true), Key(RIGHT, true)]);
+        r.up(RIGHTBRACE);
+        r.up(LEFTMETA);
+        assert!(r.k.down.is_empty(), "{:?}", r.k.down);
+        // As an Olo app it had: ⌥← reached it as Alt+← (Back).
+        r.focus = Focus::Olo;
+        r.down(LEFTALT);
+        assert_eq!(r.down(LEFT), [Key(LEFT, true)]);
+    }
+
+    /// Chrome's keys as a Mac has them, sent as Linux Chrome takes them;
+    /// in another browser, not.
+    #[test]
+    fn chrome_gets_its_own_keys() {
+        let (key_y, key_h, key_i, key_f, key_f11): (u32, u32, u32, u32, u32) = (21, 35, 23, 33, 87);
+        let mut r = Rig::new();
+        r.focus = Focus::Chrome;
+        r.down(LEFTMETA);
+        // ⌘Y is History: Ctrl+H (⌘'s Ctrl is the Ctrl it wants).
+        assert_eq!(r.down(key_y), [Key(key_h, true)]);
+        assert_eq!(r.up(key_y), [Key(key_h, false)]);
+        // ⌥⌘I, the developer tools: Ctrl+Shift+I, ⌥ let go of meanwhile.
+        r.down(LEFTALT);
+        assert_eq!(r.down(key_i), [Key(LEFTSHIFT, true), Key(LEFTALT, false), Key(key_i, true)]);
+        r.up(key_i);
+        r.up(LEFTALT);
+        // ⌘[ is still Back (Alt+←).
+        assert_eq!(r.down(LEFTBRACE), [Key(RIGHTCTRL, false), Key(LEFTALT, true), Key(LEFT, true)]);
+        r.up(LEFTBRACE);
+        r.up(LEFTMETA);
+        // ⌃⌘F, full screen: F11, alone.
+        r.down(LEFTCTRL);
+        r.down(LEFTMETA);
+        let out = r.down(key_f);
+        assert_eq!(out.last(), Some(&Key(key_f11, true)), "{out:?}");
+        assert!(r.k.down.keys().all(|k| ![LEFTCTRL, RIGHTCTRL].contains(k)), "{:?}", r.k.down);
+        r.up(key_f);
+        r.up(LEFTMETA);
+        r.up(LEFTCTRL);
+        assert!(r.k.down.is_empty(), "{:?}", r.k.down);
+        // In Firefox, ⌘Y is just Ctrl+Y.
+        r.focus = Focus::Browser;
+        r.down(LEFTMETA);
+        assert_eq!(r.down(key_y), [Key(key_y, true)]);
     }
 
     #[test]

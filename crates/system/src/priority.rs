@@ -51,7 +51,15 @@ pub fn realtime(pid: u32, tid: u32, priority: u32) -> Result<()> {
 /// Whether thread `tid` runs realtime (SCHED_FIFO or SCHED_RR).
 pub fn is_realtime(tid: u32) -> bool {
     // SAFETY: sched_getscheduler only reads.
-    matches!(unsafe { libc::sched_getscheduler(tid as libc::pid_t) }, libc::SCHED_FIFO | libc::SCHED_RR)
+    realtime_policy(unsafe { libc::sched_getscheduler(tid as libc::pid_t) })
+}
+
+/// Whether `sched_getscheduler`'s answer is a realtime policy. rtkit
+/// gives SCHED_RR with SCHED_RESET_ON_FORK, which comes back OR'd into
+/// the policy (0x40000002): read as it was, every thread rtkit made
+/// realtime (PipeWire's, the voice services') looked not to be.
+fn realtime_policy(policy: libc::c_int) -> bool {
+    policy >= 0 && matches!(policy & !libc::SCHED_RESET_ON_FORK, libc::SCHED_FIFO | libc::SCHED_RR)
 }
 
 /// The lowest nice rtkit gives (−15 by default), or None without it.
@@ -168,6 +176,15 @@ mod tests {
         assert!((-20..=19).contains(&n));
         // Already there (or below): nothing asked of rtkit.
         assert_eq!(raise_thread(me, me, n), Ok(n));
+    }
+
+    #[test]
+    fn rtkits_reset_on_fork_is_still_realtime() {
+        assert!(realtime_policy(libc::SCHED_RR | libc::SCHED_RESET_ON_FORK));
+        assert!(realtime_policy(libc::SCHED_FIFO));
+        assert!(!realtime_policy(libc::SCHED_OTHER | libc::SCHED_RESET_ON_FORK));
+        assert!(!realtime_policy(libc::SCHED_IDLE));
+        assert!(!realtime_policy(-1));
     }
 
     /// Through the system's rtkit, on a thread of this test's own.

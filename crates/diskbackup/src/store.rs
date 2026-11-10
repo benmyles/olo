@@ -4,6 +4,7 @@
 //! never shows half of one. Names are paths with `/` ("data/ab/abcd…").
 
 use std::{
+    collections::HashMap,
     io,
     path::{Path, PathBuf},
 };
@@ -21,6 +22,18 @@ pub trait Store: Send + Sync {
     fn delete(&self, name: &str) -> io::Result<()>;
     /// Where it is, to say ("~/Backups/DiskBackup", "Google Drive").
     fn describe(&self) -> String;
+    /// It keeps a checksum of each object (an MD5 of its bytes, as
+    /// Google Drive does), so what's sent is worth summing first.
+    fn keeps_checksums(&self) -> bool {
+        false
+    }
+    /// The store's own checksum of each object in `dir` (as `list`), by
+    /// name, lowercase hex: compared with what was sent, it shows each
+    /// arrived and stayed as sent, without fetching it. None: it keeps
+    /// none.
+    fn checksums(&self, _dir: &str) -> io::Result<Option<HashMap<String, String>>> {
+        Ok(None)
+    }
 }
 
 /// A store in a folder (a disk of its own, a mounted share; and the tests).
@@ -123,6 +136,9 @@ pub struct Limit {
     bytes_per_second: std::sync::atomic::AtomicU64,
     /// When what was let through so far is paid off.
     paid: std::sync::Mutex<Option<std::time::Instant>>,
+    /// Bytes let through, all told (what's sent, as it goes: a pack's
+    /// progress while it's sent, and "sent" moving smoothly).
+    passed: std::sync::atomic::AtomicU64,
 }
 
 impl Limit {
@@ -140,8 +156,18 @@ impl Limit {
         self.bytes_per_second.load(std::sync::atomic::Ordering::Relaxed)
     }
 
+    /// Bytes let through so far, all told.
+    pub fn passed(&self) -> u64 {
+        self.passed.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     /// `n` bytes are about to go: wait as long as the limit asks.
     pub fn take(&self, n: u64) {
+        self.pay(n);
+        self.passed.fetch_add(n, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    fn pay(&self, n: u64) {
         let rate = self.get();
         if rate == 0 || n == 0 {
             return;
@@ -203,6 +229,14 @@ impl<S: Store> Store for Throttled<S> {
 
     fn describe(&self) -> String {
         self.inner.describe()
+    }
+
+    fn keeps_checksums(&self) -> bool {
+        self.inner.keeps_checksums()
+    }
+
+    fn checksums(&self, dir: &str) -> io::Result<Option<HashMap<String, String>>> {
+        self.inner.checksums(dir)
     }
 }
 

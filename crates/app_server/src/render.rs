@@ -861,6 +861,27 @@ pub fn capture<R, T>(
 ) -> Result<image::RgbaImage, String>
 where
     R: Renderer + ImportAll + ImportMem + Offscreen<T> + ExportMem,
+    T: Clone + 'static,
+    R::TextureId: Clone + Send + 'static,
+    R::Error: std::fmt::Display,
+{
+    let readback = capture_start(renderer, output, space, overlays, overview, clear_color, locked)?;
+    offscreen_finish(renderer, readback)
+}
+
+/// [`capture`], its pixels on their way back ([`offscreen_start`]).
+pub fn capture_start<R, T>(
+    renderer: &mut R,
+    output: &Output,
+    space: &Space<WindowElement>,
+    overlays: Vec<CustomRenderElements<R>>,
+    overview: Option<&crate::overview::Overview>,
+    clear_color: Color32F,
+    locked: bool,
+) -> Result<Readback<R::TextureMapping>, String>
+where
+    R: Renderer + ImportAll + ImportMem + Offscreen<T> + ExportMem,
+    T: Clone + 'static,
     R::TextureId: Clone + Send + 'static,
     R::Error: std::fmt::Display,
 {
@@ -868,7 +889,7 @@ where
     let scale = output.current_scale().fractional_scale();
     // (A screenshot is the screen as it is: never a recording's zoom.)
     let (elements, clear_color) = capture_elements(renderer, output, space, overlays, overview, clear_color, locked, None, false);
-    offscreen(renderer, size, scale, &elements, clear_color)
+    offscreen_start(renderer, size, scale, &elements, clear_color)
 }
 
 thread_local! {
@@ -1067,6 +1088,32 @@ pub fn offscreen<R, T, E>(renderer: &mut R, size: Size<i32, Physical>, scale: f6
 where
     R: Renderer + Offscreen<T> + ExportMem,
     R::Error: std::fmt::Display,
+    R::TextureId: 'static,
+    T: Clone + 'static,
+    E: RenderElement<R>,
+{
+    let readback = offscreen_start(renderer, size, scale, elements, clear_color)?;
+    offscreen_finish(renderer, readback)
+}
+
+/// A picture drawn offscreen on its way back from the GPU
+/// ([`offscreen_start`]): its pixels copied into a buffer of the
+/// renderer's, which [`offscreen_finish`] maps.
+pub struct Readback<M> {
+    mapping: M,
+    size: Size<i32, Physical>,
+}
+
+/// Draw `elements` offscreen and ask for the pixels back, without waiting
+/// for them: the GPU draws and copies while app_server goes on, and
+/// [`offscreen_finish`] (once a fence says it's done: headless's shots)
+/// takes them without waiting.
+pub fn offscreen_start<R, T, E>(renderer: &mut R, size: Size<i32, Physical>, scale: f64, elements: &[E], clear_color: Color32F) -> Result<Readback<R::TextureMapping>, String>
+where
+    R: Renderer + Offscreen<T> + ExportMem,
+    R::Error: std::fmt::Display,
+    R::TextureId: 'static,
+    T: Clone + 'static,
     E: RenderElement<R>,
 {
     if size.w <= 0 || size.h <= 0 {
@@ -1074,21 +1121,84 @@ where
     }
     let buffer_size: Size<i32, Buffer> = (size.w, size.h).into();
     let err = |e: R::Error| e.to_string();
-    let mut target = renderer.create_buffer(Fourcc::Abgr8888, buffer_size).map_err(err)?;
+    let mut target = kept_target(renderer, buffer_size).map_err(err)?;
     let mapping = {
         let mut fb = renderer.bind(&mut target).map_err(err)?;
         let mut damage_tracker = OutputDamageTracker::new(size, scale, Transform::Normal);
         damage_tracker.render_output(renderer, &mut fb, 0, elements, clear_color).map_err(|e| format!("{e:?}"))?;
         renderer.copy_framebuffer(&fb, Rectangle::from_size(buffer_size), Fourcc::Abgr8888).map_err(err)?
     };
+    Ok(Readback { mapping, size })
+}
+
+/// The pixels of a [`Readback`] (waiting for the GPU if it isn't done).
+pub fn offscreen_finish<R>(renderer: &mut R, readback: Readback<R::TextureMapping>) -> Result<image::RgbaImage, String>
+where
+    R: ExportMem,
+    R::Error: std::fmt::Display,
+{
+    let Readback { mapping, size } = readback;
     let flipped = mapping.flipped();
-    let data = renderer.map_texture(&mapping).map_err(err)?.to_vec();
+    let data = renderer.map_texture(&mapping).map_err(|e| e.to_string())?.to_vec();
     let mut img = image::RgbaImage::from_raw(size.w as u32, size.h as u32, data).ok_or("short read")?;
     // GL reads back bottom-up unless the mapping already accounts for it.
     if !flipped {
         image::imageops::flip_vertical_in_place(&mut img);
     }
     Ok(img)
+}
+
+thread_local! {
+    /// The last offscreen target (a screenshot's: 33 MB at 4K), kept for
+    /// the next of the same size in the same GL context (an agent's looks,
+    /// a recording's frames) rather than made for each, and let go of
+    /// `TARGET_KEPT` after its last use ([`let_go_of_kept_target`]).
+    static TARGET: std::cell::RefCell<Option<KeptTarget>> = const { std::cell::RefCell::new(None) };
+}
+
+struct KeptTarget {
+    context: smithay::backend::renderer::ErasedContextId,
+    size: Size<i32, Buffer>,
+    texture: Box<dyn std::any::Any>,
+    used: std::time::Instant,
+}
+
+/// How long an offscreen target is kept after its last use.
+const TARGET_KEPT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// An offscreen target of `size` in `renderer`'s context: the one kept, or
+/// a new one (kept in its place).
+fn kept_target<R, T>(renderer: &mut R, size: Size<i32, Buffer>) -> Result<T, R::Error>
+where
+    R: Renderer + Offscreen<T>,
+    R::TextureId: 'static,
+    T: Clone + 'static,
+{
+    let context = renderer.context_id().erased();
+    let kept = TARGET.with(|t| {
+        let mut t = t.borrow_mut();
+        let k = t.as_mut().filter(|k| k.context == context && k.size == size)?;
+        k.used = std::time::Instant::now();
+        k.texture.downcast_ref::<T>().cloned()
+    });
+    if let Some(texture) = kept {
+        return Ok(texture);
+    }
+    let texture = renderer.create_buffer(Fourcc::Abgr8888, size)?;
+    TARGET.with(|t| *t.borrow_mut() = Some(KeptTarget { context, size, texture: Box::new(texture.clone()), used: std::time::Instant::now() }));
+    Ok(texture)
+}
+
+/// Let the kept offscreen target go once it's been unused `TARGET_KEPT`
+/// (each frame asks: nothing is held while shots are taken, and it goes
+/// with the next frame after that).
+pub fn let_go_of_kept_target() {
+    TARGET.with(|t| {
+        let mut t = t.borrow_mut();
+        if t.as_ref().is_some_and(|k| k.used.elapsed() >= TARGET_KEPT) {
+            *t = None;
+        }
+    });
 }
 
 #[cfg(test)]

@@ -27,6 +27,9 @@ mod sni;
 mod status;
 mod widgets;
 
+/// AppImages (`~/AppImages` in the Olo menu; running ones as themselves).
+use olo_appimage as appimages;
+
 use std::{
     collections::HashMap,
     path::PathBuf,
@@ -141,11 +144,16 @@ enum Msg {
     Workspace(u32, u32, Vec<DisplayWorkspace>),
     Status(status::Status),
     Power(olo_protocol::PowerStatus),
+    /// The power button held for an "Asking First" (app_server's
+    /// power_button.rs): its alert, as the menu's Restart and Shut Down.
+    PowerButton(Power),
     /// Undo and Redo Window Arrangement's names (None: nothing to).
     Arrangement(Option<String>, Option<String>),
     Settings(Settings),
     Outputs(Vec<OutputInfo>),
     Installed(Installed),
+    /// What's in `~/AppImages` (None: no such folder).
+    AppImages(Option<Vec<appimages::AppImage>>),
     /// Other programs' tray icons and launcher badges (`sni`).
     Tray(sni::Tray),
     /// The live widgets' readings, by widget (`widgets`).
@@ -174,6 +182,32 @@ fn scan_installed(proxy: olo_ui::Proxy) {
         let ours = OUR_APPS.iter().map(|(bin, _, _)| *bin).filter(|bin| olo_xdg::find_program(bin).is_some()).collect();
         let preferences = olo_xdg::find_program("olo-preferences").is_some();
         proxy.send(Msg::Installed(Installed { entries: desktop_entry::all(), ours, preferences }));
+    });
+}
+
+/// Look in `~/AppImages` on a worker (an AppImage new or changed is read
+/// for its name and icon), and tell the app. One look at a time; a change
+/// meanwhile (an AppImage still being downloaded) has one more after it.
+fn scan_appimages(proxy: olo_ui::Proxy) {
+    use std::sync::atomic::{AtomicBool, Ordering::SeqCst};
+    static RUNNING: AtomicBool = AtomicBool::new(false);
+    static AGAIN: AtomicBool = AtomicBool::new(false);
+    if RUNNING.swap(true, SeqCst) {
+        AGAIN.store(true, SeqCst);
+        return;
+    }
+    std::thread::spawn(move || {
+        loop {
+            AGAIN.store(false, SeqCst);
+            proxy.send(Msg::AppImages(appimages::scan()));
+            if !AGAIN.load(SeqCst) {
+                RUNNING.store(false, SeqCst);
+                // (One that came as this one ended.)
+                if !AGAIN.swap(false, SeqCst) || RUNNING.swap(true, SeqCst) {
+                    return;
+                }
+            }
+        }
     });
 }
 
@@ -234,11 +268,19 @@ struct Deskbar {
     /// Appearance ▸ Show icons in the Deskbar menu.
     menu_icons: bool,
     installed: Installed,
+    /// The AppImages in `~/AppImages` (None: no such folder).
+    appimages: Option<Vec<appimages::AppImage>>,
     /// A look for what is installed under way (`scan_installed`), and
     /// when the last one started.
     scanning: bool,
     scanned_at: Option<Instant>,
+    /// What is installed has been looked for once.
+    installed_known: bool,
     entries: HashMap<String, Option<DesktopEntry>>,
+    /// App ids of windows looked at for an entry, and with none, at their
+    /// process (`appimages::of_process`: an AppImage's, its entry not
+    /// saying it).
+    asked_process: std::collections::HashSet<String>,
     /// The window that last had the focus: still "this window" for the
     /// Olo menu's commands while the menu holds the keyboard.
     last_focused: Option<u64>,
@@ -570,6 +612,39 @@ impl Deskbar {
         let focused = windows.iter().find(|w| w.focused).map(|w| w.id);
         self.last_focused = focused.or(self.last_focused.filter(|id| windows.iter().any(|w| w.id == *id && !w.minimized)));
         self.windows = windows;
+        self.ask_processes();
+    }
+
+    /// Windows of an app no entry gives (once what is installed is
+    /// known): an AppImage's whose own entry doesn't say its app id is
+    /// found by its process, on a worker, and the id kept for it; its
+    /// entry then says it, and the folder's change brings it here (and
+    /// to every other app) with its name and icon. Each id looked at once.
+    fn ask_processes(&mut self) {
+        if !self.installed_known {
+            return;
+        }
+        let mut ask = Vec::new();
+        for w in &self.windows {
+            let Some(pid) = w.pid else { continue };
+            // (Each id once: a window event costs a lookup for each window.)
+            if w.app_id.is_empty() || self.asked_process.contains(&w.app_id) {
+                continue;
+            }
+            self.asked_process.insert(w.app_id.clone());
+            if our_app(&w.app_id).is_none() && desktop_entry::find_among(&self.installed.entries, &w.app_id).is_none() {
+                ask.push((w.app_id.clone(), pid));
+            }
+        }
+        if !ask.is_empty() {
+            std::thread::spawn(move || {
+                for (app_id, pid) in ask {
+                    if let Some(path) = appimages::of_process(pid) {
+                        appimages::learn(&path, &app_id);
+                    }
+                }
+            });
+        }
     }
 
     fn olo_menu(&self, mode: WindowingMode) -> Menu {
@@ -629,7 +704,7 @@ impl Deskbar {
             other = other.submenu(m.sorted()).icon("folder");
         }
 
-        Menu::new("Olo")
+        let mut menu = Menu::new("Olo")
             .item("About Olo Desktop", "about")
             .icon("olo")
             .item("Find…", "find")
@@ -656,11 +731,27 @@ impl Deskbar {
             .icon("shut-down")
             .separator()
             .submenu(apps)
-            .icon("application")
-            .submenu(other)
-            .icon("other-applications")
-            .submenu(prefs)
-            .icon("preferences")
+            .icon("application");
+        // Under Applications: what's in ~/AppImages, if there's the folder.
+        if let Some(m) = self.appimages_menu() {
+            menu = menu.submenu(m).icon("archive");
+        }
+        menu.submenu(other).icon("other-applications").submenu(prefs).icon("preferences")
+    }
+
+    /// `~/AppImages`' apps, by name, each with its own icon (taken out of
+    /// it) or the generic one; None without the folder.
+    fn appimages_menu(&self) -> Option<Menu> {
+        let found = self.appimages.as_ref()?;
+        let mut m = Menu::new("AppImages");
+        if found.is_empty() {
+            return Some(m.item("Put AppImages in ~/AppImages", "none").enabled(false));
+        }
+        for a in found {
+            let icon = a.icon.as_ref().map_or_else(|| "application".to_owned(), |p| p.display().to_string());
+            m = m.item(&a.name, format!("appimage:{}", a.path.display())).icon(icon);
+        }
+        Some(m)
     }
 
     /// The focused window (what "Others" leaves alone and a window is
@@ -699,13 +790,18 @@ impl Deskbar {
             .item("Windows Preferences…", "pref:windows")
     }
 
-    /// The windowing modes (`mode:` and its id), `mode` checked.
+    /// The windowing modes (`mode:` and its id), `mode` checked, and
+    /// auto-tiling's layouts (`layout:` and its id; every display's).
     fn modes_menu(&self, mode: WindowingMode) -> Menu {
         let mut menu = Menu::new("Windowing Mode");
         for m in WindowingMode::ALL {
             menu = menu.item(m.title(), format!("mode:{}", m.id())).checked(m == mode);
         }
-        menu
+        let mut layouts = Menu::new("Auto-Tiling Layout");
+        for l in olo_protocol::TilingLayout::ALL {
+            layouts = layouts.item(l.title(), format!("layout:{}", l.id())).checked(l == self.tiling.layout);
+        }
+        menu.submenu(layouts)
     }
 
     /// Go to one of `display`'s workspaces, or move the focused window to
@@ -836,7 +932,32 @@ impl Deskbar {
         if olo_ui::moving::menus_offer() && team.windows.iter().any(|w| w.kept) {
             m = m.submenu(Menu::agent_screens(if several { "Move All to Agent Screen" } else { "Move to Agent Screen" }, &self.status.agent_screens, ""));
         }
-        m.separator().item("Group Windows", "group-windows").checked(!self.tiling.ungrouped_apps.contains(&app)).enabled(!app.is_empty())
+        // Said as it is (Ben, 2026-11-08: "no checks/ticks just the option
+        // changes based on the state"): grouped, Ungroup All; else Group All.
+        let grouped = self.all_grouped(&team.windows, !self.tiling.ungrouped_apps.contains(&app));
+        let (label, cmd) = if grouped { ("Ungroup All Windows", "ungroup-all") } else { ("Group All Windows", "group-all") };
+        m.separator().item(label, cmd).enabled(!app.is_empty())
+    }
+
+    /// Whether all of a team's windows are grouped, as they show now:
+    /// wherever two or more show together (a display's workspace, not
+    /// minimized, ones that can be grouped), all in one group. With fewer
+    /// showing, as the app's grouping is set (`grouping`), so a window
+    /// opening later joins or doesn't.
+    fn all_grouped(&self, windows: &[WindowInfo], grouping: bool) -> bool {
+        let shown: Vec<&WindowInfo> = windows.iter().filter(|w| w.groupable && !w.minimized && w.workspace == self.showing(w.output.as_deref())).collect();
+        let mut together = false;
+        for w in &shown {
+            let here: Vec<&&WindowInfo> = shown.iter().filter(|o| o.output == w.output && o.workspace == w.workspace).collect();
+            if here.len() < 2 {
+                continue;
+            }
+            together = true;
+            if w.group.is_none() || here.iter().any(|o| o.group != w.group) {
+                return false;
+            }
+        }
+        together || grouping
     }
 
     /// The battery's menu (right click): the power mode, and Power's
@@ -945,6 +1066,11 @@ impl Deskbar {
             }
             Some(("run", bin)) => spawn(bin),
             Some(("pref", panel)) => spawn(&format!("olo-preferences {panel}")),
+            Some(("appimage", path)) => {
+                if let Err(e) = appimages::launch(std::path::Path::new(path)) {
+                    tracing::warn!("appimages: {path}: {e}");
+                }
+            }
             Some(("caff", arg)) => self.caffeine_command(arg),
             // A power mode: set by the daemon (off the UI thread); its
             // signal says so back.
@@ -1022,6 +1148,14 @@ impl Deskbar {
             Some(("mode", id)) => {
                 if let Some(mode) = WindowingMode::from_id(id) {
                     self.set_mode(self.menu_output.clone(), self.menu_workspace, mode);
+                }
+            }
+            // (At once here too, so the menu shows it before the settings
+            // come back.)
+            Some(("layout", id)) => {
+                if let Some(layout) = olo_protocol::TilingLayout::from_id(id) {
+                    self.tiling.layout = layout;
+                    request(Request::SetTilingLayout { layout });
                 }
             }
             Some(("workspace", n)) => {
@@ -1219,9 +1353,9 @@ impl Deskbar {
             request(Request::Activate { id });
             return;
         }
-        if cmd == "group-windows" {
-            if let Some(app) = self.windows.iter().find(|w| team_key_ == team_key(w)).map(|w| w.app_id.clone()) {
-                olo_ui::settings::set_groups_windows(&app, self.tiling.ungrouped_apps.contains(&app));
+        if cmd == "group-all" || cmd == "ungroup-all" {
+            if let Some(app_id) = self.windows.iter().find(|w| team_key_ == team_key(w)).map(|w| w.app_id.clone()) {
+                request(Request::GroupApp { app_id, grouped: cmd == "group-all" });
             }
             return;
         }
@@ -1312,6 +1446,7 @@ impl Deskbar {
                 self.status = s;
             }
             Msg::Arrangement(undo, redo) => self.arrangement = (undo, redo),
+            Msg::PowerButton(action) => self.confirm_power(action, cx),
             Msg::Power(p) => {
                 // (Nothing read for widgets nobody can see.)
                 self.live.pause(p.display_asleep || p.locked, &self.proxy);
@@ -1341,10 +1476,13 @@ impl Deskbar {
                     view.update(cx, |_, cx| cx.notify());
                 }
             }
+            Msg::AppImages(found) => self.appimages = found,
             Msg::Installed(installed) => {
                 self.installed = installed;
                 self.scanning = false;
+                self.installed_known = true;
                 self.entries.clear();
+                self.ask_processes();
             }
             Msg::Meters(batch) => {
                 self.live.add(batch);
@@ -1462,21 +1600,39 @@ fn backup_menu(clock: &olo_protocol::ClockSettings) -> Menu {
         }
         if n == 1 { "1 file".to_owned() } else { format!("{grouped} files") }
     };
-    let size = |b: u64| if b >= 1_000_000_000 { format!("{:.1} GB", b as f64 / 1e9) } else { format!("{:.0} MB", b as f64 / 1e6) };
     let mut said: Vec<String> = Vec::new();
     match &st.doing {
-        Doing::BackingUp => {
-            let p = st.progress.clone().unwrap_or_default();
-            said.push(format!("Backing up: {}, {} read, {} new", count(p.files), size(p.bytes), size(p.new_bytes)));
-        }
+        // What, how far through how much, how long, files, what's new
+        // and sent: DiskBackup's own words (its window says the same).
+        Doing::BackingUp => said.extend(st.progress.clone().unwrap_or_default().lines(&s, now)),
         Doing::Pruning => said.push("Tidying: letting go of old snapshots".into()),
         Doing::Restoring => said.push("Restoring".into()),
+        Doing::Erasing => said.push("Erasing every backup, to start fresh".into()),
+        Doing::Validating => said.push("Validating backups: reading them back".into()),
+        Doing::Deleting { what } => {
+            let p = st.progress.clone().unwrap_or_default();
+            said.push(if p.total_files > 0 { format!("Deleting {what}: {} of {}", count(p.files), count(p.total_files)) } else { format!("Deleting {what}") });
+        }
         Doing::Waiting { why } => said.push(format!("Waiting: {why}")),
         Doing::Idle if st.pid == 0 => said.push("The DiskBackup service isn’t running".into()),
         Doing::Idle => {}
     }
     match (&st.last, st.last_ok) {
-        (Some(l), ok) if l.error.is_some() => {
+        // Stopped by the person: calmly, and what it got through.
+        (Some(l), ok) if l.stopped() && st.doing == Doing::Idle => {
+            said.push(format!("You stopped the backup {}", when(l.time)));
+            if let Some(u) = &st.unfinished {
+                said.push(if u.files > 0 {
+                    format!("{} ({}) done so far: Back Up Now goes on", olo_protocol::diskbackup::words::plural(u.files, "file"), olo_protocol::diskbackup::words::size(u.bytes))
+                } else {
+                    "Back Up Now goes on from where it got to".into()
+                });
+            }
+            if let Some(t) = ok {
+                said.push(format!("Last backed up whole {}", when(t)));
+            }
+        }
+        (Some(l), ok) if l.error.is_some() && st.doing == Doing::Idle => {
             let mut why = l.error.clone().unwrap_or_default();
             if why.chars().count() > 60 {
                 why = format!("{}…", why.chars().take(59).collect::<String>());
@@ -1497,9 +1653,15 @@ fn backup_menu(clock: &olo_protocol::ClockSettings) -> Menu {
     for line in said {
         m = m.item(line, "").enabled(false);
     }
-    let busy = matches!(st.doing, Doing::BackingUp | Doing::Pruning);
+    let busy = matches!(st.doing, Doing::BackingUp | Doing::Pruning | Doing::Validating | Doing::Deleting { .. });
     m = m.separator();
-    m = if busy { m.item(if st.doing == Doing::Pruning { "Stop Tidying" } else { "Stop Backing Up" }, "backup:stop") } else { m.item("Back Up Now", "backup:now").enabled(st.pid != 0 && s.enabled) };
+    let stop = match st.doing {
+        Doing::Pruning => "Stop Tidying",
+        Doing::Validating => "Stop Validating",
+        Doing::Deleting { .. } => "Stop Deleting",
+        _ => "Stop Backing Up",
+    };
+    m = if busy { m.item(stop, "backup:stop") } else { m.item("Back Up Now", "backup:now").enabled(st.pid != 0 && s.enabled) };
     m = if s.enabled { m.item("Pause Backups", "backup:enabled=off") } else { m.item("Resume Backups", "backup:enabled=on") };
     m.separator().item("Restore Files…", "run:olo-diskbackup --restore-window").item("DiskBackup…", "run:olo-diskbackup")
 }
@@ -3142,7 +3304,7 @@ fn watch_server(proxy: olo_ui::Proxy) {
                         proxy.send(Msg::Outputs(outputs));
                     }
                     use olo_protocol::EventKind as K;
-                    if let Ok(events) = c.into_events_of(&[K::Windows, K::Workspace, K::Power, K::Settings, K::Outputs, K::ArrangementUndo]) {
+                    if let Ok(events) = c.into_events_of(&[K::Windows, K::Workspace, K::Power, K::Settings, K::Outputs, K::ArrangementUndo, K::PowerButton]) {
                         // Displays that came while this was subscribing
                         // (after an upgrade they come one by one): asked
                         // again, now that what changes from here comes as
@@ -3160,6 +3322,8 @@ fn watch_server(proxy: olo_ui::Proxy) {
                                 Event::ArrangementUndoChanged { undo, redo } => proxy.send(Msg::Arrangement(undo, redo)),
                                 Event::SettingsChanged { settings } => proxy.send(settings_msg(settings)),
                                 Event::OutputsChanged { outputs } => proxy.send(Msg::Outputs(outputs)),
+                                Event::PowerButton { action: olo_protocol::power_button::PowerAction::RestartAsk, done: true } => proxy.send(Msg::PowerButton(Power::Restart)),
+                                Event::PowerButton { action: olo_protocol::power_button::PowerAction::ShutDownAsk, done: true } => proxy.send(Msg::PowerButton(Power::ShutDown)),
                                 _ => {}
                             }
                         }
@@ -3192,6 +3356,13 @@ fn main() {
         if let Some(w) = olo_ui::watch::watch(desktop_entry::app_dirs(), move |_| scan_installed(rescan.clone())) {
             std::mem::forget(w);
         }
+        // AppImages put in ~/AppImages or taken out (the folder there or
+        // not, made later): listed again at once.
+        scan_appimages(proxy.clone());
+        let rescan = proxy.clone();
+        if let Some(w) = olo_ui::watch::watch([appimages::dir()], move |_| scan_appimages(rescan.clone())) {
+            std::mem::forget(w);
+        }
         status::spawn({
             let proxy = proxy.clone();
             move |s| proxy.send(Msg::Status(s))
@@ -3220,8 +3391,11 @@ fn main() {
                 menu_icons: true,
                 installed: Installed::default(),
                 scanning: true,
+                appimages: None,
                 scanned_at: Some(Instant::now()),
                 entries: HashMap::new(),
+                installed_known: false,
+                asked_process: Default::default(),
                 last_focused: None,
                 tiling: Default::default(),
                 menu_output: None,
@@ -3254,8 +3428,16 @@ fn main() {
         model.update(cx, |d, _| d.bars = bars);
         // A bar closed under it (the compositor took its display's
         // surface) is replaced as soon as its display is listed again.
+        // (After what closed it is done: a window closed in the middle of
+        // an update of Deskbar's own, as the approve sheet closes once
+        // app_server says yes, made this a second update of it, and GPUI
+        // panics at that: Deskbar crashed, Ben, 2026-11-09.)
         let reopen = model.clone();
-        cx.on_window_closed(move |cx| reopen.update(cx, |d, cx| d.sync_bars(cx))).detach();
+        cx.on_window_closed(move |cx| {
+            let reopen = reopen.clone();
+            cx.defer(move |cx| reopen.update(cx, |d, cx| d.sync_bars(cx)));
+        })
+        .detach();
         // A display app_server listed before this app's connection knew it
         // (after a restart they come one by one, the external ones last):
         // its bar is opened once it is known here, not on the main display

@@ -222,6 +222,15 @@ impl QuickLook {
 
     fn key_down(&mut self, e: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let k = &e.keystroke;
+        // A video or a sound: `>` a speed faster, `<` slower (its
+        // transport's speed button lists them).
+        if let Some(by) = olo_preview::ui::speed_key(k)
+            && self.preview.read(cx).playback_rate().is_some()
+        {
+            self.preview.update(cx, |p, cx| p.step_playback_rate(by, cx));
+            cx.stop_propagation();
+            return;
+        }
         let command = k.modifiers.control || k.modifiers.platform;
         let arrows = self.preview.read(cx).arrows_free();
         let media = self.preview.read(cx).has_media_time();

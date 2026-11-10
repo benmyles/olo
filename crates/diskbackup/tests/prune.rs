@@ -62,6 +62,13 @@ fn same(a: &Path, b: &Path) {
     }
 }
 
+/// `r` with packs of 16 MiB, as they were (these tests want several in a
+/// backup of tens of MiB).
+fn small(mut r: Repo) -> Repo {
+    r.set_pack_sizes(16 << 20, 16 << 20);
+    r
+}
+
 #[test]
 fn forget_then_prune() {
     let base = temp("main");
@@ -200,7 +207,7 @@ fn stopped_backup_goes_on() {
     let cancel = Arc::new(AtomicBool::new(false));
     let trip: Arc<dyn Store> = Arc::new(Tripwire { inner: LocalStore::new(base.join("store")), cancel: cancel.clone() });
     let key = Key::generate();
-    let mut repo = Repo::init(trip, key.clone(), None).unwrap();
+    let mut repo = small(Repo::init(trip, key.clone(), None).unwrap());
     let excludes = Excludes::none();
     let opts = Options { paths: vec![src.clone()], excludes: &excludes, host: "test".into(), one_file_system: true };
     let progress = Progress::default();
@@ -208,7 +215,7 @@ fn stopped_backup_goes_on() {
     drop(repo);
 
     let store: Arc<dyn Store> = Arc::new(LocalStore::new(base.join("store")));
-    let mut repo = Repo::open(store, key, None).unwrap();
+    let mut repo = small(Repo::open(store, key, None).unwrap());
     let go = AtomicBool::new(false);
     let (_, s) = backup(&mut repo, &opts, None, &go, &progress).unwrap();
     assert!(s.summary.new_bytes <= (40 << 20) - (15 << 20), "the first pack not sent again: {:?}", s.summary);
@@ -379,6 +386,130 @@ fn index_damaged_healed() {
     let (_, s) = repo.snapshots().unwrap().pop().unwrap();
     let out = base.join("out2");
     restore(&repo, &s.tree, &src, &out, &cancel, &progress).unwrap();
+    same(&src, &out);
+    let _ = std::fs::remove_dir_all(base);
+}
+
+/// Stopped part way: what it got through kept as an unfinished snapshot
+/// (no backup to restore from), which tidying keeps whole; the next backup
+/// goes on from it (the files it holds not read again), and once that one
+/// finishes, the unfinished one goes.
+#[test]
+fn stopped_backup_kept_and_resumed() {
+    let base = temp("unfinished");
+    let src = base.join("home");
+    std::fs::create_dir_all(src.join("a")).unwrap();
+    std::fs::create_dir_all(src.join("b")).unwrap();
+    for i in 0..10 {
+        std::fs::write(src.join(format!("a/{i}.bin")), noise(2 << 20, 100 + i)).unwrap();
+    }
+    std::fs::write(src.join("b/big.bin"), noise(24 << 20, 7)).unwrap();
+    std::fs::write(src.join("c.txt"), "the last").unwrap();
+    let cancel = Arc::new(AtomicBool::new(false));
+    let trip: Arc<dyn Store> = Arc::new(Tripwire { inner: LocalStore::new(base.join("store")), cancel: cancel.clone() });
+    let key = Key::generate();
+    let mut repo = small(Repo::init(trip, key.clone(), Some(base.join("cache"))).unwrap());
+    let excludes = Excludes::none();
+    let opts = Options { paths: vec![src.clone()], excludes: &excludes, host: "test".into(), one_file_system: true };
+    let progress = Progress::default();
+    assert!(matches!(backup(&mut repo, &opts, None, &cancel, &progress), Err(Error::Cancelled)));
+    drop(repo);
+
+    let store: Arc<dyn Store> = Arc::new(LocalStore::new(base.join("store")));
+    let mut repo = small(Repo::open(store.clone(), key.clone(), Some(base.join("cache"))).unwrap());
+    assert!(repo.snapshots().unwrap().is_empty(), "no backup to restore from");
+    let unfinished = repo.unfinished().unwrap();
+    assert_eq!(unfinished.len(), 1);
+    let (_, u) = &unfinished[0];
+    let done = u.summary.files;
+    assert!((2..10).contains(&done), "part of a/ done: {:?}", u.summary);
+    assert!(u.summary.stored_bytes >= 16 << 20, "{:?}", u.summary);
+    // Everything it sent is its own: nothing for tidying to free.
+    assert_eq!(olo_diskbackup::unused(&repo, &AtomicBool::new(false)).unwrap(), 0);
+    let before = size(&*store);
+    let lock = repo.lock(true).unwrap();
+    let go = AtomicBool::new(false);
+    prune(&mut repo, &go, &progress).unwrap();
+    drop(lock);
+    assert!(size(&*store) >= before - (1 << 20), "kept: {} of {before}", size(&*store));
+
+    // Gone on from: what it holds isn't read again.
+    let mut repo = small(Repo::open(store.clone(), key.clone(), Some(base.join("cache"))).unwrap());
+    let progress = Progress::default();
+    let (_, s) = backup(&mut repo, &opts, None, &go, &progress).unwrap();
+    assert!(progress.resuming.load(std::sync::atomic::Ordering::Relaxed));
+    let read_again = progress.read.load(std::sync::atomic::Ordering::Relaxed);
+    assert_eq!(read_again, 12 - done, "only what it hadn't got to");
+    assert!(progress.new_bytes.load(std::sync::atomic::Ordering::Relaxed) < (44 << 20) - u.summary.stored_bytes + (1 << 20), "and nothing it sent, sent again");
+    assert_eq!((s.summary.files, s.summary.new_files, s.summary.unchanged_files), (12, 12, 0), "{:?}", s.summary);
+    assert!(s.summary.stored_bytes >= u.summary.stored_bytes, "its own and the unfinished one's: {:?}", s.summary);
+    assert!(repo.unfinished().unwrap().is_empty(), "finished: the unfinished one goes");
+    let out = base.join("out");
+    restore(&repo, &s.tree, &src, &out, &go, &progress).unwrap();
+    same(&src, &out);
+    let _ = std::fs::remove_dir_all(base);
+}
+
+/// Checked: whole after the backup; a pack damaged in the store is found
+/// reading everything back (fast, only if it's the sample: a folder keeps
+/// no checksums); one gone is found either way. Repaired
+/// (tidying salvages what's whole and lets go of the rest), the next
+/// backup sends again what was lost, and the earlier backup is whole again
+/// too (what it needs is the same, by content).
+#[test]
+fn checked_damaged_repaired() {
+    use olo_diskbackup::{check, repair};
+    let base = temp("check");
+    let src = base.join("home");
+    std::fs::create_dir_all(src.join("docs")).unwrap();
+    std::fs::write(src.join("docs/a.bin"), noise(20 << 20, 11)).unwrap();
+    std::fs::write(src.join("docs/b.bin"), noise(20 << 20, 12)).unwrap();
+    std::fs::write(src.join("note.txt"), "a note").unwrap();
+    let store_dir = base.join("store");
+    let store: Arc<dyn Store> = Arc::new(LocalStore::new(&store_dir));
+    let key = Key::generate();
+    let mut repo = small(Repo::init(store.clone(), key.clone(), Some(base.join("cache"))).unwrap());
+    let excludes = Excludes::none();
+    let opts = Options { paths: vec![src.clone()], excludes: &excludes, host: "test".into(), one_file_system: true };
+    let (cancel, progress) = (AtomicBool::new(false), Progress::default());
+    let (_, s1) = backup(&mut repo, &opts, None, &cancel, &progress).unwrap();
+    let c = check(&repo, &s1, false, &cancel, &progress).unwrap();
+    assert!(c.problems.is_empty() && c.packs_read >= 1, "{c:?}");
+    let c = check(&repo, &s1, true, &cancel, &progress).unwrap();
+    assert!(c.problems.is_empty() && c.packs_read == c.packs && c.bytes_read >= 40 << 20, "{c:?}");
+
+    // One data pack damaged, another gone.
+    let mut data: Vec<(String, u64)> = store.list("data").unwrap();
+    data.sort_by_key(|(_, size)| std::cmp::Reverse(*size));
+    let (hurt, gone) = (store_dir.join(&data[0].0), store_dir.join(&data[1].0));
+    let mut bytes = std::fs::read(&hurt).unwrap();
+    bytes[1000] ^= 0x55;
+    std::fs::write(&hurt, bytes).unwrap();
+    std::fs::remove_file(&gone).unwrap();
+    // (Fast: the gone one, and the damaged one only if it's the sample.)
+    let fast = check(&repo, &s1, false, &cancel, &progress).unwrap();
+    assert!(fast.problems.iter().any(|p| p.contains("missing")) && (1..=2).contains(&fast.bad_packs.len()) && fast.sampled == 1, "{fast:?}");
+    let full = check(&repo, &s1, true, &cancel, &progress).unwrap();
+    assert_eq!(full.bad_packs.len(), 2, "{full:?}");
+    assert!(full.problems.iter().any(|p| p.contains("missing")) && full.problems.iter().any(|p| p.contains("damaged")), "{full:?}");
+    assert!(full.files.iter().any(|f| f.ends_with(".bin")) && full.files_affected >= 1, "{full:?}");
+
+    // Repaired, then backed up again: whole, the earlier one too.
+    let lock = repo.lock(true).unwrap();
+    let bad: std::collections::HashSet<_> = full.bad_packs.iter().copied().collect();
+    repair(&mut repo, &bad, &cancel, &progress).unwrap();
+    drop(lock);
+    assert!(!hurt.exists(), "the damaged pack let go of");
+    let mut repo = small(Repo::open(store.clone(), key.clone(), Some(base.join("cache"))).unwrap());
+    let (id1, _) = repo.snapshots().unwrap().pop().unwrap();
+    let (_, s2) = backup(&mut repo, &opts, Some((id1, &s1)), &cancel, &progress).unwrap();
+    assert!(s2.summary.new_bytes > 0, "what was lost, sent again: {:?}", s2.summary);
+    for s in [&s1, &s2] {
+        let c = check(&repo, s, true, &cancel, &progress).unwrap();
+        assert!(c.problems.is_empty(), "{c:?}");
+    }
+    let out = base.join("out");
+    restore(&repo, &s1.tree, &src, &out, &cancel, &progress).unwrap();
     same(&src, &out);
     let _ = std::fs::remove_dir_all(base);
 }

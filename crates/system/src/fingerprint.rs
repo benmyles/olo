@@ -56,8 +56,26 @@ impl Stop {
     }
 }
 
+/// fprintd's bus: the system bus, or (debug builds) a test's own
+/// (`OLO_FPRINT_BUS`, an address, as `OLO_FACE_BUS` is the face
+/// service's: the `fake-readers` example stands in there).
+fn conn() -> Result<&'static zbus::blocking::Connection> {
+    if cfg!(debug_assertions)
+        && let Ok(address) = std::env::var("OLO_FPRINT_BUS")
+        && !address.is_empty()
+    {
+        static TEST: std::sync::OnceLock<zbus::blocking::Connection> = std::sync::OnceLock::new();
+        if let Some(c) = TEST.get() {
+            return Ok(c);
+        }
+        let c = zbus::blocking::connection::Builder::address(address.as_str())?.build()?;
+        return Ok(TEST.get_or_init(|| c));
+    }
+    bus::system()
+}
+
 fn device() -> Result<Proxy<'static>> {
-    let conn = bus::system()?;
+    let conn = conn()?;
     let path: zvariant::OwnedObjectPath = bus::call(conn, DEST, "/net/reactivated/Fprint/Manager", "net.reactivated.Fprint.Manager", "GetDefaultDevice", &())?;
     Proxy::new(conn, DEST, path, DEVICE)
 }
@@ -79,6 +97,17 @@ pub fn fingers(user: &str) -> Result<Vec<String>> {
         Err(zbus::Error::MethodError(name, _, _)) if name.as_str() == "net.reactivated.Fprint.Error.NoEnrolledPrints" => Ok(Vec::new()),
         Err(e) => Err(e),
     }
+}
+
+/// Whether PAM's message `text` is pam_fprintd's, listening: it says so
+/// ("Place your finger on the fingerprint reader", "Swipe your right
+/// index finger across …") only once it has claimed the sensor, so a
+/// second PAM conversation started after it finds the sensor taken, and
+/// its pam_fprintd goes straight on to the password. sudo's window and
+/// the polkit agent start one so (a security key, or typing, answers it
+/// while the finger is listened for).
+pub fn listening(text: &str) -> bool {
+    text.to_lowercase().contains("finger")
 }
 
 /// Whether there's a fingerprint sensor at all.

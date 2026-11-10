@@ -390,6 +390,7 @@ fn presence_box(ui: &mut Ui, sensor: Option<bool>) {
         let selected = choices.iter().position(|&s| s == p.lock_when_away_seconds).unwrap_or(0);
         ui.menu("lock-away", names, selected, |f| f.label(SharedString::from(LOCK)).divider(divider), move |s, i| s.power.lock_when_away_seconds = choices.get(i).copied().unwrap_or(0));
         ui.check("Wake the display when you come back", p.wake_on_return, |s, v| s.power.wake_on_return = v);
+        ui.check("Dim the display while you look away", p.dim_when_looking_away, |s, v| s.power.dim_when_looking_away = v);
         ui.note(if readable { "This computer's sensor sees when someone is in front of it." } else { "Olo can't read the sensor yet: Olo Doctor installs what it needs." });
     });
 }

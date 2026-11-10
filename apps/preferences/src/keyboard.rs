@@ -1,9 +1,10 @@
 //! Keyboard: layout, the keyboard profile (Mac, Windows or BeOS keys:
 //! the command key, Caps Lock as Ctrl, a tap of the Super key for the
 //! palette, and every shortcut, in the Shortcuts tab, shortcuts.rs), key
-//! repeat, hints, the backlight; and each keyboard's own (Keyboards: Alt
+//! repeat, hints, the backlight; each keyboard's own (Keyboards: Alt
 //! and the Windows key swapped on a PC keyboard, for a Mac's ⌘ where Alt
-//! is, not on an Apple one). A platform's profile changed becomes
+//! is, not on an Apple one); and the computer's own power button (Power
+//! Button: a press, and holds). A platform's profile changed becomes
 //! "Mac (Customized)" by itself; Save As keeps one under a name of its
 //! own, to pick again.
 
@@ -134,6 +135,12 @@ pub fn keyboards_tab(st: &mut State) {
     st.tab = 2;
 }
 
+/// The Power Button tab shown (the layout lint's).
+#[cfg(test)]
+pub fn power_button_tab(st: &mut State) {
+    st.tab = 3;
+}
+
 /// Size of a known keyboard's picture (points).
 const KEYBOARD_PICTURE: f32 = 64.0;
 
@@ -223,7 +230,8 @@ pub fn ui(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut St
     let items = ui.collect(|ui| match st.tab {
         0 => keyboard(ui, power, server, st),
         1 => crate::shortcuts::ui(ui, server, &mut st.shortcuts),
-        _ => keyboards(ui, st),
+        2 => keyboards(ui, st),
+        _ => power_button(ui),
     });
     let pick = ui.on_view(|v, i: usize, _, cx| {
         if let Some(st) = state_of(v) {
@@ -231,7 +239,7 @@ pub fn ui(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut St
         }
         cx.notify();
     });
-    let tabs: Vec<SharedString> = ["Keyboard", "Shortcuts", "Keyboards"].into_iter().map(SharedString::from).collect();
+    let tabs: Vec<SharedString> = ["Keyboard", "Shortcuts", "Keyboards", "Power Button"].into_iter().map(SharedString::from).collect();
     ui.add(
         div()
             .flex_1()
@@ -321,6 +329,73 @@ fn keyboard(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut 
         }
         None => ui.note("This keyboard has no backlight."),
     });
+}
+
+/// Whether Olo's helper for Immediately is installed. Never, to the
+/// layout lint: it draws the tab at its tallest, and its settings index
+/// comes out the same on every computer.
+fn helper_installed() -> bool {
+    !cfg!(test) && olo_system::power::helper_installed()
+}
+
+/// The Power Button tab: what the computer's own button does pressed, and
+/// held for each hold's seconds (app_server's power_button.rs does it).
+fn power_button(ui: &mut Ui) {
+    use olo_protocol::power_button::{HOLD_SECONDS, PowerAction};
+    let pb = ui.s.keyboard.power_button.clone();
+    let actions: Vec<SharedString> = PowerAction::ALL.iter().map(|a| SharedString::from(a.label())).collect();
+    let of = |a: PowerAction| PowerAction::ALL.iter().position(|x| *x == a).unwrap_or(0);
+    let divider = crate::form::divider_for(ui.window, &["When pressed:", "When held for:"]);
+    ui.menu("power-press", actions.clone(), of(pb.press), |f| f.label("When pressed:").divider(divider), |s, i| s.keyboard.power_button.press = PowerAction::ALL[i]);
+    // Each hold, by its seconds (the order they come in).
+    let mut order: Vec<usize> = (0..pb.holds.len()).collect();
+    order.sort_by_key(|&i| pb.holds[i].seconds);
+    for i in order {
+        let hold = pb.holds[i];
+        let seconds: Vec<SharedString> = HOLD_SECONDS.iter().map(|n| SharedString::from(if *n == 1 { "1 second".to_owned() } else { format!("{n} seconds") })).collect();
+        let at = HOLD_SECONDS.iter().position(|n| *n == hold.seconds).unwrap_or(0);
+        let actions = actions.clone();
+        ui.row(|ui| {
+            ui.menu(
+                &format!("power-hold-{i}"),
+                seconds,
+                at,
+                |f| f.label("When held for:").divider(divider),
+                move |s, k| {
+                    if let Some(h) = s.keyboard.power_button.holds.get_mut(i) {
+                        h.seconds = HOLD_SECONDS[k];
+                    }
+                },
+            );
+            ui.menu(
+                &format!("power-hold-{i}-does"),
+                actions,
+                of(hold.action),
+                |f| f,
+                move |s, k| {
+                    if let Some(h) = s.keyboard.power_button.holds.get_mut(i) {
+                        h.action = PowerAction::ALL[k];
+                    }
+                },
+            );
+        });
+    }
+    if pb.wants_helper() && !helper_installed() {
+        ui.note("Immediately needs a small helper that only the administrator can install. Until it's installed, Immediately restarts or shuts down as Restart and Shut Down do.");
+        ui.button("Install the Helper…", |_, cx| {
+            let proxy = olo_ui::proxy(cx);
+            // (Olo Doctor's fix: polkit asks for the password.)
+            std::thread::spawn(move || {
+                match std::process::Command::new("olo-doctor").args(["--fix", "power-now"]).status() {
+                    Ok(s) if !s.success() => tracing::info!("preferences: the power button's helper wasn't installed ({s})"),
+                    Err(e) => tracing::warn!("preferences: olo-doctor: {e}"),
+                    _ => {}
+                }
+                proxy.send(Msg::Redraw);
+            });
+        });
+    }
+    ui.note("Restart and Shut Down end every program and stop the system in order, as Deskbar's menu does; Immediately doesn't wait for that. Held long, most computers' own firmware cuts the power whatever is set here (often after 4 to 10 seconds).");
 }
 
 /// The profile, at the top of Shortcuts: which (Save As… keeps it under

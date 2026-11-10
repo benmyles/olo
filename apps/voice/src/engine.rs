@@ -114,6 +114,21 @@ pub struct Stats {
     pub latency_samples: AtomicU32,
     /// The graph's quantum, as the source last ran (samples; 0 not yet).
     pub quantum: AtomicU32,
+    /// The source's own volume (linear, f32 bits; 0: not known): PipeWire
+    /// applies it to what the source gives, so the source gives that much
+    /// more. Its volume is the microphone's (main.rs, `follow`), which
+    /// already set how loud the voice is: applied twice, a microphone at
+    /// 76% would come through at 34%.
+    pub volume: AtomicU32,
+}
+
+impl Stats {
+    /// What the source's samples are multiplied by, for its volume.
+    fn gain(&self) -> f32 {
+        let v = f32::from_bits(self.volume.load(Relaxed));
+        // (Nothing to make up at no volume: PipeWire makes it silent.)
+        if v > 1e-3 { 1.0 / v } else { 1.0 }
+    }
 }
 
 pub enum Message {
@@ -386,6 +401,11 @@ fn run(config: Config, rx: pw::channel::Receiver<Message>, stats: Arc<Stats>, ch
             *pw::keys::NODE_GROUP => GROUP,
             *pw::keys::NODE_LINK_GROUP => GROUP,
             "device.icon-name" => "audio-input-microphone",
+            // Its mute and volume are the microphone's (main.rs, `follow`):
+            // none of its own for WirePlumber to keep and put back (a
+            // source once muted came back muted at every start, while
+            // the microphone Olo shows was not).
+            "state.restore-props" => "false",
         },
     )
     .map_err(|e| e.to_string())?;
@@ -445,8 +465,9 @@ fn run(config: Config, rx: pw::channel::Receiver<Message>, stats: Arc<Stats>, ch
                         out.fill(0.0);
                         p.quantum = 0;
                     } else {
+                        let gain = stats.gain();
                         for (o, s) in out.iter_mut().zip(p.out.drain(..n)) {
-                            *o = s;
+                            *o = s * gain;
                         }
                         // Never more than a frame beyond what's held (should
                         // a capture's clock run a hair fast).

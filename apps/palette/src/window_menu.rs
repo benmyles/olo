@@ -56,8 +56,17 @@ pub struct Facts {
     pub others: Vec<(String, i32)>,
     /// Rolled up to its tab.
     pub rolled: bool,
+    /// Kept above the others (Always on Top).
+    pub on_top: bool,
+    /// The windows it can be tiled with (Tile With): the others on its
+    /// display's workspace, not minimized (auto-tiled: tiles only, not
+    /// floating ones), each with its app's name and title.
+    pub beside: Vec<(u64, String)>,
     /// In a group with other windows (their tabs side by side).
     pub grouped: bool,
+    /// Its app's other windows it can go in with (Move to Window: one for
+    /// each group, not its own, where it shows), by title.
+    pub windows: Vec<(u64, String)>,
     /// Auto-tiling, or Focus, is its display's mode, and whether it
     /// floats over the tiles (or Focus's window) there.
     pub auto: bool,
@@ -99,7 +108,7 @@ pub fn learn(ask: Ask, proxy: Proxy) {
     let _ = std::thread::Builder::new().name("window-menu".into()).spawn(move || {
         let Ok(mut c) = Client::connect() else { return };
         let Ok(Reply::Windows { windows }) = c.request(&Request::ListWindows) else { return };
-        let Some(w) = windows.into_iter().find(|w| w.id == ask.window) else { return };
+        let Some(w) = windows.iter().find(|w| w.id == ask.window).cloned() else { return };
         let workspaces = match c.request(&Request::Workspaces) {
             Ok(Reply::Workspaces { count, .. }) => count,
             _ => 1,
@@ -121,11 +130,44 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             _ => None,
         };
         let (auto, focus) = (mode == Some(olo_protocol::WindowingMode::AutoTiling), mode == Some(olo_protocol::WindowingMode::Focus));
+        // (A group once: its windows share their frame, so tiling one tiles
+        // them all; its own group's not at all.)
+        let mut groups = std::collections::HashSet::new();
+        let beside = windows
+            .iter()
+            .filter(|o| o.id != w.id && o.output == w.output && o.workspace == w.workspace && !o.minimized && !(auto && o.floating))
+            .filter(|o| w.group.is_none() || o.group != w.group)
+            .filter(|o| o.group.is_none_or(|g| groups.insert(g)))
+            .map(|o| {
+                let entry = if olo_xdg::apps::our_app(&o.app_id).is_some() { None } else { olo_xdg::desktop_entry::find(&o.app_id) };
+                let (name, _) = olo_xdg::apps::app_name(&o.app_id, entry.as_ref());
+                let title: String = o.title.chars().take(48).collect();
+                let label = if title.is_empty() || title == name {
+                    name
+                } else if o.title.chars().count() > 48 {
+                    format!("{name} — {title}…")
+                } else {
+                    format!("{name} — {title}")
+                };
+                (o.id, label)
+            })
+            .collect();
+        // Its app's other windows, one for each group but its own.
+        let mut seen = std::collections::HashSet::new();
+        let app_windows = windows
+            .iter()
+            .filter(|o| o.id != w.id && !w.app_id.is_empty() && o.app_id == w.app_id && w.groupable && o.groupable && !o.minimized)
+            // (Where it shows: a group is on one display's workspace.)
+            .filter(|o| o.output == w.output && o.workspace == w.workspace)
+            .filter(|o| w.group.is_none() || o.group != w.group)
+            .filter(|o| o.group.is_none_or(|g| seen.insert(g)))
+            .map(|o| (o.id, if o.title.is_empty() { o.app_id.clone() } else { o.title.chars().take(60).collect() }))
+            .collect();
         let path = match (w.pid, w.surface) {
             (Some(pid), Some(surface)) if w.app_id != "olo.tracker" => olo_ui::commands::path(pid as u32, surface),
             _ => None,
         };
-        let (rolled, grouped, floating, floats_always) = (w.rolled, w.group.is_some(), w.floating, w.floats_always);
+        let (rolled, on_top, grouped, floating, floats_always) = (w.rolled, w.on_top, w.group.is_some(), w.floating, w.floats_always);
         let pid = w.pid.map(|p| p as u32);
         let own = pid.zip(w.surface).and_then(|(pid, surface)| olo_ui::commands::menus_in(pid, surface)).map(|m| m.entries).unwrap_or_default();
         let find = |command: &str| own.iter().find(|e| e.command == command && e.path.len() == 1).map(|e| (e.label.clone(), e.keys.clone(), e.enabled));
@@ -133,7 +175,28 @@ pub fn learn(ask: Ask, proxy: Proxy) {
         let (name, _) = olo_xdg::apps::app_name(&w.app_id, entry.as_ref());
         let app = Owner { pid, surface: w.surface, app_id: w.app_id.clone(), name, close: find("close"), quit: find("quit") };
         let screens = (w.kept && olo_ui::moving::menus_offer()).then(olo_ui::moving::screens);
-        proxy.send(Facts { ask, title: w.title, workspace: w.workspace, workspaces, display, displays, others, rolled, grouped, auto, focus, floating, floats_always, keys, path, app, screens });
+        proxy.send(Facts {
+            ask,
+            title: w.title,
+            workspace: w.workspace,
+            workspaces,
+            display,
+            displays,
+            others,
+            rolled,
+            on_top,
+            beside,
+            grouped,
+            windows: app_windows,
+            auto,
+            focus,
+            floating,
+            floats_always,
+            keys,
+            path,
+            app,
+            screens,
+        });
     });
 }
 
@@ -246,7 +309,14 @@ pub fn build(f: &Facts) -> Menu {
             m = with_keys(m.item("Float Window", "float"));
         }
     }
-    m = m.separator().submenu(tile).submenu(spaces);
+    m = m.separator().submenu(tile);
+    // Beside another window (not in Focus, which zooms them all; not a
+    // window floating over auto-tiled ones).
+    if !f.focus && !(f.auto && f.floating) && !f.beside.is_empty() {
+        let with = f.beside.iter().fold(Menu::new("Tile With"), |m, (id, label)| m.item(label.clone(), format!("tile-with:{id}")));
+        m = m.submenu(with);
+    }
+    m = m.submenu(spaces);
     if f.displays > 1 {
         m = shortcut(m, "next-display", "To the Next Display");
         m = shortcut(m, "previous-display", "To the Previous Display");
@@ -262,6 +332,15 @@ pub fn build(f: &Facts) -> Menu {
         // As ⌘-dragging its tab out of the group does.
         m = m.item("Remove from Group", "ungroup");
     }
+    // A tab into another window of its app (its group), as every tabbed
+    // app's tabs go (`Menu::move_to_window`); its whole group, if in one.
+    if !f.windows.is_empty() {
+        m = m.submenu(Menu::move_to_window("Move to Window", f.windows.iter().map(|(id, title)| (title.clone(), format!("window-to:{id}")))));
+        if f.grouped {
+            m = m.submenu(Menu::move_to_window("Move Group to Window", f.windows.iter().map(|(id, title)| (title.clone(), format!("group-to:{id}")))));
+        }
+    }
+    m = m.item("Always on Top", "on-top").checked(f.on_top);
     m = m.item("Send to Back", "send-to-back").separator();
     // The app's own Close and Quit, as its keys press them.
     let item = |m: Menu, label: String, command: &str, keys: Option<String>, enabled: bool| {
@@ -275,6 +354,12 @@ pub fn build(f: &Facts) -> Menu {
         Some((label, keys, enabled)) => item(m, label.clone(), "app-close", keys.clone(), *enabled),
         None => item(m, "Close".into(), "close", app_keys(f, "close"), true),
     };
+    if f.grouped {
+        // Every other window in its group (Ben, 2026-11-09: "we need a
+        // "Close Others" option when right clicking a menu on a window tab
+        // that's part of a group"), as a browser's Close Other Tabs.
+        m = m.item("Close Others", "close-others");
+    }
     match &f.app.quit {
         Some((label, keys, enabled)) => item(m, quit_label(f, Some(label)), "app-quit", keys.clone(), *enabled),
         None => item(m, quit_label(f, None), "quit-all", app_keys(f, "quit"), true),
@@ -297,6 +382,19 @@ pub fn perform(window: u64, app: &Owner, command: &str) {
         });
         return;
     }
+    // The other windows of its group, each closed as its own close box
+    // closes it (an app that asks first, unsaved work, still asks).
+    if command == "close-others" {
+        let _ = std::thread::Builder::new().name("window-menu-do".into()).spawn(move || {
+            let Ok(mut c) = Client::connect() else { return };
+            let Ok(Reply::Windows { windows }) = c.request(&Request::ListWindows) else { return };
+            let Some(group) = windows.iter().find(|w| w.id == window).and_then(|w| w.group) else { return };
+            for w in windows.iter().filter(|w| w.group == Some(group) && w.id != window) {
+                let _ = c.request(&Request::Close { id: w.id });
+            }
+        });
+        return;
+    }
     // Another program quit: each of its windows closed.
     if command == "quit-all" {
         let (pid, app_id) = (app.pid, app.app_id.clone());
@@ -312,6 +410,21 @@ pub fn perform(window: u64, app: &Owner, command: &str) {
     }
     let req = if let Some(id) = command.strip_prefix("shortcut:") {
         Request::RunShortcut { id: id.to_owned(), window: Some(window) }
+    } else if let Some(with) = command.strip_prefix("tile-with:").and_then(|w| w.parse().ok()) {
+        Request::TileWith { id: window, with }
+    } else if let Some(with) = command.strip_prefix("window-to:").and_then(|w| w.parse().ok()) {
+        Request::GroupWindow { id: window, with, index: None }
+    } else if let Some(with) = command.strip_prefix("group-to:").and_then(|w| w.parse::<u64>().ok()) {
+        // Each of its group's windows, in their order, into `with`'s.
+        let _ = std::thread::Builder::new().name("window-menu-do".into()).spawn(move || {
+            let Ok(mut c) = Client::connect() else { return };
+            let Ok(Reply::Windows { windows }) = c.request(&Request::ListWindows) else { return };
+            let Some(group) = windows.iter().find(|w| w.id == window).and_then(|w| w.group) else { return };
+            for w in windows.iter().filter(|w| w.group == Some(group)) {
+                let _ = c.request(&Request::GroupWindow { id: w.id, with, index: None });
+            }
+        });
+        return;
     } else if let Some(rest) = command.strip_prefix("workspace:") {
         let (n, output) = match rest.split_once(':') {
             Some((n, o)) => (n, Some(o.to_owned())),
@@ -322,6 +435,7 @@ pub fn perform(window: u64, app: &Owner, command: &str) {
     } else {
         match command {
             "send-to-back" => Request::SendToBack { id: window },
+            "on-top" => Request::SetOnTop { id: window, on: None },
             "float" => Request::SetFloating { id: window, floating: Some(true), alone: true },
             "float-group" => Request::SetFloating { id: window, floating: Some(true), alone: false },
             "unfloat" => Request::SetFloating { id: window, floating: Some(false), alone: false },
@@ -437,7 +551,10 @@ mod tests {
             workspaces: 3,
             displays: 2,
             rolled: false,
+            on_top: false,
+            beside: vec![(9, "StyledEdit — Untitled 1".into())],
             grouped: true,
+            windows: vec![(12, "Notes 2".into())],
             auto: false,
             focus: false,
             floating: false,
@@ -474,7 +591,10 @@ mod tests {
             let known = c.strip_prefix("shortcut:").is_some_and(|id| shortcuts::SHORTCUTS.iter().any(|s| s.id == id))
                 || c.starts_with("workspace:")
                 || olo_ui::moving::screen_command(c).is_some()
-                || ["send-to-back", "close", "quit-all", "ungroup", "float", "float-group", "unfloat", tracker::COMMAND].contains(&c.as_str());
+                || c.strip_prefix("tile-with:").is_some_and(|id| id.parse::<u64>().is_ok())
+                || c.strip_prefix("window-to:").is_some_and(|id| id.parse::<u64>().is_ok())
+                || c.strip_prefix("group-to:").is_some_and(|id| id.parse::<u64>().is_ok())
+                || ["send-to-back", "on-top", "close", "close-others", "quit-all", "ungroup", "float", "float-group", "unfloat", tracker::COMMAND].contains(&c.as_str());
             assert!(known, "{c}");
         }
         // Each agent screen running, and a new one; none where the
@@ -488,6 +608,14 @@ mod tests {
         let mut alone = Vec::new();
         commands(&build(&Facts { grouped: false, ..facts.clone() }), &mut alone);
         assert!(!alone.contains(&"ungroup".to_owned()));
+        // Close Others only for a window in one, after its Close.
+        assert!(!alone.contains(&"close-others".to_owned()) && alone.ends_with(&["close".to_owned(), "quit-all".to_owned()]));
+        // Into another of its app's windows; its group too, if in one.
+        assert!(all.contains(&"window-to:12".to_owned()) && all.contains(&"group-to:12".to_owned()));
+        assert!(alone.contains(&"window-to:12".to_owned()) && !alone.contains(&"group-to:12".to_owned()));
+        let mut only = Vec::new();
+        commands(&build(&Facts { windows: Vec::new(), ..facts.clone() }), &mut only);
+        assert!(!only.iter().any(|c| c.starts_with("window-to:") || c.starts_with("group-to:")), "no other windows: no Move to Window");
         // Open in Tracker only for a window that shows a file or folder.
         assert!(!all.contains(&tracker::COMMAND.to_owned()));
         let mut doc = Vec::new();
@@ -531,13 +659,13 @@ mod tests {
         // windows, under every app's keys in the profile.
         assert_eq!(keys_of("Close"), Some(Some("⌘W".into())));
         assert_eq!(keys_of("Quit Gedit"), Some(Some("⌘Q".into())));
-        assert!(all.ends_with(&["close".to_owned(), "quit-all".to_owned()]));
+        assert!(all.ends_with(&["close".to_owned(), "close-others".to_owned(), "quit-all".to_owned()]));
         let mut windows = facts.clone();
         windows.keys.platform = olo_protocol::shortcuts::Platform::Windows;
         let on_windows = build(&windows);
         let said: Vec<(String, Option<String>)> =
-            on_windows.items.iter().rev().take(2).filter_map(|i| if let menu::MenuItem::Action(a) = i { Some((a.label.clone(), a.keys.clone())) } else { None }).collect();
-        assert_eq!(said, [("Quit Gedit".to_owned(), Some("Ctrl+Q".to_owned())), ("Close".to_owned(), Some("Ctrl+W".to_owned()))]);
+            on_windows.items.iter().rev().take(3).filter_map(|i| if let menu::MenuItem::Action(a) = i { Some((a.label.clone(), a.keys.clone())) } else { None }).collect();
+        assert_eq!(said, [("Quit Gedit".to_owned(), Some("Ctrl+Q".to_owned())), ("Close Others".to_owned(), None), ("Close".to_owned(), Some("Ctrl+W".to_owned()))]);
         // A kit app's are its own, from that window's menus: Terminal's
         // Close Tab with a tab of several, chosen in the app.
         let kit = Facts {
@@ -553,8 +681,15 @@ mod tests {
         };
         let kit_menu = build(&kit);
         let last: Vec<(String, String, Option<String>)> =
-            kit_menu.items.iter().rev().take(2).filter_map(|i| if let menu::MenuItem::Action(a) = i { Some((a.label.clone(), a.command.clone(), a.keys.clone())) } else { None }).collect();
-        assert_eq!(last, [("Quit Terminal".to_owned(), "app-quit".to_owned(), Some("⌘Q".to_owned())), ("Close Tab".to_owned(), "app-close".to_owned(), Some("⌘W".to_owned()))]);
+            kit_menu.items.iter().rev().take(3).filter_map(|i| if let menu::MenuItem::Action(a) = i { Some((a.label.clone(), a.command.clone(), a.keys.clone())) } else { None }).collect();
+        assert_eq!(
+            last,
+            [
+                ("Quit Terminal".to_owned(), "app-quit".to_owned(), Some("⌘Q".to_owned())),
+                ("Close Others".to_owned(), "close-others".to_owned(), None),
+                ("Close Tab".to_owned(), "app-close".to_owned(), Some("⌘W".to_owned()))
+            ]
+        );
         let Some(menu::MenuItem::Submenu(spaces)) = menu.items.iter().find(|i| matches!(i, menu::MenuItem::Submenu(s) if s.title == "Move to Workspace")) else { panic!() };
         let menu::MenuItem::Action(first) = &spaces.items[0] else { panic!() };
         // Every display's workspaces, named for theirs, left to right: its

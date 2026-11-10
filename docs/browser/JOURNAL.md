@@ -7608,3 +7608,53 @@ Validation before main integration: `cargo test --release --no-fail-fast
 -p olo-web -p olo-browser -p olo-js`: 530 passed, no failures (the inherited
 baseline was 527). Existing ignored tests remain ignored; this is not a full
 WPT or website acceptance result.
+
+### 2026-11-09 — integrate main and validate the resumed checkpoint
+
+Merged `origin/main` at `f8f0f292` after `45826e3c`. Preserve both kit text
+fitting APIs (`fit` and `cut`), both screenshot histories, the browser's h2
+patch and main's native media dependencies. Materialize the LFS theme assets
+before visual review: pointer files initially made the development binary's
+icons disappear; that capture is not the final visual evidence.
+
+The merged engine/browser release suites pass 530 tests, with no failures
+and two existing ignored tests. A private `tsession --session` reload restores
+the fixture's identical 33-node accessibility tree. A second check restores
+a scrolled long page, address and Back/Forward history; renderer document and
+navigation counters restart with the process, while the visible geometry and
+text agree. Back after reload returns to the preceding fixture. These are
+navigation/scroll restoration checks, not preservation of a live JS heap.
+
+Full live integration lint at 1280×800 found issues outside Browser. Fix the
+Passwords setup panel's clipped buttons by letting its blank top space shrink
+before its form, with the shared bottom inset. Record Disk Usage's central
+chart target from its two label bounds, and mark the radial chart as its own
+grid. Review no longer treats scrollbar arrows as the start of a new form
+section or radial targets as form columns; ordinary form checks remain, with
+two regression tests. All five reviewer tests pass. Full live lint now has
+zero errors at both 1280×800 and 1440×900. Note that `ui-lint --screen` takes
+physical dimensions, and changes the scale live; its 2× run is particularly
+cramped. Final Passwords and Disk Usage captures/reviews use a separate
+1920×1080 headless screen, a 680×369 content area and odd window x=49, with
+light/dark/night at 1, 1.25, 1.5, 1.75 and 2×. All 30 reviews are clean.
+
+Release integration measurements (after compilation stopped, DPR1/60 Hz,
+20 alternating short/tall resizes) are in
+`measurements/2026-11-09-main-integration.json`, with raw earlier runs,
+source harnesses, binary hashes, reviews and reload trees. First-draw-ready
+ends at GPU submission, not presentation:
+
+| Measurement | Before | After |
+|---|---:|---:|
+| Passwords median first draw ready | 2.66 ms | 2.84 ms |
+| Passwords median / slowest draw | 0.673 / 5.053 ms | 0.693 / 5.384 ms |
+| Disk Usage median first draw ready | 1.83 ms | 1.80 ms |
+| Disk Usage median / slowest draw | 0.669 / 3.584 ms | 0.570 / 1.398 ms |
+
+Unfocused idle is 0% CPU and zero frames; the focused Passwords field's
+four blink frames in two seconds are retained in the raw data. Disk Usage
+scanned a scratch home whose application-cache contents varied between
+launches, so this is a frame-budget check, not evidence of a speedup.
+The release workspace build passes. No website is newly accepted by these
+integration checks; the browser's production/security/standards gaps remain.
+`cargo ui-lint` also passes after the integration fixes.

@@ -20,7 +20,7 @@ use olo_system::keyring_prompt::{Answer, Event, Prompter};
 static PROMPTS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 /// The private keyring's directory (tools/dev/private-keyring's).
-const DIR: &str = "/tmp/olo-dev/keyring";
+const DIR: &str = "/var/tmp/olo-dev/keyring";
 
 fn tool(bus: &str, args: &[&str], input: Option<&str>) -> (bool, String) {
     let mut c = Command::new("secret-tool");

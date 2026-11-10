@@ -4,7 +4,7 @@
 //! light and dark at 1×, 1.5× and 2×, and checked: the
 //! layout review's errors (what `tsession review` finds in a live app),
 //! a control outside the window, over another or laid out to nothing,
-//! and text over text or past the window's edge. An app's tests run it on every fixed-size
+//! and text over text, over a control or past the window's edge. An app's tests run it on every fixed-size
 //! window and dialog with the longest things real machines show
 //! (Preferences' panels with made-up long device names).
 //!

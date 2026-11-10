@@ -1585,7 +1585,9 @@ fn part_row(id: String, part: String, detail: String, on: bool, enabled: bool, t
         .h(px(PART_ROW))
         .pl(px(m::TEXT_INSET))
         .pr(px(m::SPACING))
-        .child(div().flex_1().min_w_0().child(CheckBox::new(part, on).id(id).enabled(enabled).on_toggle(toggle)))
+        // (The row's height, so its middle is the row's, where the detail's
+        // baseline is taken: 20 points in 26, it sat a pixel off at 1.25×.)
+        .child(div().flex_1().min_w_0().child(CheckBox::new(part, on).id(id).height(PART_ROW).enabled(enabled).on_toggle(toggle)))
         .child(detail)
         .into_any_element()
 }
@@ -2263,8 +2265,9 @@ mod tests {
         std::fs::write(roots[0].1.join("pool.json"), b"{}").unwrap();
         let parts = parts_here(&roots, &NoSystem);
         let names: Vec<&str> = parts.iter().map(|p| p.0.as_str()).collect();
-        // Its apps' files, and what goes only in a sealed backup.
-        assert_eq!(names, ["GitHub", "Passwords", "Programs’ Secrets", "Telegram", "Terminal", "Token Pool", WIFI_PART]);
+        // Its apps' files, and what goes only in a sealed backup
+        // (DiskBackup's key and its Google sign-in among them).
+        assert_eq!(names, ["DiskBackup", "GitHub", "Passwords", "Programs’ Secrets", "Telegram", "Terminal", "Token Pool", WIFI_PART]);
         assert_eq!(parts.iter().find(|p| p.0 == "Terminal").map(|p| (p.1, p.2)), Some((1, 2)));
         let _ = std::fs::remove_dir_all(&base);
     }

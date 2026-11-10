@@ -62,11 +62,14 @@ pub struct Ui<'a, 'b> {
     resets: bool,
     /// The titles of the boxes being built (an undo step's name).
     titles: Vec<String>,
+    /// Building a row (`row_gap`): its check boxes are a control's height,
+    /// centred with the menus and fields beside them.
+    in_row: bool,
 }
 
 impl<'a, 'b> Ui<'a, 'b> {
     pub fn new(window: &'a mut Window, cx: &'a mut Context<'b, PanelView>, s: &'a Settings, prefs: WeakEntity<Prefs>, fields: &'a mut Fields) -> Self {
-        Ui { window, cx, s, prefs, fields, items: Vec::new(), enabled: true, boxes: Vec::new(), resets: false, titles: Vec::new() }
+        Ui { window, cx, s, prefs, fields, items: Vec::new(), enabled: true, boxes: Vec::new(), resets: false, titles: Vec::new(), in_row: false }
     }
 
     /// Boxes whose settings aren't their defaults get a Reset.
@@ -209,7 +212,9 @@ impl<'a, 'b> Ui<'a, 'b> {
 
     /// Side by side, `gap` apart, lined up on their middles.
     pub fn row_gap(&mut self, gap: f32, build: impl FnOnce(&mut Self)) {
+        let was = std::mem::replace(&mut self.in_row, true);
         let items = self.collect(build);
+        self.in_row = was;
         self.add(div().flex().flex_row().items_center().gap(px(gap)).children(items));
     }
 
@@ -262,7 +267,13 @@ impl<'a, 'b> Ui<'a, 'b> {
         self.probe(move |s| probe(s, on));
         let label: SharedString = label.into();
         let (run, name) = self.step(Some(&label), false);
-        let c = CheckBox::new(label, on).enabled(self.enabled).on_toggle(self.edit_as(run, name, move |s, v| set(s, v)));
+        let mut c = CheckBox::new(label, on).enabled(self.enabled).on_toggle(self.edit_as(run, name, move |s, v| set(s, v)));
+        // (In a row, as tall as the menu or field beside it, so their
+        // middles are one: 20 points against 24, the label sat a pixel off
+        // the menu's at 1.25× and 1.75×.)
+        if self.in_row {
+            c = c.height(m::CONTROL_HEIGHT);
+        }
         self.add(c);
     }
 

@@ -958,6 +958,8 @@ impl DiskUsage {
                 (g, window.insert_hitbox(b, HitboxBehavior::Normal))
             },
             move |b, (g, hitbox): (chart::Geometry, Hitbox), window, cx| {
+                // The radial chart has its own geometry, not form rows.
+                olo_ui::review::own_grid(window, b);
                 let p = theme::palette(cx);
                 let hover = pointer.at.filter(|_| hitbox.is_hovered(window)).and_then(|pos| chart::hit(&slices, &g, pos));
                 let on_hub = pointer.at.is_some_and(|pos| hitbox.is_hovered(window) && g.at(pos).is_some_and(|(ring, _)| ring == 0));
@@ -969,7 +971,7 @@ impl DiskUsage {
                     let n = &t.nodes[folder as usize];
                     let title = if folder == ROOT && t.root == home() { "Home".to_owned() } else { n.name.to_string() };
                     let w = px(g.hub * 1.7);
-                    style::label_fit(
+                    let title_bounds = style::label_fit(
                         window,
                         cx,
                         g.center.x,
@@ -981,7 +983,7 @@ impl DiskUsage {
                         style::c(p.document_text),
                         w,
                     );
-                    style::label(
+                    let size_bounds = style::label(
                         window,
                         cx,
                         g.center.x,
@@ -992,7 +994,10 @@ impl DiskUsage {
                         style::ui_font(FontWeight::NORMAL),
                         style::c(p.document_text),
                     );
-                    let hub = Bounds { origin: point(g.center.x - px(g.hub / 2.0), g.center.y - px(g.hub / 2.0)), size: size(px(g.hub), px(g.hub)) };
+                    // A central click target that contains both labels.
+                    // The circle's full bounding square reaches into the
+                    // neighbouring slices at its corners.
+                    let hub = title_bounds.union(&size_bounds);
                     olo_ui::agent::record(
                         window,
                         cx,

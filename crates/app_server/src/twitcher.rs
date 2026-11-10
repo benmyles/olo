@@ -73,6 +73,9 @@ const ICON_PX: [u32; 2] = [48, 96];
 struct AppInfo {
     name: String,
     icons: Vec<(u32, Arc<Pixmap>)>,
+    /// Ours, or an entry gave it: else looked up again once the
+    /// applications folders change ([`recheck`]).
+    found: bool,
 }
 
 type Cache = Mutex<HashMap<String, Option<AppInfo>>>;
@@ -98,12 +101,13 @@ fn to_pixmap(img: olo_xdg::Image) -> Option<Pixmap> {
 }
 
 fn resolve(app_id: &str) -> AppInfo {
-    let (name, icon) = match olo_xdg::apps::our_app(app_id) {
-        Some((name, icon)) => (name.to_owned(), icon.to_owned()),
+    let (name, icon, found) = match olo_xdg::apps::our_app(app_id) {
+        Some((name, icon)) => (name.to_owned(), icon.to_owned(), true),
         None => {
             let entry = olo_xdg::desktop_entry::find(app_id);
             let name = entry.as_ref().map(|e| e.name.clone()).unwrap_or_else(|| fallback_name(app_id));
-            (name, entry.and_then(|e| e.icon).unwrap_or_else(|| "application".into()))
+            let found = entry.is_some();
+            (name, entry.and_then(|e| e.icon).unwrap_or_else(|| "application".into()), found)
         }
     };
     let icons = ICON_PX
@@ -113,7 +117,7 @@ fn resolve(app_id: &str) -> AppInfo {
             Some((px, Arc::new(to_pixmap(img)?)))
         })
         .collect();
-    AppInfo { name, icons }
+    AppInfo { name, icons, found }
 }
 
 fn fallback_name(app_id: &str) -> String {
@@ -139,6 +143,28 @@ pub fn prewarm<'a>(app_ids: impl IntoIterator<Item = &'a str>) {
     }
     std::thread::spawn(move || {
         for id in todo {
+            let info = resolve(&id);
+            store(id, info);
+        }
+    });
+}
+
+/// The Twitcher is shown: apps no entry gave are looked up again, on a
+/// worker, if an applications folder changed since the last time (an
+/// AppImage's entry, made as it ran: `olo_appimage`; an app installed
+/// while it ran). Nothing while every app's is known.
+pub fn recheck() {
+    let ids: Vec<String> = cache().lock().unwrap().iter().filter(|(_, i)| i.as_ref().is_some_and(|i| !i.found)).map(|(id, _)| id.clone()).collect();
+    if ids.is_empty() {
+        return;
+    }
+    std::thread::spawn(move || {
+        static STAMPS: Mutex<Vec<Option<std::time::SystemTime>>> = Mutex::new(Vec::new());
+        let now = olo_xdg::desktop_entry::stamps();
+        if std::mem::replace(&mut *STAMPS.lock().unwrap(), now.clone()) == now {
+            return;
+        }
+        for id in ids {
             let info = resolve(&id);
             store(id, info);
         }

@@ -163,6 +163,9 @@ impl Demo {
         });
         let m = s.say(40, you(), "Perfect, saved it. Saturday works for me");
         react(m, &[("👍", 1, false)]);
+        // An animated sticker (Olo's own heart, `olo_images::lottie`).
+        let m = s.say(39, mira(), "");
+        m.media = Some(Media::Sticker { emoji: "❤️".into(), animated: true, w: 512, h: 512 });
         let m = s.say(12, mira(), "");
         m.media = Some(Media::Voice { duration: 14.0, waveform: wave(MIRA, 64), size: 23_000 });
         s.say(11, mira(), "Let's meet at the trailhead at 6. Is that too early?");
@@ -417,6 +420,40 @@ impl Demo {
     }
 
     /// A picture for a message: drawn once into the cache.
+    fn animated_sticker(&self, chat: ChatId, id: MsgId) -> bool {
+        self.msgs.get(&chat).and_then(|v| v.iter().find(|m| m.id == id)).is_some_and(|m| matches!(m.media, Some(Media::Sticker { animated: true, .. })))
+    }
+
+    /// The animated sticker: its file (a `.tgs`), or its picture (its
+    /// first frame, as Telegram's thumbnails are).
+    fn heart(&self, file: bool) -> Option<PathBuf> {
+        std::fs::create_dir_all(&self.pictures).ok()?;
+        let tgs = self.pictures.join("heart.tgs");
+        if !tgs.exists() {
+            crate::account::private_write(&tgs, &olo_images::lottie::heart_tgs()).ok()?;
+        }
+        if file {
+            // A test's own sticker file instead (a video sticker, say).
+            return Some(std::env::var_os("OLO_TELEGRAM_DEMO_STICKER").map_or(tgs, PathBuf::from));
+        }
+        let path = self.pictures.join("heart.png");
+        if !path.exists() {
+            let l = olo_images::lottie::Lottie::open(&tgs).ok()?;
+            let mut p = olo_images::lottie::Painter::new(256, 256);
+            let mut px = p.paint(&l, 0.0).ok()?.to_vec();
+            olo_images::lottie::unpremultiply(&mut px);
+            let mut out = Vec::new();
+            {
+                let mut enc = png::Encoder::new(&mut out, 256, 256);
+                enc.set_color(png::ColorType::Rgba);
+                enc.set_depth(png::BitDepth::Eight);
+                enc.write_header().ok()?.write_image_data(&px).ok()?;
+            }
+            crate::account::private_write(&path, &out).ok()?;
+        }
+        Some(path)
+    }
+
     fn picture(&self, chat: ChatId, id: MsgId, w: u32, h: u32) -> Option<PathBuf> {
         let path = self.pictures.join(format!("{chat}-{id}.png"));
         if !path.exists() {
@@ -774,6 +811,10 @@ fn handle(demo: &Arc<Mutex<Demo>>, cmd: Cmd) {
         }
         Cmd::Fetch(pic) => match pic {
             Pic::Avatar(_) => {}
+            Pic::Thumb(chat, id) | Pic::File(chat, id) if d.animated_sticker(chat, id) => match d.heart(matches!(pic, Pic::File(..))) {
+                Some(path) => d.emit(Event::Fetched { pic, path }),
+                None => d.emit(Event::FetchFailed { pic, why: "The demo couldn’t make its sticker.".into() }),
+            },
             Pic::Thumb(chat, id) | Pic::File(chat, id) => {
                 let px = d.msgs.get(&chat).and_then(|v| v.iter().find(|m| m.id == id)).and_then(|m| m.media.as_ref()).and_then(|m| m.pixels());
                 match px.and_then(|(w, h)| d.picture(chat, id, w, h)) {

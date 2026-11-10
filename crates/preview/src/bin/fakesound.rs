@@ -9,7 +9,9 @@
 //! microphone, 660 Hz from the speaker's monitor (`@DEFAULT_MONITOR@`,
 //! what the computer plays), each at about a quarter of full scale (RMS
 //! about 5700 of 32767), and the server has one speaker and one
-//! microphone, both called "Fake".
+//! microphone, both called "Fake". `FAKESOUND_MIC=FILE` (16-bit
+//! little-endian mono at 48 kHz: speech, say) is what the microphone
+//! hears instead, from each stream's start, then silence.
 //! `FAKESOUND_AIRPODS=AA:BB:CC:DD:EE:FF` adds a pair of AirPods as
 //! PipeWire shows them (a Bluetooth output playing AAC at music quality,
 //! the default, and their card with its profiles), for Preferences ▸
@@ -181,6 +183,9 @@ fn command(id: u32, c: &mut Client, seq: u32, cmd: Command, next_channel: &Mutex
                 s.buffer.clear();
                 s.read = s.written;
                 s.drain = None;
+                // (What was asked for and never sent, a drain's, isn't
+                // waited for: asked for again, as a server does.)
+                s.requested = 0;
                 eprintln!("fakesound: stream {ch}: flushed");
             }
             protocol::write_ack_message(&mut c.writer, seq)
@@ -315,6 +320,18 @@ fn airpods() -> Option<(String, String, String)> {
     Some((addr, name, "AirPods Pro".to_owned()))
 }
 
+/// `FAKESOUND_MIC`'s sound, read once (-1..1, 48 kHz).
+fn mic_sound() -> Option<&'static [f32]> {
+    static SOUND: std::sync::OnceLock<Option<Vec<f32>>> = std::sync::OnceLock::new();
+    SOUND
+        .get_or_init(|| {
+            let file = std::env::var_os("FAKESOUND_MIC")?;
+            let bytes = std::fs::read(&file).map_err(|e| eprintln!("fakesound: FAKESOUND_MIC: {e}")).ok()?;
+            Some(bytes.as_chunks::<2>().0.iter().map(|b| f32::from(i16::from_le_bytes(*b)) / 32768.0).collect())
+        })
+        .as_deref()
+}
+
 /// Consume a tick's worth of each playing stream, ask for more, report.
 fn tick(c: &mut Client) {
     let v = c.version;
@@ -327,8 +344,14 @@ fn tick(c: &mut Client) {
             if !s.corked && (float || s.spec.format == protocol::SampleFormat::S16Le) {
                 let frames = per_tick as usize / frame.max(1);
                 let mut block = Vec::with_capacity(frames * frame);
+                // The microphone's own sound, if it has one (at the
+                // stream's rate, picked from 48 kHz).
+                let voice = if s.hz == 440.0 { mic_sound() } else { None };
                 for _ in 0..frames {
-                    let x = (*t as f64 * s.hz * std::f64::consts::TAU / s.spec.sample_rate as f64).sin() * 8000.0;
+                    let x = match voice {
+                        Some(v) => f64::from(v.get((*t * 48_000 / u64::from(s.spec.sample_rate)) as usize).copied().unwrap_or(0.0)) * 32767.0,
+                        None => (*t as f64 * s.hz * std::f64::consts::TAU / s.spec.sample_rate as f64).sin() * 8000.0,
+                    };
                     for _ in 0..s.spec.channels {
                         if float {
                             block.extend_from_slice(&((x / 32768.0) as f32).to_le_bytes());

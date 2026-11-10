@@ -31,18 +31,36 @@
 //!   computer's snapshots past keeping forgotten, and the space only they
 //!   used freed (with the backup to itself: not while one runs). Asked of
 //!   the service if it's running (its state says how it went), else here.
-//! - `--set KEY=VALUE…`: `enabled`, `battery`, `deskbar` (on/off), `every`
+//! - `--delete SNAPSHOT…`: those backups deleted (ids, or their starts, as
+//!   `--snapshots` lists them; `unfinished`, the one that didn't finish),
+//!   and the space only they took freed, as the window's Backups ▸
+//!   Delete… does (asked of the service).
+//! - `--validate [--full] SNAPSHOT…`: those backups (ids or their starts,
+//!   `latest`, `all`) validated, as the window's Backups ▸ Validate does
+//!   (asked of the service): fast (what they need all there, checksums
+//!   compared, samples read back), or with `--full` every byte read back;
+//!   what's damaged is repaired as far as it can be. Each backup is
+//!   validated fast once it's made.
+//! - `--erase-all --yes`: every backup there deleted, to start fresh
+//!   (File ▸ Erase All Backups…).
+//! - `--set KEY=VALUE…`: `enabled`, `automatic`, `battery`, `deskbar`
+//!   (on/off; `automatic` off: only when asked, `--now`), `priority`
+//!   (`idle`, `low` or `normal`), `every`
 //!   (minutes), `upload`, `download` (KB/s, 0 for no limit), `paths`
 //!   (comma-separated), `exclude` (a pattern, added), `groups`
 //!   (comma-separated ids; `--groups` lists them), `hourly`, `daily`,
 //!   `weekly`, `monthly` (how many of each to keep).
 
+mod agent_setup;
 mod app;
 mod drive_setup;
+#[cfg(test)]
+mod lint;
 mod restore;
 mod service;
 mod target;
 mod versions;
+mod window;
 
 const APP_ID: &str = "olo.diskbackup";
 
@@ -70,7 +88,17 @@ fn main() -> ExitCode {
                 None => Err("--set-up-folder PATH".into()),
             },
             Some("--set-up-drive") => set_up_drive_cli(&args[1..]),
+            Some("--agent-setup-done") => agent_setup_done(&args[1..]),
             Some("--snapshots") => snapshots(),
+            Some("--delete") if args.len() > 1 => delete_cli(&args[1..]),
+            Some("--validate") if args.len() > 1 => validate_cli(&args[1..]),
+            Some("--erase-all") => {
+                if args.iter().any(|a| a == "--yes") {
+                    ask(Request::EraseAll).map(|()| println!("Erasing every backup; the next one starts afresh (--status says how it goes)."))
+                } else {
+                    Err("--erase-all deletes every backup there, for good: add --yes".into())
+                }
+            }
             Some("--restore") => match (args.get(1), args.get(2)) {
                 (Some(snap), Some(path)) => restore_cli(snap, path, args.get(3)),
                 _ => Err("--restore SNAPSHOT PATH [TO]".into()),
@@ -99,7 +127,7 @@ fn main() -> ExitCode {
             Some(path) => versions_cli(path),
             None => Err("--versions PATH".into()),
         },
-            _ => Err("usage: olo-diskbackup --service | --status [--json] | --now | --stop | --set-up-folder PATH | --set-up-drive [CLIENT_FILE | ID SECRET] | --snapshots | --restore SNAPSHOT PATH [TO] | --marks DIR | --versions PATH | --keep-key | --tidy | --set KEY=VALUE… | --groups"
+            _ => Err("usage: olo-diskbackup --service | --status [--json] | --now | --stop | --set-up-folder PATH | --set-up-drive [CLIENT_FILE | ID SECRET] | --agent-setup-done [CLIENT_FILE] [--screen NAME] | --snapshots | --delete SNAPSHOT… | --validate [--full] SNAPSHOT… | --erase-all --yes | --restore SNAPSHOT PATH [TO] | --marks DIR | --versions PATH | --keep-key | --tidy | --set KEY=VALUE… | --groups"
                 .into()),
         };
     match r {
@@ -161,6 +189,9 @@ fn status(json: bool) {
                 if l.unreadable > 0 { format!("; {} unreadable", l.unreadable) } else { String::new() }
             ),
         }
+    }
+    if let Some(u) = &state.unfinished {
+        println!("  unfinished: {} — {} files, {} so far; {} sent (the next goes on from it; --delete unfinished frees it)", when(u.time), u.files, mb(u.bytes), mb(u.sent));
     }
     if let Some(n) = state.next {
         println!("  next: {}", when(n));
@@ -317,10 +348,167 @@ fn set_up_drive_cli(a: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+/// Agent Setup's last step, run by the agent (`agent_setup`): the client
+/// (its file, else the one Passwords keeps) kept in Passwords, DiskBackup
+/// signed in with it (Google's consent page on the agent's screen, for it
+/// to allow; with no screen, the browser), set up, and DiskBackup's
+/// window told. Says how it goes, for the agent to read; gives up after
+/// 20 minutes.
+fn agent_setup_done(a: &[String]) -> Result<(), String> {
+    let mut file = None;
+    let mut screen = None;
+    let mut it = a.iter();
+    while let Some(x) = it.next() {
+        match x.as_str() {
+            "--screen" => screen = it.next().cloned(),
+            f if !f.starts_with('-') && file.is_none() => file = Some(f.to_owned()),
+            other => return Err(format!("{other}? --agent-setup-done [CLIENT_FILE] [--screen NAME]")),
+        }
+    }
+    let client = match &file {
+        Some(f) => olo_diskbackup::oauth::Client::from_json(&std::fs::read_to_string(target::expand(f)).map_err(|e| format!("{f}: {e}"))?)?,
+        None => target::client_in_passwords()?.ok_or("no client file given, and Passwords keeps none")?,
+    };
+    client.check()?;
+    if file.is_some() {
+        println!("Keeping the client in Olo Passwords (the person may be asked to unlock it)…");
+        target::keep_client(&client)?;
+        println!("Kept in Passwords as “{}”.", target::CLIENT_TITLE);
+    }
+    let cancel = std::sync::Arc::new(AtomicBool::new(false));
+    {
+        let cancel = cancel.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(20 * 60));
+            cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+        });
+    }
+    let signed = sign_in(&client, &cancel, |url| match &screen {
+        Some(s) => {
+            println!(
+                "Google's consent page is open on screen “{s}”: choose the account (sign in if asked), then Continue or Allow. DiskBackup waits for it.
+
+  {url}
+"
+            );
+            let opened = std::process::Command::new(olo_xdg::find_program("olo-screen").map(|p| p.into_os_string()).unwrap_or_else(|| "olo-screen".into()))
+                .args(["run", s, "olo-chrome", url])
+                .stdout(std::process::Stdio::null())
+                .status();
+            if !opened.is_ok_and(|st| st.success()) {
+                println!("(It didn't open there: open the address above on the screen.)");
+            }
+        }
+        None => {
+            println!(
+                "Sign in to Google in the browser (DiskBackup opened it), or open this:
+
+  {url}
+"
+            );
+            if std::env::var_os("OLO_DISKBACKUP_GOOGLE_API").is_none() {
+                let _ = olo_xdg::open::open(&olo_xdg::open::Target::Url(url.to_owned()));
+            }
+        }
+    })?;
+    // (A test of the agent against the real Google: signed in, nothing
+    // made in its Drive, nothing set up here.)
+    if std::env::var_os("OLO_DISKBACKUP_AGENT_CHECK_ONLY").is_some() {
+        println!("Signed in as {}. (Checking only, for a test: DiskBackup isn't set up.)", signed.email);
+        return Ok(());
+    }
+    println!("Signed in as {}; setting up…", signed.email);
+    let email = set_up_drive(client, signed)?;
+    println!("Backing up to Google Drive ({email}), in the folder “{}”. DiskBackup is set up.", olo_diskbackup::drive::FOLDER);
+    // DiskBackup's window, if it's open, says so (not started for it).
+    if olo_ui::instance::running(APP_ID) {
+        olo_ui::instance::forward(APP_ID, &["--agent-setup-done".to_owned()]);
+    }
+    Ok(())
+}
+
+/// This computer's backups by id (or an id's start; `latest`, `all`), as
+/// the service lists them.
+fn chosen(wanted: &[String]) -> Result<Vec<String>, String> {
+    let all = match olo_protocol::diskbackup::call(&Request::Snapshots)? {
+        olo_protocol::diskbackup::Reply::Snapshots { snapshots } => snapshots,
+        other => return Err(format!("the service answered {other:?}")),
+    };
+    let mut ids = Vec::new();
+    for w in wanted {
+        let found: Vec<&olo_protocol::diskbackup::SnapshotInfo> = match w.as_str() {
+            "all" => all.iter().collect(),
+            "latest" => all.first().into_iter().collect(),
+            _ => all.iter().filter(|s| s.id.starts_with(w.as_str())).collect(),
+        };
+        match found.as_slice() {
+            [] => return Err(format!("no backup {w}")),
+            [_, _, ..] if w != "all" => return Err(format!("{w} is the start of more than one backup's id")),
+            f => ids.extend(f.iter().map(|s| s.id.clone())),
+        }
+    }
+    Ok(ids)
+}
+
+/// Backups read back whole and checked, by the service.
+fn validate_cli(args: &[String]) -> Result<(), String> {
+    let full = args.iter().any(|a| a == "--full");
+    let wanted: Vec<String> = args.iter().filter(|a| *a != "--full").cloned().collect();
+    let ids = chosen(&wanted)?;
+    let n = ids.len();
+    ask(Request::Validate { snapshots: ids, full })?;
+    println!(
+        "Validating {} {}: --status says how it goes, --snapshots how each was last checked.",
+        if n == 1 { "1 backup".to_owned() } else { format!("{n} backups") },
+        if full { "fully (every byte read back)" } else { "fast (checksums, and samples read back)" }
+    );
+    Ok(())
+}
+
+/// Backups deleted by id (or an id's start), by the service.
+fn delete_cli(wanted: &[String]) -> Result<(), String> {
+    let all = match olo_protocol::diskbackup::call(&Request::Snapshots)? {
+        olo_protocol::diskbackup::Reply::Snapshots { snapshots } => snapshots,
+        other => return Err(format!("the service answered {other:?}")),
+    };
+    let mut ids = Vec::new();
+    // ("unfinished": the backup that didn't finish.)
+    let unfinished = wanted.iter().any(|w| w == "unfinished");
+    if unfinished && State::load().unfinished.is_none() {
+        return Err("no backup is unfinished".into());
+    }
+    for w in wanted.iter().filter(|w| *w != "unfinished") {
+        let found: Vec<&olo_protocol::diskbackup::SnapshotInfo> = all.iter().filter(|s| s.id.starts_with(w.as_str())).collect();
+        match found.as_slice() {
+            [one] => ids.push(one.id.clone()),
+            [] => return Err(format!("no backup {w}")),
+            _ => return Err(format!("{w} is the start of more than one backup's id")),
+        }
+    }
+    let n = ids.len() + usize::from(unfinished);
+    ask(Request::Delete { snapshots: ids, unfinished })?;
+    println!("{} deleted; the space only they took is being freed.", if n == 1 { "1 backup".to_owned() } else { format!("{n} backups") });
+    Ok(())
+}
+
 fn snapshots() -> Result<(), String> {
     let (_, repo) = open()?;
+    // (How each was last checked: the service keeps that.)
+    let checks: std::collections::HashMap<String, olo_protocol::diskbackup::Check> = match olo_protocol::diskbackup::call(&Request::Snapshots) {
+        Ok(Reply::Snapshots { snapshots }) => snapshots.into_iter().filter_map(|s| s.check.map(|c| (s.id, c))).collect(),
+        _ => Default::default(),
+    };
     for (id, s) in repo.snapshots().map_err(|e| e.to_string())? {
-        println!("{}  {}  {}  {} files, {}, {} new", &id.hex()[..12], when(s.time), s.host, s.summary.files, mb(s.summary.bytes), mb(s.summary.new_bytes));
+        let check = match checks.get(&id.hex()) {
+            None => String::new(),
+            Some(c) if c.error.is_some() => format!("; not checked {}", when(c.time)),
+            Some(c) if !c.problems.is_empty() => format!("; DAMAGED ({}): {}", when(c.time), c.problems.join("; ")),
+            Some(c) => format!("; validated {} {}", if c.full { "fully" } else { "fast" }, when(c.time)),
+        };
+        println!("{}  {}  {}  {} files, {}, {} new{check}", &id.hex()[..12], when(s.time), s.host, s.summary.files, mb(s.summary.bytes), mb(s.summary.new_bytes));
+    }
+    for (id, s) in repo.unfinished().map_err(|e| e.to_string())? {
+        println!("{}  {}  {}  UNFINISHED: {} files, {} so far, {} sent", &id.hex()[..12], when(s.time), s.host, s.summary.files, mb(s.summary.bytes), mb(s.summary.stored_bytes));
     }
     Ok(())
 }
@@ -429,6 +617,15 @@ fn set(pairs: &[String]) -> Result<(), String> {
         match k {
             "enabled" => s.enabled = flag()?,
             "battery" => s.on_battery = flag()?,
+            "automatic" => s.automatic = flag()?,
+            "priority" => {
+                s.priority = match v {
+                    "idle" => olo_protocol::diskbackup::Priority::Idle,
+                    "low" => olo_protocol::diskbackup::Priority::Low,
+                    "normal" => olo_protocol::diskbackup::Priority::Normal,
+                    _ => return Err(format!("priority={v}? idle, low or normal")),
+                }
+            }
             "every" => s.every_minutes = number()?.clamp(5, 7 * 24 * 60) as u32,
             "upload" => s.upload_kbs = number()?,
             "download" => s.download_kbs = number()?,

@@ -23,6 +23,14 @@ moxcms = "0.8"
 olo-color.workspace = true
 # Gain maps' HDR pictures in half floats (`gain`).
 half = "2"
+# Lottie animations (`lottie`: Telegram's animated stickers), read by
+# velato (vendored: vendor/README.md) and drawn by vello_cpu, in Rust.
+velato = { version = "0.12", default-features = false }
+vello_cpu = "0.3"
+flate2 = "1"
+# WebM with alpha (`webm`: Telegram's video stickers; vendored, reading
+# the blocks' additions).
+matroska-demuxer = "0.8"
 
 [dev-dependencies]
 # AVIF encoding (rav1e), for tests of decoding it.

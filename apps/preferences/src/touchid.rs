@@ -1,5 +1,6 @@
-//! Touch ID: the fingers enrolled with fprintd, adding one (touch after
-//! touch, with a progress bar) and removing one. fprintd calls run on
+//! Touch ID, Security ▸ Sign In's box: the fingers enrolled with
+//! fprintd, adding one (touch after touch, with a progress bar) and
+//! removing one. fprintd calls run on
 //! worker threads (`olo_system::fingerprint`); enrolling blocks on the
 //! sensor, so it has its own thread and can be cancelled.
 
@@ -16,7 +17,7 @@ use olo_system::fingerprint::{self as fp, EnrollEvent, FINGERS, Stop};
 use olo_ui::{
     gpui::{Context, Entity, ParentElement as _, SharedString, Styled as _, div, px},
     metrics as m,
-    widgets::{BBox, Button, Column, ColumnListView, EmptyState, ListModel, MenuField, StatusBar},
+    widgets::{Button, Column, ColumnListView, ListModel, MenuField, StatusBar},
 };
 
 use crate::{Msg, PanelView, form::Ui, panel};
@@ -231,24 +232,29 @@ impl State {
 
 fn state_of(v: &mut PanelView) -> Option<&mut State> {
     match &mut v.state {
-        panel::State::TouchId(st) => Some(st),
+        panel::State::Security(st) => Some(&mut st.touchid),
         _ => None,
     }
 }
 
 pub fn ui(ui: &mut Ui, st: &mut State) {
+    ui.bbox("Touch ID", |ui| fingers(ui, st));
+}
+
+/// Touch ID's box: the fingers, and adding or removing one.
+fn fingers(ui: &mut Ui, st: &mut State) {
     let link = st.link;
     let sh = link.shared.lock().unwrap();
     let fingers = match &sh.fingers {
         None => {
             drop(sh);
-            ui.add(EmptyState::new("Looking for the fingerprint sensor…").icon("fingerprint"));
+            ui.note("Looking for the fingerprint sensor…");
             return;
         }
         Some(Err(why)) => {
             let why = why.clone();
             drop(sh);
-            ui.add(EmptyState::new(why).icon("fingerprint"));
+            ui.note(why);
             return;
         }
         Some(Ok(f)) => f.clone(),
@@ -257,7 +263,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     let enrolling = sh.enrolling.as_ref().map(|e| (e.finger.clone(), e.stages, e.passed, e.message.clone(), e.stop.clone()));
     drop(sh);
 
-    ui.label("Touch ID unlocks the screen and approves administrator requests.");
+    ui.note(format!("A finger on the fingerprint sensor can stand for your password. Fingers enrolled for {}:", user()));
     let selected = st.list.read(ui.cx).state.single().and_then(|i| fingers.get(i)).cloned();
     let free: Vec<&'static str> = FINGERS.iter().copied().filter(|f| !fingers.iter().any(|e| e == f)).collect();
     // The usual choices first.
@@ -287,34 +293,35 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     let rows = fingers.clone();
     let list = ColumnListView::new("fingers", &st.list, vec![Column::new("Finger", 300.0)], fingers.len(), move |cell, window, cx| cell.text(window, cx, fp::finger_name(&rows[cell.row])))
         .on_select(|_, cx| cx.refresh_windows());
+    ui.add(div().h(px(104.0)).child(list));
     ui.add(
-        BBox::new(format!("Fingerprints for {}", user())).child(div().h(px(104.0)).child(list)).child(
-            div()
-                .flex()
-                .flex_row()
-                .gap(px(m::SPACING))
-                .child(MenuField::new("add-finger", names, add).width(150.0).enabled(idle && !free.is_empty()).on_change(pick))
-                .child(Button::new("Add Fingerprint").enabled(idle && !free.is_empty()).on_click(move |_, _| {
-                    if let Some(f) = add_free.get(add) {
-                        let _ = link.tx.send(Request::Enroll((*f).to_owned()));
-                    }
-                }))
-                .child(Button::new("Remove").enabled(idle && selected.is_some()).on_click(remove)),
-        ),
+        div()
+            .flex()
+            .flex_row()
+            .gap(px(m::SPACING))
+            .child(MenuField::new("add-finger", names, add).width(150.0).enabled(idle && !free.is_empty()).on_change(pick))
+            .child(Button::new("Add Fingerprint").enabled(idle && !free.is_empty()).on_click(move |_, _| {
+                if let Some(f) = add_free.get(add) {
+                    let _ = link.tx.send(Request::Enroll((*f).to_owned()));
+                }
+            }))
+            // (An id of its own: the Security Keys box beside has a Remove,
+            // and buttons with one id lose their clicks.)
+            .child(Button::new("Remove").id("finger-remove").enabled(idle && selected.is_some()).on_click(remove)),
     );
 
     if let Some((finger, stages, passed, message, stop)) = enrolling {
         let fraction = if stages == 0 { 0.0 } else { passed as f32 / stages as f32 };
         ui.add(StatusBar::new(fraction).label(format!("Enrolling your {}", fp::finger_name(&finger).to_lowercase())).trailing(format!("{passed} of {stages}")));
         ui.label(message);
-        ui.button("Cancel", move |_, _| {
+        ui.add(Button::new("Cancel").id("finger-enroll-cancel").on_click(move |_, _| {
             let stop = stop.clone();
             if fake_fingers().is_some() {
                 stop.stop_flag();
             } else {
                 std::thread::spawn(move || fp::stop_enroll(&stop));
             }
-        });
+        }));
     } else if let Some(finger) = st.confirm.clone() {
         ui.label(format!("Remove the {}? It will no longer unlock anything.", fp::finger_name(&finger).to_lowercase()));
         let cancel = ui.on_click_view(|v, _, cx| {
@@ -332,7 +339,14 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             list.update(cx, |l, _| l.state.selected.clear());
             cx.notify();
         });
-        ui.add(div().flex().flex_row().gap(px(m::SPACING)).child(Button::new("Cancel").on_click(cancel)).child(Button::new("Remove").default(true).on_click(confirm)));
+        ui.add(
+            div()
+                .flex()
+                .flex_row()
+                .gap(px(m::SPACING))
+                .child(Button::new("Cancel").id("finger-remove-cancel").on_click(cancel))
+                .child(Button::new("Remove").id("finger-remove-confirm").default(true).on_click(confirm)),
+        );
     } else if busy {
         ui.note("Working…");
     } else if let Some(e) = error {

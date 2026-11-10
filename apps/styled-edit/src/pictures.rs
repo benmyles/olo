@@ -125,9 +125,10 @@ fn fetch(url: &str, to: &Path) -> Result<(), String> {
         .timeout_per_read(Some(std::time::Duration::from_secs(30)))
         .build()
         .into();
-    let response = agent.get(url).header("Accept", "image/*").call().map_err(|e| format!("{url}: {e}"))?;
+    // (Across a network change, on where it broke off: `olo_net`.)
+    let body = olo_net::http::Download::start(&agent, url, Some("image/*"), None).map_err(|e| format!("{url}: {e}"))?;
     let mut bytes = Vec::new();
-    response.into_body().as_reader().take(MOST_FETCHED + 1).read_to_end(&mut bytes).map_err(|e| format!("{url}: {e}"))?;
+    body.take(MOST_FETCHED + 1).read_to_end(&mut bytes).map_err(|e| format!("{url}: {e}"))?;
     if bytes.len() as u64 > MOST_FETCHED {
         return Err(format!("{url} is too big a picture"));
     }

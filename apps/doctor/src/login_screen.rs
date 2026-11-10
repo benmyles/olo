@@ -109,10 +109,12 @@ pub fn display_manager(fs: &Path) -> Option<String> {
 }
 
 /// The login screen's copies older than the programs in `bin` (by when
-/// each was written: an upgrade writes `bin`'s after the copies), by name.
+/// each was written: an upgrade writes `bin`'s after the copies), by name;
+/// and its unit, if it isn't this build's (a fix there, such as who takes
+/// the seat when it can't show, came with no program newer).
 pub fn stale(fs: &Path, bin: &Path) -> Vec<&'static str> {
     let written = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
-    PROGRAMS
+    let mut old: Vec<&'static str> = PROGRAMS
         .into_iter()
         .filter(|name| {
             let copy = fs.join(LIBEXEC.trim_start_matches('/')).join(name);
@@ -123,5 +125,29 @@ pub fn stale(fs: &Path, bin: &Path) -> Vec<&'static str> {
                 _ => false,
             }
         })
-        .collect()
+        .collect();
+    if std::fs::read_to_string(fs.join("etc/systemd/system").join(SERVICE)).is_ok_and(|u| u != UNIT) {
+        old.push(SERVICE);
+    }
+    old
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_unit_not_this_builds_is_stale() {
+        let base = std::path::PathBuf::from(format!("/var/tmp/olo-doctor-unit-{}", std::process::id()));
+        let (fs, bin) = (base.join("fs"), base.join("bin"));
+        std::fs::create_dir_all(fs.join("etc/systemd/system")).unwrap();
+        std::fs::create_dir_all(&bin).unwrap();
+        let unit = fs.join("etc/systemd/system").join(SERVICE);
+        std::fs::write(&unit, UNIT).unwrap();
+        assert!(stale(&fs, &bin).is_empty());
+        // The unit before the hand-over moved to systemd.
+        std::fs::write(&unit, UNIT.replace("OnFailure=gdm.service sddm.service", "OnFailure=plymouth-quit.service")).unwrap();
+        assert_eq!(stale(&fs, &bin), [SERVICE]);
+        let _ = std::fs::remove_dir_all(&base);
+    }
 }

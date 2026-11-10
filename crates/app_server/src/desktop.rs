@@ -170,6 +170,9 @@ pub struct WindowMeta {
     /// Picture in picture (`shell::pip`): over every window, in no group,
     /// tile or remembered place. Decided on its first commit.
     pub pip: Cell<bool>,
+    /// Always on Top (its menu's, `Request::SetOnTop`): above the windows
+    /// that aren't, under picture in picture.
+    pub on_top: Cell<bool>,
 }
 
 impl WindowMeta {
@@ -225,6 +228,7 @@ impl WindowElement {
             away: RefCell::new(None),
             closed_by_hand: Cell::new(false),
             pip: Cell::new(false),
+            on_top: Cell::new(false),
         });
         self.user_data().get::<WindowMeta>().unwrap()
     }
@@ -487,6 +491,18 @@ pub fn panel(
 }
 
 /// Minutes since local midnight.
+/// Seconds since local midnight, with their fraction.
+fn local_seconds() -> f64 {
+    // SAFETY: plain libc time calls with valid pointers.
+    unsafe {
+        let mut ts: libc::timespec = std::mem::zeroed();
+        libc::clock_gettime(libc::CLOCK_REALTIME, &mut ts);
+        let mut tm: libc::tm = std::mem::zeroed();
+        libc::localtime_r(&ts.tv_sec, &mut tm);
+        (tm.tm_hour * 3600 + tm.tm_min * 60 + tm.tm_sec) as f64 + ts.tv_nsec as f64 / 1e9
+    }
+}
+
 fn local_minutes() -> u32 {
     // SAFETY: plain libc time calls with valid pointers.
     unsafe {
@@ -571,6 +587,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     focused: focused.is_some() && w.wl_surface().map(|s| s.into_owned()) == focused,
                     chosen: self.twitch.as_ref().is_some_and(|t| t.rows.get(t.row).and_then(|r| r.1.get(t.index)) == Some(&meta.id)),
                     rolled: w.rolled(),
+                    on_top: meta.on_top.get(),
                     covered: meta.covered.get(),
                     zoomed: self.is_zoomed(&w),
                     zoomed_along: Self::zoomed_axis(&w).map(|a| match a {
@@ -1033,6 +1050,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// presses walk it; the arrows move about the rows (`twitch_move`).
     pub fn twitch_step(&mut self, apps: bool, all: bool, back: bool) {
         if self.twitch.as_ref().is_none_or(|t| (t.apps, t.all) != (apps, all)) {
+            crate::twitcher::recheck();
             let (rows, displays, on) = self.twitch_rows(apps, all);
             let mut order: Vec<(usize, usize)> = rows.iter().enumerate().flat_map(|(r, row)| (0..row.1.len()).map(move |i| (r, i))).collect();
             if order.len() < 2 {
@@ -1993,7 +2011,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         if olo_xdg::themes::set(&settings.appearance.icon_theme) {
             crate::twitcher::theme_changed();
         }
-        if settings.tiling.default_mode != self.settings.tiling.default_mode {
+        if settings.tiling.default_mode != self.settings.tiling.default_mode || settings.tiling.layout != self.settings.tiling.layout {
             self.auto.changed();
         }
         // Group Windows on again for an app: its windows taken out by hand
@@ -2004,6 +2022,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             self.regroup_apps(&regrouped);
         }
         self.keymap.set_bindings(olo_protocol::shortcuts::bindings(&self.settings.keyboard.profile));
+        self.keymap.set_chrome(olo_protocol::app_keys::chrome_keys(&self.settings.keyboard.profile));
         // Fewer workspaces: the windows on those gone join the last, and
         // a display showing one goes to it (with its windows).
         let last = self.settings.workspace_count.max(1) - 1;
@@ -2070,10 +2089,37 @@ impl<B: Backend + 'static> AnvilState<B> {
         if (theme::set(a.palette()) || force) && B::IS_SESSION {
             crate::toolkits::publish(a.icon_theme.clone(), a.colors.clone(), theme);
         }
-        let kelvin = night.then_some(self.settings.appearance.night_light.temperature);
+        // A scheduled night shifting gradually: its warmth so far, and its
+        // next step in a while (only while it shifts: no timer otherwise).
+        let nl = &self.settings.appearance.night_light;
+        let shift = if night { nl.shifting(local_seconds()) } else { None };
+        let (target, minutes) = (nl.temperature, nl.gradual_minutes);
+        let kelvin = night.then(|| shift.map_or(target as f64, |into| crate::night::shifted(target, into, minutes)));
         if kelvin != self.night_light || self.white_point.is_none() {
+            // (Its first step, or the night's end, fades as ever.)
+            let step = shift.is_some() && self.night_light.is_some();
             self.night_light = kelvin;
-            self.set_night_light(kelvin);
+            self.set_night_light(kelvin, step);
+        }
+        match (shift, self.night_shift.is_some()) {
+            (Some(_), false) => {
+                let every = crate::night::shift_every(target, minutes);
+                let timer = smithay::reexports::calloop::timer::Timer::from_duration(every);
+                self.night_shift = self
+                    .handle
+                    .insert_source(timer, |_, _, state| {
+                        state.night_shift = None;
+                        state.update_appearance(false);
+                        smithay::reexports::calloop::timer::TimeoutAction::Drop
+                    })
+                    .ok();
+            }
+            (None, true) => {
+                if let Some(t) = self.night_shift.take() {
+                    self.handle.remove(t);
+                }
+            }
+            _ => {}
         }
         if changed || force {
             self.ipc.broadcast(Event::SettingsChanged { settings: self.told_settings() });

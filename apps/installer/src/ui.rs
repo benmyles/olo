@@ -459,6 +459,7 @@ impl Setup {
                 right = right.child(Button::new("< Back").enabled(false)).child(Button::new("Next >").enabled(false)).child(Button::new("Cancel").id("cancel").on_click(move |_, cx| {
                     cancel.update(cx, |s, cx| {
                         s.stop.store(true, Ordering::Relaxed);
+                        olo_net::nudge();
                         s.doing = "Stopping…".into();
                         cx.notify();
                     })
