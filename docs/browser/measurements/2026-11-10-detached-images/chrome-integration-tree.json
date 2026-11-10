@@ -1,0 +1,38 @@
+[
+  {
+    "window": 84,
+    "app_id": "google-chrome",
+    "title": "Detached image source regression - Google Chrome",
+    "focused": true,
+    "content": {
+      "x": 53,
+      "y": 66,
+      "width": 534,
+      "height": 419
+    },
+    "nodes": [
+      {
+        "id": 1,
+        "role": "Window",
+        "name": "",
+        "x": 53.0,
+        "y": 66.0,
+        "width": 534.0,
+        "height": 419.0,
+        "enabled": true
+      },
+      {
+        "id": 2,
+        "parent": 1,
+        "role": "Document",
+        "name": "",
+        "value": "",
+        "x": 53.0,
+        "y": 66.0,
+        "width": 534.0,
+        "height": 0.0,
+        "enabled": true
+      }
+    ]
+  }
+]

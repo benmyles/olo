@@ -8211,3 +8211,55 @@ experiments: aggregate errors improved but new curve outliers appeared. No Zeno
 dependency or new raster policy shipped. Chrome glyph pixels and website acceptance
 remain open (**0/100**). Evidence and reproduction scripts are in
 `measurements/2026-11-10-glyph-coverage/`, with the summary alongside it.
+
+### 2026-11-10 — detached image ownership and cold-start stability
+
+The current Stripe homepage loaded 95 scripts but its hero wave was black.
+Its Three.js palette is a detached `Image`: `Realm::canvases` dropped the decoded
+pixels on presentation while JavaScript still reported a complete 480×480
+image. The four readback samples were transparent. They now match Chrome
+exactly and the live wave renders in color. A standalone two-frame image test
+reproduces transparent output in the frozen baseline and the expected opaque
+pixel in both the candidate and Chrome.
+
+DOM wrapper identities are weak, with traced native parent/child fields retaining
+connected nodes and referenced detached trees, including shadow/template roots.
+Structural mutations update only affected edges. V8 finalizers enqueue collected
+ids; the worker releases their images and 2D canvases on subsequent work, with
+no idle poll. Decoded assets are charged once per shared image to V8; both script
+and host image requests pin their elements through completion. The unused
+strong shadow-root set is gone; slot-listener targets are weak. Forced-GC tests
+cover retained identities/listeners, detached cycles, fragment moves, replaced
+children, shadow/templates, image completion and shared image accounting.
+
+The release stress test caught two crashes missed by the first unit suite.
+The first representation deleted a private parent property and aborted in V8's
+map-normalization write barrier; native internal fields avoid those transitions.
+A later failure occurred in read-only heap allocation. The unchanged baseline
+also failed cold starts (2/8), as did the candidate (1/8). Keeping the shared
+read-only heap sealed with `--no-extensible-ro-snapshot` passed the initial 8/8
+control and 32/32 fresh-cache starts in the rebuilt default configuration. The
+snapshot format is now 5. Rejected experiments and crash stacks are retained;
+a smaller synchronized snapshot-order probe did not reproduce the failure and
+is not counted as a regression test.
+
+Final build/tests: workspace release build succeeds; 2,189 passed, 0 failed,
+136 existing ignored. Both required screen-size lints and all 15 live
+light/dark/night × 1/1.25/1.5/1.75/2× widget reviews are clean. Release ABBA
+measurements at 1.25×/2× show the cost of correct ownership: per 1,000 nodes,
+build 4.768→5.859 / 6.060→7.775 ms; move 3.138→3.257 / 3.991→5.029 ms;
+remove 0.084→0.190 / 0.106→0.369 ms. RSS adds 1,850/2,500 KiB. Median ready
+latency 157.5→132.5 / 174→173.5 ms, with shared-host variability; no speedup
+claim. Whole-process CPU 710→1,005 / 780→760 ms includes startup and scrolling.
+Drag first movement 28.35→28.65 / 28.75→28.45 ms; wheel 8.95→5.35 / 6.10→9.75 ms.
+All 16 scroll checks were hitch-free. Eight idle samples had zero measured CPU
+and frames, but 2–3 existing watchdog wakes each.
+
+The scale check found the next live compatibility failure: native/page raster
+scale changes, but the scripting realm retains its startup `devicePixelRatio`
+and viewport/media state. No site configuration is accepted (**0/100**).
+Connected offscreen image recovery, native DOM arena/GL context reclamation,
+complete observer lifetimes and eliminating idle watchdog wakes remain open.
+The milestone's raw evidence and scripts are in
+`measurements/2026-11-10-detached-images/`. No desktop install/reload; the fetched
+`origin/main` was already contained in the browser branch.

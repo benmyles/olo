@@ -14781,3 +14781,14 @@ new entries. `paint_bench N direct|cached` measures identical tile bytes, cold a
 repeated raster times, hits and retained bytes. See `docs/browser/ENGINE.md` for
 the allocation accounting and limits. This does not close Chrome glyph-pixel
 nonpasses.
+
+Browser DOM wrapper identities are weak V8 handles. Traced, bidirectional
+internal ownership fields retain connected nodes through the document and detached trees
+through script references; shadow/template ownership is included without
+changing web-facing `parentNode`. Only structural mutations update these edges.
+Image loads pin their element through completion; decoded images are charged
+once per shared asset to V8 and reclaimed after their wrapper is collected.
+A detached `Image` is a valid canvas/WebGL source and must not be discarded
+merely because it has no layout box. See `crates/js/src/wrappers.rs` and its
+forced-collection tests. Native DOM arena/GL context reclamation and recovery
+of connected offscreen images used as pixel sources remain incomplete.

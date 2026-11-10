@@ -1,0 +1,16 @@
+{
+  "url": "file:///home/ben/worktrees/olo/browser/docs/browser/measurements/2026-11-10-detached-images/detached-image.html",
+  "result": {
+    "result": {
+      "type": "string",
+      "value": "[true,1,17,91,203,255]"
+    }
+  },
+  "browser": {
+    "protocolVersion": "1.3",
+    "product": "Chrome/157.0.8103.38",
+    "revision": "@a733b5afbb3ba618844ff8876b89ad1a774b2f18",
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+    "jsVersion": "15.7.112.23"
+  }
+}

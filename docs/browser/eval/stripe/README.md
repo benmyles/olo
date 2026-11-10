@@ -14,6 +14,18 @@ without a dedicated eval environment; no personal account is part of this run.
 
 ## Latest checkpoint
 
+2026-11-10: found and fixed a live regression in the hero's palette image.
+`Realm::canvases` discarded decoded pixels of a detached `new Image()` before
+Three.js uploaded it, rendering the wave black. The fixed four WebP samples
+match Chrome exactly; the wave renders in color. Native-widget reviews pass at
+all five live scales in light/dark/night. The page still reports the startup
+`devicePixelRatio` after a live scale change, so those are **not accepted site
+configurations**. See [ownership evidence](../../measurements/2026-11-10-detached-images/README.md).
+Next: update scripting viewport/media state on resize/scale/theme changes and
+compare the resulting page behavior with Chrome. Acceptance remains 0/100.
+
+The earlier checkpoint follows:
+
 2026-11-08 midday: the homepage renders as Chrome does at 1000 × 700,
 1× (static sections within a pixel; JOURNAL 2026-11-07), with its
 scripts run (V8), its WebGL scenes drawn on the GPU, its workers,

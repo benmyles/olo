@@ -1,0 +1,14 @@
+[
+  {
+    "mode": "default",
+    "returncode": 0,
+    "stdout": "snapshot race passed\n",
+    "stderr": ""
+  },
+  {
+    "mode": "sealed",
+    "returncode": 0,
+    "stdout": "snapshot race passed\n",
+    "stderr": ""
+  }
+]

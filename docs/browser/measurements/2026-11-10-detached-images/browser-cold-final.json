@@ -1,0 +1,226 @@
+[
+  {
+    "mode": "production",
+    "iteration": 0,
+    "pid": 227071,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 22 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 143 ms (132 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":8.210275000000003,\"move\":5.187859000000003,\"remove\":0.5946349999999967},{\"build\":9.016193999999999,\"move\":4.226595000000003,\"remove\":0.20207200000001535},{\"build\":6.356102000000007,\"move\":3.4836719999999843,\"remove\":0.20177700000000698},{\"build\":6.4336859999999945,\"move\":3.1834670000000074,\"remove\":0.1871139999999798},{\"build\":6.257158000000004,\"move\":4.612501999999992,\"remove\":0.17035700000000986},{\"build\":5.388524000000004,\"move\":4.059470999999988,\"remove\":0.1733860000000078},{\"build\":5.069392000000008,\"move\":3.034354999999991,\"remove\":0.1736530000000016},{\"build\":7.008283999999989,\"move\":3.3020209999999963,\"remove\":0.18790400000000318}]\nBrowser: scripted page ready 185 ms after the request\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 1,
+    "pid": 227145,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 22 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 140 ms (135 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":7.457252999999994,\"move\":3.8541060000000087,\"remove\":0.5718919999999983},{\"build\":7.7748769999999965,\"move\":6.86314500000001,\"remove\":0.25292899999999463},{\"build\":11.749055999999996,\"move\":3.778402,\"remove\":0.20262199999999098},{\"build\":6.3524300000000125,\"move\":3.3420659999999884,\"remove\":0.1877330000000086},{\"build\":6.963785999999999,\"move\":4.288426999999999,\"remove\":0.18704100000000778},{\"build\":6.092308000000003,\"move\":3.6099299999999914,\"remove\":0.20062500000000227},{\"build\":5.285560000000004,\"move\":3.168329,\"remove\":0.20220799999999883},{\"build\":7.423038000000005,\"move\":3.3566859999999963,\"remove\":0.21269899999998643}]\nBrowser: scripted page ready 182 ms after the request\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 2,
+    "pid": 227227,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 24 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 152 ms (131 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":7.214846999999992,\"move\":3.5921070000000057,\"remove\":7.399629000000012},{\"build\":15.976304000000013,\"move\":6.801012,\"remove\":0.3034759999999892},{\"build\":6.633070000000004,\"move\":3.6610960000000006,\"remove\":0.1922830000000033},{\"build\":6.372202999999985,\"move\":3.427703000000008,\"remove\":0.20945999999999287},{\"build\":6.372163999999998,\"move\":4.8890559999999965,\"remove\":0.20544800000000407},{\"build\":5.105061000000006,\"move\":3.3668720000000008,\"remove\":0.1924929999999847},{\"build\":4.993538999999998,\"move\":3.132731000000007,\"remove\":0.1977899999999977},{\"build\":7.261610999999988,\"move\":3.392235999999997,\"remove\":0.19441699999998718}]\nBrowser: scripted page ready 196 ms after the request\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 3,
+    "pid": 227329,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 23 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 140 ms (130 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":8.469121999999999,\"move\":4.555540999999998,\"remove\":0.6816419999999965},{\"build\":9.270667000000003,\"move\":5.098687999999996,\"remove\":0.27925399999999456},{\"build\":7.260785999999996,\"move\":3.404836000000003,\"remove\":0.17743899999999257},{\"build\":6.138498999999982,\"move\":3.3871440000000206,\"remove\":0.1966239999999857},{\"build\":7.162363999999997,\"move\":4.388384000000002,\"remove\":0.1872280000000046},{\"build\":5.7080139999999915,\"move\":3.6118700000000104,\"remove\":0.19829500000000166},{\"build\":5.216481000000002,\"move\":3.1519499999999994,\"remove\":0.188083000000006},{\"build\":7.349689999999981,\"move\":3.3016380000000254,\"remove\":0.1813410000000033}]\nBrowser: scripted page ready 184 ms after the request\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 4,
+    "pid": 227406,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 23 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 138 ms (129 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":7.577977000000004,\"move\":3.6983999999999995,\"remove\":0.6854790000000008},{\"build\":7.882186999999995,\"move\":5.284060000000011,\"remove\":0.38193599999999606},{\"build\":9.371576000000005,\"move\":3.6915059999999897,\"remove\":0.2708760000000012},{\"build\":7.023726999999994,\"move\":3.643940999999998,\"remove\":0.1895719999999983},{\"build\":7.457250000000002,\"move\":4.500349,\"remove\":0.19977699999999743},{\"build\":6.185849999999988,\"move\":3.880166000000017,\"remove\":0.1867939999999919},{\"build\":5.156783000000004,\"move\":3.1638379999999984,\"remove\":0.18263100000000065},{\"build\":7.265779999999992,\"move\":3.3404649999999947,\"remove\":0.2104400000000055}]\nBrowser: scripted page ready 181 ms after the request\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 5,
+    "pid": 227489,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 35 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 215 ms (148 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":15.655162000000004,\"move\":15.18676400000001,\"remove\":2.1033819999999963},{\"build\":14.933759999999992,\"move\":6.623595000000009,\"remove\":1.2630659999999807},{\"build\":11.92894800000002,\"move\":7.508360999999979,\"remove\":0.2933699999999817},{\"build\":7.61590099999998,\"move\":3.306898999999987,\"remove\":0.19315900000000852},{\"build\":7.2946990000000085,\"move\":5.017188000000004,\"remove\":0.1905179999999973},{\"build\":5.191172999999992,\"move\":3.4837009999999964,\"remove\":0.2078740000000039},{\"build\":5.436916000000025,\"move\":3.173407999999995,\"remove\":0.20616999999998598},{\"build\":7.135964999999999,\"move\":3.924324000000013,\"remove\":0.20547399999998106}]\nBrowser: scripted page ready 275 ms after the request\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 6,
+    "pid": 227588,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 27 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 167 ms (152 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":14.683828000000005,\"move\":8.632168000000007,\"remove\":0.8556080000000037},{\"build\":9.615094,\"move\":4.538050000000013,\"remove\":0.2565400000000011},{\"build\":6.416392000000002,\"move\":3.4572139999999933,\"remove\":0.19087700000001462},{\"build\":6.080289000000008,\"move\":3.1667949999999934,\"remove\":0.18739300000000014},{\"build\":6.852146999999988,\"move\":4.412070999999997,\"remove\":0.18728900000002113},{\"build\":6.017634000000044,\"move\":3.3485089999999786,\"remove\":0.21923000000001025},{\"build\":5.06203899999997,\"move\":3.424787000000009,\"remove\":0.2149090000000058},{\"build\":12.381922999999972,\"move\":3.588656000000043,\"remove\":0.21056099999998423}]\nBrowser: scripted page ready 217 ms after the request\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 7,
+    "pid": 227684,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 26 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 289 ms (190 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":21.287014999999997,\"move\":15.53849600000001,\"remove\":1.203123999999974},{\"build\":14.540182999999985,\"move\":8.38292100000001,\"remove\":0.775242999999989},{\"build\":10.442948999999999,\"move\":7.052745999999985,\"remove\":0.7393880000000195},{\"build\":9.791203999999993,\"move\":6.613506000000001,\"remove\":0.7178570000000093},{\"build\":11.749865999999997,\"move\":7.493386000000015,\"remove\":0.7151029999999992},{\"build\":8.110328999999979,\"move\":7.004536999999999,\"remove\":0.7789490000000114},{\"build\":7.478500999999966,\"move\":6.540233000000001,\"remove\":0.7695329999999672},{\"build\":11.872367000000054,\"move\":6.524133999999947,\"remove\":0.37745200000000523}]\nBrowser: scripted page ready 359 ms after the request\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 8,
+    "pid": 227782,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 35 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 243 ms (175 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":15.746144000000015,\"move\":9.339348000000015,\"remove\":0.9856149999999957},{\"build\":12.251505000000009,\"move\":6.342316000000011,\"remove\":0.6422200000000089},{\"build\":8.493982000000017,\"move\":6.347006999999991,\"remove\":0.6799709999999948},{\"build\":8.410719,\"move\":6.0367089999999735,\"remove\":0.5374680000000183},{\"build\":8.204987999999986,\"move\":6.718478000000005,\"remove\":0.5089600000000019},{\"build\":5.539372000000014,\"move\":3.366453999999976,\"remove\":0.19476100000002816},{\"build\":6.870376999999991,\"move\":5.1543769999999824,\"remove\":0.47680400000001555},{\"build\":10.15209999999999,\"move\":5.5753019999999935,\"remove\":0.3449980000000039}]\nBrowser: scripted page ready 308 ms after the request\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 9,
+    "pid": 227857,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 25 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 185 ms (140 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":9.741725000000002,\"move\":3.4276119999999963,\"remove\":0.6002480000000077},{\"build\":10.306409000000002,\"move\":5.152460999999988,\"remove\":0.22559600000001012},{\"build\":7.780170999999996,\"move\":3.4285219999999867,\"remove\":0.18705500000001507},{\"build\":6.088529000000008,\"move\":3.1227819999999866,\"remove\":0.19171200000002386},{\"build\":7.187549000000018,\"move\":4.636734999999987,\"remove\":0.7266480000000115},{\"build\":5.4211509999999805,\"move\":3.592111000000017,\"remove\":0.19044600000000855},{\"build\":5.906054000000012,\"move\":5.120687000000004,\"remove\":0.6071279999999888},{\"build\":14.981063999999975,\"move\":3.7563810000000046,\"remove\":0.22402700000000664}]\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 10,
+    "pid": 228034,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 42 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 213 ms (167 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":20.02440999999999,\"move\":9.026978,\"remove\":1.126599000000013},{\"build\":8.825583999999992,\"move\":7.076616999999999,\"remove\":0.7909420000000011},{\"build\":12.823780999999997,\"move\":6.536005000000017,\"remove\":0.5748499999999979},{\"build\":9.194243999999998,\"move\":10.230608999999987,\"remove\":0.7086170000000038},{\"build\":11.73374800000002,\"move\":4.590452999999968,\"remove\":0.19085400000000163},{\"build\":6.837817000000001,\"move\":3.6248110000000224,\"remove\":0.20792000000000144},{\"build\":6.831756000000013,\"move\":3.528804999999977,\"remove\":0.21450800000002346},{\"build\":7.8841299999999706,\"move\":3.4406040000000075,\"remove\":0.2825860000000091}]\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 11,
+    "pid": 228191,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 23 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 164 ms (134 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":12.714386000000012,\"move\":4.382688999999999,\"remove\":0.6500840000000068},{\"build\":9.559800999999993,\"move\":5.072870000000009,\"remove\":0.21354399999998463},{\"build\":8.883918999999992,\"move\":5.896363000000008,\"remove\":0.3180439999999862},{\"build\":6.693303999999998,\"move\":3.241429999999994,\"remove\":0.18715100000000007},{\"build\":6.569035999999997,\"move\":4.714672999999976,\"remove\":0.18398300000004042},{\"build\":5.923329999999993,\"move\":3.527926000000008,\"remove\":0.175422999999995},{\"build\":6.420053999999993,\"move\":3.3646209999999996,\"remove\":0.20536500000000046},{\"build\":7.2411719999999775,\"move\":3.3590980000000172,\"remove\":0.18664699999996515}]\nBrowser: scripted page ready 209 ms after the request\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 12,
+    "pid": 228286,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 22 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 148 ms (142 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":8.119284999999998,\"move\":3.7464749999999967,\"remove\":0.6661029999999997},{\"build\":8.539247999999994,\"move\":5.026137000000006,\"remove\":0.26377500000000964},{\"build\":8.701020999999997,\"move\":4.80509099999999,\"remove\":0.528523000000007},{\"build\":8.960936000000004,\"move\":5.301657000000006,\"remove\":0.3732729999999975},{\"build\":9.067541000000006,\"move\":4.782765999999995,\"remove\":0.19719199999998693},{\"build\":5.314464999999998,\"move\":3.3740470000000045,\"remove\":0.2208559999999835},{\"build\":5.30439699999998,\"move\":3.2879810000000305,\"remove\":0.19358499999998457},{\"build\":7.150585000000007,\"move\":3.424927000000025,\"remove\":0.20429299999997852}]\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 13,
+    "pid": 228368,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 26 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 260 ms (201 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":16.152675000000002,\"move\":9.549216000000001,\"remove\":1.2574049999999914},{\"build\":11.256828999999996,\"move\":9.298522000000006,\"remove\":0.744733999999994},{\"build\":14.234591999999992,\"move\":7.6579670000000135,\"remove\":0.7097549999999728},{\"build\":12.004195999999979,\"move\":7.014623,\"remove\":0.7337050000000147},{\"build\":11.325698000000017,\"move\":8.142459999999971,\"remove\":0.6965920000000096},{\"build\":8.251266999999984,\"move\":13.479533000000004,\"remove\":0.8240430000000174},{\"build\":8.015717999999993,\"move\":13.106331000000011,\"remove\":1.1113229999999987},{\"build\":15.363472000000002,\"move\":6.7086309999999685,\"remove\":0.7650660000000471}]\nBrowser: scripted page ready 317 ms after the request\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 14,
+    "pid": 228455,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 26 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 177 ms (171 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":10.55484100000001,\"move\":7.552340000000001,\"remove\":0.7019229999999936},{\"build\":11.540835999999999,\"move\":5.317003,\"remove\":0.3003980000000013},{\"build\":8.244602,\"move\":5.3972459999999955,\"remove\":0.4434050000000127},{\"build\":8.496477999999996,\"move\":5.26511099999999,\"remove\":0.422756000000021},{\"build\":9.03895700000001,\"move\":5.671515999999997,\"remove\":0.27291700000000674},{\"build\":6.754040000000003,\"move\":5.075174000000004,\"remove\":0.3376450000000091},{\"build\":6.294550999999984,\"move\":3.417275000000018,\"remove\":0.19601199999999608},{\"build\":9.158968000000016,\"move\":5.423489999999958,\"remove\":0.4109160000000145}]\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 15,
+    "pid": 228521,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 22 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 133 ms (128 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":7.201605999999998,\"move\":3.688335000000002,\"remove\":0.5668059999999997},{\"build\":6.830597999999995,\"move\":5.278583000000012,\"remove\":0.21020099999999786},{\"build\":9.381714000000002,\"move\":4.0297840000000065,\"remove\":0.2734669999999966},{\"build\":7.164677000000012,\"move\":3.3618709999999794,\"remove\":0.18899700000001474},{\"build\":7.1150750000000045,\"move\":4.415889000000007,\"remove\":0.1805519999999916},{\"build\":5.322797999999992,\"move\":3.878359000000003,\"remove\":0.1922660000000036},{\"build\":4.981749999999991,\"move\":2.9056109999999933,\"remove\":0.1805530000000033},{\"build\":6.991621000000009,\"move\":3.4412889999999834,\"remove\":0.1782440000000065}]\nBrowser: scripted page ready 175 ms after the request\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 16,
+    "pid": 228597,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 45 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 287 ms (125 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":18.60956200000001,\"move\":7.949101999999982,\"remove\":1.843338999999986},{\"build\":10.428387000000015,\"move\":9.105884000000003,\"remove\":0.2606269999999711},{\"build\":11.85679300000001,\"move\":6.287323000000015,\"remove\":1.3278860000000066},{\"build\":13.029721999999992,\"move\":6.088105000000013,\"remove\":0.20844099999999344},{\"build\":15.645116999999999,\"move\":4.588706000000002,\"remove\":0.19664499999998952},{\"build\":5.362896999999975,\"move\":3.4007430000000056,\"remove\":0.21125599999999167},{\"build\":5.336478000000028,\"move\":7.548619000000002,\"remove\":0.2602569999999673},{\"build\":9.40169199999994,\"move\":9.263459000000012,\"remove\":0.21112999999996873}]\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 17,
+    "pid": 228689,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 24 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 176 ms (169 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":13.446886000000006,\"move\":7.347740000000002,\"remove\":0.945305999999988},{\"build\":9.630659000000009,\"move\":6.080669999999998,\"remove\":0.5087719999999933},{\"build\":8.299471000000011,\"move\":5.4446590000000015,\"remove\":0.34723100000000784},{\"build\":7.880379000000019,\"move\":5.322687999999985,\"remove\":0.6150389999999959},{\"build\":8.945205000000016,\"move\":6.202696999999986,\"remove\":0.3634360000000072},{\"build\":6.704014000000001,\"move\":5.331663999999989,\"remove\":0.5630659999999921},{\"build\":6.368077999999997,\"move\":5.014104999999972,\"remove\":0.43405100000001084},{\"build\":9.489607999999976,\"move\":4.954509999999999,\"remove\":0.44614400000000387}]\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 18,
+    "pid": 228794,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 23 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 138 ms (129 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":8.539803000000006,\"move\":5.770223000000001,\"remove\":0.6052910000000011},{\"build\":9.769968000000006,\"move\":3.536608000000001,\"remove\":0.20258900000000324},{\"build\":6.638528999999991,\"move\":3.3078590000000077,\"remove\":0.18907899999999245},{\"build\":6.312287999999995,\"move\":3.1514430000000004,\"remove\":0.1829659999999933},{\"build\":6.469199000000003,\"move\":4.548389,\"remove\":0.18144699999999148},{\"build\":5.132261,\"move\":3.2060400000000016,\"remove\":0.18841700000000117},{\"build\":5.096486999999996,\"move\":3.123402999999996,\"remove\":0.18243499999999813},{\"build\":7.0126479999999844,\"move\":3.2685299999999984,\"remove\":0.20913799999999583}]\nBrowser: scripted page ready 181 ms after the request\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 19,
+    "pid": 228868,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 22 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 136 ms (129 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":8.400413,\"move\":3.730585000000005,\"remove\":0.6164259999999899},{\"build\":7.585214000000001,\"move\":5.322159000000013,\"remove\":0.20020199999999022},{\"build\":9.39755000000001,\"move\":3.2205459999999846,\"remove\":0.18892300000001683},{\"build\":6.462479999999999,\"move\":3.3425940000000054,\"remove\":0.18666700000001413},{\"build\":7.199489999999997,\"move\":4.724506000000005,\"remove\":0.1980570000000057},{\"build\":5.650300999999999,\"move\":3.352735999999993,\"remove\":0.18715700000001334},{\"build\":5.189861000000008,\"move\":3.2849760000000003,\"remove\":0.18976800000000082},{\"build\":7.0508000000000095,\"move\":3.261556999999982,\"remove\":0.1806280000000129}]\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 20,
+    "pid": 228940,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 22 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 130 ms (125 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":7.412914999999998,\"move\":3.5514110000000016,\"remove\":0.537700000000001},{\"build\":6.044565000000006,\"move\":5.319134999999996,\"remove\":0.19186200000000753},{\"build\":8.729786999999988,\"move\":3.9341720000000038,\"remove\":0.18683500000000208},{\"build\":6.115864000000002,\"move\":3.1898809999999997,\"remove\":0.18191700000001276},{\"build\":6.845060000000004,\"move\":4.394996999999989,\"remove\":0.17821499999999446},{\"build\":5.188760000000002,\"move\":3.2099350000000015,\"remove\":0.18709099999999523},{\"build\":6.137565000000009,\"move\":3.134923999999998,\"remove\":0.1934089999999884},{\"build\":7.062433999999996,\"move\":3.3384490000000113,\"remove\":0.1907889999999952}]\nBrowser: scripted page ready 172 ms after the request\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 21,
+    "pid": 229014,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 22 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 139 ms (131 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":8.114291000000001,\"move\":3.7388070000000013,\"remove\":0.7266690000000011},{\"build\":8.216929,\"move\":5.17742100000001,\"remove\":0.3056529999999924},{\"build\":9.966784000000004,\"move\":3.4214839999999924,\"remove\":0.19796800000000303},{\"build\":6.889226000000008,\"move\":3.419339999999991,\"remove\":0.18274099999999294},{\"build\":7.3550790000000035,\"move\":4.351180999999997,\"remove\":0.18120700000000056},{\"build\":5.709686000000005,\"move\":4.396540999999999,\"remove\":0.1921779999999984},{\"build\":5.0609639999999985,\"move\":3.0233029999999843,\"remove\":0.18367100000000391},{\"build\":7.183227000000002,\"move\":3.361468000000002,\"remove\":0.18722199999999134}]\nBrowser: scripted page ready 183 ms after the request\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 22,
+    "pid": 229088,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 21 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 134 ms (123 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":7.6630579999999995,\"move\":3.900780999999995,\"remove\":0.5295800000000028},{\"build\":6.259199000000002,\"move\":5.986010999999998,\"remove\":0.1970840000000038},{\"build\":9.373441000000007,\"move\":3.3159199999999913,\"remove\":0.19128700000001686},{\"build\":7.405547999999996,\"move\":3.9348010000000073,\"remove\":0.22836300000001586},{\"build\":7.488186999999982,\"move\":5.141637000000017,\"remove\":0.2069309999999831},{\"build\":5.777851999999996,\"move\":3.7961509999999947,\"remove\":0.2302180000000078},{\"build\":5.670049000000006,\"move\":3.1878789999999952,\"remove\":0.18224499999999466},{\"build\":7.415887999999995,\"move\":3.298000000000002,\"remove\":0.19542599999999766}]\nBrowser: scripted page ready 175 ms after the request\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 23,
+    "pid": 229179,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 24 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 143 ms (133 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":7.491805999999997,\"move\":4.067019000000002,\"remove\":1.3924439999999976},{\"build\":9.603230000000003,\"move\":5.616748999999999,\"remove\":0.23969100000000765},{\"build\":10.027239999999992,\"move\":3.3814140000000066,\"remove\":0.19377900000000636},{\"build\":6.759751999999992,\"move\":3.3866280000000017,\"remove\":0.18588700000000813},{\"build\":6.982286000000002,\"move\":4.294792000000001,\"remove\":0.19312400000001162},{\"build\":6.0005589999999955,\"move\":4.123137999999997,\"remove\":0.23300100000001578},{\"build\":5.333528000000001,\"move\":3.258307000000002,\"remove\":0.19587399999998922},{\"build\":7.85574299999999,\"move\":3.4850800000000106,\"remove\":0.21010299999997528}]\nBrowser: scripted page ready 188 ms after the request\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 24,
+    "pid": 229252,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 23 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 167 ms (136 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":15.311611999999997,\"move\":8.477433000000005,\"remove\":0.7988520000000108},{\"build\":8.241925999999992,\"move\":3.6264100000000212,\"remove\":0.2445099999999769},{\"build\":7.042147999999997,\"move\":3.7579139999999995,\"remove\":0.30590100000000575},{\"build\":6.22845199999999,\"move\":3.5731499999999983,\"remove\":0.1988539999999972},{\"build\":6.329400000000007,\"move\":4.341520000000003,\"remove\":0.18581899999998086},{\"build\":5.067604000000017,\"move\":3.051394000000016,\"remove\":0.1716769999999599},{\"build\":5.0136719999999855,\"move\":2.898734000000019,\"remove\":0.17008500000000026},{\"build\":6.564711999999986,\"move\":3.2030960000000164,\"remove\":0.1978729999999871}]\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 25,
+    "pid": 229540,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 22 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 133 ms (126 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":8.502674000000006,\"move\":3.402583,\"remove\":0.5522589999999994},{\"build\":7.257348,\"move\":3.670348000000004,\"remove\":0.20351699999999084},{\"build\":11.081572000000008,\"move\":5.706017000000003,\"remove\":0.20060699999999088},{\"build\":8.029243999999991,\"move\":3.2023339999999934,\"remove\":0.19211500000000115},{\"build\":6.900644,\"move\":4.677275999999992,\"remove\":0.1890989999999988},{\"build\":5.043136999999987,\"move\":3.2331210000000112,\"remove\":0.1804509999999908},{\"build\":5.371563000000009,\"move\":3.1855469999999855,\"remove\":0.18058600000000524},{\"build\":6.814601999999994,\"move\":3.2241109999999935,\"remove\":0.19973900000002232}]\nBrowser: scripted page ready 175 ms after the request\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 26,
+    "pid": 229716,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 24 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 169 ms (162 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":10.770415,\"move\":6.777055000000004,\"remove\":0.8898900000000083},{\"build\":8.964421999999999,\"move\":5.183931999999999,\"remove\":0.33514100000000724},{\"build\":7.657773999999989,\"move\":5.1937269999999955,\"remove\":0.43448400000001186},{\"build\":7.667649999999995,\"move\":5.560569000000001,\"remove\":0.5074910000000017},{\"build\":9.320690999999982,\"move\":5.9274659999999955,\"remove\":0.2779790000000162},{\"build\":6.492912000000032,\"move\":4.94249099999999,\"remove\":0.2889639999999929},{\"build\":6.464770999999985,\"move\":4.6568029999999965,\"remove\":0.3475350000000219},{\"build\":9.666105999999985,\"move\":5.384986999999995,\"remove\":0.265609000000012}]\nBrowser: scripted page ready 217 ms after the request\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 27,
+    "pid": 229794,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 23 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 172 ms (166 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":11.096317999999997,\"move\":7.493884000000008,\"remove\":0.938834},{\"build\":10.170839999999998,\"move\":5.225584999999995,\"remove\":0.40150400000000275},{\"build\":7.556891999999991,\"move\":5.220589000000004,\"remove\":0.3833240000000018},{\"build\":7.784969000000004,\"move\":4.927471000000011,\"remove\":0.4315369999999916},{\"build\":9.171394000000006,\"move\":5.953068000000002,\"remove\":0.34877199999999675},{\"build\":6.888124000000033,\"move\":5.407092000000006,\"remove\":0.461371999999983},{\"build\":6.244678999999991,\"move\":4.987728000000004,\"remove\":0.42359899999999584},{\"build\":9.365957000000009,\"move\":4.972324999999984,\"remove\":0.2813629999999989}]\nBrowser: scripted page ready 219 ms after the request\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 28,
+    "pid": 229867,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 24 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 146 ms (136 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":8.937736000000001,\"move\":3.608910999999999,\"remove\":0.6083360000000013},{\"build\":8.367762999999997,\"move\":5.303812000000008,\"remove\":0.2479849999999999},{\"build\":10.446629999999999,\"move\":4.19863500000001,\"remove\":0.2180319999999938},{\"build\":7.288701000000003,\"move\":3.5699479999999966,\"remove\":0.2366230000000087},{\"build\":7.4005030000000005,\"move\":5.326937000000015,\"remove\":0.2609949999999941},{\"build\":5.381996000000001,\"move\":3.555296999999996,\"remove\":0.21881299999999726},{\"build\":5.337198000000001,\"move\":3.332678999999999,\"remove\":0.28655800000001364},{\"build\":7.588887999999969,\"move\":3.875889000000001,\"remove\":0.3875670000000184}]\nBrowser: scripted page ready 190 ms after the request\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 29,
+    "pid": 229968,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 22 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 141 ms (134 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":7.922251000000003,\"move\":3.7248639999999966,\"remove\":0.6120140000000021},{\"build\":6.043146000000007,\"move\":7.395760000000003,\"remove\":0.3179540000000003},{\"build\":10.149126999999993,\"move\":4.111926999999994,\"remove\":0.22124900000001446},{\"build\":6.8755840000000035,\"move\":3.4318509999999947,\"remove\":0.2128280000000018},{\"build\":7.217389999999995,\"move\":4.617828000000017,\"remove\":0.19473899999999844},{\"build\":5.16758200000001,\"move\":3.9919199999999933,\"remove\":0.20397699999999475},{\"build\":5.069665999999998,\"move\":3.2201260000000076,\"remove\":0.20348099999999647},{\"build\":7.731351999999987,\"move\":3.668756000000002,\"remove\":0.2239860000000249}]\nBrowser: scripted page ready 184 ms after the request\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 30,
+    "pid": 230038,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 23 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 136 ms (127 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":7.716458000000003,\"move\":3.689074000000005,\"remove\":0.5658799999999928},{\"build\":5.828771000000003,\"move\":5.493748000000004,\"remove\":0.290694000000002},{\"build\":9.01772299999999,\"move\":4.243007000000006,\"remove\":0.21409099999999626},{\"build\":6.545353000000006,\"move\":3.231790999999987,\"remove\":0.20984200000000897},{\"build\":9.757546999999988,\"move\":4.375366000000014,\"remove\":0.18891599999999187},{\"build\":5.275988999999996,\"move\":3.6612499999999955,\"remove\":0.18797399999999698},{\"build\":4.986382000000006,\"move\":3.058919000000003,\"remove\":0.17801400000000456},{\"build\":7.584125,\"move\":3.401645000000002,\"remove\":0.18763000000001284}]\nBrowser: scripted page ready 180 ms after the request\n"
+  },
+  {
+    "mode": "production",
+    "iteration": 31,
+    "pid": 230110,
+    "passed": true,
+    "log": "Browser fonts: 240 system font files mapped\nBrowser: static page ready 23 ms after the request\nBrowser scripts: 1 run, 0 errors, 1 console lines, 0 timers, 0 listeners, 0 layouts (0 ms), revision 4021 -> 76056, 139 ms (133 ms of this thread's CPU)\n  console: [log] OWNERSHIP_BENCH [{\"build\":7.644715999999995,\"move\":3.4974190000000007,\"remove\":0.6196939999999955},{\"build\":6.004255999999998,\"move\":4.7537769999999995,\"remove\":0.23447199999999668},{\"build\":9.435716,\"move\":3.8769610000000228,\"remove\":0.23988299999999185},{\"build\":8.14490099999999,\"move\":4.0995750000000015,\"remove\":0.26351099999999406},{\"build\":7.212474999999998,\"move\":4.748483000000007,\"remove\":0.18635999999999342},{\"build\":5.539293000000001,\"move\":4.298513999999983,\"remove\":0.27451000000000647},{\"build\":5.548881999999992,\"move\":3.2916210000000063,\"remove\":0.18768599999998514},{\"build\":7.472171999999972,\"move\":3.146897000000024,\"remove\":0.18228100000001746}]\nBrowser: scripted page ready 183 ms after the request\n"
+  }
+]

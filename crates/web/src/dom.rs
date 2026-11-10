@@ -945,6 +945,14 @@ impl Document {
             _ => None,
         })
     }
+    /// The template owning a content fragment. This is an ownership edge,
+    /// not a DOM parent (the fragment's `parentNode` remains null).
+    pub fn template_host(&self, id: NodeId) -> Result<Option<NodeId>> {
+        Ok(match self.nodes[index(self.resolve(id)?)].data {
+            Data::Fragment { host, .. } => host.map(|at| self.handle(at)),
+            _ => None,
+        })
+    }
     // Ownership traversal includes template content roots. Public DOM
     // child/sibling APIs expose only the actual light-DOM relationships.
     fn owned_first(&self, at: NonZeroU32) -> Link {

@@ -1,0 +1,283 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/ben/worktrees/olo/browser/smithay/smithay/Cargo.toml
+workspace: /home/ben/worktrees/olo/browser/Cargo.toml
+warning: unnecessary parentheses around closure body
+  --> crates/web/src/chunked.rs:55:143
+   |
+55 | ...e_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+   |                                                    ^                              ^
+   |
+   = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+   |
+55 -         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+55 +         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| i * CHUNK..i * CHUNK + c.len())
+   |
+
+warning: unused attribute `allow`
+  --> crates/web/src/paint/image.rs:44:1
+   |
+44 | #[allow(clippy::too_many_arguments)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: the built-in attribute `allow` will be ignored, since it's applied to the macro invocation `thread_local`
+  --> crates/web/src/paint/image.rs:45:1
+   |
+45 | thread_local! {
+   | ^^^^^^^^^^^^
+   = note: `#[warn(unused_attributes)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `size` is never read
+   --> crates/web/src/css/properties/font.rs:274:20
+    |
+274 |     let mut size = None;
+    |                    ^^^^ this value is reassigned later and never used
+...
+353 |     size = Some(super::parse::component(Property::FontSize.grammar(), c, limits, cancelled)?);
+    |     ---- `size` is overwritten here before the previous value is read
+    |
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `family` is never read
+   --> crates/web/src/css/properties/font.rs:276:22
+    |
+276 |     let mut family = None;
+    |                      ^^^^ this value is reassigned later and never used
+...
+363 |     family = Some(Families::parse(parts[i..].iter().copied(), cancelled)?);
+    |     ------ `family` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+   --> crates/web/src/css/style/job.rs:536:25
+    |
+536 |                     let mut walk = |root: NodeId, reach: &selectors::Reach, nodes: &mut crate::dom::NodeSet| {
+    |                         ----^^^^
+    |                         |
+    |                         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates/web/src/page/interaction.rs:38:13
+   |
+38 |         let mut differ = |a: Option<NodeId>, b: Option<NodeId>, state: State, out: &mut Vec<(NodeId, &'static str)>| {
+   |             ----^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: value assigned to `path` is never read
+   --> crates/web/src/page.rs:899:24
+    |
+899 |         let mut path = String::new();
+    |                        ^^^^^^^^^^^^^ this value is reassigned later and never used
+...
+909 |                             path = format!("patched in place, {} elements", nodes.len());
+    |                             ---- `path` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+    --> crates/web/src/page.rs:3943:13
+     |
+3943 |         let mut subject = |a: crate::dom::NodeId, reached: &mut Vec<crate::dom::NodeId>| {
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: value assigned to `skip` is never read
+    --> crates/web/src/svg/viewport.rs:949:24
+     |
+ 949 |         let mut skip = false;
+     |                        ^^^^^ this value is reassigned later and never used
+...
+1019 |             skip = true;
+     |             ----------- `skip` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+  --> crates/web/src/text/prepare.rs:79:23
+   |
+79 |         let single = |mut it: &mut dyn Iterator<Item = char>| {
+   |                       ----^^
+   |                       |
+   |                       help: remove this `mut`
+
+warning: method `get_mut` is never used
+  --> crates/web/src/chunked.rs:57:19
+   |
+22 | impl<T: Clone> Chunked<T> {
+   | ------------------------- method in this implementation
+...
+57 |     pub(crate) fn get_mut(&mut self, i: usize) -> Option<&mut T> {
+   |                   ^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated function `new` is never used
+  --> crates/web/src/paint/index.rs:16:12
+   |
+15 | impl Index {
+   | ---------- associated function in this implementation
+16 |     pub fn new(commands: &[Command], transforms: &[[f64; 6]], cancel: Option<&AtomicBool>) -> Result<Self> {
+   |            ^^^
+
+warning: variant `Quad` is never constructed
+   --> crates/web/src/svg/script.rs:258:5
+    |
+256 | enum Seg {
+    |      --- variant in this enum
+257 |     Line(F, F),
+258 |     Quad([F; 3]),
+    |     ^^^^
+    |
+    = note: `Seg` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: `olo-web` (lib) generated 13 warnings (run `cargo fix --lib -p olo-web` to apply 6 suggestions)
+   Compiling olo-js v0.1.0 (/home/ben/worktrees/olo/browser/crates/js)
+warning: unused doc comment
+    --> crates/js/src/lib.rs:3345:1
+     |
+3345 | /// Every `__olo.*` function: `args.data()` names it.
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ rustdoc does not generate documentation for macro invocations
+     |
+     = help: to document an item produced by a macro, the macro must produce the documentation as part of its expansion
+     = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `Shader`
+ --> crates/js/src/canvas.rs:9:104
+  |
+9 | use tiny_skia::{BlendMode, FillRule, LineCap, LineJoin, Mask, Paint, Path, PathBuilder, Pixmap, Point, Shader, Stroke, Transform};
+  |                                                                                                        ^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `text` is never read
+    --> crates/js/src/lib.rs:2627:20
+     |
+2627 |     let mut text = String::new();
+     |                    ^^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2636 |         text = if name.is_empty() {
+     |         ---- `text` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: calls to `std::mem::drop` with a reference instead of an owned value does nothing
+    --> crates/js/src/lib.rs:2263:13
+     |
+2263 |             drop(s);
+     |             ^^^^^-^
+     |                  |
+     |                  argument has type `&mut State`
+     |
+     = note: `#[warn(dropping_references)]` on by default
+help: use `let _ = ...` to ignore the expression or result
+     |
+2263 -             drop(s);
+2263 +             let _ = s;
+     |
+
+warning: calls to `std::mem::drop` with a reference instead of an owned value does nothing
+    --> crates/js/src/lib.rs:4303:17
+     |
+4303 |                 drop(s);
+     |                 ^^^^^-^
+     |                      |
+     |                      argument has type `&mut State`
+     |
+help: use `let _ = ...` to ignore the expression or result
+     |
+4303 -                 drop(s);
+4303 +                 let _ = s;
+     |
+
+warning: `olo-js` (lib) generated 5 warnings (run `cargo fix --lib -p olo-js` to apply 1 suggestion)
+warning: `olo-js` (lib test) generated 5 warnings (5 duplicates)
+    Finished `release` profile [optimized + debuginfo] target(s) in 8.41s
+     Running unittests src/lib.rs (target/release/deps/olo_js-53b9a698b22de648)
+
+running 12 tests
+test modules::tests::a_later_map_adds_only_what_earlier_ones_left_unmapped ... ok
+test modules::tests::bare_names_prefixes_and_scopes_resolve_as_html_says ... ok
+test rtc::tests::a_binding_response_gives_its_mapped_address ... ok
+test crypto::tests::digests_and_hmac_match_their_known_answers ... ok
+test rtc::tests::a_certificate_is_chromes_kind ... ok
+test wrappers::tests::fragment_moves_and_replacing_children_remove_old_ownership_edges ... ok
+test wrappers::tests::shared_images_are_charged_once_and_released_after_the_last_binding ... ok
+test wrappers::tests::a_host_started_image_request_also_pins_its_detached_element ... ok
+test wrappers::tests::shadow_and_template_ownership_does_not_change_dom_parents ... ok
+test wrappers::tests::an_in_flight_image_is_alive_through_its_load_event_then_reclaimed ... ok
+test wrappers::tests::dom_edges_preserve_identity_and_unreachable_cycles_are_collected ... ok
+test wrappers::tests::bulk_dom_moves_do_not_normalize_api_object_maps_during_marking ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.44s
+
+     Running tests/dom.rs (target/release/deps/dom-f60635f53c328850)
+
+running 61 tests
+test a_logged_error_s_stack_is_not_formatted ... ok
+test canvas_to_data_url_encodes_what_was_drawn ... ok
+test a_box_a_person_scrolls_tells_its_scripts ... ok
+test builtins_keep_their_own_string_tags ... ok
+test an_elements_load_event_never_reaches_the_window ... ok
+test an_upgraded_elements_observed_attributes_reach_its_callback ... ok
+test an_images_superseded_load_neither_shows_nor_fires ... ok
+test a_clicked_link_is_followed_unless_the_page_cancels_it ... ok
+test a_picture_a_script_makes_or_changes_loads_its_image ... ok
+test cross_origin_requests_follow_cors ... ok
+test declarative_shadow_roots_are_their_hosts_shadow_roots ... ok
+test current_script_is_the_running_classic_scripts_element ... ok
+test detached_images_keep_their_pixels_between_frames ... ok
+test a_peer_connection_offers_and_gathers_as_chrome_s ... ok
+test an_about_blank_iframe_is_a_window_of_its_own ... ok
+test idle_callbacks_run_at_the_next_idle_moment ... ok
+test document_position_and_custom_elements_without_walking_everything ... ok
+test dialogs_open_close_and_summaries_toggle_their_details ... ok
+test errors_are_reported_not_fatal ... ok
+test documents_have_element_children_and_iframes_a_sandbox_list ... ok
+test ids_and_names_follow_the_document ... ok
+test dom_page ... ok
+test list_integer_reflection_matches_chrome ... ok
+test match_media_answers_whole_queries_as_the_sheets_do ... ok
+test modules_and_deferred_scripts_run_after_the_parser_blocking_ones ... ok
+test listeners_without_this_go_to_the_global_and_signals_remove_them ... ok
+test media_elements_play_through_the_browsers_player ... ok
+test scripts_in_order_then_async ... ok
+test modules_import_bare_names_through_the_import_map ... ok
+test observer_operations_are_enumerable_without_changing_ecmascript_builtins ... ok
+test frames_post_messages_through_the_browser ... ok
+test page_images_fire_their_load_or_error_before_the_windows_load ... ok
+test posted_tasks_keep_their_delay_signal_and_result ... ok
+test page_functions_read_as_their_source ... ok
+test raw_text_elements_serialize_their_text_as_it_is ... ok
+test pressing_a_select_asks_for_its_menu_and_a_choice_is_the_persons ... ok
+test ranges_hold_cut_and_measure ... ok
+test style_answers_in_for_the_properties_the_engine_knows ... ok
+test streamed_text_decodes_across_chunks_and_through_pipes ... ok
+test responses_stream_their_bodies_and_take_streams ... ok
+test response_headers_are_shown_as_fetch_filters_them ... ok
+test stacks_show_the_page_s_frames_only ... ok
+test svg_elements_take_their_geometry_methods ... ok
+test slots_tell_when_what_they_are_handed_changes ... ok
+test style_sheets_take_inserted_rules_and_write_them_back ... ok
+test text_and_comments_have_element_siblings ... ok
+test text_comments_and_fragments_are_constructed ... ok
+test the_battery_is_read ... ok
+test the_console_runs_none_of_the_page_s_code ... ok
+test the_page_is_not_a_touch_device ... ok
+test the_parsers_stylesheet_links_fire_load ... ok
+test the_persons_input_is_trusted_and_uncaught_errors_reach_error_listeners ... ok
+test token_lists_take_a_string_as_their_value ... ok
+test tree_walkers_step_in_document_order_skip_and_reject_and_define_reaches_shadow_trees ... ok
+test the_dom_is_shaped_as_chrome_s ... ok
+test window_post_message_reaches_its_own_window ... ok
+test typing_ticking_and_submitting_a_form ... ok
+test the_window_is_shaped_as_chrome_s ... ok
+test web_crypto_encrypts_and_derives_keys ... ok
+test web_crypto_digests_and_signs_and_form_data_bodies_are_multipart ... ok
+test unhandled_rejections_are_reported_and_cancellable ... ok
+
+test result: ok. 61 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.18s
+
+   Doc-tests olo_js
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

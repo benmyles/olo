@@ -1,0 +1,8 @@
+before 1.25 127 {'cpu_ms': 830.0, 'rss_kib': 179648, 'peak_rss_kib': 181056}
+after 1.25 134 {'cpu_ms': 980.0, 'rss_kib': 181316, 'peak_rss_kib': 183360}
+after 1.25 131 {'cpu_ms': 1030.0, 'rss_kib': 181784, 'peak_rss_kib': 183012}
+before 1.25 188 {'cpu_ms': 590.0, 'rss_kib': 179752, 'peak_rss_kib': 181328}
+before 2 138 {'cpu_ms': 940.0, 'rss_kib': 185888, 'peak_rss_kib': 185888}
+after 2 173 {'cpu_ms': 1020.0, 'rss_kib': 188060, 'peak_rss_kib': 188060}
+after 2 174 {'cpu_ms': 500.0, 'rss_kib': 188016, 'peak_rss_kib': 188016}
+before 2 210 {'cpu_ms': 620.0, 'rss_kib': 185188, 'peak_rss_kib': 185188}

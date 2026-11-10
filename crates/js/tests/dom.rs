@@ -351,6 +351,21 @@ setTimeout(() => { i.src = 'https://example.test/real.png'; }, 20);
     assert_eq!(report.console, ["[log] load 4"]);
 }
 #[test]
+fn detached_images_keep_their_pixels_between_frames() {
+    let parsed = html::parse(Arc::from("<body>"), Default::default(), None).unwrap();
+    let mut realm = Realm::new(parsed.document, Config::default(), None, None).unwrap().with_image_lookup(Some(Box::new(|_| None)));
+    realm.run("globalThis.palette = new Image(); palette.src = 'https://example.test/palette.png'", "detached-image.js").unwrap();
+    realm.advance(10., std::time::Duration::from_secs(1));
+    let requests = realm.take_requests();
+    assert_eq!(requests.len(), 1);
+    let image = olo_web::image::Image::from_rgba(1, 1, vec![17, 91, 203, 255], Default::default(), None).unwrap();
+    realm.deliver(requests[0].id, Ok(olo_js::Loaded::Image(image)));
+    // Presenting a frame must not discard a script's detached texture source.
+    drop(realm.canvases());
+    assert_eq!(realm.keep_pictures_near(&|_| false, 0), (0, 0));
+    assert_eq!(realm.eval("(() => { const c = document.createElement('canvas'); c.width = c.height = 1; const x = c.getContext('2d'); x.drawImage(palette, 0, 0); return [palette.complete, palette.naturalWidth, ...x.getImageData(0, 0, 1, 1).data]; })()").unwrap(), "[true,1,17,91,203,255]");
+}
+#[test]
 fn a_picture_a_script_makes_or_changes_loads_its_image() {
     // apple.com: a lazy <picture> replaced by one parsed from its
     // <noscript> markup, and a placeholder source swapped for real ones.

@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-10
 
+### Browser: keep detached images through JavaScript ownership
+
+*02:59* — After: decoded pixels survive while JavaScript or the DOM can reach the image. The four sampled palette pixels match Chrome exactly. Weak wrapper identities and private DOM ownership edges allow unreachable image cycles to be reclaimed. This closes the black-hero regression, not Stripe acceptance; live devicePixelRatio updates remain broken.
+
+![Browser: keep detached images through JavaScript ownership](2026-11-10/025950-browser-keep-detached-images-through-javascript-.png)
+
+### Browser: detached palette lost before upload
+
+*02:59* — Before: Stripe’s hero uses a detached Image as its WebGL palette. Presentation discarded the decoded pixels, so the loaded image supplied transparent texels and the wave rendered black.
+
+![Browser: detached palette lost before upload](2026-11-10/025947-browser-detached-palette-lost-before-upload.png)
+
 ### Browser: align text baselines with Chrome
 
 *01:08* — Native DPR 1, 1.25, 1.5, 1.75 and 2, left to right. Rows: Chrome, previous Browser, corrected Browser. Default installed-font metrics now preserve Chrome's descender allowance above 1x; downloaded fonts keep their distinct policy. All 600 installed-font baseline observations match. Glyph rasterization still differs; this is not a pixel-parity pass.

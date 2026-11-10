@@ -611,7 +611,7 @@
     scrollWidth: { get() { if (this === html() || this === document.body && N.computed(this, 'overflow-y') === 'visible') return Math.round(N.docSize()[0]); const r = N.scrollSize(this); return r ? Math.round(r[2]) : 0; } }, scrollHeight: { get() { if (this === html() || this === document.body && N.computed(this, 'overflow-y') === 'visible') return Math.round(N.docSize()[1]); const r = N.scrollSize(this); return r ? Math.round(r[3]) : 0; } },
     scrollTop: { get() { if (this === html() || this === document.body) return global.scrollY; return N.scrollOffset(this)[1]; }, set(v) { if (this === html() || this === document.body) { global.scrollTo(global.scrollX, Number(v) || 0); return; } scrollElement(this, N.scrollOffset(this)[0], Number(v) || 0); } },
     scrollLeft: { get() { if (this === html() || this === document.body) return global.scrollX; return N.scrollOffset(this)[0]; }, set(v) { if (this === html() || this === document.body) return; scrollElement(this, Number(v) || 0, N.scrollOffset(this)[1]); } },
-    shadowRoot: { get() { if (this._shadow) return this._shadow; const root = N.shadowRootOf(this); if (root) { Object.defineProperty(this, '_shadow', { value: root, configurable: true }); Object.defineProperty(root, 'host', { value: this, configurable: true }); Object.defineProperty(root, 'mode', { value: 'open', configurable: true }); Object.defineProperty(root, '_declarative', { value: true, configurable: true, writable: true }); shadowRoots.add(root); } return root; } },
+    shadowRoot: { get() { if (this._shadow) return this._shadow; const root = N.shadowRootOf(this); if (root) { Object.defineProperty(this, '_shadow', { value: root, configurable: true }); Object.defineProperty(root, 'host', { value: this, configurable: true }); Object.defineProperty(root, 'mode', { value: 'open', configurable: true }); Object.defineProperty(root, '_declarative', { value: true, configurable: true, writable: true }); } return root; } },
     assignedSlot: { get() { return assignedSlotOf(this); } },
     isContentEditable: { get() { return false; } },
     options: { get() { return listOf(N.query(this, 'option', true), HTMLOptionsCollection); } },
@@ -691,7 +691,7 @@
       if (this._shadow && !this._shadow._declarative) throw new DOMException('This element already hosts a shadow root.', 'NotSupportedError');
       const declared = (this._shadow && this._shadow._declarative) || (!this._shadow && N.shadowRootOf(this));
       const root = N.attachShadow(this);
-      if (declared) { for (const c of N.childNodes(root)) nativeRemove(c); Object.defineProperty(root, '_declarative', { value: false, configurable: true, writable: true }); } shadowRoots.add(root); Object.defineProperty(this, '_shadow', { value: root, configurable: true }); Object.defineProperty(root, 'host', { value: this, configurable: true }); Object.defineProperty(root, 'mode', { value: (init && init.mode) || 'open', configurable: true }); return root; },
+      if (declared) { for (const c of N.childNodes(root)) nativeRemove(c); Object.defineProperty(root, '_declarative', { value: false, configurable: true, writable: true }); } Object.defineProperty(this, '_shadow', { value: root, configurable: true }); Object.defineProperty(root, 'host', { value: this, configurable: true }); Object.defineProperty(root, 'mode', { value: (init && init.mode) || 'open', configurable: true }); return root; },
     requestFullscreen() { return Promise.resolve(); },
     play() { if (!isMedia(this)) return Promise.resolve(); N.mediaCommand(this, 'play', 0); queueMedia(this, ['play']); return Promise.resolve(); },
     pause() { if (!isMedia(this) || N.media(this)[0]) return; N.mediaCommand(this, 'pause', 0); queueMedia(this, ['pause']); },
@@ -1352,6 +1352,7 @@
   // `load-after` slot is handed, and never did).
   {
     const watched = new Set();
+    const watchRefs = new WeakMap();
     const last = new WeakMap();
     let queued = false;
     const slotsOf = (t) => {
@@ -1363,7 +1364,9 @@
     const check = () => {
       queued = false;
       const changed = [];
-      for (const t of watched) {
+      for (const ref of watched) {
+        const t = ref.deref();
+        if (!t) { watched.delete(ref); continue; }
         for (const slot of slotsOf(t)) {
           const now = assignedTo(slot);
           if (!same(now, last.get(slot) || [])) {
@@ -1375,7 +1378,7 @@
       for (const slot of changed) dispatch(slot, new Event('slotchange', { bubbles: true }));
     };
     const queue = () => { if (!queued && watched.size) { queued = true; Promise.resolve().then(check); } };
-    slotchangeListened = (target) => { watched.add(target); queue(); };
+    slotchangeListened = (target) => { if (!watchRefs.has(target)) { const ref = new WeakRef(target); watchRefs.set(target, ref); watched.add(ref); } queue(); };
     for (const k of ['append', 'insertBefore', 'remove', 'setAttr', 'removeAttr', 'setInnerHTML', 'setTextContent']) {
       const f = N[k];
       N[k] = (...args) => { const r = f(...args); if (watched.size) queue(); return r; };
@@ -1391,8 +1394,6 @@
   // Custom elements: definitions are recorded and constructed elements upgraded with a connectedCallback when inserted (best effort).
   const definitions = new Map();
   const whenDefined = new Map();
-  // Every shadow root made, for definitions to upgrade elements in them too.
-  const shadowRoots = new Set();
   const upgrade = (el, name) => { const def = definitions.get(name) || (N.attr(el, 'is') && definitions.get(N.attr(el, 'is'))); if (def && !el._upgraded) { Object.defineProperty(el, '_upgraded', { value: true }); Object.defineProperty(el, '_constructed', { value: true }); try { constructing = el; const made = new def(); if (made !== el) Object.setPrototypeOf(el, def.prototype); } catch (e) { reportError(e); Object.setPrototypeOf(el, def.prototype); } finally { constructing = null; } N.setDefined(el); if (typeof el.attributeChangedCallback === 'function' && Array.isArray(def.observedAttributes)) for (const a of def.observedAttributes) { const v = N.attr(el, a); if (v != null) { try { el.attributeChangedCallback(a, null, v); } catch (e) { reportError(e); } } } } };
   // Changes to an upgraded element's observed attributes reach its
   // attributeChangedCallback (HTML §4.13.4), however a script made them

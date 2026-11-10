@@ -22,6 +22,7 @@ mod modules;
 mod rtc;
 pub mod webgl;
 pub mod worker;
+mod wrappers;
 use olo_web::{
     css::{
         self,
@@ -33,7 +34,6 @@ use olo_web::{
 use std::{
     cell::RefCell,
     collections::HashMap,
-    ffi::c_void,
     rc::Rc,
     sync::{Arc, OnceLock},
     time::Instant,
@@ -307,9 +307,10 @@ struct State {
     document: Document,
     config: Config,
     quirks: QuirksMode,
-    wrappers: olo_web::dom::NodeMap<v8::Global<v8::Object>>,
-    /// The boxed ids wrappers point at; freed with the realm.
-    ids: Vec<*mut NodeId>,
+    wrappers: olo_web::dom::NodeMap<wrappers::Wrapper>,
+    collected_wrappers: Rc<RefCell<Vec<NodeId>>>,
+    /// An image load keeps its element alive through load/error dispatch.
+    loading_images: olo_web::dom::NodeMap<v8::Global<v8::Object>>,
     templates: Option<Templates>,
     /// The prelude's script: its functions read as native code.
     prelude_script: i32,
@@ -333,13 +334,11 @@ struct State {
     text_shaper: Option<TextShaper>,
     cookies: Option<Cookies>,
     /// Images the scripts loaded, by `img` element.
-    images: olo_web::dom::NodeMap<Arc<olo_web::image::Image>>,
+    images: wrappers::Images,
+    image_accounted: usize,
     /// The URL each element's picture was asked for (to ask again when one
     /// let go comes back into the document).
     image_urls: olo_web::dom::NodeMap<String>,
-    /// Elements out of the document whose pictures were let go, with the
-    /// URL to ask for when they come back.
-    images_let_go: olo_web::dom::NodeMap<String>,
     /// Each `img` element's latest image request (0: one answered at
     /// once): an earlier one finishing later is stale and dropped, as
     /// HTML's "update the image data" aborts it.
@@ -427,7 +426,13 @@ pub(crate) fn runtime() {
         // of a dead isolate in a process-wide pool for the next one (1.8 GB
         // held after a page was stopped at 2 GB), and pooled pages are let
         // go after five seconds unused.
-        v8::V8::set_flags_from_string("--no-memory-pool-share-memory-on-teardown --memory-pool-timeout=5");
+        // The snapshot creator and ordinary page isolates share V8's default
+        // isolate group. Extending its read-only heap while pages run leaves
+        // them using the creator's mutable RO space as it is finalized/freed.
+        // Keep the common RO heap sealed; custom context data belongs in the
+        // snapshot's ordinary heap. Cold-start stress reproduced the crash in
+        // the old browser too (see the detached-image measurements).
+        v8::V8::set_flags_from_string("--no-memory-pool-share-memory-on-teardown --memory-pool-timeout=5 --no-extensible-ro-snapshot");
         // OLO_V8_FLAGS: more of V8's flags (--perf-basic-prof, to profile).
         if let Ok(flags) = std::env::var("OLO_V8_FLAGS") {
             v8::V8::set_flags_from_string(&flags);
@@ -570,7 +575,8 @@ impl Realm {
             config,
             quirks,
             wrappers: Default::default(),
-            ids: Vec::new(),
+            collected_wrappers: Default::default(),
+            loading_images: Default::default(),
             templates: None,
             prelude_script: -1,
             child_preludes: Vec::new(),
@@ -585,8 +591,8 @@ impl Realm {
             text_shaper: None,
             cookies: None,
             images: Default::default(),
+            image_accounted: 0,
             image_urls: Default::default(),
-            images_let_go: Default::default(),
             image_latest: Default::default(),
             images_away: Default::default(),
             images_dirty: false,
@@ -762,6 +768,8 @@ impl Realm {
                     }
                 };
                 let Some(element) = wrap(tc, &state, node) else { return };
+                state.borrow_mut().loading_images.remove(&node);
+                wrappers::account_images(tc, &state);
                 let size: v8::Local<v8::Value> = match size {
                     Some((w, h)) => {
                         let items: Vec<v8::Local<v8::Value>> = vec![v8::Number::new(tc, w.round()).into(), v8::Number::new(tc, h.round()).into()];
@@ -1032,6 +1040,10 @@ impl Realm {
             return Advanced { next_due_ms: None, changed: false, spent_ms: 0., ticks: 0, wants_frame: false };
         }
         let started = Instant::now();
+        {
+            let _entered = Entered::new(&self.isolate);
+            wrappers::account_images(&mut self.isolate, &self.state);
+        }
         let before = {
             let mut s = self.state.borrow_mut();
             // Each advance has its own layout budget.
@@ -1231,48 +1243,53 @@ impl Realm {
     /// picture of the posts it kept in the document, 570 MB for 134. The
     /// number let go and asked for again.
     pub fn keep_pictures_near(&mut self, near: &dyn Fn(NodeId) -> bool, budget: usize) -> (usize, usize) {
-        let mut s = self.state.borrow_mut();
-        let s = &mut *s;
-        let mut seen = std::collections::HashSet::new();
-        let total: usize = s.images.values().filter(|i| seen.insert(Arc::as_ptr(i))).map(|i| i.payload_bytes()).sum();
-        let mut gone = 0;
-        if total > budget {
-            let far: Vec<NodeId> = s.images.keys().filter(|n| !near(**n)).copied().collect();
-            for n in far {
-                s.images.remove(&n);
-                if let Some(url) = s.image_urls.remove(&n) {
-                    s.images_away.insert(n, url);
-                    gone += 1;
+        let (gone, back, pending) = {
+            let mut s = self.state.borrow_mut();
+            let s = &mut *s;
+            let mut seen = std::collections::HashSet::new();
+            let total: usize = s.images.values().filter(|i| seen.insert(Arc::as_ptr(i))).map(|i| i.payload_bytes()).sum();
+            let mut gone = 0;
+            if total > budget {
+                let far: Vec<NodeId> = s.images.keys().filter(|n| s.document.is_connected(**n).unwrap_or(false) && !near(**n)).copied().collect();
+                for n in far {
+                    s.images.remove(&n);
+                    if let Some(url) = s.image_urls.remove(&n) {
+                        s.images_away.insert(n, url);
+                        gone += 1;
+                    }
+                }
+                if gone > 0 {
+                    s.images_dirty = true;
                 }
             }
-            if gone > 0 {
-                s.images_dirty = true;
+            let back: Vec<NodeId> = s.images_away.keys().filter(|n| near(**n)).copied().collect();
+            for n in &back {
+                let Some(url) = s.images_away.remove(n) else { continue };
+                if let Some(image) = s.image_lookup.as_mut().and_then(|f| f(&url)) {
+                    s.images.insert(*n, image);
+                    s.image_urls.insert(*n, url);
+                    s.images_dirty = true;
+                    continue;
+                }
+                if s.image_lookup.is_some() {
+                    let id = s.next_request;
+                    s.next_request += 1;
+                    s.in_flight.insert(id, Some(*n));
+                    s.image_latest.insert(*n, id);
+                    s.image_urls.insert(*n, url.clone());
+                    s.requests.push(Request { id, url, kind: RequestKind::Image });
+                }
             }
-        }
-        let back: Vec<NodeId> = s.images_away.keys().filter(|n| near(**n)).copied().collect();
-        for n in &back {
-            let Some(url) = s.images_away.remove(n) else { continue };
-            if let Some(image) = s.image_lookup.as_mut().and_then(|f| f(&url)) {
-                s.images.insert(*n, image);
-                s.image_urls.insert(*n, url);
-                s.images_dirty = true;
-                continue;
+            // (Those gone from the document for good: forgotten.)
+            if s.images_away.len() > 4096 {
+                let doc = &s.document;
+                s.images_away.retain(|n, _| doc.is_connected(*n).unwrap_or(false));
             }
-            if s.image_lookup.is_some() {
-                let id = s.next_request;
-                s.next_request += 1;
-                s.in_flight.insert(id, Some(*n));
-                s.image_latest.insert(*n, id);
-                s.image_urls.insert(*n, url.clone());
-                s.requests.push(Request { id, url, kind: RequestKind::Image });
-            }
-        }
-        // (Those gone from the document for good: forgotten.)
-        if s.images_away.len() > 4096 {
-            let doc = &s.document;
-            s.images_away.retain(|n, _| doc.is_connected(*n).unwrap_or(false));
-        }
-        (gone, back.len())
+            let pending: Vec<NodeId> = back.iter().copied().filter(|n| s.image_latest.get(n).is_some_and(|id| s.in_flight.get(id) == Some(&Some(*n)))).collect();
+            (gone, back.len(), pending)
+        };
+        self.pin_images(&pending);
+        (gone, back)
     }
     /// What the page's scripts hold (OLO_BROWSER_TIMING's memory line):
     /// V8's heap used and its size, and the pictures bound to elements
@@ -1516,43 +1533,11 @@ impl Realm {
             }
             i.map(|i| (*n, i))
         }));
-        // Images the scripts loaded into `img` elements render too: those
-        // still in the document. One taken out lets its picture go (Reddit's
-        // feed drops the posts scrolled past: their pictures, kept, took
-        // 2.8 GB), asked for again if it comes back.
+        // A detached image can still be a script's canvas/texture source.
+        // Its decoded data lives until its wrapper is unreachable, not until
+        // the element leaves the document.
         s.images_dirty = false;
-        let s = &mut *s;
-        let gone: Vec<NodeId> = s.images.keys().filter(|n| !s.document.is_connected(**n).unwrap_or(false)).copied().collect();
-        for n in gone {
-            s.images.remove(&n);
-            if let Some(url) = s.image_urls.remove(&n) {
-                s.images_let_go.insert(n, url);
-            }
-        }
-        if !s.images_let_go.is_empty() {
-            let back: Vec<NodeId> = s.images_let_go.keys().filter(|n| s.document.is_connected(**n).unwrap_or(false)).copied().collect();
-            for n in back {
-                let Some(url) = s.images_let_go.remove(&n) else { continue };
-                if let Some(image) = s.image_lookup.as_mut().and_then(|f| f(&url)) {
-                    s.images.insert(n, image);
-                    s.image_urls.insert(n, url);
-                    continue;
-                }
-                if s.image_lookup.is_some() {
-                    let id = s.next_request;
-                    s.next_request += 1;
-                    s.in_flight.insert(id, Some(n));
-                    s.image_latest.insert(n, id);
-                    s.image_urls.insert(n, url.clone());
-                    s.requests.push(Request { id, url, kind: RequestKind::Image });
-                }
-            }
-            // (Those gone for good: forgotten once there are many.)
-            if s.images_let_go.len() > 4096 {
-                let doc = &s.document;
-                s.images_let_go.retain(|n, _| doc.node_type(*n).is_ok());
-            }
-        }
+        wrappers::reap(&mut s);
         out.extend(s.images.iter().map(|(n, i)| (*n, i.clone())));
         out
     }
@@ -1578,6 +1563,25 @@ impl Realm {
         v8::tc_scope!(let tc, scope);
         f.call(tc, global.into(), &[array.into()]);
     }
+    /// Host-started image recovery/poster loads have the same lifetime as
+    /// script-started loads, even if their node is detached while in flight.
+    fn pin_images(&mut self, nodes: &[NodeId]) {
+        if nodes.is_empty() {
+            return;
+        }
+        let guard = self.guard.clone();
+        let _busy = Busy::new(&guard);
+        let state = self.state.clone();
+        let _entered = Entered::new(&self.isolate);
+        v8::scope!(let scope, &mut self.isolate);
+        let context = v8::Local::new(scope, &self.context);
+        let scope = &mut v8::ContextScope::new(scope, context);
+        for &node in nodes {
+            if let Some(object) = wrap(scope, &state, node) {
+                state.borrow_mut().loading_images.insert(node, v8::Global::new(scope, object));
+            }
+        }
+    }
     /// A picture for `node` (a video's poster): the page's own at once, else
     /// asked of the browser (`take_requests`) and bound when it comes, as an
     /// image scripts load is (`canvases`).
@@ -1597,6 +1601,8 @@ impl Realm {
         s.image_latest.insert(node, id);
         s.image_urls.insert(node, url.to_owned());
         s.requests.push(Request { id, url: url.to_owned(), kind: RequestKind::Image });
+        drop(s);
+        self.pin_images(&[node]);
     }
     /// Its picture let go (a video playing shows its frames instead).
     pub fn drop_image(&mut self, node: NodeId) {
@@ -1892,6 +1898,7 @@ impl Realm {
         // Drop every handle before the isolate.
         {
             let mut s = self.state.borrow_mut();
+            s.loading_images.clear();
             s.wrappers.clear();
             s.templates = None;
             s.measure = None;
@@ -1901,11 +1908,6 @@ impl Realm {
         let state = std::mem::replace(&mut self.state, Rc::new(RefCell::new(State::empty())));
         drop(self);
         let state = Rc::try_unwrap(state).ok().expect("the realm's state is only its own").into_inner();
-        for id in state.ids {
-            // SAFETY: each pointer came from Box::into_raw in `wrap` and is
-            // freed exactly once, here, after every V8 object that held it.
-            drop(unsafe { Box::from_raw(id) });
-        }
         (state.document, report)
     }
 }
@@ -1916,7 +1918,8 @@ impl State {
             config: Config::default(),
             quirks: QuirksMode::NoQuirks,
             wrappers: Default::default(),
-            ids: Vec::new(),
+            collected_wrappers: Default::default(),
+            loading_images: Default::default(),
             templates: None,
             prelude_script: -1,
             child_preludes: Vec::new(),
@@ -1931,8 +1934,8 @@ impl State {
             text_shaper: None,
             cookies: None,
             images: Default::default(),
+            image_accounted: 0,
             image_urls: Default::default(),
-            images_let_go: Default::default(),
             image_latest: Default::default(),
             images_away: Default::default(),
             images_dirty: false,
@@ -2504,7 +2507,7 @@ fn class<'s>(
     let t = v8::FunctionTemplate::builder(illegal_constructor).data(data).build(scope);
     let class_name = v8::String::new(scope, name).ok_or("string")?;
     t.set_class_name(class_name);
-    t.instance_template(scope).set_internal_field_count(1);
+    t.instance_template(scope).set_internal_field_count(3);
     if let Some(p) = parent {
         t.inherit(p);
     }
@@ -2725,7 +2728,7 @@ enum Snapshot {
 static SNAPSHOT: std::sync::Mutex<Snapshot> = std::sync::Mutex::new(Snapshot::Unknown);
 /// What a snapshot's layout is, besides what its key hashes: bumped when
 /// what `make_snapshot` puts in it changes.
-const SNAPSHOT_FORMAT: u32 = 3;
+const SNAPSHOT_FORMAT: u32 = 5;
 fn snapshot_path() -> Option<std::path::PathBuf> {
     use std::hash::{BuildHasher, Hash, Hasher};
     let base = std::env::var_os("XDG_CACHE_HOME").map(std::path::PathBuf::from).filter(|p| p.is_absolute()).or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".cache")))?;
@@ -3109,15 +3112,40 @@ fn node_of(scope: &mut v8::PinScope, value: v8::Local<v8::Value>) -> Option<Node
     if pointer.is_null() {
         return None;
     }
-    // SAFETY: the pointer was made in `wrap` from a Box the state keeps until
-    // the realm ends, after every wrapper is dropped.
+    // SAFETY: the wrapper owns this Box until V8 has collected it. A local
+    // handle here keeps the wrapper, and therefore its node id, alive.
     Some(unsafe { *pointer })
 }
 /// The wrapper object of a node: one per node, for identity.
 fn wrap<'s>(scope: &mut v8::PinScope<'s, '_>, state: &Shared, node: NodeId) -> Option<v8::Local<'s, v8::Object>> {
-    if let Some(existing) = state.borrow().wrappers.get(&node) {
-        return Some(v8::Local::new(scope, existing));
+    if let Some(existing) = wrappers::get(scope, state, node) {
+        return Some(existing);
     }
+    // Materialize ownership ancestors iteratively: a query into a deeply
+    // nested unobserved tree must not recurse on the Rust stack.
+    let ancestors = {
+        let s = state.borrow();
+        let mut ancestors = Vec::new();
+        let mut at = Some(node);
+        while let Some(n) = at {
+            if wrappers::get(scope, state, n).is_some() {
+                break;
+            }
+            ancestors.push(n);
+            at = wrappers::parent(&s, n);
+        }
+        ancestors
+    };
+    for n in ancestors.into_iter().rev() {
+        wrap_one(scope, state, n)?;
+    }
+    wrappers::get(scope, state, node)
+}
+fn wrap_one<'s>(scope: &mut v8::PinScope<'s, '_>, state: &Shared, node: NodeId) -> Option<v8::Local<'s, v8::Object>> {
+    if let Some(existing) = wrappers::get(scope, state, node) {
+        return Some(existing);
+    }
+    wrappers::reap(&mut state.borrow_mut());
     let (kind, name, namespace) = {
         let s = state.borrow();
         let doc = &s.document;
@@ -3161,12 +3189,7 @@ fn wrap<'s>(scope: &mut v8::PinScope<'s, '_>, state: &Shared, node: NodeId) -> O
             }
         }
     }
-    let boxed = Box::into_raw(Box::new(node));
-    let external = v8::External::new(scope, boxed as *mut c_void);
-    object.set_internal_field(0, external.into());
-    let mut s = state.borrow_mut();
-    s.ids.push(boxed);
-    s.wrappers.insert(node, v8::Global::new(scope, object));
+    wrappers::insert(scope, state, node, object)?;
     Some(object)
 }
 pub(crate) fn string<'s>(scope: &mut v8::PinScope<'s, '_>, s: &str) -> v8::Local<'s, v8::Value> {
@@ -3339,19 +3362,29 @@ fn native_name(args: &v8::FunctionCallbackArguments) -> &'static str {
     args.data().try_cast::<v8::Integer>().ok().and_then(|i| NATIVES.get(i.value() as usize)).copied().unwrap_or("")
 }
 fn native(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, rv: v8::ReturnValue) {
-    if !native_profiling() {
-        return native_inner(scope, args, rv);
-    }
-    let name = native_name(&args).to_owned();
-    let started = Instant::now();
+    let name = native_name(&args);
+    let moved = wrappers::before_mutation(scope, name, &args);
+    let started = native_profiling().then(Instant::now);
     native_inner(scope, args, rv);
-    let spent = started.elapsed().as_secs_f64();
-    NATIVE_PROFILE.with(|p| {
-        let mut p = p.borrow_mut();
-        let e = p.entry(name).or_insert((0, 0.));
-        e.0 += 1;
-        e.1 += spent;
-    });
+    if let Some((state, nodes)) = moved {
+        for node in nodes {
+            wrappers::reparent(scope, &state, node);
+        }
+    }
+    if name == "loadImage"
+        && let Some(state) = scope.get_slot::<Shared>().cloned()
+    {
+        wrappers::account_images(scope, &state);
+    }
+    if let Some(started) = started {
+        let spent = started.elapsed().as_secs_f64();
+        NATIVE_PROFILE.with(|p| {
+            let mut p = p.borrow_mut();
+            let e = p.entry(name.to_owned()).or_insert((0, 0.));
+            e.0 += 1;
+            e.1 += spent;
+        });
+    }
 }
 fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
     let Some(state) = scope.get_slot::<Shared>().cloned() else { return };
@@ -4880,6 +4913,7 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                         let (w, h) = image.natural();
                         s.images.insert(n, image);
                         s.image_latest.insert(n, 0);
+                        s.loading_images.remove(&n);
                         s.images_dirty = true;
                         drop(s);
                         let items: Vec<v8::Local<v8::Value>> = vec![v8::Number::new(scope, w.round()).into(), v8::Number::new(scope, h.round()).into()];
@@ -4890,6 +4924,9 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                         s.next_request += 1;
                         s.in_flight.insert(id, Some(n));
                         s.image_latest.insert(n, id);
+                        if let Ok(object) = args.get(0).try_cast::<v8::Object>() {
+                            s.loading_images.insert(n, v8::Global::new(scope, object));
+                        }
                         if std::env::var_os("OLO_IMAGE_DEBUG").is_some() {
                             eprintln!("  image: request {id} for {n:?}: {url}");
                         }

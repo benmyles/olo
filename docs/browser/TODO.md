@@ -6,12 +6,19 @@ item means implemented and verified; a partial implementation stays open.
 While working, fetch and merge `origin/main` at regular working checkpoints,
 revalidate the merged workspace and push the integration with browser work.
 
-**Active websites: [Stripe](eval/stripe/README.md) (homepage and
-pricing page as Chrome, live) and Wikipedia (the main page up to the
-search box and `overflow-wrap`; the Stripe, Inc. article with its
-scripts, as Chrome line for line, JOURNAL 2026-11-08); GitHub's
-homepage (its hero as Chrome since JOURNAL 2026-11-07, late; open items
-below).**
+**Active website: [Stripe](eval/stripe/README.md), as selected by the user.
+Earlier Wikipedia/GitHub work below remains diagnostic history.**
+
+2026-11-10: the live hero's black-wave regression came from discarding decoded
+pixels of detached `Image` objects. Wrapper/image ownership now follows V8
+reachability; the palette samples match Chrome. Evidence:
+[detached image ownership](measurements/2026-11-10-detached-images/README.md).
+The next observed failure is **live environment updates**: changing the display
+scale updates native/page raster output but leaves JavaScript's
+`devicePixelRatio`, viewport values and media-query state stale. Fix and verify
+that before accepting any live-scale configuration. Connected offscreen images
+also still need pixel-source recovery after decode eviction.
+
 Finish its real pages/journeys and all 30 configurations before choosing
 another site. The engine renders every page end to end and records what it
 substituted in `Page::fallbacks` (see JOURNAL, 2026-11-06 evening); work is
