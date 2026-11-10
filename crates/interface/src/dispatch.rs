@@ -288,9 +288,15 @@ impl WindowCx<'_> {
         node.hovered = hovered;
         let listeners: SmallVec<[Listener<bool>; 1]> = node.inter.as_ref().map(|i| i.hover.clone()).unwrap_or_default();
         self.core.state_changed(id);
+        // (It's the handlers' element: where it is, `listener_bounds`,
+        // is where its tip goes. Within another's handler, as when a
+        // click moves what's under the pointer, that one's again after.)
+        let outer = self.core.current;
         for listener in listeners {
+            self.core.current = Some(id);
             listener(&hovered, self);
         }
+        self.core.current = outer;
     }
 
     /// The pointer left the window: it's over nothing.

@@ -3,7 +3,7 @@
 //! scrolled once they need more than the screen has room for.
 
 use olo_kit::{
-    Cx, Element, IntoElement as _, ParentElement as _, Styled as _, View, WindowOptions, div, metrics as m, px,
+    Cx, Element, ParentElement as _, Styled as _, View, WindowOptions, div, metrics as m, px,
     widgets::{Button, StringView},
 };
 

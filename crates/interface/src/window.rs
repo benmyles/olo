@@ -35,6 +35,20 @@ use crate::{
 thread_local! {
     static TEXT: std::cell::RefCell<Option<Arc<WindowTextSystem>>> = const { std::cell::RefCell::new(None) };
     static SCALE: std::cell::Cell<f32> = const { std::cell::Cell::new(1.0) };
+    static SIZE: std::cell::Cell<Size<Pixels>> = const { std::cell::Cell::new(Size { width: Pixels(0.), height: Pixels(0.) }) };
+    /// Something asked the window's size since this was last cleared (a
+    /// view's `body`, or what it built: it says what it shows again
+    /// when the window is sized).
+    static SIZE_READ: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// The size of the window that's being worked on now, on this thread
+/// (see [`scale_factor`]): its content, in points. A view whose `body`
+/// asks (or builds something that does: a tool bar as long as its
+/// window) says what it shows again when the window is sized.
+pub fn viewport_size() -> Size<Pixels> {
+    SIZE_READ.with(|r| r.set(true));
+    SIZE.with(|s| s.get())
 }
 
 /// The scale of the window that's being worked on now, on this thread
@@ -251,9 +265,10 @@ impl<V: View> LocalWindow<V> {
 /// back).
 pub(crate) fn with_window<R>(looper: &mut Looper, id: WindowId, f: impl FnOnce(&mut WindowCx) -> R) -> Option<R> {
     let mut core = looper.state_mut::<Windows>()?.map.remove(&id)?;
-    let outer = SCALE.with(|s| s.replace(core.gfx.scale_factor));
+    let outer = (SCALE.with(|s| s.replace(core.gfx.scale_factor)), SIZE.with(|s| s.replace(core.size)));
     let result = f(&mut WindowCx { core: &mut core, looper });
-    SCALE.with(|s| s.set(outer));
+    SCALE.with(|s| s.set(outer.0));
+    SIZE.with(|s| s.set(outer.1));
     if core.closed {
         // Its own view hears it's going, while there's still a window
         // to hear it in.
@@ -477,6 +492,41 @@ impl WindowCore {
             at = self.nodes.get(id).and_then(|n| n.parent);
         }
         false
+    }
+
+    /// The tree as layout left it, to stderr (`OLO_DUMP_LAYOUT=1`): each
+    /// node's kind, where it is in what holds it and in the window (in
+    /// points), and the size and position its style asks for. For when
+    /// something is in the wrong place and the agent tree doesn't say
+    /// why.
+    fn dump(&self, id: NodeId, depth: usize) {
+        let node = &self.nodes[id];
+        let (rel, _) = self.layout.placed(node.layout, self.gfx.scale_factor);
+        let kind = match &node.kind {
+            NodeKind::Group if node.view_root.is_some() => "view".to_owned(),
+            NodeKind::Group => "group".to_owned(),
+            NodeKind::Text(t) => format!("text {:?}", t.text.chars().take(24).collect::<String>()),
+            NodeKind::Canvas(_) => "canvas".to_owned(),
+        };
+        let (at, style) = (node.bounds.origin, &node.style);
+        eprintln!(
+            "{:indent$}{kind}: {},{} {}x{}, at {},{}; asks {:?} x {:?}, {:?}{}",
+            "",
+            rel.origin.x.0,
+            rel.origin.y.0,
+            rel.size.width.0,
+            rel.size.height.0,
+            at.x.0,
+            at.y.0,
+            style.size.width,
+            style.size.height,
+            style.position,
+            if node.scroll.is_some() { ", scrolls" } else { "" },
+            indent = depth * 2
+        );
+        for child in &node.children {
+            self.dump(*child, depth + 1);
+        }
     }
 
     /// Works out where everything under `id` is, from what layout made
@@ -950,8 +1000,14 @@ impl<'a> WindowCx<'a> {
         let core = &mut *self.core;
         if core.size != size {
             core.size = size;
+            SIZE.with(|s| s.set(size));
             core.relayout = true;
             core.reshaped();
+            // (Views that show by the window's size say again.)
+            let sized: Vec<ViewId> = core.views.iter().filter(|(_, slot)| slot.reads_size).map(|(id, _)| id).collect();
+            for view in sized {
+                core.invalidate_view(view);
+            }
         }
     }
 
@@ -1017,9 +1073,11 @@ impl<'a> WindowCx<'a> {
                     continue;
                 }
                 let Some(mut boxed) = self.core.views[view].view.take() else { continue };
+                SIZE_READ.with(|r| r.set(false));
                 let mut element = boxed.body(view, self);
                 if let Some(slot) = self.core.views.get_mut(view) {
                     slot.view = Some(boxed);
+                    slot.reads_size = SIZE_READ.with(|r| r.get());
                 }
                 if matches!(element.kind, crate::element::Kind::View(_)) {
                     // (A view that is only another view: held in a box
@@ -1064,6 +1122,10 @@ impl<'a> WindowCx<'a> {
                     layout.compute(root_layout, available, scale, |node, known, available| core.measure(node, known, available));
                     core.layout = layout;
                     core.place(root, Point::default());
+                    if crate::stats::dump_layout() {
+                        eprintln!("layout at {:?}", core.size);
+                        core.dump(root, 1);
+                    }
                     for id in std::mem::take(&mut core.remeasured) {
                         core.mark_paint(id);
                     }
@@ -1188,7 +1250,7 @@ impl<'a> WindowCx<'a> {
 
     /// Makes a view in this window; whoever keeps the [`Child`] owns it.
     pub fn new_view<T: View>(&mut self, build: impl FnOnce(&mut Cx<T>) -> T) -> Child<T> {
-        let id = self.core.views.insert(ViewSlot { view: None, root: None, dirty: false, subscribers: Vec::new(), timers: Vec::new() });
+        let id = self.core.views.insert(ViewSlot { view: None, root: None, dirty: false, reads_size: false, subscribers: Vec::new(), timers: Vec::new() });
         let view = build(&mut Cx::new(self, id));
         if let Some(slot) = self.core.views.get_mut(id) {
             slot.view = Some(Box::new(view));
@@ -1427,8 +1489,10 @@ impl<'a> WindowCx<'a> {
         self.core.id
     }
 
-    /// The window's content, in points.
+    /// The window's content, in points. (A view whose `body` asks says
+    /// what it shows again when the window is sized.)
     pub fn viewport_size(&self) -> Size<Pixels> {
+        SIZE_READ.with(|r| r.set(true));
         self.core.size
     }
 
@@ -1602,6 +1666,23 @@ impl<'a> WindowCx<'a> {
     /// tree changes (a menu bar's open title, once its menu has gone).
     pub fn listener_node(&self) -> Option<NodeRef> {
         self.core.current.map(NodeRef)
+    }
+
+    /// The byte nearest `position` (in the window) of the text the
+    /// element whose handler is running is, or the first text it holds:
+    /// where a click lands in it. None with no such text laid out.
+    pub fn text_index_at(&self, position: Point<Pixels>) -> Option<usize> {
+        let mut stack: Vec<NodeId> = self.core.current.into_iter().collect();
+        while let Some(id) = stack.pop() {
+            let node = self.core.nodes.get(id)?;
+            if let NodeKind::Text(text) = &node.kind {
+                let laid = text.laid.as_ref()?;
+                let origin = self.core.window_bounds(id).origin;
+                return Some(crate::tree::text_index_at(laid, point(position.x - origin.x, position.y - origin.y)));
+            }
+            stack.extend(node.children.iter().rev().copied());
+        }
+        None
     }
 
     /// What the element whose handler is running keeps for itself, from

@@ -255,6 +255,9 @@ pub(crate) struct Interactivity {
     pub(crate) watches: SmallVec<[(u64, u8); 1]>,
     /// The name the keyboard is given to it by (`track_focus`).
     pub(crate) focus_handle: Option<u64>,
+    /// Its text isn't told to agents as a label of its own (what holds
+    /// it says what it is: a document's text).
+    pub(crate) unlabelled: bool,
     /// It's drawn anew when the pointer comes over it, presses it or
     /// leaves, or the keyboard comes or goes.
     pub(crate) paints_by_state: bool,
@@ -684,6 +687,13 @@ pub trait InteractiveElement: Sized {
     /// grey with nothing to scroll).
     fn watch_scroll_ends(mut self, handle: &crate::ScrollHandle) -> Self {
         self.interactivity().watches.push((handle.id(), crate::scroll::ENDS));
+        self
+    }
+
+    /// A text that agents aren't told of as a label of its own: what
+    /// holds it says what it is (a document, read whole as its value).
+    fn unlabelled(mut self) -> Self {
+        self.interactivity().unlabelled = true;
         self
     }
 

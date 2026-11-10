@@ -27,7 +27,7 @@ use std::{
 
 use olo_interface::{
     Bounds, ContentMask, Corner, Cx, Element, FontWeight, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, LocalWindow, MouseButton, MouseMoveEvent, MouseUpEvent, NodeRef, Painter,
-    ParentElement as _, PathBuilder, Pixels, Point, ScrollWheelEvent, SharedString, Size, Styled as _, TimerId, View, WindowCx, WindowId, WindowKind, WindowSpec, canvas, div, point, px, size,
+    ParentElement as _, PathBuilder, Pixels, Point, ScrollWheelEvent, SharedString, Styled as _, TimerId, View, WindowCx, WindowId, WindowKind, WindowSpec, canvas, div, point, px, size,
 };
 
 use crate::{

@@ -17,7 +17,9 @@ pub mod status;
 pub mod tabs;
 pub mod text_control;
 pub mod text_field;
+pub mod text_view;
 pub mod thumbs;
+pub mod toolbar;
 pub mod views;
 
 pub use alert::{
@@ -40,5 +42,7 @@ pub use status::{StatusBar, level_bar};
 pub use tabs::{TAB_HEIGHT, TabView};
 pub use text_control::TextControl;
 pub use text_field::{FieldMessage, TextField, TextFieldEvent, text_field};
+pub use text_view::{TextView, text_view};
 pub use thumbs::{Thumbnail, ThumbnailPicker};
+pub use toolbar::{TOOL, ToolBar};
 pub use views::{BBox, EmptyState, Separator, StringView, heading, separator};

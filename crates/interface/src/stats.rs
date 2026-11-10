@@ -79,6 +79,13 @@ impl FrameWork {
     }
 }
 
+/// Each layout's tree on stderr (`OLO_DUMP_LAYOUT=1`): where every node
+/// was put and what its style asked for.
+pub(crate) fn dump_layout() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("OLO_DUMP_LAYOUT").is_some())
+}
+
 /// each frame's time in its phases and what its scene holds, on
 /// stderr (`OLO_FRAME_PHASES=1`).
 pub(crate) fn frame_phases() -> bool {

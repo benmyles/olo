@@ -5,7 +5,7 @@
 //! rows long (to scroll, and to measure).
 
 use olo_kit::{
-    Cx, Element, IntoElement as _, MenuBar, ParentElement as _, Pixels, Point, SharedString, Styled as _, View, WindowOptions, div,
+    Cx, Element, MenuBar, ParentElement as _, Pixels, Point, SharedString, Styled as _, View, WindowOptions, div,
     menu::{self, Menu},
     metrics as m, px,
     widgets::{Column, ColumnListView, ListModel, StringView},
@@ -35,7 +35,7 @@ struct Lists {
 
 enum Msg {
     Opened(usize),
-    Context(usize, Point<Pixels>),
+    Context(Point<Pixels>),
     Chose(String),
 }
 
@@ -86,7 +86,7 @@ impl View for Lists {
         match message {
             Msg::Opened(r) => self.last = row(r)[0].clone().into(),
             Msg::Chose(command) => self.last = format!("chose {command}").into(),
-            Msg::Context(_, at) => {
+            Msg::Context(at) => {
                 let menu = Menu::new("")
                     .item("Quit Application", "quit-app")
                     .item("Kill Process", "kill")
@@ -122,7 +122,7 @@ impl View for Lists {
         .row_key(|_, r| r as u64)
         .type_select(|_, r| row(r)[0].clone().into())
         .on_open(cx.msg_with(|r: &usize| Msg::Opened(*r)))
-        .on_context(cx.msg_with(|(r, at): &(usize, Point<Pixels>)| Msg::Context(*r, *at)));
+        .on_context(cx.msg_with(|(_, at): &(usize, Point<Pixels>)| Msg::Context(*at)));
         let content = div().flex_1().flex().flex_col().gap(px(m::SPACING)).p(px(m::WINDOW_INSET)).child(div().flex_1().child(list)).child(StringView::new(format!("Opened: {}", self.last)).dim(true));
         div().size_full().flex().flex_col().child(MenuBar::new(cx, self.menus())).child(content)
     }

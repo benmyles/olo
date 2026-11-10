@@ -605,7 +605,7 @@ impl TextField {
         self.select_to(self.line_edge(true), cx);
     }
 
-    fn copy(&mut self, cx: &mut Cx<Self>) {
+    fn copy(&mut self) {
         if !self.selected.is_empty() && !self.password {
             clipboard::write(ClipboardItem::new_string(self.text[self.selected.clone()].to_string()));
         }
@@ -930,7 +930,7 @@ impl TextField {
             "end" => self.end(cx),
             "shift-home" => self.select_home(cx),
             "shift-end" => self.select_end(cx),
-            "ctrl-c" => self.copy(cx),
+            "ctrl-c" => self.copy(),
             "ctrl-x" => self.cut(cx),
             "ctrl-v" => self.paste(cx),
             "ctrl-z" => self.undo(cx),

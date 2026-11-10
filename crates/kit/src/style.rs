@@ -619,7 +619,7 @@ pub fn pill_height(font_size: f32) -> f32 {
 }
 
 /// How wide a [`pill`] saying `text` is.
-pub fn pill_width(g: &mut Painter, text: &str, font_size: f32, font: &Font) -> f32 {
+pub fn pill_width(text: &str, font_size: f32, font: &Font) -> f32 {
     let h = pill_height(font_size);
     (f32::from(text_width(text.to_owned(), font_size, font.clone())) + h * 0.9).max(h).round()
 }
@@ -628,7 +628,7 @@ pub fn pill_width(g: &mut Painter, text: &str, font_size: f32, font: &Font) -> f
 /// centred on `cy`, on device pixels. Returns where it is.
 #[allow(clippy::too_many_arguments)]
 pub fn pill(g: &mut Painter, x: Pixels, cy: Pixels, text: &str, font_size: f32, font: Font, fill: Hsla, ink: Hsla) -> Bounds<Pixels> {
-    let (w, h) = (pill_width(g, text, font_size, &font), pill_height(font_size));
+    let (w, h) = (pill_width(text, font_size, &font), pill_height(font_size));
     let r = snap(g, Bounds { origin: point(x, cy - px(h / 2.0)), size: size(px(w), px(h)) });
     g.paint_quad(olo_interface::fill(r, fill).corner_radii(r.size.height / 2.0));
     label(g, r.center().x, r.center().y, Align::Center, text.to_owned(), font_size, font, ink);
@@ -640,7 +640,7 @@ pub fn pill(g: &mut Painter, x: Pixels, cy: Pixels, text: &str, font_size: f32, 
 /// at some scales).
 #[allow(clippy::too_many_arguments)]
 pub fn pill_on_baseline(g: &mut Painter, x: Pixels, baseline: Pixels, text: &str, font_size: f32, font: Font, fill: Hsla, ink: Hsla) -> Bounds<Pixels> {
-    let (w, h) = (pill_width(g, text, font_size, &font), pill_height(font_size));
+    let (w, h) = (pill_width(text, font_size, &font), pill_height(font_size));
     let cy = baseline - px(font_size * CAP_HEIGHT / 2.0);
     let r = snap(g, Bounds { origin: point(x, cy - px(h / 2.0)), size: size(px(w), px(h)) });
     g.paint_quad(olo_interface::fill(r, fill).corner_radii(r.size.height / 2.0));

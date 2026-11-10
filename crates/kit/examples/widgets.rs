@@ -4,7 +4,7 @@
 //! on GPUI: the two are compared pixel for pixel (`tools/dev/kit-compare`).
 
 use olo_kit::{
-    Child, Cx, Element, IntoElement as _, ParentElement as _, Styled as _, View, WindowOptions, div, hsla, metrics as m, px,
+    Child, Cx, Element, ParentElement as _, Styled as _, View, WindowOptions, div, hsla, metrics as m, px,
     widgets::{
         Banner, Button, ColorControl, ColorWell, KeyHint, Sidebar, Slider, StatusBar, StringView, TabView, TextField, Thumbnail, ThumbnailPicker, Tone, find_bar, find_said, sidebar::Row, text_field,
     },

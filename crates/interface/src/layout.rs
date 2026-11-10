@@ -386,3 +386,58 @@ impl From<Size<Pixels>> for Size<AvailableSpace> {
         Size { width: AvailableSpace::Definite(size.width), height: AvailableSpace::Definite(size.height) }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{AvailableSpace, ParentElement as _, Styled as _, div, px};
+
+    fn style(element: crate::Element) -> Style {
+        let mut style = Style::default();
+        crate::Refineable::refine(&mut style, &element.style);
+        style
+    }
+
+    /// A tree kept between layouts comes out as a new one would. A
+    /// window's tool bar, and under it a side bar beside a column: a
+    /// part that takes what's left, and a fixed-height block holding
+    /// what fills it. The window is resized: the column is measured
+    /// again by its content (the block with it, its children laid out
+    /// as it goes with no size to fill), then placed, the block at the
+    /// size it had. What fills it must still be its size (taffy 0.9.0
+    /// took the block's layout from its cache and left its children as
+    /// the measuring pass had: no width).
+    #[test]
+    fn a_kept_tree_lays_out_again_as_a_new_one_would() {
+        let mut layout: Layout<u32> = Layout::new();
+        let rem = px(16.0);
+        let mut add = |element: crate::Element, children: &[LayoutId]| {
+            let id = layout_add(&mut layout, &style(element), rem);
+            layout.set_children(id, children);
+            id
+        };
+        let within = add(div().size_full(), &[]);
+        let over = add(div().absolute().inset_0(), &[]);
+        let fills = add(div().relative().size_full(), &[within, over]);
+        let fixed = add(div().h(px(90.0)), &[fills]);
+        let grows = add(div().flex_1().min_h_0(), &[]);
+        let leaf = add(div().w(px(70.0)).h(px(24.0)).flex_shrink_0(), &[]);
+        let column = add(div().flex_1().min_w_0().p(px(16.0)).flex().flex_col().gap(px(16.0)), &[grows, fixed, leaf]);
+        let side = add(div().w(px(37.0)).h_full().flex_shrink_0(), &[]);
+        let row = add(div().flex_1().min_h_0().flex(), &[side, column]);
+        let bar = add(div().w_full().h(px(67.0)).flex_shrink_0(), &[]);
+        let root = add(div().size_full().flex().flex_col(), &[bar, row]);
+        for height in [400.0, 353.0, 500.0, 353.0] {
+            let available = size(AvailableSpace::Definite(px(420.0)), AvailableSpace::Definite(px(height)));
+            layout.compute(root, available, 1.0, |_, _, _| Size::default());
+            for node in [fills, within, over] {
+                assert_eq!(layout.placed(node, 1.0).0.size, size(px(351.0), px(90.0)), "in a window {height} tall");
+            }
+            assert_eq!(layout.placed(grows, 1.0).0.size.height, px(height - 67.0 - 32.0 - 32.0 - 90.0 - 24.0));
+        }
+    }
+
+    fn layout_add(layout: &mut Layout<u32>, style: &Style, rem: Pixels) -> LayoutId {
+        layout.add(style, rem, 1.0, None)
+    }
+}

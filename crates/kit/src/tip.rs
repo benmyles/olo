@@ -72,6 +72,21 @@ fn tips<'a>(cx: &'a mut WindowCx) -> &'a mut Tips {
     looper.state_mut::<Tips>().expect("set above")
 }
 
+/// `element` with a tip saying `text` (shown once the pointer has
+/// rested on it, not after a press on it), by `key` (its id: what tells
+/// it from the window's other tips).
+pub fn on(element: Element, key: impl Into<SharedString>, text: impl Into<SharedString>) -> Element {
+    use olo_interface::InteractiveElement as _;
+    let (key, text) = (key.into(), text.into());
+    let (rested, pressed_key) = (key.clone(), key);
+    element
+        .on_hover(move |hovered, cx| {
+            let at = cx.listener_bounds();
+            hover(cx, rested.clone(), text.clone(), at, *hovered)
+        })
+        .on_any_mouse_down(move |_, cx| pressed(cx, pressed_key.clone()))
+}
+
 /// The pointer came to (`hovered`) or left the widget `key` of the
 /// window, whose tip says `text` and which is at `anchor` (in the
 /// window).
@@ -200,7 +215,11 @@ pub fn paragraph_height(text: &str, width: f32) -> f32 {
 /// [`MAX_WIDTH`], wrapped past it; on whole points.
 fn tip_size(text: &str) -> (f32, f32) {
     let font = style::ui_font(FontWeight::NORMAL);
-    let one_line = text.lines().map(|l| style::text_width_app(l, style::PLAIN_SIZE, &font)).fold(0.0, f32::max);
+    // (Shaped as it's drawn: a character its font hasn't, a menu's ⌘,
+    // comes from another and still has its width. By its characters'
+    // advances in the one font, "Open (⌘O)" came out a ⌘ too narrow,
+    // and wrapped.)
+    let one_line = text.lines().map(|l| f32::from(style::text_width(l.to_owned(), style::PLAIN_SIZE, font.clone()))).fold(0.0, f32::max);
     // (A hairline frame each side; two points: whole device pixels.)
     let frame = 2.0;
     let inner = one_line.ceil().min(MAX_WIDTH - 2.0 * PAD_X - frame);

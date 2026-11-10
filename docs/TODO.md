@@ -42,13 +42,49 @@ something nobody here has is in "Blocked", with what it waits for.
      scroll layers and damage); a looper a window; the retained view
      tree, layout and painting; input, focus, keys, text input; popups,
      layers, drags, the clipboard; the agent tree, frame marks, the
-     layout review.
-  3. **The kit's widgets** on it (everything in olo-ui today).
+     layout review. *Done so far:* all of that but drags; scrolling on
+     the display thread (the wheel and touchpad scroll there, elastic
+     ends; `ScrollHandle`), rows made as they come near (`uniform_rows`),
+     element state, window keys, held commits, window state, upgrade
+     hooks. *Still to do:* drag and drop (within a window, between
+     windows, files from outside); pictures as elements (`img`) and
+     animated ones; animations stepped on the stage; several damage
+     rectangles a frame (typing in DeskCalc draws the union of its field
+     and a key); a frame drawn straight from the kept drawings (no copy
+     into a scene: ~50 µs of a ~200 µs frame); a scroll bar's knob moved
+     by the stage; rows of differing heights (GPUI's `list`); a headless
+     window for the layout lint; moving a window to another display
+     (`moving`); agents' `Menus` of a window by surface is in, `Move`,
+     `WindowOver`, `WindowDropped`, `Focus` are not.
+  3. **The kit's widgets** on it (everything in olo-ui today). *Done:*
+     theme, style, review, icons, cut, tip, keys, menu (bars, popups,
+     context menus), agent, app (Frame, fits_content, kept sizes,
+     upgrade), and the widgets control, buttons, views, text_field,
+     text_control, menu_field, scroll, list, alert, status, key_hint,
+     banner, find_bar, slider, tabs, side_pane, sidebar, color, thumbs,
+     toolbar, text_view: each pixel for pixel the same as olo-ui's at
+     1×, 1.5× and 2×, light and dark (`tools/dev/kit-compare`, the
+     `*_gpui` examples beside the kit's). Tips are `tip::on` everywhere
+     (a popup under its widget, free of its window's edges; olo-ui's
+     tool bar used GPUI's, at the pointer, inside the window). *Still
+     to do:* strip, image_view,
+     charts, dashboard, ruler, slim_scroll; undo, spotlight,
+     dnd, open_with, file_panel, search, code, brand, pictures,
+     workspaces, lock, copy, due, part, spell, lint; the editor;
+     `crates/preview`, `print`, `screensavers`.
   4. **Every app**, one at a time, each compared pixel for pixel and
-     benched against its GPUI build before it moves.
+     benched against its GPUI build before it moves. *Done:* DeskCalc
+     (hover 0.3% of a core against 1.0%, typing 1.5% against 2.0%, the
+     same to the pixel). *Next, smallest first:* screensaver, lock,
+     greeter, polkit-agent, supervisor, rescue, emoji-picker, installer,
+     pool, drive-setup, disk-usage, chrome, logs, palette, screenshot,
+     diskbackup, portal, deskbar, notifications, doctor, telegram,
+     activity, viewer, styled-edit, screen, tracker, passwords, terminal,
+     preferences.
   5. **Tools, HACKING and the Olo Book**; GPUI and olo-ui leave the
      workspace (the `browser` and `olo-coder` branches build on them:
-     they stay until those have moved).
+     they stay until those have moved). `tools/dev/bench`, `ui-lint`,
+     `tsession review` and `lockcheck` still drive olo-ui's apps.
 
 ## Not started (highest priority first)
 

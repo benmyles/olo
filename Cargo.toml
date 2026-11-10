@@ -73,6 +73,7 @@ brush-interactive = { path = "vendor/brush-interactive" }
 rust_h265 = { path = "vendor/rust_h265" }
 velato = { path = "vendor/velato" }
 mp4 = { path = "vendor/mp4" }
+taffy = { path = "vendor/taffy" }
 
 [profile.release]
 debug = "line-tables-only"

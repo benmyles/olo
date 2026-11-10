@@ -697,7 +697,7 @@ impl WindowCore {
                 node.style.paint_behind(bounds, p);
                 match &node.kind {
                     NodeKind::Group => {}
-                    NodeKind::Text(text) => paint_text(text, bounds, p),
+                    NodeKind::Text(text) => paint_text(text, bounds, p, !node.inter.as_ref().is_some_and(|i| i.unlabelled)),
                     NodeKind::Canvas(spec) => {
                         if let Some(view) = views.get(node.owner).and_then(|v| v.view.as_ref()) {
                             // A control that can't be used now is faded.
@@ -885,7 +885,7 @@ fn measure_text(text: &mut TextNode, text_style: &TextStyle, rem_size: Pixels, t
     size
 }
 
-fn paint_text(text: &TextNode, bounds: Bounds<Pixels>, p: &mut Painter) {
+fn paint_text(text: &TextNode, bounds: Bounds<Pixels>, p: &mut Painter, labelled: bool) {
     let Some(laid) = &text.laid else { return };
     let mut origin = bounds.origin;
     for line in &laid.lines {
@@ -895,12 +895,31 @@ fn paint_text(text: &TextNode, bounds: Bounds<Pixels>, p: &mut Painter) {
     }
     // What agents read: its text, where it is; whole, if it's cut
     // short here.
-    if !text.text.trim().is_empty() {
+    if labelled && !text.text.trim().is_empty() {
         p.agent(crate::agent::Node::label(text.text.clone(), bounds));
         if laid.truncated {
             p.note_cut(text.text.clone(), bounds);
         }
     }
+}
+
+/// The byte of a laid-out text nearest `position` (from the text's own
+/// corner): GPUI's `TextLayout::index_for_position`.
+pub(crate) fn text_index_at(laid: &TextLaid, position: Point<Pixels>) -> usize {
+    let mut line_top = px(0.);
+    let mut line_start = 0;
+    for line in &laid.lines {
+        let line_bottom = line_top + line.size(laid.line_height).height;
+        if position.y > line_bottom {
+            line_top = line_bottom;
+            line_start += line.len() + 1;
+        } else {
+            return match line.index_for_position(point(position.x, position.y - line_top), laid.line_height) {
+                Ok(index) | Err(index) => line_start + index,
+            };
+        }
+    }
+    line_start.saturating_sub(1)
 }
 
 /// A node as something outside the tree may know it (what a view's

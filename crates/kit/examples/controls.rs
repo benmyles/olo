@@ -3,7 +3,7 @@
 //! for pixel (`tools/dev/kit-compare`).
 
 use olo_kit::{
-    Child, Cx, Element, InteractiveElement as _, IntoElement as _, Menu, MenuBar, MouseButton, ParentElement as _, Styled as _, View, WindowOptions, div, menu, metrics as m, px,
+    Child, Cx, Element, InteractiveElement as _, Menu, MenuBar, MouseButton, ParentElement as _, Styled as _, View, WindowOptions, div, menu, metrics as m, px,
     widgets::{BBox, Button, CheckBox, LinkButton, MenuField, RadioButton, StringView, TextControl, TextField, TextFieldEvent, heading, separator, text_field},
 };
 

@@ -163,6 +163,9 @@ pub(crate) struct ViewSlot {
     pub(crate) root: Option<crate::tree::NodeId>,
     /// Its `body` is to run again.
     pub(crate) dirty: bool,
+    /// Its `body` asked the window's size: it runs again when that
+    /// changes.
+    pub(crate) reads_size: bool,
     /// Who hears what it emits, by the event's type.
     pub(crate) subscribers: Vec<(TypeId, Subscriber)>,
     /// Timers and tasks that end with it.

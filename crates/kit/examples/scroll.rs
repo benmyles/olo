@@ -4,7 +4,7 @@
 //! with.
 
 use olo_kit::{
-    Cx, Element, IntoElement as _, ParentElement as _, ScrollHandle, Styled as _, View, WindowOptions, div, metrics as m, px,
+    Cx, Element, ParentElement as _, ScrollHandle, Styled as _, View, WindowOptions, div, metrics as m, px,
     widgets::{Button, CheckBox, ScrollView, StringView},
 };
 

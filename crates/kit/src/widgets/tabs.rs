@@ -157,7 +157,7 @@ fn paint_face(g: &mut Painter, outer: Bounds<Pixels>, tabs: &[SharedString], sel
     // what's under them only by chance.)
     crate::review::own_grid(g, Bounds::from_corners(outer.origin, point(outer.right(), outer.top() + px(TAB_HEIGHT))));
     let rects = places(s, outer, tabs);
-    let mut draw = |g: &mut Painter, i: usize, r: Bounds<Pixels>| {
+    let draw = |g: &mut Painter, i: usize, r: Bounds<Pixels>| {
         let on = i == selected;
         let top = if on { r.top() } else { style::snap_coord(g, r.top() + px(2.0)) };
         let bottom = if on { r.bottom() } else { style::snap_coord(g, r.bottom() - px(1.0)) };
