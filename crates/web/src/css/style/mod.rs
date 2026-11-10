@@ -166,10 +166,21 @@ impl Font {
         Ok(Self { request, metrics, context })
     }
 }
+/// Platform scrollbar thicknesses in CSS pixels.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ScrollbarWidths {
+    /// Unscaled CSS pixels; zero selects overlay scrollbars.
+    pub auto: f64,
+    pub thin: f64,
+}
 /// All callbacks belong to one immutable generation. Viewport/container/tree
 /// callbacks are bound to the subject element and enforce its tree scope.
 pub trait Host {
     fn revision(&self) -> u64;
+    /// Platform scrollbar metrics. Change the revision when they change.
+    fn scrollbar_widths(&self) -> ScrollbarWidths {
+        ScrollbarWidths::default()
+    }
     /// Document-wide computed environment. Called once when Defaults freezes
     /// this generation; a changed environment requires a changed revision.
     fn environment(&self) -> Result<Option<Arc<variables::Environment>>> {
@@ -196,6 +207,9 @@ pub trait Host {
 impl<H: Host + ?Sized> Host for &H {
     fn revision(&self) -> u64 {
         (**self).revision()
+    }
+    fn scrollbar_widths(&self) -> ScrollbarWidths {
+        (**self).scrollbar_widths()
     }
     fn environment(&self) -> Result<Option<Arc<variables::Environment>>> {
         (**self).environment()

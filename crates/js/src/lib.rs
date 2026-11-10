@@ -3108,6 +3108,7 @@ const NATIVES: &[&str] = &[
     "revision",
     "url",
     "viewport",
+    "clientViewport",
     "userAgent",
     "language",
     "count",
@@ -5104,6 +5105,13 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                 (s.config.viewport.0, s.config.viewport.1, s.config.scale)
             };
             let items: Vec<v8::Local<v8::Value>> = vec![v8::Number::new(scope, w).into(), v8::Number::new(scope, h).into(), v8::Number::new(scope, scale).into()];
+            rv.set(v8::Array::new_with_elements(scope, &items).into());
+        }
+        "clientViewport" => {
+            let mut s = state.borrow_mut();
+            let size = s.measured().map(|m| m.layout().viewport_geometry().client).unwrap_or([s.config.viewport.0, s.config.viewport.1]);
+            drop(s);
+            let items: Vec<v8::Local<v8::Value>> = size.into_iter().map(|v| v8::Number::new(scope, v).into()).collect();
             rv.set(v8::Array::new_with_elements(scope, &items).into());
         }
         "userAgent" => {

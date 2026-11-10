@@ -1,0 +1,6 @@
+{
+  "profile": "rustc --edition=2024 -O",
+  "library": "target/release/deps/libolo_web-37e7debb7bb5ea80.rlib",
+  "binary_sha256": "a4f56fe428ce7c9394d509f561aeaba458f418c316e4a12ec0a3ab37d042161b",
+  "source_sha256": "7415a070eb8c5081f529669aa8ad35f65c130d9c8bb6d20a3e08bf87ee365b3c"
+}

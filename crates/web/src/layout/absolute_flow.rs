@@ -215,7 +215,7 @@ impl Job<'_> {
         if cb == tree.root() {
             // The initial containing block: the viewport at the scroll origin.
             cg.padding = Edges::default();
-            content = Rect { x: 0., y: 0., width: self.initial[0], height: self.initial[1] };
+            content = Rect { x: self.viewport.content.x, y: self.viewport.content.y, width: self.initial[0], height: self.initial[1] };
         }
         let parent_content = self.global_content(parent)?;
         let width = content.width + cg.padding.horizontal();

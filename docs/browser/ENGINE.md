@@ -2743,3 +2743,45 @@ direct drawing for differential tests and measurements. `paint_bench N direct`
 compares it with `paint_bench N cached`, reporting cold and repeated raster cost,
 coverage retention and tile hashes. This changes reuse, not glyph hinting or
 Chrome pixel compatibility.
+
+
+### Classic root viewport geometry
+
+`css::style::Host::scrollbar_widths` supplies nominal CSS-pixel auto/thin
+thicknesses. Zero defaults preserve overlay embedders; a changed setting needs
+a changed host revision. `layout::ViewportGeometry` distinguishes full window
+size, the initial containing block (including its opposite-gutter origin),
+client space excluding actual bars, and viewport-unit size. Empty stable
+gutters narrow layout but remain in root client/VisualViewport measurements.
+Automatic bars do not narrow viewport units; forced root bars and stable root
+gutters do. Body-forced overflow does not narrow units. Physical gutter edges
+are rounded at the device scale; the Chrome reference uses nominal thickness
+for forced viewport units.
+
+`layout_viewport` begins without automatic bars, adds required axes monotonically
+(at most three passes), and compares device-snapped document/client edges.
+Prepared text and intrinsic widths survive passes. All passes and overflow
+scans share the work budget; scans check cancellation every 64 boxes. Its
+progress work count is cumulative. Beginning afresh avoids an obsolete bar
+keeping narrow content wrapped after a page shrinks. `page` wraps the host's
+unit context and corrects styles when the final root policy changes its basis;
+media selection keeps full dimensions. Rendered and script-measured layouts
+use the same solver. Low-level `Job::new` remains an overlay layout.
+
+Document extents are cached on Layout and account for viewport direction,
+which propagates from the displayed first HTML body independently of overflow
+ownership. Raw extents drive gutter selection; root CSSOM extents snap to the
+device grid before integer CSS-pixel rounding. Element scroll extents keep
+ordinary CSS rounding. This remains incomplete for some positioned, transformed
+and containment cases.
+
+JavaScript root `clientWidth`/`clientHeight` round client size; VisualViewport
+getters return the fractional client dimensions and reuse the current measured
+layout. Initial inner sizes now round consistently with live environment updates.
+Window/media dimensions remain full. Complete VisualViewport event/scroll
+semantics, quirks-mode body metrics and RTL scrolling are not supplied by this
+geometry change. Browser's platform host still returns overlay metrics until
+its horizontal offset, gutter clipping and native bar controls can be activated
+together. The 100-case oracle, 200 render/measurement transitions, API checks,
+and release comparison are documented in
+`measurements/2026-11-10-classic-viewport/README.md`.

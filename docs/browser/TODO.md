@@ -27,9 +27,13 @@ image pixel recovery also remain open.
 
 The scrollbar investigation has fixed viewport overflow ownership and
 per-axis clipping/measurement, with root-only typed scrollbar properties.
-The width difference remains: classic gutter allocation, viewport units,
-client/VisualViewport sizing, horizontal/nested bars and root input policy
-still need integration. DOM body scrolling still aliases the viewport, and
+Classic root geometry, viewport-unit restyling and client/VisualViewport
+reads now match the captured component cases (100 Chrome observations at five
+scales). Browser still uses overlays: its horizontal scroll offset, reserved
+area painting and native bar controls must be integrated before enabling classic
+metrics. Stripe's width difference therefore remains. Nested gutters, root
+input policy, RTL scroll ranges and gutter-only VisualViewport resize events
+also remain open. See [classic viewport geometry](measurements/2026-11-10-classic-viewport/README.md). DOM body scrolling still aliases the viewport, and
 the JS layout budget can return stale measurements after 60 layouts/0.25s
 in one advance. Evidence and the failed budget probe are retained in
 [viewport overflow](measurements/2026-11-10-viewport-overflow/README.md).

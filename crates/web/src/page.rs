@@ -2,6 +2,7 @@
 //! network resources, complete UA defaults and browser runtime remain required.
 mod background;
 mod interaction;
+mod viewport;
 use crate::{
     css::{
         self,
@@ -902,6 +903,20 @@ impl Measurer {
     /// (nothing visited, nothing copied); else its styles seed the
     /// incremental job and its texts the preparation.
     pub fn measure(&self, doc: &Document, host: &impl Host, shaper: &mut shaping::Engine, viewport: layout::Viewport, previous: Option<Measured>, cancel: Option<&AtomicBool>) -> Result<Measured> {
+        let host = viewport::ViewportHost::new(host, viewport, previous.as_ref().map(|p| p.layout.as_ref()));
+        let first = self.measure_once(doc, &host, shaper, viewport, previous, cancel)?;
+        if !host.update(first.layout()) {
+            return Ok(first);
+        }
+        let phases = first.phases;
+        let mut next = self.measure_once(doc, &host, shaper, viewport, Some(first), cancel)?;
+        for (a, b) in next.phases.iter_mut().zip(phases) {
+            *a += b;
+        }
+        next.path.push_str("; viewport units restyled");
+        Ok(next)
+    }
+    fn measure_once(&self, doc: &Document, host: &impl Host, shaper: &mut shaping::Engine, viewport: layout::Viewport, previous: Option<Measured>, cancel: Option<&AtomicBool>) -> Result<Measured> {
         if host.font_context() != self.scope.context() {
             return Err(style::Error::Stale.into());
         }
@@ -1059,16 +1074,14 @@ impl Measurer {
             let cache = job.finish()?;
             phases[2] = started.elapsed().as_secs_f64() * 1000. - phases[0] - phases[1];
             let checked = cache.clone();
-            let mut job = layout::Job::new(shaper, &self.scope, cache, viewport, Default::default(), cancel)?;
-            if let (Some(p), Some(dirty)) = (previous, &dirty) {
-                job = job.with_previous(&p.layout, dirty);
+            let reuse = previous.zip(dirty.as_ref()).map(|(p, d)| (p.layout.as_ref(), d));
+            if reuse.is_some() {
                 redone[3] = layout::Redone::Part;
             }
-            while !job.step(256)?.finished {}
-            found[3].merge(job.fallbacks());
-            let reused = job.progress().reused;
-            let layout = job.finish()?;
-            check_reuse(shaper, &self.scope, checked, viewport, &layout, doc, reused, cancel)?;
+            let laid = layout::layout_viewport(shaper, &self.scope, cache, viewport, host.scrollbar_widths(), reuse, Default::default(), cancel, |_| {})?;
+            found[3].merge(&laid.fallbacks);
+            let layout = laid.layout;
+            check_reuse(shaper, &self.scope, checked, viewport, &layout, doc, laid.progress.reused, cancel)?;
             Arc::new(layout)
         };
         phases[3] = started.elapsed().as_secs_f64() * 1000. - phases[0] - phases[1] - phases[2];
@@ -1096,13 +1109,12 @@ impl Measurer {
         };
         phases[4] = started.elapsed().as_secs_f64() * 1000. - phases[..4].iter().sum::<f64>();
         phases[5] = started.elapsed().as_secs_f64() * 1000.;
-        Ok(Measured { layout, document_size: Default::default(), inlines: Default::default(), text_spans: Default::default(), index, revision: doc.revision(), viewport, phases, defaults, path })
+        Ok(Measured { layout, inlines: Default::default(), text_spans: Default::default(), index, revision: doc.revision(), viewport, phases, defaults, path })
     }
 }
 /// One layout of the document, queried by node.
 pub struct Measured {
     layout: Arc<layout::Layout>,
-    document_size: std::sync::OnceLock<(f64, f64)>,
     /// Inline elements' pieces in the paragraphs (text source, source range),
     /// by element: made the first time one is measured.
     inlines: std::sync::OnceLock<(crate::dom::NodeMap<Vec<(u32, std::ops::Range<u32>, bool, bool)>>, Vec<Option<layout::BoxId>>)>,
@@ -1594,63 +1606,13 @@ impl Measured {
     }
     /// The page's scrollable size (`documentElement.scrollWidth/Height`):
     /// as far as its boxes reach that no ancestor clips and that aren't
-    /// fixed, margins included, painted or not, and at least the viewport;
-    /// worked out once per layout.
+    /// fixed, margins included, painted or not. Raw overflow is cached on
+    /// Layout, then snapped to device pixels here; CSSOM callers round the
+    /// result to integer CSS pixels. Empty stable gutters are excluded.
     pub fn document_size(&self) -> (f64, f64) {
-        *self.document_size.get_or_init(|| {
-            use css::{
-                properties::{Keyword as K, Property as P},
-                style::Value,
-            };
-            let tree = self.layout.cache().tree();
-            let n = tree.boxes().len();
-            // Per box: whether it is out of the page's overflow (an ancestor
-            // clips it, or it or one is fixed); and whether it clips what it
-            // holds.
-            let mut out = vec![0u8; n];
-            let mut clips = vec![0u8; n];
-            let viewport_source = tree.viewport_overflow().source;
-            // Each box's coordinate origin (its parent's content box on the
-            // page), carried down: boxes are in preorder, parents first, so
-            // one pass places them all (`bounds` walks the ancestors of one).
-            let mut origin = vec![(0f64, 0f64); n];
-            let (mut right, mut bottom) = (self.viewport.width, self.viewport.height);
-            for (id, b) in tree.iter() {
-                let i = id.index();
-                if let Some(p) = b.parent
-                    && let Some(pg) = self.layout.geometry(p)
-                {
-                    let c = pg.content_box();
-                    let at = origin[p.index()];
-                    origin[i] = (at.0 + c.x, at.1 + c.y);
-                }
-                let style = tree.style(id);
-                let fixed = style.is_some_and(|s| matches!(s.value(P::Position), Value::Keyword(K::Fixed)));
-                out[i] = if fixed { 3 } else { b.parent.map_or(0, |p| out[p.index()] | clips[p.index()]) };
-                // Only the element whose overflow propagates to the
-                // viewport is exempt. A body's own scroll container clips
-                // normally when the root already owns viewport overflow.
-                // `clip visible` clips one axis without clipping the other.
-                clips[i] = if viewport_source == Some(b.node) {
-                    0
-                } else {
-                    style.map_or(0, |s| u8::from(!matches!(s.value(P::OverflowX), Value::Keyword(K::Visible))) | (u8::from(!matches!(s.value(P::OverflowY), Value::Keyword(K::Visible))) << 1))
-                };
-                if out[i] == 3 || b.parent.is_none() {
-                    continue;
-                }
-                if let Some(g) = self.layout.geometry(id) {
-                    let r = g.border_box;
-                    if out[i] & 1 == 0 {
-                        right = right.max(origin[i].0 + r.x + r.width + g.margin.right.max(0.));
-                    }
-                    if out[i] & 2 == 0 {
-                        bottom = bottom.max(origin[i].1 + r.y + r.height + g.margin.bottom.max(0.));
-                    }
-                }
-            }
-            (right, bottom)
-        })
+        let (w, h) = self.layout.document_size();
+        let scale = self.viewport.scale;
+        ((w * scale).round() / scale, (h * scale).round() / scale)
     }
     /// A computed (resolved) value as getComputedStyle gives it, for the
     /// properties scripts read: keywords, lengths in px, colours, display,
@@ -3641,15 +3603,15 @@ fn check_reuse(
     if reused == 0 || std::env::var_os("OLO_LAYOUT_CHECK").is_none() {
         return Ok(());
     }
-    let mut job = layout::Job::new(shaper, scope, cache.clone(), viewport, Default::default(), cancel)?;
+    let mut job = layout::Job::new(shaper, scope, cache.clone(), viewport, Default::default(), cancel)?.with_viewport_geometry(layout.viewport_geometry())?;
     while !job.step(256)?.finished {}
     let full = job.finish()?;
     // Twice more: once again as is, once with nothing remembered, to tell
     // a difference of the reuse from one of the layout's own state.
-    let mut job = layout::Job::new(shaper, scope, cache.clone(), viewport, Default::default(), cancel)?;
+    let mut job = layout::Job::new(shaper, scope, cache.clone(), viewport, Default::default(), cancel)?.with_viewport_geometry(layout.viewport_geometry())?;
     while !job.step(256)?.finished {}
     let again = job.finish()?;
-    let mut job = layout::Job::new(shaper, scope, cache.without_intrinsics(), viewport, Default::default(), cancel)?;
+    let mut job = layout::Job::new(shaper, scope, cache.without_intrinsics(), viewport, Default::default(), cancel)?.with_viewport_geometry(layout.viewport_geometry())?;
     while !job.step(256)?.finished {}
     let fresh = job.finish()?;
     let tree = layout.cache().tree();
@@ -4162,8 +4124,8 @@ fn container_sizes(layout: &layout::Layout) -> crate::dom::NodeMap<[f64; 2]> {
 }
 /// `render_once`, again when a query container's size came out other than
 /// the styles were matched with (`@container` rules then hold elsewhere):
-/// styled and laid out once more with the sizes this layout gave, at most
-/// twice (a size that flips what holds settles on the second).
+/// styled and laid out again with the sizes this layout gave. Up to three
+/// corrective passes also allow a forced viewport-unit basis to settle.
 #[allow(clippy::too_many_arguments)]
 fn render(
     doc: &Document,
@@ -4188,6 +4150,8 @@ fn render(
     changes: Option<&RuleChanges>,
     mut progress: impl FnMut(Phase, usize),
 ) -> Result<(Arc<paint::Scene>, usize, layout::Fallbacks)> {
+    let effective = viewport::ViewportHost::new(host, viewport, previous);
+    let host = &effective;
     let mut result = render_once(
         doc,
         images,
@@ -4211,12 +4175,10 @@ fn render(
         changes,
         &mut progress,
     )?;
-    if !rules.has_containers() {
-        return Ok(result);
-    }
-    for _ in 0..2 {
-        let sizes = container_sizes(result.0.layout());
-        if sizes == *containers {
+    for _ in 0..3 {
+        let units_changed = effective.update(result.0.layout());
+        let sizes = if rules.has_containers() { container_sizes(result.0.layout()) } else { Default::default() };
+        if !units_changed && sizes == *containers {
             break;
         }
         // What the containers whose size changed hold is matched again; the
@@ -4540,7 +4502,7 @@ fn render_once(
             _ => false,
         }
     };
-    let kept = previous.filter(|p| restyle_kept_geometry && styles.geometry_kept() && !relayout && p.device_scale() == viewport.scale && same_bindings(p));
+    let kept = previous.filter(|p| restyle_kept_geometry && styles.geometry_kept() && !relayout && p.viewport_geometry().full == viewport && same_bindings(p));
     let kept_layout = kept.is_some();
     // What changed since the previous layout (and what the patch restyled),
     // for taking the rest from it: only when laid out again.
@@ -4621,18 +4583,14 @@ fn render_once(
         }
         progress(Phase::Layout, 0);
         let checked = cache.clone();
-        let mut job = layout::Job::new(shaper, scope, cache, viewport, Default::default(), cancel)?;
-        if let (Some(p), Some(dirty)) = (previous, &dirty) {
-            job = job.with_previous(p, dirty);
+        let reuse = previous.zip(dirty.as_ref());
+        if reuse.is_some() {
             redone[3] = layout::Redone::Part;
         }
-        while !job.step(64)?.finished {
-            progress(Phase::Layout, job.progress().boxes)
-        }
-        found[3].merge(job.fallbacks());
-        let reused = job.progress().reused;
-        let layout = job.finish()?;
-        check_reuse(shaper, scope, checked, viewport, &layout, doc, reused, cancel)?;
+        let laid = layout::layout_viewport(shaper, scope, cache, viewport, host.scrollbar_widths(), reuse, Default::default(), cancel, |p| progress(Phase::Layout, p.boxes))?;
+        found[3].merge(&laid.fallbacks);
+        let layout = laid.layout;
+        check_reuse(shaper, scope, checked, viewport, &layout, doc, laid.progress.reused, cancel)?;
         Arc::new(layout)
     };
     if let Some(t) = timing {

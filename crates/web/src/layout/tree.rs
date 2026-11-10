@@ -419,6 +419,12 @@ impl Tree {
     pub fn viewport_overflow(&self) -> super::ViewportOverflow {
         self.viewport_elements.resolve(&self.styles)
     }
+    pub fn viewport_rtl(&self) -> bool {
+        self.viewport_elements.rtl(&self.styles)
+    }
+    pub fn viewport_unit_size(&self, viewport: Viewport, widths: style::ScrollbarWidths) -> [f64; 2] {
+        super::viewport::unit_size(viewport, widths, self.viewport_overflow(), self.viewport_elements.root_style(&self.styles))
+    }
     /// The styles to change in place, when nothing else holds them, for
     /// the document as it is now (see `with_styles`).
     pub(super) fn styles_mut(&mut self, document: &Document) -> Option<&mut StyleTree> {

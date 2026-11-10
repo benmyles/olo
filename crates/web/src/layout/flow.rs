@@ -665,6 +665,8 @@ impl Sticky {
 }
 pub struct Layout {
     cache: Arc<Cache>,
+    viewport: ViewportGeometry,
+    document_size: std::sync::OnceLock<(f64, f64)>,
     geometry: Box<[Geometry]>,
     texts: Arc<[Option<Arc<inline::Layout>>]>,
     /// Each block laid out in normal flow by its own style: what it was
@@ -724,6 +726,82 @@ pub(super) struct Reuse<'a> {
     by_node: crate::dom::NodeMap<smallvec::SmallVec<[BoxId; 2]>>,
 }
 impl Layout {
+    /// Scrollable document size, excluding viewport gutters. Computed once
+    /// from geometry, skipping fixed/clipped descendants on each axis.
+    pub fn document_size(&self) -> (f64, f64) {
+        self.document_size_checked(None).expect("uncancelled document extent")
+    }
+    pub(super) fn document_size_checked(&self, cancel: Option<&AtomicBool>) -> Result<(f64, f64)> {
+        check(cancel)?;
+        if let Some(size) = self.document_size.get() {
+            return Ok(*size);
+        }
+        use css::{
+            properties::{Keyword as K, Property as P},
+            style::Value,
+        };
+        let tree = self.cache().tree();
+        let n = tree.boxes().len();
+        // Per box: whether it is out of the page's overflow (an ancestor
+        // clips it, or it or one is fixed); and whether it clips what it
+        // holds.
+        let mut out = vec![0u8; n];
+        let mut clips = vec![0u8; n];
+        let viewport_source = tree.viewport_overflow().source;
+        let rtl = tree.viewport_rtl();
+        let mut left = 0f64;
+        // Each box's coordinate origin (its parent's content box on the
+        // page), carried down: boxes are in preorder, parents first, so
+        // one pass places them all (`bounds` walks the ancestors of one).
+        let mut origin = vec![(0f64, 0f64); n];
+        let (mut right, mut bottom) = (self.viewport.content.width, self.viewport.content.height);
+        for (id, b) in tree.iter() {
+            let i = id.index();
+            if i % 64 == 0 {
+                check(cancel)?;
+            }
+            if let Some(p) = b.parent
+                && let Some(pg) = self.geometry(p)
+            {
+                let c = pg.content_box();
+                let at = origin[p.index()];
+                origin[i] = (at.0 + c.x, at.1 + c.y);
+            }
+            let style = tree.style(id);
+            let fixed = style.is_some_and(|s| matches!(s.value(P::Position), Value::Keyword(K::Fixed)));
+            out[i] = if fixed { 3 } else { b.parent.map_or(0, |p| out[p.index()] | clips[p.index()]) };
+            // Only the element whose overflow propagates to the
+            // viewport is exempt. A body's own scroll container clips
+            // normally when the root already owns viewport overflow.
+            // `clip visible` clips one axis without clipping the other.
+            clips[i] = if viewport_source == Some(b.node) {
+                0
+            } else {
+                style.map_or(0, |s| u8::from(!matches!(s.value(P::OverflowX), Value::Keyword(K::Visible))) | (u8::from(!matches!(s.value(P::OverflowY), Value::Keyword(K::Visible))) << 1))
+            };
+            if out[i] == 3 || b.parent.is_none() {
+                continue;
+            }
+            if let Some(g) = self.geometry(id) {
+                let r = g.border_box;
+                if out[i] & 1 == 0 {
+                    right = right.max(origin[i].0 + r.x - self.viewport.content.x + r.width + g.margin.right.max(0.));
+                    if rtl {
+                        left = left.min(origin[i].0 + r.x - self.viewport.content.x - g.margin.left.max(0.));
+                    }
+                }
+                if out[i] & 2 == 0 {
+                    bottom = bottom.max(origin[i].1 + r.y - self.viewport.content.y + r.height + g.margin.bottom.max(0.));
+                }
+            }
+        }
+        let size = (if rtl { self.viewport.content.width - left } else { right }, bottom);
+        let _ = self.document_size.set(size);
+        Ok(size)
+    }
+    pub fn viewport_geometry(&self) -> ViewportGeometry {
+        self.viewport
+    }
     pub fn device_scale(&self) -> f64 {
         self.scale
     }
@@ -754,6 +832,8 @@ impl Layout {
         });
         Self {
             cache,
+            viewport: self.viewport,
+            document_size: Default::default(),
             geometry: self.geometry.clone(),
             texts: self.texts.clone(),
             stored: self.stored.clone(),
@@ -1087,6 +1167,7 @@ pub struct Job<'a> {
     fallbacks: Fallbacks,
     failed: bool,
     scale: f64,
+    viewport: ViewportGeometry,
     /// The initial containing block's size (the viewport's), CSS px on the device grid.
     pub(super) initial: [f64; 2],
 }
@@ -1170,11 +1251,25 @@ impl<'a> Job<'a> {
             fallbacks: Fallbacks::default(),
             failed: false,
             scale: viewport.scale,
+            viewport: ViewportGeometry::overlay(viewport),
             initial: [used::grid(viewport.width, viewport.scale), used::grid(viewport.height, viewport.scale)],
         })
     }
     pub fn progress(&self) -> Progress {
         self.progress
+    }
+    pub(crate) fn with_viewport_geometry(mut self, viewport: ViewportGeometry) -> Result<Self> {
+        let r = viewport.content;
+        if self.progress.work != 0 || viewport.full != self.viewport.full || [r.x, r.y, r.width, r.height].into_iter().chain(viewport.client).chain(viewport.units).any(|v| !v.is_finite() || v < 0.) {
+            return Err(Error::Invalid);
+        }
+        let root = self.stack.first_mut().ok_or(Error::Invalid)?;
+        root.used.width = used::grid(r.width, self.scale);
+        root.used.height = Some(used::grid(r.height, self.scale));
+        root.queries = QueryBasis::viewport(Viewport { width: viewport.units[0], height: viewport.units[1], scale: self.scale });
+        self.initial = [root.used.width, root.used.height.unwrap()];
+        self.viewport = viewport;
+        Ok(self)
     }
     /// What this layout substituted (column flex as blocks, baseline alignment as start, …).
     pub fn fallbacks(&self) -> &Fallbacks {
@@ -2319,7 +2414,7 @@ impl<'a> Job<'a> {
                 }
                 let g = &mut self.geometry[f.id.index()];
                 if f.id == self.cache.tree.root() {
-                    g.border_box = Rect { x: 0., y: 0., width: f.used.width, height }
+                    g.border_box = Rect { x: self.viewport.content.x, y: self.viewport.content.y, width: f.used.width, height }
                 } else {
                     g.border_box.height = height + f.used.padding.vertical() + f.used.border.vertical()
                 }
@@ -2392,6 +2487,8 @@ impl<'a> Job<'a> {
         }
         Ok(Layout {
             cache: self.cache,
+            viewport: self.viewport,
+            document_size: Default::default(),
             geometry: self.geometry.into_boxed_slice(),
             texts: Arc::from(self.texts),
             stored: Arc::from(self.stored),

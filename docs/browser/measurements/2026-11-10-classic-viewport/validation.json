@@ -1,0 +1,14 @@
+{
+  "command": "env -u WAYLAND_DISPLAY -u OLO_SOCKET -u CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER cargo test --release --workspace --no-fail-fast",
+  "exit": 0,
+  "suites": 252,
+  "passed": 2203,
+  "failed": 0,
+  "ignored": 136,
+  "build": "cargo build --release --workspace",
+  "build_finished": true,
+  "lint_screens": [
+    "1280x800",
+    "1440x900"
+  ]
+}

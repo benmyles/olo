@@ -8345,3 +8345,38 @@ Stripe's live hero was also rechecked at all fifteen theme/scale combinations:
 colored throughout, environment updates intact, fifteen additional clean
 widget reviews (45 total). Its width remains 1000 CSS px. The screenshots and
 probe values are retained; they do not establish journey/configuration acceptance.
+
+
+## 2026-11-10 — classic root viewport geometry, native activation still open
+
+Implemented opt-in classic root gutters in the shared page engine, separating
+full window, containing block, client size and viewport-unit basis. Root forced
+bars and stable gutters update units; automatic bars preserve 100vw. Passes
+share prepared data, work limits and cancellation. Document extent follows
+viewport direction and device snapping; client/VisualViewport JS reads use the
+retained geometry. The default host remains overlay-based.
+
+100 Chrome observations pass at five actual display scales, plus 200 live
+render/measurement transitions, platform metric changes, API caching and
+budget/cancellation checks. Release workspace: 2,203 passed, zero failed,
+136 existing ignored, 252 suites. Thirty native reviews are clean and all
+15 Browser client captures are pixel-identical; both screen-size lints pass.
+The one outer-frame-only difference is retained. There is no visible Browser
+content change to add to the screenshot journal.
+
+ABBA at 1.25×/2×: cached 9,000 JS reads 4.002→5.148 / 5.310→5.906ms;
+20 forced layouts 1.654→1.920 / 2.309→2.286ms; CPU/resize
+11.875→11.875 / 21.250→24.375ms; RSS 167434→167662 /
+169090→170008KiB. Drag first movement 28.40→28.50 / 27.10→28.60ms;
+wheel 7.30→9.05 / 9.00→9.60ms. Sixteen moving scroll probes have no hitches,
+max draw 0.94ms, idle zero CPU/page frames (existing watchdog wakes remain).
+The separate small engine fixture measures the added classic layout/restyle
+cost; no speedup is claimed. See
+[classic viewport evidence](measurements/2026-11-10-classic-viewport/README.md).
+
+Browser's horizontal scroll offset, native bar controls and reserved-area
+painting must be integrated together before enabling classic metrics. Stripe's
+15px discrepancy remains; no website/configuration is accepted, corpus 0/100.
+Nested gutters, viewport input policy, RTL scrolling, gutter-only resize events,
+quirks body metrics and the stale-read JS budget remain open. Fetched origin/main
+was already contained; no personal-session installation/reload or delegation.

@@ -49,7 +49,11 @@ fn viewport_source_and_one_axis_clips_match_chrome_after_live_restyles() {
             }
             let m = measurer.measure(&doc, &host, &mut shaper, viewport, previous, None).unwrap();
             let expected = (row["data"]["size"][0].as_f64().unwrap(), row["data"]["size"][1].as_f64().unwrap());
-            assert_eq!(m.document_size(), expected, "{case} {scale}");
+            // The oracle records integer CSSOM dimensions. Native root
+            // extents first snap to device pixels, including the synthetic
+            // 613 CSS px viewport at fractional scales.
+            let size = m.document_size();
+            assert_eq!((size.0.round(), size.1.round()), expected, "{case} {scale}");
             let fresh = measurer.measure(&doc, &host, &mut shaper, viewport, None, None).unwrap();
             assert_eq!(m.document_size(), fresh.document_size(), "fresh: {case}");
             assert_eq!(m.layout().cache().tree().viewport_overflow(), fresh.layout().cache().tree().viewport_overflow(), "fresh source: {case}");

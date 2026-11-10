@@ -1,0 +1,18 @@
+[
+  {
+    "classic": false,
+    "measure_p50_ms": 0.0096815,
+    "measure_p95_ms": 0.010748,
+    "render_p50_ms": 0.097915,
+    "render_p95_ms": 0.1023855,
+    "cached_100000_ms": 0.3912415
+  },
+  {
+    "classic": true,
+    "measure_p50_ms": 0.107106,
+    "measure_p95_ms": 0.11435100000000001,
+    "render_p50_ms": 0.189125,
+    "render_p95_ms": 0.2058035,
+    "cached_100000_ms": 0.3925405
+  }
+]

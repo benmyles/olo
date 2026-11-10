@@ -14802,11 +14802,19 @@ in-place restyles cannot leave a stale owner. Only the selected source skips
 its own overflow clip; an independent body scroll container keeps its clip.
 Document overflow is tracked per axis, including unpainted boxes on an
 unclipped axis. `scrollbar-width` and `scrollbar-gutter` have typed CSS values
-and root-only propagation, but classic gutter allocation and viewport-unit,
-client/VisualViewport, horizontal-scroll and input-policy integration are still
-open. Do not treat parsed properties as complete scrollbar support. The
-Chrome references and release costs are in
-`docs/browser/measurements/2026-11-10-viewport-overflow/`.
+and root-only propagation. Hosts opt into classic gutters through
+`Host::scrollbar_widths()` (zero by default, for overlays). The shared
+`layout::layout_viewport` resolves automatic bars in at most three cancellable
+passes under one work budget, retaining prepared text/intrinsics. Layout keeps
+full viewport, containing block, client size and viewport-unit basis separately;
+`page` restyles units when forced root bars or stable gutters change them.
+JavaScript's root client and VisualViewport sizes read that retained geometry;
+window/media-query sizes remain the full viewport. Browser still opts into
+overlays until its horizontal scrolling, reserved-area painting and native bar
+controls are integrated. Nested classic gutters, root input policy, RTL scroll
+ranges and gutter-only VisualViewport resize events remain open. References:
+`docs/browser/measurements/2026-11-10-viewport-overflow/` and
+`docs/browser/measurements/2026-11-10-classic-viewport/`.
 
 Browser DOM wrapper identities are weak V8 handles. Traced, bidirectional
 internal ownership fields retain connected nodes through the document and detached trees

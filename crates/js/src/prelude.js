@@ -616,7 +616,7 @@
     offsetTop: { get() { const r = N.rect(this); if (!r) return 0; const p = this.offsetParent; const pr = p && p !== documentNode ? N.paddingRect(p) : null; return Math.round(r[1] - (pr ? pr[1] : 0)); } },
     offsetLeft: { get() { const r = N.rect(this); if (!r) return 0; const p = this.offsetParent; const pr = p && p !== documentNode ? N.paddingRect(p) : null; return Math.round(r[0] - (pr ? pr[0] : 0)); } },
     offsetParent: { get() { if (!N.isConnected(this) || N.computed(this, 'display') === 'none' || N.computed(this, 'position') === 'fixed') return null; let p = N.parent(this); while (p && N.nodeType(p) === 1) { const tag = N.nodeName(p); if (tag === 'BODY') return p; const pos = N.computed(p, 'position'); if (pos && pos !== 'static') return p; if (tag === 'TD' || tag === 'TH' || tag === 'TABLE') return p; p = N.parent(p); } return null; } },
-    clientWidth: { get() { if (this === html()) return N.viewport()[0]; if (N.computed(this, 'display') === 'inline') return 0; const r = N.paddingRect(this); return r ? Math.round(r[2]) : 0; } }, clientHeight: { get() { if (this === html()) return N.viewport()[1]; if (N.computed(this, 'display') === 'inline') return 0; const r = N.paddingRect(this); return r ? Math.round(r[3]) : 0; } },
+    clientWidth: { get() { if (this === html()) return Math.round(N.clientViewport()[0]); if (N.computed(this, 'display') === 'inline') return 0; const r = N.paddingRect(this); return r ? Math.round(r[2]) : 0; } }, clientHeight: { get() { if (this === html()) return Math.round(N.clientViewport()[1]); if (N.computed(this, 'display') === 'inline') return 0; const r = N.paddingRect(this); return r ? Math.round(r[3]) : 0; } },
     clientTop: { get() { const r = N.rect(this), p = N.paddingRect(this); return r && p ? Math.round(p[1] - r[1]) : 0; } }, clientLeft: { get() { const r = N.rect(this), p = N.paddingRect(this); return r && p ? Math.round(p[0] - r[0]) : 0; } },
     scrollWidth: { get() { if (this === html() || this === document.body && N.computed(this, 'overflow-y') === 'visible') return Math.round(N.docSize()[0]); const r = N.scrollSize(this); return r ? Math.round(r[2]) : 0; } }, scrollHeight: { get() { if (this === html() || this === document.body && N.computed(this, 'overflow-y') === 'visible') return Math.round(N.docSize()[1]); const r = N.scrollSize(this); return r ? Math.round(r[3]) : 0; } },
     scrollTop: { get() { if (this === html() || this === document.body) return global.scrollY; return N.scrollOffset(this)[1]; }, set(v) { if (this === html() || this === document.body) { global.scrollTo(global.scrollX, Number(v) || 0); return; } scrollElement(this, N.scrollOffset(this)[0], Number(v) || 0); } },
@@ -1529,7 +1529,7 @@
   global.navigator = { userAgent: N.userAgent(), appName: 'Netscape', appVersion: N.userAgent().replace(/^Mozilla\//, ''), appCodeName: 'Mozilla', product: 'Gecko', productSub: '20030107', vendor: 'Google Inc.', vendorSub: '', platform: 'Linux x86_64', language: N.language(), languages: [N.language(), N.language().split('-')[0]], onLine: true, cookieEnabled: true, doNotTrack: null, hardwareConcurrency: 8, deviceMemory: 8, maxTouchPoints: 0, pdfViewerEnabled: true, webdriver: false, userAgentData: { brands: [{ brand: 'Chromium', version: '157' }, { brand: 'Google Chrome', version: '157' }], mobile: false, platform: 'Linux', getHighEntropyValues: () => Promise.resolve({ platform: 'Linux', platformVersion: '', architecture: 'x86', model: '', uaFullVersion: '157.0.0.0' }) }, connection: { effectiveType: '4g', rtt: 50, downlink: 10, saveData: false, addEventListener() {}, removeEventListener() {} }, plugins: listOf([]), mimeTypes: listOf([]), javaEnabled: () => false, sendBeacon: () => true, vibrate: () => false, getBattery: () => Promise.resolve({ charging: true, level: 1, addEventListener() {} }), permissions: { query: () => Promise.resolve({ state: 'prompt', onchange: null, addEventListener() {} }) }, clipboard: { writeText: () => Promise.resolve(), readText: () => Promise.resolve('') }, serviceWorker: { register: () => new Promise(() => {}), ready: new Promise(() => {}), getRegistrations: () => Promise.resolve([]), getRegistration: () => Promise.resolve(undefined), addEventListener() {}, controller: null }, storage: { estimate: () => Promise.resolve({ quota: 1e9, usage: 0 }), persist: () => Promise.resolve(false) }, mediaDevices: { enumerateDevices: () => Promise.resolve([]), getUserMedia: () => Promise.reject(new DOMException('Not allowed', 'NotAllowedError')) }, locks: { request: () => Promise.resolve() }, credentials: { get: () => Promise.resolve(null), store: () => Promise.resolve(), create: () => Promise.resolve(null), preventSilentAccess: () => Promise.resolve() }, geolocation: { getCurrentPosition(ok, err) { if (err) err({ code: 1, message: 'denied' }); }, watchPosition() { return 0; }, clearWatch() {} }, share: () => Promise.reject(new DOMException('Not allowed', 'NotAllowedError')), canShare: () => false, requestMediaKeySystemAccess: () => Promise.reject(new DOMException('Unsupported', 'NotSupportedError')), scheduling: { isInputPending: () => false } };
   global.clientInformation = global.navigator;
   global.screen = { width: vw, height: vh, availWidth: vw, availHeight: vh, colorDepth: 24, pixelDepth: 24, orientation: { type: vw >= vh ? 'landscape-primary' : 'portrait-primary', angle: 0, addEventListener() {}, removeEventListener() {} } };
-  Object.assign(global, { innerWidth: vw, innerHeight: vh, outerWidth: vw, outerHeight: vh, devicePixelRatio: dpr, scrollX: 0, scrollY: 0, pageXOffset: 0, pageYOffset: 0, screenX: 0, screenY: 0, screenLeft: 0, screenTop: 0, name: '', status: '', closed: false, length: 0, isSecureContext: false, origin: '', crossOriginIsolated: false });
+  Object.assign(global, { innerWidth: Math.round(vw), innerHeight: Math.round(vh), outerWidth: vw, outerHeight: vh, devicePixelRatio: dpr, scrollX: 0, scrollY: 0, pageXOffset: 0, pageYOffset: 0, screenX: 0, screenY: 0, screenLeft: 0, screenTop: 0, name: '', status: '', closed: false, length: 0, isSecureContext: false, origin: '', crossOriginIsolated: false });
   // Other frames' windows: an iframe's (from its element) or, in an
   // iframe's page, the parent's. Another document, often another origin:
   // postMessage (the browser carries a structured clone) and little else.
@@ -1608,7 +1608,7 @@
   // (An accessor, as Chrome's: the document bound with the page.)
   Object.defineProperty(global, 'document', { get() { return documentNode; }, enumerable: true, configurable: true });
   Object.defineProperty(global, 'opener', { value: null, writable: true, enumerable: true, configurable: true });
-  const scrollWindow = (x, y) => { const size = N.docSize(); const [vw2, vh2] = N.viewport(); scrollXY[0] = Math.max(0, Math.min(x, size[0] - vw2)); scrollXY[1] = Math.max(0, Math.min(y, size[1] - vh2)); global.scrollX = global.pageXOffset = scrollXY[0]; global.scrollY = global.pageYOffset = scrollXY[1]; setTimeout(() => { dispatch(documentNode, new Event('scroll', { bubbles: true })); }, 0); };
+  const scrollWindow = (x, y) => { const size = N.docSize(); const [vw2, vh2] = N.clientViewport(); scrollXY[0] = Math.max(0, Math.min(x, size[0] - vw2)); scrollXY[1] = Math.max(0, Math.min(y, size[1] - vh2)); global.scrollX = global.pageXOffset = scrollXY[0]; global.scrollY = global.pageYOffset = scrollXY[1]; setTimeout(() => { dispatch(documentNode, new Event('scroll', { bubbles: true })); }, 0); };
   global.scroll = global.scrollTo = (x, y) => { if (typeof x === 'object' && x) { y = x.top; x = x.left; } scrollWindow(Number(x) || 0, Number(y) || 0); };
   global.scrollBy = (x, y) => { if (typeof x === 'object' && x) { y = x.top; x = x.left; } scrollWindow(scrollXY[0] + (Number(x) || 0), scrollXY[1] + (Number(y) || 0)); };
   global.alert = (m) => log('alert', [String(m)]); global.confirm = () => false; global.prompt = () => null; global.print = () => {}; global.open = () => null; global.close = () => {}; global.focus = () => {}; global.blur = () => {}; global.stop = () => {}; global.reportError = reportError; global.getSelection = () => ({ rangeCount: 0, type: 'None', toString: () => '', getRangeAt: () => new Range(), removeAllRanges() {}, addRange() {}, anchorNode: null, focusNode: null, isCollapsed: true, addEventListener() {} });
@@ -1977,7 +1977,6 @@
   H.__olo_environment = () => {
     [vw, vh, dpr] = N.viewport();
     for (const [k, v] of Object.entries({ innerWidth: Math.round(vw), innerHeight: Math.round(vh), devicePixelRatio: dpr })) (H.__olo_window_set || ((k, v) => { global[k] = v; }))(k, v);
-    Object.assign((H.__olo_store || ((o) => o))(global.visualViewport), { width: vw, height: vh });
     if (H.__olo_updateScreen) H.__olo_updateScreen();
     environmentGeneration++;
     mediaAnswers.clear();
@@ -3363,7 +3362,7 @@
     global.TrustedTypePolicyFactory = function TrustedTypePolicyFactory() { throw new TypeError('Illegal constructor'); };
     Object.setPrototypeOf(global.trustedTypes, global.TrustedTypePolicyFactory.prototype);
   }
-  global.visualViewport = { width: vw, height: vh, offsetLeft: 0, offsetTop: 0, pageLeft: 0, pageTop: 0, scale: 1, addEventListener() {}, removeEventListener() {} };
+  global.visualViewport = { get width() { if (this !== global.visualViewport) throw new TypeError('Illegal invocation'); return N.clientViewport()[0]; }, get height() { if (this !== global.visualViewport) throw new TypeError('Illegal invocation'); return N.clientViewport()[1]; }, offsetLeft: 0, offsetTop: 0, pageLeft: 0, pageTop: 0, scale: 1, addEventListener() {}, removeEventListener() {} };
   global.cookieStore = { get: () => Promise.resolve(null), getAll: () => Promise.resolve([]), set: () => Promise.resolve(), delete: () => Promise.resolve(), addEventListener() {} };
   global.external = { AddSearchProvider() {} };
   global.onerror = null; global.onload = null; global.onresize = null; global.onscroll = null; global.onunhandledrejection = null;
@@ -3410,7 +3409,7 @@
     framedParent = parent;
     H.__olo_frameElementValue = frame;
     [vw, vh, dpr] = [300, 150, N.viewport()[2]];
-    for (const [k, v] of Object.entries({ innerWidth: vw, innerHeight: vh, outerWidth: vw, outerHeight: vh, devicePixelRatio: dpr, isSecureContext: parent.isSecureContext, origin: parent.origin })) (H.__olo_window_set || ((k, v) => { global[k] = v; }))(k, v);
+    for (const [k, v] of Object.entries({ innerWidth: Math.round(vw), innerHeight: Math.round(vh), outerWidth: vw, outerHeight: vh, devicePixelRatio: dpr, isSecureContext: parent.isSecureContext, origin: parent.origin })) (H.__olo_window_set || ((k, v) => { global[k] = v; }))(k, v);
     timeOrigin = NativeDate.now();
     tickWall = 0; lastPerf = 0;
     const p = (H.__olo_store || ((o) => o))(global.performance);
@@ -3425,9 +3424,8 @@
     notifiedViewport = [vw, vh, dpr];
     // (Through the window's own store: some of these have no setter, as
     // in Chrome.)
-    for (const [k, v] of Object.entries({ innerWidth: vw, innerHeight: vh, outerWidth: vw, outerHeight: vh, devicePixelRatio: dpr, isSecureContext: pageURL.protocol === 'https:' || pageURL.protocol === 'file:' || /^(localhost|127\.\d+\.\d+\.\d+|\[::1\])$|\.localhost$/.test(pageURL.hostname), origin: pageURL.origin })) (H.__olo_window_set || ((k, v) => { global[k] = v; }))(k, v);
+    for (const [k, v] of Object.entries({ innerWidth: Math.round(vw), innerHeight: Math.round(vh), outerWidth: vw, outerHeight: vh, devicePixelRatio: dpr, isSecureContext: pageURL.protocol === 'https:' || pageURL.protocol === 'file:' || /^(localhost|127\.\d+\.\d+\.\d+|\[::1\])$|\.localhost$/.test(pageURL.hostname), origin: pageURL.origin })) (H.__olo_window_set || ((k, v) => { global[k] = v; }))(k, v);
     if (Object.getPrototypeOf(global.screen) === Object.prototype) Object.assign(global.screen, { width: vw, height: vh, availWidth: vw, availHeight: vh });
-    Object.assign((H.__olo_store || ((o) => o))(global.visualViewport), { width: vw, height: vh });
     timeOrigin = NativeDate.now();
     tickWall = 0; lastPerf = 0;
     const p = (H.__olo_store || ((o) => o))(global.performance);

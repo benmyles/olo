@@ -29,6 +29,18 @@ pub(super) struct ViewportElements {
     body: Option<NodeId>,
 }
 impl ViewportElements {
+    pub(super) fn rtl(self, styles: &StyleTree) -> bool {
+        // HTML propagates the body's direction to the viewport independently
+        // of which element supplies overflow (CSS Writing Modes).
+        self.body
+            .and_then(|n| styles.snapshot(n))
+            .filter(|s| !matches!(s.value(P::Display), Value::Display(Display::None)))
+            .or_else(|| self.root_style(styles))
+            .is_some_and(|s| s.axes().direction == crate::css::style::Direction::Rtl)
+    }
+    pub(super) fn root_style(self, styles: &StyleTree) -> Option<&Style> {
+        self.root.and_then(|n| styles.snapshot(n))
+    }
     pub(super) fn new(doc: &Document) -> Self {
         let root = doc.children(doc.root()).ok().and_then(|mut children| children.find(|&n| doc.node_type(n).ok() == Some(NodeType::Element)));
         let body = root

@@ -1,0 +1,62 @@
+[
+  {
+    "html": "",
+    "body": "direction:rtl",
+    "data": {
+      "client": 985,
+      "scroll": 1000,
+      "vw": [
+        -15,
+        1000
+      ],
+      "x": 0,
+      "negative": -15,
+      "positive": 0
+    }
+  },
+  {
+    "html": "direction:rtl",
+    "body": "direction:ltr",
+    "data": {
+      "client": 985,
+      "scroll": 1000,
+      "vw": [
+        0,
+        1000
+      ],
+      "x": 0,
+      "negative": 0,
+      "positive": 15
+    }
+  },
+  {
+    "html": "overflow:auto;direction:ltr",
+    "body": "direction:rtl",
+    "data": {
+      "client": 985,
+      "scroll": 1000,
+      "vw": [
+        -15,
+        1000
+      ],
+      "x": 0,
+      "negative": -15,
+      "positive": 0
+    }
+  },
+  {
+    "html": "overflow:auto;direction:rtl",
+    "body": "direction:ltr",
+    "data": {
+      "client": 985,
+      "scroll": 1000,
+      "vw": [
+        0,
+        1000
+      ],
+      "x": 0,
+      "negative": 0,
+      "positive": 15
+    }
+  }
+]
