@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-09
 
+### Olo Doctor finds Token Pool running twice
+
+*21:59* — A Token Pool started beside the one serving, unable to take its port, served nothing for two days while its window showed no requests. Olo Doctor now finds it and quits it; the session starts it again, and it keeps the one serving rather than running beside it.
+
+![Olo Doctor finds Token Pool running twice](2026-11-09/215953-olo-doctor-finds-token-pool-running-twice.png)
+
 ### Terminal: each agent's own Keep It Going message
 
 *20:21* — Keep It Going is a submenu in a tab's menu: on or off, the default message, or one of the tab's own (Custom Message…), kept with the tab. Keep It Going and Auto Approve now work with the real Claude Code and Codex: Codex's reasoned questions are answered, Claude Code's blinking marker no longer delays the answer, and nothing is typed into a chooser.

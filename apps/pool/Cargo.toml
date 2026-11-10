@@ -16,5 +16,7 @@ tracing.workspace = true
 olo-ui.workspace = true
 olo-xdg.workspace = true
 olo-token-pool.workspace = true
+# (Which processes hold the gateway's port: `listening`.)
+olo-system.workspace = true
 serde_json.workspace = true
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }

@@ -32,7 +32,7 @@ use axum::{
     extract::{Path, RawQuery, State},
     http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode},
     response::{IntoResponse, Response},
-    routing::{any, get},
+    routing::{any, get, post},
 };
 use futures_util::StreamExt;
 use serde::Serialize;
@@ -158,6 +158,10 @@ pub struct Shared {
     /// The clients the person turned the pool off for, still pointed at
     /// its proxy (`clients::set`): their requests pass straight through.
     paused: [std::sync::atomic::AtomicBool; 2],
+    /// What opens the app's window when asked over the gateway
+    /// (`/pool/open`: a launch that found no copy taking launches, while
+    /// this one serves).
+    opener: Mutex<Option<Box<dyn Fn() + Send + Sync>>>,
 }
 
 /// How often an account's quota is read while nothing asks for it (its
@@ -282,6 +286,7 @@ impl Shared {
             credits_due: Mutex::new(HashMap::new()),
             drain: Default::default(),
             paused: Default::default(),
+            opener: Mutex::new(None),
         });
         // Saving off every async and UI thread, a batch at a time.
         let weak = Arc::downgrade(&shared);
@@ -363,6 +368,12 @@ impl Shared {
     /// straight through though it is pointed at the proxy.
     pub fn paused(&self, provider: Provider) -> bool {
         self.paused[provider_index(provider)].load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// What `/pool/open` does: opens the app's window (and takes its
+    /// launches again, if no copy does).
+    pub fn on_open(&self, open: impl Fn() + Send + Sync + 'static) {
+        *self.opener.lock().unwrap() = Some(Box::new(open));
     }
 
     pub fn set_paused(&self, provider: Provider, paused: bool) {
@@ -866,7 +877,7 @@ struct Ctx {
 }
 
 pub fn router(shared: Arc<Shared>, port: u16) -> Router {
-    Router::new().route("/claude/v1/{*rest}", any(claude)).route("/codex/v1/{*rest}", any(codex)).route("/pool/status", get(status)).with_state(Ctx { shared, port })
+    Router::new().route("/claude/v1/{*rest}", any(claude)).route("/codex/v1/{*rest}", any(codex)).route("/pool/status", get(status)).route("/pool/open", post(open)).with_state(Ctx { shared, port })
 }
 
 /// Only clients on this computer, and never a web page: a browser sends
@@ -886,7 +897,25 @@ async fn status(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
     }
     let mut v = status_json(&ctx.shared.snapshot());
     v["drain"] = ctx.shared.drain.status();
+    v["pid"] = json!(std::process::id());
     axum::Json(v).into_response()
+}
+
+/// Open the app's window: Token Pool launched while the copy serving
+/// takes no launches (it is starting, having just taken over, or another
+/// took its launch socket), so the launch asks the gateway instead of
+/// starting a copy beside it with no gateway of its own.
+async fn open(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
+    if let Err(r) = local_only(&headers, ctx.port) {
+        return *r;
+    }
+    match ctx.shared.opener.lock().unwrap().as_ref() {
+        Some(open) => {
+            open();
+            StatusCode::NO_CONTENT.into_response()
+        }
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
 /// The pool for agents and the command line: no sign-ins.

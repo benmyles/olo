@@ -8927,7 +8927,25 @@ scan made for the sudo user). What it looks for:
   ask for (rule 9): set to 1024, now and at boot (/etc/sysctl.d/
   80-olo-uclamp.conf); a kernel without `CONFIG_UCLAMP_TASK` is advice.
 - **Olo programs on an old version** (their `exe` is a replaced file in
-  ~/.local/bin; never the session, app_server or the proxies): quit.
+  ~/.local/bin; never the session, app_server or the proxies): quit. Not
+  one finishing what it has before it goes (`finishing`: marked in
+  `$XDG_RUNTIME_DIR/olo-upgrade-waits`, the mark no older than the
+  process, as olo-session leaves it): Quit Them stopped Token Pool's
+  copy the session follows while it streamed its last answers after an
+  upgrade, which left Token Pool running twice for two days (Ben,
+  2026-11-07).
+- **Token Pool running twice, or without its gateway** (`token_pool`:
+  this session's olo-pool processes on the gateway's port, `OLO_POOL_PORT`
+  or 17891, and which of them hold its listening socket, by
+  `olo_system::listening`). A copy that serves nothing beside the one
+  that serves ("Token Pool is running twice", its window showing no
+  requests and taking the launches): Quit It (the session starts it
+  again, and it keeps the one serving). None serving: "Token Pool's
+  gateway isn't running", Start It Again (the same signal). Another
+  program on the port: said, no button. Never the keeper
+  (`OLO_POOL_KEEPER` in its environment), a copy finishing after handing
+  over, a launch younger than 15 s, the command line's own (`--status`),
+  nor one on a port of its own (a test's). Else which serves, as fine.
 - **The login screen's entry** (/usr/share/wayland-sessions, or
   /usr/local/share's on an atomic system) missing or pointing at
   nothing.
@@ -14218,11 +14236,47 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   most: past the provider's read timeout), the old one goes: the
   olo-pool olo-session started becomes the **keeper** in place (same pid:
   `OLO_POOL_KEEPER`, `main`'s `keeper`), a subreaper (`PR_SET_CHILD_
-  SUBREAPER`) asleep in `sigwaitinfo`, about 8 MB, that passes SIGTERM,
-  SIGINT and SIGHUP on to the copies that serve and ends as the last
-  does, with how it ended (so a crash restarts the pool as before); an
-  upgrade makes it the new version's keeper in place. A later copy
-  (`OLO_POOL_KEPT`) just exits, and its successor goes to the keeper.
+  SUBREAPER`) asleep in `poll` (a signalfd, and a pidfd for each copy it
+  follows), about 8 MB, that passes SIGTERM, SIGINT and SIGHUP on to the
+  copies that serve and ends once none is left, with how the last of its
+  own ended (so a crash restarts the pool as before); an upgrade makes it
+  the new version's keeper in place. A later copy (`OLO_POOL_KEPT`) just
+  exits, and its successor goes to the keeper. The copies it follows
+  are its children running olo-pool and whichever olo-pool holds the
+  gateway's listening socket (`drain::serving`, from `olo_system::
+  listening`: the socket's inode in `/proc/net/tcp`, then the
+  processes whose descriptors say `socket:[inode]`), its own or not.
+- **One Token Pool, whatever happens to the copy the session started.**
+  The session's `olo-pool --service`, finding another copy already
+  serving the port as it starts (and not handed the sockets itself:
+  `OLO_POOL_LISTENERS`), becomes the keeper of that one (`main`, before
+  anything else; it asks it to open its window if its own was open)
+  rather than running beside it with no gateway, or ending. Ben,
+  2026-11-07: Olo Doctor's Quit Them stopped the session's copy while it
+  finished handing over to a copy of the new version (it ran a replaced
+  binary); the copy ran on alone, each `--service` olo-session started
+  forwarded its launch to it and exited, until olo-session gave up
+  ("keeps exiting"), and the next upgrade's restart came in the moment
+  the launch socket was between copies, so it ran as a second Token Pool
+  that couldn't listen (its window, which took the launches, said
+  "Can't listen on 127.0.0.1:17891" and showed no requests) for two
+  days. Upgraded, that copy found the one serving and became its keeper,
+  as it should. A launch that finds no copy taking launches while one
+  serves (`main`) asks it over the gateway instead (`POST /pool/open`,
+  loopback only: it opens its window and takes launches again, if no
+  copy does), and only a copy from before that waits for its launch
+  socket. Olo Doctor leaves programs finishing what they have
+  (`olo-upgrade-waits`) out of Quit Them, and says when Token Pool runs
+  twice, has no gateway, or another program has its port (its
+  `token_pool` check). `/pool/status` says the serving copy's `pid`.
+  Tested end to end in a test session (test ports, a scratch home, a key
+  file, a fake upstream): a second `--service` became the keeper of the
+  first; a launch with the launch socket gone opened the serving copy's
+  window, which took launches again; the serving copy, upgraded, handed
+  over to its own child, and the adopting keeper followed it; SIGTERM to
+  a keeper ended the copy it followed and then itself; a copy forced to
+  start beside the serving one was found by Olo Doctor, and Quit It
+  ended it.
   While the old one finishes, the kit marks it waiting
   (`restore::mark_waiting`: `$XDG_RUNTIME_DIR/olo-upgrade-waits/PID`),
   and olo-session's stale check leaves it alone rather than stopping it
