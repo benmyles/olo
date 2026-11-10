@@ -225,6 +225,9 @@ pub(crate) struct Interactivity {
     pub(crate) window_mouse_down: SmallVec<[Listener<MouseDownEvent>; 1]>,
     pub(crate) window_mouse_up: SmallVec<[Listener<MouseUpEvent>; 1]>,
     pub(crate) window_mouse_move: SmallVec<[Listener<MouseMoveEvent>; 1]>,
+    /// Keys nothing with the keyboard took (the window's own: its tab
+    /// keys), wherever the keyboard is in the window.
+    pub(crate) window_key_down: SmallVec<[Listener<KeyDownEvent>; 1]>,
     pub(crate) focus_changed: SmallVec<[Listener<bool>; 1]>,
     /// It takes typing while it has the keyboard.
     pub(crate) text_input: Option<Listener<TextInputEvent>>,
@@ -273,7 +276,8 @@ impl Interactivity {
     }
 
     pub(crate) fn hears_window(&self) -> bool {
-        self.default_key || !(self.window_mouse_down.is_empty() && self.window_mouse_up.is_empty() && self.window_mouse_move.is_empty() && self.mouse_up_out.is_empty())
+        self.default_key
+            || !(self.window_mouse_down.is_empty() && self.window_mouse_up.is_empty() && self.window_mouse_move.is_empty() && self.mouse_up_out.is_empty() && self.window_key_down.is_empty())
     }
 }
 
@@ -574,6 +578,16 @@ pub trait InteractiveElement: Sized {
     /// `Cx::text_input`.
     fn on_text_input(mut self, listener: impl Fn(&TextInputEvent, &mut WindowCx) + 'static) -> Self {
         self.interactivity().text_input = Some(Rc::new(listener));
+        self
+    }
+
+    /// A key nothing with the keyboard took, wherever the keyboard is in
+    /// the window (after what has it and everything that holds it; the
+    /// first such element in the window to stop it has it): the keys a
+    /// part of the window answers for all of it (a tab view's Next and
+    /// Previous Tab).
+    fn on_window_key_down(mut self, listener: impl Fn(&KeyDownEvent, &mut WindowCx) + 'static) -> Self {
+        self.interactivity().window_key_down.push(Rc::new(listener));
         self
     }
 

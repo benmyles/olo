@@ -355,8 +355,14 @@ impl WindowCore {
             (true, Some(handle), _) => Some(handle),
             (true, None, kept) => Some(kept.unwrap_or_default()),
         };
+        let asked = node.scroll.as_ref().filter(|h| h.asked()).cloned();
         if node.scroll.as_ref().map(|h| h.id()) != was {
             self.reshaped();
+        }
+        // (Asked to go somewhere by whoever built it: once it's laid
+        // out.)
+        if let Some(handle) = asked {
+            self.scroll_asked(handle);
         }
     }
 

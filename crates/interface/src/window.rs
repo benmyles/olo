@@ -162,6 +162,8 @@ pub(crate) struct WindowCore {
     pub(crate) recycled: Vec<crate::Scene>,
     /// What the kit keeps with the window, one of each type.
     pub(crate) kept: HashMap<std::any::TypeId, Box<dyn std::any::Any>>,
+    /// What elements keep with the window by name (`keyed_state`).
+    pub(crate) keyed: HashMap<(std::any::TypeId, SharedString), std::rc::Rc<dyn std::any::Any>>,
 }
 
 /// What `list_items` makes.
@@ -419,6 +421,7 @@ impl WindowCore {
             cursor: crate::CursorStyle::Arrow,
             recycled: Vec::new(),
             kept: HashMap::new(),
+            keyed: HashMap::new(),
         }
     }
 
@@ -1459,6 +1462,34 @@ impl<'a> WindowCx<'a> {
     /// time it's asked for): a kit's own state for the window.
     pub fn window_state<T: Default + 'static>(&mut self) -> &mut T {
         self.core.kept.entry(std::any::TypeId::of::<T>()).or_insert_with(|| Box::new(T::default())).downcast_mut().expect("kept by its type")
+    }
+
+    /// Something kept with the window by `key`, one of each type and
+    /// key (made by `make` the first time it's asked for): what an
+    /// element built again each time its view says what it shows keeps
+    /// between (a control's own fields, its scroller, its keyboard's
+    /// name), by the id its view gives it. Kept as long as the window.
+    pub fn keyed_state<T: 'static>(&mut self, key: impl Into<SharedString>, make: impl FnOnce(&mut WindowCx) -> T) -> std::rc::Rc<T> {
+        let key = (std::any::TypeId::of::<T>(), key.into());
+        if let Some(kept) = self.core.keyed.get(&key).cloned().and_then(|kept| kept.downcast::<T>().ok()) {
+            return kept;
+        }
+        let made = std::rc::Rc::new(make(self));
+        self.core.keyed.insert(key, made.clone());
+        made
+    }
+
+    /// Hears what a view emits, from outside any view (what an element
+    /// keeps with the window: a control's own fields).
+    pub fn subscribe_to<T: View, E: 'static>(&mut self, child: &Child<T>, f: impl Fn(&E, &mut WindowCx) + 'static) {
+        let subscriber: crate::view::Subscriber = std::rc::Rc::new(move |event, cx| {
+            if let Some(event) = event.downcast_ref::<E>() {
+                f(event, cx);
+            }
+        });
+        if let Some(slot) = self.core.views.get_mut(child.id()) {
+            slot.subscribers.push((std::any::TypeId::of::<E>(), subscriber));
+        }
     }
 
     /// What the window shows, for agents: everything that says what it

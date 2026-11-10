@@ -100,6 +100,8 @@ pub(crate) struct Shared {
     /// that's laid out.
     pub(crate) to_bottom: Cell<bool>,
     pub(crate) to_item: Cell<Option<usize>>,
+    /// A span of its content to show (down it: top, bottom).
+    pub(crate) to_span: Cell<Option<(Pixels, Pixels)>>,
     /// Where each thing it holds is, in its content.
     pub(crate) children: RefCell<Vec<Bounds<Pixels>>>,
 }
@@ -128,6 +130,7 @@ impl ScrollHandle {
             epoch: Cell::new(0),
             to_bottom: Cell::new(false),
             to_item: Cell::new(None),
+            to_span: Cell::new(None),
             children: RefCell::default(),
         }))
     }
@@ -189,6 +192,19 @@ impl ScrollHandle {
         cx.core.scroll_asked(self.clone());
     }
 
+    /// Scrolls just far enough that its content from `top` to `bottom`
+    /// (points down it) shows, once it's next laid out: for what's
+    /// built without the window to hand (a list bringing its chosen row
+    /// into view as its view says what it shows).
+    pub fn reveal_span(&self, top: Pixels, bottom: Pixels) {
+        self.0.to_span.set(Some((top, bottom)));
+    }
+
+    /// Whether something was asked of it that waits for layout.
+    pub(crate) fn asked(&self) -> bool {
+        self.0.to_bottom.get() || self.0.to_item.get().is_some() || self.0.to_span.get().is_some()
+    }
+
     /// Puts it somewhere, from the looper's side: the stage is told with
     /// the next commit.
     pub(crate) fn put(&self, to: Point<Pixels>) {
@@ -224,6 +240,14 @@ impl ScrollHandle {
                 to.x = -left;
             } else if right > -to.x + view.width {
                 to.x = -(right - view.width);
+            }
+        }
+        if let Some((top, bottom)) = self.0.to_span.take() {
+            let view = self.0.bounds.get().size.height;
+            if top < -to.y {
+                to.y = -top;
+            } else if bottom > -to.y + view {
+                to.y = -(bottom - view);
             }
         }
         let to = point(to.x.clamp(-max.width, px(0.)), to.y.clamp(-max.height, px(0.)));
