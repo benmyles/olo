@@ -43,10 +43,40 @@ pub(crate) struct Scene {
     pub(crate) polychrome_sprites: Vec<PolychromeSprite>,
     pub(crate) image_triangles: Vec<ImageTriangle>,
     pub(crate) surfaces: Vec<PaintSurface>,
+    /// A view's drawing being kept (a display list), not a frame: what's
+    /// painted is noted as it comes (`paint_operations`, `mono_staging`)
+    /// and put in order only when a frame takes it ([`Scene::append`]).
+    recording: bool,
+    /// What a recording painted reaches (with each thing's own clip).
+    extent: Option<Bounds<ScaledPixels>>,
 }
 
 impl Scene {
+    /// A scene that keeps a view's drawing (see `recording`).
+    pub fn recording() -> Self {
+        Scene { recording: true, ..Default::default() }
+    }
+
+    /// What a recording painted reaches, where it was painted.
+    pub fn extent(&self) -> Bounds<ScaledPixels> {
+        self.extent.unwrap_or_default()
+    }
+
+    /// Whether anything was painted.
+    pub fn is_empty(&self) -> bool {
+        self.paint_operations.is_empty()
+    }
+
+    fn reach(&mut self, bounds: Bounds<ScaledPixels>) {
+        self.extent = Some(match self.extent {
+            Some(extent) => extent.union(&bounds),
+            None => bounds,
+        });
+    }
+
     pub fn clear(&mut self) {
+        self.extent = None;
+        self.culled = 0;
         self.paint_operations.clear();
         self.primitive_bounds.clear();
         self.layer_stack.clear();
@@ -69,12 +99,20 @@ impl Scene {
     }
 
     pub fn push_layer(&mut self, bounds: Bounds<ScaledPixels>) {
+        if self.recording {
+            self.paint_operations.push(PaintOperation::StartLayer(bounds));
+            return;
+        }
         let order = self.primitive_bounds.insert(bounds);
         self.layer_stack.push(order);
         self.paint_operations.push(PaintOperation::StartLayer(bounds));
     }
 
     pub fn pop_layer(&mut self) {
+        if self.recording {
+            self.paint_operations.push(PaintOperation::EndLayer);
+            return;
+        }
         self.layer_stack.pop();
         self.paint_operations.push(PaintOperation::EndLayer);
     }
@@ -85,6 +123,11 @@ impl Scene {
 
         if clipped_bounds.is_empty() {
             self.culled += 1;
+            return;
+        }
+        if self.recording {
+            self.reach(clipped_bounds);
+            self.paint_operations.push(PaintOperation::Primitive(primitive));
             return;
         }
 
@@ -140,6 +183,14 @@ impl Scene {
     /// Olo: many segments at once (`Window::paint_segments`): one paint
     /// operation for them all, not an enum and two copies each.
     pub fn insert_segments(&mut self, mut segments: Vec<Segment>) {
+        if self.recording {
+            segments.retain(|segment| !segment.bounds.intersect(&segment.content_mask.bounds).is_empty());
+            if let Some(reach) = segments.iter().map(|s| s.bounds.intersect(&s.content_mask.bounds)).reduce(|a, b| a.union(&b)) {
+                self.reach(reach);
+                self.paint_operations.push(PaintOperation::Segments(segments));
+            }
+            return;
+        }
         let layer = self.layer_stack.last().copied();
         segments.retain_mut(|segment| {
             let clipped = segment.bounds.intersect(&segment.content_mask.bounds);
@@ -160,6 +211,24 @@ impl Scene {
     /// line's): a page of text is tens of thousands, each written once,
     /// into `mono_staging`, as runs of one order and texture.
     pub fn insert_sprites(&mut self, sprites: impl IntoIterator<Item = MonochromeSprite>) {
+        if self.recording {
+            let start = self.mono_staging.len();
+            let mut reach: Option<Bounds<ScaledPixels>> = None;
+            for sprite in sprites {
+                let clipped = sprite.bounds.intersect(&sprite.content_mask.bounds);
+                if clipped.is_empty() {
+                    self.culled += 1;
+                    continue;
+                }
+                reach = Some(reach.map_or(clipped, |r| r.union(&clipped)));
+                self.mono_staging.push(sprite);
+            }
+            if let Some(reach) = reach {
+                self.reach(reach);
+                self.paint_operations.push(PaintOperation::Sprites(start..self.mono_staging.len()));
+            }
+            return;
+        }
         let layer = self.layer_stack.last().copied();
         let start = self.mono_staging.len();
         for mut sprite in sprites {
@@ -321,6 +390,98 @@ impl Scene {
             }
         }
         cut.get() || self.culled != culled
+    }
+
+    /// Puts a view's kept drawing (`recorded`, a [`Scene::recording`])
+    /// into this frame, moved by `by` (whole device pixels: glyphs and
+    /// snapped edges stay on the grid) and clipped to `clip` (what holds
+    /// the view, as it is now). Each thing's own clip moves with it.
+    pub(crate) fn append(&mut self, recorded: &Scene, by: Point<ScaledPixels>, clip: &Bounds<ScaledPixels>) {
+        let still = by.x.0 == 0.0 && by.y.0 == 0.0;
+        let mv = |b: Bounds<ScaledPixels>| if still { b } else { Bounds { origin: b.origin + by, size: b.size } };
+        let mask = |m: &mut ContentMask<ScaledPixels>| m.bounds = mv(m.bounds).intersect(clip);
+        // (A layer clipped away whole isn't begun, so isn't ended.)
+        let mut layers: smallvec::SmallVec<[bool; 4]> = smallvec::SmallVec::new();
+        for operation in &recorded.paint_operations {
+            match operation {
+                PaintOperation::Primitive(primitive) => {
+                    let mut p = primitive.clone();
+                    match &mut p {
+                        Primitive::Shadow(x) => (x.bounds, _) = (mv(x.bounds), mask(&mut x.content_mask)),
+                        Primitive::Quad(x) => (x.bounds, _) = (mv(x.bounds), mask(&mut x.content_mask)),
+                        Primitive::Underline(x) => (x.bounds, _) = (mv(x.bounds), mask(&mut x.content_mask)),
+                        Primitive::Segment(x) => {
+                            x.bounds = mv(x.bounds);
+                            (x.from, x.to, x.bottom) = (x.from + by, x.to + by, x.bottom + by.y);
+                            mask(&mut x.content_mask);
+                        }
+                        Primitive::Sector(x) => {
+                            x.bounds = mv(x.bounds);
+                            x.center = x.center + by;
+                            mask(&mut x.content_mask);
+                        }
+                        Primitive::MonochromeSprite(x) => (x.bounds, _) = (mv(x.bounds), mask(&mut x.content_mask)),
+                        Primitive::PolychromeSprite(x) => (x.bounds, _) = (mv(x.bounds), mask(&mut x.content_mask)),
+                        Primitive::Path(x) => {
+                            x.bounds = mv(x.bounds);
+                            mask(&mut x.content_mask);
+                            if !still {
+                                x.start = x.start + by;
+                                x.current = x.current + by;
+                            }
+                            for vertex in &mut x.vertices {
+                                if !still {
+                                    vertex.xy_position = vertex.xy_position + by;
+                                }
+                                mask(&mut vertex.content_mask);
+                            }
+                        }
+                        Primitive::ImageTriangle(x) => {
+                            x.bounds = mv(x.bounds);
+                            if !still {
+                                for corner in &mut x.corners {
+                                    *corner = *corner + by;
+                                }
+                            }
+                            mask(&mut x.content_mask);
+                        }
+                        Primitive::Surface(x) => (x.bounds, _) = (mv(x.bounds), mask(&mut x.content_mask)),
+                    }
+                    self.insert_primitive(p);
+                }
+                PaintOperation::Segments(segments) => self.insert_segments(
+                    segments
+                        .iter()
+                        .map(|x| {
+                            let mut x = x.clone();
+                            x.bounds = mv(x.bounds);
+                            (x.from, x.to, x.bottom) = (x.from + by, x.to + by, x.bottom + by.y);
+                            mask(&mut x.content_mask);
+                            x
+                        })
+                        .collect(),
+                ),
+                PaintOperation::Sprites(sprites) => self.insert_sprites(recorded.mono_staging[sprites.clone()].iter().map(|x| {
+                    let mut x = x.clone();
+                    x.bounds = mv(x.bounds);
+                    mask(&mut x.content_mask);
+                    x
+                })),
+                PaintOperation::StartLayer(bounds) => {
+                    let bounds = mv(*bounds).intersect(clip);
+                    let shows = !bounds.is_empty();
+                    if shows {
+                        self.push_layer(bounds);
+                    }
+                    layers.push(shows);
+                }
+                PaintOperation::EndLayer => {
+                    if layers.pop() == Some(true) {
+                        self.pop_layer();
+                    }
+                }
+            }
+        }
     }
 
     pub fn finish(&mut self) {

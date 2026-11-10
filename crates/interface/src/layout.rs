@@ -1,212 +1,117 @@
-use crate::{AbsoluteLength, App, Bounds, DefiniteLength, Edges, Length, Pixels, Point, Size, Style, Window, point, size};
-use collections::{FxHashMap, FxHashSet};
-use smallvec::SmallVec;
-use stacksafe::{StackSafe, stacksafe};
+//! Layout: where everything in a window goes, kept from frame to frame.
+//!
+//! BeOS's views were placed by hand (a frame and a resizing mode each);
+//! Haiku added layouts. Olo's are flexbox and grid (taffy), with every
+//! size in device pixels so that what's laid out lands on them. The tree
+//! of what's to be laid out is kept: a view that changes marks what it
+//! changed, and only that and what its size pushes about is worked out
+//! again (taffy keeps each node's answers until it's marked).
+
+use crate::{AbsoluteLength, Bounds, DefiniteLength, Edges, Length, Pixels, Point, Size, Style, point, size};
 use std::{fmt::Debug, ops::Range};
 use taffy::{
-    TaffyTree, TraversePartialTree as _,
+    TaffyTree,
     geometry::{Point as TaffyPoint, Rect as TaffyRect, Size as TaffySize},
     style::AvailableSpace as TaffyAvailableSpace,
-    tree::NodeId,
 };
 
-type NodeMeasureFn = StackSafe<Box<dyn FnMut(Size<Option<Pixels>>, Size<AvailableSpace>, &mut Window, &mut App) -> Size<Pixels>>>;
+pub(crate) use taffy::tree::NodeId as LayoutId;
 
-struct NodeContext {
-    measure: NodeMeasureFn,
+const EXPECT_MESSAGE: &str = "layout errors are avoided by construction";
+
+/// A window's layout tree. `C` says which of the window's nodes a leaf
+/// that measures itself is (text wraps to the width it's given).
+pub(crate) struct Layout<C> {
+    taffy: TaffyTree<C>,
 }
-pub struct TaffyLayoutEngine {
-    taffy: TaffyTree<NodeContext>,
-    absolute_layout_bounds: FxHashMap<LayoutId, Bounds<Pixels>>,
-    computed_layouts: FxHashSet<LayoutId>,
-}
 
-const EXPECT_MESSAGE: &str = "we should avoid taffy layout errors by construction if possible";
-
-impl TaffyLayoutEngine {
-    pub fn new() -> Self {
+impl<C: Copy> Layout<C> {
+    pub(crate) fn new() -> Self {
         let mut taffy = TaffyTree::new();
         taffy.enable_rounding();
-        TaffyLayoutEngine { taffy, absolute_layout_bounds: FxHashMap::default(), computed_layouts: FxHashSet::default() }
+        Layout { taffy }
     }
 
-    pub fn clear(&mut self) {
-        self.taffy.clear();
-        self.absolute_layout_bounds.clear();
-        self.computed_layouts.clear();
-    }
-
-    pub fn request_layout(&mut self, style: Style, rem_size: Pixels, scale_factor: f32, children: &[LayoutId]) -> LayoutId {
-        let taffy_style = style.to_taffy(rem_size, scale_factor);
-
-        if children.is_empty() {
-            self.taffy.new_leaf(taffy_style).expect(EXPECT_MESSAGE).into()
-        } else {
-            self.taffy
-                // This is safe because LayoutId is repr(transparent) to taffy::tree::NodeId.
-                .new_with_children(taffy_style, LayoutId::to_taffy_slice(children))
-                .expect(EXPECT_MESSAGE)
-                .into()
+    /// A new node, measured by its content if `measured` says which it
+    /// is.
+    pub(crate) fn add(&mut self, style: &Style, rem_size: Pixels, scale_factor: f32, measured: Option<C>) -> LayoutId {
+        let style = style.to_taffy(rem_size, scale_factor);
+        match measured {
+            Some(context) => self.taffy.new_leaf_with_context(style, context),
+            None => self.taffy.new_leaf(style),
         }
+        .expect(EXPECT_MESSAGE)
     }
 
-    pub fn request_measured_layout(
-        &mut self,
-        style: Style,
-        rem_size: Pixels,
-        scale_factor: f32,
-        measure: impl FnMut(Size<Option<Pixels>>, Size<AvailableSpace>, &mut Window, &mut App) -> Size<Pixels> + 'static,
-    ) -> LayoutId {
-        let taffy_style = style.to_taffy(rem_size, scale_factor);
-
-        self.taffy.new_leaf_with_context(taffy_style, NodeContext { measure: StackSafe::new(Box::new(measure)) }).expect(EXPECT_MESSAGE).into()
+    pub(crate) fn remove(&mut self, id: LayoutId) {
+        let _ = self.taffy.remove(id);
     }
 
-    // Used to understand performance
-    #[allow(dead_code)]
-    fn count_all_children(&self, parent: LayoutId) -> anyhow::Result<u32> {
-        let mut count = 0;
-
-        for child in self.taffy.children(parent.0)? {
-            // Count this child.
-            count += 1;
-
-            // Count all of this child's children.
-            count += self.count_all_children(LayoutId(child))?
+    /// Changes a node's style. Whether it changed anything layout goes by
+    /// (it's marked to be laid out again only then).
+    pub(crate) fn set_style(&mut self, id: LayoutId, style: &Style, rem_size: Pixels, scale_factor: f32) -> bool {
+        let style = style.to_taffy(rem_size, scale_factor);
+        if self.taffy.style(id).is_ok_and(|old| *old == style) {
+            return false;
         }
-
-        Ok(count)
+        self.taffy.set_style(id, style).expect(EXPECT_MESSAGE);
+        true
     }
 
-    // Used to understand performance
-    #[allow(dead_code)]
-    fn max_depth(&self, depth: u32, parent: LayoutId) -> anyhow::Result<u32> {
-        println!("{parent:?} at depth {depth} has {} children", self.taffy.child_count(parent.0));
-
-        let mut max_child_depth = 0;
-
-        for child in self.taffy.children(parent.0)? {
-            max_child_depth = std::cmp::max(max_child_depth, self.max_depth(0, LayoutId(child))?);
-        }
-
-        Ok(depth + 1 + max_child_depth)
+    pub(crate) fn set_children(&mut self, id: LayoutId, children: &[LayoutId]) {
+        self.taffy.set_children(id, children).expect(EXPECT_MESSAGE);
     }
 
-    // Used to understand performance
-    #[allow(dead_code)]
-    fn get_edges(&self, parent: LayoutId) -> anyhow::Result<Vec<(LayoutId, LayoutId)>> {
-        let mut edges = Vec::new();
-
-        for child in self.taffy.children(parent.0)? {
-            edges.push((parent, LayoutId(child)));
-
-            edges.extend(self.get_edges(LayoutId(child))?);
-        }
-
-        Ok(edges)
+    /// Whether a leaf measures itself, and as which node.
+    pub(crate) fn set_measured(&mut self, id: LayoutId, measured: Option<C>) {
+        self.taffy.set_node_context(id, measured).expect(EXPECT_MESSAGE);
     }
 
-    #[stacksafe]
-    pub fn compute_layout(&mut self, id: LayoutId, available_space: Size<AvailableSpace>, window: &mut Window, cx: &mut App) {
-        // Leaving this here until we have a better instrumentation approach.
-        // println!("Laying out {} children", self.count_all_children(id)?);
-        // println!("Max layout depth: {}", self.max_depth(0, id)?);
+    /// What a node measures as changed (its text): it's laid out again.
+    pub(crate) fn mark_dirty(&mut self, id: LayoutId) {
+        let _ = self.taffy.mark_dirty(id);
+    }
 
-        // Output the edges (branches) of the tree in Mermaid format for visualization.
-        // println!("Edges:");
-        // for (a, b) in self.get_edges(id)? {
-        //     println!("N{} --> N{}", u64::from(a), u64::from(b));
-        // }
-        //
+    /// Whether anything under `root` is to be laid out again.
+    pub(crate) fn is_dirty(&self, root: LayoutId) -> bool {
+        self.taffy.dirty(root).unwrap_or(true)
+    }
 
-        if !self.computed_layouts.insert(id) {
-            let mut stack = SmallVec::<[LayoutId; 64]>::new();
-            stack.push(id);
-            while let Some(id) = stack.pop() {
-                self.absolute_layout_bounds.remove(&id);
-                stack.extend(self.taffy.children(id.into()).expect(EXPECT_MESSAGE).into_iter().map(Into::into));
-            }
-        }
-
-        let scale_factor = window.scale_factor();
-
-        let transform = |v: AvailableSpace| match v {
+    /// Lays out what's marked under `root`, in `available` space;
+    /// `measure` sizes each leaf that measures itself, given what's known
+    /// of its size and the room it has.
+    pub(crate) fn compute(&mut self, root: LayoutId, available: Size<AvailableSpace>, scale_factor: f32, mut measure: impl FnMut(C, Size<Option<Pixels>>, Size<AvailableSpace>) -> Size<Pixels>) {
+        let scale = |v: AvailableSpace| match v {
             AvailableSpace::Definite(pixels) => AvailableSpace::Definite(Pixels(pixels.0 * scale_factor)),
-            AvailableSpace::MinContent => AvailableSpace::MinContent,
-            AvailableSpace::MaxContent => AvailableSpace::MaxContent,
+            other => other,
         };
-        let available_space = size(transform(available_space.width), transform(available_space.height));
-
+        let unscale = |v: AvailableSpace| match v {
+            AvailableSpace::Definite(pixels) => AvailableSpace::Definite(Pixels(pixels.0 / scale_factor)),
+            other => other,
+        };
+        let available = size(scale(available.width), scale(available.height));
         self.taffy
-            .compute_layout_with_measure(id.into(), available_space.into(), |known_dimensions, available_space, _id, node_context, _style| {
-                let Some(node_context) = node_context else {
-                    return taffy::geometry::Size::default();
-                };
-
-                let known_dimensions = Size { width: known_dimensions.width.map(|e| Pixels(e / scale_factor)), height: known_dimensions.height.map(|e| Pixels(e / scale_factor)) };
-
-                let available_space: Size<AvailableSpace> = available_space.into();
-                let untransform = |ev: AvailableSpace| match ev {
-                    AvailableSpace::Definite(pixels) => AvailableSpace::Definite(Pixels(pixels.0 / scale_factor)),
-                    AvailableSpace::MinContent => AvailableSpace::MinContent,
-                    AvailableSpace::MaxContent => AvailableSpace::MaxContent,
-                };
-                let available_space = size(untransform(available_space.width), untransform(available_space.height));
-
-                let a: Size<Pixels> = (node_context.measure)(known_dimensions, available_space, window, cx);
-                size(a.width.0 * scale_factor, a.height.0 * scale_factor).into()
+            .compute_layout_with_measure(root, available.into(), |known, available, _id, context, _style| {
+                let Some(context) = context else { return taffy::geometry::Size::default() };
+                let known = Size { width: known.width.map(|e| Pixels(e / scale_factor)), height: known.height.map(|e| Pixels(e / scale_factor)) };
+                let available: Size<AvailableSpace> = available.into();
+                let measured = measure(*context, known, size(unscale(available.width), unscale(available.height)));
+                size(measured.width.0 * scale_factor, measured.height.0 * scale_factor).into()
             })
             .expect(EXPECT_MESSAGE);
     }
 
-    pub fn layout_bounds(&mut self, id: LayoutId, scale_factor: f32) -> Bounds<Pixels> {
-        if let Some(layout) = self.absolute_layout_bounds.get(&id).cloned() {
-            return layout;
-        }
-
-        let layout = self.taffy.layout(id.into()).expect(EXPECT_MESSAGE);
-        let mut bounds = Bounds {
-            origin: point(Pixels(layout.location.x / scale_factor), Pixels(layout.location.y / scale_factor)),
-            size: size(Pixels(layout.size.width / scale_factor), Pixels(layout.size.height / scale_factor)),
-        };
-
-        if let Some(parent_id) = self.taffy.parent(id.0) {
-            let parent_bounds = self.layout_bounds(parent_id.into(), scale_factor);
-            bounds.origin += parent_bounds.origin;
-        }
-        self.absolute_layout_bounds.insert(id, bounds);
-
-        bounds
-    }
-}
-
-/// A unique identifier for a layout node, generated when requesting a layout from Taffy
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
-#[repr(transparent)]
-pub struct LayoutId(NodeId);
-
-impl LayoutId {
-    fn to_taffy_slice(node_ids: &[Self]) -> &[taffy::NodeId] {
-        // SAFETY: LayoutId is repr(transparent) to taffy::tree::NodeId.
-        unsafe { std::mem::transmute::<&[LayoutId], &[taffy::NodeId]>(node_ids) }
-    }
-}
-
-impl std::hash::Hash for LayoutId {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        u64::from(self.0).hash(state);
-    }
-}
-
-impl From<NodeId> for LayoutId {
-    fn from(node_id: NodeId) -> Self {
-        Self(node_id)
-    }
-}
-
-impl From<LayoutId> for NodeId {
-    fn from(layout_id: LayoutId) -> NodeId {
-        layout_id.0
+    /// Where a node is in what holds it, and its size and its content's,
+    /// in points.
+    pub(crate) fn placed(&self, id: LayoutId, scale_factor: f32) -> (Bounds<Pixels>, Size<Pixels>) {
+        let layout = self.taffy.layout(id).expect(EXPECT_MESSAGE);
+        (
+            Bounds {
+                origin: point(Pixels(layout.location.x / scale_factor), Pixels(layout.location.y / scale_factor)),
+                size: size(Pixels(layout.size.width / scale_factor), Pixels(layout.size.height / scale_factor)),
+            },
+            size(Pixels(layout.content_size.width / scale_factor), Pixels(layout.content_size.height / scale_factor)),
+        )
     }
 }
 

@@ -1,0 +1,446 @@
+//! Views: what a window is made of, and how they're told things.
+//!
+//! A view is BeOS's `BView` and `BHandler` in one: it owns some state,
+//! says what it shows for that state (`body`), and takes messages
+//! (`message`), which are its own type, checked by the compiler. It
+//! lives in one window, on that window's looper, and is never touched
+//! from anywhere else: other threads send it messages through a
+//! [`Messenger`].
+//!
+//! Within a window, views form a tree by ownership: a view holds the
+//! views it made as [`Child`]ren (a handle that can't be copied), reaches
+//! down into them with `update`, and hears from them by the events they
+//! `emit`. Nothing reaches up or sideways except by a message, taken
+//! after what's running now has finished. So a view is never read or
+//! changed while it's in the middle of taking something else: there is
+//! no way to write it.
+
+use std::{
+    any::{Any, TypeId},
+    cell::RefCell,
+    marker::PhantomData,
+    ops::{Deref, DerefMut},
+    rc::Rc,
+    time::Duration,
+};
+
+use olo_app::{Messenger, Task};
+
+use crate::{
+    Element, WindowId,
+    element::Kind,
+    tree::ViewId,
+    window::{WindowCx, deliver_to_view},
+};
+
+/// A part of a window with state of its own.
+pub trait View: Sized + 'static {
+    /// What it can be told: an enum of everything that happens to it (a
+    /// button of its own pressed, a worker's result, a child's news).
+    /// `()` for a view that's told nothing.
+    type Message: 'static;
+
+    /// What it shows, for the state it has now. Called when the view is
+    /// first shown and after each [`Cx::invalidate`]; what comes of it is
+    /// compared with what the window has, and only what differs is laid
+    /// out or drawn again.
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element;
+
+    /// Takes a message: BeOS's `MessageReceived`.
+    fn message(&mut self, _message: Self::Message, _cx: &mut Cx<Self>) {}
+
+    /// Takes a command by name: what a menu item, a tool bar's button,
+    /// the command palette or an agent chose. Whether it was this view's
+    /// to take.
+    fn command(&mut self, _command: &str, _cx: &mut Cx<Self>) -> bool {
+        false
+    }
+
+    /// The person asked to close the window (for the window's own view):
+    /// whether it may go now. BeOS's `QuitRequested`.
+    fn close_requested(&mut self, _cx: &mut Cx<Self>) -> bool {
+        true
+    }
+
+    /// The window got the keyboard, or lost it.
+    fn window_activated(&mut self, _active: bool, _cx: &mut Cx<Self>) {}
+
+    /// What to keep of it across an upgrade in place or the display
+    /// thread starting again (for the window's own view): handed back to
+    /// the program as it starts again.
+    fn save_state(&mut self, _cx: &mut Cx<Self>) -> Option<String> {
+        None
+    }
+}
+
+/// A view of any type, as the window keeps it.
+pub(crate) trait AnyView: 'static {
+    fn as_any(&self) -> &dyn Any;
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+    fn body(&mut self, id: ViewId, cx: &mut WindowCx) -> Element;
+    fn command(&mut self, id: ViewId, command: &str, cx: &mut WindowCx) -> bool;
+    fn close_requested(&mut self, id: ViewId, cx: &mut WindowCx) -> bool;
+    fn window_activated(&mut self, id: ViewId, active: bool, cx: &mut WindowCx);
+    fn save_state(&mut self, id: ViewId, cx: &mut WindowCx) -> Option<String>;
+    fn type_name(&self) -> &'static str;
+}
+
+impl<V: View> AnyView for V {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn body(&mut self, id: ViewId, cx: &mut WindowCx) -> Element {
+        View::body(self, &mut Cx::new(cx, id))
+    }
+
+    fn command(&mut self, id: ViewId, command: &str, cx: &mut WindowCx) -> bool {
+        View::command(self, command, &mut Cx::new(cx, id))
+    }
+
+    fn close_requested(&mut self, id: ViewId, cx: &mut WindowCx) -> bool {
+        View::close_requested(self, &mut Cx::new(cx, id))
+    }
+
+    fn window_activated(&mut self, id: ViewId, active: bool, cx: &mut WindowCx) {
+        View::window_activated(self, active, &mut Cx::new(cx, id))
+    }
+
+    fn save_state(&mut self, id: ViewId, cx: &mut WindowCx) -> Option<String> {
+        View::save_state(self, &mut Cx::new(cx, id))
+    }
+
+    fn type_name(&self) -> &'static str {
+        std::any::type_name::<V>()
+    }
+}
+
+/// Takes what a view emits, for whoever subscribed.
+pub(crate) type Subscriber = Rc<dyn Fn(&dyn Any, &mut WindowCx)>;
+
+pub(crate) struct ViewSlot {
+    /// None while the view is taking something (it's out).
+    pub(crate) view: Option<Box<dyn AnyView>>,
+    pub(crate) root: Option<crate::tree::NodeId>,
+    /// Its `body` is to run again.
+    pub(crate) dirty: bool,
+    /// Who hears what it emits, by the event's type.
+    pub(crate) subscribers: Vec<(TypeId, Subscriber)>,
+    /// Timers and tasks that end with it.
+    pub(crate) timers: Vec<olo_app::TimerId>,
+}
+
+thread_local! {
+    /// Views whose owner let go of them, for their windows to end.
+    static DROPPED: RefCell<Vec<(WindowId, ViewId)>> = const { RefCell::new(Vec::new()) };
+}
+
+pub(crate) fn take_dropped() -> Vec<(WindowId, ViewId)> {
+    DROPPED.with(|d| std::mem::take(&mut *d.borrow_mut()))
+}
+
+/// A view owned by another: made with [`Cx::new`], kept in the owner's
+/// state, placed in its `body` (it's an element: `.child(&self.field)`
+/// or [`Child::element`]). It can't be copied: one owner, who alone can
+/// reach into it, so nothing can reach a view that's busy. When it's
+/// dropped the view ends.
+pub struct Child<V> {
+    id: ViewId,
+    window: WindowId,
+    _view: PhantomData<fn() -> V>,
+}
+
+impl<V: View> Child<V> {
+    pub(crate) fn new(id: ViewId, window: WindowId) -> Self {
+        Child { id, window, _view: PhantomData }
+    }
+
+    /// Where it goes in its owner's `body`.
+    pub fn element(&self) -> Element {
+        Element::new(Kind::View(self.id))
+    }
+
+    /// Reaches into the view. (Its own handlers run later: what it
+    /// emits is heard after this returns.)
+    pub fn update<R>(&self, cx: &mut WindowCx, f: impl FnOnce(&mut V, &mut Cx<V>) -> R) -> R {
+        cx.update_view(self.id, f).expect("a view is reached only by its owner, who can't be inside it")
+    }
+
+    /// Reads the view.
+    pub fn read<'a>(&self, cx: &'a WindowCx) -> &'a V {
+        cx.read_view(self.id).expect("a view is reached only by its owner, who can't be inside it")
+    }
+
+    /// Sends it a message, taken once what's running now is done.
+    pub fn send(&self, cx: &mut WindowCx, message: V::Message) {
+        self.downgrade().send(cx, message)
+    }
+
+    /// A handle that doesn't own it: to send it messages with.
+    pub fn downgrade(&self) -> ViewRef<V> {
+        ViewRef { id: self.id, window: self.window, _view: PhantomData }
+    }
+
+    pub(crate) fn id(&self) -> ViewId {
+        self.id
+    }
+}
+
+impl<V> Drop for Child<V> {
+    fn drop(&mut self) {
+        let _ = DROPPED.try_with(|d| d.borrow_mut().push((self.window, self.id)));
+    }
+}
+
+impl<V: View> crate::IntoElement for &Child<V> {
+    fn into_element(self) -> Element {
+        self.element()
+    }
+}
+
+/// A view by name, not owned: something to send messages to. It can be
+/// copied and kept anywhere on the window's looper (a messenger, made
+/// from it, goes to other threads). Nothing can be read or changed
+/// through it at once, only asked for: the message is taken when the
+/// view is free.
+pub struct ViewRef<V> {
+    id: ViewId,
+    window: WindowId,
+    _view: PhantomData<fn() -> V>,
+}
+
+impl<V> Clone for ViewRef<V> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<V> Copy for ViewRef<V> {}
+
+impl<V> PartialEq for ViewRef<V> {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id && self.window == other.window
+    }
+}
+
+impl<V: View> ViewRef<V> {
+    /// Sends the view a message, taken once what's running now is done.
+    pub fn send(&self, cx: &mut WindowCx, message: V::Message) {
+        let (window, view) = (self.window, self.id);
+        cx.looper.defer(move |looper| deliver_to_view::<V>(looper, window, view, |v, cx| v.message(message, cx)));
+    }
+
+    /// Has `f` run on the view once what's running now is done.
+    pub fn update(&self, cx: &mut WindowCx, f: impl FnOnce(&mut V, &mut Cx<V>) + 'static) {
+        let (window, view) = (self.window, self.id);
+        cx.looper.defer(move |looper| deliver_to_view::<V>(looper, window, view, f));
+    }
+
+    /// A messenger to the view, for other threads (a worker's results).
+    pub fn messenger(&self, cx: &WindowCx) -> Messenger<V::Message>
+    where
+        V::Message: Send,
+    {
+        let (window, view) = (self.window, self.id);
+        Messenger::new(cx.looper.handle(), move |looper, message| deliver_to_view::<V>(looper, window, view, |v, cx| v.message(message, cx)))
+    }
+
+    pub(crate) fn id(&self) -> ViewId {
+        self.id
+    }
+}
+
+/// What a view is handed with everything it's told: the window it's in
+/// (it derefs to [`WindowCx`]) and itself.
+pub struct Cx<'a, 'b, V> {
+    window: &'a mut WindowCx<'b>,
+    view: ViewId,
+    _view: PhantomData<fn() -> V>,
+}
+
+impl<'b, V> Deref for Cx<'_, 'b, V> {
+    type Target = WindowCx<'b>;
+
+    fn deref(&self) -> &WindowCx<'b> {
+        self.window
+    }
+}
+
+impl<'b, V> DerefMut for Cx<'_, 'b, V> {
+    fn deref_mut(&mut self) -> &mut WindowCx<'b> {
+        self.window
+    }
+}
+
+impl<'a, 'b, V: View> Cx<'a, 'b, V> {
+    pub(crate) fn new(window: &'a mut WindowCx<'b>, view: ViewId) -> Self {
+        Cx { window, view, _view: PhantomData }
+    }
+
+    /// What the view shows changed: its `body` runs again before the
+    /// next frame. BeOS's `Invalidate`. (Once however often it's called
+    /// before then.)
+    pub fn invalidate(&mut self) {
+        let view = self.view;
+        self.window.core.invalidate_view(view);
+    }
+
+    /// (GPUI's name for [`Cx::invalidate`].)
+    pub fn notify(&mut self) {
+        self.invalidate()
+    }
+
+    /// Makes a view this one owns.
+    pub fn new_view<T: View>(&mut self, build: impl FnOnce(&mut Cx<T>) -> T) -> Child<T> {
+        self.window.new_view(build)
+    }
+
+    /// This view, to send messages to (for a closure, a child, a
+    /// worker).
+    pub fn view_ref(&self) -> ViewRef<V> {
+        ViewRef { id: self.view, window: self.window.core.id, _view: PhantomData }
+    }
+
+    /// A messenger to this view, for other threads.
+    pub fn messenger(&self) -> Messenger<V::Message>
+    where
+        V::Message: Send,
+    {
+        self.view_ref().messenger(self.window)
+    }
+
+    /// Sends this view a message, taken once what's running now is done.
+    pub fn send(&mut self, message: V::Message) {
+        self.view_ref().send(self.window, message)
+    }
+
+    /// A handler that hands what happened to this view.
+    pub fn listener<E: 'static>(&self, f: impl Fn(&mut V, &E, &mut Cx<V>) + 'static) -> impl Fn(&E, &mut WindowCx) + 'static {
+        let view = self.view;
+        move |event, cx| {
+            cx.update_view::<V, _>(view, |this, cx| f(this, event, cx));
+        }
+    }
+
+    /// A handler that sends this view `message` whatever happened: a
+    /// button's `on_click(cx.msg(Msg::Save))`.
+    pub fn msg<E: 'static>(&self, message: V::Message) -> impl Fn(&E, &mut WindowCx) + 'static
+    where
+        V::Message: Clone,
+    {
+        let view = self.view;
+        move |_, cx| {
+            let message = message.clone();
+            cx.update_view::<V, _>(view, |this, cx| this.message(message, cx));
+        }
+    }
+
+    /// A handler that sends this view the message `f` makes of what
+    /// happened.
+    pub fn msg_with<E: 'static>(&self, f: impl Fn(&E) -> V::Message + 'static) -> impl Fn(&E, &mut WindowCx) + 'static {
+        let view = self.view;
+        move |event, cx| {
+            let message = f(event);
+            cx.update_view::<V, _>(view, |this, cx| this.message(message, cx));
+        }
+    }
+
+    /// A drawing of this view's (an element for its `body`): `paint` is
+    /// handed the view as it is when the drawing is wanted.
+    pub fn canvas(&self, paint: impl Fn(&V, &mut crate::Painter, crate::Bounds<crate::Pixels>) + 'static) -> Element {
+        Element::new(Kind::Canvas(crate::element::CanvasSpec {
+            paint: Rc::new(move |view, p, bounds, _| {
+                if let Some(view) = view.downcast_ref::<V>() {
+                    paint(view, p, bounds)
+                }
+            }),
+            key: None,
+            measure: None,
+        }))
+    }
+
+    /// Tells whoever subscribed to this view something happened to it
+    /// (a field's text changed, a list's row was chosen). They hear it
+    /// once what's running now is done.
+    pub fn emit<E: 'static>(&mut self, event: E) {
+        let view = self.view;
+        let subscribers: Vec<Subscriber> =
+            self.window.core.views.get(view).map(|slot| slot.subscribers.iter().filter(|(t, _)| *t == TypeId::of::<E>()).map(|(_, s)| s.clone()).collect()).unwrap_or_default();
+        if subscribers.is_empty() {
+            return;
+        }
+        let window = self.window.core.id;
+        self.window.looper.defer(move |looper| {
+            crate::window::with_window(looper, window, |cx| {
+                for subscriber in &subscribers {
+                    subscriber(&event, cx);
+                }
+            });
+        });
+    }
+
+    /// Hears what a view this one owns emits.
+    pub fn subscribe<T: View, E: 'static>(&mut self, child: &Child<T>, f: impl Fn(&mut V, &E, &mut Cx<V>) + 'static) {
+        let view = self.view;
+        let subscriber: Subscriber = Rc::new(move |event, cx| {
+            if let Some(event) = event.downcast_ref::<E>() {
+                cx.update_view::<V, _>(view, |this, cx| f(this, event, cx));
+            }
+        });
+        if let Some(slot) = self.window.core.views.get_mut(child.id()) {
+            slot.subscribers.push((TypeId::of::<E>(), subscriber));
+        }
+    }
+
+    /// Sends this view `message` after `delay` (unless the view has
+    /// ended): BeOS's `BMessageRunner`, once.
+    pub fn after(&mut self, delay: Duration, message: V::Message) {
+        let (window, view) = (self.window.core.id, self.view);
+        self.window.looper.after(delay, move |looper| deliver_to_view::<V>(looper, window, view, |v, cx| v.message(message, cx)));
+    }
+
+    /// Sends this view a message every `interval` until the view ends
+    /// or the timer is cancelled (`cx.cancel(timer)`). Not for looking
+    /// for changes: a clock's tick, a caret's blink.
+    pub fn every(&mut self, interval: Duration, message: impl Fn() -> V::Message + 'static) -> olo_app::TimerId {
+        let (window, view) = (self.window.core.id, self.view);
+        let timer = self.window.looper.every(interval, move |looper| deliver_to_view::<V>(looper, window, view, |v, cx| v.message(message(), cx)));
+        if let Some(slot) = self.window.core.views.get_mut(view) {
+            slot.timers.push(timer);
+        }
+        timer
+    }
+
+    /// Runs a future on the window's looper for this view: for waiting
+    /// on work done elsewhere (`olo_app::pool`) without blocking. It's
+    /// handed a [`ViewRef`] to send what comes of it.
+    pub fn spawn<F, T>(&mut self, f: impl FnOnce(ViewRef<V>) -> F) -> Task<T>
+    where
+        F: Future<Output = T> + 'static,
+        T: 'static,
+    {
+        let future = f(self.view_ref());
+        self.window.looper.spawn_local(future)
+    }
+
+    /// Does `work` on a worker thread and sends this view what `then`
+    /// makes of its result: the way to do anything that might take
+    /// longer than a frame.
+    pub fn work<T: Send + 'static>(&mut self, work: impl FnOnce() -> T + Send + 'static, then: impl FnOnce(T) -> V::Message + Send + 'static)
+    where
+        V::Message: Send,
+    {
+        let messenger = self.messenger();
+        olo_app::pool::run(move || {
+            messenger.send(then(work()));
+        })
+        .detach();
+    }
+
+    pub(crate) fn id(&self) -> ViewId {
+        self.view
+    }
+}

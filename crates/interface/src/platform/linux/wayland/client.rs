@@ -906,6 +906,21 @@ impl WaylandClient {
     }
 }
 
+impl WaylandClient {
+    /// What other threads ask of the display thread is run as it comes
+    /// (`crate::display`).
+    pub(crate) fn take_commands<T: 'static>(&self, commands: calloop::channel::Channel<T>, mut run: impl FnMut(T) + 'static) {
+        let handle = self.0.borrow().loop_handle.clone();
+        handle
+            .insert_source(commands, move |event, _, _: &mut WaylandClientStatePtr| {
+                if let calloop::channel::Event::Msg(command) = event {
+                    run(command);
+                }
+            })
+            .ok();
+    }
+}
+
 impl LinuxClient for WaylandClient {
     fn keyboard_layout(&self) -> Box<dyn PlatformKeyboardLayout> {
         Box::new(self.0.borrow().keyboard_layout.clone())

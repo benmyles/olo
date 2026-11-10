@@ -37,6 +37,21 @@ impl HeadlessClient {
     }
 }
 
+impl HeadlessClient {
+    /// What other threads ask of the display thread is run as it comes
+    /// (`crate::display`).
+    pub(crate) fn take_commands<T: 'static>(&self, commands: calloop::channel::Channel<T>, mut run: impl FnMut(T) + 'static) {
+        let handle = self.0.borrow()._loop_handle.clone();
+        handle
+            .insert_source(commands, move |event, _, _: &mut HeadlessClient| {
+                if let calloop::channel::Event::Msg(command) = event {
+                    run(command);
+                }
+            })
+            .ok();
+    }
+}
+
 impl LinuxClient for HeadlessClient {
     fn with_common<R>(&self, f: impl FnOnce(&mut LinuxCommon) -> R) -> R {
         f(&mut self.0.borrow_mut().common)

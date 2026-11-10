@@ -144,7 +144,7 @@ impl LinuxCommon {
 /// on a slow core at a low clock took three or four times as long. The
 /// threads it starts from now on don't inherit it (or a raised
 /// priority): their work isn't a frame's.
-fn util_floor() {
+pub(crate) fn util_floor() {
     let min = env::var("OLO_UTIL_MIN").ok().and_then(|v| v.parse().ok()).unwrap_or(olo_protocol::performance::UI_UTIL_MIN);
     if min == 0 {
         return;
