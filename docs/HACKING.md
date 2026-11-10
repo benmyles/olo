@@ -14598,7 +14598,12 @@ wrapped. Both providers go through the Token Pool's loopback gateway.
   appended bytes and removes consumed lines once per chunk. Its ignored release
   `provider_stream_batch_benchmark` measures a fixed 4,096-event batch.
 * `tools` implements files, search, checked edits, undo artifacts and cancellable
-  argv processes. `sandbox` prepares Landlock write confinement before fork and
+  argv processes. Process capture prepares its sink before spawning, flushes
+  the last asynchronous write and syncs the artifact before reporting success.
+  `collect_output` must short-circuit on a pipe or artifact error rather than
+  wait for a blocked child. Streaming retains at most three incomplete UTF-8
+  bytes between batches; raw artifacts remain byte-exact within their limit.
+  `sandbox` prepares Landlock write confinement before fork and
   applies it using syscalls only in `pre_exec`. `mcp` speaks stdio and Streamable HTTP JSON-RPC; its
   tool effects follow the same approval path. Configured hooks and skills are
   explicit user extensions. MCP HTTP cancellation cleanup is bounded and runs

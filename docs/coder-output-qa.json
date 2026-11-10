@@ -1,0 +1,87 @@
+{
+  "date": "2026-11-10",
+  "baseline_commit": "0b0c7201",
+  "baseline_note": "Output drain/collection were extracted without behavior changes to expose fault injection before the implementation fixes.",
+  "baseline_regressions": {
+    "passed": 0,
+    "failed": 5,
+    "tests": [
+      "stream_batches_preserve_unicode_across_every_byte_boundary",
+      "truncated_tails_do_not_invent_invalid_unicode",
+      "artifact_limit_keeps_the_exact_prefix_before_truncation",
+      "final_artifact_write_errors_are_reported",
+      "artifact_failure_does_not_wait_for_a_process_that_is_still_running"
+    ]
+  },
+  "release_output_failure": {
+    "before_ms": 301.432,
+    "before_outcome": "Test deadline elapsed after 300 ms; collector remained waiting for a pending process. This is a lower bound, not a completed baseline operation.",
+    "after_ms": 0.049,
+    "after_outcome": "The injected artifact write error was returned without waiting for process exit."
+  },
+  "release_capture_benchmark": {
+    "command": "target/release/deps/core-5c7ba63f4cc2481d process_capture_benchmark --ignored --nocapture",
+    "samples_per_run": 9,
+    "before": {
+      "bytes": 22528,
+      "median_ms": 0.755,
+      "min_ms": 0.705,
+      "max_ms": 1.466
+    },
+    "after": {
+      "bytes": 22528,
+      "median_ms": 3.292,
+      "min_ms": 2.556,
+      "max_ms": 16.091
+    },
+    "scope": "Real printf process, default workspace sandbox, 22528 Unicode bytes, file capture and result assembly. After includes artifact data and directory sync. Shared host; stronger completion guarantees cost additional latency. No UI latency or hard worst-case claim.",
+    "repeat": {
+      "bytes": 22528,
+      "median_ms": 2.677,
+      "min_ms": 2.443,
+      "max_ms": 15.195
+    }
+  },
+  "focused_release": {
+    "unit_passed": 7,
+    "integration_passed": 68,
+    "failed": 0,
+    "ignored": 7
+  },
+  "additional_checks": [
+    "Every byte pair, plus an incomplete EOF scalar, decoded in chunks of 1, 2, 3, 7 and 8192 bytes matches whole-buffer lossy UTF-8 decoding; carry never exceeds three bytes.",
+    "Real process output has exact streamed text, correct per-stream/retained-byte counts and truncation flags, immediately readable full artifact bytes and mode 0600.",
+    "Failed process start leaves no unused artifact; failed capture allocation cannot start the process effect.",
+    "Existing cancellation, process-group and sandbox regressions remain enabled."
+  ],
+  "limits": [
+    "Injected write failure used a read-only file descriptor; no actual filesystem was filled or faulted.",
+    "No power-loss test was performed. Successful capture explicitly awaits flush, data sync and directory sync.",
+    "No drawing/layout changes; preceding visual sweep remains in coder-reliability-qa.json.",
+    "Weeks-long live soak remains outstanding; finite tests do not prove zero defects.",
+    "Fresh live Claude attempt returned HTTP 429; live reasoning/compaction verification remains blocked by quota."
+  ],
+  "release_build": {
+    "command": "cargo build --release --workspace",
+    "exit_code": 0
+  },
+  "workspace_release_tests": {
+    "command": "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER=/usr/bin/env cargo test --release --workspace",
+    "exit_code": 0,
+    "passed": 1689,
+    "failed": 0,
+    "ignored": 141,
+    "suites": 204
+  },
+  "live_claude_attempt": {
+    "date": "2026-11-10",
+    "command": "cargo test --release -p olo-coder-core --test live pool_claude_reasoning_compaction_and_replay -- --ignored --exact --nocapture",
+    "exit_code": 101,
+    "http_status": 429,
+    "error_type": "rate_limit_error",
+    "stage": "first inference request",
+    "retries": 0,
+    "verified": false,
+    "note": "Live fixture now requires signed or redacted Claude thinking before claiming reasoning replay coverage. Quota rejection prevents reaching that assertion and compaction."
+  }
+}

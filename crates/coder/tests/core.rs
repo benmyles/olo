@@ -1913,3 +1913,67 @@ async fn cancelled_network_tools_do_not_dispatch_or_replay_writes() {
     release.cancel();
     server.abort();
 }
+
+#[tokio::test]
+#[ignore = "release process capture benchmark; nine 22 KiB Unicode outputs"]
+async fn process_capture_benchmark() {
+    let dir = Scratch::new();
+    let s = Session::new(dir.0.clone(), Config::default());
+    let payload = "résultat 🌿 世界\n".repeat(1024);
+    let command = call("execute", json!({"program":"/usr/bin/printf","args":["%s",payload]}));
+    let mut samples = Vec::new();
+    for _ in 0..9 {
+        let began = std::time::Instant::now();
+        let output = tools::execute(&s, &command, &dir.0, &CancellationToken::new(), Arc::new(|_, _| {})).await.unwrap();
+        samples.push(began.elapsed().as_secs_f64() * 1000.0);
+        assert_eq!(output["stdout"], payload);
+        assert_eq!(output["success"], true);
+    }
+    samples.sort_by(f64::total_cmp);
+    println!("Process capture: {} bytes; median {:.3} ms; min {:.3} ms; max {:.3} ms", payload.len(), samples[4], samples[0], samples[8]);
+}
+
+#[tokio::test]
+async fn process_capture_is_complete_private_and_reports_truncation() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = Scratch::new();
+    let s = Session::new(dir.0.clone(), Config { max_tool_bytes: 1024, ..Default::default() });
+    let payload = format!("{}🌿end", "a".repeat(8191));
+    let command = call("execute", json!({"program":"/usr/bin/printf","args":["%s",payload]}));
+    let streamed = Arc::new(Mutex::new(String::new()));
+    let observed = streamed.clone();
+    let result = tools::execute(&s, &command, &dir.0, &CancellationToken::new(), Arc::new(move |_, v| observed.lock().unwrap().push_str(v["text"].as_str().unwrap()))).await.unwrap();
+    assert_eq!(*streamed.lock().unwrap(), payload);
+    assert_eq!(result["stdout"], payload[payload.len() - 1024..]);
+    assert_eq!(result["stdout_bytes"], payload.len());
+    assert_eq!(result["stderr_bytes"], 0);
+    assert_eq!(result["stdout_truncated"], true);
+    assert_eq!(result["stderr_truncated"], false);
+    assert_eq!(result["artifact_bytes"], payload.len());
+    assert_eq!(result["artifact_truncated"], false);
+    let path = dir.0.join(result["artifact"].as_str().unwrap());
+    assert_eq!(std::fs::read(&path).unwrap(), payload.as_bytes());
+    assert_eq!(std::fs::metadata(path).unwrap().permissions().mode() & 0o777, 0o600);
+}
+
+#[tokio::test]
+async fn failed_process_start_removes_unused_capture_files() {
+    let dir = Scratch::new();
+    let s = Session::new(dir.0.clone(), Config::default());
+    let command = call("execute", json!({"program":dir.0.join("no-such-program"),"args":[]}));
+    assert!(tools::execute(&s, &command, &dir.0, &CancellationToken::new(), Arc::new(|_, _| {})).await.is_err());
+    assert_eq!(std::fs::read_dir(&dir.0).unwrap().count(), 0);
+}
+
+#[tokio::test]
+async fn capture_allocation_failure_precedes_process_effects() {
+    let dir = Scratch::new();
+    let s = Session::new(dir.0.clone(), Config { sandbox: SandboxMode::Unrestricted, ..Default::default() });
+    let artifact_path = dir.0.join("not-a-directory");
+    std::fs::write(&artifact_path, b"existing file").unwrap();
+    let effect = dir.0.join("should-not-exist");
+    let command = call("execute", json!({"program":"/usr/bin/touch","args":[effect]}));
+    assert!(tools::execute(&s, &command, &artifact_path, &CancellationToken::new(), Arc::new(|_, _| {})).await.is_err());
+    assert!(!effect.exists());
+    assert_eq!(std::fs::read(artifact_path).unwrap(), b"existing file");
+}

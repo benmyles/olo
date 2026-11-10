@@ -368,3 +368,53 @@ soak remain outstanding. [Detailed transport evidence](coder-transport-qa.json).
 
 The full release workspace suite passed **1,680 tests across 204 suites, zero
 failures**, with 140 explicitly ignored cases.
+
+## Process output and artifact audit — 2026-11-10
+
+Five regression tests failed against `0b0c7201`, after extracting the existing
+drain/collection code without changing its behavior. An artifact write error
+could wait for a still-running process; the final asynchronous write could fail
+without reporting an error; streamed Unicode and truncated tails could acquire
+spurious replacement characters; and the chunk crossing the artifact limit was
+discarded wholesale, losing bytes that still fit within the limit.
+
+Collection now stops on its first I/O error, letting the process-group guard
+terminate remaining work. Each drain flushes its last write. Batches retain at
+most three incomplete UTF-8 bytes, and truncated tails start at a character
+boundary. The raw artifact retains exactly the permitted prefix. Tests cover
+Unicode split at every byte, every byte pair streamed in chunks of 1/2/3/7/8,192,
+and genuinely invalid or incomplete UTF-8; streamed replacement behavior matches
+decoding the whole byte sequence.
+
+Capture files are prepared before spawning, use mode 0600 and are removed if
+process start fails. Successful capture waits for artifact data and directory
+sync. Results report per-stream totals and truncation separately from saved
+artifact totals. A real process fixture checks exact streamed text, truncated
+tails, immediate full-artifact reads and permissions; another checks that capture
+allocation failure cannot start the requested effect.
+
+Release fault fixture: the old collector still waited when its **300 ms test
+deadline expired** (301.432 ms observed); the corrected collector returned the
+injected write error in **0.049 ms**. This uses a read-only file descriptor,
+not a filled filesystem. The release capture benchmark runs a real sandboxed
+process emitting **22,528 Unicode bytes**, nine samples: median **0.755 ms before**
+(0.705–1.466), **3.292 ms after** (2.556–16.091). The extra latency includes
+artifact syncing before success; it is an explicit durability cost, outside the
+UI thread. Shared-host samples are not hard worst-case bounds. No power-loss
+test was performed.
+
+The focused release suite passed **75 tests**, with seven opt-in performance/live
+cases ignored; the capture benchmark was run separately. The workspace release
+build and formatting checks passed. No drawing/layout changed. Live Claude
+verification after prior HTTP 429 responses and a weeks-long live soak remain
+outstanding. [Detailed output evidence](coder-output-qa.json).
+
+The full release workspace suite passed **1,689 tests across 204 suites, zero
+failures**, with 141 explicitly ignored cases. After that workload finished, the
+capture benchmark repeated at **2.677 ms median** (2.443–15.195); both after runs
+are retained alongside the baseline.
+
+A fresh opt-in Claude attempt after this audit again returned **HTTP 429** on
+its first inference request. Retries were disabled for this quota check. The
+live test now requires signed or redacted Claude thinking before claiming replay
+coverage; the quota rejection prevented reaching that assertion or compaction.

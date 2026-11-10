@@ -398,6 +398,82 @@ impl Drop for ProcessGroup {
         }
     }
 }
+/// Keep only an incomplete trailing scalar for the next output batch. Invalid
+/// bytes elsewhere still render lossily; only the last four bytes need a look.
+fn complete_utf8_prefix(bytes: &[u8]) -> usize {
+    if bytes.is_empty() {
+        return 0;
+    }
+    let mut start = bytes.len() - 1;
+    while start > 0 && bytes[start] & 0xc0 == 0x80 && bytes.len() - start < 4 {
+        start -= 1;
+    }
+    match std::str::from_utf8(&bytes[start..]) {
+        Err(error) if error.error_len().is_none() => start + error.valid_up_to(),
+        _ => bytes.len(),
+    }
+}
+async fn drain_output(
+    mut reader: impl tokio::io::AsyncRead + Unpin,
+    output: Arc<tokio::sync::Mutex<tokio::fs::File>>,
+    event: Arc<dyn Fn(&str, Value) + Send + Sync>,
+    cap: usize,
+    artifact_limit: u64,
+) -> Result<(String, u64)> {
+    use tokio::io::AsyncWriteExt;
+    let mut buf = [0; 8192];
+    let mut tail = vec![];
+    let mut total = 0;
+    let mut batch = vec![];
+    let mut last = std::time::Instant::now();
+    loop {
+        let n = reader.read(&mut buf).await?;
+        if n == 0 {
+            break;
+        }
+        // Bound disk use too; tools that need large artifacts write them themselves.
+        let keep = (artifact_limit.saturating_sub(total)).min(n as u64) as usize;
+        if keep > 0 {
+            output.lock().await.write_all(&buf[..keep]).await?;
+        }
+        total += n as u64;
+        tail.extend_from_slice(&buf[..n]);
+        if tail.len() > cap {
+            tail.drain(..tail.len() - cap);
+        }
+        batch.extend_from_slice(&buf[..n]);
+        if last.elapsed() >= std::time::Duration::from_millis(100) || batch.len() >= cap {
+            let end = complete_utf8_prefix(&batch);
+            if end > 0 {
+                event("tool_output", json!({"text":String::from_utf8_lossy(&batch[..end])}));
+                batch.drain(..end);
+            }
+            last = std::time::Instant::now();
+        }
+    }
+    if !batch.is_empty() {
+        event("tool_output", json!({"text":String::from_utf8_lossy(&batch)}));
+    }
+    // Tokio's final write can still be buffered (and can fail). Do not report
+    // a complete artifact until that write has actually finished.
+    output.lock().await.flush().await?;
+    let start = if total > tail.len() as u64 { tail.iter().take_while(|byte| **byte & 0xc0 == 0x80).count() } else { 0 };
+    Ok((String::from_utf8_lossy(&tail[start..]).into_owned(), total))
+}
+async fn collect_output(
+    wait: impl std::future::Future<Output = std::io::Result<std::process::ExitStatus>>,
+    stdout: impl tokio::io::AsyncRead + Unpin,
+    stderr: impl tokio::io::AsyncRead + Unpin,
+    output: Arc<tokio::sync::Mutex<tokio::fs::File>>,
+    event: Arc<dyn Fn(&str, Value) + Send + Sync>,
+    cap: usize,
+) -> Result<(std::process::ExitStatus, (String, u64), (String, u64))> {
+    tokio::try_join!(
+        async { wait.await.map_err(anyhow::Error::from) },
+        drain_output(stdout, output.clone(), event.clone(), cap, 64 * 1024 * 1024),
+        drain_output(stderr, output, event, cap, 64 * 1024 * 1024)
+    )
+}
 pub async fn execute(s: &Session, call: &ToolCall, artifacts: &Path, cancel: &CancellationToken, event: Arc<dyn Fn(&str, Value) + Send + Sync>) -> Result<Value> {
     ensure!(!cancel.is_cancelled(), "cancelled before process start");
     let a = &call.arguments;
@@ -419,63 +495,39 @@ pub async fn execute(s: &Session, call: &ToolCall, artifacts: &Path, cancel: &Ca
         }
     }
     ensure!(!cancel.is_cancelled(), "cancelled before process start");
-    let mut child = cmd.spawn().with_context(|| format!("start {program}"))?;
-    let _group = ProcessGroup(child.id().context("missing pid")? as i32);
     let artifact = id();
     let file = artifacts.join(&artifact);
-    let output = Arc::new(tokio::sync::Mutex::new(tokio::fs::OpenOptions::new().write(true).create_new(true).open(&file).await?));
+    // Prepare capture before starting an effect. A failed open must not leave
+    // a program running without its output sink.
+    let output = Arc::new(tokio::sync::Mutex::new(tokio::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&file).await?));
+    let spawned = if cancel.is_cancelled() { Err(anyhow::anyhow!("cancelled before process start")) } else { cmd.spawn().with_context(|| format!("start {program}")) };
+    let mut child = match spawned {
+        Ok(child) => child,
+        Err(error) => {
+            drop(output);
+            let _ = tokio::fs::remove_file(file).await;
+            return Err(error);
+        }
+    };
+    let _group = ProcessGroup(child.id().context("missing pid")? as i32);
     let cap = s.config.max_tool_bytes;
-    async fn drain(
-        mut reader: impl tokio::io::AsyncRead + Unpin,
-        output: Arc<tokio::sync::Mutex<tokio::fs::File>>,
-        event: Arc<dyn Fn(&str, Value) + Send + Sync>,
-        cap: usize,
-    ) -> Result<(String, u64)> {
-        use tokio::io::AsyncWriteExt;
-        let mut buf = [0; 8192];
-        let mut tail = vec![];
-        let mut total = 0;
-        let mut batch = vec![];
-        let mut last = std::time::Instant::now();
-        loop {
-            let n = reader.read(&mut buf).await?;
-            if n == 0 {
-                break;
-            }
-            total += n as u64;
-            // Bound disk use too; tools that need large artifacts write them themselves.
-            if total <= 64 * 1024 * 1024 {
-                output.lock().await.write_all(&buf[..n]).await?;
-            }
-            tail.extend_from_slice(&buf[..n]);
-            if tail.len() > cap {
-                tail.drain(..tail.len() - cap);
-            }
-            batch.extend_from_slice(&buf[..n]);
-            if last.elapsed() >= std::time::Duration::from_millis(100) || batch.len() >= cap {
-                event("tool_output", json!({"text":String::from_utf8_lossy(&batch)}));
-                batch.clear();
-                last = std::time::Instant::now();
-            }
-        }
-        if !batch.is_empty() {
-            event("tool_output", json!({"text":String::from_utf8_lossy(&batch)}));
-        }
-        Ok((String::from_utf8_lossy(&tail).into_owned(), total))
-    }
     let stdout = child.stdout.take().unwrap();
     let stderr = child.stderr.take().unwrap();
     let duration = std::time::Duration::from_secs(a["timeout_secs"].as_u64().unwrap_or(s.config.command_timeout_secs).clamp(1, 86400));
     let work = async {
-        let (status, out, err) = tokio::join!(child.wait(), drain(stdout, output.clone(), event.clone(), cap), drain(stderr, output, event, cap));
-        let status = status?;
-        let (out, n) = out?;
-        let (err, m) = err?;
-        Ok::<_, anyhow::Error>(json!({"exit_code":status.code(),"success":status.success(),"stdout":out,"stderr":err,"bytes":n+m,"artifact":artifact,"artifact_capped_at":134217728}))
+        let (status, (out, n), (err, m)) = collect_output(child.wait(), stdout, stderr, output.clone(), event, cap).await?;
+        output.lock().await.sync_data().await?;
+        tokio::fs::File::open(artifacts).await?.sync_all().await?;
+        let artifact_bytes = n.min(64 * 1024 * 1024) + m.min(64 * 1024 * 1024);
+        Ok::<_, anyhow::Error>(json!({"exit_code":status.code(),"success":status.success(),"stdout":out,"stderr":err,"bytes":n+m,
+            "stdout_bytes":n,"stderr_bytes":m,"stdout_truncated":n>cap as u64,"stderr_truncated":m>cap as u64,
+            "artifact":artifact,"artifact_bytes":artifact_bytes,"artifact_truncated":artifact_bytes<n+m,"artifact_capped_at":134217728}))
     };
     tokio::select! {
+        biased;
         _=cancel.cancelled()=>bail!("cancelled; process group terminated; partial output artifact {artifact}"),
-        r=tokio::time::timeout(duration,work)=>r.context(format!("command timed out; process group terminated; partial output artifact {artifact}"))?,
+        r=tokio::time::timeout(duration,work)=>r.context(format!("command timed out; process group terminated; partial output artifact {artifact}"))?
+            .map_err(|error|anyhow::anyhow!("command I/O failed: {error:#}; process group terminated; partial output artifact {artifact}")),
     }
 }
 
@@ -543,4 +595,116 @@ pub fn read_skill(s: &Session, name: &str) -> Result<Value> {
     file.take(64001).read_to_string(&mut text)?;
     ensure!(text.len() <= 64000, "skill resource exceeds 64 KB");
     Ok(json!({"path":path,"text":text}))
+}
+
+#[cfg(test)]
+mod output_tests {
+    use super::*;
+    use std::{
+        pin::Pin,
+        task::{Context as TaskContext, Poll},
+    };
+    struct Scratch(PathBuf);
+    impl Scratch {
+        fn new() -> Self {
+            let p = PathBuf::from("/var/tmp").join(format!("olo-coder-output-{}", id()));
+            std::fs::create_dir(&p).unwrap();
+            Self(p)
+        }
+    }
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    struct Chunks<'a>(&'a [u8], usize);
+    impl tokio::io::AsyncRead for Chunks<'_> {
+        fn poll_read(mut self: Pin<&mut Self>, _: &mut TaskContext<'_>, buf: &mut tokio::io::ReadBuf<'_>) -> Poll<std::io::Result<()>> {
+            let n = self.0.len().min(self.1).min(buf.remaining());
+            buf.put_slice(&self.0[..n]);
+            self.0 = &self.0[n..];
+            Poll::Ready(Ok(()))
+        }
+    }
+    async fn output(path: &Path) -> Arc<tokio::sync::Mutex<tokio::fs::File>> {
+        Arc::new(tokio::sync::Mutex::new(tokio::fs::File::create(path).await.unwrap()))
+    }
+    #[test]
+    fn streaming_replacement_of_invalid_utf8_matches_whole_output() {
+        let mut bytes = Vec::new();
+        for first in 0..=255 {
+            for second in 0..=255 {
+                bytes.extend_from_slice(&[first, second]);
+            }
+        }
+        bytes.extend_from_slice(b"\xf0\x9f\x8c"); // A truly incomplete scalar at EOF.
+        let expected = String::from_utf8_lossy(&bytes);
+        for size in [1, 2, 3, 7, 8192] {
+            let mut batch = Vec::new();
+            let mut text = String::new();
+            for chunk in bytes.chunks(size) {
+                batch.extend_from_slice(chunk);
+                let end = complete_utf8_prefix(&batch);
+                text.push_str(&String::from_utf8_lossy(&batch[..end]));
+                batch.drain(..end);
+                assert!(batch.len() <= 3);
+            }
+            text.push_str(&String::from_utf8_lossy(&batch));
+            assert_eq!(text, expected, "chunk size {size}");
+        }
+    }
+    #[tokio::test]
+    async fn stream_batches_preserve_unicode_across_every_byte_boundary() {
+        let dir = Scratch::new();
+        let bytes = "héllo 🌿 世界 e\u{301}\n".repeat(10);
+        for chunk in [1, 2, 3, 7, 8192] {
+            let pieces = Arc::new(Mutex::new(String::new()));
+            let saved = pieces.clone();
+            let file = output(&dir.0.join("artifact")).await;
+            drain_output(Chunks(bytes.as_bytes(), chunk), file, Arc::new(move |_, v| saved.lock().unwrap().push_str(v["text"].as_str().unwrap())), 5, 10000).await.unwrap();
+            assert_eq!(*pieces.lock().unwrap(), bytes, "chunk size {chunk}");
+        }
+    }
+    #[tokio::test]
+    async fn truncated_tails_do_not_invent_invalid_unicode() {
+        let dir = Scratch::new();
+        let file = output(&dir.0.join("artifact")).await;
+        let (tail, total) = drain_output(Chunks("abc🌿z".as_bytes(), 2), file, Arc::new(|_, _| {}), 3, 100).await.unwrap();
+        assert_eq!(total, 8);
+        assert_eq!(tail, "z");
+    }
+    #[tokio::test]
+    async fn artifact_limit_keeps_the_exact_prefix_before_truncation() {
+        use tokio::io::AsyncWriteExt;
+        let dir = Scratch::new();
+        let path = dir.0.join("artifact");
+        let file = output(&path).await;
+        let bytes = b"0123456789abcdefghijklmnop";
+        let (_, total) = drain_output(Chunks(bytes, 6), file.clone(), Arc::new(|_, _| {}), 100, 17).await.unwrap();
+        file.lock().await.flush().await.unwrap();
+        assert_eq!(total, bytes.len() as u64);
+        assert_eq!(std::fs::read(path).unwrap(), bytes[..17]);
+    }
+    #[tokio::test]
+    async fn final_artifact_write_errors_are_reported() {
+        let dir = Scratch::new();
+        let path = dir.0.join("readonly");
+        std::fs::write(&path, b"").unwrap();
+        let file = Arc::new(tokio::sync::Mutex::new(tokio::fs::File::open(path).await.unwrap()));
+        assert!(drain_output(Chunks(b"last write", 100), file, Arc::new(|_, _| {}), 100, 100).await.is_err(), "the last buffered write must complete before success");
+    }
+    #[tokio::test]
+    async fn artifact_failure_does_not_wait_for_a_process_that_is_still_running() {
+        let dir = Scratch::new();
+        let path = dir.0.join("readonly");
+        std::fs::write(&path, b"").unwrap();
+        let file = Arc::new(tokio::sync::Mutex::new(tokio::fs::File::open(path).await.unwrap()));
+        let bytes = vec![b'x'; 20000];
+        let (_writer, reader) = tokio::io::duplex(64);
+        let began = std::time::Instant::now();
+        let result = tokio::time::timeout(std::time::Duration::from_millis(300), collect_output(std::future::pending(), Chunks(&bytes, 8192), reader, file, Arc::new(|_, _| {}), 100)).await;
+        println!("Artifact failure with a pending process: {:.3} ms", began.elapsed().as_secs_f64() * 1000.0);
+        assert!(result.is_ok(), "an output error must not wait for process exit or its timeout");
+        assert!(result.unwrap().is_err());
+    }
 }

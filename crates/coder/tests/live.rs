@@ -18,6 +18,7 @@ async fn reasoning_compaction_and_replay(p: Provider, model: &str) {
     let client = provider::Client::new().unwrap();
     {
         let mut s = Session::new("/var/tmp".into(), Config::default());
+        s.config.retries = 0; // A quota rejection is evidence, not a reason to probe repeatedly.
         s.config.model.provider = p;
         s.config.model.model = model.into();
         s.config.model.effort = "high".into();
@@ -31,6 +32,13 @@ async fn reasoning_compaction_and_replay(p: Provider, model: &str) {
         assert!(first.text.contains("589"));
         if p == Provider::Codex {
             assert!(first.items.iter().any(|v| v["type"] == "reasoning" && v["encrypted_content"].is_string()), "encrypted reasoning must be returned");
+        } else {
+            assert!(
+                first.items.iter().flat_map(|v| v["content"].as_array().into_iter().flatten()).any(|b| {
+                    (b["type"] == "thinking" && b["signature"].as_str().is_some_and(|s| !s.is_empty())) || (b["type"] == "redacted_thinking" && b["data"].as_str().is_some_and(|s| !s.is_empty()))
+                }),
+                "Claude must return signed or redacted thinking to verify its replay"
+            );
         }
         s.context.extend(first.items);
         s.user("What marker did I ask you to remember?");

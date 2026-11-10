@@ -327,9 +327,21 @@ temporary status rather than repeated transcript entries. The GUI and TUI preser
 the GUI also restores its selected pane, follow setting, and unfinished forms
 (including the original session and expected commit head). Compositor reloads
 use the kit's state restoration.
-Streaming display updates are batched. Tool output goes to bounded disk artifacts
-(up to 64 MB per stream); results contain tails and an artifact ID for ranged
-`read_artifact` retrieval. Artifacts and history are retained until the store is
+Streaming display updates are batched without splitting UTF-8 characters. Genuine
+invalid bytes display as replacement characters; the artifact keeps the raw bytes.
+Truncated tails start at a character boundary. Tool output goes to bounded disk
+artifacts (up to 64 MiB per stream); results contain tails and an artifact ID for
+ranged `read_artifact` retrieval. `stdout_bytes`, `stderr_bytes` and their
+`*_truncated` flags distinguish complete output from a tail; `artifact_bytes`
+and `artifact_truncated` describe the saved raw output separately.
+
+Capture is prepared before a process starts, with owner-only permissions. A
+failed start removes its unused capture file. Output errors stop waiting for
+the process immediately and terminate its group; errors identify the partial
+artifact. Before a successful capture returns, buffered writes finish and the
+artifact data and containing directory are synced. These filesystem operations
+run on workers and remain within the command's cancellation/timeout boundary.
+Artifacts and history are retained until the store is
 removed; total lifetime disk retention is not automatically pruned.
 
 Codex requests ask for `reasoning.encrypted_content` and replay the complete native
