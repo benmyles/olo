@@ -1,0 +1,22 @@
+{
+  "region": [
+    5,
+    100,
+    1000,
+    578
+  ],
+  "size": [
+    1000,
+    578
+  ],
+  "different_pixels": 19674,
+  "pixels_over_10": 16310,
+  "max_channel_delta": 197,
+  "mean_absolute_channel_delta": 1.3924723183391003,
+  "bbox": [
+    20,
+    31,
+    881,
+    410
+  ]
+}

@@ -4432,5 +4432,17 @@
   "title": "Olo Doctor finds Token Pool running twice",
   "caption": "A Token Pool started beside the one serving, unable to take its port, served nothing for two days while its window showed no requests. Olo Doctor now finds it and quits it; the session starts it again, and it keeps the one serving rather than running beside it.",
   "image": "2026-11-09/215953-olo-doctor-finds-token-pool-running-twice.png"
+ },
+ {
+  "time": "2026-11-09T22:35:09",
+  "title": "Browser CSS counters before",
+  "caption": "Release dc2fd70a: set precedes increment, nested resets leak into later siblings, display:contents changes counters, and integer overflow produces out-of-range text. Owned Agent Screen at 1x.",
+  "image": "2026-11-09/223509-browser-css-counters-before.png"
+ },
+ {
+  "time": "2026-11-09T22:35:11",
+  "title": "Browser CSS counters after",
+  "caption": "Chrome-referenced generated text: operation order, nested and pseudo-element scopes, display:contents, and overflow. Suppressed display:none behavior is preserved. All five scales in light/dark/night reviewed; full counter/marker compatibility remains open.",
+  "image": "2026-11-09/223511-browser-css-counters-after.png"
  }
 ]

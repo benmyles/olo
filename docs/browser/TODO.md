@@ -211,9 +211,17 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
   restrictions, computed `display`, vertical writing and RTL positioning,
   bullet glyph shapes/horizontal gaps. Geometry coverage is not a pixel pass.
   Counter scoping/reset, style containment and author CSS overriding HTML
-  counter hints still need a unified counter implementation. Existing
-  generic counters also apply set/increment in the wrong order; verify
-  their generated text against Chrome when correcting it.
+  counter hints still need a unified implicit list-item implementation.
+- [x] Explicit CSS counters: reset/increment/set order, nested and sibling
+  scopes, pseudo-element scope, display:contents, duplicate increments and
+  overflow behavior. 43 independent Chrome generated-text observations,
+  mutation/reuse and active-scope limit regressions. Common single increments
+  allocate nothing; ending scopes are scanned only when a counter expires.
+- [ ] Remaining counter work: implicit list-item unification, reversed CSS
+  counters, style containment and computed-value integer serialization.
+  The native counter fixture also remains a pixel nonpass at DPR1:
+  19,674 of 578,000 pixels differ from Chrome, 16,310 by more than 10 in a
+  channel (max 197). Do not infer raster parity from matching generated text.
 - [x] Web IDL observer methods are enumerable for wrappers such as Zone.js;
   keep ECMAScript Date methods non-enumerable and recorded prototype shapes
   intact. Regression covers IntersectionObserver, ResizeObserver and

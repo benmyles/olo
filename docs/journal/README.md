@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-09
 
+### Browser CSS counters after
+
+*22:35* — Chrome-referenced generated text: operation order, nested and pseudo-element scopes, display:contents, and overflow. Suppressed display:none behavior is preserved. All five scales in light/dark/night reviewed; full counter/marker compatibility remains open.
+
+![Browser CSS counters after](2026-11-09/223511-browser-css-counters-after.png)
+
+### Browser CSS counters before
+
+*22:35* — Release dc2fd70a: set precedes increment, nested resets leak into later siblings, display:contents changes counters, and integer overflow produces out-of-range text. Owned Agent Screen at 1x.
+
+![Browser CSS counters before](2026-11-09/223509-browser-css-counters-before.png)
+
 ### Olo Doctor finds Token Pool running twice
 
 *21:59* — A Token Pool started beside the one serving, unable to take its port, served nothing for two days while its window showed no requests. Olo Doctor now finds it and quits it; the session starts it again, and it keeps the one serving rather than running beside it.

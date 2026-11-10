@@ -7724,3 +7724,57 @@ passes. Release tests for Browser, web, JS, system, Token Pool library/app,
 Terminal and Doctor pass: 775 tests, zero failures, 43 existing ignored/live
 tests. This integration makes no additional website-compatibility claim and
 does not install or reload the person's session.
+
+### 2026-11-09 — explicit CSS counter sequencing and scopes
+
+Apply counter reset, increment, then set; restore ancestor counters after a
+nested reset, preserve sibling inheritance where no ancestor is shadowed,
+and place pseudo-elements at their actual counter depth. Elements and pseudos
+with display:contents generate no counter operations; their generated text
+still participates inline. Match Chrome's signed 32-bit clamping, compounding
+of duplicate increments, and ignored overflow for general counter additions.
+HTML list ordinals retain their separately observed saturation behavior.
+Display:none pseudo suppression already worked in styling; this change
+preserves it and adds a defensive builder check, not a new visible fix.
+
+The common single increment borrows its name and allocates nothing. Scope
+cleanup scans only when a scope expires. Active counters remain bounded at
+1,024, now reporting the limit instead of silently discarding a counter.
+All work stays in the existing cancellable worker-side builder.
+
+Chrome 157 independently supplies 43 generated-text observations, with
+revision and source hash retained. New regressions cover those observations,
+mutation/reuse versus fresh layout, and bounded scope storage. All 538 release
+browser/web/JS tests pass (two existing ignored), as do the workspace release
+build and formatting. All 30 native before/after reviews pass across light,
+dark and night with live 1, 1.25, 1.5, 1.75, 2× changes at window x=49.
+Artifacts and harnesses are in `measurements/2026-11-09-counters`.
+
+The independent 1000×578 Chrome page screenshot still differs at 19,674 of
+578,000 pixels (16,310 differ by more than 10 in a channel). Differences
+visually concentrate in text; their causes are not yet isolated. This is an
+explicit pixel-equivalence failure. Implicit list-item integration, reversed
+CSS counters, style containment and computed integer serialization remain
+open. No website is newly accepted.
+
+Release costs are in `measurements/2026-11-09-css-counters.json`. Both sweeps
+are retained. The repeat alternates baseline/candidate/candidate/baseline,
+seven reloads per launch, for equivalent-output 1,000-row fixtures. CPU is
+whole-process CPU across reloads, not isolated worker CPU; ready is not
+presentation latency. Medians:
+
+| Measurement | Before | After |
+|---|---:|---:|
+| Counters CPU / ready / box build | 49.29 / 34.5 / 2.05 ms | 52.86 / 40 / 1.5 ms |
+| Hidden pseudo CPU / ready / box build | 27.86 / 18 / 0.8 ms | 30.71 / 17.5 / 0.8 ms |
+| Ordinary CPU / ready / box build | 27.86 / 15 / 0.8 ms | 32.14 / 20 / 1.05 ms |
+| Counters drag / wheel first movement | 29.1 / 8.45 ms | 29 / 11.95 ms |
+| Hidden pseudo drag / wheel first movement | 30.1 / 10.15 ms | 26.65 / 7.8 ms |
+| Ordinary drag / wheel first movement | 30.8 / 13.05 ms | 26.8 / 9.8 ms |
+
+Every idle sample has zero CPU, wakeups and frames. Other agents compiled
+continuously during the repeat; process observations and load averages are
+retained. Drag/wheel hitches total 46/33, 48/45 and 14/37 before/after for
+counter/hidden/ordinary pages; slowest draws are 14.28/3.31, 2.44/2.88 and
+2.85/16.56 ms. These are contended measurements, not a speedup or a clean
+performance pass. Increased CPU/load medians need an uncontended rerun.

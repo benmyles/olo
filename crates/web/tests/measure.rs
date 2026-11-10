@@ -179,6 +179,66 @@ fn list_numbering_matches_chrome() {
     }
 }
 #[test]
+fn css_counter_sequencing_matches_chrome() {
+    use sha2::{Digest, Sha256};
+    let oracle: serde_json::Value = serde_json::from_str(include_str!("counter-fixtures/chrome.json")).unwrap();
+    assert_eq!(format!("{:x}", Sha256::digest(include_bytes!("counter-fixtures/counters.html"))), oracle["source_sha256"]);
+    let (measurer, host, doc, viewport) = measurer_for(include_str!("counter-fixtures/counters.html"));
+    let m = measurer.measure(&doc, &host, &mut shaping::Engine::default(), viewport, None, None).unwrap();
+    let mut errors = Vec::new();
+    for row in oracle["rows"].as_array().unwrap() {
+        let id = row["id"].as_str().unwrap();
+        let got = marker_number(&m, find(&doc, id));
+        let expected = row["generated"].as_str().unwrap().trim_end();
+        if got != expected {
+            errors.push(format!("#{id}: {got:?} != {expected:?}"));
+        }
+    }
+    assert!(errors.is_empty(), "{}", errors.join("\n"));
+}
+#[test]
+fn css_counters_follow_pseudo_and_element_mutations() {
+    let (measurer, host, mut doc, viewport) = measurer_for(
+        "<!doctype html><style>body{counter-reset:n 0}#a::before{content:counter(n);counter-increment:n 2}#b::before{content:counter(n)}#a.off::before{display:none}#a.contents::before{display:contents}</style><div id=a>A</div><div id=b>B</div>",
+    );
+    let mut shaper = shaping::Engine::default();
+    let mut last = measurer.measure(&doc, &host, &mut shaper, viewport, None, None).unwrap();
+    for (attribute, value, expected) in [
+        ("style", "display:none", ["", "0"]),
+        ("style", "display:contents", ["2", "2"]),
+        ("class", "off", ["", "0"]),
+        ("class", "contents", ["0", "0"]),
+        ("class", "", ["2", "2"]),
+        ("style", "counter-reset:n 10", ["12", "0"]),
+        ("style", "counter-set:n 10", ["12", "12"]),
+        ("style", "counter-increment:n 3", ["5", "5"]),
+    ] {
+        doc.set_attribute(find(&doc, "a"), attribute, value).unwrap();
+        let next = measurer.measure(&doc, &host, &mut shaper, viewport, Some(last), None).unwrap();
+        let fresh = measurer.measure(&doc, &host, &mut shaper, viewport, None, None).unwrap();
+        for (id, expected) in ["a", "b"].into_iter().zip(expected) {
+            let n = find(&doc, id);
+            assert_eq!(marker_number(&next, n), expected, "#{id} after {attribute}={value}");
+            assert_eq!(marker_number(&next, n), marker_number(&fresh, n));
+            assert_eq!(next.border_box(n), fresh.border_box(n));
+        }
+        last = next;
+    }
+}
+#[test]
+fn css_counter_scope_storage_is_bounded() {
+    let source = format!("<!doctype html><body id=body>{}", (0..1024).map(|i| format!("<div style='counter-reset:n{i}'>A</div>")).collect::<String>());
+    let (measurer, host, mut doc, viewport) = measurer_for(&source);
+    let mut shaper = shaping::Engine::default();
+    let last = measurer.measure(&doc, &host, &mut shaper, viewport, None, None).unwrap();
+    let body = find(&doc, "body");
+    let extra = doc.create_element("div", olo_web::dom::Namespace::Html).unwrap();
+    doc.set_attribute(extra, "style", "counter-reset:overflow").unwrap();
+    doc.append_child(body, extra).unwrap();
+    let error = measurer.measure(&doc, &host, &mut shaper, viewport, Some(last), None).err().expect("a counter beyond the active scope limit fails explicitly");
+    assert!(matches!(error.downcast_ref::<layout::Error>(), Some(layout::Error::Limit)), "{error}");
+}
+#[test]
 fn list_numbering_follows_mutations_and_reuse() {
     let (measurer, host, mut doc, viewport) = measurer_for("<!doctype html><ol id=o><li id=a>A</li><li id=b>B</li><li id=c>C</li></ol>");
     let mut shaper = shaping::Engine::default();

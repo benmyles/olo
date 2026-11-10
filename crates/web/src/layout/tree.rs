@@ -497,6 +497,14 @@ struct ListCounter {
     value: i64,
     step: i32,
 }
+struct Counter {
+    name: Arc<str>,
+    value: i32,
+    origin_depth: usize,
+    // A reset shadowing an ancestor ends with its own element. Without
+    // an ancestor of that name, following siblings inherit the counter.
+    end_depth: usize,
+}
 struct Pending {
     container: BoxId,
     /// The anonymous text box, created when the paragraph starts so atomic
@@ -531,10 +539,9 @@ pub struct BuildJob<'a> {
     open: Vec<OpenInline>,
     /// The last ordinal given in each list (by the list's node).
     list_counters: crate::dom::NodeMap<ListCounter>,
-    /// CSS counters in scope (CSS Lists 3 §4): each its name, value and the
-    /// depth of the frame it belongs to (it ends when that frame does: an
-    /// element's counter reaches its following siblings).
-    counters: Vec<(Arc<str>, i64, usize)>,
+    /// Active CSS counters, with their originating and ending scopes.
+    counters: Vec<Counter>,
+    counter_max_end: usize,
     /// How deep quotes are nested (open-quote and close-quote).
     quote_depth: usize,
     stack: Vec<Cursor>,
@@ -581,6 +588,7 @@ impl<'a> BuildJob<'a> {
             open: Vec::new(),
             list_counters: Default::default(),
             counters: Vec::new(),
+            counter_max_end: 0,
             quote_depth: 0,
             stack: vec![Cursor {
                 next: document.composed_first_child(document.root())?,
@@ -846,14 +854,10 @@ impl<'a> BuildJob<'a> {
             self.list_counters.insert(owner, ListCounter { value, step });
         }
         let change = |property| match s.value(property) {
-            Value::Content(c) => {
-                c.0.iter()
-                    .filter_map(|part| match part {
-                        crate::css::properties::ContentPart::Change(name, value) if name.as_ref() == "list-item" => Some(*value),
-                        _ => None,
-                    })
-                    .fold(None::<i64>, |previous, value| Some(if property == Property::CounterIncrement { previous.unwrap_or(0).saturating_add(value) } else { value }))
-            }
+            Value::Content(c) => Self::counter_changes(&c.0)
+                .filter(|(name, _)| name.as_ref() == "list-item")
+                .fold(None::<i32>, |previous, (_, value)| Some(if property == Property::CounterIncrement { previous.unwrap_or(0).saturating_add(value) } else { value }))
+                .map(i64::from),
             _ => None,
         };
         let explicit = if self.document.namespace(node)? == Some(crate::dom::Namespace::Html) && self.document.name(node)? == Some("li") {
@@ -902,52 +906,101 @@ impl<'a> BuildJob<'a> {
         self.append(node, marker, text_style, &text, None)?;
         self.flush()
     }
+    fn add_counter(&mut self, name: Arc<str>, value: i32, depth: usize, end_depth: usize) -> Result<()> {
+        if self.counters.len() >= 1024 {
+            return Err(Error::Limit);
+        }
+        self.counter_max_end = self.counter_max_end.max(end_depth);
+        self.counters.push(Counter { name, value, origin_depth: depth, end_depth });
+        Ok(())
+    }
+    fn change_counter(&mut self, name: &Arc<str>, value: i32, add: bool, depth: usize) -> Result<()> {
+        if let Some(c) = self.counters.iter_mut().rev().find(|c| &c.name == name) {
+            c.value = if add { c.value.checked_add(value).unwrap_or(c.value) } else { value };
+            Ok(())
+        } else {
+            self.add_counter(name.clone(), value, depth, depth)
+        }
+    }
+    fn end_counters(&mut self, depth: usize) {
+        // Most visited nodes end no counter scope. Only scan the active
+        // counters when one actually expires, not on every visited node.
+        if self.counter_max_end > depth {
+            self.counters.retain(|c| c.end_depth <= depth);
+            self.counter_max_end = self.counters.iter().map(|c| c.end_depth).max().unwrap_or(0);
+        }
+    }
+    fn counter_changes(parts: &[crate::css::properties::ContentPart]) -> impl Iterator<Item = (&Arc<str>, i32)> {
+        parts.iter().filter_map(|part| match part {
+            crate::css::properties::ContentPart::Change(name, value) => Some((name, (*value).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32)),
+            _ => None,
+        })
+    }
+    /// Reset, increment, then set. Duplicate increments compound with
+    /// signed 32-bit saturation; adding that increment to the counter
+    /// leaves its old value when the result would overflow (as Blink).
+    fn apply_counters(&mut self, s: &Style, depth: usize) -> Result<()> {
+        use crate::css::properties::ContentPart as C;
+        let list = |p: Property| -> &[C] {
+            match s.value(p) {
+                Value::Content(c) => &c.0,
+                _ => &[],
+            }
+        };
+        for (name, value) in Self::counter_changes(list(Property::CounterReset)) {
+            if let Some(i) = self.counters.iter().rposition(|c| &c.name == name && c.origin_depth == depth) {
+                self.counters.remove(i);
+            }
+            let shadowed = self.counters.iter().any(|c| &c.name == name);
+            self.add_counter(name.clone(), value, depth, depth + usize::from(shadowed))?;
+        }
+        let parts = list(Property::CounterIncrement);
+        if parts.len() == 1 {
+            if let Some((name, value)) = Self::counter_changes(parts).next() {
+                self.change_counter(name, value, true, depth)?;
+            }
+        } else if !parts.is_empty() {
+            let mut increments = std::collections::HashMap::<&Arc<str>, i32>::new();
+            for (name, value) in Self::counter_changes(parts) {
+                let increment = increments.entry(name).or_default();
+                *increment = increment.saturating_add(value);
+            }
+            for (name, value) in increments {
+                self.change_counter(name, value, true, depth)?;
+            }
+        }
+        for (name, value) in Self::counter_changes(list(Property::CounterSet)) {
+            self.change_counter(name, value, false, depth)?;
+        }
+        Ok(())
+    }
     /// The element's `::before` or `::after` content, if it has any: text in
     /// the pseudo-element's style, as an inline run of the paragraph, an
     /// atomic inline, or a block of its own (CSS Generated Content 3 §2).
-    /// An element's (or pseudo-element's) `counter-reset`, `counter-set`
-    /// and `counter-increment`, in that order (CSS Lists 3 §4.2), its new
-    /// counters belonging to the frame at `depth`.
-    fn apply_counters(&mut self, s: &Style, depth: usize) {
-        use crate::css::properties::ContentPart as C;
-        let list = |p: Property| match s.value(p) {
-            Value::Content(c) => c.0.iter().filter_map(|x| if let C::Change(n, v) = x { Some((n.clone(), *v)) } else { None }).collect::<Vec<_>>(),
-            _ => Vec::new(),
-        };
-        for (name, value) in list(Property::CounterReset) {
-            match self.counters.iter().rposition(|c| c.0 == name) {
-                // A sibling's counter of the name: this one takes its place.
-                Some(i) if self.counters[i].2 == depth => self.counters[i].1 = value,
-                _ if self.counters.len() < 1024 => self.counters.push((name, value, depth)),
-                _ => {}
-            }
-        }
-        for (name, value, add) in list(Property::CounterSet).into_iter().map(|(n, v)| (n, v, false)).chain(list(Property::CounterIncrement).into_iter().map(|(n, v)| (n, v, true))) {
-            match self.counters.iter().rposition(|c| c.0 == name) {
-                Some(i) => self.counters[i].1 = if add { self.counters[i].1.saturating_add(value) } else { value },
-                // None in scope: one made here, from 0.
-                None if self.counters.len() < 1024 => self.counters.push((name, value, depth)),
-                None => {}
-            }
-        }
-    }
     fn generated(&mut self, node: NodeId, container: BoxId, pseudo: PseudoElement) -> Result<()> {
         let styles = self.styles.clone();
         let Some(s) = styles.pseudo(node, pseudo) else { return Ok(()) };
+        let Value::Display(display) = s.value(Property::Display) else { return Err(Error::Invalid) };
+        if *display == Display::None {
+            return Ok(());
+        }
+        let depth = self.stack.len();
         let key = StyleKey::pseudo(node, pseudo);
         let mut text = String::new();
         // Its own counters first (a ::before counting itself), within the
         // element.
-        self.apply_counters(s, self.stack.len() + 1);
+        if *display != Display::Contents {
+            self.apply_counters(s, depth)?;
+        }
         if let Value::Content(content) = s.value(Property::Content) {
             use crate::css::properties::ContentPart as C;
             for part in content.0.iter() {
                 match part {
                     C::Text(t) => text.push_str(t),
                     C::Attr(name) => text.push_str(self.document.attribute(node, name)?.unwrap_or("")),
-                    C::Counter(name, style) => text.push_str(&counter_text(*style, self.counters.iter().rev().find(|c| c.0 == *name).map_or(0, |c| c.1))),
+                    C::Counter(name, style) => text.push_str(&counter_text(*style, self.counters.iter().rev().find(|c| c.name == *name).map_or(0, |c| i64::from(c.value)))),
                     C::Counters(name, separator, style) => {
-                        let values: Vec<String> = self.counters.iter().filter(|c| c.0 == *name).map(|c| counter_text(*style, c.1)).collect();
+                        let values: Vec<String> = self.counters.iter().filter(|c| c.name == *name).map(|c| counter_text(*style, i64::from(c.value))).collect();
                         text.push_str(&if values.is_empty() { counter_text(*style, 0) } else { values.join(separator) });
                     }
                     C::Quote(open, shows) => {
@@ -979,10 +1032,10 @@ impl<'a> BuildJob<'a> {
                 }
             }
         }
-        let Value::Display(display) = s.value(Property::Display) else { return Err(Error::Invalid) };
         let absolute = matches!(s.value(Property::Position), Value::Keyword(Keyword::Absolute | Keyword::Fixed));
         match *display {
             Display::None => {}
+            Display::Contents => self.append(node, container, key, &text, None)?,
             Display::Box { outer: Outer::Inline, inner: Inner::Flow, .. } if !absolute => self.append(node, container, key, &text, None)?,
             Display::Box { outer: Outer::Inline, inner: Inner::FlowRoot | Inner::Flex | Inner::Grid | Inner::Table, .. } if !absolute => {
                 // An atomic inline: its text is its own paragraph, built now.
@@ -1008,6 +1061,7 @@ impl<'a> BuildJob<'a> {
                 }
             }
         }
+        self.end_counters(depth);
         Ok(())
     }
     /// A replaced element or atomic inline in its paragraph: the object
@@ -1087,6 +1141,8 @@ impl<'a> BuildJob<'a> {
         check(self.cancel)?;
         for _ in 0..budget {
             check(self.cancel)?;
+            let depth = self.stack.len();
+            self.end_counters(depth);
             let Some(frame) = self.stack.last_mut() else {
                 self.flush()?;
                 self.progress.finished = true;
@@ -1104,7 +1160,7 @@ impl<'a> BuildJob<'a> {
                 self.stack.pop();
                 // The counters its elements made end with it.
                 let depth = self.stack.len();
-                self.counters.retain(|c| c.2 <= depth);
+                self.end_counters(depth);
                 if inline {
                     self.close_inline()?;
                 }
@@ -1141,7 +1197,9 @@ impl<'a> BuildJob<'a> {
                     if display == Display::None {
                         continue;
                     }
-                    self.apply_counters(s, self.stack.len());
+                    if display != Display::Contents {
+                        self.apply_counters(s, self.stack.len())?;
+                    }
                     let name = self.document.name(node)?;
                     let namespace = self.document.namespace(node)?;
                     if s.axes().writing_mode != WritingMode::HorizontalTb {
