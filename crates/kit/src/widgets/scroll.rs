@@ -43,7 +43,8 @@ struct Held {
     last: std::time::Instant,
 }
 
-/// What a bar keeps for itself (its element's state).
+/// What a bar keeps for itself (its element's state). (Its knob, an
+/// element of its own over the track, keeps whether it's held.)
 #[derive(Default)]
 struct BarState {
     held: Option<Held>,
@@ -154,14 +155,15 @@ impl Bar {
         }
     }
 
-    fn paint(&self, g: &mut Painter, bar: Bounds<Pixels>) {
+    /// The bar without its knob: the track and the arrows (drawn again
+    /// when one is pressed or let go, or there comes to be something,
+    /// or nothing, to scroll).
+    fn paint_ground(&self, g: &mut Painter, bar: Bounds<Pixels>, held: Option<Part>, enabled: bool) {
         // (Part of its scroll view, for the layout review: it sits in the
         // view's frame as the kit draws it.)
         crate::review::scroll_area(g, bar);
         let p = theme::palette();
         let geo = self.geometry(bar, g.scale_factor());
-        let enabled = geo.max > 0.5;
-        let held = g.node_state::<BarState>().held;
         // The track: recessed, a shade darker than the panel.
         let bg = p.panel_background;
         style::fill_rect(g, bar, style::shade(&p, bg, 1.1));
@@ -170,19 +172,27 @@ impl Bar {
         } else {
             style::hline(g, bar.left(), bar.right(), bar.top(), style::shade(&p, bg, 1.35));
         }
-        let down = |part| held.is_some_and(|h| h.part == part) && enabled;
+        let down = |part| held == Some(part) && enabled;
         let (d0, d1) = if self.vertical { (Arrow::Up, Arrow::Down) } else { (Arrow::Left, Arrow::Right) };
         arrow_button(g, geo.back, d0, down(Part::Back), enabled, &p);
         arrow_button(g, geo.forward, d1, down(Part::Forward), enabled, &p);
+        for (b, name) in [(geo.back, d0.name()), (geo.forward, d1.name())] {
+            g.agent(agent::Node { role: "Button", name: Some(name.into()), bounds: b, enabled, clickable: enabled, ..Default::default() });
+        }
+    }
+
+    /// The knob, where its scroller is now: all that's drawn again as it
+    /// scrolls.
+    fn paint_knob(&self, g: &mut Painter, bar: Bounds<Pixels>, held: bool) {
+        let p = theme::palette();
+        let geo = self.geometry(bar, g.scale_factor());
+        let enabled = geo.max > 0.5;
         if let Some(k) = geo.knob {
-            knob(g, k, self.vertical, down(Part::Knob), &p);
+            knob(g, k, self.vertical, held && enabled, &p);
         }
         let (offset, _, _) = self.offsets();
         let at = if geo.max > 0.0 { (offset / geo.max).clamp(0.0, 1.0).abs() } else { 0.0 };
         g.agent(agent::Node { role: "ScrollBar", name: Some("Scroll Bar".into()), value: Some(SharedString::from(format!("{at:.2}"))), bounds: geo.track, enabled, ..Default::default() });
-        for (b, name) in [(geo.back, d0.name()), (geo.forward, d1.name())] {
-            g.agent(agent::Node { role: "Button", name: Some(name.into()), bounds: b, enabled, clickable: enabled, ..Default::default() });
-        }
     }
 
     fn mouse_down(&self, e: &MouseDownEvent, cx: &mut WindowCx) {
@@ -204,7 +214,13 @@ impl Bar {
         }
         let now = std::time::Instant::now();
         cx.node_state::<BarState>().held = Some(Held { part, at: self.along(e.position), offset, since: now, last: now });
-        cx.repaint();
+        if part == Part::Knob {
+            if let Some(held) = cx.child_state::<bool>(0) {
+                *held = true;
+            }
+        } else {
+            cx.repaint();
+        }
         cx.stop_propagation();
         if matches!(part, Part::Back | Part::Forward) {
             self.scroll_on(cx);
@@ -245,8 +261,14 @@ impl Bar {
     }
 
     fn mouse_up(&self, cx: &mut WindowCx) {
-        if cx.node_state::<BarState>().held.take().is_some() {
-            cx.repaint();
+        match cx.node_state::<BarState>().held.take().map(|h| h.part) {
+            Some(Part::Knob) => {
+                if let Some(held) = cx.child_state::<bool>(0) {
+                    *held = false;
+                }
+            }
+            Some(_) => cx.repaint(),
+            None => {}
         }
     }
 }
@@ -254,21 +276,41 @@ impl Bar {
 impl IntoElement for ScrollBar {
     fn into_element(self) -> Element {
         let bar = Bar { handle: self.handle.clone(), vertical: self.vertical };
-        let (painted, pressed, moved, released) = (bar.clone(), bar.clone(), bar.clone(), bar);
-        // (Drawn again when its scroller moves or a part of it is held:
-        // not for the view that holds it saying what it shows again.)
-        canvas(move |g, bounds| painted.paint(g, bounds))
-            .paint_key(self.vertical as u64)
-            .size_full()
-            .cursor(CursorStyle::Arrow)
-            .watch_scroll(&self.handle)
-            .on_mouse_down(MouseButton::Left, move |e, cx| pressed.mouse_down(e, cx))
-            .on_window_mouse_move(move |e, cx| moved.mouse_move(e, cx))
-            .on_window_mouse_up(move |e, cx| {
-                if e.button == MouseButton::Left {
-                    released.mouse_up(cx)
-                }
+        let (ground, knob, pressed, moved, released) = (bar.clone(), bar.clone(), bar.clone(), bar.clone(), bar);
+        // The track and arrows under, the knob over them: only the knob
+        // is drawn again as its scroller moves (and neither for the view
+        // that holds the bar saying what it shows again).
+        let enabled = |handle: &ScrollHandle, vertical: bool| if vertical { handle.max_offset().height > px(0.5) } else { handle.max_offset().width > px(0.5) };
+        let (ground_handle, vertical) = (self.handle.clone(), self.vertical);
+        canvas(move |g, bounds| {
+            let held = g.node_state::<BarState>().held.map(|h| h.part);
+            ground.paint_ground(g, bounds, held, enabled(&ground_handle, vertical));
+        })
+        .paint_key(self.vertical as u64)
+        .relative()
+        .size_full()
+        .cursor(CursorStyle::Arrow)
+        // (Its arrows grey when there's nothing to scroll: its ends.)
+        .watch_scroll_ends(&self.handle)
+        .on_mouse_down(MouseButton::Left, move |e, cx| pressed.mouse_down(e, cx))
+        .on_window_mouse_move(move |e, cx| moved.mouse_move(e, cx))
+        .on_window_mouse_up(move |e, cx| {
+            if e.button == MouseButton::Left {
+                released.mouse_up(cx)
+            }
+        })
+        .child(
+            canvas(move |g, bounds| {
+                let held = g.node_state::<bool>();
+                let held = *held;
+                knob.paint_knob(g, bounds, held);
             })
+            .paint_key(self.vertical as u64)
+            .absolute()
+            .inset_0()
+            .watch_scroll(&self.handle)
+            .id("knob"),
+        )
     }
 }
 

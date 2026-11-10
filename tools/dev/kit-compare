@@ -5,7 +5,7 @@ move from one to the other.
 
   kit-compare OLD NEW [ARGS...] [--scales 1,1.5,2] [--themes light,dark]
               [--size WxH] [--out DIR] [--tolerance N] [--settle SECONDS]
-              [--do STEPS]
+              [--do STEPS] [--env VAR=VAL]...
 
 OLD and NEW are programs as `tsession run` takes them (a name in
 target/<profile> or its examples, or a path). Each is started alone in a
@@ -37,11 +37,11 @@ def windows():
         return []
 
 
-def shot(program, args, scale, theme, size, settle, path, steps=()):
+def shot(program, args, scale, theme, size, settle, path, steps=(), env=()):
     tsession("stop", NAME, check=False)
     tsession("start", NAME, size, f"--{theme}", "--scale", str(scale))
     try:
-        tsession("run", NAME, program, *args)
+        tsession("run", NAME, *env, program, *args)
         deadline = time.time() + 20
         win = None
         while time.time() < deadline:
@@ -97,6 +97,9 @@ def main():
     tolerance = int(opt("--tolerance", "0"))
     settle = float(opt("--settle", "1.0"))
     steps = [w.strip() for w in opt("--do", "").split(";")]
+    env = []
+    while "--env" in a:
+        env.append(opt("--env", ""))
     if len(a) < 2:
         sys.exit(__doc__)
     old, new, args = a[0], a[1], a[2:]
@@ -108,8 +111,8 @@ def main():
         for theme in themes:
             tag = f"{scale}x-{theme}"
             po, pn = os.path.join(out, f"old-{tag}.png"), os.path.join(out, f"new-{tag}.png")
-            co = shot(old, args, scale, theme, size, settle, po, steps)
-            cn = shot(new, args, scale, theme, size, settle, pn, steps)
+            co = shot(old, args, scale, theme, size, settle, po, steps, env)
+            cn = shot(new, args, scale, theme, size, settle, pn, steps, env)
             io, inew = Image.open(po).convert("RGB"), Image.open(pn).convert("RGB")
             if io.size != inew.size:
                 print(f"DIFF {tag}: sizes differ, {io.size} and {inew.size} (content {co['width']}x{co['height']} and {cn['width']}x{cn['height']})")

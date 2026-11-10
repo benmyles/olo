@@ -104,6 +104,9 @@ pub(crate) struct Node {
     pub(crate) scroll: Option<crate::ScrollHandle>,
     /// What it keeps for itself (`Painter::node_state`).
     pub(crate) state: Option<Box<dyn Any>>,
+    /// What it holds is rows made as they come near what shows, and
+    /// which of them are there now.
+    pub(crate) rows: Option<(crate::element::RowsSpec, std::ops::Range<usize>)>,
     /// What it drew behind what it holds (its ground and its own
     /// content), and over it (its border), where it was when it did.
     pub(crate) behind: Option<Arc<Recording>>,
@@ -194,7 +197,8 @@ impl WindowCore {
 
     /// A node for `element`, and nodes for all it holds.
     pub(crate) fn create(&mut self, element: Element, owner: ViewId, parent: Option<NodeId>) -> NodeId {
-        let Element { kind, style: refinement, key, children, inter } = element;
+        let Element { kind, style: refinement, key, children, inter, rows } = element;
+        let kind = self.keyed(kind, owner);
         if let Kind::View(view) = kind {
             return self.place_view(view, parent);
         }
@@ -231,6 +235,7 @@ impl WindowCore {
             focused: false,
             scroll: None,
             state: None,
+            rows: None,
             behind: None,
             over: None,
             painted_at: Point::default(),
@@ -245,6 +250,12 @@ impl WindowCore {
             self.window_listeners.push(id);
         }
         self.follow_scroll(id);
+        // (Rows: made once it's laid out, and what shows of it is
+        // known.)
+        if let Some(spec) = rows {
+            self.nodes[id].rows = Some((spec, 0..0));
+            self.row_nodes.push(id);
+        }
         if !children.is_empty() {
             let made: Vec<NodeId> = children.into_iter().map(|child| self.create(child, owner, Some(id))).collect();
             let layouts: SmallVec<[LayoutId; 16]> = made.iter().map(|c| self.nodes[*c].layout).collect();
@@ -297,6 +308,7 @@ impl WindowCore {
             focused: false,
             scroll: None,
             state: None,
+            rows: None,
             behind: None,
             over: None,
             painted_at: Point::default(),
@@ -350,6 +362,7 @@ impl WindowCore {
 
     /// A node is gone: nothing points at it any more.
     fn forget(&mut self, id: NodeId) {
+        self.row_nodes.retain(|n| *n != id);
         self.window_listeners.retain(|n| *n != id);
         self.hovered.retain(|n| *n != id);
         self.pressed.retain(|(n, _)| *n != id);
@@ -358,9 +371,27 @@ impl WindowCore {
         }
     }
 
+    /// A drawing keyed by what its view says (`Element::key_by`) gets
+    /// its key: asked for as the element takes its place, the view back
+    /// in its own after saying what it shows.
+    fn keyed(&self, kind: Kind, owner: ViewId) -> Kind {
+        match kind {
+            Kind::Canvas(mut spec) => {
+                if let Some(key_by) = &spec.key_by
+                    && let Some(view) = self.views.get(owner).and_then(|v| v.view.as_ref())
+                {
+                    spec.key = Some(key_by(view.as_any()));
+                }
+                Kind::Canvas(spec)
+            }
+            other => other,
+        }
+    }
+
     /// Brings a node in line with what `body` now says it is.
     pub(crate) fn reconcile(&mut self, id: NodeId, element: Element, owner: ViewId) {
-        let Element { kind, style: refinement, key, children, inter } = element;
+        let Element { kind, style: refinement, key, children, inter, rows } = element;
+        let kind = self.keyed(kind, owner);
         let (rem_size, scale_factor) = (self.gfx.rem_size, self.gfx.scale_factor);
         let mut repaint = false;
         let mut text_changed = false;
@@ -467,7 +498,65 @@ impl WindowCore {
         } else if repaint {
             self.mark_paint(id);
         }
+        // Rows: the ones there now, made again (what they show may have
+        // changed); which are wanted is looked at once it's laid out.
+        let children = match rows {
+            Some(spec) => {
+                let node = &mut self.nodes[id];
+                let near = match node.rows.take() {
+                    Some((_, near)) => near.start.min(spec.count)..near.end.min(spec.count),
+                    None => {
+                        self.row_nodes.push(id);
+                        0..0
+                    }
+                };
+                let made = place_rows(&spec, near.clone());
+                self.nodes[id].rows = Some((spec, near));
+                made
+            }
+            None => {
+                if self.nodes[id].rows.take().is_some() {
+                    self.row_nodes.retain(|n| *n != id);
+                }
+                children
+            }
+        };
         self.reconcile_children(id, children, owner);
+    }
+
+    /// Rows are made for what can be seen now of everything that holds
+    /// rows (it scrolled, or was laid out). Whether any were.
+    pub(crate) fn update_rows(&mut self) -> bool {
+        let mut any = false;
+        for i in 0..self.row_nodes.len() {
+            let id = self.row_nodes[i];
+            let Some(node) = self.nodes.get(id) else { continue };
+            let Some((spec, near)) = &node.rows else { continue };
+            if !self.is_attached(id) {
+                continue;
+            }
+            // The rows that can be seen (what can be seen is already
+            // taken to a grid, with room to spare: `visible_at`).
+            let visible =
+                self.visible_at(id).intersect(&Bounds { origin: point(px(-1.0e7), node.bounds.top()), size: crate::size(px(2.0e7), node.bounds.size.height.max(spec.row_height * spec.count as f32)) });
+            let h = spec.row_height.0.max(1.0);
+            let wanted = if visible.size.height > px(0.) {
+                let first = ((visible.top() - node.bounds.top()).0 / h).floor().max(0.0) as usize;
+                let last = ((visible.bottom() - node.bounds.top()).0 / h).ceil().max(0.0) as usize;
+                first.min(spec.count)..last.min(spec.count)
+            } else {
+                0..0
+            };
+            if wanted == *near {
+                continue;
+            }
+            let (spec, owner) = (spec.clone(), node.owner);
+            let made = place_rows(&spec, wanted.clone());
+            self.nodes[id].rows = Some((spec, wanted));
+            self.reconcile_children(id, made, owner);
+            any = true;
+        }
+        any
     }
 
     fn reconcile_children(&mut self, id: NodeId, children: Vec<Element>, owner: ViewId) {
@@ -707,6 +796,16 @@ impl WindowCore {
         let Some(node) = self.nodes.get(id) else { return Bounds::default() };
         Bounds { origin: node.bounds.origin + self.shift_at(id), size: node.bounds.size }
     }
+}
+
+/// The elements of rows `near`, each put at its row.
+fn place_rows(spec: &crate::element::RowsSpec, near: std::ops::Range<usize>) -> Vec<Element> {
+    use crate::Styled as _;
+    if near.is_empty() {
+        return Vec::new();
+    }
+    let made = (spec.make)(near.clone());
+    made.into_iter().zip(near).map(|(row, at)| row.absolute().left(px(0.)).top(spec.row_height * at as f32).h(spec.row_height)).collect()
 }
 
 /// The grid what can be seen inside a scroller is taken to (points).

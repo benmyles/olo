@@ -367,5 +367,6 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut AppCx)) {
         crate::agent::init();
         build(app)
     });
+    crate::kept::write();
     olo_kit_base::store::flush();
 }

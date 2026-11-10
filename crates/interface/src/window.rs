@@ -105,9 +105,9 @@ pub(crate) struct WindowCore {
     pub(crate) layers: Vec<Layer>,
     pub(crate) wheel: Vec<WheelRegion>,
     pub(crate) scrollers: FxHashMap<u64, NodeId>,
-    pub(crate) watchers: Vec<(u64, NodeId)>,
-    /// Scrollers that moved, whose listeners and watchers haven't heard.
-    pub(crate) scroll_changed: Vec<u64>,
+    pub(crate) watchers: Vec<(u64, u8, NodeId)>,
+    /// Scrollers that moved (and which ways), whose listeners and watchers haven't heard.
+    pub(crate) scroll_changed: Vec<(u64, u8)>,
     /// Scrollers asked to go somewhere once layout is done.
     pub(crate) scroll_asks: Vec<crate::ScrollHandle>,
     /// What the pointer is over may have changed under it (something
@@ -115,6 +115,8 @@ pub(crate) struct WindowCore {
     pub(crate) hover_stale: bool,
     /// Nodes drawn by what can be seen of them.
     pub(crate) by_visible: Vec<NodeId>,
+    /// Nodes that hold rows made as they come near what shows.
+    pub(crate) row_nodes: Vec<NodeId>,
     /// Layout is to be worked out again though nothing in the tree says
     /// so (the window's size changed).
     pub(crate) relayout: bool,
@@ -131,6 +133,8 @@ pub(crate) struct WindowCore {
     pub(crate) focus: Option<NodeId>,
     /// A view to be given the keyboard once it's in the tree.
     pub(crate) pending_focus: Option<ViewId>,
+    /// An element (by its focus handle) to be given it once it is.
+    pub(crate) pending_focus_handle: Option<u64>,
     /// Nodes that hear the pointer anywhere in the window.
     pub(crate) window_listeners: Vec<NodeId>,
     /// The window has the keyboard.
@@ -157,7 +161,7 @@ struct Listing {
     layers: Vec<Layer>,
     wheel: Vec<WheelRegion>,
     scrollers: FxHashMap<u64, NodeId>,
-    watchers: Vec<(u64, NodeId)>,
+    watchers: Vec<(u64, u8, NodeId)>,
 }
 
 /// No clip at all, in device pixels.
@@ -364,6 +368,7 @@ impl WindowCore {
             scroll_asks: Vec::new(),
             hover_stale: false,
             by_visible: Vec::new(),
+            row_nodes: Vec::new(),
             relayout: true,
             everything: true,
             started: Some(Instant::now()),
@@ -373,6 +378,7 @@ impl WindowCore {
             pressed: Vec::new(),
             focus: None,
             pending_focus: None,
+            pending_focus_handle: None,
             window_listeners: Vec::new(),
             active: false,
             closed: false,
@@ -462,7 +468,9 @@ impl WindowCore {
             repaint = off(bounds.origin.x, node.painted_at.x) || off(bounds.origin.y, node.painted_at.y);
         }
         if moved {
+            // (And the pointer may be over something else now.)
             self.reshaped();
+            self.hover_stale = true;
         }
         if repaint {
             self.mark_paint(id);
@@ -520,18 +528,25 @@ impl WindowCore {
         if within != at {
             handle.put(within);
         }
-        if changed || within != at {
-            self.scroll_moved(handle.id());
+        let ways = crate::scroll::moved(at, within) | if changed { crate::scroll::ENDS } else { 0 };
+        if ways != 0 {
+            self.scroll_moved(handle.id(), ways);
         }
     }
 
     /// A scroller moved, or its ends did: the stage is told, and what
     /// hears of it or draws by it does at the next flush.
-    pub(crate) fn scroll_moved(&mut self, id: u64) {
+    pub(crate) fn scroll_moved(&mut self, id: u64, ways: u8) {
         self.reshaped();
         self.hover_stale = true;
-        if !self.scroll_changed.contains(&id) {
-            self.scroll_changed.push(id);
+        self.note_scrolled(id, ways);
+    }
+
+    /// What hears of scroller `id` is to hear it changed (`ways`).
+    fn note_scrolled(&mut self, id: u64, ways: u8) {
+        match self.scroll_changed.iter_mut().find(|(changed, _)| *changed == id) {
+            Some((_, was)) => *was |= ways,
+            None => self.scroll_changed.push((id, ways)),
         }
     }
 
@@ -587,7 +602,7 @@ impl WindowCore {
                     out.wheel.push(WheelRegion { layer, rect, kind: WheelKind::Taker });
                 }
             }
-            out.watchers.extend(inter.watches.iter().map(|watched| (*watched, id)));
+            out.watchers.extend(inter.watches.iter().map(|(watched, ways)| (*watched, *ways, id)));
         }
         let by = point(ScaledPixels(((node.bounds.origin.x.0 - node.painted_at.x.0) * scale).round()), ScaledPixels(((node.bounds.origin.y.0 - node.painted_at.y.0) * scale).round()));
         let shows = |list: &Arc<crate::stage::Recording>| !Bounds { origin: list.bounds.origin + by, size: list.bounds.size }.intersect(&clip).is_empty();
@@ -801,16 +816,16 @@ impl<'a> WindowCx<'a> {
                 continue;
             }
             any |= handle.0.shown.replace(shown) != shown;
-            if handle.0.offset.replace(offset) != offset {
+            let ways = crate::scroll::moved(handle.0.offset.replace(offset), offset);
+            if ways != 0 {
                 any = true;
-                if !self.core.scroll_changed.contains(&id) {
-                    self.core.scroll_changed.push(id);
-                }
+                self.core.note_scrolled(id, ways);
             }
         }
         if any {
             self.core.hover_stale = true;
             self.tell_scrolled();
+            self.core.update_rows();
             self.core.check_visible();
             if std::mem::take(&mut self.core.hover_stale) {
                 self.update_hover();
@@ -822,8 +837,8 @@ impl<'a> WindowCx<'a> {
     /// is drawn again.
     fn tell_scrolled(&mut self) {
         while !self.core.scroll_changed.is_empty() {
-            for id in std::mem::take(&mut self.core.scroll_changed) {
-                let watching: Vec<NodeId> = self.core.watchers.iter().filter(|(watched, _)| *watched == id).map(|(_, node)| *node).collect();
+            for (id, ways) in std::mem::take(&mut self.core.scroll_changed) {
+                let watching: Vec<NodeId> = self.core.watchers.iter().filter(|(watched, which, _)| *watched == id && which & ways != 0).map(|(_, _, node)| *node).collect();
                 for node in watching {
                     self.core.mark_paint(node);
                 }
@@ -944,6 +959,12 @@ impl<'a> WindowCx<'a> {
             if let Some(view) = self.core.pending_focus.take() {
                 self.focus_view(view);
             }
+            if let Some(handle) = self.core.pending_focus_handle.take()
+                && let Some(node) =
+                    self.core.nodes.iter().find(|(id, n)| n.inter.as_ref().is_some_and(|i| i.focus_handle == Some(handle) && !i.disabled) && self.core.is_attached(*id)).map(|(id, _)| id)
+            {
+                self.focus_node(Some(node));
+            }
             bodies_done += bodies.elapsed();
             let core = &mut *self.core;
             // Where everything goes.
@@ -964,13 +985,17 @@ impl<'a> WindowCx<'a> {
             }
             // What was asked to scroll somewhere once it was laid out.
             for handle in std::mem::take(&mut core.scroll_asks) {
-                if handle.settle() {
-                    core.scroll_moved(handle.id());
+                let ways = handle.settle();
+                if ways != 0 {
+                    core.scroll_moved(handle.id(), ways);
                 }
             }
+            // Rows that came near what shows are made (and laid out,
+            // the next time round).
+            let rows = core.update_rows();
             // (Scrolling that something heard of may have changed what a
             // view shows: round again, until it's all said.)
-            if (core.scroll_changed.is_empty() && core.dirty_views.is_empty() && !core.hover_stale) || rounds >= 8 {
+            if (core.scroll_changed.is_empty() && core.dirty_views.is_empty() && !core.hover_stale && !rows) || rounds >= 8 {
                 break;
             }
         }
@@ -1130,6 +1155,36 @@ impl<'a> WindowCx<'a> {
                 self.core.invalidate_view(view);
             }
         }
+    }
+
+    /// Gives the keyboard to the element a focus handle names (once
+    /// it's shown, if it isn't yet).
+    pub(crate) fn focus_handle(&mut self, handle: u64) {
+        let found = self.core.nodes.iter().find(|(id, n)| n.inter.as_ref().is_some_and(|i| i.focus_handle == Some(handle) && !i.disabled) && self.core.is_attached(*id)).map(|(id, _)| id);
+        match found {
+            Some(node) => self.focus_node(Some(node)),
+            None => {
+                self.core.pending_focus_handle = Some(handle);
+                self.core.needs_commit = true;
+            }
+        }
+    }
+
+    /// Whether the keyboard is with the element a focus handle names
+    /// (or, `within`, something in it).
+    pub(crate) fn handle_has_focus(&self, handle: u64, within: bool) -> bool {
+        let mut at = self.core.focus;
+        while let Some(id) = at {
+            let Some(node) = self.core.nodes.get(id) else { break };
+            if node.inter.as_ref().is_some_and(|i| i.focus_handle == Some(handle)) {
+                return true;
+            }
+            if !within {
+                break;
+            }
+            at = node.parent;
+        }
+        false
     }
 
     /// Whether the keyboard is with a view or something in it.
@@ -1368,12 +1423,30 @@ impl<'a> WindowCx<'a> {
         self.core.current = outer;
     }
 
+    /// What the `index`th element held by the one whose handler is
+    /// running keeps for itself, to change: it's drawn again. (A control
+    /// made of parts drawn apart: a scroll bar's knob over its track.)
+    pub fn child_state<T: Default + 'static>(&mut self, index: usize) -> Option<&mut T> {
+        let child = self.core.current.and_then(|id| self.core.nodes.get(id)).and_then(|n| n.children.get(index).copied())?;
+        self.core.mark_paint(child);
+        Some(crate::painter::node_state(&mut self.core.nodes.get_mut(child)?.state))
+    }
+
     /// Draws the element whose handler is running again (what it keeps
     /// for itself changed).
     pub fn repaint(&mut self) {
         if let Some(id) = self.core.current {
             self.core.mark_paint(id);
         }
+    }
+
+    /// The view that the element whose handler is running belongs to,
+    /// if it's a `V` and isn't busy: for a handler built without the
+    /// view to hand that has something to ask of it (a list's rows'
+    /// names).
+    pub fn owner_view<V: View>(&self) -> Option<&V> {
+        let owner = self.core.current.and_then(|id| self.core.nodes.get(id)).map(|n| n.owner)?;
+        self.read_view(owner)
     }
 
     /// Has the view that the element whose handler is running belongs

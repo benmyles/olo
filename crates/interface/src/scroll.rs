@@ -20,6 +20,51 @@ use crate::{Bounds, Pixels, Point, Size, WindowCx, point, px};
 
 static NEXT: AtomicU64 = AtomicU64::new(1);
 
+/// What changed about a scroller: it moved across, it moved up or
+/// down, its ends or its view did.
+pub(crate) const ACROSS: u8 = 1;
+pub(crate) const DOWN: u8 = 2;
+pub(crate) const ENDS: u8 = 4;
+pub(crate) const ANY: u8 = ACROSS | DOWN | ENDS;
+
+/// The keyboard, by name: kept by a view and given to the element that
+/// takes the keyboard ([`crate::InteractiveElement::track_focus`]), so
+/// the view can give it the keyboard and know whether it has it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FocusHandle(u64);
+
+impl Default for FocusHandle {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl FocusHandle {
+    pub fn new() -> FocusHandle {
+        FocusHandle(NEXT.fetch_add(1, Ordering::Relaxed))
+    }
+
+    pub(crate) fn id(&self) -> u64 {
+        self.0
+    }
+
+    /// Gives its element the keyboard (once it's shown, if it isn't
+    /// yet).
+    pub fn focus(&self, cx: &mut WindowCx) {
+        cx.focus_handle(self.0);
+    }
+
+    /// Whether its element has the keyboard.
+    pub fn is_focused(&self, cx: &WindowCx) -> bool {
+        cx.handle_has_focus(self.0, false)
+    }
+
+    /// Whether its element, or something in it, has the keyboard.
+    pub fn contains_focused(&self, cx: &WindowCx) -> bool {
+        cx.handle_has_focus(self.0, true)
+    }
+}
+
 /// A scroller, by name: where it is, how far it goes, and a way to move
 /// it. Kept by a view and given to the element that scrolls
 /// ([`crate::InteractiveElement::track_scroll`]); an element that
@@ -109,9 +154,10 @@ impl ScrollHandle {
     pub fn set_offset(&self, cx: &mut WindowCx, offset: Point<Pixels>) {
         let max = self.0.max.get();
         let to = point(offset.x.clamp(-max.width, px(0.)), offset.y.clamp(-max.height, px(0.)));
-        if to != self.0.offset.get() || to != self.0.shown.get() {
+        let at = self.0.offset.get();
+        if to != at || to != self.0.shown.get() {
             self.put(to);
-            cx.core.scroll_moved(self.0.id);
+            cx.core.scroll_moved(self.0.id, moved(at, to));
         }
     }
 
@@ -145,9 +191,9 @@ impl ScrollHandle {
         self.0.epoch.set(self.0.epoch.get().wrapping_add(1));
     }
 
-    /// Does what was asked of it that waited for layout. Whether it
-    /// moved.
-    pub(crate) fn settle(&self) -> bool {
+    /// Does what was asked of it that waited for layout. Which ways it
+    /// moved (0: it didn't).
+    pub(crate) fn settle(&self) -> u8 {
         let max = self.0.max.get();
         let at = self.0.offset.get();
         let mut to = at;
@@ -174,12 +220,16 @@ impl ScrollHandle {
             }
         }
         let to = point(to.x.clamp(-max.width, px(0.)), to.y.clamp(-max.height, px(0.)));
-        if to == at {
-            return false;
+        if to != at {
+            self.put(to);
         }
-        self.put(to);
-        true
+        moved(at, to)
     }
+}
+
+/// Which ways a scroller moved, going from `at` to `to`.
+pub(crate) fn moved(at: Point<Pixels>, to: Point<Pixels>) -> u8 {
+    (if at.x != to.x { ACROSS } else { 0 }) | (if at.y != to.y { DOWN } else { 0 })
 }
 
 #[cfg(test)]
@@ -199,13 +249,13 @@ mod tests {
     fn to_the_bottom_once_laid_out() {
         let h = handle(400., 200.);
         h.0.to_bottom.set(true);
-        assert!(h.settle());
+        assert_eq!(h.settle(), DOWN);
         assert_eq!(h.offset().y, px(-400.));
         // (The stage is to be told, as a move of the looper's own.)
         assert!(h.0.set.get());
         assert_eq!(h.0.epoch.get(), 1);
         // Nothing more asked: nothing moves.
-        assert!(!h.settle());
+        assert_eq!(h.settle(), 0);
     }
 
     #[test]
@@ -213,18 +263,18 @@ mod tests {
         let h = handle(400., 200.);
         // Below the view: its bottom comes to the view's bottom.
         h.0.to_item.set(Some(10));
-        assert!(h.settle());
+        assert_ne!(h.settle(), 0);
         assert_eq!(h.offset().y, px(-(330. - 200.)));
         // Already showing: it stays.
         h.0.to_item.set(Some(8));
-        assert!(!h.settle());
+        assert_eq!(h.settle(), 0);
         // Above the view: its top comes to the view's top.
         h.0.to_item.set(Some(1));
-        assert!(h.settle());
+        assert_ne!(h.settle(), 0);
         assert_eq!(h.offset().y, px(-30.));
         // Never past an end.
         h.0.to_item.set(Some(19));
-        assert!(h.settle());
+        assert_ne!(h.settle(), 0);
         assert_eq!(h.offset().y, px(-400.));
     }
 }

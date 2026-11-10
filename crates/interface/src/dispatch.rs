@@ -45,7 +45,7 @@ impl WindowCore {
         }
         if node.bounds.contains(&at)
             && clip.contains(&at)
-            && (node.style.mouse_cursor.is_some() || node.inter.as_ref().is_some_and(|i| i.takes_pointer()))
+            && (node.style.mouse_cursor.is_some() || node.inter.as_ref().is_some_and(|i| i.takes_pointer()) || node.notes.as_ref().is_some_and(|n| !n.cursors.is_empty()))
             && !node.inter.as_ref().is_some_and(|i| i.disabled)
         {
             found.push(id);
@@ -237,17 +237,32 @@ impl WindowCx<'_> {
     /// over or left.
     pub(crate) fn update_hover(&mut self) {
         let now = self.core.nodes_at(self.core.mouse);
-        if now == self.core.hovered {
-            return;
+        if now != self.core.hovered {
+            let before = std::mem::replace(&mut self.core.hovered, now.clone());
+            for id in before.iter().filter(|id| !now.contains(id)) {
+                self.set_hovered(*id, false);
+            }
+            for id in now.iter().filter(|id| !before.contains(id)) {
+                self.set_hovered(*id, true);
+            }
         }
-        let before = std::mem::replace(&mut self.core.hovered, now.clone());
-        for id in before.iter().filter(|id| !now.contains(id)) {
-            self.set_hovered(*id, false);
-        }
-        for id in now.iter().filter(|id| !before.contains(id)) {
-            self.set_hovered(*id, true);
-        }
-        let cursor = now.iter().find_map(|id| self.core.nodes.get(*id).and_then(|n| n.style.mouse_cursor)).unwrap_or(crate::CursorStyle::Arrow);
+        // The pointer's shape: the topmost thing under it that says
+        // one, for where in it the pointer is (its drawing may have
+        // said: a table's column dividers) or for all of it.
+        let at = self.core.mouse;
+        let cursor = now
+            .iter()
+            .find_map(|id| {
+                let node = self.core.nodes.get(*id)?;
+                let noted = node.notes.as_ref().filter(|n| !n.cursors.is_empty()).and_then(|notes| {
+                    let shift = self.core.shift_at(*id);
+                    let moved = crate::point(node.bounds.origin.x - node.painted_at.x + shift.x, node.bounds.origin.y - node.painted_at.y + shift.y);
+                    let at = crate::point(at.x - moved.x, at.y - moved.y);
+                    notes.cursors.iter().rev().find(|(b, _)| b.contains(&at)).map(|(_, style)| *style)
+                });
+                noted.or(node.style.mouse_cursor)
+            })
+            .unwrap_or(crate::CursorStyle::Arrow);
         self.set_cursor(cursor);
     }
 

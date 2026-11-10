@@ -470,15 +470,15 @@ impl<'a, 'b, V: View> Cx<'a, 'b, V> {
     /// A drawing of this view's (an element for its `body`): `paint` is
     /// handed the view as it is when the drawing is wanted.
     pub fn canvas(&self, paint: impl Fn(&V, &mut crate::Painter, crate::Bounds<crate::Pixels>) + 'static) -> Element {
-        Element::new(Kind::Canvas(crate::element::CanvasSpec {
-            paint: Rc::new(move |view, p, bounds, _| {
-                if let Some(view) = view.downcast_ref::<V>() {
-                    paint(view, p, bounds)
-                }
-            }),
-            key: None,
-            measure: None,
-        }))
+        crate::view_canvas(paint)
+    }
+
+    /// A handler that asks this view something and hands back its
+    /// answer (None if the view is busy or gone): for what must know at
+    /// once (whether a press on a row was taken).
+    pub fn asks<E: ?Sized + 'static, R: 'static>(&self, f: impl Fn(&mut V, &E, &mut Cx<V>) -> R + 'static) -> impl Fn(&E, &mut WindowCx) -> Option<R> + 'static {
+        let view = self.view;
+        move |event, cx| cx.update_view::<V, _>(view, |this, cx| f(this, event, cx))
     }
 
     /// Tells whoever subscribed to this view something happened to it

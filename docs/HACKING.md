@@ -2022,7 +2022,7 @@ event reaches it.
   alone (a list of things, not of columns: Passwords' items), its
   frame's line along their top; a cell drawn by hand (an icon and two
   lines) says its text to agents with `cell.say(text)`.
-  `examples/list.rs` shows one.
+  `examples/list_gpui.rs` shows one (olo-kit's: `crates/kit/examples/list.rs`).
 - `style::label_fit` (a label cut short with "…" to a width, measured
   as shaped), `style::selection_band`, `style::selection_wash` (a thing
   selected in place: the selection colour see-through, its edge

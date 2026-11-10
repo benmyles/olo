@@ -30,7 +30,8 @@ pub fn set_app_id(app_id: &str) {
     let _ = APP_ID.set(app_id.to_owned());
 }
 
-fn app_id() -> &'static str {
+/// The program's id ("olo.deskcalc"), as `set_app_id` was given it.
+pub fn app_id() -> &'static str {
     APP_ID.get().map_or("", String::as_str)
 }
 

@@ -157,8 +157,13 @@ pub(crate) struct CanvasSpec {
     /// last time (and the same size and state), it isn't drawn again when
     /// its view's `body` runs.
     pub(crate) key: Option<u64>,
+    /// The key, worked out from the view when the element takes its
+    /// place in the tree (`key_by`).
+    pub(crate) key_by: Option<KeyFn>,
     pub(crate) measure: Option<MeasureFn>,
 }
+
+pub(crate) type KeyFn = Rc<dyn Fn(&dyn Any) -> u64>;
 
 pub(crate) struct TextSpec {
     pub(crate) text: SharedString,
@@ -242,7 +247,9 @@ pub(crate) struct Interactivity {
     pub(crate) scroll_listeners: SmallVec<[Listener<Point<Pixels>>; 1]>,
     /// Scrollers it draws by (a scroll bar): it's drawn again when one
     /// moves or its ends do.
-    pub(crate) watches: SmallVec<[u64; 1]>,
+    pub(crate) watches: SmallVec<[(u64, u8); 1]>,
+    /// The name the keyboard is given to it by (`track_focus`).
+    pub(crate) focus_handle: Option<u64>,
     /// It's drawn anew when the pointer comes over it, presses it or
     /// leaves, or the keyboard comes or goes.
     pub(crate) paints_by_state: bool,
@@ -278,6 +285,33 @@ pub struct Element {
     pub(crate) key: Option<ElementId>,
     pub(crate) children: Vec<Element>,
     pub(crate) inter: Option<Box<Interactivity>>,
+    /// What it holds is rows made as they come into view
+    /// ([`uniform_rows`]).
+    pub(crate) rows: Option<RowsSpec>,
+}
+
+/// Rows of one height, made as they come near what shows.
+#[derive(Clone)]
+pub(crate) struct RowsSpec {
+    pub(crate) count: usize,
+    pub(crate) row_height: Pixels,
+    pub(crate) make: Rc<dyn Fn(std::ops::Range<usize>) -> Vec<Element>>,
+}
+
+/// `count` rows, each `row_height` tall, one under the other: only
+/// those near what can be seen are in the window's tree. `make` is
+/// asked for the elements of a run of rows (give each its row as its
+/// id, `.id(row)`, so those that stay keep what they drew); each is
+/// placed at its row. As what holds it scrolls, the window asks for
+/// more, a run at a time with some to spare, without the view that
+/// holds it saying what it shows again; the stage scrolls the ones
+/// there with nothing drawn. A list of a hundred thousand rows costs
+/// what a screenful does.
+pub fn uniform_rows(count: usize, row_height: Pixels, make: impl Fn(std::ops::Range<usize>) -> Vec<Element> + 'static) -> Element {
+    use crate::Styled as _;
+    let mut element = div().relative().w_full().h(row_height * count as f32).flex_shrink_0();
+    element.rows = Some(RowsSpec { count, row_height, make: Rc::new(make) });
+    element
 }
 
 /// (The name GPUI had for an element of any kind: here there is one.)
@@ -285,11 +319,22 @@ pub type AnyElement = Element;
 
 impl Element {
     pub(crate) fn new(kind: Kind) -> Element {
-        Element { kind, style: StyleRefinement::default(), key: None, children: Vec::new(), inter: None }
+        Element { kind, style: StyleRefinement::default(), key: None, children: Vec::new(), inter: None, rows: None }
     }
 
     pub(crate) fn inter(&mut self) -> &mut Interactivity {
         self.inter.get_or_insert_with(Default::default)
+    }
+
+    /// [`Self::paint_key`], worked out from the view (of type `V`) when
+    /// the element takes its place in the window's tree: for what's
+    /// built where the view isn't to hand (a list's rows, keyed by what
+    /// the view says each shows).
+    pub fn key_by<V: 'static>(mut self, key: impl Fn(&V) -> u64 + 'static) -> Self {
+        if let Kind::Canvas(canvas) = &mut self.kind {
+            canvas.key_by = Some(Rc::new(move |view| view.downcast_ref::<V>().map_or(0, &key)));
+        }
+        self
     }
 
     /// What its drawing depends on (hash what it shows): with the same
@@ -323,7 +368,23 @@ pub fn div() -> Element {
 /// style gave it. It's kept, and drawn again only when the view's `body`
 /// next runs (see [`Element::paint_key`]) or its size changes.
 pub fn canvas(paint: impl Fn(&mut Painter, Bounds<Pixels>) + 'static) -> Element {
-    Element::new(Kind::Canvas(CanvasSpec { paint: Rc::new(move |_, p, bounds, _| paint(p, bounds)), key: None, measure: None }))
+    Element::new(Kind::Canvas(CanvasSpec { paint: Rc::new(move |_, p, bounds, _| paint(p, bounds)), key: None, key_by: None, measure: None }))
+}
+
+/// A drawing by a view of type `V` (an element for its `body`, or for
+/// what builds elements for it): `paint` is handed the view as it is
+/// when the drawing is wanted. (`Cx::canvas`, without the view to hand.)
+pub fn view_canvas<V: 'static>(paint: impl Fn(&V, &mut Painter, Bounds<Pixels>) + 'static) -> Element {
+    Element::new(Kind::Canvas(CanvasSpec {
+        paint: Rc::new(move |view, p, bounds, _| {
+            if let Some(view) = view.downcast_ref::<V>() {
+                paint(view, p, bounds)
+            }
+        }),
+        key: None,
+        key_by: None,
+        measure: None,
+    }))
 }
 
 /// A drawing that follows the pointer and the keyboard: `paint` is told
@@ -331,7 +392,7 @@ pub fn canvas(paint: impl Fn(&mut Painter, Bounds<Pixels>) + 'static) -> Element
 /// the keyboard, and it's drawn again when any of those changes (only
 /// it: nothing else in the window is touched).
 pub fn control_canvas(paint: impl Fn(&mut Painter, Bounds<Pixels>, ControlState) + 'static) -> Element {
-    let mut element = Element::new(Kind::Canvas(CanvasSpec { paint: Rc::new(move |_, p, bounds, state| paint(p, bounds, state)), key: None, measure: None }));
+    let mut element = Element::new(Kind::Canvas(CanvasSpec { paint: Rc::new(move |_, p, bounds, state| paint(p, bounds, state)), key: None, key_by: None, measure: None }));
     element.inter().paints_by_state = true;
     element
 }
@@ -582,7 +643,32 @@ pub trait InteractiveElement: Sized {
     /// It's drawn again whenever `handle`'s scroller moves or its ends
     /// do (a scroll bar's knob follows its view).
     fn watch_scroll(mut self, handle: &crate::ScrollHandle) -> Self {
-        self.interactivity().watches.push(handle.id());
+        self.interactivity().watches.push((handle.id(), crate::scroll::ANY));
+        self
+    }
+
+    /// It's drawn again whenever `handle`'s scroller moves across (a
+    /// table's header, over its rows), not when it moves up or down.
+    fn watch_scroll_x(mut self, handle: &crate::ScrollHandle) -> Self {
+        self.interactivity().watches.push((handle.id(), crate::scroll::ACROSS | crate::scroll::ENDS));
+        self
+    }
+
+    /// It's drawn again whenever how far `handle`'s scroller goes, or
+    /// its view, changes: not for its moving (a scroll bar's arrows,
+    /// grey with nothing to scroll).
+    fn watch_scroll_ends(mut self, handle: &crate::ScrollHandle) -> Self {
+        self.interactivity().watches.push((handle.id(), crate::scroll::ENDS));
+        self
+    }
+
+    /// It can have the keyboard (a click gives it), and `handle` is how
+    /// its view gives it the keyboard and knows whether it has it.
+    fn track_focus(mut self, handle: &crate::FocusHandle) -> Self {
+        let inter = self.interactivity();
+        inter.focusable = true;
+        inter.click_focus = true;
+        inter.focus_handle = Some(handle.id());
         self
     }
 

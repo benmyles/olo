@@ -1,5 +1,8 @@
-//! The column list view: processes in columns, under a menu bar, with
-//! a context menu and a note of what was opened or chosen.
+//! The GPUI kit's column list view: processes in columns, under a menu
+//! bar, with a context menu and a note of what was opened or chosen.
+//! Laid out exactly as olo-kit's `list` example lays out its own: the
+//! two are compared pixel for pixel (`tools/dev/kit-compare`).
+//! `LIST_ROWS=N` makes it N rows long (to scroll, and to measure).
 
 use std::rc::Rc;
 
@@ -30,6 +33,13 @@ struct Lists {
     list: Entity<ListModel>,
     last: SharedString,
     wrap: bool,
+    rows: usize,
+}
+
+/// Row `r`'s cells.
+fn row(r: usize) -> [String; 3] {
+    let (name, cpu, memory) = ROWS[r % ROWS.len()];
+    [if r < ROWS.len() { name.to_string() } else { format!("{name} {}", r + 1) }, cpu.to_string(), memory.to_string()]
 }
 
 impl Lists {
@@ -70,14 +80,14 @@ impl Render for Lists {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let columns = [Column::new("Name", 160.0), Column::new("CPU", 70.0).right(), Column::new("Memory", 90.0).right()];
         let (opened, chosen) = (cx.entity(), cx.entity());
-        let list = ColumnListView::new("procs", &self.list, columns, ROWS.len(), |cell, window, cx| {
-            let row = ROWS[cell.row];
-            cell.text(window, cx, [row.0, row.1, row.2][cell.column]);
+        let list = ColumnListView::new("procs", &self.list, columns, self.rows, |cell, window, cx| {
+            cell.text(window, cx, row(cell.row)[cell.column].clone());
         })
-        .type_select(|r| ROWS[r].0.into())
+        .row_key(|r, _| r as u64)
+        .type_select(|r| row(r)[0].clone().into())
         .on_open(move |r, _, cx| {
             opened.update(cx, |l, cx| {
-                l.last = ROWS[r].0.into();
+                l.last = row(r)[0].clone().into();
                 cx.notify();
             })
         })
@@ -114,7 +124,8 @@ fn main() {
     olo_ui::run("olo.list-example", |cx| {
         olo_ui::open_window(cx, WindowOptions::new("Lists", 380.0, 326.0), |_, cx| {
             let list = ListModel::new(cx, true);
-            cx.new(|_| Lists { list, last: "nothing".into(), wrap: true })
+            let rows = std::env::var("LIST_ROWS").ok().and_then(|n| n.parse().ok()).unwrap_or(ROWS.len());
+            cx.new(|_| Lists { list, last: "nothing".into(), wrap: true, rows })
         });
     });
 }
