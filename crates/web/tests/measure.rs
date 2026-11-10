@@ -13,6 +13,35 @@ fn width_of(m: &page::Measured, doc: &olo_web::dom::Document, id: &str) -> f64 {
     let (b, _) = l.cache().tree().iter().find(|(_, b)| matches!(b.kind, layout::BoxKind::Block { .. }) && doc.attribute(b.node, "id").unwrap() == Some(id)).unwrap();
     l.bounds(b).unwrap().width
 }
+#[test]
+fn live_media_changes_reselect_rules_without_reloading_sheets_or_unchanged_fonts() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let viewport = layout::Viewport { width: 1000., height: 700., scale: 1. };
+    let media = olo_web::css::media::Media::screen(1000., 700., 1., false);
+    let source = "<!doctype html><style>@font-face{font-family:unused;src:url(same.ttf)}#t{width:100px}@media(max-width:900px){#t{width:200px}}@media(prefers-color-scheme:dark){#t{width:300px}}</style><div id=t></div>";
+    let prepared = page::prepare(Arc::from(source), &scope, media, false, None, |_, _| {}, |_, _, _| Ok(None)).unwrap();
+    let mut measurer = prepared.measurer();
+    let doc = prepared.into_document();
+    let mut shaper = shaping::Engine::default();
+    let mut previous = None;
+    for (width, dark, expected) in [(1000., false, 100.), (800., false, 200.), (800., true, 300.), (1000., false, 100.)] {
+        let viewport = layout::Viewport { width, ..viewport };
+        let mut requests = 0;
+        measurer
+            .set_environment(viewport, dark, None, &mut |_, _, _| {
+                requests += 1;
+                Ok(None)
+            })
+            .unwrap();
+        assert_eq!(requests, 0, "the sheets and unchanged font sources are retained");
+        let host = paint_host::Scaled::new(measurer.scope().clone(), 1.);
+        let measured = measurer.measure(&doc, &host, &mut shaper, viewport, previous, None).unwrap();
+        assert_eq!(width_of(&measured, &doc, "t"), expected, "width {width}, dark {dark}, {}", measured.path());
+        previous = Some(measured);
+    }
+}
 /// An inline style that changes an element's font is patched in place in
 /// the previous measurement's styles; its texts are shaped again in the
 /// new font, not taken from the previous preparation (which then held the

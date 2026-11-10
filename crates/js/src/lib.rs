@@ -17,6 +17,8 @@ pub mod clone;
 /// not as a script's fetch().
 pub const SCRIPT_DESTINATION: &str = "x-olo-destination: script";
 mod crypto;
+#[cfg(test)]
+mod environment_tests;
 pub mod html;
 mod modules;
 mod rtc;
@@ -401,6 +403,7 @@ struct State {
     measured: Option<olo_web::page::Measured>,
     /// The pictures it was made with (how many, and who they are).
     measured_pictures: (usize, usize),
+    measured_environment_dirty: bool,
     /// Messages posted to other frames' windows since the browser last
     /// took them: to an iframe's (its element) or the parent's (none),
     /// structured clones, with the target origin asked for.
@@ -623,6 +626,7 @@ impl Realm {
             measure,
             measured: None,
             measured_pictures: (0, 0),
+            measured_environment_dirty: false,
             posts: Vec::new(),
             scene: None,
             layout_seconds: 0.,
@@ -1443,6 +1447,34 @@ impl Realm {
     pub fn set_scene(&mut self, scene: Arc<olo_web::paint::Scene>) {
         self.state.borrow_mut().scene = Some(scene);
     }
+    /// Update a live page without rebinding its document or resetting its
+    /// clock. The host must update its Measure callback's environment first.
+    /// Notifications are coalesced until the next rendering opportunity;
+    /// callers must schedule an advance/frame when this returns true.
+    pub fn set_environment(&mut self, viewport: (f64, f64), scale: f64, dark: bool) -> bool {
+        if !viewport.0.is_finite() || !viewport.1.is_finite() || viewport.0 < 0. || viewport.1 < 0. || !scale.is_finite() || scale <= 0. {
+            return false;
+        }
+        {
+            let mut s = self.state.borrow_mut();
+            if s.config.viewport == viewport && s.config.scale == scale && s.config.dark == dark {
+                return false;
+            }
+            s.config.viewport = viewport;
+            s.config.scale = scale;
+            s.config.dark = dark;
+            // Keep the old layout as a seed, but never answer a new
+            // environment's geometry from it merely because the DOM is unchanged.
+        }
+        self.invalidate_measurements();
+        true
+    }
+    /// Host styling inputs other than viewport/scheme changed. Preserve the
+    /// layout as a seed, and schedule observer checks at the next frame.
+    pub fn invalidate_measurements(&mut self) {
+        self.state.borrow_mut().measured_environment_dirty = true;
+        let _ = self.call_prelude_number("__olo_environment", 0.);
+    }
     /// The page's window shown or not: document.hidden, and visibilitychange
     /// when it changes.
     pub fn set_hidden(&mut self, hidden: bool) {
@@ -1966,6 +1998,7 @@ impl State {
             measure: None,
             measured: None,
             measured_pictures: (0, 0),
+            measured_environment_dirty: false,
             posts: Vec::new(),
             scene: None,
             layout_seconds: 0.,
@@ -1982,7 +2015,7 @@ impl State {
         let revision = self.document.revision();
         // (A picture come in or let go changes what its image measures.)
         let pictures = self.images.iter().fold((self.images.len(), 0usize), |(n, h), (node, i)| (n, h.wrapping_add((Arc::as_ptr(i) as usize) ^ node.slot() as usize)));
-        let stale = self.measured.as_ref().is_none_or(|m| m.revision() != revision) || pictures != self.measured_pictures;
+        let stale = self.measured_environment_dirty || self.measured.as_ref().is_none_or(|m| m.revision() != revision) || pictures != self.measured_pictures;
         if stale && self.measure.is_some() && self.run_layouts < self.run_limits.0 && self.run_layout_seconds < self.run_limits.1 {
             let started = Instant::now();
             let bound: Vec<(NodeId, Arc<olo_web::image::Image>)> = self.images.iter().map(|(n, i)| (*n, i.clone())).collect();
@@ -1990,6 +2023,7 @@ impl State {
             // The previous measurement is consumed: patched in place when
             // little changed, else seeding the next.
             self.measured = measure(&self.document, &bound, self.measured.take());
+            self.measured_environment_dirty = false;
             if std::env::var_os("OLO_MEASURE_DEBUG").is_some() {
                 eprintln!("measure: revision {revision}, {} pictures {:?} (was {:?}): {}", bound.len(), pictures, self.measured_pictures, self.measured.as_ref().map_or("none", |m| m.path()));
             }

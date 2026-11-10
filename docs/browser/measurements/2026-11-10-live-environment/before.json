@@ -1,0 +1,1062 @@
+[
+  {
+    "mode": "light",
+    "scale": 1,
+    "data": {
+      "identity": 0.07771674212991386,
+      "timeOrigin": 1794311244727,
+      "size": [
+        1000,
+        578,
+        1
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        500,
+        100
+      ],
+      "matches": [
+        true,
+        false,
+        false
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 1,
+      "lastDevice": [
+        500,
+        100
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": []
+    },
+    "before": {
+      "cpu_ms": 1610.0,
+      "rss_kib": 168584
+    },
+    "after": {
+      "cpu_ms": 1610.0,
+      "rss_kib": 168568
+    },
+    "elapsed_ms": 957.881758979056,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.0,
+        "dark": false,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 1.25,
+    "data": {
+      "identity": 0.07771674212991386,
+      "timeOrigin": 1794311244727,
+      "size": [
+        1000,
+        578,
+        1
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        500,
+        100
+      ],
+      "matches": [
+        true,
+        false,
+        false
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 1,
+      "lastDevice": [
+        500,
+        100
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": []
+    },
+    "before": {
+      "cpu_ms": 1610.0,
+      "rss_kib": 168476
+    },
+    "after": {
+      "cpu_ms": 1650.0,
+      "rss_kib": 171260
+    },
+    "elapsed_ms": 968.1670679710805,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.25,
+        "dark": false,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 1.5,
+    "data": {
+      "identity": 0.07771674212991386,
+      "timeOrigin": 1794311244727,
+      "size": [
+        1000,
+        578,
+        1
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        500,
+        100
+      ],
+      "matches": [
+        true,
+        false,
+        false
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 1,
+      "lastDevice": [
+        500,
+        100
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": []
+    },
+    "before": {
+      "cpu_ms": 1660.0,
+      "rss_kib": 171272
+    },
+    "after": {
+      "cpu_ms": 1680.0,
+      "rss_kib": 173844
+    },
+    "elapsed_ms": 958.6996929720044,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.5,
+        "dark": false,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 1.75,
+    "data": {
+      "identity": 0.07771674212991386,
+      "timeOrigin": 1794311244727,
+      "size": [
+        1000,
+        578,
+        1
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        500,
+        100
+      ],
+      "matches": [
+        true,
+        false,
+        false
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 1,
+      "lastDevice": [
+        500,
+        100
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": []
+    },
+    "before": {
+      "cpu_ms": 1690.0,
+      "rss_kib": 173864
+    },
+    "after": {
+      "cpu_ms": 1720.0,
+      "rss_kib": 175228
+    },
+    "elapsed_ms": 959.009379032068,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.75,
+        "dark": false,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 2,
+    "data": {
+      "identity": 0.07771674212991386,
+      "timeOrigin": 1794311244727,
+      "size": [
+        1000,
+        578,
+        1
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        500,
+        100
+      ],
+      "matches": [
+        true,
+        false,
+        false
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 1,
+      "lastDevice": [
+        500,
+        100
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": []
+    },
+    "before": {
+      "cpu_ms": 1720.0,
+      "rss_kib": 175240
+    },
+    "after": {
+      "cpu_ms": 1750.0,
+      "rss_kib": 179516
+    },
+    "elapsed_ms": 958.5634939721785,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 2.0,
+        "dark": false,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1,
+    "data": {
+      "identity": 0.07771674212991386,
+      "timeOrigin": 1794311244727,
+      "size": [
+        1000,
+        578,
+        1
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        500,
+        100
+      ],
+      "matches": [
+        true,
+        false,
+        false
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 1,
+      "lastDevice": [
+        500,
+        100
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": []
+    },
+    "before": {
+      "cpu_ms": 1750.0,
+      "rss_kib": 179516
+    },
+    "after": {
+      "cpu_ms": 1780.0,
+      "rss_kib": 171240
+    },
+    "elapsed_ms": 958.483834983781,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.0,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1.25,
+    "data": {
+      "identity": 0.07771674212991386,
+      "timeOrigin": 1794311244727,
+      "size": [
+        1000,
+        578,
+        1
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        500,
+        100
+      ],
+      "matches": [
+        true,
+        false,
+        false
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 1,
+      "lastDevice": [
+        500,
+        100
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": []
+    },
+    "before": {
+      "cpu_ms": 1780.0,
+      "rss_kib": 171240
+    },
+    "after": {
+      "cpu_ms": 1790.0,
+      "rss_kib": 172564
+    },
+    "elapsed_ms": 958.1038450123742,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.25,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1.5,
+    "data": {
+      "identity": 0.07771674212991386,
+      "timeOrigin": 1794311244727,
+      "size": [
+        1000,
+        578,
+        1
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        500,
+        100
+      ],
+      "matches": [
+        true,
+        false,
+        false
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 1,
+      "lastDevice": [
+        500,
+        100
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": []
+    },
+    "before": {
+      "cpu_ms": 1790.0,
+      "rss_kib": 172564
+    },
+    "after": {
+      "cpu_ms": 1820.0,
+      "rss_kib": 174952
+    },
+    "elapsed_ms": 958.5243529872969,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.5,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1.75,
+    "data": {
+      "identity": 0.07771674212991386,
+      "timeOrigin": 1794311244727,
+      "size": [
+        1000,
+        578,
+        1
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        500,
+        100
+      ],
+      "matches": [
+        true,
+        false,
+        false
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 1,
+      "lastDevice": [
+        500,
+        100
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": []
+    },
+    "before": {
+      "cpu_ms": 1820.0,
+      "rss_kib": 174964
+    },
+    "after": {
+      "cpu_ms": 1840.0,
+      "rss_kib": 175976
+    },
+    "elapsed_ms": 958.5426010307856,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.75,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 2,
+    "data": {
+      "identity": 0.07771674212991386,
+      "timeOrigin": 1794311244727,
+      "size": [
+        1000,
+        578,
+        1
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        500,
+        100
+      ],
+      "matches": [
+        true,
+        false,
+        false
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 1,
+      "lastDevice": [
+        500,
+        100
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": []
+    },
+    "before": {
+      "cpu_ms": 1840.0,
+      "rss_kib": 175988
+    },
+    "after": {
+      "cpu_ms": 1870.0,
+      "rss_kib": 181388
+    },
+    "elapsed_ms": 958.4906519739889,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 2.0,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1,
+    "data": {
+      "identity": 0.07771674212991386,
+      "timeOrigin": 1794311244727,
+      "size": [
+        1000,
+        578,
+        1
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        500,
+        100
+      ],
+      "matches": [
+        true,
+        false,
+        false
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 1,
+      "lastDevice": [
+        500,
+        100
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": []
+    },
+    "before": {
+      "cpu_ms": 1870.0,
+      "rss_kib": 180884
+    },
+    "after": {
+      "cpu_ms": 1880.0,
+      "rss_kib": 172912
+    },
+    "elapsed_ms": 958.3177120075561,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.0,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1.25,
+    "data": {
+      "identity": 0.07771674212991386,
+      "timeOrigin": 1794311244727,
+      "size": [
+        1000,
+        578,
+        1
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        500,
+        100
+      ],
+      "matches": [
+        true,
+        false,
+        false
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 1,
+      "lastDevice": [
+        500,
+        100
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": []
+    },
+    "before": {
+      "cpu_ms": 1880.0,
+      "rss_kib": 172924
+    },
+    "after": {
+      "cpu_ms": 1900.0,
+      "rss_kib": 171160
+    },
+    "elapsed_ms": 958.0749089946039,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.25,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1.5,
+    "data": {
+      "identity": 0.07771674212991386,
+      "timeOrigin": 1794311244727,
+      "size": [
+        1000,
+        578,
+        1
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        500,
+        100
+      ],
+      "matches": [
+        true,
+        false,
+        false
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 1,
+      "lastDevice": [
+        500,
+        100
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": []
+    },
+    "before": {
+      "cpu_ms": 1900.0,
+      "rss_kib": 171160
+    },
+    "after": {
+      "cpu_ms": 1920.0,
+      "rss_kib": 175504
+    },
+    "elapsed_ms": 968.8342749723233,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.5,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1.75,
+    "data": {
+      "identity": 0.07771674212991386,
+      "timeOrigin": 1794311244727,
+      "size": [
+        1000,
+        578,
+        1
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        500,
+        100
+      ],
+      "matches": [
+        true,
+        false,
+        false
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 1,
+      "lastDevice": [
+        500,
+        100
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": []
+    },
+    "before": {
+      "cpu_ms": 1920.0,
+      "rss_kib": 175512
+    },
+    "after": {
+      "cpu_ms": 1940.0,
+      "rss_kib": 176328
+    },
+    "elapsed_ms": 964.3178579863161,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.75,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 2,
+    "data": {
+      "identity": 0.07771674212991386,
+      "timeOrigin": 1794311244727,
+      "size": [
+        1000,
+        578,
+        1
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        500,
+        100
+      ],
+      "matches": [
+        true,
+        false,
+        false
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 1,
+      "lastDevice": [
+        500,
+        100
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": []
+    },
+    "before": {
+      "cpu_ms": 1950.0,
+      "rss_kib": 176336
+    },
+    "after": {
+      "cpu_ms": 1960.0,
+      "rss_kib": 181580
+    },
+    "elapsed_ms": 965.2037709602155,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 2.0,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "width": 800,
+    "data": {
+      "identity": 0.07771674212991386,
+      "timeOrigin": 1794311244727,
+      "size": [
+        1000,
+        578,
+        1
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        500,
+        100
+      ],
+      "matches": [
+        true,
+        false,
+        false
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 1,
+      "lastDevice": [
+        500,
+        100
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": []
+    }
+  },
+  {
+    "width": 1100,
+    "data": {
+      "identity": 0.07771674212991386,
+      "timeOrigin": 1794311244727,
+      "size": [
+        1000,
+        578,
+        1
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        500,
+        100
+      ],
+      "matches": [
+        true,
+        false,
+        false
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 1,
+      "lastDevice": [
+        500,
+        100
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": []
+    }
+  },
+  {
+    "width": 800,
+    "data": {
+      "identity": 0.07771674212991386,
+      "timeOrigin": 1794311244727,
+      "size": [
+        1000,
+        578,
+        1
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        500,
+        100
+      ],
+      "matches": [
+        true,
+        false,
+        false
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 1,
+      "lastDevice": [
+        500,
+        100
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": []
+    }
+  },
+  {
+    "width": 1000,
+    "data": {
+      "identity": 0.07771674212991386,
+      "timeOrigin": 1794311244727,
+      "size": [
+        1000,
+        578,
+        1
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        500,
+        100
+      ],
+      "matches": [
+        true,
+        false,
+        false
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 1,
+      "lastDevice": [
+        500,
+        100
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": []
+    }
+  }
+]

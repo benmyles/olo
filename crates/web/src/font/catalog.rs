@@ -60,7 +60,7 @@ pub struct Face {
     pub(super) water: Option<u16>,
 }
 /// What a `@font-face` rule says about its font, over what the file says.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Descriptor {
     pub family: Arc<str>,
     pub weight: Span,

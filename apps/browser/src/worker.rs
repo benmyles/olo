@@ -12,8 +12,9 @@ use olo_web::{
     text::shaping,
 };
 use std::{
-    cell::Cell,
+    cell::{Cell, RefCell},
     collections::HashMap,
+    rc::Rc,
     sync::{Arc, atomic::Ordering, mpsc},
     time::{Duration, Instant},
 };
@@ -421,6 +422,8 @@ enum Pass {
 /// due, and what has been rendered.
 struct Live {
     realm: olo_js::Realm,
+    /// Current environment for the persistent script measurement engine.
+    measure_key: Rc<RefCell<Key>>,
     /// The page's scripts had an element focused at the last look.
     had_focus: bool,
     /// The page's `<video>` players.
@@ -1207,6 +1210,22 @@ fn render(
     let newly_loaded = cached.as_ref().is_none_or(|c| c.key.source != r.key.source || c.key.cwd != r.key.cwd || c.key.revision != r.key.revision);
     let newly_loaded = newly_loaded || pass == Pass::Scripted && cached.as_ref().is_some_and(|c| !c.scripted);
     let mut rerendered = false;
+    if !newly_loaded && let Some(live) = cached.as_mut().and_then(|c| c.live.as_mut()) {
+        let mut key = live.measure_key.borrow_mut();
+        if key.width != r.key.width || key.height != r.key.height || key.scale != r.key.scale || key.palette != r.key.palette {
+            let palette_changed = key.palette != r.key.palette;
+            *key = r.key.clone();
+            drop(key);
+            let environment_changed = live.realm.set_environment((f64::from(r.key.width) / r.key.scale, f64::from(r.key.height) / r.key.scale), r.key.scale, r.key.palette.is_dark());
+            if palette_changed && !environment_changed {
+                live.realm.invalidate_measurements();
+            }
+            if environment_changed || palette_changed {
+                live.next_due_ms = Some(0.);
+                live.wants_frame = true;
+            }
+        }
+    }
     if pass == Pass::Live {
         let Some(c) = cached.as_mut() else { return Ok(()) };
         let Some(live) = c.live.as_mut() else { return Ok(()) };
@@ -1837,21 +1856,37 @@ fn render(
             };
             // Measurements lay the document out with the styles and fonts
             // gathered so far, through a host for them.
+            let measure_key = Rc::new(RefCell::new(r.key.clone()));
             let measure: olo_js::Measure = {
                 let mut host = PageHost::new(measurer.scope(), &r.key);
                 let mut shaper = shaping::Engine::default();
                 let cancel = live_cancel.clone();
-                let key = r.key.clone();
+                let key = measure_key.clone();
                 let loader = loader.clone();
                 let light = document.light();
                 let tx = tx.clone();
                 let mut measurer = measurer;
                 let timing = olo_web::env_on!("OLO_BROWSER_TIMING");
                 Box::new(move |doc: &olo_web::dom::Document, pictures: &[(olo_web::dom::NodeId, Arc<olo_web::image::Image>)], previous: Option<page::Measured>| {
+                    let key = key.borrow();
+                    let viewport = layout::Viewport { width: f64::from(key.width) / key.scale, height: f64::from(key.height) / key.scale, scale: key.scale };
+                    if host.viewport.width != viewport.width || host.viewport.height != viewport.height || host.scale != key.scale || host.palette != key.palette {
+                        host = PageHost::new(measurer.scope(), &key);
+                    }
                     measurer.bind_pictures(doc, pictures, Some(&cancel));
                     let call = Instant::now();
                     // Stylesheets the scripts added since: the rules follow.
                     let mut resource = |kind: page::ResourceKind, base: Option<&str>, href: &str| live_resource(&loader, &light, kind, base, href, &cancel, &tx);
+                    match measurer.set_environment(viewport, key.palette.is_dark(), Some(&cancel), &mut resource) {
+                        Ok(true) => host = PageHost::new(measurer.scope(), &key),
+                        Ok(false) => {}
+                        Err(e) => {
+                            if !is_pending(&e) {
+                                eprintln!("Browser scripts: environment: {e}");
+                            }
+                            return None;
+                        }
+                    }
                     let refresh_started = Instant::now();
                     match measurer.refresh(doc, Some(&cancel), &mut resource) {
                         Ok(true) => {
@@ -1927,6 +1962,7 @@ fn render(
             let render_again = realm.canvases_pending();
             live_slot = Some(Live {
                 realm,
+                measure_key,
                 had_focus: false,
                 players: Default::default(),
                 frames: Default::default(),
@@ -2223,6 +2259,9 @@ fn render(
         scene_changed = true;
     }
     let cached = cached.as_mut().unwrap();
+    if scene_changed && let Some(live) = cached.live.as_mut() {
+        live.realm.set_scene(cached.page.scene.clone());
+    }
     cached.page.interaction = input;
     // The page's own focus (its scripts', a click into a field) is what
     // `:focus` matches, as in Chrome; the window's when the page has none.
@@ -2851,7 +2890,14 @@ impl Host for PageHost {
         olo_web::css::variables::Environment::rectangular().map(Some).map_err(|error| style::Error::Property(olo_web::css::properties::Error::Variables(error)))
     }
     fn revision(&self) -> u64 {
-        self.scope.revision() ^ self.scale.to_bits() ^ self.viewport.width.to_bits().rotate_left(13) ^ self.viewport.height.to_bits().rotate_left(29)
+        self.scope.revision()
+            ^ self.scale.to_bits()
+            ^ self.viewport.width.to_bits().rotate_left(13)
+            ^ self.viewport.height.to_bits().rotate_left(29)
+            ^ u64::from(self.palette.is_dark()).rotate_left(61)
+            ^ u64::from(u32::from_le_bytes(self.palette.navigation_base)).rotate_left(7)
+            ^ u64::from(u32::from_le_bytes(self.palette.list_selected_background)).rotate_left(23)
+            ^ u64::from(u32::from_le_bytes(self.palette.list_selected_item_text)).rotate_left(41)
     }
     fn scheme(&self) -> Scheme {
         if self.palette.is_dark() { Scheme::Dark } else { Scheme::Light }

@@ -1,0 +1,1856 @@
+[
+  {
+    "mode": "light",
+    "scale": 1,
+    "data": {
+      "identity": 0.7389051540030083,
+      "timeOrigin": 1794311530176,
+      "size": [
+        1000,
+        613,
+        1
+      ],
+      "visual": [
+        1000,
+        613
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        500,
+        100
+      ],
+      "matches": [
+        true,
+        false,
+        false
+      ],
+      "contentCalls": 3,
+      "deviceCalls": 3,
+      "lastDevice": [
+        500,
+        100
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": [
+        [
+          "media2",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "media2",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    }
+  },
+  {
+    "mode": "light",
+    "scale": 1.25,
+    "data": {
+      "identity": 0.7389051540030083,
+      "timeOrigin": 1794311530176,
+      "size": [
+        1000,
+        614,
+        1.25
+      ],
+      "visual": [
+        1000,
+        613.5999755859375
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        625,
+        125
+      ],
+      "matches": [
+        true,
+        false,
+        false
+      ],
+      "contentCalls": 5,
+      "deviceCalls": 5,
+      "lastDevice": [
+        625,
+        125
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": [
+        [
+          "media2",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "media2",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ]
+      ]
+    }
+  },
+  {
+    "mode": "light",
+    "scale": 1.5,
+    "data": {
+      "identity": 0.7389051540030083,
+      "timeOrigin": 1794311530176,
+      "size": [
+        1000,
+        613,
+        1.5
+      ],
+      "visual": [
+        1000,
+        613.3333129882812
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        750,
+        150
+      ],
+      "matches": [
+        true,
+        true,
+        false
+      ],
+      "contentCalls": 7,
+      "deviceCalls": 8,
+      "lastDevice": [
+        750,
+        150
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": [
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    }
+  },
+  {
+    "mode": "light",
+    "scale": 1.75,
+    "data": {
+      "identity": 0.7389051540030083,
+      "timeOrigin": 1794311530176,
+      "size": [
+        1000,
+        613,
+        1.75
+      ],
+      "visual": [
+        1000,
+        613.1428833007812
+      ],
+      "box": [
+        500.0000305175781,
+        100.00000762939453
+      ],
+      "canvas": [
+        875,
+        175
+      ],
+      "matches": [
+        true,
+        true,
+        false
+      ],
+      "contentCalls": 9,
+      "deviceCalls": 11,
+      "lastDevice": [
+        875,
+        175
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": [
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    }
+  },
+  {
+    "mode": "light",
+    "scale": 2,
+    "data": {
+      "identity": 0.7389051540030083,
+      "timeOrigin": 1794311530176,
+      "size": [
+        1000,
+        613,
+        2
+      ],
+      "visual": [
+        1000,
+        613
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        1000,
+        200
+      ],
+      "matches": [
+        true,
+        true,
+        false
+      ],
+      "contentCalls": 11,
+      "deviceCalls": 14,
+      "lastDevice": [
+        1000,
+        200
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": [
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    }
+  },
+  {
+    "mode": "dark",
+    "scale": 1,
+    "data": {
+      "identity": 0.7389051540030083,
+      "timeOrigin": 1794311530176,
+      "size": [
+        1000,
+        613,
+        1
+      ],
+      "visual": [
+        1000,
+        613
+      ],
+      "box": [
+        500,
+        140
+      ],
+      "canvas": [
+        500,
+        100
+      ],
+      "matches": [
+        true,
+        false,
+        true
+      ],
+      "contentCalls": 12,
+      "deviceCalls": 16,
+      "lastDevice": [
+        500,
+        140
+      ],
+      "lastContent": [
+        500,
+        140
+      ],
+      "events": [
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "media2",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    }
+  },
+  {
+    "mode": "dark",
+    "scale": 1.25,
+    "data": {
+      "identity": 0.7389051540030083,
+      "timeOrigin": 1794311530176,
+      "size": [
+        1000,
+        614,
+        1.25
+      ],
+      "visual": [
+        1000,
+        613.5999755859375
+      ],
+      "box": [
+        500,
+        140
+      ],
+      "canvas": [
+        625,
+        125
+      ],
+      "matches": [
+        true,
+        false,
+        true
+      ],
+      "contentCalls": 14,
+      "deviceCalls": 19,
+      "lastDevice": [
+        625,
+        175
+      ],
+      "lastContent": [
+        500,
+        140
+      ],
+      "events": [
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "media2",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ]
+      ]
+    }
+  },
+  {
+    "mode": "dark",
+    "scale": 1.5,
+    "data": {
+      "identity": 0.7389051540030083,
+      "timeOrigin": 1794311530176,
+      "size": [
+        1000,
+        613,
+        1.5
+      ],
+      "visual": [
+        1000,
+        613.3333129882812
+      ],
+      "box": [
+        500,
+        140
+      ],
+      "canvas": [
+        750,
+        150
+      ],
+      "matches": [
+        true,
+        true,
+        true
+      ],
+      "contentCalls": 16,
+      "deviceCalls": 22,
+      "lastDevice": [
+        750,
+        210
+      ],
+      "lastContent": [
+        500,
+        140
+      ],
+      "events": [
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    }
+  },
+  {
+    "mode": "dark",
+    "scale": 1.75,
+    "data": {
+      "identity": 0.7389051540030083,
+      "timeOrigin": 1794311530176,
+      "size": [
+        1000,
+        613,
+        1.75
+      ],
+      "visual": [
+        1000,
+        613.1428833007812
+      ],
+      "box": [
+        500.0000305175781,
+        140
+      ],
+      "canvas": [
+        875,
+        175
+      ],
+      "matches": [
+        true,
+        true,
+        true
+      ],
+      "contentCalls": 16,
+      "deviceCalls": 23,
+      "lastDevice": [
+        875,
+        245
+      ],
+      "lastContent": [
+        500,
+        140
+      ],
+      "events": [
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    }
+  },
+  {
+    "mode": "dark",
+    "scale": 2,
+    "data": {
+      "identity": 0.7389051540030083,
+      "timeOrigin": 1794311530176,
+      "size": [
+        1000,
+        613,
+        2
+      ],
+      "visual": [
+        1000,
+        613
+      ],
+      "box": [
+        500,
+        140
+      ],
+      "canvas": [
+        1000,
+        200
+      ],
+      "matches": [
+        true,
+        true,
+        true
+      ],
+      "contentCalls": 18,
+      "deviceCalls": 26,
+      "lastDevice": [
+        1000,
+        280
+      ],
+      "lastContent": [
+        500,
+        140
+      ],
+      "events": [
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    }
+  },
+  {
+    "mode": "night",
+    "scale": 1,
+    "data": {
+      "identity": 0.7389051540030083,
+      "timeOrigin": 1794311530176,
+      "size": [
+        1000,
+        613,
+        1
+      ],
+      "visual": [
+        1000,
+        613
+      ],
+      "box": [
+        500,
+        140
+      ],
+      "canvas": [
+        500,
+        100
+      ],
+      "matches": [
+        true,
+        false,
+        true
+      ],
+      "contentCalls": 18,
+      "deviceCalls": 27,
+      "lastDevice": [
+        500,
+        140
+      ],
+      "lastContent": [
+        500,
+        140
+      ],
+      "events": [
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    }
+  },
+  {
+    "mode": "night",
+    "scale": 1.25,
+    "data": {
+      "identity": 0.7389051540030083,
+      "timeOrigin": 1794311530176,
+      "size": [
+        1000,
+        614,
+        1.25
+      ],
+      "visual": [
+        1000,
+        613.5999755859375
+      ],
+      "box": [
+        500,
+        140
+      ],
+      "canvas": [
+        625,
+        125
+      ],
+      "matches": [
+        true,
+        false,
+        true
+      ],
+      "contentCalls": 20,
+      "deviceCalls": 30,
+      "lastDevice": [
+        625,
+        175
+      ],
+      "lastContent": [
+        500,
+        140
+      ],
+      "events": [
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ]
+      ]
+    }
+  },
+  {
+    "mode": "night",
+    "scale": 1.5,
+    "data": {
+      "identity": 0.7389051540030083,
+      "timeOrigin": 1794311530176,
+      "size": [
+        1000,
+        613,
+        1.5
+      ],
+      "visual": [
+        1000,
+        613.3333129882812
+      ],
+      "box": [
+        500,
+        140
+      ],
+      "canvas": [
+        750,
+        150
+      ],
+      "matches": [
+        true,
+        true,
+        true
+      ],
+      "contentCalls": 22,
+      "deviceCalls": 33,
+      "lastDevice": [
+        750,
+        210
+      ],
+      "lastContent": [
+        500,
+        140
+      ],
+      "events": [
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    }
+  },
+  {
+    "mode": "night",
+    "scale": 1.75,
+    "data": {
+      "identity": 0.7389051540030083,
+      "timeOrigin": 1794311530176,
+      "size": [
+        1000,
+        613,
+        1.75
+      ],
+      "visual": [
+        1000,
+        613.1428833007812
+      ],
+      "box": [
+        500.0000305175781,
+        140
+      ],
+      "canvas": [
+        875,
+        175
+      ],
+      "matches": [
+        true,
+        true,
+        true
+      ],
+      "contentCalls": 24,
+      "deviceCalls": 35,
+      "lastDevice": [
+        875,
+        245
+      ],
+      "lastContent": [
+        500,
+        140
+      ],
+      "events": [
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    }
+  },
+  {
+    "mode": "night",
+    "scale": 2,
+    "data": {
+      "identity": 0.7389051540030083,
+      "timeOrigin": 1794311530176,
+      "size": [
+        1000,
+        613,
+        2
+      ],
+      "visual": [
+        1000,
+        613
+      ],
+      "box": [
+        500,
+        140
+      ],
+      "canvas": [
+        1000,
+        200
+      ],
+      "matches": [
+        true,
+        true,
+        true
+      ],
+      "contentCalls": 26,
+      "deviceCalls": 38,
+      "lastDevice": [
+        1000,
+        280
+      ],
+      "lastContent": [
+        500,
+        140
+      ],
+      "events": [
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    }
+  },
+  {
+    "width": 800,
+    "data": {
+      "identity": 0.7389051540030083,
+      "timeOrigin": 1794311530176,
+      "size": [
+        800,
+        613,
+        2
+      ],
+      "visual": [
+        800,
+        613
+      ],
+      "box": [
+        400,
+        140
+      ],
+      "canvas": [
+        800,
+        200
+      ],
+      "matches": [
+        false,
+        true,
+        true
+      ],
+      "contentCalls": 27,
+      "deviceCalls": 39,
+      "lastDevice": [
+        800,
+        280
+      ],
+      "lastContent": [
+        400,
+        140
+      ],
+      "events": [
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    }
+  },
+  {
+    "width": 1100,
+    "data": {
+      "identity": 0.7389051540030083,
+      "timeOrigin": 1794311530176,
+      "size": [
+        1100,
+        613,
+        2
+      ],
+      "visual": [
+        1100,
+        613
+      ],
+      "box": [
+        550,
+        140
+      ],
+      "canvas": [
+        1100,
+        200
+      ],
+      "matches": [
+        true,
+        true,
+        true
+      ],
+      "contentCalls": 28,
+      "deviceCalls": 40,
+      "lastDevice": [
+        1100,
+        280
+      ],
+      "lastContent": [
+        550,
+        140
+      ],
+      "events": [
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    }
+  },
+  {
+    "width": 800,
+    "data": {
+      "identity": 0.7389051540030083,
+      "timeOrigin": 1794311530176,
+      "size": [
+        800,
+        613,
+        2
+      ],
+      "visual": [
+        800,
+        613
+      ],
+      "box": [
+        400,
+        140
+      ],
+      "canvas": [
+        800,
+        200
+      ],
+      "matches": [
+        false,
+        true,
+        true
+      ],
+      "contentCalls": 29,
+      "deviceCalls": 41,
+      "lastDevice": [
+        800,
+        280
+      ],
+      "lastContent": [
+        400,
+        140
+      ],
+      "events": [
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    }
+  },
+  {
+    "width": 1000,
+    "data": {
+      "identity": 0.7389051540030083,
+      "timeOrigin": 1794311530176,
+      "size": [
+        1000,
+        613,
+        2
+      ],
+      "visual": [
+        1000,
+        613
+      ],
+      "box": [
+        500,
+        140
+      ],
+      "canvas": [
+        1000,
+        200
+      ],
+      "matches": [
+        true,
+        true,
+        true
+      ],
+      "contentCalls": 30,
+      "deviceCalls": 42,
+      "lastDevice": [
+        1000,
+        280
+      ],
+      "lastContent": [
+        500,
+        140
+      ],
+      "events": [
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    }
+  }
+]

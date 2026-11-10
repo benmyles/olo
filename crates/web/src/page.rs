@@ -122,6 +122,7 @@ pub struct Prepared {
     rules: Arc<css::cascade::RuleSet>,
     media: css::media::Media,
     media_dependent: bool,
+    font_faces: Vec<css::fonts::FontFace>,
     images: Option<Arc<crate::image::Set>>,
     title: String,
     scripts: usize,
@@ -168,6 +169,8 @@ impl Prepared {
         Measurer {
             rules: self.rules.clone(),
             media: self.media,
+            media_dependent: self.media_dependent,
+            font_faces: self.font_faces.clone(),
             images: self.images.clone(),
             scope: self.scope.clone(),
             base_scope: self.base_scope.clone(),
@@ -740,6 +743,8 @@ impl Memo {
 pub struct Measurer {
     rules: Arc<css::cascade::RuleSet>,
     media: css::media::Media,
+    media_dependent: bool,
+    font_faces: Vec<css::fonts::FontFace>,
     images: Option<Arc<crate::image::Set>>,
     scope: Scope,
     base_scope: Scope,
@@ -761,6 +766,40 @@ pub struct Measurer {
     bound: (usize, usize),
 }
 impl Measurer {
+    /// Follow the live viewport and preferred scheme without reloading the
+    /// document's sheets. Media-filtered rules and font faces are selected
+    /// again only when their environment changes. Returns whether the host
+    /// needs rebuilding for a new font scope.
+    pub fn set_environment(
+        &mut self,
+        viewport: layout::Viewport,
+        dark: bool,
+        cancel: Option<&AtomicBool>,
+        resource: &mut impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>,
+    ) -> Result<bool> {
+        let media = css::media::Media { scripting: self.media.scripting, ..css::media::Media::screen(viewport.width, viewport.height, viewport.scale, dark) };
+        if media == self.media {
+            return Ok(false);
+        }
+        if !self.media_dependent {
+            self.media = media;
+            return Ok(false);
+        }
+        let (rules, dependent, faces, _) = compile(&self.sheets, media, cancel)?;
+        let scope = if faces == self.font_faces {
+            self.scope.clone()
+        } else {
+            let (fonts, _) = load_fonts(&faces, self.base.as_deref(), resource, cancel)?;
+            if fonts.is_empty() { self.base_scope.clone() } else { scope_with_faces(&self.base_scope, fonts, cancel)? }
+        };
+        self.changes.record(self.rules.generation(), rules.generation(), None);
+        self.rules = rules;
+        self.scope = scope;
+        self.media = media;
+        self.media_dependent = dependent;
+        self.font_faces = faces;
+        Ok(true)
+    }
     /// The pictures scripts loaded into `img` elements, for its layouts to
     /// size their images by (bound again only when they changed). Without
     /// them, an image a script loaded measured as its placeholder: IMDb's
@@ -818,7 +857,7 @@ impl Measurer {
         let (loaded, _) = load_sheets(doc, &nodes, base.as_deref(), resource, cancel).inspect_err(|_| self.checked = None)?;
         sheets.extend(loaded);
         let loaded_at = started.elapsed();
-        let (rules, _, faces, _) = compile(&sheets, self.media, cancel)?;
+        let (rules, dependent, faces, _) = compile(&sheets, self.media, cancel)?;
         let media = self.media;
         self.changes.record(self.rules.generation(), rules.generation(), sheets_changed_within(doc, &self.sheet_ids, &ids, || document_sheets_reach(doc, &self.sheets, &sheets, media)));
         self.sheets = sheets.clone();
@@ -835,6 +874,8 @@ impl Measurer {
             );
         }
         self.rules = rules;
+        self.media_dependent = dependent;
+        self.font_faces = faces;
         self.scope = if fonts.is_empty() { self.base_scope.clone() } else { scope_with_faces(&self.base_scope, fonts, cancel)? };
         self.sheet_ids = ids;
         self.base = base;
@@ -2859,6 +2900,7 @@ fn gather(
         None => scope_with_faces(base_scope, loaded, cancel)?,
     };
     let (sheet_ids, _, _) = sheet_identities(&doc)?;
+    let font_faces = reused.map_or(faces, |p| p.font_faces.clone());
     Ok(Prepared {
         late,
         document: doc,
@@ -2866,6 +2908,7 @@ fn gather(
         rules,
         media,
         media_dependent,
+        font_faces,
         images,
         title,
         scripts,

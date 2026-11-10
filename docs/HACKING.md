@@ -14782,6 +14782,19 @@ repeated raster times, hits and retained bytes. See `docs/browser/ENGINE.md` for
 the allocation accounting and limits. This does not close Chrome glyph-pixel
 nonpasses.
 
+Live Browser viewport, display-scale and palette changes update the existing
+script realm on its worker. Update the host behind its measurement callback
+first, then call `Realm::set_environment` and schedule a frame if it changed.
+`Realm::invalidate_measurements` handles other host-style changes. Measurements
+retain their previous layout as a seed, but reselect media-filtered rules through
+`page::Measurer::set_environment`; unchanged web fonts keep their scope.
+The realm updates script-visible values immediately and coalesces resize,
+visual-viewport and media-query notifications before animation callbacks.
+No timer polls for these changes. ResizeObserver compares the requested box,
+including device-pixel dimensions. This currently covers the main page:
+iframe environment propagation, responsive-source reselection and complete
+scrollbar/visual-viewport semantics remain open.
+
 Browser DOM wrapper identities are weak V8 handles. Traced, bidirectional
 internal ownership fields retain connected nodes through the document and detached trees
 through script references; shadow/template ownership is included without

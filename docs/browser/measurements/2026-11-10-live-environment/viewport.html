@@ -1,0 +1,31 @@
+<!doctype html><meta charset=utf-8><title>Live viewport</title>
+<style>
+body{margin:20px;font:16px sans-serif;color:#162338;background:#f7f9fc}
+h1{font-size:24px}pre{font:14px monospace;white-space:pre-wrap}
+#box{width:50vw;height:100px;background:#438ce8}
+canvas{width:100%;height:100px;display:block}
+@media (max-width:900px){#box{height:120px}}
+@media (prefers-color-scheme:dark){body{color:#eee;background:#18212b}#box{height:140px}}
+</style><h1>Live viewport</h1><div id=box><canvas id=canvas></canvas></div><pre id=out>Starting</pre>
+<script>
+const box=document.querySelector('#box'),canvas=document.querySelector('#canvas'),out=document.querySelector('#out');
+const queries=['(min-width: 900px)','(min-resolution: 1.5dppx)','(prefers-color-scheme: dark)'].map(q=>matchMedia(q));
+const identity=Math.random(),timeOrigin=performance.timeOrigin;
+let events=[],pending=false,contentCalls=0,deviceCalls=0,lastDevice=null,lastContent=null;
+function report(){
+ const r=box.getBoundingClientRect();
+ canvas.width=Math.round(r.width*devicePixelRatio);canvas.height=Math.round(100*devicePixelRatio);
+ const x=canvas.getContext('2d');x.fillStyle='#438ce8';x.fillRect(0,0,canvas.width,canvas.height);
+ x.fillStyle='#fff';for(let i=0;i<canvas.width;i+=10*devicePixelRatio)x.fillRect(i,0,devicePixelRatio,canvas.height);
+ globalThis.result={identity,timeOrigin,size:[innerWidth,innerHeight,devicePixelRatio],visual:[visualViewport.width,visualViewport.height],box:[r.width,r.height],canvas:[canvas.width,canvas.height],matches:queries.map(q=>q.matches),contentCalls,deviceCalls,lastDevice,lastContent,events:events.slice(-12)};
+ out.textContent=JSON.stringify(result);
+ console.log('VIEWPORT '+JSON.stringify(result));
+}
+function changed(name,e){events.push([name,e.isTrusted,e.constructor.name]);if(!pending){pending=true;requestAnimationFrame(()=>{pending=false;report()})}}
+addEventListener('resize',e=>changed('window',e));
+visualViewport.addEventListener('resize',e=>changed('visual',e));
+queries.forEach((q,i)=>q.addEventListener('change',e=>changed('media'+i,e)));
+new ResizeObserver(es=>{contentCalls++;lastContent=[es[0].contentBoxSize[0].inlineSize,es[0].contentBoxSize[0].blockSize];report()}).observe(box);
+new ResizeObserver(es=>{deviceCalls++;lastDevice=[es[0].devicePixelContentBoxSize[0].inlineSize,es[0].devicePixelContentBoxSize[0].blockSize];report()}).observe(box,{box:'device-pixel-content-box'});
+report();
+</script>

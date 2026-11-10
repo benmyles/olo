@@ -1,0 +1,2070 @@
+[
+  {
+    "mode": "light",
+    "scale": 1,
+    "data": {
+      "identity": 0.4040024572561728,
+      "timeOrigin": 1794312292686,
+      "size": [
+        1000,
+        578,
+        1
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        500,
+        100
+      ],
+      "matches": [
+        true,
+        false,
+        false
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 1,
+      "lastDevice": [
+        500,
+        100
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": []
+    },
+    "before": {
+      "cpu_ms": 450.0,
+      "rss_kib": 150196
+    },
+    "after": {
+      "cpu_ms": 450.0,
+      "rss_kib": 150224
+    },
+    "elapsed_ms": 960.3829359984957,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.0,
+        "dark": false,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 1.25,
+    "data": {
+      "identity": 0.4040024572561728,
+      "timeOrigin": 1794312292686,
+      "size": [
+        1000,
+        578,
+        1.25
+      ],
+      "visual": [
+        1000,
+        577.6
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        625,
+        125
+      ],
+      "matches": [
+        true,
+        false,
+        false
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 2,
+      "lastDevice": [
+        625,
+        125
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": [
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 450.0,
+      "rss_kib": 150296
+    },
+    "after": {
+      "cpu_ms": 500.0,
+      "rss_kib": 152712
+    },
+    "elapsed_ms": 961.2806160002947,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.25,
+        "dark": false,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 1.5,
+    "data": {
+      "identity": 0.4040024572561728,
+      "timeOrigin": 1794312292686,
+      "size": [
+        1000,
+        578,
+        1.5
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        750,
+        150
+      ],
+      "matches": [
+        true,
+        true,
+        false
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 3,
+      "lastDevice": [
+        750,
+        150
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": [
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 510.0,
+      "rss_kib": 152728
+    },
+    "after": {
+      "cpu_ms": 550.0,
+      "rss_kib": 155296
+    },
+    "elapsed_ms": 958.8336719898507,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.5,
+        "dark": false,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 1.75,
+    "data": {
+      "identity": 0.4040024572561728,
+      "timeOrigin": 1794312292686,
+      "size": [
+        1000,
+        578,
+        1.75
+      ],
+      "visual": [
+        1000,
+        577.7142857142857
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        875,
+        175
+      ],
+      "matches": [
+        true,
+        true,
+        false
+      ],
+      "contentCalls": 3,
+      "deviceCalls": 5,
+      "lastDevice": [
+        875,
+        175
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": [
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 550.0,
+      "rss_kib": 155308
+    },
+    "after": {
+      "cpu_ms": 610.0,
+      "rss_kib": 159740
+    },
+    "elapsed_ms": 958.2997239776887,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.75,
+        "dark": false,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 2,
+    "data": {
+      "identity": 0.4040024572561728,
+      "timeOrigin": 1794312292686,
+      "size": [
+        1000,
+        578,
+        2
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        1000,
+        200
+      ],
+      "matches": [
+        true,
+        true,
+        false
+      ],
+      "contentCalls": 3,
+      "deviceCalls": 6,
+      "lastDevice": [
+        1000,
+        200
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": [
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 610.0,
+      "rss_kib": 159744
+    },
+    "after": {
+      "cpu_ms": 680.0,
+      "rss_kib": 164716
+    },
+    "elapsed_ms": 958.8765760418028,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 2.0,
+        "dark": false,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1,
+    "data": {
+      "identity": 0.4040024572561728,
+      "timeOrigin": 1794312292686,
+      "size": [
+        1000,
+        578,
+        1
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        140
+      ],
+      "canvas": [
+        500,
+        100
+      ],
+      "matches": [
+        true,
+        false,
+        true
+      ],
+      "contentCalls": 4,
+      "deviceCalls": 7,
+      "lastDevice": [
+        500,
+        140
+      ],
+      "lastContent": [
+        500,
+        140
+      ],
+      "events": [
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "media2",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 680.0,
+      "rss_kib": 164716
+    },
+    "after": {
+      "cpu_ms": 700.0,
+      "rss_kib": 155356
+    },
+    "elapsed_ms": 959.2935449909419,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.0,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1.25,
+    "data": {
+      "identity": 0.4040024572561728,
+      "timeOrigin": 1794312292686,
+      "size": [
+        1000,
+        578,
+        1.25
+      ],
+      "visual": [
+        1000,
+        577.6
+      ],
+      "box": [
+        500,
+        140
+      ],
+      "canvas": [
+        625,
+        125
+      ],
+      "matches": [
+        true,
+        false,
+        true
+      ],
+      "contentCalls": 4,
+      "deviceCalls": 8,
+      "lastDevice": [
+        625,
+        175
+      ],
+      "lastContent": [
+        500,
+        140
+      ],
+      "events": [
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "media2",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 700.0,
+      "rss_kib": 155356
+    },
+    "after": {
+      "cpu_ms": 740.0,
+      "rss_kib": 156744
+    },
+    "elapsed_ms": 958.4446710068733,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.25,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1.5,
+    "data": {
+      "identity": 0.4040024572561728,
+      "timeOrigin": 1794312292686,
+      "size": [
+        1000,
+        578,
+        1.5
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        140
+      ],
+      "canvas": [
+        750,
+        150
+      ],
+      "matches": [
+        true,
+        true,
+        true
+      ],
+      "contentCalls": 6,
+      "deviceCalls": 10,
+      "lastDevice": [
+        750,
+        210
+      ],
+      "lastContent": [
+        500,
+        140
+      ],
+      "events": [
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "media2",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 750.0,
+      "rss_kib": 156732
+    },
+    "after": {
+      "cpu_ms": 800.0,
+      "rss_kib": 160364
+    },
+    "elapsed_ms": 958.3882900187746,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.5,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1.75,
+    "data": {
+      "identity": 0.4040024572561728,
+      "timeOrigin": 1794312292686,
+      "size": [
+        1000,
+        578,
+        1.75
+      ],
+      "visual": [
+        1000,
+        577.7142857142857
+      ],
+      "box": [
+        500,
+        140
+      ],
+      "canvas": [
+        875,
+        175
+      ],
+      "matches": [
+        true,
+        true,
+        true
+      ],
+      "contentCalls": 8,
+      "deviceCalls": 12,
+      "lastDevice": [
+        875,
+        245
+      ],
+      "lastContent": [
+        500,
+        140
+      ],
+      "events": [
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 800.0,
+      "rss_kib": 160372
+    },
+    "after": {
+      "cpu_ms": 860.0,
+      "rss_kib": 161152
+    },
+    "elapsed_ms": 959.1040819650516,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.75,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 2,
+    "data": {
+      "identity": 0.4040024572561728,
+      "timeOrigin": 1794312292686,
+      "size": [
+        1000,
+        578,
+        2
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        140
+      ],
+      "canvas": [
+        1000,
+        200
+      ],
+      "matches": [
+        true,
+        true,
+        true
+      ],
+      "contentCalls": 8,
+      "deviceCalls": 13,
+      "lastDevice": [
+        1000,
+        280
+      ],
+      "lastContent": [
+        500,
+        140
+      ],
+      "events": [
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 860.0,
+      "rss_kib": 161164
+    },
+    "after": {
+      "cpu_ms": 920.0,
+      "rss_kib": 166712
+    },
+    "elapsed_ms": 958.9671379653737,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 2.0,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1,
+    "data": {
+      "identity": 0.4040024572561728,
+      "timeOrigin": 1794312292686,
+      "size": [
+        1000,
+        578,
+        1
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        140
+      ],
+      "canvas": [
+        500,
+        100
+      ],
+      "matches": [
+        true,
+        false,
+        true
+      ],
+      "contentCalls": 8,
+      "deviceCalls": 14,
+      "lastDevice": [
+        500,
+        140
+      ],
+      "lastContent": [
+        500,
+        140
+      ],
+      "events": [
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 920.0,
+      "rss_kib": 166464
+    },
+    "after": {
+      "cpu_ms": 930.0,
+      "rss_kib": 157264
+    },
+    "elapsed_ms": 960.8323349966668,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.0,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1.25,
+    "data": {
+      "identity": 0.4040024572561728,
+      "timeOrigin": 1794312292686,
+      "size": [
+        1000,
+        578,
+        1.25
+      ],
+      "visual": [
+        1000,
+        577.6
+      ],
+      "box": [
+        500,
+        140
+      ],
+      "canvas": [
+        625,
+        125
+      ],
+      "matches": [
+        true,
+        false,
+        true
+      ],
+      "contentCalls": 8,
+      "deviceCalls": 15,
+      "lastDevice": [
+        625,
+        175
+      ],
+      "lastContent": [
+        500,
+        140
+      ],
+      "events": [
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 930.0,
+      "rss_kib": 157276
+    },
+    "after": {
+      "cpu_ms": 970.0,
+      "rss_kib": 159332
+    },
+    "elapsed_ms": 959.3464490026236,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.25,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1.5,
+    "data": {
+      "identity": 0.4040024572561728,
+      "timeOrigin": 1794312292686,
+      "size": [
+        1000,
+        578,
+        1.5
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        140
+      ],
+      "canvas": [
+        750,
+        150
+      ],
+      "matches": [
+        true,
+        true,
+        true
+      ],
+      "contentCalls": 8,
+      "deviceCalls": 16,
+      "lastDevice": [
+        750,
+        210
+      ],
+      "lastContent": [
+        500,
+        140
+      ],
+      "events": [
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 970.0,
+      "rss_kib": 159332
+    },
+    "after": {
+      "cpu_ms": 1010.0,
+      "rss_kib": 162440
+    },
+    "elapsed_ms": 958.2808130071498,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.5,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1.75,
+    "data": {
+      "identity": 0.4040024572561728,
+      "timeOrigin": 1794312292686,
+      "size": [
+        1000,
+        578,
+        1.75
+      ],
+      "visual": [
+        1000,
+        577.7142857142857
+      ],
+      "box": [
+        500,
+        140
+      ],
+      "canvas": [
+        875,
+        175
+      ],
+      "matches": [
+        true,
+        true,
+        true
+      ],
+      "contentCalls": 8,
+      "deviceCalls": 17,
+      "lastDevice": [
+        875,
+        245
+      ],
+      "lastContent": [
+        500,
+        140
+      ],
+      "events": [
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 1010.0,
+      "rss_kib": 162136
+    },
+    "after": {
+      "cpu_ms": 1050.0,
+      "rss_kib": 164868
+    },
+    "elapsed_ms": 958.8620240101591,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.75,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 2,
+    "data": {
+      "identity": 0.4040024572561728,
+      "timeOrigin": 1794312292686,
+      "size": [
+        1000,
+        578,
+        2
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        140
+      ],
+      "canvas": [
+        1000,
+        200
+      ],
+      "matches": [
+        true,
+        true,
+        true
+      ],
+      "contentCalls": 8,
+      "deviceCalls": 18,
+      "lastDevice": [
+        1000,
+        280
+      ],
+      "lastContent": [
+        500,
+        140
+      ],
+      "events": [
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 1050.0,
+      "rss_kib": 164868
+    },
+    "after": {
+      "cpu_ms": 1100.0,
+      "rss_kib": 168404
+    },
+    "elapsed_ms": 961.4563350332901,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 2.0,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "width": 800,
+    "data": {
+      "identity": 0.4040024572561728,
+      "timeOrigin": 1794312292686,
+      "size": [
+        800,
+        578,
+        2
+      ],
+      "visual": [
+        800,
+        578
+      ],
+      "box": [
+        400,
+        140
+      ],
+      "canvas": [
+        800,
+        200
+      ],
+      "matches": [
+        false,
+        true,
+        true
+      ],
+      "contentCalls": 9,
+      "deviceCalls": 19,
+      "lastDevice": [
+        800,
+        280
+      ],
+      "lastContent": [
+        400,
+        140
+      ],
+      "events": [
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    }
+  },
+  {
+    "width": 1100,
+    "data": {
+      "identity": 0.4040024572561728,
+      "timeOrigin": 1794312292686,
+      "size": [
+        1100,
+        578,
+        2
+      ],
+      "visual": [
+        1100,
+        578
+      ],
+      "box": [
+        550,
+        140
+      ],
+      "canvas": [
+        1100,
+        200
+      ],
+      "matches": [
+        true,
+        true,
+        true
+      ],
+      "contentCalls": 10,
+      "deviceCalls": 20,
+      "lastDevice": [
+        1100,
+        280
+      ],
+      "lastContent": [
+        550,
+        140
+      ],
+      "events": [
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    }
+  },
+  {
+    "width": 800,
+    "data": {
+      "identity": 0.4040024572561728,
+      "timeOrigin": 1794312292686,
+      "size": [
+        800,
+        578,
+        2
+      ],
+      "visual": [
+        800,
+        578
+      ],
+      "box": [
+        400,
+        140
+      ],
+      "canvas": [
+        800,
+        200
+      ],
+      "matches": [
+        false,
+        true,
+        true
+      ],
+      "contentCalls": 11,
+      "deviceCalls": 21,
+      "lastDevice": [
+        800,
+        280
+      ],
+      "lastContent": [
+        400,
+        140
+      ],
+      "events": [
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    }
+  },
+  {
+    "width": 1000,
+    "data": {
+      "identity": 0.4040024572561728,
+      "timeOrigin": 1794312292686,
+      "size": [
+        1000,
+        578,
+        2
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        140
+      ],
+      "canvas": [
+        1000,
+        200
+      ],
+      "matches": [
+        true,
+        true,
+        true
+      ],
+      "contentCalls": 12,
+      "deviceCalls": 22,
+      "lastDevice": [
+        1000,
+        280
+      ],
+      "lastContent": [
+        500,
+        140
+      ],
+      "events": [
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    }
+  }
+]

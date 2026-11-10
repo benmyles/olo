@@ -31,6 +31,7 @@
   // Told of each `slotchange` listener (slots watch their assigned nodes
   // from then on; see the slots below).
   let slotchangeListened = null;
+  let mediaListenerChanged = null;
   const listenersOf = (target, create) => {
     let m = listenerMaps.get(target);
     if (!m && create) { m = new Map(); listenerMaps.set(target, m); }
@@ -87,7 +88,13 @@
   class PopStateEvent extends Event { constructor(type, init) { super(type, init); this.state = init && 'state' in init ? init.state : null; } }
   class HashChangeEvent extends Event { constructor(type, init) { super(type, init); init = init || {}; this.oldURL = init.oldURL || ''; this.newURL = init.newURL || ''; } }
   class StorageEvent extends Event { constructor(type, init) { super(type, init); init = init || {}; this.key = init.key || null; this.oldValue = init.oldValue || null; this.newValue = init.newValue || null; this.storageArea = init.storageArea || null; } }
-  Object.assign(global, { Event, CustomEvent, UIEvent, MouseEvent, PointerEvent, WheelEvent, KeyboardEvent, FocusEvent, InputEvent, ErrorEvent, PromiseRejectionEvent, ProgressEvent, MessageEvent, TransitionEvent, AnimationEvent, PageTransitionEvent, PopStateEvent, HashChangeEvent, StorageEvent, TouchEvent: UIEvent, DragEvent: MouseEvent, ClipboardEvent: Event, CompositionEvent: UIEvent, BeforeUnloadEvent: Event, SubmitEvent: Event, FormDataEvent: Event, SecurityPolicyViolationEvent: Event, DeviceOrientationEvent: Event, DeviceMotionEvent: Event, GamepadEvent: Event, MediaQueryListEvent: Event });
+  const mediaEventState = new WeakMap();
+  class MediaQueryListEvent extends Event {
+    constructor(type, init) { super(type, init); mediaEventState.set(this, { media: init && init.media !== undefined ? String(init.media) : '', matches: !!(init && init.matches) }); }
+    get media() { const s = mediaEventState.get(this); if (!s) throw new TypeError('Illegal invocation'); return s.media; }
+    get matches() { const s = mediaEventState.get(this); if (!s) throw new TypeError('Illegal invocation'); return s.matches; }
+  }
+  Object.assign(global, { Event, CustomEvent, UIEvent, MouseEvent, PointerEvent, WheelEvent, KeyboardEvent, FocusEvent, InputEvent, ErrorEvent, PromiseRejectionEvent, ProgressEvent, MessageEvent, TransitionEvent, AnimationEvent, PageTransitionEvent, PopStateEvent, HashChangeEvent, StorageEvent, TouchEvent: UIEvent, DragEvent: MouseEvent, ClipboardEvent: Event, CompositionEvent: UIEvent, BeforeUnloadEvent: Event, SubmitEvent: Event, FormDataEvent: Event, SecurityPolicyViolationEvent: Event, DeviceOrientationEvent: Event, DeviceMotionEvent: Event, GamepadEvent: Event, MediaQueryListEvent });
 
   const invoke = (listener, target, event) => {
     try {
@@ -147,7 +154,8 @@
       if (event._stopImmediate) break;
       if (phase === 1 && !entry.capture) continue;
       if (phase === 3 && entry.capture) continue;
-      if (entry.once) { const i = list.indexOf(entry); if (i >= 0) list.splice(i, 1); }
+      if (entry.removed) continue;
+      if (entry.once) { entry.removed = true; const i = list.indexOf(entry); if (i >= 0) list.splice(i, 1); if (event.type === 'change' && mediaListenerChanged) mediaListenerChanged(target); }
       invoke(entry.listener, target, event);
     }
   };
@@ -192,9 +200,10 @@
       let list = m.get(type);
       if (!list) { list = []; m.set(type, list); }
       if (list.some((e) => e.listener === listener && e.capture === capture)) return;
-      list.push({ listener, capture, once });
+      list.push({ listener, capture, once, removed: false });
       N.count('listener');
       if (type === 'slotchange' && slotchangeListened) slotchangeListened(target);
+      if (type === 'change' && mediaListenerChanged) mediaListenerChanged(target);
       if (signal && typeof signal.addEventListener === 'function') signal.addEventListener('abort', () => target.removeEventListener(type, listener, capture), { once: true });
     },
     removeEventListener(type, listener, options) {
@@ -203,7 +212,8 @@
       const list = m && m.get(type);
       if (!list) return;
       const i = list.findIndex((e) => e.listener === listener && e.capture === capture);
-      if (i >= 0) list.splice(i, 1);
+      if (i >= 0) { list[i].removed = true; list.splice(i, 1); }
+      if (type === 'change' && mediaListenerChanged) mediaListenerChanged(this ?? global);
     },
     dispatchEvent(event) { return dispatch(this ?? global, event, false); },
   });
@@ -1907,16 +1917,85 @@
   const scrollElement = (el, x, y) => { if (N.setScrollOffset(el, x, y)) queueScroll(el); };
   const queueScroll = (el) => { if (scrollPending.has(el)) return; scrollPending.add(el); setTimeout(() => { scrollPending.delete(el); dispatch(el, new Event('scroll')); }, 0); };
   H.__olo_scrolled = (el) => queueScroll(el);
-  // matchMedia answers by the engine's media evaluation, the same as the
-  // page's sheets. The viewport is fixed for a realm (a resize renders a
-  // new one), so a list never changes; its listeners are kept all the same.
+  // Queries without listeners are weakly held. Queries with change
+  // listeners stay alive, as CSSOM View requires, until those are removed.
+  const mediaQueries = new Set(), listeningMediaQueries = new Set(), mediaState = new WeakMap();
+  // Reap on allocation as well as on environment changes: a page can make
+  // transient queries forever without resizing. Bounded work per query,
+  // with no idle task and no dependency on finalizer scheduling.
+  let mediaSweep = mediaQueries.values();
+  const sweepMediaQueries = () => {
+    for (let i = 0; i < 8; i++) {
+      const next = mediaSweep.next();
+      if (next.done) { mediaSweep = mediaQueries.values(); break; }
+      if (!next.value.deref()) mediaQueries.delete(next.value);
+    }
+  };
+  // Identical query strings share their answer for this environment.
+  const mediaAnswers = new Map();
+  const evaluateMedia = (media) => {
+    if (mediaAnswers.has(media)) return mediaAnswers.get(media);
+    const matches = N.matchMedia(media);
+    if (media.length <= 4096) {
+      if (mediaAnswers.size >= 128) mediaAnswers.delete(mediaAnswers.keys().next().value);
+      mediaAnswers.set(media, matches);
+    }
+    return matches;
+  };
+  const mediaToken = {};
+  let environmentGeneration = 0, environmentPending = false;
+  let notifiedViewport = [0, 0, 1];
+  const mediaValue = (q) => {
+    const s = mediaState.get(q); if (!s) throw new TypeError('Illegal invocation');
+    if (s.generation !== environmentGeneration) { s.matches = evaluateMedia(s.media); s.generation = environmentGeneration; }
+    return s;
+  };
+  mediaListenerChanged = (q) => {
+    const s = mediaState.get(q); if (!s) return;
+    const listeners = listenersOf(q, false);
+    if (s.onchange || (listeners && (listeners.get('change') || []).length)) listeningMediaQueries.add(q);
+    else listeningMediaQueries.delete(q);
+  };
   class MediaQueryList extends EventTargetCtor {
-    constructor(media) { super(); this.media = media; this.matches = N.matchMedia(media); this.onchange = null; }
-    addListener(f) { if (typeof f === 'function') this.addEventListener('change', f); }
+    constructor(token, media) {
+      super(); if (token !== mediaToken) throw new TypeError('Illegal constructor');
+      sweepMediaQueries();
+      const matches = evaluateMedia(media);
+      mediaState.set(this, { media, matches, notified: matches, generation: environmentGeneration, onchange: null });
+      mediaQueries.add(new WeakRef(this));
+    }
+    get media() { return mediaValue(this).media; }
+    get matches() { return mediaValue(this).matches; }
+    get onchange() { return mediaValue(this).onchange; }
+    set onchange(f) { mediaValue(this).onchange = typeof f === 'function' ? f : null; mediaListenerChanged(this); }
+    addListener(f) { this.addEventListener('change', f); }
     removeListener(f) { this.removeEventListener('change', f); }
   }
   global.MediaQueryList = MediaQueryList;
-  global.matchMedia = (query) => new MediaQueryList(String(query));
+  global.MediaQueryListEvent = MediaQueryListEvent;
+  global.matchMedia = (query) => new MediaQueryList(mediaToken, String(query));
+  H.__olo_environment = () => {
+    [vw, vh, dpr] = N.viewport();
+    for (const [k, v] of Object.entries({ innerWidth: Math.round(vw), innerHeight: Math.round(vh), devicePixelRatio: dpr })) (H.__olo_window_set || ((k, v) => { global[k] = v; }))(k, v);
+    Object.assign((H.__olo_store || ((o) => o))(global.visualViewport), { width: vw, height: vh });
+    if (H.__olo_updateScreen) H.__olo_updateScreen();
+    environmentGeneration++;
+    mediaAnswers.clear();
+    environmentPending = true;
+    tickRevision = -1; resizeRevision = -1; intersectionsDue = true;
+    return 0;
+  };
+  const reportEnvironment = () => {
+    environmentPending = false;
+    const resized = vw !== notifiedViewport[0] || vh !== notifiedViewport[1] || dpr !== notifiedViewport[2];
+    notifiedViewport = [vw, vh, dpr];
+    if (resized) { dispatch(global, new Event('resize')); dispatch(global.visualViewport, new Event('resize')); }
+    for (const ref of [...mediaQueries]) {
+      const q = ref.deref(); if (!q) { mediaQueries.delete(ref); continue; }
+      const s = mediaValue(q);
+      if (s.notified !== s.matches) { s.notified = s.matches; dispatch(q, new MediaQueryListEvent('change', { media: s.media, matches: s.matches })); }
+    }
+  };
   // Timers on a virtual clock: __olo_tick(now) runs what is due and returns the next due time.
   let now = 0, nextTimer = 1;
   const timers = new Map();
@@ -2001,7 +2080,7 @@
     if (was !== pageHidden) { try { dispatch(documentNode, new Event('visibilitychange', { bubbles: true })); } catch (e) { reportError(e); } try { dispatch(global, new Event(pageHidden ? 'pagehide' : 'pageshow')); } catch (e) {} }
     return 0;
   };
-  H.__olo_wants_frame = () => (rafs.length || (intersectionObservers.size && (intersectionsDue || scrollXY[1] !== intersectionScroll || layoutNow() !== intersectionLayout)) ? 1 : 0);
+  H.__olo_wants_frame = () => (environmentPending || rafs.length || (intersectionObservers.size && (intersectionsDue || scrollXY[1] !== intersectionScroll || layoutNow() !== intersectionLayout)) ? 1 : 0);
   H.__olo_tick = (clock, frame) => {
     frameDriven = frame === 0 || frame === 1;
     frameNow = frame === 1;
@@ -2023,18 +2102,19 @@
     // the observations, whose notifications follow), so a page that
     // schedules a frame and then observes sees the frame first.
     const intersectionsWanted = intersectionObservers.size && (intersectionsDue || scrollXY[1] !== intersectionScroll || layoutNow() !== intersectionLayout);
-    if ((rafs.length || intersectionsWanted) && (frameDriven ? frameNow : now >= lastFrame + 16)) {
+    if ((environmentPending || rafs.length || intersectionsWanted) && (frameDriven ? frameNow : now >= lastFrame + 16)) {
       lastFrame = now;
+      if (environmentPending) reportEnvironment();
       const batch = rafs.splice(0, rafs.length);
       for (const r of batch) { try { r.fn.call(global, performanceNow()); } catch (e) { reportError(e); } }
       if (intersectionObservers.size && (intersectionsDue || scrollXY[1] !== intersectionScroll || layoutNow() !== intersectionLayout)) checkIntersections();
     }
     // Sizes can only have changed with the document: one check per change.
-    if (resizeObservers.size) { const r = layoutNow(); if (r !== resizeRevision) { resizeRevision = r; for (const o of [...resizeObservers]) o._check(); } }
+    if (resizeObservers.size && !environmentPending) { const r = layoutNow(); if (r !== resizeRevision) { resizeRevision = r; for (const o of [...resizeObservers]) o._check(); } }
     let next = -1;
     for (const t of timers.values()) if (next < 0 || t.due < next) next = t.due;
     // Frames driven by the host come when it says: only timers set the next time.
-    if (!frameDriven && (rafs.length || (intersectionObservers.size && (intersectionsDue || scrollXY[1] !== intersectionScroll || layoutNow() !== intersectionLayout)))) { const frame = lastFrame + 16; if (next < 0 || frame < next) next = frame; }
+    if (!frameDriven && (environmentPending || rafs.length || (intersectionObservers.size && (intersectionsDue || scrollXY[1] !== intersectionScroll || layoutNow() !== intersectionLayout)))) { const frame = lastFrame + 16; if (next < 0 || frame < next) next = frame; }
     if (next >= 0 && next <= now) next = now + 1;
     return next;
   };
@@ -2471,7 +2551,7 @@
     observe(el, options) { if (!isNode(el)) return; this._targets.set(el, { box: (options && options.box) || 'content-box', seen: null }); resizeObservers.add(this); scheduleResizeCheck(); }
     unobserve(el) { this._targets.delete(el); if (!this._targets.size) resizeObservers.delete(this); }
     disconnect() { this._targets.clear(); resizeObservers.delete(this); }
-    _check() { const entries = []; for (const [el, t] of this._targets) { if (!N.isConnected(el)) continue; const e = resizeEntry(el); const key = e.borderBoxSize[0].inlineSize + 'x' + e.borderBoxSize[0].blockSize + '/' + e.contentBoxSize[0].inlineSize + 'x' + e.contentBoxSize[0].blockSize; if (t.seen === key) continue; if (t.seen === null && e.borderBoxSize[0].inlineSize === 0 && e.borderBoxSize[0].blockSize === 0 && N.computed(el, 'display') === 'none') continue; t.seen = key; entries.push(e); } if (entries.length) { try { this._cb(entries, this); } catch (e) { reportError(e); } } }
+    _check() { const entries = []; for (const [el, t] of this._targets) { if (!N.isConnected(el)) continue; const e = resizeEntry(el); const box = (t.box === 'device-pixel-content-box' ? e.devicePixelContentBoxSize : t.box === 'border-box' ? e.borderBoxSize : e.contentBoxSize)[0]; const key = box.inlineSize + 'x' + box.blockSize; if (t.seen === key) continue; if (t.seen === null && e.borderBoxSize[0].inlineSize === 0 && e.borderBoxSize[0].blockSize === 0 && N.computed(el, 'display') === 'none') continue; t.seen = key; entries.push(e); } if (entries.length) { try { this._cb(entries, this); } catch (e) { reportError(e); } } }
   };
   let resizeCheckPending = false, resizeRevision = -1;
   const scheduleResizeCheck = () => { if (resizeCheckPending) return; resizeCheckPending = true; setTimeout(() => { resizeCheckPending = false; for (const o of [...resizeObservers]) o._check(); }, 0); };
@@ -3342,6 +3422,7 @@
     pageURL = new URL(N.url());
     historyEntries[0] = { url: pageURL.href, state: null };
     [vw, vh, dpr] = N.viewport();
+    notifiedViewport = [vw, vh, dpr];
     // (Through the window's own store: some of these have no setter, as
     // in Chrome.)
     for (const [k, v] of Object.entries({ innerWidth: vw, innerHeight: vh, outerWidth: vw, outerHeight: vh, devicePixelRatio: dpr, isSecureContext: pageURL.protocol === 'https:' || pageURL.protocol === 'file:' || /^(localhost|127\.\d+\.\d+\.\d+|\[::1\])$|\.localhost$/.test(pageURL.hostname), origin: pageURL.origin })) (H.__olo_window_set || ((k, v) => { global[k] = v; }))(k, v);

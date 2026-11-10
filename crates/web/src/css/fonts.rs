@@ -2,7 +2,7 @@
 use super::{Kind, Statement, Syntax};
 use crate::font::{Descriptor, Slopes, Span};
 use std::sync::{Arc, atomic::AtomicBool};
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Source {
     /// A URL with its declared `format()`, if any.
     Url {
@@ -11,7 +11,7 @@ pub enum Source {
     },
     Local(Arc<str>),
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FontFace {
     pub descriptor: Descriptor,
     pub sources: Vec<Source>,

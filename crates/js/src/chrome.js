@@ -325,8 +325,8 @@
     const [sw, sh, ow, oh] = N.display() || [vw, vh, vw, vh];
     Object.assign(screenValues, { availWidth: sw, availHeight: sh, width: sw, height: sh });
     const st = stores.get(orientation); if (st) st.type = sw >= sh ? 'landscape-primary' : 'portrait-primary';
-    global.outerWidth = Math.max(ow, vw);
-    global.outerHeight = Math.max(oh, vh);
+    (H.__olo_window_set || ((k, v) => { global[k] = v; }))('outerWidth', Math.max(ow, vw));
+    (H.__olo_window_set || ((k, v) => { global[k] = v; }))('outerHeight', Math.max(oh, vh));
   };
 
   const theScreen = Object.create(Screen.prototype);
@@ -338,6 +338,7 @@
   global.screen = theScreen;
   measureScreen();
   H.__olo_onBind(measureScreen);
+  H.__olo_updateScreen = measureScreen;
   global.originAgentCluster = true;
 
   // ---------- performance.memory (MemoryInfo).

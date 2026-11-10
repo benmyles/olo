@@ -14,6 +14,18 @@ without a dedicated eval environment; no personal account is part of this run.
 
 ## Latest checkpoint
 
+2026-11-10, live environment: the main page now follows display scale and theme
+without navigation. The actual hero remains colored across all 15 changes;
+19 independent component observations match Chrome. The new comparison exposes
+scrollbar/layout-viewport disagreement: Chrome reserves about 15 CSS px,
+while Olo's overlay scrollbar leaves a 1000 px hero rather than ~985 px.
+Hero heights differ too. Next: resolve that geometry against Chrome, then
+continue the remaining Stripe journeys. Iframe propagation and full observer
+semantics remain open. See [environment evidence](../../measurements/2026-11-10-live-environment/README.md).
+No configuration is accepted; corpus acceptance remains **0/100**.
+
+The preceding checkpoint follows:
+
 2026-11-10: found and fixed a live regression in the hero's palette image.
 `Realm::canvases` discarded decoded pixels of a detached `new Image()` before
 Three.js uploaded it, rendering the wave black. The fixed four WebP samples

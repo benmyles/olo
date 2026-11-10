@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-10
 
+### Browser follows the live page environment
+
+*04:08* — The same page follows resize, DPR and media changes without navigation. At 2× its canvas has 1000 backing pixels; the component geometry matches Chrome. Site acceptance remains open.
+
+![Browser follows the live page environment](2026-11-10/040821-browser-follows-the-live-page-environment.png)
+
+### Browser before live environment updates
+
+*04:08* — At live 2×, page scripts still report DPR 1 and keep a 500-pixel canvas for a 500-CSS-pixel box.
+
+![Browser before live environment updates](2026-11-10/040819-browser-before-live-environment-updates.png)
+
 ### Browser: keep detached images through JavaScript ownership
 
 *02:59* — After: decoded pixels survive while JavaScript or the DOM can reach the image. The four sampled palette pixels match Chrome exactly. Weak wrapper identities and private DOM ownership edges allow unreachable image cycles to be reclaimed. This closes the black-hero regression, not Stripe acceptance; live devicePixelRatio updates remain broken.

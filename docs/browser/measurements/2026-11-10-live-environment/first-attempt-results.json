@@ -1,0 +1,2035 @@
+[
+  {
+    "mode": "light",
+    "scale": 1,
+    "data": {
+      "identity": 0.6627900753956701,
+      "timeOrigin": 1794311280534,
+      "size": [
+        1000,
+        578,
+        1
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        500,
+        100
+      ],
+      "matches": [
+        true,
+        false,
+        false
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 1,
+      "lastDevice": [
+        500,
+        100
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": []
+    },
+    "before": {
+      "cpu_ms": 1680.0,
+      "rss_kib": 168704
+    },
+    "after": {
+      "cpu_ms": 1680.0,
+      "rss_kib": 168688
+    },
+    "elapsed_ms": 958.4496910101734,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.0,
+        "dark": false,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 1.25,
+    "data": {
+      "identity": 0.6627900753956701,
+      "timeOrigin": 1794311280534,
+      "size": [
+        1000,
+        578,
+        1.25
+      ],
+      "visual": [
+        1000,
+        577.6
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        625,
+        125
+      ],
+      "matches": [
+        true,
+        false,
+        false
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 2,
+      "lastDevice": [
+        625,
+        125
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": [
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 1680.0,
+      "rss_kib": 168696
+    },
+    "after": {
+      "cpu_ms": 1710.0,
+      "rss_kib": 172424
+    },
+    "elapsed_ms": 957.8758199932054,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.25,
+        "dark": false,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 1.5,
+    "data": {
+      "identity": 0.6627900753956701,
+      "timeOrigin": 1794311280534,
+      "size": [
+        1000,
+        578,
+        1.5
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        750,
+        150
+      ],
+      "matches": [
+        true,
+        true,
+        false
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 3,
+      "lastDevice": [
+        750,
+        150
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": [
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 1710.0,
+      "rss_kib": 172424
+    },
+    "after": {
+      "cpu_ms": 1750.0,
+      "rss_kib": 175932
+    },
+    "elapsed_ms": 958.9726200210862,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.5,
+        "dark": false,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 1.75,
+    "data": {
+      "identity": 0.6627900753956701,
+      "timeOrigin": 1794311280534,
+      "size": [
+        1000,
+        578,
+        1.75
+      ],
+      "visual": [
+        1000,
+        577.7142857142857
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        875,
+        175
+      ],
+      "matches": [
+        true,
+        true,
+        false
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 4,
+      "lastDevice": [
+        875,
+        175
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": [
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 1750.0,
+      "rss_kib": 175940
+    },
+    "after": {
+      "cpu_ms": 1800.0,
+      "rss_kib": 174796
+    },
+    "elapsed_ms": 959.3735969974659,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.75,
+        "dark": false,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 2,
+    "data": {
+      "identity": 0.6627900753956701,
+      "timeOrigin": 1794311280534,
+      "size": [
+        1000,
+        578,
+        2
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        1000,
+        200
+      ],
+      "matches": [
+        true,
+        true,
+        false
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 5,
+      "lastDevice": [
+        1000,
+        200
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": [
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 1810.0,
+      "rss_kib": 175100
+    },
+    "after": {
+      "cpu_ms": 1860.0,
+      "rss_kib": 181752
+    },
+    "elapsed_ms": 962.2948340256698,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 2.0,
+        "dark": false,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1,
+    "data": {
+      "identity": 0.6627900753956701,
+      "timeOrigin": 1794311280534,
+      "size": [
+        1000,
+        578,
+        1
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        500,
+        100
+      ],
+      "matches": [
+        true,
+        false,
+        true
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 6,
+      "lastDevice": [
+        500,
+        100
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": [
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "media2",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 1860.0,
+      "rss_kib": 181504
+    },
+    "after": {
+      "cpu_ms": 1890.0,
+      "rss_kib": 171492
+    },
+    "elapsed_ms": 958.1688739708625,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.0,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1.25,
+    "data": {
+      "identity": 0.6627900753956701,
+      "timeOrigin": 1794311280534,
+      "size": [
+        1000,
+        578,
+        1.25
+      ],
+      "visual": [
+        1000,
+        577.6
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        625,
+        125
+      ],
+      "matches": [
+        true,
+        false,
+        true
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 7,
+      "lastDevice": [
+        625,
+        125
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": [
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "media2",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 1890.0,
+      "rss_kib": 171500
+    },
+    "after": {
+      "cpu_ms": 1930.0,
+      "rss_kib": 173920
+    },
+    "elapsed_ms": 957.724791020155,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.25,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1.5,
+    "data": {
+      "identity": 0.6627900753956701,
+      "timeOrigin": 1794311280534,
+      "size": [
+        1000,
+        578,
+        1.5
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        750,
+        150
+      ],
+      "matches": [
+        true,
+        true,
+        true
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 8,
+      "lastDevice": [
+        750,
+        150
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": [
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "media2",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 1930.0,
+      "rss_kib": 173920
+    },
+    "after": {
+      "cpu_ms": 1970.0,
+      "rss_kib": 177900
+    },
+    "elapsed_ms": 958.126625046134,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.5,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1.75,
+    "data": {
+      "identity": 0.6627900753956701,
+      "timeOrigin": 1794311280534,
+      "size": [
+        1000,
+        578,
+        1.75
+      ],
+      "visual": [
+        1000,
+        577.7142857142857
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        875,
+        175
+      ],
+      "matches": [
+        true,
+        true,
+        true
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 9,
+      "lastDevice": [
+        875,
+        175
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": [
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "media2",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 1970.0,
+      "rss_kib": 177900
+    },
+    "after": {
+      "cpu_ms": 2020.0,
+      "rss_kib": 178436
+    },
+    "elapsed_ms": 958.642547018826,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.75,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 2,
+    "data": {
+      "identity": 0.6627900753956701,
+      "timeOrigin": 1794311280534,
+      "size": [
+        1000,
+        578,
+        2
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        1000,
+        200
+      ],
+      "matches": [
+        true,
+        true,
+        true
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 10,
+      "lastDevice": [
+        1000,
+        200
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": [
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "media2",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 2020.0,
+      "rss_kib": 178436
+    },
+    "after": {
+      "cpu_ms": 2070.0,
+      "rss_kib": 183772
+    },
+    "elapsed_ms": 959.2475009849295,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 2.0,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1,
+    "data": {
+      "identity": 0.6627900753956701,
+      "timeOrigin": 1794311280534,
+      "size": [
+        1000,
+        578,
+        1
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        500,
+        100
+      ],
+      "matches": [
+        true,
+        false,
+        true
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 11,
+      "lastDevice": [
+        500,
+        100
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": [
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 2070.0,
+      "rss_kib": 183776
+    },
+    "after": {
+      "cpu_ms": 2090.0,
+      "rss_kib": 173556
+    },
+    "elapsed_ms": 959.0933009749278,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.0,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1.25,
+    "data": {
+      "identity": 0.6627900753956701,
+      "timeOrigin": 1794311280534,
+      "size": [
+        1000,
+        578,
+        1.25
+      ],
+      "visual": [
+        1000,
+        577.6
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        625,
+        125
+      ],
+      "matches": [
+        true,
+        false,
+        true
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 12,
+      "lastDevice": [
+        625,
+        125
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": [
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 2090.0,
+      "rss_kib": 173564
+    },
+    "after": {
+      "cpu_ms": 2130.0,
+      "rss_kib": 175544
+    },
+    "elapsed_ms": 959.0516519965604,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.25,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1.5,
+    "data": {
+      "identity": 0.6627900753956701,
+      "timeOrigin": 1794311280534,
+      "size": [
+        1000,
+        578,
+        1.5
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        750,
+        150
+      ],
+      "matches": [
+        true,
+        true,
+        true
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 13,
+      "lastDevice": [
+        750,
+        150
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": [
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 2130.0,
+      "rss_kib": 175544
+    },
+    "after": {
+      "cpu_ms": 2180.0,
+      "rss_kib": 179100
+    },
+    "elapsed_ms": 958.0123150371946,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.5,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1.75,
+    "data": {
+      "identity": 0.6627900753956701,
+      "timeOrigin": 1794311280534,
+      "size": [
+        1000,
+        578,
+        1.75
+      ],
+      "visual": [
+        1000,
+        577.7142857142857
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        875,
+        175
+      ],
+      "matches": [
+        true,
+        true,
+        true
+      ],
+      "contentCalls": 1,
+      "deviceCalls": 14,
+      "lastDevice": [
+        875,
+        175
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": [
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 2180.0,
+      "rss_kib": 179100
+    },
+    "after": {
+      "cpu_ms": 2220.0,
+      "rss_kib": 181784
+    },
+    "elapsed_ms": 958.7977110059,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.75,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 2,
+    "data": {
+      "identity": 0.6627900753956701,
+      "timeOrigin": 1794311280534,
+      "size": [
+        1000,
+        578,
+        2
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        1000,
+        200
+      ],
+      "matches": [
+        true,
+        true,
+        true
+      ],
+      "contentCalls": 3,
+      "deviceCalls": 16,
+      "lastDevice": [
+        1000,
+        200
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": [
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 2220.0,
+      "rss_kib": 181784
+    },
+    "after": {
+      "cpu_ms": 2280.0,
+      "rss_kib": 185612
+    },
+    "elapsed_ms": 958.6669760174118,
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 2.0,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "width": 800,
+    "data": {
+      "identity": 0.6627900753956701,
+      "timeOrigin": 1794311280534,
+      "size": [
+        800,
+        578,
+        2
+      ],
+      "visual": [
+        800,
+        578
+      ],
+      "box": [
+        400,
+        100
+      ],
+      "canvas": [
+        800,
+        200
+      ],
+      "matches": [
+        false,
+        true,
+        true
+      ],
+      "contentCalls": 4,
+      "deviceCalls": 17,
+      "lastDevice": [
+        800,
+        200
+      ],
+      "lastContent": [
+        400,
+        100
+      ],
+      "events": [
+        [
+          "media1",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    }
+  },
+  {
+    "width": 1100,
+    "data": {
+      "identity": 0.6627900753956701,
+      "timeOrigin": 1794311280534,
+      "size": [
+        1100,
+        578,
+        2
+      ],
+      "visual": [
+        1100,
+        578
+      ],
+      "box": [
+        550,
+        100
+      ],
+      "canvas": [
+        1100,
+        200
+      ],
+      "matches": [
+        true,
+        true,
+        true
+      ],
+      "contentCalls": 5,
+      "deviceCalls": 18,
+      "lastDevice": [
+        1100,
+        200
+      ],
+      "lastContent": [
+        550,
+        100
+      ],
+      "events": [
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    }
+  },
+  {
+    "width": 800,
+    "data": {
+      "identity": 0.6627900753956701,
+      "timeOrigin": 1794311280534,
+      "size": [
+        800,
+        578,
+        2
+      ],
+      "visual": [
+        800,
+        578
+      ],
+      "box": [
+        400,
+        100
+      ],
+      "canvas": [
+        800,
+        200
+      ],
+      "matches": [
+        false,
+        true,
+        true
+      ],
+      "contentCalls": 6,
+      "deviceCalls": 19,
+      "lastDevice": [
+        800,
+        200
+      ],
+      "lastContent": [
+        400,
+        100
+      ],
+      "events": [
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    }
+  },
+  {
+    "width": 1000,
+    "data": {
+      "identity": 0.6627900753956701,
+      "timeOrigin": 1794311280534,
+      "size": [
+        1000,
+        578,
+        2
+      ],
+      "visual": [
+        1000,
+        578
+      ],
+      "box": [
+        500,
+        100
+      ],
+      "canvas": [
+        1000,
+        200
+      ],
+      "matches": [
+        true,
+        true,
+        true
+      ],
+      "contentCalls": 7,
+      "deviceCalls": 20,
+      "lastDevice": [
+        1000,
+        200
+      ],
+      "lastContent": [
+        500,
+        100
+      ],
+      "events": [
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ],
+        [
+          "window",
+          true,
+          "Event"
+        ],
+        [
+          "visual",
+          true,
+          "Event"
+        ],
+        [
+          "media0",
+          true,
+          "MediaQueryListEvent"
+        ]
+      ]
+    }
+  }
+]

@@ -4480,5 +4480,17 @@
   "title": "Browser: keep detached images through JavaScript ownership",
   "caption": "After: decoded pixels survive while JavaScript or the DOM can reach the image. The four sampled palette pixels match Chrome exactly. Weak wrapper identities and private DOM ownership edges allow unreachable image cycles to be reclaimed. This closes the black-hero regression, not Stripe acceptance; live devicePixelRatio updates remain broken.",
   "image": "2026-11-10/025950-browser-keep-detached-images-through-javascript-.png"
+ },
+ {
+  "time": "2026-11-10T04:08:19",
+  "title": "Browser before live environment updates",
+  "caption": "At live 2\u00d7, page scripts still report DPR 1 and keep a 500-pixel canvas for a 500-CSS-pixel box.",
+  "image": "2026-11-10/040819-browser-before-live-environment-updates.png"
+ },
+ {
+  "time": "2026-11-10T04:08:21",
+  "title": "Browser follows the live page environment",
+  "caption": "The same page follows resize, DPR and media changes without navigation. At 2\u00d7 its canvas has 1000 backing pixels; the component geometry matches Chrome. Site acceptance remains open.",
+  "image": "2026-11-10/040821-browser-follows-the-live-page-environment.png"
  }
 ]

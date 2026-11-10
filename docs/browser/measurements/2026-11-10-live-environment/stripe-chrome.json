@@ -1,0 +1,377 @@
+[
+  {
+    "mode": "light",
+    "scale": 1,
+    "data": {
+      "dpr": 1,
+      "size": [
+        1000,
+        613
+      ],
+      "dark": false,
+      "resolution": false,
+      "canvases": [
+        {
+          "size": [
+            985,
+            565
+          ],
+          "rect": [
+            985,
+            565.828125
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "mode": "light",
+    "scale": 1.25,
+    "data": {
+      "dpr": 1.25,
+      "size": [
+        1000,
+        614
+      ],
+      "dark": false,
+      "resolution": false,
+      "canvases": [
+        {
+          "size": [
+            984,
+            566
+          ],
+          "rect": [
+            984.7999877929688,
+            566.0375366210938
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "mode": "light",
+    "scale": 1.5,
+    "data": {
+      "dpr": 1.5,
+      "size": [
+        1000,
+        613
+      ],
+      "dark": false,
+      "resolution": true,
+      "canvases": [
+        {
+          "size": [
+            984,
+            565
+          ],
+          "rect": [
+            984.6666870117188,
+            565.7291870117188
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "mode": "light",
+    "scale": 1.75,
+    "data": {
+      "dpr": 1.75,
+      "size": [
+        1000,
+        613
+      ],
+      "dark": false,
+      "resolution": true,
+      "canvases": [
+        {
+          "size": [
+            985,
+            565
+          ],
+          "rect": [
+            985.1428833007812,
+            565.5
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "mode": "light",
+    "scale": 2,
+    "data": {
+      "dpr": 2,
+      "size": [
+        1000,
+        613
+      ],
+      "dark": false,
+      "resolution": true,
+      "canvases": [
+        {
+          "size": [
+            985,
+            565
+          ],
+          "rect": [
+            985,
+            565.8359375
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "mode": "dark",
+    "scale": 1,
+    "data": {
+      "dpr": 1,
+      "size": [
+        1000,
+        613
+      ],
+      "dark": true,
+      "resolution": false,
+      "canvases": [
+        {
+          "size": [
+            985,
+            565
+          ],
+          "rect": [
+            985,
+            565.828125
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "mode": "dark",
+    "scale": 1.25,
+    "data": {
+      "dpr": 1.25,
+      "size": [
+        1000,
+        614
+      ],
+      "dark": true,
+      "resolution": false,
+      "canvases": [
+        {
+          "size": [
+            984,
+            566
+          ],
+          "rect": [
+            984.7999877929688,
+            566.0375366210938
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "mode": "dark",
+    "scale": 1.5,
+    "data": {
+      "dpr": 1.5,
+      "size": [
+        1000,
+        613
+      ],
+      "dark": true,
+      "resolution": true,
+      "canvases": [
+        {
+          "size": [
+            984,
+            565
+          ],
+          "rect": [
+            984.6666870117188,
+            565.7291870117188
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "mode": "dark",
+    "scale": 1.75,
+    "data": {
+      "dpr": 1.75,
+      "size": [
+        1000,
+        613
+      ],
+      "dark": true,
+      "resolution": true,
+      "canvases": [
+        {
+          "size": [
+            985,
+            565
+          ],
+          "rect": [
+            985.1428833007812,
+            565.5
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "mode": "dark",
+    "scale": 2,
+    "data": {
+      "dpr": 2,
+      "size": [
+        1000,
+        613
+      ],
+      "dark": true,
+      "resolution": true,
+      "canvases": [
+        {
+          "size": [
+            985,
+            565
+          ],
+          "rect": [
+            985,
+            565.8359375
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "mode": "night",
+    "scale": 1,
+    "data": {
+      "dpr": 1,
+      "size": [
+        1000,
+        613
+      ],
+      "dark": true,
+      "resolution": false,
+      "canvases": [
+        {
+          "size": [
+            985,
+            565
+          ],
+          "rect": [
+            985,
+            565.828125
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "mode": "night",
+    "scale": 1.25,
+    "data": {
+      "dpr": 1.25,
+      "size": [
+        1000,
+        614
+      ],
+      "dark": true,
+      "resolution": false,
+      "canvases": [
+        {
+          "size": [
+            984,
+            566
+          ],
+          "rect": [
+            984.7999877929688,
+            566.0375366210938
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "mode": "night",
+    "scale": 1.5,
+    "data": {
+      "dpr": 1.5,
+      "size": [
+        1000,
+        613
+      ],
+      "dark": true,
+      "resolution": true,
+      "canvases": [
+        {
+          "size": [
+            984,
+            565
+          ],
+          "rect": [
+            984.6666870117188,
+            565.7291870117188
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "mode": "night",
+    "scale": 1.75,
+    "data": {
+      "dpr": 1.75,
+      "size": [
+        1000,
+        613
+      ],
+      "dark": true,
+      "resolution": true,
+      "canvases": [
+        {
+          "size": [
+            985,
+            565
+          ],
+          "rect": [
+            985.1428833007812,
+            565.5
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "mode": "night",
+    "scale": 2,
+    "data": {
+      "dpr": 2,
+      "size": [
+        1000,
+        613
+      ],
+      "dark": true,
+      "resolution": true,
+      "canvases": [
+        {
+          "size": [
+            985,
+            565
+          ],
+          "rect": [
+            985,
+            565.8359375
+          ]
+        }
+      ]
+    }
+  }
+]

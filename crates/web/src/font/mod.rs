@@ -108,7 +108,7 @@ pub struct Axis {
     pub range: Span,
     pub default: f64,
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Slopes {
     pub oblique: Option<Span>,
     pub italic: Option<Span>,

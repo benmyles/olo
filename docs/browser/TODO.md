@@ -13,11 +13,17 @@ Earlier Wikipedia/GitHub work below remains diagnostic history.**
 pixels of detached `Image` objects. Wrapper/image ownership now follows V8
 reachability; the palette samples match Chrome. Evidence:
 [detached image ownership](measurements/2026-11-10-detached-images/README.md).
-The next observed failure is **live environment updates**: changing the display
-scale updates native/page raster output but leaves JavaScript's
-`devicePixelRatio`, viewport values and media-query state stale. Fix and verify
-that before accepting any live-scale configuration. Connected offscreen images
-also still need pixel-source recovery after decode eviction.
+Live environment updates for the main page are now implemented: DPR, viewport,
+media-query notifications, script measurements and device-pixel observations
+follow resize/scale/theme changes. Nineteen component observations match Chrome;
+Stripe follows all 15 live theme/scale changes. See
+[live environment evidence](measurements/2026-11-10-live-environment/README.md).
+The next observed layout difference is **scrollbar geometry**: Chrome reserves
+about 15 CSS px on this platform; Olo's overlay scrollbar leaves the page wider
+(Stripe hero ~985 vs 1000 px). Resolve this against the reference before
+accepting configurations. Iframes still restart on resize and lack this
+environment propagation; responsive-source reselection and connected offscreen
+image pixel recovery also remain open.
 
 Finish its real pages/journeys and all 30 configurations before choosing
 another site. The engine renders every page end to end and records what it

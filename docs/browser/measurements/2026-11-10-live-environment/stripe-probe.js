@@ -1,0 +1,1 @@
+JSON.stringify({dpr:devicePixelRatio,size:[innerWidth,innerHeight],dark:matchMedia('(prefers-color-scheme: dark)').matches,resolution:matchMedia('(min-resolution:1.5dppx)').matches,canvases:Array.from(document.querySelectorAll('canvas.single-wave__canvas')).map(c=>({size:[c.width,c.height],rect:[c.getBoundingClientRect().width,c.getBoundingClientRect().height]}))})

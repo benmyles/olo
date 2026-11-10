@@ -8263,3 +8263,44 @@ complete observer lifetimes and eliminating idle watchdog wakes remain open.
 The milestone's raw evidence and scripts are in
 `measurements/2026-11-10-detached-images/`. No desktop install/reload; the fetched
 `origin/main` was already contained in the browser branch.
+
+
+## 2026-11-10 — live page environment propagation
+
+The main realm now follows viewport, DPR and theme changes without rebinding
+the document or resetting its clock. Its persistent measurement host receives
+the new environment first; media-filtered rules are reselected while unchanged
+font sources/scopes remain cached. Resize/visual-viewport/media notifications
+coalesce before animation callbacks. Device-pixel ResizeObserver entries
+follow DPR, and query ownership follows listeners with bounded weak-entry
+cleanup during work, never an idle poll.
+
+The first GUI attempt exposed stale Measurer rules despite correct JS values;
+that failure is retained. Final component results match Chrome on 19 live
+observations (15 theme/scale combinations and four resizes). All 30 native
+widget reviews, fixture and Stripe at odd x=49, and both screen-size lints
+are clean. The release workspace suite passed 2,193 tests, with zero failures
+and 136 existing ignored; the final 76 JS tests passed again.
+
+Release ABBA measurements at 1.25×/2×: 5,000 event dispatches
+1.568→1.536 / 1.153→1.326 ms; 1,000 repeated media queries
+0.993→0.517 / 1.046→0.474 ms. Correct resize callbacks/observer work increases
+whole-process CPU per resize from 15.625→42.812 / 24.688→51.250 ms and RSS
+by 18,218 / 10,020 KiB. The ~409 ms resize-tool wait includes a quiet period
+and is not paint latency. Sixteen valid scroll probes have zero hitches,
+slowest draw 3.77 ms. Drag first movement 28.45→27.0 / 28.6→25.2 ms; wheel
+9.05→9.05 / 9.05→8.85 ms. Initial 2× probes aimed outside the scaled output
+and moved nothing; failures and corrected interior-point probes are both
+retained. Idle stays at zero measured CPU/page frames, with 2–4 existing
+watchdog wakes per three seconds. No whole-browser speedup claim.
+
+Stripe's live hero remains colored and its JS environment follows all 15
+changes. Chrome also uses roughly one backing pixel per CSS pixel for this
+hero. The next observed mismatch is scrollbar geometry: Chrome reserves
+about 15 CSS px; Olo's overlay scrollbar leaves the hero 1000 px wide rather
+than ~985. Hero heights also differ. Iframe environment propagation,
+responsive-source reselection, full observer/VisualViewport behavior and the
+remaining Stripe journeys stay open. Acceptance remains **0/100**.
+
+Evidence: `measurements/2026-11-10-live-environment/`. The fetched origin/main
+was already contained. No personal desktop install/reload or agent delegation.
