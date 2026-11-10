@@ -432,7 +432,7 @@ impl WindowCore {
                 value: agent.value.clone(),
                 bounds: node.bounds,
                 enabled: !inter.disabled,
-                clickable: !inter.disabled && (!inter.click.is_empty() || !inter.mouse_down.is_empty()),
+                clickable: !inter.disabled && agent.clickable.unwrap_or(!inter.click.is_empty() || !inter.mouse_down.is_empty()),
                 focused: node.focused,
                 checked: agent.checked,
                 selected: agent.selected,

@@ -290,7 +290,11 @@ impl View for Frame {
 /// makes there (the view the window's handle reaches).
 pub fn open_window<V: View>(options: WindowOptions, build: impl FnOnce(&mut Cx<V>) -> V + Send + 'static) -> WindowHandle<V> {
     let panel = options.panel;
+    let namespace = options.layer.as_ref().map(|l| l.namespace.clone());
     olo_interface::open_window(options.spec(), move |cx: &mut Cx<Frame>| {
+        if let Some(namespace) = &namespace {
+            crate::agent::set_layer(cx, namespace);
+        }
         let content = cx.new_view(build);
         cx.set_main_view(&content);
         Frame { content: content.into(), panel }
@@ -313,6 +317,9 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut AppCx)) {
     let _ = tracing_subscriber::fmt().with_env_filter(filter).with_ansi(ansi).with_writer(std::io::stderr).try_init();
     olo_kit_base::keys::set_app_id(app_id);
     theme::init();
-    olo_interface::run(app_id, build);
+    olo_interface::run(app_id, |app| {
+        crate::agent::init();
+        build(app)
+    });
     olo_kit_base::store::flush();
 }

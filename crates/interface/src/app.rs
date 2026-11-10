@@ -122,6 +122,22 @@ pub fn ask_windows<T: Send + 'static>(wait: std::time::Duration, f: impl Fn(&mut
     all
 }
 
+/// A window's frames since they were last asked for, and what draws
+/// them.
+pub struct WindowFrames {
+    pub id: WindowId,
+    pub stats: crate::FrameStats,
+    pub gpu: Option<crate::GpuSpecs>,
+}
+
+/// Every window's frames since last asked (`{"frames":true}`): from the
+/// display thread, which draws them. Waits for it: not for a looper.
+pub fn take_frame_stats() -> Vec<WindowFrames> {
+    display()
+        .ask(|on| on.stages.values().map(|stage| WindowFrames { id: stage.id(), stats: stage.take_frame_stats(), gpu: stage.with_window(|w| w.gpu_specs()).flatten() }).collect())
+        .unwrap_or_default()
+}
+
 /// The program's text system (its fonts, shaping and glyphs), for what
 /// measures text with no window to hand.
 pub fn text_system() -> std::sync::Arc<crate::TextSystem> {

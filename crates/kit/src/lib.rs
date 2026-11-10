@@ -6,6 +6,7 @@
 //! on device pixels at every scale), the BeOS controls, and what every
 //! app does the same way.
 
+pub mod agent;
 mod app;
 pub mod icons;
 pub mod review;

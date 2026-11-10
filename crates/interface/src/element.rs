@@ -179,6 +179,9 @@ pub(crate) struct AgentSpec {
     pub(crate) value: Option<SharedString>,
     pub(crate) checked: Option<bool>,
     pub(crate) selected: Option<bool>,
+    /// Whether it takes clicks, if that isn't to be read off its
+    /// handlers.
+    pub(crate) clickable: Option<bool>,
 }
 
 /// How an element takes the pointer and the keyboard.
@@ -552,6 +555,13 @@ pub trait InteractiveElement: Sized {
     /// Whether agents read it as checked (check boxes, radio buttons).
     fn agent_checked(mut self, checked: Option<bool>) -> Self {
         self.interactivity().agent.get_or_insert_with(Default::default).checked = checked;
+        self
+    }
+
+    /// Whether agents read it as taking clicks (otherwise: whether it
+    /// has a handler for one).
+    fn agent_clickable(mut self, clickable: bool) -> Self {
+        self.interactivity().agent.get_or_insert_with(Default::default).clickable = Some(clickable);
         self
     }
 

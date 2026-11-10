@@ -148,7 +148,7 @@ impl IntoElement for Control {
             }
         }
         if let Some((role, name, checked)) = self.node {
-            element = element.agent(role, name).agent_checked(checked);
+            element = element.agent(role, name).agent_checked(checked).agent_clickable(true);
             if let Some(value) = self.value {
                 element = element.agent_value(value);
             }
