@@ -14,6 +14,13 @@ without a dedicated eval environment; no personal account is part of this run.
 
 ## Latest checkpoint
 
+2026-11-10, overflow ownership: fixed the source of viewport overflow and
+one-axis clipping in the shared engine, and added typed root scrollbar
+properties. Component measurements and pixels agree with the pinned Chrome
+cases. Classic scrollbar space remains unimplemented; the hero width/height
+differences and all remaining journeys/configurations are still open. See
+[overflow evidence](../../measurements/2026-11-10-viewport-overflow/README.md).
+
 2026-11-10, live environment: the main page now follows display scale and theme
 without navigation. The actual hero remains colored across all 15 changes;
 19 independent component observations match Chrome. The new comparison exposes

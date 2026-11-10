@@ -25,6 +25,15 @@ accepting configurations. Iframes still restart on resize and lack this
 environment propagation; responsive-source reselection and connected offscreen
 image pixel recovery also remain open.
 
+The scrollbar investigation has fixed viewport overflow ownership and
+per-axis clipping/measurement, with root-only typed scrollbar properties.
+The width difference remains: classic gutter allocation, viewport units,
+client/VisualViewport sizing, horizontal/nested bars and root input policy
+still need integration. DOM body scrolling still aliases the viewport, and
+the JS layout budget can return stale measurements after 60 layouts/0.25s
+in one advance. Evidence and the failed budget probe are retained in
+[viewport overflow](measurements/2026-11-10-viewport-overflow/README.md).
+
 Finish its real pages/journeys and all 30 configurations before choosing
 another site. The engine renders every page end to end and records what it
 substituted in `Page::fallbacks` (see JOURNAL, 2026-11-06 evening); work is

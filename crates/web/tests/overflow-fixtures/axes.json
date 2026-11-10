@@ -1,0 +1,252 @@
+[
+  {
+    "input": [
+      "visible",
+      "visible"
+    ],
+    "computed": [
+      "visible",
+      "visible"
+    ]
+  },
+  {
+    "input": [
+      "visible",
+      "clip"
+    ],
+    "computed": [
+      "visible",
+      "clip"
+    ]
+  },
+  {
+    "input": [
+      "visible",
+      "hidden"
+    ],
+    "computed": [
+      "auto",
+      "hidden"
+    ]
+  },
+  {
+    "input": [
+      "visible",
+      "auto"
+    ],
+    "computed": [
+      "auto",
+      "auto"
+    ]
+  },
+  {
+    "input": [
+      "visible",
+      "scroll"
+    ],
+    "computed": [
+      "auto",
+      "scroll"
+    ]
+  },
+  {
+    "input": [
+      "clip",
+      "visible"
+    ],
+    "computed": [
+      "clip",
+      "visible"
+    ]
+  },
+  {
+    "input": [
+      "clip",
+      "clip"
+    ],
+    "computed": [
+      "clip",
+      "clip"
+    ]
+  },
+  {
+    "input": [
+      "clip",
+      "hidden"
+    ],
+    "computed": [
+      "clip",
+      "hidden"
+    ]
+  },
+  {
+    "input": [
+      "clip",
+      "auto"
+    ],
+    "computed": [
+      "clip",
+      "auto"
+    ]
+  },
+  {
+    "input": [
+      "clip",
+      "scroll"
+    ],
+    "computed": [
+      "clip",
+      "scroll"
+    ]
+  },
+  {
+    "input": [
+      "hidden",
+      "visible"
+    ],
+    "computed": [
+      "hidden",
+      "auto"
+    ]
+  },
+  {
+    "input": [
+      "hidden",
+      "clip"
+    ],
+    "computed": [
+      "hidden",
+      "clip"
+    ]
+  },
+  {
+    "input": [
+      "hidden",
+      "hidden"
+    ],
+    "computed": [
+      "hidden",
+      "hidden"
+    ]
+  },
+  {
+    "input": [
+      "hidden",
+      "auto"
+    ],
+    "computed": [
+      "hidden",
+      "auto"
+    ]
+  },
+  {
+    "input": [
+      "hidden",
+      "scroll"
+    ],
+    "computed": [
+      "hidden",
+      "scroll"
+    ]
+  },
+  {
+    "input": [
+      "auto",
+      "visible"
+    ],
+    "computed": [
+      "auto",
+      "auto"
+    ]
+  },
+  {
+    "input": [
+      "auto",
+      "clip"
+    ],
+    "computed": [
+      "auto",
+      "clip"
+    ]
+  },
+  {
+    "input": [
+      "auto",
+      "hidden"
+    ],
+    "computed": [
+      "auto",
+      "hidden"
+    ]
+  },
+  {
+    "input": [
+      "auto",
+      "auto"
+    ],
+    "computed": [
+      "auto",
+      "auto"
+    ]
+  },
+  {
+    "input": [
+      "auto",
+      "scroll"
+    ],
+    "computed": [
+      "auto",
+      "scroll"
+    ]
+  },
+  {
+    "input": [
+      "scroll",
+      "visible"
+    ],
+    "computed": [
+      "scroll",
+      "auto"
+    ]
+  },
+  {
+    "input": [
+      "scroll",
+      "clip"
+    ],
+    "computed": [
+      "scroll",
+      "clip"
+    ]
+  },
+  {
+    "input": [
+      "scroll",
+      "hidden"
+    ],
+    "computed": [
+      "scroll",
+      "hidden"
+    ]
+  },
+  {
+    "input": [
+      "scroll",
+      "auto"
+    ],
+    "computed": [
+      "scroll",
+      "auto"
+    ]
+  },
+  {
+    "input": [
+      "scroll",
+      "scroll"
+    ],
+    "computed": [
+      "scroll",
+      "scroll"
+    ]
+  }
+]

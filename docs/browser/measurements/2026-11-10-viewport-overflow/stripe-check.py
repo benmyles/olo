@@ -1,0 +1,29 @@
+import copy,json,re,socket,subprocess,time
+from pathlib import Path
+root=Path('/var/tmp/codex-browser-scrollbars');screen='codex-browser';out=root/'stripe';out.mkdir(exist_ok=True)
+def run(*a):return subprocess.check_output(['olo-screen',*map(str,a)],text=True)
+info=next(x for x in json.loads(run('list')) if x['name']==screen);assert info['state']=='running'
+def ipc(req):
+ run('wait',screen,'--free')
+ with socket.socket(socket.AF_UNIX) as s:
+  s.connect(info['olo_socket']);s.sendall((json.dumps(req)+'\n').encode());return json.loads(s.makefile().readline())
+assert not json.loads(run('windows',screen))
+pid=int(run('run',screen,'env','OLO_DATA='+str(Path.cwd()),'OLO_BROWSER_EVAL_LIVE='+str(root/'stripe-probe.js'),'XDG_CACHE_HOME='+str(root/'cache'/'stripe'),root/'browser-after','https://stripe.com/'))
+run('wait',screen,'--text','Stripe','--timeout',30000);time.sleep(10)
+w=next(w for w in json.loads(run('windows',screen)) if w['pid']==pid)
+original=ipc({'type':'get_settings'})['settings'];rows=[]
+try:
+ for mode in ['light','dark','night']:
+  for scale in [1,1.25,1.5,1.75,2]:
+   st=copy.deepcopy(original);st['appearance']['theme']='dark' if mode=='night' else mode;st['appearance']['night_light']['mode']='on' if mode=='night' else 'off';st['display']['scale']=scale
+   for o in st['display'].get('outputs',{}).values():o.pop('scale',None)
+   ipc({'type':'set_settings','settings':st});run('place',screen,49,40,'1000x700','--window',w['id']);time.sleep(1.2)
+   log=Path('/run/user/1000/olo-screens/codex-browser-env.log').read_text();data=json.loads(re.findall(r'Browser live eval: (\{[^\n]*\})',log)[-1])
+   rows.append({'mode':mode,'scale':scale,'data':data,'review':json.loads(run('review',screen,'--window',w['id'],'--json'))})
+   run('look',screen,out/f'{mode}-{scale}.png','--window',w['id'],'--no-pointer')
+   (out/'results.json').write_text(json.dumps(rows,indent=2))
+   print(mode,scale,data,flush=True)
+ (out/'log.txt').write_text(log)
+finally:
+ run('close',screen,'--window',w['id'])
+ ipc({'type':'set_settings','settings':original})

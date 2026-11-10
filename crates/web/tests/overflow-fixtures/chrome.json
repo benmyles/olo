@@ -1,0 +1,1010 @@
+[
+  {
+    "case": "body-propagates",
+    "html": "",
+    "body": "width:120px;height:40px;overflow:hidden",
+    "box": "",
+    "data": {
+      "inner": [
+        1000,
+        613
+      ],
+      "size": [
+        1400,
+        1200
+      ],
+      "elements": [
+        {
+          "id": "html",
+          "rect": [
+            0,
+            0,
+            1000,
+            40
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "body",
+          "rect": [
+            0,
+            0,
+            120,
+            40
+          ],
+          "overflow": [
+            "hidden",
+            "hidden"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "#box",
+          "rect": [
+            0,
+            0,
+            120,
+            40
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "#content",
+          "rect": [
+            0,
+            0,
+            1400,
+            1200
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        }
+      ],
+      "hits": [
+        "content",
+        "content",
+        "content",
+        "content"
+      ]
+    }
+  },
+  {
+    "case": "root-auto-body-hidden",
+    "html": "width:200px;height:80px;overflow:auto",
+    "body": "width:120px;height:40px;overflow:hidden",
+    "box": "",
+    "data": {
+      "inner": [
+        1000,
+        613
+      ],
+      "size": [
+        1000,
+        613
+      ],
+      "elements": [
+        {
+          "id": "html",
+          "rect": [
+            0,
+            0,
+            200,
+            80
+          ],
+          "overflow": [
+            "auto",
+            "auto"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "body",
+          "rect": [
+            0,
+            0,
+            120,
+            40
+          ],
+          "overflow": [
+            "hidden",
+            "hidden"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "#box",
+          "rect": [
+            0,
+            0,
+            120,
+            40
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "#content",
+          "rect": [
+            0,
+            0,
+            1400,
+            1200
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        }
+      ],
+      "hits": [
+        "content",
+        "html",
+        "html",
+        "html"
+      ]
+    }
+  },
+  {
+    "case": "root-hidden-body-visible",
+    "html": "width:200px;height:80px;overflow:hidden",
+    "body": "width:120px;height:40px",
+    "box": "",
+    "data": {
+      "inner": [
+        1000,
+        613
+      ],
+      "size": [
+        1400,
+        1200
+      ],
+      "elements": [
+        {
+          "id": "html",
+          "rect": [
+            0,
+            0,
+            200,
+            80
+          ],
+          "overflow": [
+            "hidden",
+            "hidden"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "body",
+          "rect": [
+            0,
+            0,
+            120,
+            40
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "#box",
+          "rect": [
+            0,
+            0,
+            120,
+            40
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "#content",
+          "rect": [
+            0,
+            0,
+            1400,
+            1200
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        }
+      ],
+      "hits": [
+        "content",
+        "content",
+        "content",
+        "content"
+      ]
+    }
+  },
+  {
+    "case": "root-clip-body-visible",
+    "html": "width:200px;height:80px;overflow:clip",
+    "body": "width:120px;height:40px",
+    "box": "",
+    "data": {
+      "inner": [
+        1000,
+        613
+      ],
+      "size": [
+        1400,
+        1200
+      ],
+      "elements": [
+        {
+          "id": "html",
+          "rect": [
+            0,
+            0,
+            200,
+            80
+          ],
+          "overflow": [
+            "clip",
+            "clip"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "body",
+          "rect": [
+            0,
+            0,
+            120,
+            40
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "#box",
+          "rect": [
+            0,
+            0,
+            120,
+            40
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "#content",
+          "rect": [
+            0,
+            0,
+            1400,
+            1200
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        }
+      ],
+      "hits": [
+        "content",
+        "content",
+        "content",
+        "content"
+      ]
+    }
+  },
+  {
+    "case": "root-auto-body-visible",
+    "html": "width:200px;height:80px;overflow:auto",
+    "body": "width:120px;height:40px",
+    "box": "",
+    "data": {
+      "inner": [
+        1000,
+        613
+      ],
+      "size": [
+        1400,
+        1200
+      ],
+      "elements": [
+        {
+          "id": "html",
+          "rect": [
+            0,
+            0,
+            200,
+            80
+          ],
+          "overflow": [
+            "auto",
+            "auto"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "body",
+          "rect": [
+            0,
+            0,
+            120,
+            40
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "#box",
+          "rect": [
+            0,
+            0,
+            120,
+            40
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "#content",
+          "rect": [
+            0,
+            0,
+            1400,
+            1200
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        }
+      ],
+      "hits": [
+        "content",
+        "content",
+        "content",
+        "content"
+      ]
+    }
+  },
+  {
+    "case": "nested-x-clip",
+    "html": "",
+    "body": "",
+    "box": "overflow-x:clip",
+    "data": {
+      "inner": [
+        1000,
+        613
+      ],
+      "size": [
+        1000,
+        1200
+      ],
+      "elements": [
+        {
+          "id": "html",
+          "rect": [
+            0,
+            0,
+            1000,
+            40
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "body",
+          "rect": [
+            0,
+            0,
+            1000,
+            40
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "#box",
+          "rect": [
+            0,
+            0,
+            120,
+            40
+          ],
+          "overflow": [
+            "clip",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "#content",
+          "rect": [
+            0,
+            0,
+            1400,
+            1200
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        }
+      ],
+      "hits": [
+        "content",
+        "body",
+        "content",
+        "html"
+      ]
+    }
+  },
+  {
+    "case": "nested-y-clip",
+    "html": "",
+    "body": "",
+    "box": "overflow-y:clip",
+    "data": {
+      "inner": [
+        1000,
+        613
+      ],
+      "size": [
+        1400,
+        613
+      ],
+      "elements": [
+        {
+          "id": "html",
+          "rect": [
+            0,
+            0,
+            1000,
+            40
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "body",
+          "rect": [
+            0,
+            0,
+            1000,
+            40
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "#box",
+          "rect": [
+            0,
+            0,
+            120,
+            40
+          ],
+          "overflow": [
+            "visible",
+            "clip"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "#content",
+          "rect": [
+            0,
+            0,
+            1400,
+            1200
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        }
+      ],
+      "hits": [
+        "content",
+        "content",
+        "html",
+        "html"
+      ]
+    }
+  },
+  {
+    "case": "nested-clip-auto",
+    "html": "",
+    "body": "",
+    "box": "overflow-x:clip;overflow-y:auto",
+    "data": {
+      "inner": [
+        1000,
+        613
+      ],
+      "size": [
+        1000,
+        613
+      ],
+      "elements": [
+        {
+          "id": "html",
+          "rect": [
+            0,
+            0,
+            1000,
+            40
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "body",
+          "rect": [
+            0,
+            0,
+            1000,
+            40
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "#box",
+          "rect": [
+            0,
+            0,
+            120,
+            40
+          ],
+          "overflow": [
+            "clip",
+            "auto"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "#content",
+          "rect": [
+            0,
+            0,
+            1400,
+            1200
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        }
+      ],
+      "hits": [
+        "content",
+        "body",
+        "html",
+        "html"
+      ]
+    }
+  },
+  {
+    "case": "nested-auto-clip",
+    "html": "",
+    "body": "",
+    "box": "overflow-x:auto;overflow-y:clip",
+    "data": {
+      "inner": [
+        1000,
+        613
+      ],
+      "size": [
+        1000,
+        613
+      ],
+      "elements": [
+        {
+          "id": "html",
+          "rect": [
+            0,
+            0,
+            1000,
+            40
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "body",
+          "rect": [
+            0,
+            0,
+            1000,
+            40
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "#box",
+          "rect": [
+            0,
+            0,
+            120,
+            40
+          ],
+          "overflow": [
+            "auto",
+            "clip"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "#content",
+          "rect": [
+            0,
+            0,
+            1400,
+            1200
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        }
+      ],
+      "hits": [
+        "content",
+        "body",
+        "html",
+        "html"
+      ]
+    }
+  },
+  {
+    "case": "body-own-scroll",
+    "html": "overflow:auto",
+    "body": "width:120px;height:40px;overflow:auto",
+    "box": "",
+    "data": {
+      "inner": [
+        1000,
+        613
+      ],
+      "size": [
+        1000,
+        613
+      ],
+      "elements": [
+        {
+          "id": "html",
+          "rect": [
+            0,
+            0,
+            1000,
+            40
+          ],
+          "overflow": [
+            "auto",
+            "auto"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "body",
+          "rect": [
+            0,
+            0,
+            120,
+            40
+          ],
+          "overflow": [
+            "auto",
+            "auto"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "#box",
+          "rect": [
+            0,
+            0,
+            120,
+            40
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "#content",
+          "rect": [
+            0,
+            0,
+            1400,
+            1200
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        }
+      ],
+      "hits": [
+        "content",
+        "html",
+        "html",
+        "html"
+      ]
+    }
+  },
+  {
+    "case": "body-display-none",
+    "html": "",
+    "body": "display:none;overflow:hidden",
+    "box": "",
+    "data": {
+      "inner": [
+        1000,
+        613
+      ],
+      "size": [
+        1000,
+        613
+      ],
+      "elements": [
+        {
+          "id": "html",
+          "rect": [
+            0,
+            0,
+            1000,
+            0
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "body",
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "overflow": [
+            "hidden",
+            "hidden"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "#box",
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "#content",
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        }
+      ],
+      "hits": [
+        "html",
+        "html",
+        "html",
+        "html"
+      ]
+    }
+  },
+  {
+    "case": "root-display-none",
+    "html": "display:none;overflow:hidden",
+    "body": "",
+    "box": "",
+    "data": {
+      "inner": [
+        1000,
+        613
+      ],
+      "size": [
+        1000,
+        613
+      ],
+      "elements": [
+        {
+          "id": "html",
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "overflow": [
+            "hidden",
+            "hidden"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "body",
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "#box",
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        },
+        {
+          "id": "#content",
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "overflow": [
+            "visible",
+            "visible"
+          ],
+          "width": "none",
+          "gutter": "auto"
+        }
+      ],
+      "hits": [
+        null,
+        null,
+        null,
+        null
+      ]
+    }
+  }
+]

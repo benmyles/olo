@@ -33,7 +33,7 @@ fn number(v: &Value) -> f64 {
 }
 #[test]
 fn registry_names_initial_values_and_inheritance_are_typed() {
-    assert_eq!(P::ALL.len(), 187);
+    assert_eq!(P::ALL.len(), 189);
     assert_eq!(p::Shorthand::ALL.len(), 51);
     for &property in P::ALL {
         assert!(Name::parse(property.as_str()).is_some());
@@ -59,6 +59,30 @@ fn registry_names_initial_values_and_inheritance_are_typed() {
     let Declaration::Known { values: v, .. } = d else { panic!() };
     assert_eq!(number(&v[0].value), 1.);
     assert_eq!(number(&v[1].value), 2.);
+}
+#[test]
+fn scrollbar_declarations_are_typed_and_gutter_is_canonical() {
+    for (input, expected) in [("auto", Keyword::Auto), ("stable", Keyword::Stable), ("stable both-edges", Keyword::StableBothEdges), ("BoTh-EdGeS /**/ STABLE", Keyword::StableBothEdges)] {
+        assert!(matches!(values("scrollbar-gutter", input)[0].value, Value::Keyword(k) if k == expected));
+    }
+    for input in ["", "both-edges", "auto both-edges", "stable auto", "stable stable", "stable both-edges both-edges", "both-edges stable stable", "always", "stable / both-edges"] {
+        assert_eq!(parse("scrollbar-gutter", input).unwrap_err(), Error::Invalid, "{input}");
+    }
+    for (input, expected) in [("auto", Keyword::Auto), ("thin", Keyword::Thin), ("NONE", Keyword::None)] {
+        assert!(matches!(values("scrollbar-width", input)[0].value, Value::Keyword(k) if k == expected));
+    }
+    for input in ["", "12px", "thick", "auto thin", "normal"] {
+        assert_eq!(parse("scrollbar-width", input).unwrap_err(), Error::Invalid, "{input}");
+    }
+    assert!(!P::ScrollbarWidth.inherited() && !P::ScrollbarGutter.inherited());
+    for name in ["scrollbar-width", "scrollbar-gutter"] {
+        for value in ["inherit", "initial", "unset", "revert", "revert-layer", "var(--scrollbar)"] {
+            assert!(parse(name, value).is_ok(), "{name}:{value}");
+        }
+    }
+    let all = values("all", "initial");
+    assert!(all.iter().any(|a| a.property == P::ScrollbarWidth));
+    assert!(all.iter().any(|a| a.property == P::ScrollbarGutter));
 }
 #[test]
 fn numeric_dimensions_ranges_zero_percentages_and_integer_rounding() {

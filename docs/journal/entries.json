@@ -4492,5 +4492,17 @@
   "title": "Browser follows the live page environment",
   "caption": "The same page follows resize, DPR and media changes without navigation. At 2\u00d7 its canvas has 1000 backing pixels; the component geometry matches Chrome. Site acceptance remains open.",
   "image": "2026-11-10/040821-browser-follows-the-live-page-environment.png"
+ },
+ {
+  "time": "2026-11-10T04:38:55",
+  "title": "Browser before viewport overflow propagation",
+  "caption": "An 80-pixel body incorrectly clipped the rest of its page.",
+  "image": "2026-11-10/043855-browser-before-viewport-overflow-propagation.png"
+ },
+ {
+  "time": "2026-11-10T04:38:56",
+  "title": "Browser preserves viewport overflow content",
+  "caption": "The selected root or body propagates overflow to the viewport. Independent containers retain their own clips; classic scrollbar geometry remains open.",
+  "image": "2026-11-10/043856-browser-preserves-viewport-overflow-content.png"
  }
 ]

@@ -4,6 +4,8 @@ mod containers;
 pub mod flex;
 mod flow;
 mod images;
+mod overflow;
+pub use overflow::ViewportOverflow;
 pub mod positioned;
 mod tree;
 mod used;

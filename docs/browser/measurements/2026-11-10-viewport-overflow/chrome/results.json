@@ -1,0 +1,77 @@
+[
+  {
+    "mode": "light",
+    "scale": 1,
+    "data": "{\"dpr\":1,\"inner\":[1000,613],\"size\":[985,7381],\"bodyHeight\":80}"
+  },
+  {
+    "mode": "light",
+    "scale": 1.25,
+    "data": "{\"dpr\":1.25,\"inner\":[1000,614],\"size\":[985,7444],\"bodyHeight\":80}"
+  },
+  {
+    "mode": "light",
+    "scale": 1.5,
+    "data": "{\"dpr\":1.5,\"inner\":[1000,613],\"size\":[985,7487],\"bodyHeight\":80}"
+  },
+  {
+    "mode": "light",
+    "scale": 1.75,
+    "data": "{\"dpr\":1.75,\"inner\":[1000,613],\"size\":[985,7427],\"bodyHeight\":80}"
+  },
+  {
+    "mode": "light",
+    "scale": 2,
+    "data": "{\"dpr\":2,\"inner\":[1000,613],\"size\":[985,7461],\"bodyHeight\":80}"
+  },
+  {
+    "mode": "dark",
+    "scale": 1,
+    "data": "{\"dpr\":1,\"inner\":[1000,613],\"size\":[985,7381],\"bodyHeight\":80}"
+  },
+  {
+    "mode": "dark",
+    "scale": 1.25,
+    "data": "{\"dpr\":1.25,\"inner\":[1000,614],\"size\":[985,7444],\"bodyHeight\":80}"
+  },
+  {
+    "mode": "dark",
+    "scale": 1.5,
+    "data": "{\"dpr\":1.5,\"inner\":[1000,613],\"size\":[985,7487],\"bodyHeight\":80}"
+  },
+  {
+    "mode": "dark",
+    "scale": 1.75,
+    "data": "{\"dpr\":1.75,\"inner\":[1000,613],\"size\":[985,7427],\"bodyHeight\":80}"
+  },
+  {
+    "mode": "dark",
+    "scale": 2,
+    "data": "{\"dpr\":2,\"inner\":[1000,613],\"size\":[985,7461],\"bodyHeight\":80}"
+  },
+  {
+    "mode": "night",
+    "scale": 1,
+    "data": "{\"dpr\":1,\"inner\":[1000,613],\"size\":[985,7381],\"bodyHeight\":80}"
+  },
+  {
+    "mode": "night",
+    "scale": 1.25,
+    "data": "{\"dpr\":1.25,\"inner\":[1000,614],\"size\":[985,7444],\"bodyHeight\":80}"
+  },
+  {
+    "mode": "night",
+    "scale": 1.5,
+    "data": "{\"dpr\":1.5,\"inner\":[1000,613],\"size\":[985,7487],\"bodyHeight\":80}"
+  },
+  {
+    "mode": "night",
+    "scale": 1.75,
+    "data": "{\"dpr\":1.75,\"inner\":[1000,613],\"size\":[985,7427],\"bodyHeight\":80}"
+  },
+  {
+    "mode": "night",
+    "scale": 2,
+    "data": "{\"dpr\":2,\"inner\":[1000,613],\"size\":[985,7461],\"bodyHeight\":80}"
+  }
+]

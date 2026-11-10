@@ -1393,6 +1393,7 @@ struct Draft {
 }
 pub struct BuildJob<'a> {
     doc: &'a Document,
+    viewport_overflow_source: Option<crate::dom::NodeId>,
     layout: Arc<layout::Layout>,
     engine: &'a mut Engine,
     limits: Limits,
@@ -1476,6 +1477,7 @@ impl<'a> BuildJob<'a> {
         }
         Ok(Self {
             doc,
+            viewport_overflow_source: tree.viewport_overflow().source,
             layout,
             engine,
             limits,
@@ -2606,15 +2608,12 @@ impl<'a> BuildJob<'a> {
                 sc.content[1] = sc.content[1].max(outer.y + outer.height + g.margin.bottom.max(0.) + sc.pad[1] + sc.offset[1] - sc.rect.y);
             }
             // The page's own scrollable overflow (CSS Overflow 3 §2.2): a box
-            // no ancestor clips, not fixed, reaches it (its margin box's end)
-            // whether it paints or not.
-            if parent_scroller == NONE
-                && clip == NONE
-                && !parent_fixed
-                && !matches!(b.kind, BoxKind::Viewport)
-                && !tree.style(id).is_some_and(|s| matches!(s.value(P::Position), Value::Keyword(K::Fixed)))
-            {
+            // outside scroll containers, not fixed, reaches it (its margin
+            // box's end), whether it paints or not. A one-axis clip still
+            // lets overflow on the other axis reach the page.
+            if parent_scroller == NONE && !parent_fixed && !matches!(b.kind, BoxKind::Viewport) && !tree.style(id).is_some_and(|s| matches!(s.value(P::Position), Value::Keyword(K::Fixed))) {
                 let reach = Rect { width: outer.width + g.margin.right.max(0.), height: outer.height + g.margin.bottom.max(0.), ..outer };
+                let reach = if clip == NONE { reach } else { intersection(reach, self.clip_extent(clip)) };
                 self.layout_extent = if self.layout_extent.width <= 0. && self.layout_extent.height <= 0. { reach } else { union(self.layout_extent, reach) };
             }
             match b.kind {
@@ -2849,7 +2848,7 @@ impl<'a> BuildJob<'a> {
                     }
                     let x = !matches!(s.value(P::OverflowX), Value::Keyword(K::Visible));
                     let y = !matches!(s.value(P::OverflowY), Value::Keyword(K::Visible));
-                    if x || y {
+                    if (x || y) && self.viewport_overflow_source != Some(b.node) {
                         let p = Rect {
                             x: outer.x + g.border_width.left,
                             y: outer.y + g.border_width.top,
@@ -2870,10 +2869,7 @@ impl<'a> BuildJob<'a> {
                         // A scroll container (not `clip`): its content painted
                         // moved by its offset, within its padding box.
                         let scrolls = |p| !matches!(s.value(p), Value::Keyword(K::Visible | K::Clip));
-                        // The root's and body's overflow is the viewport's (CSS
-                        // Overflow 3 §3.3): the page scrolls, not them.
-                        let viewport_owner = matches!(self.doc.name(b.node).ok().flatten(), Some("html" | "body"));
-                        if !viewport_owner && (scrolls(P::OverflowX) || scrolls(P::OverflowY)) && self.scrollers.len() < self.limits.commands {
+                        if (scrolls(P::OverflowX) || scrolls(P::OverflowY)) && self.scrollers.len() < self.limits.commands {
                             let user = |p| matches!(s.value(p), Value::Keyword(K::Auto | K::Scroll));
                             let offset = self.doc.scroll_offset(b.node);
                             children_scroller = self.scrollers.len() as u32;

@@ -245,6 +245,13 @@ fn currentcolor_survives_inheritance_and_light_dark_selects_before_inheriting() 
 fn coupled_overflow_border_and_display_rules_are_computed() {
     let host = Snapshot::default();
     let defaults = Defaults::new(&host, Default::default(), None).unwrap();
+    let rows: serde_json::Value = serde_json::from_str(include_str!("overflow-fixtures/axes.json")).unwrap();
+    for row in rows.as_array().unwrap() {
+        let input = row["input"].as_array().unwrap();
+        let s = compute(&defaults, &host, &format!("overflow-x:{};overflow-y:{}", input[0].as_str().unwrap(), input[1].as_str().unwrap()), None, None, Options::default());
+        assert_eq!(keyword(&s, P::OverflowX).as_str(), row["computed"][0].as_str().unwrap(), "{row}");
+        assert_eq!(keyword(&s, P::OverflowY).as_str(), row["computed"][1].as_str().unwrap(), "{row}");
+    }
     for (x, y, want_x, want_y) in [("visible", "scroll", K::Auto, K::Scroll), ("clip", "auto", K::Clip, K::Auto), ("overlay", "clip", K::Auto, K::Clip), ("clip", "visible", K::Clip, K::Visible)] {
         let style = compute(&defaults, &host, &format!("overflow-x:{x};overflow-y:{y}"), None, None, Options::default());
         assert_eq!(keyword(&style, P::OverflowX), want_x);

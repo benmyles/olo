@@ -124,6 +124,7 @@ impl TextSource {
     }
 }
 pub struct Tree {
+    viewport_elements: super::overflow::ViewportElements,
     vectors: Arc<[crate::svg::Viewport]>,
     images: Option<Arc<crate::image::Set>>,
     /// Shared with the trees restyled from this one (`with_styles`, every
@@ -144,6 +145,7 @@ impl Tree {
     /// it (a redrawn canvas is the same box with new pixels).
     pub fn with_styles(&self, styles: Arc<StyleTree>, document: &Document, images: Option<Arc<crate::image::Set>>) -> Self {
         Self {
+            viewport_elements: self.viewport_elements,
             vectors: self.vectors.clone(),
             images: images.or_else(|| self.images.clone()),
             boxes: self.boxes.clone(),
@@ -291,6 +293,7 @@ impl Tree {
             rewrite(&mut sources, &mut inlines, si, range, &text, spans)?;
         }
         Some(Self {
+            viewport_elements: self.viewport_elements,
             vectors: self.vectors.clone(),
             images: self.images.clone(),
             boxes: self.boxes.clone(),
@@ -412,6 +415,9 @@ impl Tree {
     }
     pub fn styles(&self) -> &Arc<StyleTree> {
         &self.styles
+    }
+    pub fn viewport_overflow(&self) -> super::ViewportOverflow {
+        self.viewport_elements.resolve(&self.styles)
     }
     /// The styles to change in place, when nothing else holds them, for
     /// the document as it is now (see `with_styles`).
@@ -1543,6 +1549,7 @@ impl<'a> BuildJob<'a> {
         let mut controls = self.controls;
         controls.sort_by_key(|c| (c.source, c.offset));
         Ok(Arc::new(Tree {
+            viewport_elements: super::overflow::ViewportElements::new(self.document),
             images: self.images,
             vectors: Arc::from(self.vectors),
             text_bytes,

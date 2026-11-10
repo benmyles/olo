@@ -8304,3 +8304,44 @@ remaining Stripe journeys stay open. Acceptance remains **0/100**.
 
 Evidence: `measurements/2026-11-10-live-environment/`. The fetched origin/main
 was already contained. No personal desktop install/reload or agent delegation.
+
+## 2026-11-10 — viewport overflow ownership and one-axis clips
+
+Classic scrollbar investigation exposed a preceding bug: paint clipped a
+propagating body to its own box, but measurement exempted every root/body
+from clipping even when the body was an independent scroll container.
+Both now resolve the same viewport overflow source from current styles.
+Per-axis overflow survives on the other, unclipped axis, including empty
+boxes. Typed scrollbar-width/gutter values are available with root-only
+propagation; gutter layout is still open.
+
+Twelve Chrome observations, all 25 axis pairs, live/fresh measurements and
+native pixels at five scales pass. Current Chrome preserves clip alongside
+a scrollable axis, so an attempted clip→hidden conversion was removed.
+The visible 80px-body fixture now shows its full content; 30 before/after
+widget reviews and both 1280×800/1440×900 lints are clean. Release workspace
+build and suite passed: 2,197 tests, zero failures, 136 existing ignored.
+
+Release ABBA, 1.25×/2×: 3,000 cached size reads 2.671→2.369 / 2.264→2.603 ms;
+20 forced measurements 2.490→2.047 / 2.013→2.495 ms. CPU/resize
+14.375→14.375 / 22.500→20.625 ms; RSS +46 / +182 KiB. Sixteen scroll probes
+had zero hitches, worst draw 4.58 ms. Drag first movement 27.30→26.60 /
+26.20→28.45 ms; wheel 9.00→6.60 / 9.05→9.05 ms. Idle zero measured CPU/page
+frames, 2–4 existing watchdog wakes per three seconds. No speedup claim.
+The first benchmark exhausted the existing per-advance layout budget and
+read stale sizes; retained as invalid, then replaced by verified batches
+on separate event-loop turns. That stale-read behavior remains open.
+
+The 100 Chrome scrollbar observations show why subtracting 15 from the
+existing viewport key is insufficient: automatic/forced bars, empty stable
+gutters, viewport units and client/VisualViewport sizes differ. Root input
+policy, body DOM scroll aliases, horizontal/nested gutters, containment,
+positioned overflow, iframe propagation and remaining Stripe journeys remain
+open. Acceptance is still 0/100. Evidence:
+`measurements/2026-11-10-viewport-overflow/`. Fetched origin/main was already
+contained; no personal session install/reload or delegation.
+
+Stripe's live hero was also rechecked at all fifteen theme/scale combinations:
+colored throughout, environment updates intact, fifteen additional clean
+widget reviews (45 total). Its width remains 1000 CSS px. The screenshots and
+probe values are retained; they do not establish journey/configuration acceptance.

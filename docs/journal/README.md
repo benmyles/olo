@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-10
 
+### Browser preserves viewport overflow content
+
+*04:38* — The selected root or body propagates overflow to the viewport. Independent containers retain their own clips; classic scrollbar geometry remains open.
+
+![Browser preserves viewport overflow content](2026-11-10/043856-browser-preserves-viewport-overflow-content.png)
+
+### Browser before viewport overflow propagation
+
+*04:38* — An 80-pixel body incorrectly clipped the rest of its page.
+
+![Browser before viewport overflow propagation](2026-11-10/043855-browser-before-viewport-overflow-propagation.png)
+
 ### Browser follows the live page environment
 
 *04:08* — The same page follows resize, DPR and media changes without navigation. At 2× its canvas has 1000 backing pixels; the component geometry matches Chrome. Site acceptance remains open.

@@ -14795,6 +14795,19 @@ including device-pixel dimensions. This currently covers the main page:
 iframe environment propagation, responsive-source reselection and complete
 scrollbar/visual-viewport semantics remain open.
 
+Viewport overflow ownership is shared by scene construction and script
+measurements through `layout::Tree::viewport_overflow()`. The tree keeps the
+root/first HTML body identities and resolves against its current styles, so
+in-place restyles cannot leave a stale owner. Only the selected source skips
+its own overflow clip; an independent body scroll container keeps its clip.
+Document overflow is tracked per axis, including unpainted boxes on an
+unclipped axis. `scrollbar-width` and `scrollbar-gutter` have typed CSS values
+and root-only propagation, but classic gutter allocation and viewport-unit,
+client/VisualViewport, horizontal-scroll and input-policy integration are still
+open. Do not treat parsed properties as complete scrollbar support. The
+Chrome references and release costs are in
+`docs/browser/measurements/2026-11-10-viewport-overflow/`.
+
 Browser DOM wrapper identities are weak V8 handles. Traced, bidirectional
 internal ownership fields retain connected nodes through the document and detached trees
 through script references; shadow/template ownership is included without

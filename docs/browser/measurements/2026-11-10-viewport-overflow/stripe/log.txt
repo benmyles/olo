@@ -1,0 +1,41 @@
+Browser fonts: 240 system font files mapped
+Browser: static page ready 428 ms after the request
+MESA-EGL: warning: pci id for fd 70: 10de:2d39, driver (null)
+pci id for fd 72: 10de:2d39, driver (null)
+pci id for fd 73: 10de:2d39, driver (null)
+MESA-EGL: warning: egl: failed to create dri2 screen
+MESA-EGL: warning: pci id for fd 70: 10de:2d39, driver (null)
+pci id for fd 72: 10de:2d39, driver (null)
+pci id for fd 73: 10de:2d39, driver (null)
+MESA-EGL: warning: egl: failed to create dri2 screen
+MESA-EGL: warning: pci id for fd 70: 10de:2d39, driver (null)
+Browser scripts: 88 run, 0 errors, 0 console lines, 147 timers, 521 listeners, 56 layouts (206 ms), revision 11845 -> 14877, 3045 ms (2554 ms of this thread's CPU)
+Browser: scripted page ready 3726 ms after the request
+Browser live eval: {"dpr":1,"dark":true,"inner":[1000,578],"size":[2497,14794],"htmlOverflow":"visible","bodyOverflow":"visible","canvases":[[1000,542.03125,1000,542],[339.328125,545.859375,300,150],[339.34375,545.890625,339,545]]}
+Browser live eval: {"dpr":1,"dark":false,"inner":[1000,578],"size":[2497,14794],"htmlOverflow":"visible","bodyOverflow":"visible","canvases":[[1000,542.03125,1000,542],[339.328125,545.859375,300,150],[339.34375,545.890625,339,545]]}
+Browser live eval: {"dpr":1.25,"dark":false,"inner":[1000,578],"size":[2497,14792],"htmlOverflow":"visible","bodyOverflow":"visible","canvases":[[1000,541.5625,1000,542],[339.4625,546.0875,300,150],[339.475,546.1125,339,545]]}
+Browser live eval: {"dpr":1.25,"dark":false,"inner":[1000,578],"size":[2497,14792],"htmlOverflow":"visible","bodyOverflow":"visible","canvases":[[1000,541.5625,1000,542],[339.4625,546.0875,300,150],[339.475,546.1125,339,546]]}
+Browser live eval: {"dpr":1.25,"dark":false,"inner":[1000,578],"size":[2497,14792],"htmlOverflow":"visible","bodyOverflow":"visible","canvases":[[1000,541.5625,1000,541],[339.4625,546.0875,300,150],[339.475,546.1125,339,546]]}
+Browser live eval: {"dpr":1.5,"dark":false,"inner":[1000,578],"size":[2497,14789],"htmlOverflow":"visible","bodyOverflow":"visible","canvases":[[1000,541.6979166666666,1000,541],[339.5520833333333,546.2395833333334,300,150],[339.5625,546.2604166666666,339,546]]}
+Browser live eval: {"dpr":1.75,"dark":false,"inner":[1000,578],"size":[2497,14813],"htmlOverflow":"visible","bodyOverflow":"visible","canvases":[[1000,541.4107142857143,1000,541],[339.61607142857144,546.3482142857143,300,150],[339.625,546.3660714285714,339,546]]}
+Browser live eval: {"dpr":2,"dark":false,"inner":[1000,578],"size":[2497,14784],"htmlOverflow":"visible","bodyOverflow":"visible","canvases":[[1000,542.0390625,1000,541],[339.328125,545.859375,300,150],[339.3359375,545.875,339,546]]}
+Browser live eval: {"dpr":2,"dark":false,"inner":[1000,578],"size":[2497,14784],"htmlOverflow":"visible","bodyOverflow":"visible","canvases":[[1000,542.0390625,1000,541],[339.328125,545.859375,300,150],[339.3359375,545.875,339,545]]}
+Browser live eval: {"dpr":2,"dark":false,"inner":[1000,578],"size":[2497,14784],"htmlOverflow":"visible","bodyOverflow":"visible","canvases":[[1000,542.0390625,1000,542],[339.328125,545.859375,300,150],[339.3359375,545.875,339,545]]}
+Browser live eval: {"dpr":1,"dark":true,"inner":[1000,578],"size":[2497,14794],"htmlOverflow":"visible","bodyOverflow":"visible","canvases":[[1000,542.03125,1000,542],[339.328125,545.859375,300,150],[339.34375,545.890625,339,545]]}
+Browser live eval: {"dpr":1.25,"dark":true,"inner":[1000,578],"size":[2497,14792],"htmlOverflow":"visible","bodyOverflow":"visible","canvases":[[1000,541.5625,1000,542],[339.4625,546.0875,300,150],[339.475,546.1125,339,545]]}
+Browser live eval: {"dpr":1.25,"dark":true,"inner":[1000,578],"size":[2497,14792],"htmlOverflow":"visible","bodyOverflow":"visible","canvases":[[1000,541.5625,1000,542],[339.4625,546.0875,300,150],[339.475,546.1125,339,546]]}
+Browser live eval: {"dpr":1.25,"dark":true,"inner":[1000,578],"size":[2497,14792],"htmlOverflow":"visible","bodyOverflow":"visible","canvases":[[1000,541.5625,1000,541],[339.4625,546.0875,300,150],[339.475,546.1125,339,546]]}
+Browser live eval: {"dpr":1.5,"dark":true,"inner":[1000,578],"size":[2497,14789],"htmlOverflow":"visible","bodyOverflow":"visible","canvases":[[1000,541.6979166666666,1000,541],[339.5520833333333,546.2395833333334,300,150],[339.5625,546.2604166666666,339,546]]}
+Browser live eval: {"dpr":1.75,"dark":true,"inner":[1000,578],"size":[2497,14813],"htmlOverflow":"visible","bodyOverflow":"visible","canvases":[[1000,541.4107142857143,1000,541],[339.61607142857144,546.3482142857143,300,150],[339.625,546.3660714285714,339,546]]}
+Browser live eval: {"dpr":2,"dark":true,"inner":[1000,578],"size":[2497,14784],"htmlOverflow":"visible","bodyOverflow":"visible","canvases":[[1000,542.0390625,1000,541],[339.328125,545.859375,300,150],[339.3359375,545.875,339,546]]}
+Browser live eval: {"dpr":2,"dark":true,"inner":[1000,578],"size":[2497,14784],"htmlOverflow":"visible","bodyOverflow":"visible","canvases":[[1000,542.0390625,1000,541],[339.328125,545.859375,300,150],[339.3359375,545.875,339,545]]}
+Browser live eval: {"dpr":2,"dark":true,"inner":[1000,578],"size":[2497,14784],"htmlOverflow":"visible","bodyOverflow":"visible","canvases":[[1000,542.0390625,1000,542],[339.328125,545.859375,300,150],[339.3359375,545.875,339,545]]}
+Browser live eval: {"dpr":1,"dark":true,"inner":[1000,578],"size":[2497,14794],"htmlOverflow":"visible","bodyOverflow":"visible","canvases":[[1000,542.03125,1000,542],[339.328125,545.859375,300,150],[339.34375,545.890625,339,545]]}
+Browser live eval: {"dpr":1.25,"dark":true,"inner":[1000,578],"size":[2497,14792],"htmlOverflow":"visible","bodyOverflow":"visible","canvases":[[1000,541.5625,1000,542],[339.4625,546.0875,300,150],[339.475,546.1125,339,545]]}
+Browser live eval: {"dpr":1.25,"dark":true,"inner":[1000,578],"size":[2497,14792],"htmlOverflow":"visible","bodyOverflow":"visible","canvases":[[1000,541.5625,1000,542],[339.4625,546.0875,300,150],[339.475,546.1125,339,546]]}
+Browser live eval: {"dpr":1.25,"dark":true,"inner":[1000,578],"size":[2497,14792],"htmlOverflow":"visible","bodyOverflow":"visible","canvases":[[1000,541.5625,1000,541],[339.4625,546.0875,300,150],[339.475,546.1125,339,546]]}
+Browser live eval: {"dpr":1.5,"dark":true,"inner":[1000,578],"size":[2497,14789],"htmlOverflow":"visible","bodyOverflow":"visible","canvases":[[1000,541.6979166666666,1000,541],[339.5520833333333,546.2395833333334,300,150],[339.5625,546.2604166666666,339,546]]}
+Browser live eval: {"dpr":1.75,"dark":true,"inner":[1000,578],"size":[2497,14813],"htmlOverflow":"visible","bodyOverflow":"visible","canvases":[[1000,541.4107142857143,1000,541],[339.61607142857144,546.3482142857143,300,150],[339.625,546.3660714285714,339,546]]}
+Browser live eval: {"dpr":2,"dark":true,"inner":[1000,578],"size":[2497,14784],"htmlOverflow":"visible","bodyOverflow":"visible","canvases":[[1000,542.0390625,1000,541],[339.328125,545.859375,300,150],[339.3359375,545.875,339,546]]}
+Browser live eval: {"dpr":2,"dark":true,"inner":[1000,578],"size":[2497,14784],"htmlOverflow":"visible","bodyOverflow":"visible","canvases":[[1000,542.0390625,1000,541],[339.328125,545.859375,300,150],[339.3359375,545.875,339,545]]}
+Browser live eval: {"dpr":2,"dark":true,"inner":[1000,578],"size":[2497,14784],"htmlOverflow":"visible","bodyOverflow":"visible","canvases":[[1000,542.0390625,1000,542],[339.328125,545.859375,300,150],[339.3359375,545.875,339,545]]}

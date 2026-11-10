@@ -285,8 +285,6 @@ const INERT: &[&str] = &[
     "scroll-snap-stop",
     "scroll-snap-type",
     "scrollbar-color",
-    "scrollbar-gutter",
-    "scrollbar-width",
     "speak",
     "tab-size",
     "text-size-adjust",

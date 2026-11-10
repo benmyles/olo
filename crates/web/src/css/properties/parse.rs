@@ -604,6 +604,20 @@ fn white_space(parts: &[Component<'_>]) -> Result<Assignments> {
     };
     Ok(smallvec::smallvec![Assignment { property: Property::WhiteSpaceCollapse, value: Value::Keyword(collapse) }, Assignment { property: Property::TextWrapMode, value: Value::Keyword(wrap) }])
 }
+// `stable && both-edges?`: either order, no duplicate or bare both-edges.
+fn scrollbar_gutter(parts: &[Component<'_>]) -> Result<Value> {
+    if parts.len() == 1 {
+        return keyword(parts[0], &[Keyword::Auto, Keyword::Stable]).map(Value::Keyword).ok_or(Error::Invalid);
+    }
+    if parts.len() == 2 {
+        let stable = |c| keyword(c, &[Keyword::Stable]).is_some();
+        let both = |c: Component<'_>| c.kind() == Kind::Ident && c.text().is_some_and(|s| s.eq_ignore_ascii_case("both-edges"));
+        if stable(parts[0]) && both(parts[1]) || both(parts[0]) && stable(parts[1]) {
+            return Ok(Value::Keyword(Keyword::StableBothEdges));
+        }
+    }
+    Err(Error::Invalid)
+}
 fn longhand(property: Property, values: Components<'_>, parts: &[Component<'_>], limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Value> {
     let grammar = property.grammar();
     if matches!(property, Property::Fill | Property::Stroke)
@@ -616,6 +630,7 @@ fn longhand(property: Property, values: Components<'_>, parts: &[Component<'_>],
         return Err(Error::Unsupported("SVG paint server/context paint"));
     }
     match grammar {
+        Grammar::ScrollbarGutter => scrollbar_gutter(parts),
         Grammar::TextBoxEdge => text_box_edge(parts),
         Grammar::ContainerName => container_name(parts),
         Grammar::ClipPath => super::clip::parse(parts, limits, cancelled),
@@ -687,6 +702,7 @@ fn longhand(property: Property, values: Components<'_>, parts: &[Component<'_>],
 pub(super) fn component(grammar: Grammar, c: Component<'_>, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Value> {
     check(cancelled)?;
     match grammar {
+        Grammar::ScrollbarGutter => scrollbar_gutter(&[c]),
         Grammar::Animation(field) => super::animation::parse_list(field, &[c]),
         Grammar::TextBoxEdge => text_box_edge(&[c]),
         Grammar::ContainerName => container_name(&[c]),

@@ -1607,8 +1607,9 @@ impl Measured {
             // Per box: whether it is out of the page's overflow (an ancestor
             // clips it, or it or one is fixed); and whether it clips what it
             // holds.
-            let mut out = vec![false; n];
-            let mut clips = vec![false; n];
+            let mut out = vec![0u8; n];
+            let mut clips = vec![0u8; n];
+            let viewport_source = tree.viewport_overflow().source;
             // Each box's coordinate origin (its parent's content box on the
             // page), carried down: boxes are in preorder, parents first, so
             // one pass places them all (`bounds` walks the ancestors of one).
@@ -1625,18 +1626,27 @@ impl Measured {
                 }
                 let style = tree.style(id);
                 let fixed = style.is_some_and(|s| matches!(s.value(P::Position), Value::Keyword(K::Fixed)));
-                out[i] = fixed || b.parent.is_some_and(|p| out[p.index()] || clips[p.index()]);
-                // (The root element's and the body's overflow is the
-                // viewport's: theirs clips nothing of the page.)
-                let top = b.parent.is_none_or(|p| tree.get(p).is_none_or(|pb| pb.parent.is_none() || pb.parent.and_then(|g| tree.get(g)).is_some_and(|gb| gb.parent.is_none())));
-                clips[i] = !top && style.is_some_and(|s| !matches!(s.value(P::OverflowX), Value::Keyword(K::Visible)) || !matches!(s.value(P::OverflowY), Value::Keyword(K::Visible)));
-                if out[i] || b.parent.is_none() {
+                out[i] = if fixed { 3 } else { b.parent.map_or(0, |p| out[p.index()] | clips[p.index()]) };
+                // Only the element whose overflow propagates to the
+                // viewport is exempt. A body's own scroll container clips
+                // normally when the root already owns viewport overflow.
+                // `clip visible` clips one axis without clipping the other.
+                clips[i] = if viewport_source == Some(b.node) {
+                    0
+                } else {
+                    style.map_or(0, |s| u8::from(!matches!(s.value(P::OverflowX), Value::Keyword(K::Visible))) | (u8::from(!matches!(s.value(P::OverflowY), Value::Keyword(K::Visible))) << 1))
+                };
+                if out[i] == 3 || b.parent.is_none() {
                     continue;
                 }
                 if let Some(g) = self.layout.geometry(id) {
                     let r = g.border_box;
-                    right = right.max(origin[i].0 + r.x + r.width + g.margin.right.max(0.));
-                    bottom = bottom.max(origin[i].1 + r.y + r.height + g.margin.bottom.max(0.));
+                    if out[i] & 1 == 0 {
+                        right = right.max(origin[i].0 + r.x + r.width + g.margin.right.max(0.));
+                    }
+                    if out[i] & 2 == 0 {
+                        bottom = bottom.max(origin[i].1 + r.y + r.height + g.margin.bottom.max(0.));
+                    }
                 }
             }
             (right, bottom)
