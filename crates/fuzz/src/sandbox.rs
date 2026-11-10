@@ -469,9 +469,11 @@ pub fn probe() -> i32 {
     say("inside the sandbox", inside());
     say("PID 2 or so: a namespace of its own", std::process::id() < 100);
     // Nothing of the person's home but the repository's parts.
-    let in_home: Vec<String> = std::fs::read_dir(&home).map(|d| d.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect()).unwrap_or_default();
-    say(&format!("home holds only its own ({in_home:?})"), in_home.iter().all(|n| matches!(n.as_str(), "src" | ".cache" | ".local" | "homes")));
     let repo = root();
+    // The mount parents follow the checkout, including worktrees outside src.
+    let repo_parent = repo.strip_prefix(&home).ok().and_then(|p| p.components().next()).map(|p| p.as_os_str());
+    let in_home: Vec<String> = std::fs::read_dir(&home).map(|d| d.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect()).unwrap_or_default();
+    say(&format!("home holds only its own ({in_home:?})"), in_home.iter().all(|n| matches!(n.as_str(), ".cache" | ".local" | "homes") || repo_parent == Some(OsStr::new(n))));
     let repo_top: Vec<String> = std::fs::read_dir(&repo).map(|d| d.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect()).unwrap_or_default();
     say(&format!("of the repository, only what runs ({repo_top:?})"), repo_top.iter().all(|n| matches!(n.as_str(), "target" | "data" | "tools")));
     say("the repository's build read-only", std::fs::write(repo.join("target/release/.olo-fuzz-probe"), "x").is_err());
