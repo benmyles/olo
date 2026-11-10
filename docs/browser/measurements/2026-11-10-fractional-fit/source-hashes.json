@@ -1,0 +1,9 @@
+{
+  "crates/web/src/text/layout.rs": "d5ecee5e17715a209b5ec40b85d96dc3b98d258f4da2bc6ad893ece37f27378f",
+  "crates/web/src/text/layout/index.rs": "f29ca661f722870003bbbbda459068a9f652b673ab9858e1a4ddcc3d2fab5145",
+  "crates/web/src/text/layout/intrinsic.rs": "20155adb896c9f70e9d87b6361977861bfe31916f48c2eff6397725885e2638a",
+  "crates/web/tests/fractional_fit.rs": "97c6888dd260196d5dfb164157a1cb5d835576d032e312d6bdb2a2656ebec3bb",
+  "crates/web/tests/fractional-fit-fixtures/base.html": "f77299f085dbac5d39ec6a41ac6b4fc4ac3d5ada15493f8176104a514636be83",
+  "crates/web/tests/fractional-fit-fixtures/cases.json": "58a1ca8e90ab3cc4ac2a2ad9f7de23dc8fffb756eef0ac1fe0bd3375943a38cc",
+  "crates/web/tests/fractional-fit-fixtures/chrome.json": "6dd092d7db49610ef630bd19a6856bb0644e339d35fc632e2252deb52127754b"
+}

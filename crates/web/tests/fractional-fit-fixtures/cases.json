@@ -1,0 +1,317 @@
+[
+  {
+    "id": "flex-14.5-0",
+    "mode": "flex",
+    "size": 14.5,
+    "left": "Laura Collinson, ",
+    "right": "Director of Fintech, Jobber"
+  },
+  {
+    "id": "flex-14.5-1",
+    "mode": "flex",
+    "size": 14.5,
+    "left": "Mixed weight text, ",
+    "right": "with fractional advance"
+  },
+  {
+    "id": "flex-14.5-2",
+    "mode": "flex",
+    "size": 14.5,
+    "left": "Retained text ",
+    "right": "measured at its natural width"
+  },
+  {
+    "id": "flex-16.5-0",
+    "mode": "flex",
+    "size": 16.5,
+    "left": "Laura Collinson, ",
+    "right": "Director of Fintech, Jobber"
+  },
+  {
+    "id": "flex-16.5-1",
+    "mode": "flex",
+    "size": 16.5,
+    "left": "Mixed weight text, ",
+    "right": "with fractional advance"
+  },
+  {
+    "id": "flex-16.5-2",
+    "mode": "flex",
+    "size": 16.5,
+    "left": "Retained text ",
+    "right": "measured at its natural width"
+  },
+  {
+    "id": "flex-18.5-0",
+    "mode": "flex",
+    "size": 18.5,
+    "left": "Laura Collinson, ",
+    "right": "Director of Fintech, Jobber"
+  },
+  {
+    "id": "flex-18.5-1",
+    "mode": "flex",
+    "size": 18.5,
+    "left": "Mixed weight text, ",
+    "right": "with fractional advance"
+  },
+  {
+    "id": "flex-18.5-2",
+    "mode": "flex",
+    "size": 18.5,
+    "left": "Retained text ",
+    "right": "measured at its natural width"
+  },
+  {
+    "id": "flex-24-0",
+    "mode": "flex",
+    "size": 24,
+    "left": "Laura Collinson, ",
+    "right": "Director of Fintech, Jobber"
+  },
+  {
+    "id": "flex-24-1",
+    "mode": "flex",
+    "size": 24,
+    "left": "Mixed weight text, ",
+    "right": "with fractional advance"
+  },
+  {
+    "id": "flex-24-2",
+    "mode": "flex",
+    "size": 24,
+    "left": "Retained text ",
+    "right": "measured at its natural width"
+  },
+  {
+    "id": "flex-27.5-0",
+    "mode": "flex",
+    "size": 27.5,
+    "left": "Laura Collinson, ",
+    "right": "Director of Fintech, Jobber"
+  },
+  {
+    "id": "flex-27.5-1",
+    "mode": "flex",
+    "size": 27.5,
+    "left": "Mixed weight text, ",
+    "right": "with fractional advance"
+  },
+  {
+    "id": "flex-27.5-2",
+    "mode": "flex",
+    "size": 27.5,
+    "left": "Retained text ",
+    "right": "measured at its natural width"
+  },
+  {
+    "id": "max-content-14.5-0",
+    "mode": "max-content",
+    "size": 14.5,
+    "left": "Laura Collinson, ",
+    "right": "Director of Fintech, Jobber"
+  },
+  {
+    "id": "max-content-14.5-1",
+    "mode": "max-content",
+    "size": 14.5,
+    "left": "Mixed weight text, ",
+    "right": "with fractional advance"
+  },
+  {
+    "id": "max-content-14.5-2",
+    "mode": "max-content",
+    "size": 14.5,
+    "left": "Retained text ",
+    "right": "measured at its natural width"
+  },
+  {
+    "id": "max-content-16.5-0",
+    "mode": "max-content",
+    "size": 16.5,
+    "left": "Laura Collinson, ",
+    "right": "Director of Fintech, Jobber"
+  },
+  {
+    "id": "max-content-16.5-1",
+    "mode": "max-content",
+    "size": 16.5,
+    "left": "Mixed weight text, ",
+    "right": "with fractional advance"
+  },
+  {
+    "id": "max-content-16.5-2",
+    "mode": "max-content",
+    "size": 16.5,
+    "left": "Retained text ",
+    "right": "measured at its natural width"
+  },
+  {
+    "id": "max-content-18.5-0",
+    "mode": "max-content",
+    "size": 18.5,
+    "left": "Laura Collinson, ",
+    "right": "Director of Fintech, Jobber"
+  },
+  {
+    "id": "max-content-18.5-1",
+    "mode": "max-content",
+    "size": 18.5,
+    "left": "Mixed weight text, ",
+    "right": "with fractional advance"
+  },
+  {
+    "id": "max-content-18.5-2",
+    "mode": "max-content",
+    "size": 18.5,
+    "left": "Retained text ",
+    "right": "measured at its natural width"
+  },
+  {
+    "id": "max-content-24-0",
+    "mode": "max-content",
+    "size": 24,
+    "left": "Laura Collinson, ",
+    "right": "Director of Fintech, Jobber"
+  },
+  {
+    "id": "max-content-24-1",
+    "mode": "max-content",
+    "size": 24,
+    "left": "Mixed weight text, ",
+    "right": "with fractional advance"
+  },
+  {
+    "id": "max-content-24-2",
+    "mode": "max-content",
+    "size": 24,
+    "left": "Retained text ",
+    "right": "measured at its natural width"
+  },
+  {
+    "id": "max-content-27.5-0",
+    "mode": "max-content",
+    "size": 27.5,
+    "left": "Laura Collinson, ",
+    "right": "Director of Fintech, Jobber"
+  },
+  {
+    "id": "max-content-27.5-1",
+    "mode": "max-content",
+    "size": 27.5,
+    "left": "Mixed weight text, ",
+    "right": "with fractional advance"
+  },
+  {
+    "id": "max-content-27.5-2",
+    "mode": "max-content",
+    "size": 27.5,
+    "left": "Retained text ",
+    "right": "measured at its natural width"
+  },
+  {
+    "id": "inline-block-14.5-0",
+    "mode": "inline-block",
+    "size": 14.5,
+    "left": "Laura Collinson, ",
+    "right": "Director of Fintech, Jobber"
+  },
+  {
+    "id": "inline-block-14.5-1",
+    "mode": "inline-block",
+    "size": 14.5,
+    "left": "Mixed weight text, ",
+    "right": "with fractional advance"
+  },
+  {
+    "id": "inline-block-14.5-2",
+    "mode": "inline-block",
+    "size": 14.5,
+    "left": "Retained text ",
+    "right": "measured at its natural width"
+  },
+  {
+    "id": "inline-block-16.5-0",
+    "mode": "inline-block",
+    "size": 16.5,
+    "left": "Laura Collinson, ",
+    "right": "Director of Fintech, Jobber"
+  },
+  {
+    "id": "inline-block-16.5-1",
+    "mode": "inline-block",
+    "size": 16.5,
+    "left": "Mixed weight text, ",
+    "right": "with fractional advance"
+  },
+  {
+    "id": "inline-block-16.5-2",
+    "mode": "inline-block",
+    "size": 16.5,
+    "left": "Retained text ",
+    "right": "measured at its natural width"
+  },
+  {
+    "id": "inline-block-18.5-0",
+    "mode": "inline-block",
+    "size": 18.5,
+    "left": "Laura Collinson, ",
+    "right": "Director of Fintech, Jobber"
+  },
+  {
+    "id": "inline-block-18.5-1",
+    "mode": "inline-block",
+    "size": 18.5,
+    "left": "Mixed weight text, ",
+    "right": "with fractional advance"
+  },
+  {
+    "id": "inline-block-18.5-2",
+    "mode": "inline-block",
+    "size": 18.5,
+    "left": "Retained text ",
+    "right": "measured at its natural width"
+  },
+  {
+    "id": "inline-block-24-0",
+    "mode": "inline-block",
+    "size": 24,
+    "left": "Laura Collinson, ",
+    "right": "Director of Fintech, Jobber"
+  },
+  {
+    "id": "inline-block-24-1",
+    "mode": "inline-block",
+    "size": 24,
+    "left": "Mixed weight text, ",
+    "right": "with fractional advance"
+  },
+  {
+    "id": "inline-block-24-2",
+    "mode": "inline-block",
+    "size": 24,
+    "left": "Retained text ",
+    "right": "measured at its natural width"
+  },
+  {
+    "id": "inline-block-27.5-0",
+    "mode": "inline-block",
+    "size": 27.5,
+    "left": "Laura Collinson, ",
+    "right": "Director of Fintech, Jobber"
+  },
+  {
+    "id": "inline-block-27.5-1",
+    "mode": "inline-block",
+    "size": 27.5,
+    "left": "Mixed weight text, ",
+    "right": "with fractional advance"
+  },
+  {
+    "id": "inline-block-27.5-2",
+    "mode": "inline-block",
+    "size": 27.5,
+    "left": "Retained text ",
+    "right": "measured at its natural width"
+  }
+]

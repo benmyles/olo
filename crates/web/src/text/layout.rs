@@ -1023,17 +1023,23 @@ impl<'a> Job<'a> {
     fn point_width(&mut self, p: Point) -> Result<(f64, End)> {
         let space = self.spacing.width(self.spacing_start, self.from, p.end.byte, p.offset, p.offset as usize == self.text.prepared.text().len());
         let full = self.width(p.end)? + space;
-        if p.hang != NONE && (p.kind == Kind::Allowed || full > self.break_width()) {
+        if p.hang != NONE && (p.kind == Kind::Allowed || full > self.fit_limit()) {
             let end = self.text.hanging[p.hang as usize];
             return Ok((self.width(end)? + space, end));
         }
         Ok((full, p.end))
     }
-    fn fit_limit(&self, p: Point) -> f64 {
-        // Atomic items use the layout grid's epsilon when fitting against an
-        // item boundary already rounded up from a linear text advance.
-        let epsilon = self.options.pixel_scale.filter(|_| self.objects.as_ref().is_some_and(|o| p.end.byte >= 3 && o.at(p.end.byte - 3).is_some())).map_or(0., |scale| 1. / (64. * scale));
-        self.break_width() + epsilon
+    fn fit_limit(&self) -> f64 {
+        // The measured inline items are enclosed on the device layout grid.
+        // Allow one grid unit when fitting, as Chrome does for text and
+        // atomic items alike; a two-unit shortage must still wrap.
+        let epsilon = self.options.pixel_scale.map_or(0., |scale| 1. / (64. * scale));
+        let width = self.break_width();
+        // Intrinsic width -> border box -> content box can lose a few bits
+        // when adding/subtracting padding at fractional scales. Do not wrap
+        // text that fits its own intrinsic width because of that roundoff.
+        // This is floating-point tolerance, not another layout subpixel.
+        width + epsilon + width.abs().max(1.) * (4. * f64::EPSILON)
     }
     /// The end of the text at `byte` (a grapheme boundary, maybe inside a
     /// shaping window): as the text job measures its break points.
@@ -1077,7 +1083,7 @@ impl<'a> Job<'a> {
             let point = Point { end, offset: at, hang: NONE, kind: Kind::Allowed };
             let (width, _) = self.point_width(point)?;
             first.get_or_insert(point);
-            if width <= self.fit_limit(point) {
+            if width <= self.fit_limit() {
                 best = Some(point);
             } else {
                 break;
@@ -1137,7 +1143,7 @@ impl<'a> Job<'a> {
                 continue;
             }
             let (width, effective) = self.point_width(p)?;
-            let fit_limit = self.fit_limit(p);
+            let fit_limit = self.fit_limit();
             if width <= fit_limit {
                 self.best = Some(current);
             }
@@ -1365,7 +1371,7 @@ impl<'a> Job<'a> {
             advance,
             content_advance: content,
             offset,
-            overflow: advance > self.fit_limit(point),
+            overflow: advance > self.fit_limit(),
             end: point.kind,
             ascent,
             descent,

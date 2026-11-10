@@ -14,6 +14,20 @@ without a dedicated eval environment; no personal account is part of this run.
 
 ## Latest checkpoint
 
+2026-11-10, fractional text fitting: an offscreen author wrapped because of
+floating-point roundoff, adding25.2px to the shared testimonial carousel.
+Line fitting now follows Chrome's one-layout-unit allowance, and mixed-run
+measurement shares intrinsic sizing's font-size quantization. All1,350 new
+Chrome observations pass. At1.75× business-section error falls25.36→0.16px;
+smaller rounding/pixel differences remain. All15 live native reviews pass.
+A settled full page still differs298.29px in main height, chiefly events and
+footer CTA. The Jobber testimonial button receives native clicks but does
+not switch cards; focused Chrome switches. That interaction is next to trace.
+Release workspace after merging main:2,220 passed,0 failed. No acceptance
+counts change. See [evidence](../../measurements/2026-11-10-fractional-fit/README.md).
+
+The preceding checkpoint follows:
+
 2026-11-10, container-query measurement: script layouts now evaluate size
 queries and settle nested corrections; painting no longer stops after three
 rounds. Same-width container renaming rematches descendant queries. Fifty

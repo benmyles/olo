@@ -1,0 +1,44 @@
+{
+  "native": {
+    "active": "Show testimonial from Mindbody",
+    "cards": [
+      {
+        "x": 17,
+        "text": "Kurtis Moyer, Lead Product Manager of Payments, Mindbody"
+      },
+      {
+        "x": 968,
+        "text": "Laura Collinson, Director of Fintech, Jobber"
+      },
+      {
+        "x": 1919,
+        "text": "Seth McMillan, Engineering Manager, Substack"
+      },
+      {
+        "x": 2870,
+        "text": "Dax Dasilva, Founder and CEO, Lightspeed"
+      }
+    ]
+  },
+  "chrome": {
+    "active": "Show testimonial from Mindbody",
+    "cards": [
+      {
+        "x": 17,
+        "text": "Kurtis Moyer, Lead Product Manager of Payments, Mindbody"
+      },
+      {
+        "x": 968,
+        "text": "Laura Collinson, Director of Fintech, Jobber"
+      },
+      {
+        "x": 1919,
+        "text": "Seth McMillan, Engineering Manager, Substack"
+      },
+      {
+        "x": 2870,
+        "text": "Dax Dasilva, Founder and CEO, Lightspeed"
+      }
+    ]
+  }
+}

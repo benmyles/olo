@@ -1,0 +1,12 @@
+use olo_web::{css::media::Media,dom::{Document,NodeId},font::{Builder,FontSet,GenericPolicy},layout,page,text::shaping};
+use std::{path::Path,sync::Arc};
+#[path="support/paint_host.rs"]mod paint_host;
+fn node(doc:&Document,id:&str)->NodeId{let mut q=vec![doc.root()];while let Some(n)=q.pop(){if doc.attribute(n,"id").ok().flatten()==Some(id){return n}q.extend(doc.children(n).unwrap())}panic!()}
+#[test]
+fn probe(){
+let mut b=Builder::new(Default::default());b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/fonts/NotoSans[wght].ttf"),|_|{},None).unwrap();let scope=FontSet::new(b.finish(None).unwrap(),GenericPolicy::new(&["Noto Sans"]).unwrap(),Default::default()).unwrap().scope("en").unwrap();
+let mut failures=0;
+for scale in [1.,1.25,1.5,1.75,2.]{for size in (24..61).map(|x|x as f64/2.){for (a,z) in [("Laura Collinson, ","Director of Fintech, Jobber"),("Mixed weight text, ","with fractional advance"),("Retained text ","measured at its natural width")]{
+let html=format!("<!doctype html><style>body{{margin:0}}#parent{{display:flex;flex-direction:column;align-items:center;width:1000px}}#a{{box-sizing:border-box;padding:0 16px;font:{size}px/1.4 'Noto Sans'}}span{{font-weight:300}}</style><div id=parent><div id=a>{a}<span>{z}</span></div></div>");
+let viewport=layout::Viewport{width:1000.,height:600.,scale};let p=page::prepare(Arc::from(html),&scope,Media::screen(1000.,600.,scale,false),false,None,|_,_|{},|_,_,_|Ok(None)).unwrap();let host=paint_host::Scaled::new(p.scope().clone(),scale);let m=p.measurer();let doc=p.into_document();let got=m.measure(&doc,&host,&mut shaping::Engine::default(),viewport,None,None).unwrap();let rect=got.border_box(node(&doc,"a")).unwrap();if rect.height>size*1.4+1.{failures+=1;println!("WRAPPED scale={scale} size={size} text={a:?} rect={rect:?}")}
+}}}println!("failures={failures}");}

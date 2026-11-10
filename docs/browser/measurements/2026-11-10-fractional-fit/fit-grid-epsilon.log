@@ -1,0 +1,219 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/ben/worktrees/olo/browser/smithay/smithay/Cargo.toml
+workspace: /home/ben/worktrees/olo/browser/Cargo.toml
+   Compiling olo-web v0.1.0 (/home/ben/worktrees/olo/browser/crates/web)
+warning: unnecessary parentheses around closure body
+  --> crates/web/src/chunked.rs:55:143
+   |
+55 | ...e_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+   |                                                    ^                              ^
+   |
+   = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+   |
+55 -         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+55 +         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| i * CHUNK..i * CHUNK + c.len())
+   |
+
+warning: unused attribute `allow`
+  --> crates/web/src/paint/image.rs:44:1
+   |
+44 | #[allow(clippy::too_many_arguments)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: the built-in attribute `allow` will be ignored, since it's applied to the macro invocation `thread_local`
+  --> crates/web/src/paint/image.rs:45:1
+   |
+45 | thread_local! {
+   | ^^^^^^^^^^^^
+   = note: `#[warn(unused_attributes)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `size` is never read
+   --> crates/web/src/css/properties/font.rs:274:20
+    |
+274 |     let mut size = None;
+    |                    ^^^^ this value is reassigned later and never used
+...
+353 |     size = Some(super::parse::component(Property::FontSize.grammar(), c, limits, cancelled)?);
+    |     ---- `size` is overwritten here before the previous value is read
+    |
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `family` is never read
+   --> crates/web/src/css/properties/font.rs:276:22
+    |
+276 |     let mut family = None;
+    |                      ^^^^ this value is reassigned later and never used
+...
+363 |     family = Some(Families::parse(parts[i..].iter().copied(), cancelled)?);
+    |     ------ `family` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+   --> crates/web/src/css/style/job.rs:536:25
+    |
+536 |                     let mut walk = |root: NodeId, reach: &selectors::Reach, nodes: &mut crate::dom::NodeSet| {
+    |                         ----^^^^
+    |                         |
+    |                         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates/web/src/page/interaction.rs:38:13
+   |
+38 |         let mut differ = |a: Option<NodeId>, b: Option<NodeId>, state: State, out: &mut Vec<(NodeId, &'static str)>| {
+   |             ----^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: value assigned to `path` is never read
+   --> crates/web/src/page.rs:970:24
+    |
+970 |         let mut path = String::new();
+    |                        ^^^^^^^^^^^^^ this value is reassigned later and never used
+...
+980 |                             path = format!("patched in place, {} elements", nodes.len());
+    |                             ---- `path` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+    --> crates/web/src/page.rs:3986:13
+     |
+3986 |         let mut subject = |a: crate::dom::NodeId, reached: &mut Vec<crate::dom::NodeId>| {
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: value assigned to `skip` is never read
+    --> crates/web/src/svg/viewport.rs:949:24
+     |
+ 949 |         let mut skip = false;
+     |                        ^^^^^ this value is reassigned later and never used
+...
+1019 |             skip = true;
+     |             ----------- `skip` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+  --> crates/web/src/text/prepare.rs:79:23
+   |
+79 |         let single = |mut it: &mut dyn Iterator<Item = char>| {
+   |                       ----^^
+   |                       |
+   |                       help: remove this `mut`
+
+warning: method `get_mut` is never used
+  --> crates/web/src/chunked.rs:57:19
+   |
+22 | impl<T: Clone> Chunked<T> {
+   | ------------------------- method in this implementation
+...
+57 |     pub(crate) fn get_mut(&mut self, i: usize) -> Option<&mut T> {
+   |                   ^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated function `new` is never used
+  --> crates/web/src/paint/index.rs:16:12
+   |
+15 | impl Index {
+   | ---------- associated function in this implementation
+16 |     pub fn new(commands: &[Command], transforms: &[[f64; 6]], cancel: Option<&AtomicBool>) -> Result<Self> {
+   |            ^^^
+
+warning: variant `Quad` is never constructed
+   --> crates/web/src/svg/script.rs:258:5
+    |
+256 | enum Seg {
+    |      --- variant in this enum
+257 |     Line(F, F),
+258 |     Quad([F; 3]),
+    |     ^^^^
+    |
+    = note: `Seg` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: `olo-web` (lib) generated 13 warnings (run `cargo fix --lib -p olo-web` to apply 6 suggestions)
+    Finished `release` profile [optimized + debuginfo] target(s) in 20.22s
+     Running tests/fractional_fit.rs (target/release/deps/fractional_fit-a9d5755a6536423d)
+
+running 1 test
+test natural_width_and_subpixel_shortages_match_chrome_after_reuse ... FAILED
+
+failures:
+
+---- natural_width_and_subpixel_shortages_match_chrome_after_reuse stdout ----
+
+thread 'natural_width_and_subpixel_shortages_match_chrome_after_reuse' (2381410) panicked at crates/web/tests/fractional_fit.rs:88:5:
+432 differences:
+"flex-14.5-0" 1.25 natural[0] reused=323.175 fresh=323.175 Chrome=322.9250183105469
+"flex-14.5-0" 1.25 short[0] reused=323.1625 fresh=323.1625 Chrome=322.9125061035156
+"flex-14.5-0" 1.25 short2[0] reused=323.15 fresh=323.15 Chrome=322.8999938964844
+"flex-14.5-0" 1.25 short4[0] reused=323.125 fresh=323.125 Chrome=322.875
+"flex-14.5-0" 1.25 wide[0] reused=323.1875 fresh=323.1875 Chrome=322.9375
+"flex-14.5-0" 1.25 restored[0] reused=323.175 fresh=323.175 Chrome=322.9250183105469
+"flex-14.5-1" 1.25 natural[0] reused=318.925 fresh=318.925 Chrome=318.6750183105469
+"flex-14.5-1" 1.25 short[0] reused=318.9125 fresh=318.9125 Chrome=318.6625061035156
+"flex-14.5-1" 1.25 short2[0] reused=318.9 fresh=318.9 Chrome=318.6499938964844
+"flex-14.5-1" 1.25 short4[0] reused=318.875 fresh=318.875 Chrome=318.625
+"flex-14.5-1" 1.25 wide[0] reused=318.9375 fresh=318.9375 Chrome=318.6875
+"flex-14.5-1" 1.25 restored[0] reused=318.925 fresh=318.925 Chrome=318.6750183105469
+"flex-14.5-2" 1.25 natural[0] reused=326 fresh=326 Chrome=325.7375183105469
+"flex-14.5-2" 1.25 short[0] reused=325.9875 fresh=325.9875 Chrome=325.7250061035156
+"flex-14.5-2" 1.25 short2[0] reused=325.975 fresh=325.975 Chrome=325.7124938964844
+"flex-14.5-2" 1.25 short4[0] reused=325.95 fresh=325.95 Chrome=325.6875
+"flex-14.5-2" 1.25 wide[0] reused=326.0125 fresh=326.0125 Chrome=325.75
+"flex-14.5-2" 1.25 restored[0] reused=326 fresh=326 Chrome=325.7375183105469
+"flex-16.5-0" 1.25 natural[0] reused=363.3375 fresh=363.3375 Chrome=363.0750122070313
+"flex-16.5-0" 1.25 short[0] reused=363.325 fresh=363.325 Chrome=363.0625
+"flex-16.5-0" 1.25 short2[0] reused=363.3125 fresh=363.3125 Chrome=363.0500183105469
+"flex-16.5-0" 1.25 short4[0] reused=363.2875 fresh=363.2875 Chrome=363.0249938964844
+"flex-16.5-0" 1.25 wide[0] reused=363.35 fresh=363.35 Chrome=363.0874938964844
+"flex-16.5-0" 1.25 restored[0] reused=363.3375 fresh=363.3375 Chrome=363.0750122070313
+"flex-16.5-1" 1.25 natural[0] reused=358.5 fresh=358.5 Chrome=358.25
+"flex-16.5-1" 1.25 short[0] reused=358.4875 fresh=358.4875 Chrome=358.2375183105469
+"flex-16.5-1" 1.25 short2[0] reused=358.475 fresh=358.475 Chrome=358.2250061035156
+"flex-16.5-1" 1.25 short4[0] reused=358.45 fresh=358.45 Chrome=358.20001220703125
+"flex-16.5-1" 1.25 wide[0] reused=358.5125 fresh=358.5125 Chrome=358.26251220703125
+"flex-16.5-1" 1.25 restored[0] reused=358.5 fresh=358.5 Chrome=358.25
+"flex-16.5-2" 1.25 natural[0] reused=366.5625 fresh=366.5625 Chrome=366.3000183105469
+"flex-16.5-2" 1.25 short[0] reused=366.55 fresh=366.55 Chrome=366.2875061035156
+"flex-16.5-2" 1.25 short2[0] reused=366.5375 fresh=366.5375 Chrome=366.2749938964844
+"flex-16.5-2" 1.25 short4[0] reused=366.5125 fresh=366.5125 Chrome=366.25
+"flex-16.5-2" 1.25 wide[0] reused=366.575 fresh=366.575 Chrome=366.3125
+"flex-16.5-2" 1.25 restored[0] reused=366.5625 fresh=366.5625 Chrome=366.3000183105469
+"flex-18.5-0" 1.25 natural[0] reused=403.4875 fresh=403.4875 Chrome=403.2375183105469
+"flex-18.5-0" 1.25 short[0] reused=403.475 fresh=403.475 Chrome=403.2250061035156
+"flex-18.5-0" 1.25 short2[0] reused=403.4625 fresh=403.4625 Chrome=403.2124938964844
+"flex-18.5-0" 1.25 short4[0] reused=403.4375 fresh=403.4375 Chrome=403.1875
+"flex-18.5-0" 1.25 wide[0] reused=403.5 fresh=403.5 Chrome=403.25
+"flex-18.5-0" 1.25 restored[0] reused=403.4875 fresh=403.4875 Chrome=403.2375183105469
+"flex-18.5-1" 1.25 natural[0] reused=398.075 fresh=398.075 Chrome=397.8250122070313
+"flex-18.5-1" 1.25 short[0] reused=398.0625 fresh=398.0625 Chrome=397.8125
+"flex-18.5-1" 1.25 short2[0] reused=398.05 fresh=398.05 Chrome=397.8000183105469
+"flex-18.5-1" 1.25 short4[0] reused=398.025 fresh=398.025 Chrome=397.7749938964844
+"flex-18.5-1" 1.25 wide[0] reused=398.0875 fresh=398.0875 Chrome=397.8374938964844
+"flex-18.5-1" 1.25 restored[0] reused=398.075 fresh=398.075 Chrome=397.8250122070313
+"flex-18.5-2" 1.25 natural[0] reused=407.1 fresh=407.1 Chrome=406.8374938964844
+"flex-18.5-2" 1.25 short[0] reused=407.0875 fresh=407.0875 Chrome=406.8250122070313
+"flex-18.5-2" 1.25 short2[0] reused=407.075 fresh=407.075 Chrome=406.8125
+"flex-18.5-2" 1.25 short4[0] reused=407.05 fresh=407.05 Chrome=406.7875061035156
+"flex-18.5-2" 1.25 wide[0] reused=407.1125 fresh=407.1125 Chrome=406.8500061035156
+"flex-18.5-2" 1.25 restored[0] reused=407.1 fresh=407.1 Chrome=406.8374938964844
+"flex-27.5-0" 1.25 natural[0] reused=584.2125 fresh=584.2125 Chrome=583.9625244140625
+"flex-27.5-0" 1.25 short[0] reused=584.2 fresh=584.2 Chrome=583.9500122070313
+"flex-27.5-0" 1.25 short2[0] reused=584.1875 fresh=584.1875 Chrome=583.9375
+"flex-27.5-0" 1.25 short4[0] reused=584.1625 fresh=584.1625 Chrome=583.9125366210938
+"flex-27.5-0" 1.25 wide[0] reused=584.225 fresh=584.225 Chrome=583.9750366210938
+"flex-27.5-0" 1.25 restored[0] reused=584.2125 fresh=584.2125 Chrome=583.9625244140625
+"flex-27.5-1" 1.25 natural[0] reused=576.15 fresh=576.15 Chrome=575.9000244140625
+"flex-27.5-1" 1.25 short[0] reused=576.1375 fresh=576.1375 Chrome=575.8875122070313
+"flex-27.5-1" 1.25 short2[0] reused=576.125 fresh=576.125 Chrome=575.875
+"flex-27.5-1" 1.25 short4[0] reused=576.1 fresh=576.1 Chrome=575.8500366210938
+"flex-27.5-1" 1.25 wide[0] reused=576.1625 fresh=576.1625 Chrome=575.9125366210938
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    natural_width_and_subpixel_shortages_match_chrome_after_reuse
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s
+
+error: test failed, to rerun pass `-p olo-web --test fractional_fit`

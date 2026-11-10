@@ -1,0 +1,1468 @@
+{
+  "native": {
+    "dpr": 1,
+    "viewport": [
+      1000,
+      578
+    ],
+    "client": [
+      985,
+      578
+    ],
+    "boxes": [
+      {
+        "tag": "MAIN",
+        "id": "main-content",
+        "cls": null,
+        "rect": [
+          0,
+          76,
+          985,
+          13331.683662790236
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "SECTION",
+        "id": "",
+        "cls": "hds-color-mode hero-section-container section section--white hds-mode--light",
+        "rect": [
+          0,
+          76,
+          985,
+          466.03125
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "cls": "section-container hero-section__layout",
+        "rect": [
+          16,
+          76,
+          953,
+          393.03125
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "H1",
+        "id": "",
+        "cls": "hds-heading hero-section__title hero-section__title--background hero-section__title--banking-copy hds-heading--xl",
+        "rect": [
+          110.90625,
+          179.25,
+          735.90625,
+          159.528
+        ],
+        "text_sha256": "fbfb4033c1ca87055400aa68f83fef79c40fea81652bbb021e82417aed5c376e"
+      },
+      {
+        "tag": "H1",
+        "id": "",
+        "cls": "hds-heading hero-section__title hero-section__title--foreground hero-section__title--banking-copy hds-heading--xl",
+        "rect": [
+          110.90625,
+          179.25,
+          735.90625,
+          159.528
+        ],
+        "text_sha256": "fbfb4033c1ca87055400aa68f83fef79c40fea81652bbb021e82417aed5c376e"
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "cls": "section-background hero-section__background",
+        "rect": [
+          0,
+          0,
+          985,
+          542.03125
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "cls": "section-container hero-logo-section",
+        "rect": [
+          16,
+          469.03125,
+          953,
+          73
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "SECTION",
+        "id": "",
+        "cls": "hds-color-mode section section--white hds-mode--light",
+        "rect": [
+          0,
+          542.03125,
+          985,
+          1737.6487012987013
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "cls": "section-background modular-solutions-bg",
+        "rect": [
+          0,
+          542.03125,
+          985,
+          1737.640625
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "cls": "section-container section-row modular-solutions-section section-row-gap",
+        "rect": [
+          16,
+          542.03125,
+          953,
+          1737.6487012987013
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "cls": "hds-heading hds-heading--lg hds-heading--inline",
+        "rect": [
+          33,
+          635.03125,
+          593.234375,
+          40
+        ],
+        "text_sha256": "7cfc7258f93829cd110d47b9555cd5ba56bc06776a332b13fdd362e7c166db3b"
+      },
+      {
+        "tag": "H3",
+        "id": "bento-card-title-payments",
+        "cls": "hds-heading modular-solutions-bento-card__title hds-heading--md",
+        "rect": [
+          57,
+          831.625,
+          520.65625,
+          47.040000000000006
+        ],
+        "text_sha256": "3561f8c6eec90410d635f23017a3c96d32551e340326c289c254e1f97e955e7c"
+      },
+      {
+        "tag": "H3",
+        "id": "bento-card-title-billing",
+        "cls": "hds-heading modular-solutions-bento-card__title hds-heading--md",
+        "rect": [
+          677.65625,
+          831.625,
+          214.34375,
+          47.040000000000006
+        ],
+        "text_sha256": "64d18342d9caf8eeb704ae17e318b6532e6f4544157361ccbc16b852a272b8c2"
+      },
+      {
+        "tag": "H3",
+        "id": "bento-card-title-agentic-commerce",
+        "cls": "hds-heading modular-solutions-bento-card__title hds-heading--md",
+        "rect": [
+          57,
+          1351.8125,
+          210.328125,
+          47.040000000000006
+        ],
+        "text_sha256": "e60913051764f950a35127ca26c6359575f60d3f454790adba5f976ebb5c9a1b"
+      },
+      {
+        "tag": "H3",
+        "id": "bento-card-title-issuing",
+        "cls": "hds-heading modular-solutions-bento-card__title hds-heading--md",
+        "rect": [
+          367.328125,
+          1351.8125,
+          210.34375,
+          47.040000000000006
+        ],
+        "text_sha256": "e8f151be10fd01c70f056b13a5ddbee1ee43c2aaa8771df7d701032a0ca558e1"
+      },
+      {
+        "tag": "H3",
+        "id": "bento-card-title-crypto",
+        "cls": "hds-heading modular-solutions-bento-card__title hds-heading--md",
+        "rect": [
+          677.671875,
+          1351.8125,
+          214.328125,
+          70.56
+        ],
+        "text_sha256": "46ad380a68540c5d40146865b6bb1b76695edb3f894399f5385cba0cc06c2be6"
+      },
+      {
+        "tag": "H3",
+        "id": "bento-card-title-connect",
+        "cls": "hds-heading modular-solutions-bento-card__title hds-heading--md",
+        "rect": [
+          57,
+          1872,
+          283.9375,
+          47.040000000000006
+        ],
+        "text_sha256": "eea01d6544aca5b6225451bd48efe4341d438c13f1cbf9cd3685762a729d3632"
+      },
+      {
+        "tag": "SECTION",
+        "id": "",
+        "cls": "hds-color-mode section section--white hds-mode--light",
+        "rect": [
+          0,
+          2279.679951298702,
+          985,
+          438
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "cls": "section-container personalize-section",
+        "rect": [
+          16,
+          2279.679951298702,
+          953,
+          438
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "cls": "homepage-query-box__title",
+        "rect": [
+          277.0625,
+          2375.679951298702,
+          430.859375,
+          29
+        ],
+        "text_sha256": "af5dcbf23580e8f1897e33c731c09042cec85eea5c9b921d7b8599b935da5cf9"
+      },
+      {
+        "tag": "SECTION",
+        "id": "",
+        "cls": "hds-color-mode section section--white hds-mode--light",
+        "rect": [
+          0,
+          2717.679951298702,
+          985,
+          560
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "cls": "section-container sessions-section",
+        "rect": [
+          16,
+          2717.679951298702,
+          953,
+          560
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "SECTION",
+        "id": "",
+        "cls": "hds-color-mode stats-section stats-section--time-sunrise section section--white hds-mode--light",
+        "rect": [
+          0,
+          3277.679951298702,
+          985,
+          845.7929509493671
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "SPAN",
+        "id": "",
+        "cls": "stats-section__border",
+        "rect": [
+          16,
+          3277.679951298702,
+          953,
+          845.78125
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "SPAN",
+        "id": "",
+        "cls": "stats-section__active-indicator-container",
+        "rect": [
+          16,
+          3277.679951298702,
+          953,
+          845.78125
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "cls": "section-container stats-section__container",
+        "rect": [
+          16,
+          3277.679951298702,
+          953,
+          845.7929509493671
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "cls": "hds-heading stats-section__title hds-heading--xxl",
+        "rect": [
+          247.84375,
+          3357.679951298702,
+          489.296875,
+          115.36
+        ],
+        "text_sha256": "ad84eaa5bb5e17619a9beb796c25267ee6cdce21334b7437bb2fb05c48b6608a"
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "cls": "section-background",
+        "rect": [
+          0,
+          3277.679951298702,
+          985,
+          845.78125
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "SECTION",
+        "id": "",
+        "cls": "hds-color-mode business-sizes-section section section--white hds-mode--light",
+        "rect": [
+          0,
+          4123.472902248068,
+          985,
+          4535.121385542168
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "cls": "section-container section-row section-row-gap",
+        "rect": [
+          16,
+          4123.472902248068,
+          953,
+          4535.121385542168
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "cls": "hds-heading business-sizes__title hds-heading--lg hds-heading--inline",
+        "rect": [
+          33,
+          4216.472902248068,
+          443.609375,
+          40
+        ],
+        "text_sha256": "44f0d278625509e0791f83dab8066a733b74df4c8bbff53e29d2b877f8e9643a"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "cls": "hds-heading section-header__title hds-heading--md",
+        "rect": [
+          33,
+          4418.863527248068,
+          373.578125,
+          58.24000000000001
+        ],
+        "text_sha256": "088470b1f55709575aa4bdd90fa9fb161fe35c7889bdbcfdd421e65d8d99b8b6"
+      },
+      {
+        "tag": "H3",
+        "id": "summary-customer-content-Hertz",
+        "cls": "hds-heading customer-stories__customer-summary-description hds-heading--sm",
+        "rect": [
+          89,
+          4620.988527248068,
+          681,
+          24.200000000000003
+        ],
+        "text_sha256": "d9b75a8247c4327645f8daa502fef807eb116a99831ca97bed8708e66c2e21da"
+      },
+      {
+        "tag": "H3",
+        "id": "summary-customer-content-URBN",
+        "cls": "hds-heading customer-stories__customer-summary-description hds-heading--sm",
+        "rect": [
+          89,
+          5206.879152248068,
+          807,
+          24.200000000000003
+        ],
+        "text_sha256": "802dc6b167595ef71d9a979dc9472409e0ef2429d579a659b410ff40a386e8f2"
+      },
+      {
+        "tag": "H3",
+        "id": "summary-customer-content-Instacart",
+        "cls": "hds-heading customer-stories__customer-summary-description hds-heading--sm",
+        "rect": [
+          89,
+          5279.879152248068,
+          807,
+          24.200000000000003
+        ],
+        "text_sha256": "9d645c30e4c8d03f64c753e07b058d5e5b4c7f5707f183c095cafdb6e4167947"
+      },
+      {
+        "tag": "H3",
+        "id": "summary-customer-content-LeMonde",
+        "cls": "hds-heading customer-stories__customer-summary-description hds-heading--sm",
+        "rect": [
+          89,
+          5352.879152248068,
+          807,
+          24.200000000000003
+        ],
+        "text_sha256": "982139908698b37c63c15c7f59ea0f7bb931bff255dabd971c5c0e2bfc34ed5e"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "cls": "hds-heading section-header__title hds-heading--md",
+        "rect": [
+          33,
+          5876.691652248068,
+          373.578125,
+          87.36000000000001
+        ],
+        "text_sha256": "d14c8f59dd69f3f7dd808d9c04f66cd54a0f40ddf06a328607f0a3678923dd77"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "cls": "hds-heading section-header__title hds-heading--md",
+        "rect": [
+          33,
+          7003.535402248068,
+          373.578125,
+          87.36000000000001
+        ],
+        "text_sha256": "a10d1888287f4833985106330e1bca570dae624300b60c7916218ccf40a3301c"
+      },
+      {
+        "tag": "SECTION",
+        "id": "",
+        "cls": "hds-color-mode section hds-mode--dark",
+        "rect": [
+          0,
+          8658.594287790236,
+          985,
+          2287.214375
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "cls": "section-container section-row section-row-gap",
+        "rect": [
+          16,
+          8658.594287790236,
+          953,
+          2287.214375
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "cls": "hds-heading hds-heading--lg hds-heading--inline",
+        "rect": [
+          33,
+          8751.594287790236,
+          669.9375,
+          40
+        ],
+        "text_sha256": "4f36d5487877ea4a2e4c10086c3198d79d718ec12e0912e7826096088aeffe34"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "cls": "hds-heading hds-heading--md hds-heading--inline",
+        "rect": [
+          33,
+          9031.984912790236,
+          327.640625,
+          33
+        ],
+        "text_sha256": "40cb860b0b7e11a4aafae3d4f08b8e4d869ecfce7cfb3c5d8440e806585aa2c3"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "cls": "hds-heading hds-heading--md hds-heading--inline",
+        "rect": [
+          33,
+          9697.344287790236,
+          256.375,
+          33
+        ],
+        "text_sha256": "088f10b9754ee1b7d52111fa1300dc790ba1eafb9388b007413ba3f8532d75d9"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "cls": "hds-heading hds-heading--md hds-heading--inline",
+        "rect": [
+          33,
+          10336.531787790236,
+          315.890625,
+          33
+        ],
+        "text_sha256": "cd1c88f62574192a392dff4dc7250c7bbb3401ef28701e4639df5217c64336eb"
+      },
+      {
+        "tag": "SECTION",
+        "id": "",
+        "cls": "hds-color-mode section section--white hds-mode--light",
+        "rect": [
+          0,
+          10945.808662790236,
+          985,
+          1765.3
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "cls": "section-container events-section-container",
+        "rect": [
+          16,
+          10945.808662790236,
+          953,
+          1765.3
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "H2",
+        "id": "events-carousel-heading",
+        "cls": "hds-heading events-carousel__header-title hds-heading--lg",
+        "rect": [
+          33,
+          11041.808662790236,
+          347.984375,
+          35.2
+        ],
+        "text_sha256": "ce5188ba67dbfb9c3cd33db2d08c91117837cb812892c6bc617d19075aafecce"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "cls": "hds-heading hds-heading--sm hds-heading--inline",
+        "rect": [
+          33,
+          11665.699287790236,
+          442.484375,
+          28
+        ],
+        "text_sha256": "1e529e737cbf7242055876c446db9c3a5362c506e7070ace3f003d8bcbdd2206"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "cls": "hds-heading hds-heading--sm hds-heading--inline",
+        "rect": [
+          33,
+          11665.699287790236,
+          448.09375,
+          28
+        ],
+        "text_sha256": "6bc79bc75a110e590d86e8062c78af481f72cdff64e540b6be9c31c1aebf64cc"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "cls": "hds-heading hds-heading--sm hds-heading--inline",
+        "rect": [
+          33,
+          11665.699287790236,
+          511.15625,
+          28
+        ],
+        "text_sha256": "695190bfafe821ba4ea066261d81b892094927d35bf5e6d428fd07a34752b29f"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "cls": "hds-heading hds-heading--sm hds-heading--inline",
+        "rect": [
+          33,
+          11665.699287790236,
+          469.09375,
+          28
+        ],
+        "text_sha256": "34d8c9ee474f0057f70b474f06def221cb539ed693881d82f0932b169026bfb0"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "cls": "hds-heading hds-heading--sm hds-heading--inline",
+        "rect": [
+          33,
+          11665.699287790236,
+          489.3125,
+          28
+        ],
+        "text_sha256": "90c584a22033fd21b224a25519739b6090a70a6404796b2a8226309d004ba7c8"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "cls": "hds-heading hds-heading--sm hds-heading--inline",
+        "rect": [
+          33,
+          11665.699287790236,
+          631.109375,
+          28
+        ],
+        "text_sha256": "95fdecd6f39761563cc1cd3fda8c742da328c2e4f148078ba0cfbe318d728120"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "cls": "hds-heading hds-heading--sm hds-heading--inline",
+        "rect": [
+          33,
+          11665.699287790236,
+          507.9375,
+          28
+        ],
+        "text_sha256": "9e890a390b7fadc6c0739c0eb4e287bcce2dab65839900833e4be89f20f2dfab"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "cls": "hds-heading hds-heading--sm hds-heading--inline",
+        "rect": [
+          33,
+          11665.699287790236,
+          644.875,
+          28
+        ],
+        "text_sha256": "c125ce6b0261e482cec32783538741868069cd4f6f193499c3fe22661aa46eaa"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "cls": "hds-heading hds-heading--lg",
+        "rect": [
+          33,
+          11895.699287790236,
+          608,
+          35.2
+        ],
+        "text_sha256": "f4458c3c17df8372d184de3b588c7dcbae5994c8e3376ae708bacf5d5d92cbde"
+      },
+      {
+        "tag": "SECTION",
+        "id": "",
+        "cls": "hds-color-mode homepage-footer-cta--before-footnotes section hds-mode--light",
+        "rect": [
+          0,
+          12711.108662790235,
+          985,
+          560.375
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "cls": "section-container footer-cta-section__grid",
+        "rect": [
+          16,
+          12711.108662790235,
+          953,
+          560.375
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "SECTION",
+        "id": "",
+        "cls": "hds-color-mode homepage-footnotes section hds-mode--light",
+        "rect": [
+          0,
+          13271.483662790235,
+          985,
+          136.2
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "cls": "section-container",
+        "rect": [
+          16,
+          13271.483662790235,
+          953,
+          136.2
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ]
+  },
+  "chrome": {
+    "dpr": 1,
+    "viewport": [
+      1000,
+      578
+    ],
+    "client": [
+      985,
+      578
+    ],
+    "boxes": [
+      {
+        "tag": "MAIN",
+        "id": "main-content",
+        "cls": null,
+        "rect": [
+          0,
+          76,
+          985,
+          13033.390625
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "SECTION",
+        "id": "",
+        "cls": "hds-color-mode hero-section-container section section--white hds-mode--light",
+        "rect": [
+          0,
+          76,
+          985,
+          466.03125
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "cls": "section-container hero-section__layout",
+        "rect": [
+          16,
+          76,
+          953,
+          393.03125
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "H1",
+        "id": "",
+        "cls": "hds-heading hero-section__title hero-section__title--background hero-section__title--banking-copy hds-heading--xl",
+        "rect": [
+          110.90625,
+          179.234375,
+          735.59375,
+          159.5625
+        ],
+        "text_sha256": "fbfb4033c1ca87055400aa68f83fef79c40fea81652bbb021e82417aed5c376e"
+      },
+      {
+        "tag": "H1",
+        "id": "",
+        "cls": "hds-heading hero-section__title hero-section__title--foreground hero-section__title--banking-copy hds-heading--xl",
+        "rect": [
+          110.90625,
+          179.234375,
+          735.59375,
+          159.5625
+        ],
+        "text_sha256": "fbfb4033c1ca87055400aa68f83fef79c40fea81652bbb021e82417aed5c376e"
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "cls": "section-background hero-section__background",
+        "rect": [
+          0,
+          0,
+          985,
+          542.03125
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "cls": "section-container hero-logo-section",
+        "rect": [
+          16,
+          469.03125,
+          953,
+          73
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "SECTION",
+        "id": "",
+        "cls": "hds-color-mode section section--white hds-mode--light",
+        "rect": [
+          0,
+          542.03125,
+          985,
+          1737.59375
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "cls": "section-background modular-solutions-bg",
+        "rect": [
+          0,
+          542.03125,
+          985,
+          1737.59375
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "cls": "section-container section-row modular-solutions-section section-row-gap",
+        "rect": [
+          16,
+          542.03125,
+          953,
+          1737.59375
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "cls": "hds-heading hds-heading--lg hds-heading--inline",
+        "rect": [
+          33,
+          635.03125,
+          593.234375,
+          40
+        ],
+        "text_sha256": "7cfc7258f93829cd110d47b9555cd5ba56bc06776a332b13fdd362e7c166db3b"
+      },
+      {
+        "tag": "H3",
+        "id": "bento-card-title-payments",
+        "cls": "hds-heading modular-solutions-bento-card__title hds-heading--md",
+        "rect": [
+          57,
+          831.59375,
+          520.65625,
+          47.03125
+        ],
+        "text_sha256": "3561f8c6eec90410d635f23017a3c96d32551e340326c289c254e1f97e955e7c"
+      },
+      {
+        "tag": "H3",
+        "id": "bento-card-title-billing",
+        "cls": "hds-heading modular-solutions-bento-card__title hds-heading--md",
+        "rect": [
+          677.65625,
+          831.59375,
+          214.34375,
+          47.03125
+        ],
+        "text_sha256": "64d18342d9caf8eeb704ae17e318b6532e6f4544157361ccbc16b852a272b8c2"
+      },
+      {
+        "tag": "H3",
+        "id": "bento-card-title-agentic-commerce",
+        "cls": "hds-heading modular-solutions-bento-card__title hds-heading--md",
+        "rect": [
+          57,
+          1351.78125,
+          210.328125,
+          47.03125
+        ],
+        "text_sha256": "e60913051764f950a35127ca26c6359575f60d3f454790adba5f976ebb5c9a1b"
+      },
+      {
+        "tag": "H3",
+        "id": "bento-card-title-issuing",
+        "cls": "hds-heading modular-solutions-bento-card__title hds-heading--md",
+        "rect": [
+          367.328125,
+          1351.78125,
+          210.34375,
+          47.03125
+        ],
+        "text_sha256": "e8f151be10fd01c70f056b13a5ddbee1ee43c2aaa8771df7d701032a0ca558e1"
+      },
+      {
+        "tag": "H3",
+        "id": "bento-card-title-crypto",
+        "cls": "hds-heading modular-solutions-bento-card__title hds-heading--md",
+        "rect": [
+          677.671875,
+          1351.78125,
+          214.328125,
+          70.546875
+        ],
+        "text_sha256": "46ad380a68540c5d40146865b6bb1b76695edb3f894399f5385cba0cc06c2be6"
+      },
+      {
+        "tag": "H3",
+        "id": "bento-card-title-connect",
+        "cls": "hds-heading modular-solutions-bento-card__title hds-heading--md",
+        "rect": [
+          57,
+          1871.953125,
+          283.96875,
+          47.03125
+        ],
+        "text_sha256": "eea01d6544aca5b6225451bd48efe4341d438c13f1cbf9cd3685762a729d3632"
+      },
+      {
+        "tag": "SECTION",
+        "id": "",
+        "cls": "hds-color-mode section section--white hds-mode--light",
+        "rect": [
+          0,
+          2279.625,
+          985,
+          438
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "cls": "section-container personalize-section",
+        "rect": [
+          16,
+          2279.625,
+          953,
+          438
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "cls": "homepage-query-box__title",
+        "rect": [
+          277.078125,
+          2375.625,
+          430.828125,
+          29
+        ],
+        "text_sha256": "af5dcbf23580e8f1897e33c731c09042cec85eea5c9b921d7b8599b935da5cf9"
+      },
+      {
+        "tag": "SECTION",
+        "id": "",
+        "cls": "hds-color-mode section section--white hds-mode--light",
+        "rect": [
+          0,
+          2717.625,
+          985,
+          560
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "cls": "section-container sessions-section",
+        "rect": [
+          16,
+          2717.625,
+          953,
+          560
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "SECTION",
+        "id": "",
+        "cls": "hds-color-mode stats-section stats-section--time-sunrise section section--white hds-mode--light",
+        "rect": [
+          0,
+          3277.625,
+          985,
+          845.75
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "SPAN",
+        "id": "",
+        "cls": "stats-section__border",
+        "rect": [
+          16,
+          3277.625,
+          953,
+          845.75
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "SPAN",
+        "id": "",
+        "cls": "stats-section__active-indicator-container",
+        "rect": [
+          16,
+          3277.625,
+          953,
+          845.75
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "cls": "section-container stats-section__container",
+        "rect": [
+          16,
+          3277.625,
+          953,
+          845.75
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "cls": "hds-heading stats-section__title hds-heading--xxl",
+        "rect": [
+          247.890625,
+          3357.625,
+          489.203125,
+          115.34375
+        ],
+        "text_sha256": "ad84eaa5bb5e17619a9beb796c25267ee6cdce21334b7437bb2fb05c48b6608a"
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "cls": "section-background",
+        "rect": [
+          0,
+          3277.625,
+          985,
+          845.75
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "SECTION",
+        "id": "",
+        "cls": "hds-color-mode business-sizes-section section section--white hds-mode--light",
+        "rect": [
+          0,
+          4123.375,
+          985,
+          4534.703125
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "cls": "section-container section-row section-row-gap",
+        "rect": [
+          16,
+          4123.375,
+          953,
+          4534.703125
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "cls": "hds-heading business-sizes__title hds-heading--lg hds-heading--inline",
+        "rect": [
+          33,
+          4216.375,
+          443.59375,
+          40
+        ],
+        "text_sha256": "44f0d278625509e0791f83dab8066a733b74df4c8bbff53e29d2b877f8e9643a"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "cls": "hds-heading section-header__title hds-heading--md",
+        "rect": [
+          33,
+          4418.75,
+          373.578125,
+          58.21875
+        ],
+        "text_sha256": "088470b1f55709575aa4bdd90fa9fb161fe35c7889bdbcfdd421e65d8d99b8b6"
+      },
+      {
+        "tag": "H3",
+        "id": "summary-customer-content-Hertz",
+        "cls": "hds-heading customer-stories__customer-summary-description hds-heading--sm",
+        "rect": [
+          89,
+          4620.875,
+          681,
+          24.1875
+        ],
+        "text_sha256": "d9b75a8247c4327645f8daa502fef807eb116a99831ca97bed8708e66c2e21da"
+      },
+      {
+        "tag": "H3",
+        "id": "summary-customer-content-URBN",
+        "cls": "hds-heading customer-stories__customer-summary-description hds-heading--sm",
+        "rect": [
+          89,
+          5206.640625,
+          807,
+          24.1875
+        ],
+        "text_sha256": "802dc6b167595ef71d9a979dc9472409e0ef2429d579a659b410ff40a386e8f2"
+      },
+      {
+        "tag": "H3",
+        "id": "summary-customer-content-Instacart",
+        "cls": "hds-heading customer-stories__customer-summary-description hds-heading--sm",
+        "rect": [
+          89,
+          5279.640625,
+          807,
+          24.1875
+        ],
+        "text_sha256": "9d645c30e4c8d03f64c753e07b058d5e5b4c7f5707f183c095cafdb6e4167947"
+      },
+      {
+        "tag": "H3",
+        "id": "summary-customer-content-LeMonde",
+        "cls": "hds-heading customer-stories__customer-summary-description hds-heading--sm",
+        "rect": [
+          89,
+          5352.640625,
+          807,
+          24.1875
+        ],
+        "text_sha256": "982139908698b37c63c15c7f59ea0f7bb931bff255dabd971c5c0e2bfc34ed5e"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "cls": "hds-heading section-header__title hds-heading--md",
+        "rect": [
+          33,
+          5876.40625,
+          373.578125,
+          87.328125
+        ],
+        "text_sha256": "d14c8f59dd69f3f7dd808d9c04f66cd54a0f40ddf06a328607f0a3678923dd77"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "cls": "hds-heading section-header__title hds-heading--md",
+        "rect": [
+          33,
+          7003.171875,
+          373.578125,
+          87.328125
+        ],
+        "text_sha256": "a10d1888287f4833985106330e1bca570dae624300b60c7916218ccf40a3301c"
+      },
+      {
+        "tag": "SECTION",
+        "id": "",
+        "cls": "hds-color-mode section hds-mode--dark",
+        "rect": [
+          0,
+          8658.078125,
+          985,
+          2287.0625
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "cls": "section-container section-row section-row-gap",
+        "rect": [
+          16,
+          8658.078125,
+          953,
+          2287.0625
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "cls": "hds-heading hds-heading--lg hds-heading--inline",
+        "rect": [
+          33,
+          8751.078125,
+          669.90625,
+          40
+        ],
+        "text_sha256": "4f36d5487877ea4a2e4c10086c3198d79d718ec12e0912e7826096088aeffe34"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "cls": "hds-heading hds-heading--md hds-heading--inline",
+        "rect": [
+          33,
+          9031.453125,
+          327.609375,
+          33
+        ],
+        "text_sha256": "40cb860b0b7e11a4aafae3d4f08b8e4d869ecfce7cfb3c5d8440e806585aa2c3"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "cls": "hds-heading hds-heading--md hds-heading--inline",
+        "rect": [
+          33,
+          9696.78125,
+          256.40625,
+          33
+        ],
+        "text_sha256": "088f10b9754ee1b7d52111fa1300dc790ba1eafb9388b007413ba3f8532d75d9"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "cls": "hds-heading hds-heading--md hds-heading--inline",
+        "rect": [
+          33,
+          10335.9375,
+          315.859375,
+          33
+        ],
+        "text_sha256": "cd1c88f62574192a392dff4dc7250c7bbb3401ef28701e4639df5217c64336eb"
+      },
+      {
+        "tag": "SECTION",
+        "id": "",
+        "cls": "hds-color-mode section section--white hds-mode--light",
+        "rect": [
+          0,
+          10945.140625,
+          985,
+          1648.875
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "cls": "section-container events-section-container",
+        "rect": [
+          16,
+          10945.140625,
+          953,
+          1648.875
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "H2",
+        "id": "events-carousel-heading",
+        "cls": "hds-heading events-carousel__header-title hds-heading--lg",
+        "rect": [
+          33,
+          11041.140625,
+          347.984375,
+          35.1875
+        ],
+        "text_sha256": "ce5188ba67dbfb9c3cd33db2d08c91117837cb812892c6bc617d19075aafecce"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "cls": "hds-heading hds-heading--sm hds-heading--inline",
+        "rect": [
+          33,
+          11548.640625,
+          442.4375,
+          28
+        ],
+        "text_sha256": "1e529e737cbf7242055876c446db9c3a5362c506e7070ace3f003d8bcbdd2206"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "cls": "hds-heading hds-heading--sm hds-heading--inline",
+        "rect": [
+          33,
+          11548.640625,
+          448.09375,
+          28
+        ],
+        "text_sha256": "6bc79bc75a110e590d86e8062c78af481f72cdff64e540b6be9c31c1aebf64cc"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "cls": "hds-heading hds-heading--sm hds-heading--inline",
+        "rect": [
+          33,
+          11548.640625,
+          511.1875,
+          28
+        ],
+        "text_sha256": "695190bfafe821ba4ea066261d81b892094927d35bf5e6d428fd07a34752b29f"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "cls": "hds-heading hds-heading--sm hds-heading--inline",
+        "rect": [
+          33,
+          11548.640625,
+          469.078125,
+          28
+        ],
+        "text_sha256": "34d8c9ee474f0057f70b474f06def221cb539ed693881d82f0932b169026bfb0"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "cls": "hds-heading hds-heading--sm hds-heading--inline",
+        "rect": [
+          33,
+          11548.640625,
+          489.265625,
+          28
+        ],
+        "text_sha256": "90c584a22033fd21b224a25519739b6090a70a6404796b2a8226309d004ba7c8"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "cls": "hds-heading hds-heading--sm hds-heading--inline",
+        "rect": [
+          33,
+          11548.640625,
+          631.09375,
+          28
+        ],
+        "text_sha256": "95fdecd6f39761563cc1cd3fda8c742da328c2e4f148078ba0cfbe318d728120"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "cls": "hds-heading hds-heading--sm hds-heading--inline",
+        "rect": [
+          33,
+          11548.640625,
+          507.890625,
+          28
+        ],
+        "text_sha256": "9e890a390b7fadc6c0739c0eb4e287bcce2dab65839900833e4be89f20f2dfab"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "cls": "hds-heading hds-heading--sm hds-heading--inline",
+        "rect": [
+          33,
+          11548.640625,
+          644.84375,
+          28
+        ],
+        "text_sha256": "c125ce6b0261e482cec32783538741868069cd4f6f193499c3fe22661aa46eaa"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "cls": "hds-heading hds-heading--lg",
+        "rect": [
+          33,
+          11778.640625,
+          608,
+          35.1875
+        ],
+        "text_sha256": "f4458c3c17df8372d184de3b588c7dcbae5994c8e3376ae708bacf5d5d92cbde"
+      },
+      {
+        "tag": "SECTION",
+        "id": "",
+        "cls": "hds-color-mode homepage-footer-cta--before-footnotes section hds-mode--light",
+        "rect": [
+          0,
+          12594.015625,
+          985,
+          379.1875
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "cls": "section-container footer-cta-section__grid",
+        "rect": [
+          16,
+          12594.015625,
+          953,
+          379.1875
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "SECTION",
+        "id": "",
+        "cls": "hds-color-mode homepage-footnotes section hds-mode--light",
+        "rect": [
+          0,
+          12973.203125,
+          985,
+          136.1875
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "cls": "section-container",
+        "rect": [
+          16,
+          12973.203125,
+          953,
+          136.1875
+        ],
+        "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ]
+  }
+}

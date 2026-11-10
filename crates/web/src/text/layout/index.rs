@@ -196,13 +196,36 @@ impl Index {
 /// Linear scalable-font advances use a 16.16 scale over a 26.6 device size.
 /// Layout measures then enclose each item on the 1/64 device-pixel grid.
 pub(super) fn measured(units: i64, size: f64, upem: u16, pixel_scale: Option<f64>) -> Result<f64> {
-    let width = if let Some(scale) = pixel_scale {
-        let device_size = (size * scale * 64.).trunc();
-        let fixed_scale = (device_size * 65536. / f64::from(upem)).round();
-        let fixed_advance = (units as f64 * fixed_scale / 64.).round();
-        (fixed_advance / 1024.).ceil() / (64. * scale)
-    } else {
-        units as f64 * (size / f64::from(upem))
-    };
+    let advance = LinearMetric::new(size, upem, pixel_scale)?.advance(units);
+    let width = pixel_scale.map_or(advance, |scale| (advance * 64.).ceil() / (64. * scale));
     if width.is_finite() { Ok(width) } else { Err(Error::Invalid) }
+}
+
+// Linear scalable-font metric quantization, before layout-grid enclosure. Keep
+// f32 centipixel arithmetic: rounding the product in f64 changes cache buckets.
+#[derive(Default)]
+pub(super) struct LinearMetric {
+    multiplier: f64,
+    quantized: bool,
+}
+impl LinearMetric {
+    pub(super) fn new(size: f64, upem: u16, scale: Option<f64>) -> Result<Self> {
+        let multiplier = if let Some(scale) = scale {
+            let device_size = (size as f32) * (scale as f32);
+            let effective = f64::from((device_size * 100.).floor() / 100.);
+            let fixed_size = (effective * 64.).trunc();
+            let fixed_scale = (fixed_size * 65536. / f64::from(upem)).round();
+            fixed_scale / 64.
+        } else {
+            size / f64::from(upem)
+        };
+        if !multiplier.is_finite() {
+            return Err(Error::Invalid);
+        }
+        Ok(Self { multiplier, quantized: scale.is_some() })
+    }
+    pub(super) fn advance(&self, units: i64) -> f64 {
+        let raw = units as f64 * self.multiplier;
+        if self.quantized { raw.round() / 65536. } else { raw }
+    }
 }

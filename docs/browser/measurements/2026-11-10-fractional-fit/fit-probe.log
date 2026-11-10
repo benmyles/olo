@@ -1,0 +1,181 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/ben/worktrees/olo/browser/smithay/smithay/Cargo.toml
+workspace: /home/ben/worktrees/olo/browser/Cargo.toml
+warning: unnecessary parentheses around closure body
+  --> crates/web/src/chunked.rs:55:143
+   |
+55 | ...e_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+   |                                                    ^                              ^
+   |
+   = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+   |
+55 -         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+55 +         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| i * CHUNK..i * CHUNK + c.len())
+   |
+
+warning: unused attribute `allow`
+  --> crates/web/src/paint/image.rs:44:1
+   |
+44 | #[allow(clippy::too_many_arguments)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: the built-in attribute `allow` will be ignored, since it's applied to the macro invocation `thread_local`
+  --> crates/web/src/paint/image.rs:45:1
+   |
+45 | thread_local! {
+   | ^^^^^^^^^^^^
+   = note: `#[warn(unused_attributes)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `size` is never read
+   --> crates/web/src/css/properties/font.rs:274:20
+    |
+274 |     let mut size = None;
+    |                    ^^^^ this value is reassigned later and never used
+...
+353 |     size = Some(super::parse::component(Property::FontSize.grammar(), c, limits, cancelled)?);
+    |     ---- `size` is overwritten here before the previous value is read
+    |
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `family` is never read
+   --> crates/web/src/css/properties/font.rs:276:22
+    |
+276 |     let mut family = None;
+    |                      ^^^^ this value is reassigned later and never used
+...
+363 |     family = Some(Families::parse(parts[i..].iter().copied(), cancelled)?);
+    |     ------ `family` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+   --> crates/web/src/css/style/job.rs:536:25
+    |
+536 |                     let mut walk = |root: NodeId, reach: &selectors::Reach, nodes: &mut crate::dom::NodeSet| {
+    |                         ----^^^^
+    |                         |
+    |                         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates/web/src/page/interaction.rs:38:13
+   |
+38 |         let mut differ = |a: Option<NodeId>, b: Option<NodeId>, state: State, out: &mut Vec<(NodeId, &'static str)>| {
+   |             ----^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: value assigned to `path` is never read
+   --> crates/web/src/page.rs:970:24
+    |
+970 |         let mut path = String::new();
+    |                        ^^^^^^^^^^^^^ this value is reassigned later and never used
+...
+980 |                             path = format!("patched in place, {} elements", nodes.len());
+    |                             ---- `path` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+    --> crates/web/src/page.rs:3986:13
+     |
+3986 |         let mut subject = |a: crate::dom::NodeId, reached: &mut Vec<crate::dom::NodeId>| {
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: value assigned to `skip` is never read
+    --> crates/web/src/svg/viewport.rs:949:24
+     |
+ 949 |         let mut skip = false;
+     |                        ^^^^^ this value is reassigned later and never used
+...
+1019 |             skip = true;
+     |             ----------- `skip` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+  --> crates/web/src/text/prepare.rs:79:23
+   |
+79 |         let single = |mut it: &mut dyn Iterator<Item = char>| {
+   |                       ----^^
+   |                       |
+   |                       help: remove this `mut`
+
+warning: method `get_mut` is never used
+  --> crates/web/src/chunked.rs:57:19
+   |
+22 | impl<T: Clone> Chunked<T> {
+   | ------------------------- method in this implementation
+...
+57 |     pub(crate) fn get_mut(&mut self, i: usize) -> Option<&mut T> {
+   |                   ^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated function `new` is never used
+  --> crates/web/src/paint/index.rs:16:12
+   |
+15 | impl Index {
+   | ---------- associated function in this implementation
+16 |     pub fn new(commands: &[Command], transforms: &[[f64; 6]], cancel: Option<&AtomicBool>) -> Result<Self> {
+   |            ^^^
+
+warning: variant `Quad` is never constructed
+   --> crates/web/src/svg/script.rs:258:5
+    |
+256 | enum Seg {
+    |      --- variant in this enum
+257 |     Line(F, F),
+258 |     Quad([F; 3]),
+    |     ^^^^
+    |
+    = note: `Seg` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: `olo-web` (lib) generated 13 warnings (run `cargo fix --lib -p olo-web` to apply 6 suggestions)
+   Compiling olo-web v0.1.0 (/home/ben/worktrees/olo/browser/crates/web)
+    Finished `release` profile [optimized + debuginfo] target(s) in 2.16s
+     Running tests/fit_probe.rs (target/release/deps/fit_probe-421651776de0f8cf)
+
+running 1 test
+WRAPPED scale=1.25 size=12 text="Laura Collinson, " rect=Rect { x: 363.5125, y: 0.0, width: 272.975, height: 33.599999999999994 }
+WRAPPED scale=1.25 size=20.5 text="Retained text " rect=Rect { x: 276.175, y: 0.0, width: 447.65, height: 57.4 }
+WRAPPED scale=1.25 size=23.5 text="Mixed weight text, " rect=Rect { x: 251.4875, y: 0.0, width: 497.0125, height: 65.8 }
+WRAPPED scale=1.25 size=25.5 text="Mixed weight text, " rect=Rect { x: 231.7125, y: 0.0, width: 536.575, height: 71.39999999999999 }
+WRAPPED scale=1.25 size=29 text="Mixed weight text, " rect=Rect { x: 197.075, y: 0.0, width: 605.8375, height: 81.19999999999999 }
+WRAPPED scale=1.5 size=12.5 text="Laura Collinson, " rect=Rect { x: 358.4895833333333, y: 0.0, width: 283.01041666666663, height: 35.0 }
+WRAPPED scale=1.5 size=12.5 text="Retained text " rect=Rect { x: 357.2708333333333, y: 0.0, width: 285.44791666666663, height: 35.0 }
+WRAPPED scale=1.5 size=13 text="Laura Collinson, " rect=Rect { x: 353.46875, y: 0.0, width: 293.0520833333333, height: 36.4 }
+WRAPPED scale=1.5 size=13 text="Retained text " rect=Rect { x: 352.2083333333333, y: 0.0, width: 295.5833333333333, height: 36.4 }
+WRAPPED scale=1.5 size=14.5 text="Mixed weight text, " rect=Rect { x: 340.53125, y: 0.0, width: 318.9270833333333, height: 40.599999999999994 }
+WRAPPED scale=1.5 size=15.5 text="Mixed weight text, " rect=Rect { x: 330.6458333333333, y: 0.0, width: 338.7083333333333, height: 43.4 }
+WRAPPED scale=1.5 size=16.5 text="Laura Collinson, " rect=Rect { x: 318.3333333333333, y: 0.0, width: 363.3333333333333, height: 46.199999999999996 }
+WRAPPED scale=1.5 size=18.5 text="Laura Collinson, " rect=Rect { x: 298.25, y: 0.0, width: 403.4895833333333, height: 51.8 }
+WRAPPED scale=1.5 size=19 text="Mixed weight text, " rect=Rect { x: 296.0208333333333, y: 0.0, width: 407.9583333333333, height: 53.199999999999996 }
+WRAPPED scale=1.5 size=19.5 text="Mixed weight text, " rect=Rect { x: 291.0625, y: 0.0, width: 417.8645833333333, height: 54.599999999999994 }
+WRAPPED scale=1.5 size=19.5 text="Retained text " rect=Rect { x: 286.3125, y: 0.0, width: 427.3645833333333, height: 54.599999999999994 }
+WRAPPED scale=1.5 size=20.5 text="Retained text " rect=Rect { x: 276.1770833333333, y: 0.0, width: 447.6458333333333, height: 57.4 }
+WRAPPED scale=1.5 size=21.5 text="Mixed weight text, " rect=Rect { x: 271.28125, y: 0.0, width: 457.4270833333333, height: 60.199999999999996 }
+WRAPPED scale=1.5 size=22 text="Laura Collinson, " rect=Rect { x: 263.1145833333333, y: 0.0, width: 473.7708333333333, height: 61.599999999999994 }
+WRAPPED scale=1.5 size=24 text="Mixed weight text, " rect=Rect { x: 246.55208333333334, y: 0.0, width: 506.8958333333333, height: 67.19999999999999 }
+WRAPPED scale=1.5 size=24 text="Retained text " rect=Rect { x: 240.6875, y: 0.0, width: 518.6145833333333, height: 67.19999999999999 }
+WRAPPED scale=1.5 size=26 text="Retained text " rect=Rect { x: 220.41666666666666, y: 0.0, width: 559.1666666666666, height: 72.8 }
+WRAPPED scale=1.5 size=27 text="Mixed weight text, " rect=Rect { x: 216.86458333333334, y: 0.0, width: 566.2604166666666, height: 75.6 }
+WRAPPED scale=1.5 size=28.5 text="Laura Collinson, " rect=Rect { x: 197.85416666666666, y: 0.0, width: 604.2916666666666, height: 79.8 }
+WRAPPED scale=1.5 size=29.5 text="Mixed weight text, " rect=Rect { x: 192.13541666666666, y: 0.0, width: 615.7291666666666, height: 82.6 }
+WRAPPED scale=1.5 size=30 text="Retained text " rect=Rect { x: 179.86458333333334, y: 0.0, width: 640.2604166666666, height: 84.0 }
+WRAPPED scale=1.75 size=14.5 text="Mixed weight text, " rect=Rect { x: 340.5357142857143, y: 0.0, width: 318.91964285714283, height: 40.599999999999994 }
+WRAPPED scale=1.75 size=16 text="Mixed weight text, " rect=Rect { x: 325.69642857142856, y: 0.0, width: 348.60714285714283, height: 44.8 }
+WRAPPED scale=1.75 size=16.5 text="Retained text " rect=Rect { x: 316.7232142857143, y: 0.0, width: 366.54464285714283, height: 46.199999999999996 }
+WRAPPED scale=1.75 size=17.5 text="Laura Collinson, " rect=Rect { x: 308.29464285714283, y: 0.0, width: 383.4107142857143, height: 49.0 }
+WRAPPED scale=1.75 size=18.5 text="Laura Collinson, " rect=Rect { x: 298.25892857142856, y: 0.0, width: 403.48214285714283, height: 51.8 }
+WRAPPED scale=1.75 size=19.5 text="Mixed weight text, " rect=Rect { x: 291.07142857142856, y: 0.0, width: 417.85714285714283, height: 54.599999999999994 }
+WRAPPED scale=1.75 size=21 text="Retained text " rect=Rect { x: 271.10714285714283, y: 0.0, width: 457.7857142857143, height: 58.8 }
+WRAPPED scale=1.75 size=23 text="Laura Collinson, " rect=Rect { x: 253.07142857142858, y: 0.0, width: 493.85714285714283, height: 64.39999999999999 }
+WRAPPED scale=1.75 size=24.5 text="Laura Collinson, " rect=Rect { x: 238.00892857142858, y: 0.0, width: 523.9732142857142, height: 68.6 }
+WRAPPED scale=1.75 size=24.5 text="Mixed weight text, " rect=Rect { x: 241.59821428571428, y: 0.0, width: 516.7946428571429, height: 68.6 }
+WRAPPED scale=1.75 size=25.5 text="Retained text " rect=Rect { x: 225.48214285714286, y: 0.0, width: 549.0267857142857, height: 71.39999999999999 }
+WRAPPED scale=1.75 size=26 text="Mixed weight text, " rect=Rect { x: 226.76785714285714, y: 0.0, width: 546.4642857142857, height: 72.8 }
+WRAPPED scale=1.75 size=27.5 text="Laura Collinson, " rect=Rect { x: 207.89285714285714, y: 0.0, width: 584.2142857142857, height: 77.0 }
+WRAPPED scale=1.75 size=27.5 text="Mixed weight text, " rect=Rect { x: 211.91964285714286, y: 0.0, width: 576.1517857142857, height: 77.0 }
+failures=40
+test probe ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s

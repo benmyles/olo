@@ -8572,3 +8572,41 @@ watchdog wakes remain; no scroll hitches. No speed superiority claimed.
 Evidence: `measurements/2026-11-10-query-measurement/README.md`. The owned
 screen was stopped; the personal session was not installed into or reloaded.
 Main fetched and already contained,444 browser commits ahead before this one.
+
+## 2026-11-10 — consistent fractional text fitting
+
+An offscreen Stripe author acquired a second line at 1.75×, stretching every
+testimonial card by 25.2px. Natural-width padding arithmetic lost as little as
+2.84e-14px. Text now uses the same one-device-layout-unit fit allowance as
+atomic items, with a machine-roundoff guard. Mixed-style and intrinsic text
+measurement share effective font-size quantization. No global kit hinting,
+new timer or idle work. Independent Chrome evidence covers 1,350 observations
+at five actual DPRs, including one/two/four-unit shortages and fresh/reused
+layouts. Intermediate failures and the unchanged oracle are retained.
+
+Thirty before/after native reviews are clean; 60 native/Chrome captures cover
+light/dark/night at five live scales, odd x49, matched cohorts and scroll.
+The 1.75× business-section height error falls 25.3555 → 0.1555px. This does
+not accept Stripe: its testimonial button receives the correct click but
+does not switch, and settled main height still differs by 298.293px at 1×.
+Next investigate activation, then the events/footer section differences.
+Stripe remains 0/30 and corpus 0/100.
+
+Merged main's Application Kit commit 65e122fa through 5a3f25a4; the browser
+binary is byte-identical across the merge. Release workspace build and tests
+pass: 2,220 passed, zero failed, 136 ignored across 258 suites. Both native
+layout lints (1280×800, 1440×900) pass.
+
+Twelve release cost runs retain an initial candidate RSS outlier and the
+repeat. Pooled medians at 1.25×/2×: 9,000 cached reads 6.014 → 5.828 /
+5.765 → 5.816ms; 20 font-size changes/layouts 3.695 → 3.807 / 3.666 → 3.783ms;
+CPU/resize 10 → 11.25 / 19.375 → 16.25ms; RSS 154936 → 155908 /
+163910 → 164184KiB. Drag-first 36.90 → 36.85 / 35.10 → 36.75ms;
+wheel-first 17.35 → 17.45 / 16.25 → 16.65ms. Idle CPU/page frames zero,
+watchdog wakes remain; no scroll hitches, maximum draw 4.20 → 6.12ms.
+Timing logging is enabled in both binaries. Baseline incorrectly wraps
+one mutation; the candidate validates all heights. Mixed shared-host costs
+do not establish a speedup. The 176104KiB candidate outlier remains unexplained.
+
+Evidence: `measurements/2026-11-10-fractional-fit/README.md`. Owned screen
+stopped; no personal session install/reload or delegation.

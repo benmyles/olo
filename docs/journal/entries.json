@@ -4552,5 +4552,17 @@
   "title": "Browser with settled container query measurements",
   "caption": "Script geometry now reports the Chrome-matching 32px padding; nested query cascades settle before measurement and paint return. All 15 native theme/scale reviews pass. Full Stripe pixels and journeys remain unaccepted.",
   "image": "2026-11-10/083718-browser-with-settled-container-query-measurement.png"
+ },
+ {
+  "time": "2026-11-10T09:05:21",
+  "title": "Browser before fractional text fitting",
+  "caption": "Stripe at 1.75\u00d7. An offscreen author wraps because of numerical roundoff, enlarging the shared testimonial carousel. This capture and the after capture use matching scroll positions.",
+  "image": "2026-11-10/090521-browser-before-fractional-text-fitting.png"
+ },
+ {
+  "time": "2026-11-10T09:05:22",
+  "title": "Browser with consistent fractional text fitting",
+  "caption": "The author stays on one line; the carousel loses the extra 25.2px. Text and intrinsic sizing share font-size quantization, and fitting follows Chrome\u2019s one-layout-unit allowance. Full-page layout and testimonial activation remain open.",
+  "image": "2026-11-10/090522-browser-with-consistent-fractional-text-fitting.png"
  }
 ]

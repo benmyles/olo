@@ -2849,3 +2849,22 @@ paint geometry against50 independent Chrome observations at five scales,
 including a six-level query cascade and same-width renaming. Live Stripe
 card padding now agrees with Chrome; section and pixel differences remain.
 See `measurements/2026-11-10-query-measurement/README.md` for evidence and costs.
+
+
+## Fractional-scale line fitting and shared text metrics
+
+The inline job uses a common fit limit for line selection, hanging spaces,
+word splitting and overflow reporting: one device layout unit plus machine
+roundoff. That prevents a naturally sized padded box from wrapping its own
+text because of floating-point subtraction. Independent Chrome controls show
+one-unit shortages fitting and two-unit shortages wrapping.
+
+Single-run intrinsic measurement and mixed-run layout now share `LinearMetric`
+in `text/layout/index.rs`. Both quantize effective device font size to f32
+centipixels before fixed-point linear advances and layout-grid enclosure.
+The former mixed-run path skipped that step at fractional sizes. This changes
+web geometry without changing global font hinting or rasterization policy.
+`fractional_fit` checks1,350 independent Chrome observations with fresh/reused
+layouts. Known line-height grid rounding and glyph-pixel identity remain open.
+See `measurements/2026-11-10-fractional-fit/README.md` for live Stripe evidence,
+remaining interaction/layout failures and release costs.

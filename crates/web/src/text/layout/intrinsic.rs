@@ -25,7 +25,7 @@ pub struct IntrinsicJob<'a> {
     runs: Vec<usize>,
     run: usize,
     glyph: usize,
-    metric: LinearMetric,
+    metric: index::LinearMetric,
     from: u32,
     origin: u32,
     leading_end: u32,
@@ -79,7 +79,7 @@ impl<'a> IntrinsicJob<'a> {
             runs: Vec::new(),
             run: 0,
             glyph: 0,
-            metric: LinearMetric::default(),
+            metric: index::LinearMetric::default(),
             from: 0,
             origin: 0,
             leading_end: 0,
@@ -169,12 +169,12 @@ impl<'a> IntrinsicJob<'a> {
                     continue;
                 };
                 if self.glyph == 0 {
-                    self.metric = LinearMetric::new(run.size, run.font.units_per_em(), self.scale)?;
+                    self.metric = index::LinearMetric::new(run.size, run.font.units_per_em(), self.scale)?;
                     self.runs.push(self.prefixes.len());
                     self.prefixes.push(0.);
                 }
                 if let Some(glyph) = run.glyphs.get(self.glyph) {
-                    let raw = self.metric.advance(glyph.x_advance);
+                    let raw = self.metric.advance(i64::from(glyph.x_advance));
                     self.widest = self.widest.max(raw);
                     let next = self.prefixes.last().copied().unwrap() + raw;
                     if !next.is_finite() {
@@ -239,34 +239,5 @@ impl<'a> IntrinsicJob<'a> {
         } else {
             Ok(self.widths)
         }
-    }
-}
-
-// Linear scalable-font metric quantization, before layout-grid enclosure. Keep
-// f32 centipixel arithmetic: rounding the product in f64 changes cache buckets.
-#[derive(Default)]
-struct LinearMetric {
-    multiplier: f64,
-    quantized: bool,
-}
-impl LinearMetric {
-    fn new(size: f64, upem: u16, scale: Option<f64>) -> Result<Self> {
-        let multiplier = if let Some(scale) = scale {
-            let device_size = (size as f32) * (scale as f32);
-            let effective = f64::from((device_size * 100.).floor() / 100.);
-            let fixed_size = (effective * 64.).trunc();
-            let fixed_scale = (fixed_size * 65536. / f64::from(upem)).round();
-            fixed_scale / 64.
-        } else {
-            size / f64::from(upem)
-        };
-        if !multiplier.is_finite() {
-            return Err(Error::Invalid);
-        }
-        Ok(Self { multiplier, quantized: scale.is_some() })
-    }
-    fn advance(&self, units: i32) -> f64 {
-        let raw = f64::from(units) * self.multiplier;
-        if self.quantized { raw.round() / 65536. } else { raw }
     }
 }

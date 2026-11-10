@@ -1,0 +1,6607 @@
+[
+  {
+    "variant": "before",
+    "scale": 1.25,
+    "sha256": "a8e6534f120442ef06e05f5e82e11965bdabc3ee88d235c59c24f899ad2b2d44",
+    "bench_ms": {
+      "cached": [
+        10.434661999999975,
+        9.259878999999955,
+        6.247820999999988,
+        5.796564999999987,
+        5.591443000000027,
+        5.8757249999999885,
+        5.6477840000000015
+      ],
+      "changed": [
+        4.932992000000013,
+        3.8016380000000254,
+        3.63339400000001,
+        3.570141000000035,
+        3.607996999999955,
+        3.5958919999999353,
+        3.5960359999999127
+      ],
+      "sizes": [
+        [
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9
+        ],
+        [
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9
+        ],
+        [
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9
+        ],
+        [
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9
+        ],
+        [
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9
+        ],
+        [
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9
+        ],
+        [
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 790.0,
+      "rss_kib": 152836
+    },
+    "after": {
+      "cpu_ms": 870.0,
+      "rss_kib": 154816
+    },
+    "resize_ms": [
+      411.4428519969806,
+      410.67304398166016,
+      410.91489797690883,
+      411.20522300479934,
+      412.6240939949639,
+      409.7940159845166,
+      408.96961704129353,
+      409.8461850080639
+    ],
+    "idle": {
+      "seconds": 3.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 2
+      },
+      "threads": [
+        {
+          "tid": 2701903,
+          "name": "script-watchdog",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 2,
+          "preempted": 0
+        },
+        {
+          "tid": 2701808,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701813,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701815,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701818,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701819,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701820,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701821,
+          "name": "browser:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701836,
+          "name": "browse:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701879,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701880,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701881,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701882,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701883,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701884,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701885,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701886,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701887,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701888,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701889,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701890,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701891,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701892,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701893,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701894,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701895,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701896,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701897,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701898,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701899,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701900,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701901,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2701902,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.32,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 36.9,
+        "slowest_draw_ms": 0.62,
+        "distance": 687.2,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.965,
+          "sd": 0.033,
+          "min": 0.855,
+          "max": 1.175,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 50,
+        "moving_frames": 48,
+        "frame_ms": 8.34,
+        "hitches": 0,
+        "still": 2,
+        "first_move_ms": 17.4,
+        "slowest_draw_ms": 0.62,
+        "distance": 131.2,
+        "reached_end": false,
+        "notches": {
+          "count": 3,
+          "frames_each": [
+            14,
+            17,
+            17
+          ],
+          "jumps_up": 1,
+          "worst_jump": 0.444
+        }
+      }
+    ],
+    "compositor_before": {
+      "type": "timings",
+      "timings": {
+        "outputs": [],
+        "beats": 0,
+        "latest_beat_us": 0,
+        "slowest": null,
+        "phases": []
+      }
+    },
+    "compositor_after": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 112,
+            "slowest_us": 618,
+            "total_us": 12313
+          }
+        ],
+        "beats": 813,
+        "latest_beat_us": 1749,
+        "slowest": [
+          "tick",
+          222
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 179,
+            "total_us": 4316,
+            "slowest_us": 170
+          },
+          {
+            "name": "commit",
+            "count": 28,
+            "total_us": 529,
+            "slowest_us": 90
+          },
+          {
+            "name": "damage and draw",
+            "count": 112,
+            "total_us": 3375,
+            "slowest_us": 201
+          },
+          {
+            "name": "gather (all)",
+            "count": 112,
+            "total_us": 2328,
+            "slowest_us": 277
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 1841,
+            "total_us": 3414,
+            "slowest_us": 25
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 1841,
+            "total_us": 9344,
+            "slowest_us": 45
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 1841,
+            "total_us": 6877,
+            "slowest_us": 92
+          },
+          {
+            "name": "gather: windows",
+            "count": 1841,
+            "total_us": 23140,
+            "slowest_us": 86
+          },
+          {
+            "name": "look (whole)",
+            "count": 112,
+            "total_us": 12511,
+            "slowest_us": 621
+          },
+          {
+            "name": "post_repaint",
+            "count": 112,
+            "total_us": 195,
+            "slowest_us": 3
+          },
+          {
+            "name": "pre_repaint",
+            "count": 112,
+            "total_us": 3901,
+            "slowest_us": 126
+          },
+          {
+            "name": "screenshot",
+            "count": 26,
+            "total_us": 6857,
+            "slowest_us": 480
+          },
+          {
+            "name": "screenshot read back",
+            "count": 26,
+            "total_us": 30517,
+            "slowest_us": 1816
+          },
+          {
+            "name": "space refresh",
+            "count": 1769,
+            "total_us": 21796,
+            "slowest_us": 166
+          },
+          {
+            "name": "tick",
+            "count": 1769,
+            "total_us": 27364,
+            "slowest_us": 193
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 407,
+            "total_us": 3678,
+            "slowest_us": 44
+          },
+          {
+            "name": "tick: groups",
+            "count": 407,
+            "total_us": 12605,
+            "slowest_us": 102
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 407,
+            "total_us": 2413,
+            "slowest_us": 38
+          },
+          {
+            "name": "tick: window infos",
+            "count": 407,
+            "total_us": 6234,
+            "slowest_us": 83
+          }
+        ]
+      }
+    }
+  },
+  {
+    "variant": "after",
+    "scale": 1.25,
+    "sha256": "50898dae087bd9d45d367005124de156fcb78b87abf500e6111fa8fea712c27d",
+    "bench_ms": {
+      "cached": [
+        17.545322999999968,
+        4.217141999999967,
+        4.979836000000091,
+        4.500652999999943,
+        4.7456999999999425,
+        4.683273999999983,
+        4.39334400000007
+      ],
+      "changed": [
+        3.589751999999976,
+        3.007526000000041,
+        2.758809000000042,
+        2.597670999999991,
+        2.6808129999999437,
+        2.60971799999993,
+        2.594846000000075
+      ],
+      "sizes": [
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 1790.0,
+      "rss_kib": 174476
+    },
+    "after": {
+      "cpu_ms": 1870.0,
+      "rss_kib": 176104
+    },
+    "resize_ms": [
+      409.47780600981787,
+      410.01022001728415,
+      409.76669802330434,
+      409.7378560109064,
+      410.175645025447,
+      410.3464360232465,
+      411.26047394936904,
+      410.6994200265035
+    ],
+    "idle": {
+      "seconds": 3.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 2
+      },
+      "threads": [
+        {
+          "tid": 2702242,
+          "name": "script-watchdog",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 2,
+          "preempted": 0
+        },
+        {
+          "tid": 2702167,
+          "name": "browser-after",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702173,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702175,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702177,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702178,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702179,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702180,
+          "name": "browser:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702184,
+          "name": "browse:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702209,
+          "name": "browser:disk$1",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702214,
+          "name": "browser:disk$2",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702215,
+          "name": "browser:disk$3",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702217,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702218,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702219,
+          "name": "browser-after",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702220,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702221,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702222,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702223,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702224,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702225,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702226,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702227,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702228,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702229,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702230,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702231,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702232,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702233,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702234,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702235,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702236,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702237,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702238,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702239,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702240,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.34,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 36.9,
+        "slowest_draw_ms": 6.12,
+        "distance": 688.0,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.964,
+          "sd": 0.022,
+          "min": 0.96,
+          "max": 1.066,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 48,
+        "moving_frames": 46,
+        "frame_ms": 8.33,
+        "hitches": 0,
+        "still": 1,
+        "first_move_ms": 17.6,
+        "slowest_draw_ms": 0.54,
+        "distance": 130.4,
+        "reached_end": false,
+        "notches": {
+          "count": 3,
+          "frames_each": [
+            14,
+            16,
+            16
+          ],
+          "jumps_up": 1,
+          "worst_jump": 0.444
+        }
+      }
+    ],
+    "compositor_before": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 538,
+            "slowest_us": 4387,
+            "total_us": 92781
+          }
+        ],
+        "beats": 2356,
+        "latest_beat_us": 8465,
+        "slowest": [
+          "clients' requests",
+          646
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 1239,
+            "total_us": 27151,
+            "slowest_us": 646
+          },
+          {
+            "name": "commit",
+            "count": 222,
+            "total_us": 4367,
+            "slowest_us": 92
+          },
+          {
+            "name": "damage and draw",
+            "count": 538,
+            "total_us": 32482,
+            "slowest_us": 2509
+          },
+          {
+            "name": "gather (all)",
+            "count": 538,
+            "total_us": 15947,
+            "slowest_us": 635
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 5393,
+            "total_us": 9162,
+            "slowest_us": 42
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 5393,
+            "total_us": 24725,
+            "slowest_us": 76
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 5393,
+            "total_us": 18780,
+            "slowest_us": 314
+          },
+          {
+            "name": "gather: windows",
+            "count": 5393,
+            "total_us": 65321,
+            "slowest_us": 982
+          },
+          {
+            "name": "look (whole)",
+            "count": 538,
+            "total_us": 94248,
+            "slowest_us": 4388
+          },
+          {
+            "name": "post_repaint",
+            "count": 538,
+            "total_us": 922,
+            "slowest_us": 12
+          },
+          {
+            "name": "pre_repaint",
+            "count": 538,
+            "total_us": 27976,
+            "slowest_us": 618
+          },
+          {
+            "name": "repoint",
+            "count": 78,
+            "total_us": 796,
+            "slowest_us": 116
+          },
+          {
+            "name": "screenshot",
+            "count": 62,
+            "total_us": 13583,
+            "slowest_us": 363
+          },
+          {
+            "name": "screenshot read back",
+            "count": 62,
+            "total_us": 64740,
+            "slowest_us": 2001
+          },
+          {
+            "name": "space refresh",
+            "count": 5840,
+            "total_us": 58766,
+            "slowest_us": 91
+          },
+          {
+            "name": "tick",
+            "count": 5840,
+            "total_us": 73241,
+            "slowest_us": 200
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 1175,
+            "total_us": 10123,
+            "slowest_us": 74
+          },
+          {
+            "name": "tick: groups",
+            "count": 1175,
+            "total_us": 33764,
+            "slowest_us": 114
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 1175,
+            "total_us": 6342,
+            "slowest_us": 57
+          },
+          {
+            "name": "tick: window infos",
+            "count": 1175,
+            "total_us": 16114,
+            "slowest_us": 80
+          }
+        ]
+      }
+    },
+    "compositor_after": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 123,
+            "slowest_us": 461,
+            "total_us": 14724
+          }
+        ],
+        "beats": 813,
+        "latest_beat_us": 1156,
+        "slowest": [
+          "tick",
+          238
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 189,
+            "total_us": 4647,
+            "slowest_us": 225
+          },
+          {
+            "name": "commit",
+            "count": 30,
+            "total_us": 740,
+            "slowest_us": 90
+          },
+          {
+            "name": "damage and draw",
+            "count": 123,
+            "total_us": 3808,
+            "slowest_us": 241
+          },
+          {
+            "name": "gather (all)",
+            "count": 123,
+            "total_us": 2663,
+            "slowest_us": 94
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 1879,
+            "total_us": 3484,
+            "slowest_us": 29
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 1879,
+            "total_us": 9281,
+            "slowest_us": 152
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 1879,
+            "total_us": 7126,
+            "slowest_us": 34
+          },
+          {
+            "name": "gather: windows",
+            "count": 1879,
+            "total_us": 23109,
+            "slowest_us": 80
+          },
+          {
+            "name": "look (whole)",
+            "count": 123,
+            "total_us": 14961,
+            "slowest_us": 467
+          },
+          {
+            "name": "post_repaint",
+            "count": 123,
+            "total_us": 219,
+            "slowest_us": 12
+          },
+          {
+            "name": "pre_repaint",
+            "count": 123,
+            "total_us": 4955,
+            "slowest_us": 150
+          },
+          {
+            "name": "screenshot",
+            "count": 27,
+            "total_us": 6511,
+            "slowest_us": 380
+          },
+          {
+            "name": "screenshot read back",
+            "count": 27,
+            "total_us": 27670,
+            "slowest_us": 1633
+          },
+          {
+            "name": "space refresh",
+            "count": 1804,
+            "total_us": 21210,
+            "slowest_us": 143
+          },
+          {
+            "name": "tick",
+            "count": 1804,
+            "total_us": 25929,
+            "slowest_us": 191
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 406,
+            "total_us": 3501,
+            "slowest_us": 49
+          },
+          {
+            "name": "tick: groups",
+            "count": 406,
+            "total_us": 12145,
+            "slowest_us": 101
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 406,
+            "total_us": 2251,
+            "slowest_us": 47
+          },
+          {
+            "name": "tick: window infos",
+            "count": 406,
+            "total_us": 5759,
+            "slowest_us": 63
+          }
+        ]
+      }
+    }
+  },
+  {
+    "variant": "after",
+    "scale": 1.25,
+    "sha256": "50898dae087bd9d45d367005124de156fcb78b87abf500e6111fa8fea712c27d",
+    "bench_ms": {
+      "cached": [
+        10.853281999999922,
+        9.496231999999964,
+        6.372213999999985,
+        5.991975000000025,
+        5.744656999999847,
+        5.978256999999985,
+        5.640734000000066
+      ],
+      "changed": [
+        4.974696999999992,
+        3.9401730000000725,
+        4.001662999999951,
+        3.8644500000000335,
+        3.7866659999999683,
+        3.812057999999979,
+        4.012368000000038
+      ],
+      "sizes": [
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 860.0,
+      "rss_kib": 153076
+    },
+    "after": {
+      "cpu_ms": 970.0,
+      "rss_kib": 155108
+    },
+    "resize_ms": [
+      424.8505749856122,
+      417.9569780244492,
+      431.1312849749811,
+      411.04679700220004,
+      415.47855897806585,
+      419.70083996420726,
+      423.78389998339117,
+      421.0980639909394
+    ],
+    "idle": {
+      "seconds": 3.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 2
+      },
+      "threads": [
+        {
+          "tid": 2702803,
+          "name": "script-watchdog",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 2,
+          "preempted": 0
+        },
+        {
+          "tid": 2702744,
+          "name": "browser-after",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702749,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702751,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702753,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702754,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702755,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702757,
+          "name": "browser:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702761,
+          "name": "browse:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702777,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702778,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702779,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702780,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702781,
+          "name": "browser-after",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702782,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702783,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702784,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702785,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702787,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702788,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702789,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702790,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702791,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702792,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702793,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702794,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702795,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702796,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702797,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702798,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702799,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702800,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2702801,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.33,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 32.3,
+        "slowest_draw_ms": 1.56,
+        "distance": 692.0,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.963,
+          "sd": 0.019,
+          "min": 0.96,
+          "max": 1.067,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 48,
+        "moving_frames": 46,
+        "frame_ms": 8.44,
+        "hitches": 0,
+        "still": 1,
+        "first_move_ms": 18.0,
+        "slowest_draw_ms": 1.13,
+        "distance": 130.4,
+        "reached_end": false,
+        "notches": {
+          "count": 3,
+          "frames_each": [
+            14,
+            16,
+            16
+          ],
+          "jumps_up": 1,
+          "worst_jump": 0.444
+        }
+      }
+    ],
+    "compositor_before": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 546,
+            "slowest_us": 3486,
+            "total_us": 119281
+          }
+        ],
+        "beats": 2280,
+        "latest_beat_us": 3007,
+        "slowest": [
+          "request list_windows",
+          1066
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 1232,
+            "total_us": 28465,
+            "slowest_us": 504
+          },
+          {
+            "name": "commit",
+            "count": 229,
+            "total_us": 4408,
+            "slowest_us": 88
+          },
+          {
+            "name": "damage and draw",
+            "count": 546,
+            "total_us": 52365,
+            "slowest_us": 3269
+          },
+          {
+            "name": "gather (all)",
+            "count": 546,
+            "total_us": 19090,
+            "slowest_us": 378
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 5250,
+            "total_us": 9251,
+            "slowest_us": 77
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 5250,
+            "total_us": 28889,
+            "slowest_us": 548
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 5250,
+            "total_us": 20863,
+            "slowest_us": 309
+          },
+          {
+            "name": "gather: windows",
+            "count": 5250,
+            "total_us": 70818,
+            "slowest_us": 1128
+          },
+          {
+            "name": "look (whole)",
+            "count": 546,
+            "total_us": 120637,
+            "slowest_us": 3489
+          },
+          {
+            "name": "post_repaint",
+            "count": 546,
+            "total_us": 1222,
+            "slowest_us": 33
+          },
+          {
+            "name": "pre_repaint",
+            "count": 546,
+            "total_us": 26665,
+            "slowest_us": 198
+          },
+          {
+            "name": "repoint",
+            "count": 78,
+            "total_us": 803,
+            "slowest_us": 68
+          },
+          {
+            "name": "screenshot",
+            "count": 60,
+            "total_us": 16196,
+            "slowest_us": 1023
+          },
+          {
+            "name": "screenshot read back",
+            "count": 60,
+            "total_us": 65493,
+            "slowest_us": 2205
+          },
+          {
+            "name": "space refresh",
+            "count": 5663,
+            "total_us": 60065,
+            "slowest_us": 711
+          },
+          {
+            "name": "tick",
+            "count": 5663,
+            "total_us": 65148,
+            "slowest_us": 226
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 1140,
+            "total_us": 9443,
+            "slowest_us": 141
+          },
+          {
+            "name": "tick: groups",
+            "count": 1140,
+            "total_us": 30046,
+            "slowest_us": 192
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 1140,
+            "total_us": 5236,
+            "slowest_us": 50
+          },
+          {
+            "name": "tick: window infos",
+            "count": 1140,
+            "total_us": 13905,
+            "slowest_us": 83
+          }
+        ]
+      }
+    },
+    "compositor_after": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 203,
+            "slowest_us": 476,
+            "total_us": 35375
+          }
+        ],
+        "beats": 820,
+        "latest_beat_us": 2620,
+        "slowest": [
+          "flushing to clients",
+          1792
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 283,
+            "total_us": 7966,
+            "slowest_us": 190
+          },
+          {
+            "name": "commit",
+            "count": 59,
+            "total_us": 1126,
+            "slowest_us": 33
+          },
+          {
+            "name": "damage and draw",
+            "count": 203,
+            "total_us": 11495,
+            "slowest_us": 281
+          },
+          {
+            "name": "gather (all)",
+            "count": 203,
+            "total_us": 7948,
+            "slowest_us": 206
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 1921,
+            "total_us": 4241,
+            "slowest_us": 80
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 1921,
+            "total_us": 13350,
+            "slowest_us": 101
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 1921,
+            "total_us": 10756,
+            "slowest_us": 41
+          },
+          {
+            "name": "gather: windows",
+            "count": 1921,
+            "total_us": 27516,
+            "slowest_us": 63
+          },
+          {
+            "name": "look (whole)",
+            "count": 203,
+            "total_us": 35742,
+            "slowest_us": 479
+          },
+          {
+            "name": "post_repaint",
+            "count": 203,
+            "total_us": 535,
+            "slowest_us": 4
+          },
+          {
+            "name": "pre_repaint",
+            "count": 203,
+            "total_us": 7886,
+            "slowest_us": 140
+          },
+          {
+            "name": "screenshot",
+            "count": 27,
+            "total_us": 8427,
+            "slowest_us": 505
+          },
+          {
+            "name": "screenshot read back",
+            "count": 27,
+            "total_us": 39287,
+            "slowest_us": 1741
+          },
+          {
+            "name": "space refresh",
+            "count": 1853,
+            "total_us": 20091,
+            "slowest_us": 158
+          },
+          {
+            "name": "tick",
+            "count": 1853,
+            "total_us": 16725,
+            "slowest_us": 87
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 411,
+            "total_us": 2578,
+            "slowest_us": 36
+          },
+          {
+            "name": "tick: groups",
+            "count": 411,
+            "total_us": 7144,
+            "slowest_us": 65
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 411,
+            "total_us": 1092,
+            "slowest_us": 5
+          },
+          {
+            "name": "tick: window infos",
+            "count": 411,
+            "total_us": 3747,
+            "slowest_us": 14
+          }
+        ]
+      }
+    }
+  },
+  {
+    "variant": "before",
+    "scale": 1.25,
+    "sha256": "a8e6534f120442ef06e05f5e82e11965bdabc3ee88d235c59c24f899ad2b2d44",
+    "bench_ms": {
+      "cached": [
+        110.392316,
+        6.602312999999924,
+        9.199404000000015,
+        6.580150000000003,
+        7.06879600000002,
+        26.59623899999997,
+        6.001192999999944
+      ],
+      "changed": [
+        3.778367000000003,
+        5.70590599999997,
+        4.054857000000027,
+        4.6091630000000805,
+        6.417381999999975,
+        5.138498000000027,
+        4.767462000000023
+      ],
+      "sizes": [
+        [
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9
+        ],
+        [
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9
+        ],
+        [
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9
+        ],
+        [
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9
+        ],
+        [
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9
+        ],
+        [
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9
+        ],
+        [
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9,
+          33.6,
+          25.9
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 240.0,
+      "rss_kib": 153120
+    },
+    "after": {
+      "cpu_ms": 320.0,
+      "rss_kib": 155080
+    },
+    "resize_ms": [
+      417.12626995285973,
+      418.6487919650972,
+      411.98428196366876,
+      409.3016090337187,
+      408.84487400762737,
+      408.93115097424015,
+      409.08846800448373,
+      409.2305969679728
+    ],
+    "idle": {
+      "seconds": 3.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 2
+      },
+      "threads": [
+        {
+          "tid": 2703678,
+          "name": "script-watchdog",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 2,
+          "preempted": 0
+        },
+        {
+          "tid": 2703618,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703623,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703625,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703627,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703628,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703629,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703631,
+          "name": "browser:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703636,
+          "name": "browse:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703651,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703652,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703653,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703655,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703656,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703658,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703659,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703660,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703661,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703663,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703664,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703665,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703666,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703667,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703668,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703669,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703670,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703671,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703672,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703673,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703674,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703675,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703676,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2703677,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 97,
+        "moving_frames": 95,
+        "frame_ms": 8.34,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 37.4,
+        "slowest_draw_ms": 0.73,
+        "distance": 691.2,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.969,
+          "sd": 0.038,
+          "min": 0.853,
+          "max": 1.173,
+          "off_25pct": 0,
+          "frames": 91
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 48,
+        "moving_frames": 46,
+        "frame_ms": 8.33,
+        "hitches": 0,
+        "still": 2,
+        "first_move_ms": 17.3,
+        "slowest_draw_ms": 0.51,
+        "distance": 129.6,
+        "reached_end": false,
+        "notches": {
+          "count": 4,
+          "frames_each": [
+            14,
+            2,
+            14,
+            16
+          ],
+          "jumps_up": 2,
+          "worst_jump": 0.444
+        }
+      }
+    ],
+    "compositor_before": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 577,
+            "slowest_us": 4731,
+            "total_us": 149879
+          }
+        ],
+        "beats": 2179,
+        "latest_beat_us": 28444,
+        "slowest": [
+          "flushing to clients",
+          2341
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 1210,
+            "total_us": 32949,
+            "slowest_us": 580
+          },
+          {
+            "name": "commit",
+            "count": 240,
+            "total_us": 4309,
+            "slowest_us": 164
+          },
+          {
+            "name": "damage and draw",
+            "count": 577,
+            "total_us": 69120,
+            "slowest_us": 4587
+          },
+          {
+            "name": "gather (all)",
+            "count": 577,
+            "total_us": 27359,
+            "slowest_us": 558
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 4884,
+            "total_us": 11792,
+            "slowest_us": 924
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 4884,
+            "total_us": 35366,
+            "slowest_us": 380
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 4884,
+            "total_us": 29227,
+            "slowest_us": 680
+          },
+          {
+            "name": "gather: windows",
+            "count": 4884,
+            "total_us": 85646,
+            "slowest_us": 2939
+          },
+          {
+            "name": "look (whole)",
+            "count": 577,
+            "total_us": 151058,
+            "slowest_us": 4734
+          },
+          {
+            "name": "post_repaint",
+            "count": 577,
+            "total_us": 1548,
+            "slowest_us": 8
+          },
+          {
+            "name": "pre_repaint",
+            "count": 577,
+            "total_us": 26446,
+            "slowest_us": 294
+          },
+          {
+            "name": "repoint",
+            "count": 78,
+            "total_us": 2340,
+            "slowest_us": 1417
+          },
+          {
+            "name": "screenshot",
+            "count": 59,
+            "total_us": 17599,
+            "slowest_us": 435
+          },
+          {
+            "name": "screenshot read back",
+            "count": 59,
+            "total_us": 122969,
+            "slowest_us": 25612
+          },
+          {
+            "name": "space refresh",
+            "count": 5339,
+            "total_us": 57188,
+            "slowest_us": 1923
+          },
+          {
+            "name": "tick",
+            "count": 5339,
+            "total_us": 45757,
+            "slowest_us": 499
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 1098,
+            "total_us": 7641,
+            "slowest_us": 324
+          },
+          {
+            "name": "tick: groups",
+            "count": 1098,
+            "total_us": 19024,
+            "slowest_us": 108
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 1098,
+            "total_us": 3480,
+            "slowest_us": 458
+          },
+          {
+            "name": "tick: window infos",
+            "count": 1098,
+            "total_us": 9966,
+            "slowest_us": 88
+          }
+        ]
+      }
+    },
+    "compositor_after": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 195,
+            "slowest_us": 3687,
+            "total_us": 34095
+          }
+        ],
+        "beats": 810,
+        "latest_beat_us": 7766,
+        "slowest": [
+          "flushing to clients",
+          1146
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 288,
+            "total_us": 7107,
+            "slowest_us": 175
+          },
+          {
+            "name": "commit",
+            "count": 57,
+            "total_us": 1159,
+            "slowest_us": 91
+          },
+          {
+            "name": "damage and draw",
+            "count": 195,
+            "total_us": 9093,
+            "slowest_us": 583
+          },
+          {
+            "name": "gather (all)",
+            "count": 195,
+            "total_us": 6846,
+            "slowest_us": 634
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 1994,
+            "total_us": 3339,
+            "slowest_us": 13
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 1994,
+            "total_us": 11073,
+            "slowest_us": 312
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 1994,
+            "total_us": 8174,
+            "slowest_us": 322
+          },
+          {
+            "name": "gather: windows",
+            "count": 1994,
+            "total_us": 24259,
+            "slowest_us": 317
+          },
+          {
+            "name": "look (whole)",
+            "count": 195,
+            "total_us": 34470,
+            "slowest_us": 3689
+          },
+          {
+            "name": "post_repaint",
+            "count": 195,
+            "total_us": 444,
+            "slowest_us": 13
+          },
+          {
+            "name": "pre_repaint",
+            "count": 195,
+            "total_us": 9145,
+            "slowest_us": 946
+          },
+          {
+            "name": "screenshot",
+            "count": 26,
+            "total_us": 7103,
+            "slowest_us": 1139
+          },
+          {
+            "name": "screenshot read back",
+            "count": 26,
+            "total_us": 32716,
+            "slowest_us": 4891
+          },
+          {
+            "name": "space refresh",
+            "count": 1934,
+            "total_us": 20965,
+            "slowest_us": 634
+          },
+          {
+            "name": "tick",
+            "count": 1934,
+            "total_us": 20488,
+            "slowest_us": 850
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 406,
+            "total_us": 2798,
+            "slowest_us": 37
+          },
+          {
+            "name": "tick: groups",
+            "count": 406,
+            "total_us": 10159,
+            "slowest_us": 554
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 406,
+            "total_us": 1385,
+            "slowest_us": 18
+          },
+          {
+            "name": "tick: window infos",
+            "count": 406,
+            "total_us": 4157,
+            "slowest_us": 288
+          }
+        ]
+      }
+    }
+  },
+  {
+    "variant": "before",
+    "scale": 2,
+    "sha256": "a8e6534f120442ef06e05f5e82e11965bdabc3ee88d235c59c24f899ad2b2d44",
+    "bench_ms": {
+      "cached": [
+        10.342504999999932,
+        5.931311999999991,
+        9.619069999999965,
+        5.748604,
+        5.613459999999918,
+        5.712186000000088,
+        5.37149700000009
+      ],
+      "changed": [
+        4.6359129999999595,
+        3.8169240000000286,
+        3.9165720000000306,
+        3.9715660000000526,
+        3.612197999999921,
+        3.632308999999964,
+        3.649281999999971
+      ],
+      "sizes": [
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 880.0,
+      "rss_kib": 159568
+    },
+    "after": {
+      "cpu_ms": 1040.0,
+      "rss_kib": 163724
+    },
+    "resize_ms": [
+      409.1449159896001,
+      409.2027919832617,
+      408.42242998769507,
+      409.5695019932464,
+      409.4311550143175,
+      409.3206009711139,
+      408.8515070034191,
+      409.2660379828885
+    ],
+    "idle": {
+      "seconds": 3.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 2
+      },
+      "threads": [
+        {
+          "tid": 2704513,
+          "name": "script-watchdog",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 2,
+          "preempted": 0
+        },
+        {
+          "tid": 2704455,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704460,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704462,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704464,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704465,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704466,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704467,
+          "name": "browser:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704471,
+          "name": "browse:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704486,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704488,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704489,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704490,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704492,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704494,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704495,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704496,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704497,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704498,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704499,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704500,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704501,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704502,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704503,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704504,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704505,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704506,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704507,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704508,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704509,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704510,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704511,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2704512,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.3,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 33.5,
+        "slowest_draw_ms": 1.12,
+        "distance": 716.5,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 1.004,
+          "sd": 0.01,
+          "min": 0.937,
+          "max": 1.07,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 56,
+        "moving_frames": 54,
+        "frame_ms": 8.32,
+        "hitches": 0,
+        "still": 2,
+        "first_move_ms": 15.0,
+        "slowest_draw_ms": 0.61,
+        "distance": 133.5,
+        "reached_end": false,
+        "notches": {
+          "count": 4,
+          "frames_each": [
+            17,
+            18,
+            4,
+            15
+          ],
+          "jumps_up": 6,
+          "worst_jump": 1.0
+        }
+      }
+    ],
+    "compositor_before": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 612,
+            "slowest_us": 609,
+            "total_us": 111741
+          }
+        ],
+        "beats": 2254,
+        "latest_beat_us": 10479,
+        "slowest": [
+          "request set_settings",
+          313
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 1384,
+            "total_us": 30397,
+            "slowest_us": 206
+          },
+          {
+            "name": "commit",
+            "count": 250,
+            "total_us": 4081,
+            "slowest_us": 111
+          },
+          {
+            "name": "damage and draw",
+            "count": 612,
+            "total_us": 43138,
+            "slowest_us": 210
+          },
+          {
+            "name": "gather (all)",
+            "count": 612,
+            "total_us": 19452,
+            "slowest_us": 332
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 5384,
+            "total_us": 7365,
+            "slowest_us": 37
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 5384,
+            "total_us": 27684,
+            "slowest_us": 46
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 5384,
+            "total_us": 20187,
+            "slowest_us": 55
+          },
+          {
+            "name": "gather: windows",
+            "count": 5384,
+            "total_us": 67952,
+            "slowest_us": 2753
+          },
+          {
+            "name": "look (whole)",
+            "count": 612,
+            "total_us": 113215,
+            "slowest_us": 612
+          },
+          {
+            "name": "post_repaint",
+            "count": 612,
+            "total_us": 1418,
+            "slowest_us": 18
+          },
+          {
+            "name": "pre_repaint",
+            "count": 612,
+            "total_us": 27558,
+            "slowest_us": 202
+          },
+          {
+            "name": "repoint",
+            "count": 78,
+            "total_us": 1008,
+            "slowest_us": 88
+          },
+          {
+            "name": "screenshot",
+            "count": 59,
+            "total_us": 14584,
+            "slowest_us": 405
+          },
+          {
+            "name": "screenshot read back",
+            "count": 59,
+            "total_us": 73827,
+            "slowest_us": 11291
+          },
+          {
+            "name": "space refresh",
+            "count": 5969,
+            "total_us": 60338,
+            "slowest_us": 94
+          },
+          {
+            "name": "tick",
+            "count": 5969,
+            "total_us": 60172,
+            "slowest_us": 280
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 1129,
+            "total_us": 8645,
+            "slowest_us": 59
+          },
+          {
+            "name": "tick: groups",
+            "count": 1129,
+            "total_us": 29171,
+            "slowest_us": 260
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 1129,
+            "total_us": 4378,
+            "slowest_us": 51
+          },
+          {
+            "name": "tick: window infos",
+            "count": 1129,
+            "total_us": 11989,
+            "slowest_us": 70
+          }
+        ]
+      }
+    },
+    "compositor_after": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 136,
+            "slowest_us": 447,
+            "total_us": 20737
+          }
+        ],
+        "beats": 811,
+        "latest_beat_us": 2270,
+        "slowest": [
+          "tick",
+          232
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 235,
+            "total_us": 5524,
+            "slowest_us": 170
+          },
+          {
+            "name": "commit",
+            "count": 42,
+            "total_us": 977,
+            "slowest_us": 125
+          },
+          {
+            "name": "damage and draw",
+            "count": 136,
+            "total_us": 6120,
+            "slowest_us": 199
+          },
+          {
+            "name": "gather (all)",
+            "count": 136,
+            "total_us": 3798,
+            "slowest_us": 218
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 1871,
+            "total_us": 1754,
+            "slowest_us": 18
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 1871,
+            "total_us": 9708,
+            "slowest_us": 43
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 1871,
+            "total_us": 6777,
+            "slowest_us": 32
+          },
+          {
+            "name": "gather: windows",
+            "count": 1871,
+            "total_us": 22206,
+            "slowest_us": 137
+          },
+          {
+            "name": "look (whole)",
+            "count": 136,
+            "total_us": 21036,
+            "slowest_us": 452
+          },
+          {
+            "name": "post_repaint",
+            "count": 136,
+            "total_us": 318,
+            "slowest_us": 6
+          },
+          {
+            "name": "pre_repaint",
+            "count": 136,
+            "total_us": 6156,
+            "slowest_us": 161
+          },
+          {
+            "name": "screenshot",
+            "count": 27,
+            "total_us": 6806,
+            "slowest_us": 338
+          },
+          {
+            "name": "screenshot read back",
+            "count": 27,
+            "total_us": 30232,
+            "slowest_us": 2149
+          },
+          {
+            "name": "space refresh",
+            "count": 1822,
+            "total_us": 21700,
+            "slowest_us": 92
+          },
+          {
+            "name": "tick",
+            "count": 1822,
+            "total_us": 23870,
+            "slowest_us": 190
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 406,
+            "total_us": 3244,
+            "slowest_us": 65
+          },
+          {
+            "name": "tick: groups",
+            "count": 406,
+            "total_us": 11819,
+            "slowest_us": 129
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 406,
+            "total_us": 1727,
+            "slowest_us": 21
+          },
+          {
+            "name": "tick: window infos",
+            "count": 406,
+            "total_us": 4828,
+            "slowest_us": 60
+          }
+        ]
+      }
+    }
+  },
+  {
+    "variant": "after",
+    "scale": 2,
+    "sha256": "50898dae087bd9d45d367005124de156fcb78b87abf500e6111fa8fea712c27d",
+    "bench_ms": {
+      "cached": [
+        9.859980999999948,
+        5.79256700000002,
+        9.285883000000013,
+        5.731076999999914,
+        5.734728000000132,
+        5.733719000000065,
+        5.328758999999877
+      ],
+      "changed": [
+        4.580677000000037,
+        3.6656769999999597,
+        3.681371000000013,
+        3.6502620000001116,
+        3.608475999999996,
+        3.5866510000000744,
+        3.58625399999994
+      ],
+      "sizes": [
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 800.0,
+      "rss_kib": 159556
+    },
+    "after": {
+      "cpu_ms": 930.0,
+      "rss_kib": 163524
+    },
+    "resize_ms": [
+      409.3919600127265,
+      409.290089039132,
+      409.28237698972225,
+      409.0807329630479,
+      409.0894350083545,
+      409.7148790024221,
+      409.0782479615882,
+      408.91246299725026
+    ],
+    "idle": {
+      "seconds": 3.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 2
+      },
+      "threads": [
+        {
+          "tid": 2705627,
+          "name": "script-watchdog",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 2,
+          "preempted": 0
+        },
+        {
+          "tid": 2705571,
+          "name": "browser-after",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705576,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705578,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705580,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705581,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705582,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705583,
+          "name": "browser:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705587,
+          "name": "browse:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705603,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705604,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705605,
+          "name": "browser-after",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705606,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705607,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705608,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705609,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705610,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705611,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705612,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705613,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705614,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705615,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705616,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705617,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705618,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705619,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705620,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705621,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705622,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705623,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705624,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705625,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705626,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.33,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 36.8,
+        "slowest_draw_ms": 0.92,
+        "distance": 713.5,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 1.001,
+          "sd": 0.022,
+          "min": 0.867,
+          "max": 1.134,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 57,
+        "moving_frames": 55,
+        "frame_ms": 8.34,
+        "hitches": 0,
+        "still": 2,
+        "first_move_ms": 16.1,
+        "slowest_draw_ms": 0.52,
+        "distance": 132.0,
+        "reached_end": false,
+        "notches": {
+          "count": 4,
+          "frames_each": [
+            17,
+            19,
+            4,
+            15
+          ],
+          "jumps_up": 4,
+          "worst_jump": 1.0
+        }
+      }
+    ],
+    "compositor_before": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 606,
+            "slowest_us": 5323,
+            "total_us": 115903
+          }
+        ],
+        "beats": 2223,
+        "latest_beat_us": 5126,
+        "slowest": [
+          "clients' requests",
+          951
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 1450,
+            "total_us": 33534,
+            "slowest_us": 952
+          },
+          {
+            "name": "commit",
+            "count": 276,
+            "total_us": 5536,
+            "slowest_us": 90
+          },
+          {
+            "name": "damage and draw",
+            "count": 606,
+            "total_us": 45790,
+            "slowest_us": 2812
+          },
+          {
+            "name": "gather (all)",
+            "count": 606,
+            "total_us": 18858,
+            "slowest_us": 640
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 5441,
+            "total_us": 5998,
+            "slowest_us": 35
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 5441,
+            "total_us": 27973,
+            "slowest_us": 306
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 5441,
+            "total_us": 19863,
+            "slowest_us": 100
+          },
+          {
+            "name": "gather: windows",
+            "count": 5441,
+            "total_us": 70893,
+            "slowest_us": 2714
+          },
+          {
+            "name": "look (whole)",
+            "count": 606,
+            "total_us": 117530,
+            "slowest_us": 5324
+          },
+          {
+            "name": "post_repaint",
+            "count": 606,
+            "total_us": 1515,
+            "slowest_us": 306
+          },
+          {
+            "name": "pre_repaint",
+            "count": 606,
+            "total_us": 29902,
+            "slowest_us": 634
+          },
+          {
+            "name": "repoint",
+            "count": 78,
+            "total_us": 901,
+            "slowest_us": 63
+          },
+          {
+            "name": "screenshot",
+            "count": 58,
+            "total_us": 13014,
+            "slowest_us": 312
+          },
+          {
+            "name": "screenshot read back",
+            "count": 58,
+            "total_us": 60147,
+            "slowest_us": 1552
+          },
+          {
+            "name": "space refresh",
+            "count": 5967,
+            "total_us": 58428,
+            "slowest_us": 312
+          },
+          {
+            "name": "tick",
+            "count": 5967,
+            "total_us": 61858,
+            "slowest_us": 638
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 1110,
+            "total_us": 8564,
+            "slowest_us": 57
+          },
+          {
+            "name": "tick: groups",
+            "count": 1110,
+            "total_us": 29084,
+            "slowest_us": 317
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 1110,
+            "total_us": 5034,
+            "slowest_us": 309
+          },
+          {
+            "name": "tick: window infos",
+            "count": 1110,
+            "total_us": 13060,
+            "slowest_us": 67
+          }
+        ]
+      }
+    },
+    "compositor_after": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 115,
+            "slowest_us": 392,
+            "total_us": 16048
+          }
+        ],
+        "beats": 811,
+        "latest_beat_us": 1033,
+        "slowest": [
+          "tick",
+          243
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 205,
+            "total_us": 5117,
+            "slowest_us": 194
+          },
+          {
+            "name": "commit",
+            "count": 34,
+            "total_us": 834,
+            "slowest_us": 77
+          },
+          {
+            "name": "damage and draw",
+            "count": 115,
+            "total_us": 4638,
+            "slowest_us": 179
+          },
+          {
+            "name": "gather (all)",
+            "count": 115,
+            "total_us": 3091,
+            "slowest_us": 199
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 1857,
+            "total_us": 1844,
+            "slowest_us": 23
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 1857,
+            "total_us": 9144,
+            "slowest_us": 56
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 1857,
+            "total_us": 6226,
+            "slowest_us": 54
+          },
+          {
+            "name": "gather: windows",
+            "count": 1857,
+            "total_us": 22512,
+            "slowest_us": 100
+          },
+          {
+            "name": "look (whole)",
+            "count": 115,
+            "total_us": 16291,
+            "slowest_us": 396
+          },
+          {
+            "name": "post_repaint",
+            "count": 115,
+            "total_us": 243,
+            "slowest_us": 8
+          },
+          {
+            "name": "pre_repaint",
+            "count": 115,
+            "total_us": 5023,
+            "slowest_us": 142
+          },
+          {
+            "name": "screenshot",
+            "count": 26,
+            "total_us": 6165,
+            "slowest_us": 279
+          },
+          {
+            "name": "screenshot read back",
+            "count": 26,
+            "total_us": 25718,
+            "slowest_us": 1403
+          },
+          {
+            "name": "space refresh",
+            "count": 1780,
+            "total_us": 20149,
+            "slowest_us": 87
+          },
+          {
+            "name": "tick",
+            "count": 1780,
+            "total_us": 28330,
+            "slowest_us": 176
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 406,
+            "total_us": 3792,
+            "slowest_us": 45
+          },
+          {
+            "name": "tick: groups",
+            "count": 406,
+            "total_us": 13184,
+            "slowest_us": 98
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 406,
+            "total_us": 2345,
+            "slowest_us": 27
+          },
+          {
+            "name": "tick: window infos",
+            "count": 406,
+            "total_us": 6392,
+            "slowest_us": 53
+          }
+        ]
+      }
+    }
+  },
+  {
+    "variant": "after",
+    "scale": 2,
+    "sha256": "50898dae087bd9d45d367005124de156fcb78b87abf500e6111fa8fea712c27d",
+    "bench_ms": {
+      "cached": [
+        11.57315699999998,
+        5.838651000000027,
+        6.594937000000016,
+        6.042798999999945,
+        6.124842999999942,
+        6.096262000000024,
+        5.559571999999889
+      ],
+      "changed": [
+        5.243256999999971,
+        4.055064000000073,
+        4.11043699999999,
+        3.897356000000059,
+        3.8839770000000726,
+        3.8923869999998715,
+        3.964054000000033
+      ],
+      "sizes": [
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 670.0,
+      "rss_kib": 161100
+    },
+    "after": {
+      "cpu_ms": 800.0,
+      "rss_kib": 164844
+    },
+    "resize_ms": [
+      408.5276330006309,
+      409.4197159865871,
+      408.9627229841426,
+      409.6705739502795,
+      409.094566013664,
+      409.21468002488837,
+      408.7327620363794,
+      408.66721799829975
+    ],
+    "idle": {
+      "seconds": 3.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 2
+      },
+      "threads": [
+        {
+          "tid": 2705943,
+          "name": "script-watchdog",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 2,
+          "preempted": 0
+        },
+        {
+          "tid": 2705870,
+          "name": "browser-after",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705875,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705877,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705879,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705880,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705881,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705884,
+          "name": "browser:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705888,
+          "name": "browse:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705915,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705918,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705921,
+          "name": "browser-after",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705922,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705923,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705924,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705925,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705926,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705927,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705928,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705929,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705930,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705931,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705932,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705933,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705934,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705935,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705936,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705937,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705938,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705939,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705940,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705941,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2705942,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.33,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 36.7,
+        "slowest_draw_ms": 0.78,
+        "distance": 713.5,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 1.0,
+          "sd": 0.0,
+          "min": 1.0,
+          "max": 1.0,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 57,
+        "moving_frames": 55,
+        "frame_ms": 8.33,
+        "hitches": 0,
+        "still": 2,
+        "first_move_ms": 17.2,
+        "slowest_draw_ms": 0.71,
+        "distance": 131.5,
+        "reached_end": false,
+        "notches": {
+          "count": 4,
+          "frames_each": [
+            17,
+            19,
+            4,
+            15
+          ],
+          "jumps_up": 4,
+          "worst_jump": 1.0
+        }
+      }
+    ],
+    "compositor_before": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 493,
+            "slowest_us": 599,
+            "total_us": 94665
+          }
+        ],
+        "beats": 2264,
+        "latest_beat_us": 4394,
+        "slowest": [
+          "tick",
+          234
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 1265,
+            "total_us": 27888,
+            "slowest_us": 204
+          },
+          {
+            "name": "commit",
+            "count": 224,
+            "total_us": 6110,
+            "slowest_us": 107
+          },
+          {
+            "name": "damage and draw",
+            "count": 493,
+            "total_us": 37233,
+            "slowest_us": 498
+          },
+          {
+            "name": "gather (all)",
+            "count": 493,
+            "total_us": 14484,
+            "slowest_us": 291
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 5244,
+            "total_us": 6089,
+            "slowest_us": 30
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 5244,
+            "total_us": 25462,
+            "slowest_us": 59
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 5244,
+            "total_us": 17729,
+            "slowest_us": 307
+          },
+          {
+            "name": "gather: windows",
+            "count": 5244,
+            "total_us": 70676,
+            "slowest_us": 4641
+          },
+          {
+            "name": "look (whole)",
+            "count": 493,
+            "total_us": 96062,
+            "slowest_us": 601
+          },
+          {
+            "name": "post_repaint",
+            "count": 493,
+            "total_us": 972,
+            "slowest_us": 4
+          },
+          {
+            "name": "pre_repaint",
+            "count": 493,
+            "total_us": 26666,
+            "slowest_us": 198
+          },
+          {
+            "name": "repoint",
+            "count": 78,
+            "total_us": 816,
+            "slowest_us": 81
+          },
+          {
+            "name": "screenshot",
+            "count": 59,
+            "total_us": 13036,
+            "slowest_us": 358
+          },
+          {
+            "name": "screenshot read back",
+            "count": 59,
+            "total_us": 57363,
+            "slowest_us": 1613
+          },
+          {
+            "name": "space refresh",
+            "count": 5723,
+            "total_us": 59157,
+            "slowest_us": 106
+          },
+          {
+            "name": "tick",
+            "count": 5723,
+            "total_us": 72504,
+            "slowest_us": 195
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 1131,
+            "total_us": 10136,
+            "slowest_us": 59
+          },
+          {
+            "name": "tick: groups",
+            "count": 1131,
+            "total_us": 34530,
+            "slowest_us": 113
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 1131,
+            "total_us": 5694,
+            "slowest_us": 55
+          },
+          {
+            "name": "tick: window infos",
+            "count": 1131,
+            "total_us": 15547,
+            "slowest_us": 82
+          }
+        ]
+      }
+    },
+    "compositor_after": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 124,
+            "slowest_us": 447,
+            "total_us": 16933
+          }
+        ],
+        "beats": 812,
+        "latest_beat_us": 647,
+        "slowest": [
+          "tick",
+          330
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 208,
+            "total_us": 4900,
+            "slowest_us": 229
+          },
+          {
+            "name": "commit",
+            "count": 35,
+            "total_us": 994,
+            "slowest_us": 135
+          },
+          {
+            "name": "damage and draw",
+            "count": 124,
+            "total_us": 4376,
+            "slowest_us": 193
+          },
+          {
+            "name": "gather (all)",
+            "count": 124,
+            "total_us": 3451,
+            "slowest_us": 248
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 1853,
+            "total_us": 3777,
+            "slowest_us": 23
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 1853,
+            "total_us": 9979,
+            "slowest_us": 386
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 1853,
+            "total_us": 8965,
+            "slowest_us": 309
+          },
+          {
+            "name": "gather: windows",
+            "count": 1853,
+            "total_us": 23575,
+            "slowest_us": 328
+          },
+          {
+            "name": "look (whole)",
+            "count": 124,
+            "total_us": 17236,
+            "slowest_us": 453
+          },
+          {
+            "name": "post_repaint",
+            "count": 124,
+            "total_us": 233,
+            "slowest_us": 3
+          },
+          {
+            "name": "pre_repaint",
+            "count": 124,
+            "total_us": 5471,
+            "slowest_us": 157
+          },
+          {
+            "name": "screenshot",
+            "count": 26,
+            "total_us": 5962,
+            "slowest_us": 358
+          },
+          {
+            "name": "screenshot read back",
+            "count": 26,
+            "total_us": 25220,
+            "slowest_us": 1504
+          },
+          {
+            "name": "space refresh",
+            "count": 1788,
+            "total_us": 24181,
+            "slowest_us": 329
+          },
+          {
+            "name": "tick",
+            "count": 1788,
+            "total_us": 25004,
+            "slowest_us": 207
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 405,
+            "total_us": 3456,
+            "slowest_us": 51
+          },
+          {
+            "name": "tick: groups",
+            "count": 405,
+            "total_us": 12850,
+            "slowest_us": 106
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 405,
+            "total_us": 1860,
+            "slowest_us": 48
+          },
+          {
+            "name": "tick: window infos",
+            "count": 405,
+            "total_us": 4674,
+            "slowest_us": 54
+          }
+        ]
+      }
+    }
+  },
+  {
+    "variant": "before",
+    "scale": 2,
+    "sha256": "a8e6534f120442ef06e05f5e82e11965bdabc3ee88d235c59c24f899ad2b2d44",
+    "bench_ms": {
+      "cached": [
+        9.707692999999978,
+        5.6086140000000455,
+        8.977716999999984,
+        5.78171199999997,
+        5.813765000000103,
+        5.822344000000044,
+        5.250583000000006
+      ],
+      "changed": [
+        4.712146999999959,
+        3.61948000000001,
+        3.6835810000000038,
+        3.7814769999999953,
+        3.755406999999991,
+        3.562584999999899,
+        3.5694760000000088
+      ],
+      "sizes": [
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ],
+        [
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9,
+          16.8,
+          25.9
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 820.0,
+      "rss_kib": 160108
+    },
+    "after": {
+      "cpu_ms": 970.0,
+      "rss_kib": 164096
+    },
+    "resize_ms": [
+      409.1822900227271,
+      410.1288159727119,
+      409.78676301892847,
+      413.70943904621527,
+      411.66031698230654,
+      409.2570340144448,
+      408.9045129949227,
+      409.4016129965894
+    ],
+    "idle": {
+      "seconds": 3.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 2
+      },
+      "threads": [
+        {
+          "tid": 2706520,
+          "name": "script-watchdog",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 2,
+          "preempted": 0
+        },
+        {
+          "tid": 2706459,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706464,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706466,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706468,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706469,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706470,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706472,
+          "name": "browser:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706476,
+          "name": "browse:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706493,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706494,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706495,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706499,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706500,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706501,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706502,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706503,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706504,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706505,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706506,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706507,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706508,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706509,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706510,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706511,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706512,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706513,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706514,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706515,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706516,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706517,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706518,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2706519,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.34,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 36.7,
+        "slowest_draw_ms": 0.7,
+        "distance": 714.0,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 1.0,
+          "sd": 0.007,
+          "min": 0.999,
+          "max": 1.066,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 57,
+        "moving_frames": 55,
+        "frame_ms": 8.36,
+        "hitches": 0,
+        "still": 2,
+        "first_move_ms": 17.5,
+        "slowest_draw_ms": 0.63,
+        "distance": 132.0,
+        "reached_end": false,
+        "notches": {
+          "count": 4,
+          "frames_each": [
+            17,
+            19,
+            4,
+            15
+          ],
+          "jumps_up": 4,
+          "worst_jump": 1.0
+        }
+      }
+    ],
+    "compositor_before": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 512,
+            "slowest_us": 2404,
+            "total_us": 93517
+          }
+        ],
+        "beats": 2270,
+        "latest_beat_us": 2850,
+        "slowest": [
+          "flushing to clients",
+          613
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 1264,
+            "total_us": 26186,
+            "slowest_us": 188
+          },
+          {
+            "name": "commit",
+            "count": 228,
+            "total_us": 5391,
+            "slowest_us": 110
+          },
+          {
+            "name": "damage and draw",
+            "count": 512,
+            "total_us": 35314,
+            "slowest_us": 262
+          },
+          {
+            "name": "gather (all)",
+            "count": 512,
+            "total_us": 16075,
+            "slowest_us": 538
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 5315,
+            "total_us": 10941,
+            "slowest_us": 314
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 5315,
+            "total_us": 29379,
+            "slowest_us": 1348
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 5315,
+            "total_us": 23737,
+            "slowest_us": 522
+          },
+          {
+            "name": "gather: windows",
+            "count": 5315,
+            "total_us": 72666,
+            "slowest_us": 2469
+          },
+          {
+            "name": "look (whole)",
+            "count": 512,
+            "total_us": 94821,
+            "slowest_us": 2405
+          },
+          {
+            "name": "post_repaint",
+            "count": 512,
+            "total_us": 980,
+            "slowest_us": 7
+          },
+          {
+            "name": "pre_repaint",
+            "count": 512,
+            "total_us": 25305,
+            "slowest_us": 789
+          },
+          {
+            "name": "repoint",
+            "count": 78,
+            "total_us": 873,
+            "slowest_us": 137
+          },
+          {
+            "name": "screenshot",
+            "count": 60,
+            "total_us": 13485,
+            "slowest_us": 373
+          },
+          {
+            "name": "screenshot read back",
+            "count": 60,
+            "total_us": 57816,
+            "slowest_us": 1357
+          },
+          {
+            "name": "space refresh",
+            "count": 5740,
+            "total_us": 65701,
+            "slowest_us": 86
+          },
+          {
+            "name": "tick",
+            "count": 5740,
+            "total_us": 66683,
+            "slowest_us": 270
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 1132,
+            "total_us": 9439,
+            "slowest_us": 54
+          },
+          {
+            "name": "tick: groups",
+            "count": 1132,
+            "total_us": 32631,
+            "slowest_us": 263
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 1132,
+            "total_us": 5239,
+            "slowest_us": 57
+          },
+          {
+            "name": "tick: window infos",
+            "count": 1132,
+            "total_us": 13305,
+            "slowest_us": 78
+          }
+        ]
+      }
+    },
+    "compositor_after": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 189,
+            "slowest_us": 437,
+            "total_us": 27519
+          }
+        ],
+        "beats": 811,
+        "latest_beat_us": 2055,
+        "slowest": [
+          "flushing to clients",
+          2598
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 281,
+            "total_us": 7155,
+            "slowest_us": 224
+          },
+          {
+            "name": "commit",
+            "count": 54,
+            "total_us": 835,
+            "slowest_us": 67
+          },
+          {
+            "name": "damage and draw",
+            "count": 189,
+            "total_us": 7152,
+            "slowest_us": 194
+          },
+          {
+            "name": "gather (all)",
+            "count": 189,
+            "total_us": 5452,
+            "slowest_us": 224
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 2030,
+            "total_us": 3571,
+            "slowest_us": 41
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 2030,
+            "total_us": 10035,
+            "slowest_us": 62
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 2030,
+            "total_us": 8120,
+            "slowest_us": 34
+          },
+          {
+            "name": "gather: windows",
+            "count": 2030,
+            "total_us": 23809,
+            "slowest_us": 94
+          },
+          {
+            "name": "look (whole)",
+            "count": 189,
+            "total_us": 28012,
+            "slowest_us": 442
+          },
+          {
+            "name": "post_repaint",
+            "count": 189,
+            "total_us": 434,
+            "slowest_us": 8
+          },
+          {
+            "name": "pre_repaint",
+            "count": 189,
+            "total_us": 8737,
+            "slowest_us": 153
+          },
+          {
+            "name": "screenshot",
+            "count": 26,
+            "total_us": 6122,
+            "slowest_us": 326
+          },
+          {
+            "name": "screenshot read back",
+            "count": 26,
+            "total_us": 25762,
+            "slowest_us": 1560
+          },
+          {
+            "name": "space refresh",
+            "count": 1956,
+            "total_us": 22016,
+            "slowest_us": 87
+          },
+          {
+            "name": "tick",
+            "count": 1956,
+            "total_us": 23948,
+            "slowest_us": 191
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 405,
+            "total_us": 3287,
+            "slowest_us": 106
+          },
+          {
+            "name": "tick: groups",
+            "count": 405,
+            "total_us": 11526,
+            "slowest_us": 102
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 405,
+            "total_us": 1831,
+            "slowest_us": 32
+          },
+          {
+            "name": "tick: window infos",
+            "count": 405,
+            "total_us": 5107,
+            "slowest_us": 68
+          }
+        ]
+      }
+    }
+  }
+]

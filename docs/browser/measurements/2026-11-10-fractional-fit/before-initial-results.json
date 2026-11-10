@@ -1,0 +1,2612 @@
+[
+  {
+    "mode": "light",
+    "scale": 1,
+    "native": {
+      "dpr": 1,
+      "scroll": 8111,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4123.472902248068,
+            985,
+            4535.121385542168
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-carousel-container",
+          "rect": [
+            17,
+            8131.894777248068,
+            951,
+            478.68
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            234.96875,
+            8345.801027248068,
+            515.0625,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            1255.71875,
+            8360.363527248068,
+            375.546875,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            2191.03125,
+            8345.801027248068,
+            406.921875,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            3159.921875,
+            8345.801027248068,
+            371.140625,
+            25.2
+          ],
+          "paddingRight": "16px"
+        }
+      ]
+    },
+    "chrome": {
+      "dpr": 1,
+      "scroll": 8042,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4123.375,
+            985,
+            4534.703125
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-carousel-container",
+          "rect": [
+            17,
+            8131.453125,
+            951,
+            478.625
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            234.96875,
+            8345.328125,
+            515.0625,
+            25.1875
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            1255.734375,
+            8359.890625,
+            375.515625,
+            25.1875
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            2191.046875,
+            8345.328125,
+            406.90625,
+            25.1875
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            3159.90625,
+            8345.328125,
+            371.171875,
+            25.1875
+          ],
+          "paddingRight": "16px"
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.0,
+        "dark": false,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 1.25,
+    "native": {
+      "dpr": 1.25,
+      "scroll": 8111.2,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4139.6086519809305,
+            984.8,
+            4533.693222891566
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-carousel-container",
+          "rect": [
+            16.8,
+            8146.821151980931,
+            951.2,
+            478.48
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            234.8625,
+            8360.73365198093,
+            515.0625,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            1255.825,
+            8375.29615198093,
+            375.5375,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            2191.3375,
+            8360.73365198093,
+            406.9125,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            3160.4125000000004,
+            8360.73365198093,
+            371.1625,
+            25.2
+          ],
+          "paddingRight": "16px"
+        }
+      ]
+    },
+    "chrome": {
+      "dpr": 1.25,
+      "scroll": 8042.39990234375,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4124.1123046875,
+            984.7999877929688,
+            4533.5126953125
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-carousel-container",
+          "rect": [
+            16.80000114440918,
+            8131.174903869629,
+            951.2000122070312,
+            478.45001220703125
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            234.8625030517578,
+            8345.062408447266,
+            515.0625,
+            25.200000762939453
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            1255.8375244140625,
+            8359.624908447266,
+            375.5249938964844,
+            25.200000762939453
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            2191.337646484375,
+            8345.062408447266,
+            406.9125061035156,
+            25.200000762939453
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            3160.41259765625,
+            8345.062408447266,
+            371.1750183105469,
+            25.200000762939453
+          ],
+          "paddingRight": "16px"
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.25,
+        "dark": false,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 1.5,
+    "native": {
+      "dpr": 1.5,
+      "scroll": 8111.333333333333,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4122.824151802838,
+            984.6666666666666,
+            4532.695808232931
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-carousel-container",
+          "rect": [
+            16.666666666666668,
+            8129.167901802839,
+            951.3333333333334,
+            478.3466666666667
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            234.80208333333331,
+            8330.480401802837,
+            515.0520833333333,
+            50.4
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            1255.8958333333335,
+            8357.647068469505,
+            375.5416666666667,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            2191.5416666666665,
+            8343.084568469505,
+            406.9166666666667,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            3160.7604166666665,
+            8330.480401802837,
+            371.1458333333333,
+            50.4
+          ],
+          "paddingRight": "16px"
+        }
+      ]
+    },
+    "chrome": {
+      "dpr": 1.5,
+      "scroll": 8042.66650390625,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4122.8017578125,
+            984.6666870117188,
+            4532.5
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-carousel-container",
+          "rect": [
+            16.666667938232422,
+            8128.97900390625,
+            951.3333740234375,
+            478.32293701171875
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            234.80209350585938,
+            8342.87484741211,
+            515.0521240234375,
+            25.197917938232422
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            1255.90625,
+            8357.43734741211,
+            375.5208435058594,
+            25.197917938232422
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            2191.541748046875,
+            8342.87484741211,
+            406.90625,
+            25.197917938232422
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            3160.75,
+            8342.87484741211,
+            371.16668701171875,
+            25.197917938232422
+          ],
+          "paddingRight": "16px"
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.5,
+        "dark": false,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 1.75,
+    "native": {
+      "dpr": 1.75,
+      "scroll": 8111.428571428572,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4138.971949284893,
+            985.1428571428571,
+            4557.382379518072
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-carousel-container",
+          "rect": [
+            16.571428571428573,
+            8144.891592142036,
+            952,
+            503.4514285714286
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            235.0357142857143,
+            8371.409449284893,
+            515.0625,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            1256.794642857143,
+            8373.36480642775,
+            375.54464285714283,
+            50.4
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            2193.116071428571,
+            8371.409449284893,
+            406.9107142857143,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            3162.991071428571,
+            8371.409449284893,
+            371.1517857142857,
+            25.2
+          ],
+          "paddingRight": "16px"
+        }
+      ]
+    },
+    "chrome": {
+      "dpr": 1.75,
+      "scroll": 8042.85693359375,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4123.9013671875,
+            985.1428833007812,
+            4532.02685546875
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-carousel-container",
+          "rect": [
+            16.571430206298828,
+            8129.696220397949,
+            952.0000610351562,
+            478.232177734375
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            235.0357208251953,
+            8343.598022460938,
+            515.0625,
+            25.196430206298828
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            1256.8035888671875,
+            8358.160522460938,
+            375.52679443359375,
+            25.196430206298828
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            2193.1162109375,
+            8343.598022460938,
+            406.90179443359375,
+            25.196430206298828
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            3162.982177734375,
+            8343.598022460938,
+            371.1696472167969,
+            25.196430206298828
+          ],
+          "paddingRight": "16px"
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.75,
+        "dark": false,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 2,
+    "native": {
+      "dpr": 2,
+      "scroll": 8111.5,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4123.980714748068,
+            985,
+            4530.139740210843
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-carousel-container",
+          "rect": [
+            17,
+            8128.433839748068,
+            951,
+            477.68
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            234.96875,
+            8342.347902248068,
+            515.0625,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            1255.7265625,
+            8356.910402248068,
+            375.5390625,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            2191.0390625,
+            8342.347902248068,
+            406.9140625,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            3159.921875,
+            8342.347902248068,
+            371.1484375,
+            25.2
+          ],
+          "paddingRight": "16px"
+        }
+      ]
+    },
+    "chrome": {
+      "dpr": 2,
+      "scroll": 8043,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4123.9609375,
+            985,
+            4529.96875
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-carousel-container",
+          "rect": [
+            17,
+            8128.265625,
+            951,
+            477.6640625
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            234.96875,
+            8342.171875,
+            515.0546875,
+            25.1953125
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            1255.734375,
+            8356.734375,
+            375.5234375,
+            25.1953125
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            2191.046875,
+            8342.171875,
+            406.90625,
+            25.1953125
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            3159.9140625,
+            8342.171875,
+            371.1640625,
+            25.1953125
+          ],
+          "paddingRight": "16px"
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 2.0,
+        "dark": false,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1,
+    "native": {
+      "dpr": 1,
+      "scroll": 8112,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4123.472902248068,
+            985,
+            4535.121385542168
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-carousel-container",
+          "rect": [
+            17,
+            8131.894777248068,
+            951,
+            478.68
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            234.96875,
+            8345.801027248068,
+            515.0625,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            1255.71875,
+            8360.363527248068,
+            375.546875,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            2191.03125,
+            8345.801027248068,
+            406.921875,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            3159.921875,
+            8345.801027248068,
+            371.140625,
+            25.2
+          ],
+          "paddingRight": "16px"
+        }
+      ]
+    },
+    "chrome": {
+      "dpr": 1,
+      "scroll": 8043,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4123.375,
+            985,
+            4534.703125
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-carousel-container",
+          "rect": [
+            17,
+            8131.453125,
+            951,
+            478.625
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            234.96875,
+            8345.328125,
+            515.0625,
+            25.1875
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            1255.734375,
+            8359.890625,
+            375.515625,
+            25.1875
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            2191.046875,
+            8345.328125,
+            406.90625,
+            25.1875
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            3159.90625,
+            8345.328125,
+            371.171875,
+            25.1875
+          ],
+          "paddingRight": "16px"
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.0,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1.25,
+    "native": {
+      "dpr": 1.25,
+      "scroll": 8112,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4139.6086519809305,
+            984.8,
+            4533.693222891566
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-carousel-container",
+          "rect": [
+            16.8,
+            8146.821151980931,
+            951.2,
+            478.48
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            234.8625,
+            8360.73365198093,
+            515.0625,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            1255.825,
+            8375.29615198093,
+            375.5375,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            2191.3375,
+            8360.73365198093,
+            406.9125,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            3160.4125000000004,
+            8360.73365198093,
+            371.1625,
+            25.2
+          ],
+          "paddingRight": "16px"
+        }
+      ]
+    },
+    "chrome": {
+      "dpr": 1.25,
+      "scroll": 8043.2001953125,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4124.112548828125,
+            984.7999877929688,
+            4533.5126953125
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-carousel-container",
+          "rect": [
+            16.80000114440918,
+            8131.175193786621,
+            951.2000122070312,
+            478.45001220703125
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            234.8625030517578,
+            8345.062713623047,
+            515.0625,
+            25.200000762939453
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            1255.8375244140625,
+            8359.625213623047,
+            375.5249938964844,
+            25.200000762939453
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            2191.337646484375,
+            8345.062713623047,
+            406.9125061035156,
+            25.200000762939453
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            3160.41259765625,
+            8345.062713623047,
+            371.1750183105469,
+            25.200000762939453
+          ],
+          "paddingRight": "16px"
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.25,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1.5,
+    "native": {
+      "dpr": 1.5,
+      "scroll": 8112,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4122.824151802838,
+            984.6666666666666,
+            4532.695808232931
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-carousel-container",
+          "rect": [
+            16.666666666666668,
+            8129.167901802839,
+            951.3333333333334,
+            478.3466666666667
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            234.80208333333331,
+            8330.480401802837,
+            515.0520833333333,
+            50.4
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            1255.8958333333335,
+            8357.647068469505,
+            375.5416666666667,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            2191.5416666666665,
+            8343.084568469505,
+            406.9166666666667,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            3160.7604166666665,
+            8330.480401802837,
+            371.1458333333333,
+            50.4
+          ],
+          "paddingRight": "16px"
+        }
+      ]
+    },
+    "chrome": {
+      "dpr": 1.5,
+      "scroll": 8043.33349609375,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4122.80224609375,
+            984.6666870117188,
+            4532.5
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-carousel-container",
+          "rect": [
+            16.666667938232422,
+            8128.979331970215,
+            951.3333740234375,
+            478.32293701171875
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            234.80209350585938,
+            8342.875183105469,
+            515.0521240234375,
+            25.197917938232422
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            1255.90625,
+            8357.437683105469,
+            375.5208435058594,
+            25.197917938232422
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            2191.541748046875,
+            8342.875183105469,
+            406.90625,
+            25.197917938232422
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            3160.75,
+            8342.875183105469,
+            371.16668701171875,
+            25.197917938232422
+          ],
+          "paddingRight": "16px"
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.5,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1.75,
+    "native": {
+      "dpr": 1.75,
+      "scroll": 8112,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4138.971949284893,
+            985.1428571428571,
+            4557.382379518072
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-carousel-container",
+          "rect": [
+            16.571428571428573,
+            8144.891592142036,
+            952,
+            503.4514285714286
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            235.0357142857143,
+            8371.409449284893,
+            515.0625,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            1256.794642857143,
+            8373.36480642775,
+            375.54464285714283,
+            50.4
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            2193.116071428571,
+            8371.409449284893,
+            406.9107142857143,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            3162.991071428571,
+            8371.409449284893,
+            371.1517857142857,
+            25.2
+          ],
+          "paddingRight": "16px"
+        }
+      ]
+    },
+    "chrome": {
+      "dpr": 1.75,
+      "scroll": 8043.4287109375,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4123.90185546875,
+            985.1428833007812,
+            4532.02685546875
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-carousel-container",
+          "rect": [
+            16.571430206298828,
+            8129.696571350098,
+            952.0000610351562,
+            478.232177734375
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            235.0357208251953,
+            8343.598358154297,
+            515.0625,
+            25.196430206298828
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            1256.8035888671875,
+            8358.160858154297,
+            375.52679443359375,
+            25.196430206298828
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            2193.1162109375,
+            8343.598358154297,
+            406.90179443359375,
+            25.196430206298828
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            3162.982177734375,
+            8343.598358154297,
+            371.1696472167969,
+            25.196430206298828
+          ],
+          "paddingRight": "16px"
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.75,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 2,
+    "native": {
+      "dpr": 2,
+      "scroll": 8112,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4123.980714748068,
+            985,
+            4530.139740210843
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-carousel-container",
+          "rect": [
+            17,
+            8128.433839748068,
+            951,
+            477.68
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            234.96875,
+            8342.347902248068,
+            515.0625,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            1255.7265625,
+            8356.910402248068,
+            375.5390625,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            2191.0390625,
+            8342.347902248068,
+            406.9140625,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            3159.921875,
+            8342.347902248068,
+            371.1484375,
+            25.2
+          ],
+          "paddingRight": "16px"
+        }
+      ]
+    },
+    "chrome": {
+      "dpr": 2,
+      "scroll": 8043.5,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4123.9609375,
+            985,
+            4529.96875
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-carousel-container",
+          "rect": [
+            17,
+            8128.265625,
+            951,
+            477.6640625
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            234.96875,
+            8342.171875,
+            515.0546875,
+            25.1953125
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            1255.734375,
+            8356.734375,
+            375.5234375,
+            25.1953125
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            2191.046875,
+            8342.171875,
+            406.90625,
+            25.1953125
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            3159.9140625,
+            8342.171875,
+            371.1640625,
+            25.1953125
+          ],
+          "paddingRight": "16px"
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 2.0,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1,
+    "native": {
+      "dpr": 1,
+      "scroll": 8112,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4123.472902248068,
+            985,
+            4535.121385542168
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-carousel-container",
+          "rect": [
+            17,
+            8131.894777248068,
+            951,
+            478.68
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            234.96875,
+            8345.801027248068,
+            515.0625,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            1255.71875,
+            8360.363527248068,
+            375.546875,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            2191.03125,
+            8345.801027248068,
+            406.921875,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            3159.921875,
+            8345.801027248068,
+            371.140625,
+            25.2
+          ],
+          "paddingRight": "16px"
+        }
+      ]
+    },
+    "chrome": {
+      "dpr": 1,
+      "scroll": 8044,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4123.375,
+            985,
+            4534.703125
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-carousel-container",
+          "rect": [
+            17,
+            8131.453125,
+            951,
+            478.625
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            234.96875,
+            8345.328125,
+            515.0625,
+            25.1875
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            1255.734375,
+            8359.890625,
+            375.515625,
+            25.1875
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            2191.046875,
+            8345.328125,
+            406.90625,
+            25.1875
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            3159.90625,
+            8345.328125,
+            371.171875,
+            25.1875
+          ],
+          "paddingRight": "16px"
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.0,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1.25,
+    "native": {
+      "dpr": 1.25,
+      "scroll": 8112,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4139.6086519809305,
+            984.8,
+            4533.693222891566
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-carousel-container",
+          "rect": [
+            16.8,
+            8146.821151980931,
+            951.2,
+            478.48
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            234.8625,
+            8360.73365198093,
+            515.0625,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            1255.825,
+            8375.29615198093,
+            375.5375,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            2191.3375,
+            8360.73365198093,
+            406.9125,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            3160.4125000000004,
+            8360.73365198093,
+            371.1625,
+            25.2
+          ],
+          "paddingRight": "16px"
+        }
+      ]
+    },
+    "chrome": {
+      "dpr": 1.25,
+      "scroll": 8044,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4124.112548828125,
+            984.7999877929688,
+            4533.5126953125
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-carousel-container",
+          "rect": [
+            16.80000114440918,
+            8131.175003051758,
+            951.2000122070312,
+            478.45001220703125
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            234.8625030517578,
+            8345.0625,
+            515.0625,
+            25.200000762939453
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            1255.8375244140625,
+            8359.625,
+            375.5249938964844,
+            25.200000762939453
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            2191.337646484375,
+            8345.0625,
+            406.9125061035156,
+            25.200000762939453
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            3160.41259765625,
+            8345.0625,
+            371.1750183105469,
+            25.200000762939453
+          ],
+          "paddingRight": "16px"
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.25,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1.5,
+    "native": {
+      "dpr": 1.5,
+      "scroll": 8112,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4122.824151802838,
+            984.6666666666666,
+            4532.695808232931
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-carousel-container",
+          "rect": [
+            16.666666666666668,
+            8129.167901802839,
+            951.3333333333334,
+            478.3466666666667
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            234.80208333333331,
+            8330.480401802837,
+            515.0520833333333,
+            50.4
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            1255.8958333333335,
+            8357.647068469505,
+            375.5416666666667,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            2191.5416666666665,
+            8343.084568469505,
+            406.9166666666667,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            3160.7604166666665,
+            8330.480401802837,
+            371.1458333333333,
+            50.4
+          ],
+          "paddingRight": "16px"
+        }
+      ]
+    },
+    "chrome": {
+      "dpr": 1.5,
+      "scroll": 8044,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4122.802001953125,
+            984.6666870117188,
+            4532.5
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-carousel-container",
+          "rect": [
+            16.666667938232422,
+            8128.97917175293,
+            951.3333740234375,
+            478.32293701171875
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            234.80209350585938,
+            8342.875,
+            515.0521240234375,
+            25.197917938232422
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            1255.90625,
+            8357.4375,
+            375.5208435058594,
+            25.197917938232422
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            2191.541748046875,
+            8342.875,
+            406.90625,
+            25.197917938232422
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            3160.75,
+            8342.875,
+            371.16668701171875,
+            25.197917938232422
+          ],
+          "paddingRight": "16px"
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.5,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1.75,
+    "native": {
+      "dpr": 1.75,
+      "scroll": 8112,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4138.971949284893,
+            985.1428571428571,
+            4557.382379518072
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-carousel-container",
+          "rect": [
+            16.571428571428573,
+            8144.891592142036,
+            952,
+            503.4514285714286
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            235.0357142857143,
+            8371.409449284893,
+            515.0625,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            1256.794642857143,
+            8373.36480642775,
+            375.54464285714283,
+            50.4
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            2193.116071428571,
+            8371.409449284893,
+            406.9107142857143,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            3162.991071428571,
+            8371.409449284893,
+            371.1517857142857,
+            25.2
+          ],
+          "paddingRight": "16px"
+        }
+      ]
+    },
+    "chrome": {
+      "dpr": 1.75,
+      "scroll": 8044,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4123.901611328125,
+            985.1428833007812,
+            4532.02685546875
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-carousel-container",
+          "rect": [
+            16.571430206298828,
+            8129.696434020996,
+            952.0000610351562,
+            478.232177734375
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            235.0357208251953,
+            8343.598236083984,
+            515.0625,
+            25.196430206298828
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            1256.8035888671875,
+            8358.160736083984,
+            375.52679443359375,
+            25.196430206298828
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            2193.1162109375,
+            8343.598236083984,
+            406.90179443359375,
+            25.196430206298828
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            3162.982177734375,
+            8343.598236083984,
+            371.1696472167969,
+            25.196430206298828
+          ],
+          "paddingRight": "16px"
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.75,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 2,
+    "native": {
+      "dpr": 2,
+      "scroll": 8112,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4123.980714748068,
+            985,
+            4530.139740210843
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-carousel-container",
+          "rect": [
+            17,
+            8128.433839748068,
+            951,
+            477.68
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            234.96875,
+            8342.347902248068,
+            515.0625,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            1255.7265625,
+            8356.910402248068,
+            375.5390625,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            2191.0390625,
+            8342.347902248068,
+            406.9140625,
+            25.2
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            3159.921875,
+            8342.347902248068,
+            371.1484375,
+            25.2
+          ],
+          "paddingRight": "16px"
+        }
+      ]
+    },
+    "chrome": {
+      "dpr": 2,
+      "scroll": 8044,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4123.9609375,
+            985,
+            4529.96875
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-carousel-container",
+          "rect": [
+            17,
+            8128.265625,
+            951,
+            477.6640625
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            234.96875,
+            8342.171875,
+            515.0546875,
+            25.1953125
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            1255.734375,
+            8356.734375,
+            375.5234375,
+            25.1953125
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            2191.046875,
+            8342.171875,
+            406.90625,
+            25.1953125
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".business-sizes-section .testimonial-card__author",
+          "rect": [
+            3159.9140625,
+            8342.171875,
+            371.1640625,
+            25.1953125
+          ],
+          "paddingRight": "16px"
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 2.0,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  }
+]

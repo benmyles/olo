@@ -1,0 +1,16 @@
+{
+  "source": "Native live evaluation after an owned-screen pointer click, then HTMLElement.click()",
+  "pointer": {
+    "tag": "svg",
+    "name": "Show testimonial from Jobber",
+    "x": 378,
+    "y": 400
+  },
+  "direct": {
+    "tag": "BUTTON",
+    "name": "Show testimonial from Jobber",
+    "x": 0,
+    "y": 0
+  },
+  "active_after_both": "Show testimonial from Mindbody"
+}

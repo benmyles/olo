@@ -41,12 +41,19 @@ script measurement path ignoring container queries; painting already wrapped
 the first feature card correctly. Script and paint paths now settle nested
 queries, and name/type changes invalidate descendants even at unchanged widths.
 Stripe card padding is32px in both engines across15 live settings; height is
-within0.047px. The business section still differs by25.36px at1.75× and up to
-0.42px elsewhere. **Next: isolate that fractional-scale section discrepancy**,
-then recheck full-page height with corrected script measurements. The earlier
-~420px main-content diagnostic remains unverified. See
+within0.047px. The1.75× section discrepancy was an offscreen author line wrapping because
+of floating roundoff. Text fitting now follows Chrome's one-layout-unit
+allowance, and mixed-style/intrinsic measurement share effective font-size
+quantization. All1,350 new component observations pass. The section error at
+1.75× falls25.36→0.16px; smaller rounding/pixel differences remain. A settled
+full-page check now finds298.29px main-height difference, concentrated in
+`.events-section-container` (116.43px) and `.footer-cta-section__grid` (181.19px).
+**Next: trace testimonial button activation**: Chrome switches to Jobber,
+native receives the click at the correct target but does not switch, including
+with `HTMLElement.click()`. Then investigate those events/footer layouts.
+See [fractional fitting evidence](measurements/2026-11-10-fractional-fit/README.md),
 [query measurement evidence](measurements/2026-11-10-query-measurement/README.md)
-and [inline spacing and experiment evidence](measurements/2026-11-10-inline-spacing/README.md).
+and [inline spacing evidence](measurements/2026-11-10-inline-spacing/README.md).
 Continue matched pixels, navigation, pricing and interactive journeys before
 accepting configurations. See [intrinsic image sizing](measurements/2026-11-10-replaced-intrinsics/README.md)
 and [native scrolling](measurements/2026-11-10-native-scroll/README.md).

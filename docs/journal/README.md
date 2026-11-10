@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-10
 
+### Browser with consistent fractional text fitting
+
+*09:05* — The author stays on one line; the carousel loses the extra 25.2px. Text and intrinsic sizing share font-size quantization, and fitting follows Chrome’s one-layout-unit allowance. Full-page layout and testimonial activation remain open.
+
+![Browser with consistent fractional text fitting](2026-11-10/090522-browser-with-consistent-fractional-text-fitting.png)
+
+### Browser before fractional text fitting
+
+*09:05* — Stripe at 1.75×. An offscreen author wraps because of numerical roundoff, enlarging the shared testimonial carousel. This capture and the after capture use matching scroll positions.
+
+![Browser before fractional text fitting](2026-11-10/090521-browser-before-fractional-text-fitting.png)
+
 ### Browser with settled container query measurements
 
 *08:37* — Script geometry now reports the Chrome-matching 32px padding; nested query cascades settle before measurement and paint return. All 15 native theme/scale reviews pass. Full Stripe pixels and journeys remain unaccepted.
