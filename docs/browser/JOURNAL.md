@@ -7713,3 +7713,14 @@ variant. Slowest ordinary draws are 13.32 / 17.34 ms; candidate list draws
 stay below 2.68 ms. The reversed baseline produces wrong numbers. This is a
 measured compatibility correction, not Chrome superiority or production
 acceptance.
+
+### 2026-11-09 — integrate main after list numbering
+
+Merge main at `cc785d65` (Terminal's per-agent continuation messages,
+Token Pool's compression retry and single-serving-process fixes). Only the
+screenshot journal conflicted; merge the canonical entries and regenerate
+both indexes, preserving both histories. The merged release workspace build
+passes. Release tests for Browser, web, JS, system, Token Pool library/app,
+Terminal and Doctor pass: 775 tests, zero failures, 43 existing ignored/live
+tests. This integration makes no additional website-compatibility claim and
+does not install or reload the person's session.

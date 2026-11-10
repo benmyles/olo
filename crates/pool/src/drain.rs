@@ -272,6 +272,22 @@ impl Drain {
     }
 }
 
+/// The copies of Token Pool serving the gateway on `port`, this one aside:
+/// this user's olo-pool processes holding its listening socket (the one
+/// taking requests, and one that handed over, finishing what it has). The
+/// session's copy keeps them when it finds one there already (olo-pool's
+/// `keeper`), rather than running beside it with no gateway.
+pub fn serving(port: u16) -> Vec<i32> {
+    use std::os::unix::fs::MetadataExt as _;
+    let me = std::process::id() as i32;
+    // SAFETY: getuid has no preconditions.
+    let uid = unsafe { libc::getuid() };
+    let root = std::path::Path::new("/");
+    olo_system::listening::holders(root, port, |pid| {
+        pid != me && std::fs::metadata(format!("/proc/{pid}")).is_ok_and(|m| m.uid() == uid) && olo_system::listening::program(root, pid).as_deref() == Some("olo-pool")
+    })
+}
+
 /// A listening socket on loopback `port`: the one the version before
 /// handed over, if it did, else a new one. (0: any port.)
 pub fn listen(port: u16) -> std::io::Result<std::net::TcpListener> {

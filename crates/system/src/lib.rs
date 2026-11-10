@@ -26,6 +26,7 @@ pub mod gpus;
 pub mod hid_monitor;
 pub mod hosts;
 pub mod keyring_prompt;
+pub mod listening;
 pub mod media;
 pub mod meters;
 pub mod netconf;

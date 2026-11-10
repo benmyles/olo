@@ -32,7 +32,7 @@ use axum::{
     extract::{Path, RawQuery, State},
     http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode},
     response::{IntoResponse, Response},
-    routing::{any, get},
+    routing::{any, get, post},
 };
 use futures_util::StreamExt;
 use serde::Serialize;
@@ -158,6 +158,10 @@ pub struct Shared {
     /// The clients the person turned the pool off for, still pointed at
     /// its proxy (`clients::set`): their requests pass straight through.
     paused: [std::sync::atomic::AtomicBool; 2],
+    /// What opens the app's window when asked over the gateway
+    /// (`/pool/open`: a launch that found no copy taking launches, while
+    /// this one serves).
+    opener: Mutex<Option<Box<dyn Fn() + Send + Sync>>>,
 }
 
 /// How often an account's quota is read while nothing asks for it (its
@@ -282,6 +286,7 @@ impl Shared {
             credits_due: Mutex::new(HashMap::new()),
             drain: Default::default(),
             paused: Default::default(),
+            opener: Mutex::new(None),
         });
         // Saving off every async and UI thread, a batch at a time.
         let weak = Arc::downgrade(&shared);
@@ -363,6 +368,12 @@ impl Shared {
     /// straight through though it is pointed at the proxy.
     pub fn paused(&self, provider: Provider) -> bool {
         self.paused[provider_index(provider)].load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// What `/pool/open` does: opens the app's window (and takes its
+    /// launches again, if no copy does).
+    pub fn on_open(&self, open: impl Fn() + Send + Sync + 'static) {
+        *self.opener.lock().unwrap() = Some(Box::new(open));
     }
 
     pub fn set_paused(&self, provider: Provider, paused: bool) {
@@ -866,7 +877,7 @@ struct Ctx {
 }
 
 pub fn router(shared: Arc<Shared>, port: u16) -> Router {
-    Router::new().route("/claude/v1/{*rest}", any(claude)).route("/codex/v1/{*rest}", any(codex)).route("/pool/status", get(status)).with_state(Ctx { shared, port })
+    Router::new().route("/claude/v1/{*rest}", any(claude)).route("/codex/v1/{*rest}", any(codex)).route("/pool/status", get(status)).route("/pool/open", post(open)).with_state(Ctx { shared, port })
 }
 
 /// Only clients on this computer, and never a web page: a browser sends
@@ -886,7 +897,25 @@ async fn status(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
     }
     let mut v = status_json(&ctx.shared.snapshot());
     v["drain"] = ctx.shared.drain.status();
+    v["pid"] = json!(std::process::id());
     axum::Json(v).into_response()
+}
+
+/// Open the app's window: Token Pool launched while the copy serving
+/// takes no launches (it is starting, having just taken over, or another
+/// took its launch socket), so the launch asks the gateway instead of
+/// starting a copy beside it with no gateway of its own.
+async fn open(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
+    if let Err(r) = local_only(&headers, ctx.port) {
+        return *r;
+    }
+    match ctx.shared.opener.lock().unwrap().as_ref() {
+        Some(open) => {
+            open();
+            StatusCode::NO_CONTENT.into_response()
+        }
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
 /// The pool for agents and the command line: no sign-ins.
@@ -983,6 +1012,21 @@ async fn proxy(ctx: Ctx, provider: Provider, rest: String, query: Option<String>
 /// The most a request body is taken to be, decompressed, for a look
 /// inside (a model request is far smaller).
 const PLAIN_MAX: u64 = 64 << 20;
+
+/// Whether a request refused with `status` goes again with its body
+/// decoded: Codex's, compressed, refused with a bare 400. Since
+/// 2026-11-01 ChatGPT's backend answers some zstd-compressed requests
+/// `{"detail":"Bad Request"}` (most often when the JSON is just past a
+/// multiple of 128 KiB, zstd's block size), every time for the same
+/// body, and the same JSON sent plain is served. A conversation whose
+/// history sits just past such a size failed on every turn, whatever was
+/// said (Ben's Codex, 2026-11-09: 395,917 and 396,878 bytes, past
+/// 393,216). Once, so a request that's really wrong costs one more try.
+fn resend_plain(provider: Provider, status: StatusCode, headers: &HeaderMap) -> bool {
+    provider == Provider::Codex
+        && status == StatusCode::BAD_REQUEST
+        && headers.get("content-encoding").and_then(|v| v.to_str().ok()).is_some_and(|c| !matches!(c.trim().to_ascii_lowercase().as_str(), "" | "identity"))
+}
 
 /// A request body as sent, decompressed if its `content-encoding` says it
 /// is (zstd, gzip, deflate); empty if it can't be.
@@ -1112,11 +1156,13 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
             }
         };
         let mut refreshed = false;
+        // The body as decoded, once sent so (`resend_plain`).
+        let mut sent_plain: Option<Bytes> = None;
         let response = loop {
             let seen = olo_net::generation();
             let mut req = upstream::authorize(s.client().request(method.clone(), &url), provider, &cred);
             for (k, v) in headers.iter().filter(|(k, _)| forwarded(k.as_str())) {
-                if provider == Provider::Claude && k == "anthropic-beta" {
+                if (provider == Provider::Claude && k == "anthropic-beta") || (sent_plain.is_some() && k == "content-encoding") {
                     continue;
                 }
                 req = req.header(k, v);
@@ -1124,7 +1170,15 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
             if provider == Provider::Claude {
                 req = req.header("anthropic-beta", upstream::with_oauth_beta(headers.get("anthropic-beta").and_then(|v| v.to_str().ok())));
             }
-            match req.body(body.clone()).send().await {
+            match req.body(sent_plain.clone().unwrap_or_else(|| body.clone())).send().await {
+                Ok(r) if sent_plain.is_none() && resend_plain(provider, r.status(), &headers) => {
+                    let plain = plain(&headers, &body);
+                    if plain.is_empty() {
+                        break Some(r);
+                    }
+                    tracing::info!("pool: ChatGPT refused a compressed Codex request ({} bytes decoded); sending it again uncompressed", plain.len());
+                    sent_plain = Some(Bytes::from(plain.into_owned()));
+                }
                 Ok(r) if r.status() == StatusCode::UNAUTHORIZED && !refreshed => {
                     refreshed = true;
                     match s.fresh(&id, provider, true, 0).await {

@@ -243,7 +243,13 @@ pub struct Roots {
     pub updates: Box<dyn Fn() -> Option<Vec<String>> + Send + Sync>,
     /// Where the session's programs keep temporary files (`temp_files`).
     pub temp: TempFiles,
+    /// The port Token Pool's gateway listens on (`token_pool`).
+    pub pool_port: u16,
 }
+
+/// Token Pool's gateway's port, unless `OLO_POOL_PORT` says another
+/// (olo_token_pool's `gateway::PORT`).
+const POOL_PORT: u16 = 17891;
 
 /// Where temporary files go: /tmp's file system, and the session's
 /// `TMPDIR` (systemd's user manager's, else ours) and whether it's in
@@ -339,6 +345,7 @@ impl Roots {
             packages: Box::new(real_packages),
             updates: Box::new(real_updates),
             temp: TempFiles::real(),
+            pool_port: std::env::var("OLO_POOL_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(POOL_PORT),
         }
     }
 }
@@ -588,6 +595,7 @@ pub fn scan(roots: &Roots) -> Report {
     security_keys(roots, &mut r);
     panel_hdr(roots, &mut r);
     stale(roots, &procs, &mut r);
+    token_pool(roots, &procs, &mut r);
     login_entry(roots, &mut r);
     login_screen_handed_over(roots, &mut r);
     own_login_screen(roots, &mut r);
@@ -2218,6 +2226,24 @@ fn builtin_sound(roots: &Roots, pcis: &[Pci], r: &mut Report) {
     });
 }
 
+/// Whether process `pid` is finishing what it has under way before it
+/// becomes the new version (olo_kit_base::restore's `mark_waiting`: Token
+/// Pool, handed over to a copy of the new version, streaming the answers
+/// it has), which olo-session leaves to it too.
+/// (A marker older than the process is another's, left by one that
+/// ended before it could take it away, whose pid this one has again.)
+fn finishing(roots: &Roots, pid: i32) -> bool {
+    let Ok(marked) = std::fs::metadata(roots.temp.runtime.join("olo-upgrade-waits").join(pid.to_string())) else { return false };
+    let marked_ago = marked.modified().ok().and_then(|t| t.elapsed().ok()).map_or(0.0, |d| d.as_secs_f64());
+    age(&roots.fs, pid).is_none_or(|running| marked_ago <= running + 1.0)
+}
+
+/// Olo's programs still on a version an upgrade replaced, but not one
+/// finishing what it has before it goes (`finishing`): Quit Them stopped
+/// Token Pool's copy the session follows while it streamed its last
+/// answers, its successor left to run on alone, and the session, starting
+/// it again, ended up with a second Token Pool with no gateway (Ben,
+/// 2026-11-07).
 fn stale(roots: &Roots, procs: &[Proc], r: &mut Report) {
     let me = std::process::id() as i32;
     let bin = roots.bin.to_string_lossy();
@@ -2227,6 +2253,7 @@ fn stale(roots: &Roots, procs: &[Proc], r: &mut Report) {
         .filter(|p| p.exe.as_deref().is_some_and(|e| e.ends_with(" (deleted)") && e.starts_with(&*bin)))
         .filter(|p| !NEVER_STOPPED.contains(&p.name.as_str()))
         .filter(|p| !on_a_screen(&roots.fs, p.pid))
+        .filter(|p| !finishing(roots, p.pid))
         .collect();
     if old.is_empty() {
         r.fine.push(Fine { title: "Every Olo program runs the installed version".into(), detail: String::new() });
@@ -2240,6 +2267,102 @@ fn stale(roots: &Roots, procs: &[Proc], r: &mut Report) {
         detail: format!("{}: each runs a program file an upgrade has since replaced. Quitting them lets the session start the current version.", names.join(", ")),
         fix: Some(Fix { label: "Quit Them".into(), root: false, steps: old.iter().map(|p| Step::Signal { pid: p.pid, signal: libc::SIGTERM }).collect() }),
     });
+}
+
+/// How long ago process `pid` started, in seconds, as /proc says (None
+/// if it doesn't).
+fn age(fs: &Path, pid: i32) -> Option<f64> {
+    let stat = std::fs::read_to_string(fs.join("proc").join(pid.to_string()).join("stat")).ok()?;
+    let started: f64 = stat.rsplit_once(')')?.1.split_whitespace().nth(19)?.parse().ok()?;
+    let uptime: f64 = std::fs::read_to_string(fs.join("proc/uptime")).ok()?.split_whitespace().next()?.parse().ok()?;
+    // SAFETY: sysconf has no preconditions.
+    let hz = unsafe { libc::sysconf(libc::_SC_CLK_TCK) }.max(1) as f64;
+    Some(uptime - started / hz)
+}
+
+/// Token Pool, as its processes and its gateway's port say. A copy of it
+/// serving nothing beside the one that serves: the session's, started
+/// while another held the port (which ran on with no gateway, its window
+/// showing no requests, and took Token Pool's launches: Ben, 2026-11-09)
+/// is found and quit (the session starts it again, and it keeps the one
+/// serving: olo-pool's `keeper`). The gateway's port held by no Token
+/// Pool: by another program (said), or by none (Token Pool started
+/// again). Else, which serves, as fine. The keeper, a copy finishing
+/// what it has after handing over, a launch on its way (younger than 15
+/// s) and the command line's own (`--status`) are as they should be.
+fn token_pool(roots: &Roots, procs: &[Proc], r: &mut Report) {
+    const COMMANDS: &[&str] = &["--status", "--clients", "--put-back", "--restart-codex-service", "-h", "--help"];
+    let port = roots.pool_port;
+    let dir = |pid: i32| roots.fs.join("proc").join(pid.to_string());
+    let args = |pid: i32| -> Vec<String> {
+        std::fs::read(dir(pid).join("cmdline")).unwrap_or_default().split(|b| *b == 0).skip(1).filter(|a| !a.is_empty()).map(|a| String::from_utf8_lossy(a).into_owned()).collect()
+    };
+    let environ = |pid: i32| -> Vec<Vec<u8>> { std::fs::read(dir(pid).join("environ")).unwrap_or_default().split(|b| *b == 0).map(<[u8]>::to_vec).collect() };
+    let keeper = |pid: i32| environ(pid).iter().any(|v| v == b"OLO_POOL_KEEPER=1");
+    // (One on a port of its own is a test's or a nested session's.)
+    let its_port = |pid: i32| environ(pid).iter().find_map(|v| std::str::from_utf8(v.strip_prefix(b"OLO_POOL_PORT=")?).ok()?.parse::<u16>().ok()).unwrap_or(POOL_PORT);
+    let pools: Vec<&Proc> = procs
+        .iter()
+        .filter(|p| p.uid == roots.uid && p.name == "olo-pool" && (p.scope.is_none() || p.scope == roots.scope))
+        .filter(|p| !on_a_screen(&roots.fs, p.pid) && !args(p.pid).iter().any(|a| COMMANDS.contains(&a.as_str())) && its_port(p.pid) == port)
+        .collect();
+    if pools.is_empty() {
+        // (Not running: turned off, or not this session's to run.)
+        return;
+    }
+    // Token Pool's own first (a few processes' descriptors read); every
+    // other program's only when none of them holds the port (a thousand
+    // processes: 30 ms).
+    let ids: Vec<i32> = pools.iter().map(|p| p.pid).collect();
+    let serving = olo_system::listening::holders(&roots.fs, port, |pid| ids.contains(&pid));
+    let idle: Vec<i32> = ids.iter().copied().filter(|&pid| !serving.contains(&pid) && !keeper(pid) && !finishing(roots, pid) && age(&roots.fs, pid).is_none_or(|a| a > 15.0)).collect();
+    let processes = |pids: &[i32]| -> String {
+        match pids {
+            [one] => format!("process {one}"),
+            [rest @ .., last] => format!("processes {} and {last}", rest.iter().map(i32::to_string).collect::<Vec<_>>().join(", ")),
+            [] => String::new(),
+        }
+    };
+    let quit = |label: &str| Fix { label: label.into(), root: false, steps: idle.iter().map(|&pid| Step::Signal { pid, signal: libc::SIGTERM }).collect() };
+    if serving.is_empty() {
+        let others = olo_system::listening::holders(&roots.fs, port, |pid| !ids.contains(&pid) && procs.iter().any(|p| p.pid == pid && p.uid == roots.uid));
+        if let Some(other) = others.iter().find_map(|h| procs.iter().find(|p| p.pid == *h)) {
+            r.findings.push(Finding {
+                id: "token-pool:port".into(),
+                severity: Severity::Problem,
+                title: "Another program has Token Pool's port".into(),
+                detail: format!(
+                    "{} (process {}) listens on port {port}, where Token Pool's gateway does, so Token Pool can't, and Claude Code and Codex can't reach the pool. Quit it, then quit Token Pool from Activity Monitor: the session starts it again on its port.",
+                    other.name, other.pid
+                ),
+                fix: None,
+            });
+        } else if !idle.is_empty() {
+            r.findings.push(Finding {
+                id: "token-pool:no-gateway".into(),
+                severity: Severity::Problem,
+                title: "Token Pool's gateway isn't running".into(),
+                detail: format!("Token Pool runs ({}), but nothing listens on port {port}, so Claude Code and Codex can't reach the pool. Starting it again starts its gateway.", processes(&idle)),
+                fix: Some(quit("Start It Again")),
+            });
+        }
+        return;
+    }
+    if !idle.is_empty() {
+        r.findings.push(Finding {
+            id: "token-pool:twice".into(),
+            severity: Severity::Problem,
+            title: "Token Pool is running twice".into(),
+            detail: format!(
+                "Token Pool ({}) serves Claude Code and Codex; another ({}) started beside it and couldn't take its port, so it serves nothing: its window shows no requests, and opening Token Pool may show it. Quitting it fixes this; the session starts it again to look after the one serving.",
+                processes(&serving),
+                processes(&idle)
+            ),
+            fix: Some(quit(if idle.len() == 1 { "Quit It" } else { "Quit Them" })),
+        });
+        return;
+    }
+    r.fine.push(Fine { title: "Token Pool serves Claude Code and Codex".into(), detail: format!("Its gateway listens on port {port} ({}).", processes(&serving)) });
 }
 
 /// Olo's login screen gave the seat to another this boot (olo-login's
@@ -2484,8 +2607,93 @@ mod tests {
             packages: Box::new(|_| None),
             updates: Box::new(|| None),
             temp: TempFiles::default(),
+            pool_port: POOL_PORT,
         };
         (fs, roots)
+    }
+
+    /// Token Pool running twice (Ben, 2026-11-09): the copy serving holds
+    /// the gateway's listening socket, the session's beside it doesn't, and
+    /// is quit; the keeper, the command line's own and a launch on its way
+    /// aren't. With no copy serving, its gateway started again; with
+    /// another program on the port, said; one copy serving, fine. A copy
+    /// finishing what it has after an upgrade isn't quit as old.
+    #[test]
+    fn token_pool_twice_or_without_its_gateway() {
+        let (fs, mut roots) = machine("token-pool");
+        roots.temp.runtime = fs.join("run/user/1000");
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        let link = |to: &str, at: &str| {
+            let at = fs.join(at);
+            std::fs::create_dir_all(at.parent().unwrap()).unwrap();
+            let _ = std::fs::remove_file(&at);
+            std::os::unix::fs::symlink(to, at).unwrap();
+        };
+        let pool = format!("{}/olo-pool", roots.bin.display());
+        w(
+            "proc/net/tcp",
+            "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:45E3 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 555 1 0 100 0 0 10 0\n",
+        );
+        w("proc/uptime", "100000.00 1.00\n");
+        // SAFETY: sysconf has no preconditions.
+        let hz = unsafe { libc::sysconf(libc::_SC_CLK_TCK) } as f64;
+        let stat = |pid: i32, ago: f64| w(&format!("proc/{pid}/stat"), &format!("{pid} (olo-pool) S 1{} {} 0 0\n", " 0".repeat(17), ((100000.0 - ago) * hz) as u64));
+        // Serving; the session's, beside it, an hour old; the keeper; the
+        // command line's.
+        for (pid, args) in [(950, "--service\0"), (951, "--service\0"), (952, ""), (953, "--status\0")] {
+            w(&format!("proc/{pid}/cmdline"), &format!("{pool}\0{args}"));
+            link(&pool, &format!("proc/{pid}/exe"));
+            stat(pid, 3600.0);
+        }
+        link("socket:[555]", "proc/950/fd/7");
+        w("proc/952/environ", "HOME=/home/me\0OLO_POOL_KEEPER=1\0");
+        let r = scan(&roots);
+        let f = r.find("token-pool:twice").expect("twice");
+        assert_eq!(f.title, "Token Pool is running twice");
+        assert!(f.detail.starts_with("Token Pool (process 950) serves") && f.detail.contains("another (process 951)"), "{}", f.detail);
+        assert_eq!(f.fix.as_ref().unwrap().label, "Quit It");
+        assert_eq!(f.fix.as_ref().unwrap().steps, [Step::Signal { pid: 951, signal: libc::SIGTERM }]);
+        // A launch on its way (5 s old) isn't a second Token Pool.
+        stat(951, 5.0);
+        let r = scan(&roots);
+        assert!(r.find("token-pool:twice").is_none());
+        assert!(r.fine.iter().any(|f| f.title == "Token Pool serves Claude Code and Codex" && f.detail == "Its gateway listens on port 17891 (process 950)."), "{:?}", r.fine);
+        // Nothing serves: the session's started again (not the keeper).
+        stat(951, 3600.0);
+        std::fs::remove_file(fs.join("proc/950/fd/7")).unwrap();
+        std::fs::remove_dir_all(fs.join("proc/950")).unwrap();
+        let r = scan(&roots);
+        let f = r.find("token-pool:no-gateway").expect("no gateway");
+        assert_eq!((f.fix.as_ref().unwrap().label.as_str(), f.fix.as_ref().unwrap().steps.clone()), ("Start It Again", vec![Step::Signal { pid: 951, signal: libc::SIGTERM }]));
+        // Another program has the port: said, nothing to press.
+        w("proc/960/cmdline", "python3\0-m\0http.server\0");
+        link("socket:[555]", "proc/960/fd/3");
+        let r = scan(&roots);
+        let f = r.find("token-pool:port").expect("port taken");
+        assert!(f.detail.starts_with("python3 (process 960) listens on port 17891"), "{}", f.detail);
+        assert!(f.fix.is_none() && r.find("token-pool:no-gateway").is_none());
+        // A test's Token Pool, on a port of its own, isn't this one's.
+        std::fs::remove_dir_all(fs.join("proc/960")).unwrap();
+        w("proc/951/environ", "OLO_POOL_PORT=27891\0");
+        assert!(scan(&roots).find("token-pool:no-gateway").is_none());
+        std::fs::remove_file(fs.join("proc/951/environ")).unwrap();
+        // A marker older than the process (another's, its pid again)
+        // doesn't make it one finishing.
+        w("run/user/1000/olo-upgrade-waits/951", "");
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(7200);
+        std::fs::File::options().write(true).open(fs.join("run/user/1000/olo-upgrade-waits/951")).unwrap().set_modified(old).unwrap();
+        assert!(scan(&roots).find("token-pool:no-gateway").is_some());
+        // Finishing what it has after handing over: neither idle here nor
+        // old to Quit Them (the stale Deskbar, 900, finishing too).
+        link("/home/me/.local/bin/olo-pool (deleted)", "proc/951/exe");
+        w("run/user/1000/olo-upgrade-waits/951", "");
+        w("run/user/1000/olo-upgrade-waits/900", "");
+        let r = scan(&roots);
+        assert!(r.find("token-pool:no-gateway").is_none() && r.find("stale").is_none(), "{:?}", r.findings.iter().map(|f| &f.id).collect::<Vec<_>>());
     }
 
     /// DiskBackup: not set up, said without a button; set up, its service
@@ -3309,6 +3517,7 @@ mod tests {
                     data: PathBuf::from("/home/me/.local/share"),
                     runtime: PathBuf::new(),
                 },
+                pool_port: POOL_PORT,
             };
             temp_files(&roots, &mut r);
             r

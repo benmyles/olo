@@ -9008,7 +9008,25 @@ scan made for the sudo user). What it looks for:
   ask for (rule 9): set to 1024, now and at boot (/etc/sysctl.d/
   80-olo-uclamp.conf); a kernel without `CONFIG_UCLAMP_TASK` is advice.
 - **Olo programs on an old version** (their `exe` is a replaced file in
-  ~/.local/bin; never the session, app_server or the proxies): quit.
+  ~/.local/bin; never the session, app_server or the proxies): quit. Not
+  one finishing what it has before it goes (`finishing`: marked in
+  `$XDG_RUNTIME_DIR/olo-upgrade-waits`, the mark no older than the
+  process, as olo-session leaves it): Quit Them stopped Token Pool's
+  copy the session follows while it streamed its last answers after an
+  upgrade, which left Token Pool running twice for two days (Ben,
+  2026-11-07).
+- **Token Pool running twice, or without its gateway** (`token_pool`:
+  this session's olo-pool processes on the gateway's port, `OLO_POOL_PORT`
+  or 17891, and which of them hold its listening socket, by
+  `olo_system::listening`). A copy that serves nothing beside the one
+  that serves ("Token Pool is running twice", its window showing no
+  requests and taking the launches): Quit It (the session starts it
+  again, and it keeps the one serving). None serving: "Token Pool's
+  gateway isn't running", Start It Again (the same signal). Another
+  program on the port: said, no button. Never the keeper
+  (`OLO_POOL_KEEPER` in its environment), a copy finishing after handing
+  over, a launch younger than 15 s, the command line's own (`--status`),
+  nor one on a port of its own (a test's). Else which serves, as fine.
 - **The login screen's entry** (/usr/share/wayland-sessions, or
   /usr/local/share's on an atomic system) missing or pointing at
   nothing.
@@ -10183,7 +10201,12 @@ person's alone (0700, 0600); a shell that exits forgets its file, Start
 Over forgets them all, and unclaimed ones go after 30 days. As the
 session ends olo-termd tells each Terminal (`ENDING`) before hanging
 up, so it doesn't remember the tabs closing or start a new olo-termd;
-Start Over says it isn't that (`Link::starting_over`).
+Start Over says it isn't that (`Link::starting_over`). Nor once it has
+said goodbye itself (Quit, its last window closed: `Link::bye`, then
+`Link::leaving`): a Terminal that stays on after Quit, holding what
+was copied for the clipboard, wrote its windows again as they closed,
+none, and the next one opened each shell in a window of its own, its
+groups and each tab's Keep It Going and Auto Approve gone.
 
 **Tabs.** A window holds one or more shells (`TermWin::tabs`, each a
 `Tab` with its own `Session`); its strip (the kit's `TabStrip`) always
@@ -10513,8 +10536,15 @@ user change it to whatever they want, as well as revert back to the
 default") to the agent once it has stopped: after
 two minutes (`KEEP_GOING_QUIET`) with nothing at all changing on its
 screen and nothing typed, its turn over (`State::Idle`: not while it
-works, nor on a question, whose answer is the person's), at most once
-an hour (`KEEP_GOING_EVERY`). Activity is the agent watcher's: when it
+works, nor on a question, whose answer is the person's) and its own
+prompt showing, read just then (`agent::at_prompt`: Claude Code's "❯"
+in the box under its rule, or its older "│ >" box; Codex's "›" on a
+line that isn't an answer, "› 1. Yes"; not a chooser, which would take
+the Return as a choice: Claude Code's "Make auto mode your default
+permission mode?" reads as idle, its "❯" on an unnumbered answer, and
+"Please continue" with a Return would have answered yes for the
+person), at most once an hour (`KEEP_GOING_EVERY`). Activity is the
+agent watcher's: when it
 reads a tab after output (at most every 600 ms, as for the agent's
 state), a change of the screen's `agent::fingerprint` is reported
 (`agent::Activity`), with the clocks that count by themselves taken out
@@ -10533,6 +10563,34 @@ started again. And with the message set in Preferences ("Keep at it,
 thanks") a stand-in got that, the tab's name saying it too; Use
 Default put "Please continue" back, in the field and the setting.
 
+Each tab can say its own (Ben, 2026-11-09: "in the right click context
+menu for an agent terminal the keep it going has a sub menu too, and in
+that i can choose to set a custom message just for that agent"): Keep
+It Going is a submenu in the tab's menu and in Tabs (`Terminal::
+keep_going_menu`): On (`tab-keep-going:SHELL`), Default Message
+("Please continue", or Preferences' own; `tab-keep-going-default:
+SHELL` takes the tab's own away), the tab's own message when it has
+one (checked, the first 40 characters, cut at a word), and Custom
+Message… (`tab-keep-going-message:SHELL`). That opens the Keep It
+Going window (`Win::KeepGoingMessage`, an alert's frame, as tall as its
+words: `ui::WindowOptions::dialog`): what Terminal types to the agent
+in that tab, its own message (or Preferences') in a field, selected;
+left empty or as Preferences has it, the tab has none of its own; its
+default button, Keep It Going, keeps the message and turns Keep It
+Going on (`Tab::keep_going_own`, over `keep_going_says`; the tab's
+name says it). Kept with the window (`SavedWindow::keep_going_own`),
+whether Keep It Going is on or not, and with a tab moved to an agent
+screen. Tried headless with the real Claude Code 2.1.322 and Codex
+0.167, each in a sandbox HOME against a stand-in model server on
+loopback (Anthropic's Messages API and OpenAI's Responses API,
+streamed): each got its own message ("Carry on with the plan, thanks",
+"Codex, keep going please") 8 s after it was set
+(`OLO_TERMINAL_KEEP_GOING_SECS=8`), as a message sent, not left as
+pasted text, and answered; both came back with Terminal (quit and
+started again); on Claude Code's auto-mode chooser Keep It Going held
+off ("not at its prompt"), the question unanswered. The submenu and
+the window: the layout review clean at 1×, 1.5× and 2×, light and dark.
+
 **Auto Approve** (Ben, 2026-11-09: "like the keep going option add one
 that is "Auto Approve" and when a "Do you want to proceed?" question
 like this comes up have it auto approve / select yes after 30s";
@@ -10544,12 +10602,21 @@ line "Do you want to …?" or "Would you like to …?", its first answer
 dialogs, Codex's "Would you like to run the following command?") is
 answered with Return `AUTO_APPROVE_AFTER` (30 s) after it shows. Not a
 plan waiting to be approved ("No, keep planning"), not when another
-answer is chosen, not another question's answers under words that ask.
+answer is chosen, not another question's answers under words that ask
+(but for Codex's "Reason: Do you want to …?" between its question and
+its answers: Codex tells its model to give its reason for a command as
+a question, so Auto Approve had never answered Codex).
 The agent watcher reads it only while the agent asks (`State::Blocked`)
 and tells of a new one, or none, once read the same twice
 (`agent::Asking`; a screen read as it's drawn isn't a change); its key
-is the dialog's text with its digits aside, as Claude Code counts down
-"will automatically block this request in 1:50" under it. When it's
+is the words of the dialog and the dozen lines above it: digits aside
+(Claude Code counts down "will automatically block this request in
+1:50" under it), and every mark that isn't a letter or digit too
+(Claude Code blinks the "●" before the tool call it asks about, so the
+question never read the same twice and was answered only once the
+blinking stopped, 10 to 30 s late; `RUST_LOG=olo_terminal::agent=debug`
+logs each look's key). Output held back for a synchronized update and
+shown when it times out pokes the watcher too, as any output does. When it's
 due the screen is read again (a coding agent in the foreground, the same
 question, Yes chosen; a few looks 200 ms apart) before the Return goes.
 Typing in the tab, or Stop in the countdown at the pane's bottom right
@@ -10572,7 +10639,14 @@ not answered, the next one answered; Stop; on through the socket asked,
 Return cancelling, Turn On turning it on; back on after Terminal
 restarted, a stopped question still the person's. Cost: with a question
 waiting, 2 frames a second where its clock drew 1 (0.6 ms each, 0.2% of
-a core); with none, nothing (0 wakeups, 0 frames).
+a core); with none, nothing (0 wakeups, 0 frames). Then with the real
+Claude Code 2.1.322 and Codex 0.167 (the stand-in model asking each to
+run `touch`; Codex with `approval_policy = "on-request"`, its model
+asking to run it outside the sandbox): each question seen 1.4 s (Claude
+Code) and 1.9 s (Codex) after it was asked (the model's answer, then a
+second look 600 ms on), answered Yes 5 s later
+(`OLO_TERMINAL_AUTO_APPROVE_SECS=5`), the command run; one already
+showing as Auto Approve came on answered 5 s on.
 
 **Repositories** (`src/git.rs`, `src/repos.rs`), in process through
 libgit2 (git2, vendored; no `git` or `gh`). A thread (`git::Watcher`)
@@ -14243,11 +14317,47 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   most: past the provider's read timeout), the old one goes: the
   olo-pool olo-session started becomes the **keeper** in place (same pid:
   `OLO_POOL_KEEPER`, `main`'s `keeper`), a subreaper (`PR_SET_CHILD_
-  SUBREAPER`) asleep in `sigwaitinfo`, about 8 MB, that passes SIGTERM,
-  SIGINT and SIGHUP on to the copies that serve and ends as the last
-  does, with how it ended (so a crash restarts the pool as before); an
-  upgrade makes it the new version's keeper in place. A later copy
-  (`OLO_POOL_KEPT`) just exits, and its successor goes to the keeper.
+  SUBREAPER`) asleep in `poll` (a signalfd, and a pidfd for each copy it
+  follows), about 8 MB, that passes SIGTERM, SIGINT and SIGHUP on to the
+  copies that serve and ends once none is left, with how the last of its
+  own ended (so a crash restarts the pool as before); an upgrade makes it
+  the new version's keeper in place. A later copy (`OLO_POOL_KEPT`) just
+  exits, and its successor goes to the keeper. The copies it follows
+  are its children running olo-pool and whichever olo-pool holds the
+  gateway's listening socket (`drain::serving`, from `olo_system::
+  listening`: the socket's inode in `/proc/net/tcp`, then the
+  processes whose descriptors say `socket:[inode]`), its own or not.
+- **One Token Pool, whatever happens to the copy the session started.**
+  The session's `olo-pool --service`, finding another copy already
+  serving the port as it starts (and not handed the sockets itself:
+  `OLO_POOL_LISTENERS`), becomes the keeper of that one (`main`, before
+  anything else; it asks it to open its window if its own was open)
+  rather than running beside it with no gateway, or ending. Ben,
+  2026-11-07: Olo Doctor's Quit Them stopped the session's copy while it
+  finished handing over to a copy of the new version (it ran a replaced
+  binary); the copy ran on alone, each `--service` olo-session started
+  forwarded its launch to it and exited, until olo-session gave up
+  ("keeps exiting"), and the next upgrade's restart came in the moment
+  the launch socket was between copies, so it ran as a second Token Pool
+  that couldn't listen (its window, which took the launches, said
+  "Can't listen on 127.0.0.1:17891" and showed no requests) for two
+  days. Upgraded, that copy found the one serving and became its keeper,
+  as it should. A launch that finds no copy taking launches while one
+  serves (`main`) asks it over the gateway instead (`POST /pool/open`,
+  loopback only: it opens its window and takes launches again, if no
+  copy does), and only a copy from before that waits for its launch
+  socket. Olo Doctor leaves programs finishing what they have
+  (`olo-upgrade-waits`) out of Quit Them, and says when Token Pool runs
+  twice, has no gateway, or another program has its port (its
+  `token_pool` check). `/pool/status` says the serving copy's `pid`.
+  Tested end to end in a test session (test ports, a scratch home, a key
+  file, a fake upstream): a second `--service` became the keeper of the
+  first; a launch with the launch socket gone opened the serving copy's
+  window, which took launches again; the serving copy, upgraded, handed
+  over to its own child, and the adopting keeper followed it; SIGTERM to
+  a keeper ended the copy it followed and then itself; a copy forced to
+  start beside the serving one was found by Olo Doctor, and Quit It
+  ended it.
   While the old one finishes, the kit marks it waiting
   (`restore::mark_waiting`: `$XDG_RUNTIME_DIR/olo-upgrade-waits/PID`),
   and olo-session's stale check leaves it alone rather than stopping it

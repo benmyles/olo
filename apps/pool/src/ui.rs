@@ -49,6 +49,9 @@ pub enum Msg {
     SignedIn(Result<Found, String>, Option<String>),
     /// Something done in the background: what to say.
     Done(Result<String, String>),
+    /// Asked over the gateway to open (`/pool/open`: a launch that found
+    /// no copy taking launches).
+    Open,
 }
 
 /// A separate sign-in going on in Terminal.
@@ -337,6 +340,12 @@ impl PoolApp {
         let Ok(msg) = message.downcast::<Msg>() else { return };
         match *msg {
             Msg::Changed => {}
+            Msg::Open => {
+                // (And this copy takes launches from now on, if none does.)
+                olo_ui::instance::listen(crate::APP_ID, self.proxy.clone());
+                self.open(cx);
+                return;
+            }
             Msg::Clients(on) => self.clients = Some(on),
             Msg::Running(r) => {
                 if let Some((_, w)) = &self.clients_win {

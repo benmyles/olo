@@ -4410,6 +4410,12 @@
   "image": "2026-11-09/200900-passwords-setup-at-a-short-height-after.png"
  },
  {
+  "time": "2026-11-09T20:21:16",
+  "title": "Terminal: each agent's own Keep It Going message",
+  "caption": "Keep It Going is a submenu in a tab's menu: on or off, the default message, or one of the tab's own (Custom Message\u2026), kept with the tab. Keep It Going and Auto Approve now work with the real Claude Code and Codex: Codex's reasoned questions are answered, Claude Code's blinking marker no longer delays the answer, and nothing is typed into a chooser.",
+  "image": "2026-11-09/202116-terminal-each-agent-s-own-keep-it-going-message.png"
+ },
+ {
   "time": "2026-11-09T21:59:03",
   "title": "Browser list numbering before",
   "caption": "Release 5a64f274: reversed lists count upward, suppressed markers skip ordinals, wrapped and inline lists lose numbering, and large values overflow. Owned Agent Screen, scale 1, window x=49.",
@@ -4420,5 +4426,11 @@
   "title": "Browser list numbering after",
   "caption": "Chrome-referenced numbering, HTML integer reflection, mutation invalidation, and inline markers. Light/dark/night reviews at 1, 1.25, 1.5, 1.75, 2x are clean; marker spacing and full CSS counters remain open.",
   "image": "2026-11-09/215905-browser-list-numbering-after.png"
+ },
+ {
+  "time": "2026-11-09T21:59:53",
+  "title": "Olo Doctor finds Token Pool running twice",
+  "caption": "A Token Pool started beside the one serving, unable to take its port, served nothing for two days while its window showed no requests. Olo Doctor now finds it and quits it; the session starts it again, and it keeps the one serving rather than running beside it.",
+  "image": "2026-11-09/215953-olo-doctor-finds-token-pool-running-twice.png"
  }
 ]

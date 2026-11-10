@@ -50,6 +50,8 @@ pub struct WindowOptions {
     pub under_pointer: bool,
     /// An alert for `message` (sized for it, fixed, modal).
     alert: Option<String>,
+    /// A dialog: as tall as what it shows needs (`fits_content`), fixed.
+    dialog: bool,
     /// What app_server knows the window by when Terminal comes back (the
     /// kit's `restore_key`).
     pub restore_key: Option<String>,
@@ -57,7 +59,13 @@ pub struct WindowOptions {
 
 impl WindowOptions {
     pub fn new(title: impl Into<String>, w: u32, h: u32) -> WindowOptions {
-        WindowOptions { title: title.into(), size: (w, h), min_size: None, max_size: None, under_pointer: false, alert: None, restore_key: None }
+        WindowOptions { title: title.into(), size: (w, h), min_size: None, max_size: None, under_pointer: false, alert: None, dialog: false, restore_key: None }
+    }
+
+    /// A dialog `w` wide: fixed, floating, as tall as what it shows needs
+    /// (`h` at least).
+    pub fn dialog(title: impl Into<String>, w: u32, h: u32) -> WindowOptions {
+        WindowOptions { dialog: true, ..WindowOptions::new(title, w, h) }
     }
 
     /// An alert saying `message`: as tall as it needs, fixed, over the
@@ -141,6 +149,10 @@ impl WinOps for Context<'_, Terminal> {
         options.min_size = o.min_size.map(|(w, h)| (w as f32, h as f32));
         options.max_size = o.max_size.map(|(w, h)| (w as f32, h as f32));
         if o.max_size.is_some_and(|max| Some(max) == o.min_size) {
+            options.fixed = true;
+        }
+        if o.dialog {
+            options = options.dialog();
             options.fixed = true;
         }
         options.under_pointer = o.under_pointer;
@@ -686,6 +698,7 @@ impl Terminal {
             Some(Win::Failed { message }) => self.render_alert(id, "warning", message.clone(), &["OK"], focus, cx),
             Some(Win::Find { .. }) => self.render_find(id, focus, window, cx),
             Some(Win::NameGroup { .. }) => self.render_name_group(id, focus, window, cx),
+            Some(Win::KeepGoingMessage { .. }) => self.render_keep_going_message(id, focus, cx),
             Some(Win::Daemon(_)) => self.render_daemon(id, window, cx),
             Some(Win::Sudo(_)) => self.render_sudo(id, focus, window, cx),
             Some(Win::Worktree(_)) => self.render_worktree(id, focus, window, cx),
@@ -1557,11 +1570,12 @@ impl Terminal {
                     .item(if t.tabs[i].hidden_tiled { "Show When Tiled" } else { "Hide When Tiled" }, format!("tab-tile-hide:{shell}"))
                     .item(label, place);
                 // A tab with a coding agent in it: told "please continue"
-                // when it stops (Keep It Going).
-                let keep = t.tabs[i].keep_going.is_some();
-                let approve = t.tabs[i].auto_approve.is_some();
-                let menu = if t.tabs[i].agent.is_some() || keep || approve {
-                    menu.separator().item("Keep It Going", format!("tab-keep-going:{shell}")).checked(keep).item("Auto Approve", format!("tab-auto-approve:{shell}")).checked(approve)
+                // (or its own message) when it stops (Keep It Going).
+                let tab = &t.tabs[i];
+                let keep = tab.keep_going.is_some();
+                let approve = tab.auto_approve.is_some();
+                let menu = if tab.agent.is_some() || keep || approve {
+                    menu.separator().submenu(self.keep_going_menu(tab)).item("Auto Approve", format!("tab-auto-approve:{shell}")).checked(approve)
                 } else {
                     menu
                 };
@@ -1711,6 +1725,39 @@ impl Terminal {
             .child(swatches)
             .child(div().flex_1())
             .child(row)
+            .into_any_element()
+    }
+
+    /// Keep It Going ▸ Custom Message…: what Keep It Going says to one
+    /// tab's agent, Preferences' for every tab under it.
+    fn render_keep_going_message(&mut self, id: WindowId, focus: FocusHandle, cx: &mut Cx) -> AnyElement {
+        let Some(Win::KeepGoingMessage { about, field, .. }) = self.windows.get(&id) else { return div().into_any_element() };
+        let (about, field) = (about.clone(), field.clone());
+        let p = theme::palette(cx);
+        let default = crate::keep_going_note(&self.keep_going_says);
+        let cancel = cx.listener(move |t, _: &(), _, cx| t.keep_going_message_done(cx, id, false));
+        let ok = cx.listener(move |t, _: &(), _, cx| t.keep_going_message_done(cx, id, true));
+        let row = widgets::button_row()
+            .child(Button::new("Cancel").on_click(move |window, cx| cancel(&(), window, cx)))
+            .child(Button::new("Keep It Going").default(true).on_click(move |window, cx| ok(&(), window, cx)));
+        div()
+            .size_full()
+            .key_context(widgets::alert::CONTEXT)
+            .track_focus(&focus)
+            .on_action(cx.listener(move |t, _: &widgets::alert::Default, _, cx| t.keep_going_message_done(cx, id, true)))
+            .on_action(cx.listener(move |t, _: &widgets::alert::Cancel, _, cx| t.keep_going_message_done(cx, id, false)))
+            .child(
+                widgets::AlertFrame::new("terminal")
+                    .child(widgets::alert_title("Keep It Going"))
+                    .child(div().h(px(m::TIGHT)).flex_shrink_0())
+                    .child(widgets::paragraph(about))
+                    .child(div().h(px(m::SPACING)).flex_shrink_0())
+                    .child(TextControl::new(field))
+                    .child(div().h(px(m::TIGHT)).flex_shrink_0())
+                    .child(widgets::paragraph(default).text_color(style::disabled_text(&p)))
+                    .child(div().flex_1().min_h(px(m::SPACING)))
+                    .child(row),
+            )
             .into_any_element()
     }
 }
