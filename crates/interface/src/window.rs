@@ -67,6 +67,10 @@ pub(crate) struct WindowCore {
     /// (a frame round it): what the window's handle reaches, and what
     /// is asked whether the window may close.
     pub(crate) main_view: Option<ViewId>,
+    /// How many times it has committed (told the stage what it shows).
+    pub(crate) commits: u64,
+    /// The window it belongs to (a menu's, a tip's): it closes with it.
+    pub(crate) owner: Option<WindowId>,
     pub(crate) gfx: Gfx,
     /// The window's content, in points.
     pub(crate) size: Size<Pixels>,
@@ -124,6 +128,49 @@ pub struct WindowCx<'a> {
     pub(crate) looper: &'a mut Looper,
 }
 
+/// A window on the calling looper, as another window there knows it
+/// (the owner of a menu or a tip): reached at once, not by a message.
+pub struct LocalWindow<V> {
+    id: WindowId,
+    _view: std::marker::PhantomData<fn() -> V>,
+}
+
+impl<V> Clone for LocalWindow<V> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<V> Copy for LocalWindow<V> {}
+
+impl<V: View> LocalWindow<V> {
+    pub fn id(&self) -> WindowId {
+        self.id
+    }
+
+    /// Does something with the window. None if it has closed.
+    pub fn with<R>(&self, cx: &mut WindowCx, f: impl FnOnce(&mut WindowCx) -> R) -> Option<R> {
+        with_window(cx.looper, self.id, f)
+    }
+
+    /// Reaches into the window's own view. None if it has closed.
+    pub fn update<R>(&self, cx: &mut WindowCx, f: impl FnOnce(&mut V, &mut Cx<V>) -> R) -> Option<R> {
+        with_window(cx.looper, self.id, |window| {
+            let view = window.core.main_view.or(window.core.root_view)?;
+            window.update_view(view, f)
+        })
+        .flatten()
+    }
+
+    pub fn close(&self, cx: &mut WindowCx) {
+        self.with(cx, |window| window.close_window());
+    }
+
+    /// Whether it's still open.
+    pub fn is_open(&self, cx: &WindowCx) -> bool {
+        cx.looper.state::<Windows>().is_some_and(|w| w.map.contains_key(&self.id))
+    }
+}
+
 /// Does something with a window on this looper (not from inside
 /// itself: a window that's taking something is out, and None comes
 /// back).
@@ -136,6 +183,13 @@ pub(crate) fn with_window<R>(looper: &mut Looper, id: WindowId, f: impl FnOnce(&
         windows.map.insert(id, core);
     }
     Some(result)
+}
+
+/// Does something with a window on a looper, by its number (from a
+/// timer or a deferred turn, which have only the looper). None if it
+/// has closed, or is the one that's running now.
+pub fn with_window_on<R>(looper: &mut Looper, id: WindowId, f: impl FnOnce(&mut WindowCx) -> R) -> Option<R> {
+    with_window(looper, id, f)
 }
 
 /// Hands a window what the display thread sent it.
@@ -228,6 +282,8 @@ impl WindowCore {
             root: None,
             root_view: None,
             main_view: None,
+            commits: 0,
+            owner: None,
             gfx,
             size: opened.size,
             title,
@@ -474,8 +530,14 @@ impl WindowCore {
     }
 
     /// The window is gone: what it held goes, and the program hears.
-    fn end(mut self: Box<Self>, _looper: &mut Looper) {
+    fn end(mut self: Box<Self>, looper: &mut Looper) {
         let id = self.id;
+        // What belonged to it (its menus, its tips) goes with it.
+        if let Some(windows) = looper.state_mut::<Windows>() {
+            for core in windows.map.values_mut().filter(|core| core.owner == Some(id)) {
+                core.closed = true;
+            }
+        }
         display().post(move |on| {
             if let Some(stage) = on.stages.remove(&id) {
                 stage.close();
@@ -709,6 +771,7 @@ impl<'a> WindowCx<'a> {
             range: Size::default(),
             offset: None,
         }];
+        core.commits += 1;
         let started = core.started.take().unwrap_or(flushing);
         let commit = Commit { size: core.size, scale, items, layers, started, work: started.elapsed(), everything: std::mem::take(&mut core.everything), animating: !core.next_frame.is_empty() };
         let id = core.id;
@@ -772,6 +835,36 @@ impl<'a> WindowCx<'a> {
         }
     }
 
+    // ---- Windows on this looper ----
+
+    /// Opens a window on this window's own looper, around the view
+    /// `build` makes: what belongs to this window and is told things by
+    /// it at once (a menu, a tip, an alert), where a window of its own
+    /// work gets a looper of its own (`open_window`).
+    pub fn open_window_here<V: View>(&mut self, spec: crate::WindowSpec, build: impl FnOnce(&mut Cx<V>) -> V) -> Option<LocalWindow<V>> {
+        let id = display().next_window_id();
+        let title = spec.title.clone();
+        match open(self.looper, id, spec.params(), title, build) {
+            Ok(id) => {
+                let owner = self.core.id;
+                if let Some(core) = self.looper.state_mut::<Windows>().and_then(|w| w.map.get_mut(&id)) {
+                    core.owner = Some(owner);
+                }
+                Some(LocalWindow { id, _view: std::marker::PhantomData })
+            }
+            Err(e) => {
+                tracing::warn!("a window couldn't be opened: {e:#}");
+                None
+            }
+        }
+    }
+
+    /// Asks for the window to be this size (app_server may give
+    /// another: a window in a tile keeps its tile's).
+    pub fn resize_window(&mut self, size: Size<Pixels>) {
+        self.on_display(move |window| window.resize(size));
+    }
+
     // ---- The window ----
 
     pub fn window_id(&self) -> WindowId {
@@ -825,6 +918,12 @@ impl<'a> WindowCx<'a> {
             self.core.agent_nodes(root, window, &mut out);
         }
         out
+    }
+
+    /// How many times the window has shown something new (for what
+    /// keeps something worked out from what shows, to know it's stale).
+    pub fn commit_count(&self) -> u64 {
+        self.core.commits
     }
 
     /// Every text that doesn't show in full: where what shows of it is,

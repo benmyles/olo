@@ -8,10 +8,12 @@
 
 pub mod agent;
 mod app;
+pub mod cut;
 pub mod icons;
 pub mod review;
 pub mod style;
 pub mod theme;
+pub mod tip;
 pub mod widgets;
 
 pub use app::{Frame, WindowOptions, open_window, run};

@@ -79,11 +79,12 @@ impl View for Controls {
             )
             .child(div().flex().gap(px(m::SPACING)).child(StringView::new(format!("Clicked {} times.", self.clicks))).child(LinkButton::new("Reset")))
             .child(div().w(px(300.0)).child(StringView::new("A paragraph of text that is long enough to wrap onto a second line in the three hundred points it is given here.").wrap(true)))
+            .child(div().w(px(160.0)).child(StringView::new("A long line cut short to fit the box it is in").cut(true)))
     }
 }
 
 fn main() {
     olo_kit::run("olo.controls", |_| {
-        olo_kit::open_window(WindowOptions::new("Controls", 480.0, 420.0), |_| Controls { wrap: true, sound: false, radio: 0, clicks: 0 });
+        olo_kit::open_window(WindowOptions::new("Controls", 480.0, 460.0), |_| Controls { wrap: true, sound: false, radio: 0, clicks: 0 });
     });
 }

@@ -6,7 +6,7 @@
 //! view inside a [`Frame`], which paints the panel behind it and sets
 //! Olo's font and the palette's text colour.
 
-use olo_interface::{AnyChild, AppCx, Cx, Element, IntoElement as _, ParentElement as _, SharedString, Styled as _, View, WindowHandle, WindowSpec, div, px};
+use olo_interface::{AnyChild, AppCx, Cx, Element, InteractiveElement as _, IntoElement as _, ParentElement as _, SharedString, Styled as _, View, WindowHandle, WindowSpec, div, px};
 
 use crate::{style, theme};
 
@@ -278,7 +278,33 @@ impl View for Frame {
 
     fn body(&mut self, _: &mut Cx<Self>) -> Element {
         let p = theme::palette();
-        let mut root = div().size_full().font_family(style::UI_FONT).text_size(px(style::PLAIN_SIZE)).line_height(olo_interface::relative(style::LINE_HEIGHT)).text_color(style::c(p.panel_text));
+        let mut root = div()
+            .size_full()
+            // A press anywhere in the window puts a cut text's tip away.
+            .on_window_mouse_down(|_, cx| crate::cut::left(cx, true))
+            // Text cut short: its whole in a tip (`cut`), at once with ⌘.
+            // (Not while a button is held: a divider or a selection
+            // dragged over cut text has no tip.)
+            .on_window_mouse_move(|e, cx| {
+                if e.pressed_button.is_some() {
+                    crate::cut::left(cx, false);
+                } else {
+                    crate::cut::moved(cx, e.position, crate::cut::command_held(&e.modifiers))
+                }
+            })
+            .on_hover(|over, cx| {
+                if !*over {
+                    crate::cut::left(cx, false);
+                }
+            })
+            .on_modifiers_changed(|e, cx| {
+                let at = cx.mouse_position();
+                crate::cut::modifiers(cx, at, crate::cut::command_held(&e.modifiers))
+            })
+            .font_family(style::UI_FONT)
+            .text_size(px(style::PLAIN_SIZE))
+            .line_height(olo_interface::relative(style::LINE_HEIGHT))
+            .text_color(style::c(p.panel_text));
         if self.panel {
             root = root.bg(style::c(p.panel_background));
         }
