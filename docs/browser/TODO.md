@@ -773,6 +773,11 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   colour precision (36/90 exact native observations still fail); arbitrary-font
   hinting/raster parity and inline backgrounds/ligature
   colour clipping. Complete CSS paint/stacking and semantic DOM/hit actions.
+  Counter-page font diagnosis: both select Liberation Sans, but all five
+  native-scale pixel comparisons fail (19,674 / 31,922 / 31,027 / 47,464 /
+  56,056 pixels). Grid track rounding also differs. Shaped-face JSON and
+  repeat-verified native Chrome captures are in
+  `measurements/2026-11-09-font-diagnostics`; emulated DPR is separate.
 - [ ] Retained GPU painting, clipping, compositing, scrolling, images,
   SVG, canvas, fonts, video and audio; measure each on release builds.
 - [ ] Native browser shell, tabs/navigation/find/history/bookmarks/downloads.

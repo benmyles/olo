@@ -7778,3 +7778,43 @@ retained. Drag/wheel hitches total 46/33, 48/45 and 14/37 before/after for
 counter/hidden/ordinary pages; slowest draws are 14.28/3.31, 2.44/2.88 and
 2.85/16.56 ms. These are contended measurements, not a speedup or a clean
 performance pass. Increased CPU/load medians need an uncontended rerun.
+
+### 2026-11-09 — isolate fonts from native-scale comparison errors
+
+The counter fixture's Arial request selects Liberation Sans Regular in the
+native shaped runs; Chrome reports Liberation Sans / LiberationSans for its
+text and generated content. The native face hash and all runs are retained.
+This removes a family-selection mismatch as the explanation for this fixture,
+without claiming font-byte identity from Chrome's name-only API.
+
+`page_dump --fonts OUT.json` now reports selected paragraph fonts, byte hashes,
+collection indices, variation/synthesis, glyphs, line baselines and both
+paragraph and owning element bounds. `--scale` applies the chosen device scale
+to style metrics, layout and rasterization. The example builds in release,
+exports all five scales and rejects invalid scales. This changes only the
+offline diagnostic; no browser render loop or production font policy changed.
+Instructions and limitations are in ENGINE.md.
+
+Reconfirmed the native/emulated DPR distinction documented on 2026-11-06:
+emulated 1.5× retains a 1 CSS-pixel border, while the real Wayland output
+change yields 0.666667 CSS px. The initial emulated observations remain
+separate. Native captures clear emulation, verify DPR, wait for fonts and two
+frames, and restore the owned screen's settings. All five PNG hashes match a
+second capture. The fixture has no viewport-height-dependent rules; Chrome's
+1000×735 viewport is cropped to the diagnostic's 1000×700 CSS-pixel viewport.
+
+| Native scale | Differing pixels | Element boxes within 0.0001 CSS px |
+|---|---:|---:|
+| 1 | 19,674 | 27/36 |
+| 1.25 | 31,922 | 11/36 |
+| 1.5 | 31,027 | 36/36 |
+| 1.75 | 47,464 | 36/36 |
+| 2 | 56,056 | 15/36 |
+
+The geometry discrepancies are fractional grid-track distribution; text
+raster/baseline differences need further isolation. At 1× the offline raster
+also differs from the live native Browser crop at 20 pixels, so it does not
+replace presentation checks. These are explicit nonpasses, preserved in
+`measurements/2026-11-09-font-diagnostics`, including images, JSON, scripts and
+provenance. Earlier 30 native Browser light/dark/night reviews remain in the
+counter checkpoint; no additional website or pixel-equivalence pass follows.

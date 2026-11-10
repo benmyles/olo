@@ -1,0 +1,94 @@
+{
+  "chrome_vs_engine": [
+    {
+      "scale": 1,
+      "size": [
+        1000,
+        700
+      ],
+      "different_pixels": 19674,
+      "pixels_over_10": 16309,
+      "bbox": [
+        20,
+        31,
+        881,
+        410
+      ],
+      "mean_absolute_channel_delta": 1.14971
+    },
+    {
+      "scale": 1.25,
+      "size": [
+        1250,
+        875
+      ],
+      "different_pixels": 45154,
+      "pixels_over_10": 42500,
+      "bbox": [
+        25,
+        25,
+        1225,
+        512
+      ],
+      "mean_absolute_channel_delta": 3.310966857142857
+    },
+    {
+      "scale": 1.5,
+      "size": [
+        1500,
+        1050
+      ],
+      "different_pixels": 67771,
+      "pixels_over_10": 62935,
+      "bbox": [
+        30,
+        30,
+        1470,
+        615
+      ],
+      "mean_absolute_channel_delta": 4.276456507936508
+    },
+    {
+      "scale": 1.75,
+      "size": [
+        1750,
+        1225
+      ],
+      "different_pixels": 85847,
+      "pixels_over_10": 81498,
+      "bbox": [
+        35,
+        35,
+        1715,
+        716
+      ],
+      "mean_absolute_channel_delta": 3.968155801749271
+    },
+    {
+      "scale": 2,
+      "size": [
+        2000,
+        1400
+      ],
+      "different_pixels": 42985,
+      "pixels_over_10": 31877,
+      "bbox": [
+        41,
+        40,
+        1762,
+        819
+      ],
+      "mean_absolute_channel_delta": 0.4772735714285714
+    }
+  ],
+  "engine_vs_live_browser_dpr1": {
+    "different_pixels": 20,
+    "bbox": [
+      766,
+      52,
+      771,
+      389
+    ]
+  },
+  "source_sha256": "a2781f29002822fa55df4b7d3d8703f8b63f778174b101eb881a14fcc2e8e172"
+}

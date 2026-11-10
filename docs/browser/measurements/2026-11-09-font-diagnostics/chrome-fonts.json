@@ -1,0 +1,1052 @@
+{
+  "browser": {
+    "protocolVersion": "1.3",
+    "product": "Chrome/157.0.8103.38",
+    "revision": "@a733b5afbb3ba618844ff8876b89ad1a774b2f18",
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+    "jsVersion": "15.7.112.23"
+  },
+  "source_sha256": "a2781f29002822fa55df4b7d3d8703f8b63f778174b101eb881a14fcc2e8e172",
+  "rows": [
+    {
+      "id": "element",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 11
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 4
+        }
+      ]
+    },
+    {
+      "id": "after-element",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 17
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 4
+        }
+      ]
+    },
+    {
+      "id": "pseudo",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 10
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 4
+        }
+      ]
+    },
+    {
+      "id": "after-pseudo",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 16
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 4
+        }
+      ]
+    },
+    {
+      "id": "duplicates",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 14
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 4
+        }
+      ]
+    },
+    {
+      "id": "after-duplicates",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 20
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 4
+        }
+      ]
+    },
+    {
+      "id": "suppressed",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 13
+        }
+      ]
+    },
+    {
+      "id": "after-suppressed",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 23
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 4
+        }
+      ]
+    },
+    {
+      "id": "after-hidden",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 24
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 4
+        }
+      ]
+    },
+    {
+      "id": "after-invisible",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 27
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 4
+        }
+      ]
+    },
+    {
+      "id": "in-contents",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 18
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 4
+        }
+      ]
+    },
+    {
+      "id": "after-contents",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 18
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 4
+        }
+      ]
+    },
+    {
+      "id": "contents-pseudo",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 19
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 4
+        }
+      ]
+    },
+    {
+      "id": "after-contents-pseudo",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 25
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 4
+        }
+      ]
+    },
+    {
+      "id": "quote-hidden",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 12
+        }
+      ]
+    },
+    {
+      "id": "quote-visible",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 18
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 7
+        }
+      ]
+    },
+    {
+      "id": "first-reset",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 15
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 4
+        }
+      ]
+    },
+    {
+      "id": "sibling-increment",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 21
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 4
+        }
+      ]
+    },
+    {
+      "id": "sibling-reset",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 17
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 4
+        }
+      ]
+    },
+    {
+      "id": "sibling-after",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 17
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 4
+        }
+      ]
+    },
+    {
+      "id": "outer-reset",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 39
+        }
+      ]
+    },
+    {
+      "id": "inner-reset",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 19
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 8
+        }
+      ]
+    },
+    {
+      "id": "after-inner",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 17
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 6
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 6
+        }
+      ]
+    },
+    {
+      "id": "after-outer",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 15
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 4
+        }
+      ]
+    },
+    {
+      "id": "new-pseudo",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 25
+        }
+      ]
+    },
+    {
+      "id": "pseudo-child",
+      "node": "SPAN",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 9
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 4
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 6
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::after",
+      "pseudo": "after",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 3
+        }
+      ]
+    },
+    {
+      "id": "after-new-pseudo",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 23
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 4
+        }
+      ]
+    },
+    {
+      "id": "saturate-max",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 16
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 13
+        }
+      ]
+    },
+    {
+      "id": "saturate-min",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 17
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 14
+        }
+      ]
+    },
+    {
+      "id": "large-css",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 22
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 13
+        }
+      ]
+    },
+    {
+      "id": "new-r",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 24
+        }
+      ]
+    },
+    {
+      "id": "r-child",
+      "node": "SPAN",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 9
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 4
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 4
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::after",
+      "pseudo": "after",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 3
+        }
+      ]
+    },
+    {
+      "id": "after-r",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 16
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 4
+        }
+      ]
+    },
+    {
+      "id": "s-reference",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 36
+        }
+      ]
+    },
+    {
+      "id": "s-reset",
+      "node": "SPAN",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 15
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 4
+        }
+      ]
+    },
+    {
+      "id": "s-after",
+      "node": "SPAN",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 15
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 4
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 4
+        }
+      ]
+    },
+    {
+      "id": "increment-cancel",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 22
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 5
+        }
+      ]
+    },
+    {
+      "id": "increment-large",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 25
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 5
+        }
+      ]
+    },
+    {
+      "id": "increment-overflow-sum",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 25
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 13
+        }
+      ]
+    },
+    {
+      "id": "increment-intermediate-overflow",
+      "node": "DIV",
+      "pseudo": null,
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 28
+        }
+      ]
+    },
+    {
+      "id": null,
+      "node": "::before",
+      "pseudo": "before",
+      "fonts": [
+        {
+          "familyName": "Liberation Sans",
+          "postScriptName": "LiberationSans",
+          "isCustomFont": false,
+          "glyphCount": 7
+        }
+      ]
+    }
+  ]
+}

@@ -2,13 +2,18 @@
 //! it) and print what the engine made of it: the error, or the fallbacks and
 //! the box tree with geometry. For debugging pages saved to /var/tmp.
 //!
-//!   cargo run --release -p olo-web --example page_dump -- FILE.html [WIDTH] [--boxes] [--style CLASS] [--png OUT.png [HEIGHT [Y]]] [--issues] [--at X,Y]
+//!   cargo run --release -p olo-web --example page_dump -- FILE.html [WIDTH] [--boxes] [--style CLASS] [--png OUT.png [HEIGHT [Y]]] [--issues] [--at X,Y] [--scale DPR] [--fonts OUT.json]
 //!
 //! `--at X,Y` prints the paint commands whose bounds cover that page point,
 //! in paint order, with the element each paints and whether a clip hides it.
 //!
 //! `--style CLASS` prints the computed font, spacing and bounds of every box
 //! whose element has that class, for comparing with Chrome's getComputedStyle.
+//! `--fonts OUT.json` exports shaped paragraph faces and glyphs, including
+//! fallback runs, font hashes, variation coordinates and line baselines.
+//! Paragraph bounds are separate from their owning element's border box.
+//! `--scale DPR` uses that device grid for metrics and rasterization; PNG
+//! height and Y remain device pixels, width is WIDTH × DPR.
 #[path = "../tests/support/native_font_host.rs"]
 mod native_host;
 use olo_web::{
@@ -35,7 +40,7 @@ impl Host for DumpHost {
         self.0.system_color(c, s)
     }
     fn font(&self, r: &FontRequest) -> style::Result<FontMetrics> {
-        self.0.font(r)
+        self.0.0.metrics(r, None).map(|m| m.style_at(self.1.scale)).map_err(style::Error::Font)
     }
     fn font_context(&self) -> u64 {
         self.0.font_context()
@@ -79,10 +84,46 @@ fn number(v: &style::Value) -> String {
         other => format!("{other:?}"),
     }
 }
+fn export_fonts(page: &page::Page, scope: &olo_web::font::Scope, output: &Path, scale: f64) {
+    use serde_json::json;
+    use sha2::{Digest, Sha256};
+    let layout = page.scene.layout();
+    let mut faces = std::collections::BTreeMap::new();
+    let mut paragraphs = Vec::new();
+    for (id, b) in layout.cache().tree().iter() {
+        let Some(text) = layout.text_layout(id) else { continue };
+        let mut runs = Vec::new();
+        for run in &text.text().paragraph().runs {
+            let selection = run.font.selection();
+            let face_id = selection.face.value();
+            faces.entry(face_id).or_insert_with(|| {
+                let face = ttf_parser::Face::parse(selection.data(), selection.collection_index()).expect("selected face");
+                let names: Vec<_> = face.names().into_iter().filter(|n| [1, 2, 4, 6, 16, 17].contains(&n.name_id)).filter_map(|n| n.to_string().map(|v| json!({"id":n.name_id,"value":v}))).collect();
+                json!({"families":scope.catalog().face(selection.face).unwrap().families.iter().map(AsRef::as_ref).collect::<Vec<&str>>(),"names":names,"sha256":format!("{:x}",Sha256::digest(selection.data())),"collection_index":selection.collection_index()})
+            });
+            let coordinates: Vec<_> = selection.coordinates.iter().map(|c| json!({"tag":String::from_utf8_lossy(&c.tag),"value":c.value})).collect();
+            let glyphs: Vec<_> = run.glyphs.iter().map(|g| json!({"id":g.id,"cluster":g.cluster,"advance":[g.x_advance,g.y_advance],"offset":[g.x_offset,g.y_offset]})).collect();
+            runs.push(json!({"face":face_id,"text":&run.source[run.range.start as usize..run.range.end as usize],"range":[run.range.start,run.range.end],"size":run.size,"coordinates":coordinates,"synthetic_bold":selection.synthesis.bold,"synthetic_shear":selection.synthesis.shear_degrees,"glyphs":glyphs}));
+        }
+        let lines: Vec<_> = text.lines().iter().enumerate().map(|(i, l)| json!({"baseline":text.baseline(i),"advance":l.advance,"ascent":l.ascent,"descent":l.descent})).collect();
+        let bounds = layout.bounds(id).map(|r| [r.x, r.y, r.width, r.height]);
+        let tree = layout.cache().tree();
+        let element_bounds = tree
+            .boxes_of(b.node)
+            .find(|id| tree.get(*id).is_some_and(|b| !matches!(b.kind, layout::BoxKind::InlineContent { .. })))
+            .and_then(|id| layout.bounds(id))
+            .map(|r| [r.x, r.y, r.width, r.height]);
+        paragraphs.push(json!({"box":id.index(),"element":page.document.name(b.node).ok().flatten(),"id":page.document.attribute(b.node,"id").ok().flatten(),"bounds":bounds,"element_bounds":element_bounds,"runs":runs,"lines":lines}));
+    }
+    std::fs::write(output, serde_json::to_vec_pretty(&json!({"scale":scale,"faces":faces,"paragraphs":paragraphs})).unwrap()).expect("font report");
+}
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let file = Path::new(&args[0]);
     let width: f64 = args.get(1).and_then(|w| w.parse().ok()).unwrap_or(1000.);
+    let scale: f64 = args.iter().position(|a| a == "--scale").map(|i| args.get(i + 1).expect("--scale DPR").parse().expect("numeric scale")).unwrap_or(1.);
+    assert!(scale.is_finite() && scale > 0. && scale <= 8., "scale must be in (0, 8]");
+    let fonts_output = args.iter().position(|a| a == "--fonts").map(|i| args.get(i + 1).expect("--fonts OUT.json"));
     let boxes = args.iter().any(|a| a == "--boxes");
     let style_class = args.iter().position(|a| a == "--style").and_then(|i| args.get(i + 1)).cloned();
     let issues = args.iter().any(|a| a == "--issues");
@@ -109,7 +150,7 @@ fn main() {
         Some(Arc::new(bytes) as Arc<dyn AsRef<[u8]> + Send + Sync>)
     });
     let scope = FontSet::new(fonts.finish(None).unwrap(), olo_web::font::system::chrome_policy().unwrap(), Default::default()).unwrap().scope("en").unwrap();
-    let viewport = layout::Viewport { width, height: 700., scale: 1. };
+    let viewport = layout::Viewport { width, height: 700., scale };
     let mut shaper = shaping::Engine::default();
     let mut painter = paint::Engine::default();
     let source: Arc<str> = Arc::from(std::fs::read_to_string(file).unwrap());
@@ -187,6 +228,9 @@ fn main() {
             println!("title: {}", page.title);
             println!("fallbacks ({}): {}", page.fallbacks.total(), page.fallbacks);
             println!("stylesheet issues: {}", page.stylesheet_issues);
+            if let Some(file) = fonts_output {
+                export_fonts(&page, &prepared_scope, Path::new(file), scale);
+            }
             if let Some(class) = style_class {
                 use olo_web::css::style::Property as P;
                 let layout = page.scene.layout();
@@ -251,7 +295,7 @@ fn main() {
             }
             if let Some((file, height, top)) = png {
                 // 512 × 512 tiles, as the browser paints, composed into one image.
-                let (w, h) = (width as u32, height);
+                let (w, h) = ((width * scale).round() as u32, height);
                 let mut whole = tiny_skia::Pixmap::new(w, h).expect("pixmap");
                 for y in (0..h).step_by(512) {
                     for x in (0..w).step_by(512) {

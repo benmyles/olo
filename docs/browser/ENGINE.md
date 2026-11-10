@@ -2675,3 +2675,34 @@ current tiny-skia curve subdivision. Remaining one-channel benchmark differences
 are explicit: first viewport atDPR1 goes55→57 differing pixels versus Chrome,
 max20 unchanged. Exact cropped-layer raster invariance and Chrome coverage still
 need work; this is not a complete analytic compositor.
+
+## Saved-page font diagnostics
+
+`cargo run --release -p olo-web --example page_dump -- FILE.html 1000
+--scale 1.5 --fonts /var/tmp/FONTS.json --png /var/tmp/PAGE.png 1050`
+exports the shaped paragraph runs and a 1000×700 CSS-pixel raster. Use a
+scratch directory of your own under `/var/tmp` for those output paths.
+The JSON includes actual selected/fallback face names, font-byte SHA-256,
+collection indices, variation/synthesis settings, glyph IDs and font-unit
+advances, and paragraph-local line baselines. `bounds` is the paragraph's
+rectangle; `element_bounds` is its owning element's first non-paragraph
+border box, when present. They differ when an element contains blocks.
+Generated hyphen/ellipsis replacement runs are not included in this
+paragraph-run export. This is a diagnostic, not a font-parity assertion.
+
+`--scale` controls style metrics, layout and rasterization together. Width
+is in CSS pixels; PNG height and vertical offset remain device pixels.
+The layout viewport stays 700 CSS pixels high. Fonts use the repository's
+Noto faces, installed system faces and the browser's Chrome family policy;
+web fonts are read from `fonts/` beside the saved HTML. This offline host
+does not reproduce every live browser resource, palette or interaction.
+
+For a Chrome reference, change the **owned Agent Screen's real output
+scale**, clear CDP device-metrics emulation, and verify `devicePixelRatio`,
+font readiness and frame completion at every scale. CDP's
+`Emulation.setDeviceMetricsOverride` does not reproduce native desktop
+border snapping: a 1 px border at native 1.5× computes to 0.666667 CSS px,
+while emulated 1.5× can retain 1 CSS px. Preserve emulated observations as
+such; do not use them as native-scale acceptance references. The counter
+font investigation in `measurements/2026-11-09-font-diagnostics` records
+both modes and repeat-verified native screenshots.

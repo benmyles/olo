@@ -1,0 +1,31 @@
+<!doctype html><meta charset=utf-8><title>CSS counter sequencing</title>
+<style>
+body{font:16px Arial;margin:24px}.case{counter-reset:n 0;margin:12px 0}.out::before{content:'[' counter(n) '] '}
+#pseudo::before{counter-reset:n 2;counter-increment:n 3;counter-set:n 9}
+#suppressed::before{display:none;counter-increment:n 100;content:counter(n)}
+#contents-pseudo::before{display:contents;counter-increment:n 3;content:'[' counter(n) '] '}
+#quote-hidden::before{display:none;content:open-quote}
+#quote-visible::before{content:open-quote 'hello' close-quote}
+</style>
+<section class=case><div id=element class=out style='counter-reset:n 2;counter-increment:n 3;counter-set:n 9'>element</div><div id=after-element class=out>after element</div></section>
+<section class=case><div id=pseudo class=out>pseudo</div><div id=after-pseudo class=out>after pseudo</div></section>
+<section class=case><div id=duplicates class=out style='counter-increment:n 2 n 3;counter-set:n 8 n 9'>duplicates</div><div id=after-duplicates class=out>after duplicates</div></section>
+<section class=case><div id=suppressed>hidden pseudo</div><div id=after-suppressed class=out>after hidden pseudo</div></section>
+<section class=case><div style='display:none;counter-increment:n 100'>hidden element</div><div id=after-hidden class=out>after hidden element</div></section>
+<section class=case><div style='visibility:hidden;counter-increment:n 3'>invisible element</div><div id=after-invisible class=out>after invisible element</div></section>
+<section class=case><div style='display:contents;counter-increment:n 3'><div id=in-contents class=out>contents child</div></div><div id=after-contents class=out>after contents</div></section>
+<section class=case><div id=contents-pseudo class=out>contents pseudo</div><div id=after-contents-pseudo class=out>after contents pseudo</div></section>
+<section class=case><div id=quote-hidden>hidden quote</div><div id=quote-visible>visible quote</div></section>
+<style>.multi::before{content:'[' counters(q,'.') '] '}#new-pseudo::before{counter-reset:q 4;content:'[' counters(q,'.') '] '}#new-pseudo::after{counter-increment:q;content:'[' counters(q,'.') ']'}</style>
+<section><div id=first-reset class=multi style='counter-reset:q 4'>first reset</div><div id=sibling-increment class=multi style='counter-increment:q'>sibling increment</div><div id=sibling-reset class=multi style='counter-reset:q 9'>sibling reset</div><div id=sibling-after class=multi>sibling after</div></section>
+<section style='counter-reset:q 2'><div id=outer-reset class=multi style='counter-reset:q 4'>outer reset<div id=inner-reset class=multi style='counter-reset:q 7'>inner reset</div><div id=after-inner class=multi>after inner</div></div><div id=after-outer class=multi>after outer</div></section>
+<section><div id=new-pseudo>new pseudo <span id=pseudo-child class=multi>child</span></div><div id=after-new-pseudo class=multi>after pseudo parent</div></section>
+<section class=case><div id=saturate-max class=out style='counter-reset:n 2147483647;counter-increment:n 1'>max</div><div id=saturate-min class=out style='counter-reset:n -2147483648;counter-increment:n -1'>min</div><div id=large-css class=out style='counter-set:n 9223372036854775807'>large CSS</div></section>
+<style>#new-r::before{counter-reset:r 4;content:'[' counter(r) '] '}#r-child::before,#after-r::before{content:'[' counter(r) '] '}#new-r::after{counter-increment:r;content:'[' counter(r) ']'}</style>
+<section><div id=new-r>new counter <span id=r-child>child</span></div><div id=after-r>after parent</div></section>
+<style>#s-reference::before{content:'[' counter(s) '] '}#s-reset::before{content:'[' counters(s,'.') '] '}#s-after::before{content:'[' counter(s) '] '}</style>
+<section><div id=s-reference>reference <span id=s-reset style='counter-reset:s 4'>reset child</span><span id=s-after>after child</span></div></section>
+<section class=case style='counter-reset:n 10'><div id=increment-cancel class=out style='counter-increment:n 2147483647 n -2147483647'>cancel increments</div><div id=increment-large class=out style='counter-increment:n 9223372036854775807 n -1'>large then minus one</div></section>
+<section class=case style='counter-reset:n -100'><div id=increment-overflow-sum class=out style='counter-increment:n 2147483647 n 2147483647'>overflow sum</div></section>
+<section class=case style='counter-reset:n -100'><div id=increment-intermediate-overflow class=out style='counter-increment:n 2147483647 n 2147483647 n -2147483647'>intermediate overflow</div></section>
+<style>body{font-size:12px;line-height:18px;display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin:20px}section{border-top:1px solid #aaa;padding-top:6px}.case{margin:0}</style>
