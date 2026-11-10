@@ -343,7 +343,7 @@ impl Engine {
                             (origin.y * scale - f64::from(region.y)) as f32,
                         );
                         if t.is_finite() && t.sx != 0. && t.sy != 0. {
-                            out.fill_path(&path, &paint(*color), FillRule::Winding, t.post_concat(ct), mask.as_ref());
+                            self.paint_glyph(out, &path, *color, t.post_concat(ct), mask.as_ref(), cancel)?;
                         }
                     }
                 }
@@ -363,7 +363,6 @@ impl Engine {
                         }
                         None => None,
                     };
-                    let p = paint(*color);
                     let passes: &[bool] = if coverage.is_some() { &[true, false] } else { &[false] };
                     for &pass in passes {
                         if !pass && color[3] == 0 {
@@ -383,7 +382,7 @@ impl Engine {
                                 let t = t.post_concat(ct);
                                 match (pass, coverage.as_mut()) {
                                     (true, Some(m)) => m.fill_path(&path, FillRule::Winding, true, t),
-                                    _ => out.fill_path(&path, &p, FillRule::Winding, t, mask.as_ref()),
+                                    _ => self.paint_glyph(out, &path, *color, t, mask.as_ref(), cancel)?,
                                 }
                             }
                             pen += i64::from(g.x_advance);

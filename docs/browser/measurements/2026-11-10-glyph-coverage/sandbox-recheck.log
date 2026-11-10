@@ -1,0 +1,14 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/ben/worktrees/olo/browser/smithay/smithay/Cargo.toml
+workspace: /home/ben/worktrees/olo/browser/Cargo.toml
+   Compiling olo-xdg v0.1.0 (/home/ben/worktrees/olo/browser/crates/xdg)
+   Compiling olo-protocol v0.1.0 (/home/ben/worktrees/olo/browser/crates/protocol)
+   Compiling olo-fuzz v0.1.0 (/home/ben/worktrees/olo/browser/crates/fuzz)
+    Finished `release` profile [optimized + debuginfo] target(s) in 23.64s
+     Running tests/sandbox.rs (target/release/deps/sandbox-c190f0f58518b86a)
+
+running 1 test
+test the_sandbox_is_sealed ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

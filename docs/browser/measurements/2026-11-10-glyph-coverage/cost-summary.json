@@ -1,0 +1,282 @@
+[
+  {
+    "tag": "ordinary",
+    "scale": 1.25,
+    "variant": "baseline",
+    "reload_cpu_ms": 33.57142857142857,
+    "ready_ms": 25.0,
+    "rss_kib": 130708.0,
+    "compiler_overlap": true,
+    "idle": [
+      {
+        "cpu": 0.0,
+        "wakeups": 0,
+        "frames": 0
+      },
+      {
+        "cpu": 0.0,
+        "wakeups": 0,
+        "frames": 0
+      }
+    ],
+    "scroll": {
+      "drag": {
+        "first_ms": 26.4,
+        "hitches": 0,
+        "still": 0,
+        "slowest_ms": 0.81
+      },
+      "wheel": {
+        "first_ms": 8.9,
+        "hitches": 0,
+        "still": 0,
+        "slowest_ms": 0.95
+      }
+    }
+  },
+  {
+    "tag": "ordinary",
+    "scale": 1.25,
+    "variant": "candidate",
+    "reload_cpu_ms": 33.57142857142857,
+    "ready_ms": 24.0,
+    "rss_kib": 132354.0,
+    "compiler_overlap": false,
+    "idle": [
+      {
+        "cpu": 0.0,
+        "wakeups": 0,
+        "frames": 0
+      },
+      {
+        "cpu": 0.0,
+        "wakeups": 0,
+        "frames": 0
+      }
+    ],
+    "scroll": {
+      "drag": {
+        "first_ms": 27.4,
+        "hitches": 0,
+        "still": 0,
+        "slowest_ms": 0.66
+      },
+      "wheel": {
+        "first_ms": 9.05,
+        "hitches": 0,
+        "still": 0,
+        "slowest_ms": 0.55
+      }
+    }
+  },
+  {
+    "tag": "ordinary",
+    "scale": 2,
+    "variant": "baseline",
+    "reload_cpu_ms": 37.85714285714286,
+    "ready_ms": 24.5,
+    "rss_kib": 138174.0,
+    "compiler_overlap": false,
+    "idle": [
+      {
+        "cpu": 0.0,
+        "wakeups": 0,
+        "frames": 0
+      },
+      {
+        "cpu": 0.0,
+        "wakeups": 0,
+        "frames": 0
+      }
+    ],
+    "scroll": {
+      "drag": {
+        "first_ms": 28.5,
+        "hitches": 0,
+        "still": 0,
+        "slowest_ms": 1.06
+      },
+      "wheel": {
+        "first_ms": 9.05,
+        "hitches": 0,
+        "still": 0,
+        "slowest_ms": 2.23
+      }
+    }
+  },
+  {
+    "tag": "ordinary",
+    "scale": 2,
+    "variant": "candidate",
+    "reload_cpu_ms": 36.42857142857143,
+    "ready_ms": 24.0,
+    "rss_kib": 139318.0,
+    "compiler_overlap": false,
+    "idle": [
+      {
+        "cpu": 0.0,
+        "wakeups": 0,
+        "frames": 0
+      },
+      {
+        "cpu": 0.0,
+        "wakeups": 0,
+        "frames": 0
+      }
+    ],
+    "scroll": {
+      "drag": {
+        "first_ms": 28.5,
+        "hitches": 0,
+        "still": 0,
+        "slowest_ms": 1.02
+      },
+      "wheel": {
+        "first_ms": 9.149999999999999,
+        "hitches": 0,
+        "still": 0,
+        "slowest_ms": 1.15
+      }
+    }
+  },
+  {
+    "tag": "text",
+    "scale": 1.25,
+    "variant": "baseline",
+    "reload_cpu_ms": 38.57142857142857,
+    "ready_ms": 17.0,
+    "rss_kib": 129254.0,
+    "compiler_overlap": false,
+    "idle": [
+      {
+        "cpu": 0.0,
+        "wakeups": 0,
+        "frames": 0
+      },
+      {
+        "cpu": 0.0,
+        "wakeups": 0,
+        "frames": 0
+      }
+    ],
+    "scroll": {
+      "drag": {
+        "first_ms": 28.45,
+        "hitches": 0,
+        "still": 0,
+        "slowest_ms": 0.61
+      },
+      "wheel": {
+        "first_ms": 8.9,
+        "hitches": 0,
+        "still": 0,
+        "slowest_ms": 0.47
+      }
+    }
+  },
+  {
+    "tag": "text",
+    "scale": 1.25,
+    "variant": "candidate",
+    "reload_cpu_ms": 40.714285714285715,
+    "ready_ms": 16.5,
+    "rss_kib": 130980.0,
+    "compiler_overlap": false,
+    "idle": [
+      {
+        "cpu": 0.0,
+        "wakeups": 0,
+        "frames": 0
+      },
+      {
+        "cpu": 0.0,
+        "wakeups": 0,
+        "frames": 0
+      }
+    ],
+    "scroll": {
+      "drag": {
+        "first_ms": 28.549999999999997,
+        "hitches": 0,
+        "still": 0,
+        "slowest_ms": 0.73
+      },
+      "wheel": {
+        "first_ms": 7.1,
+        "hitches": 0,
+        "still": 0,
+        "slowest_ms": 0.63
+      }
+    }
+  },
+  {
+    "tag": "text",
+    "scale": 2,
+    "variant": "baseline",
+    "reload_cpu_ms": 47.14285714285714,
+    "ready_ms": 17.0,
+    "rss_kib": 136470.0,
+    "compiler_overlap": false,
+    "idle": [
+      {
+        "cpu": 0.0,
+        "wakeups": 0,
+        "frames": 0
+      },
+      {
+        "cpu": 0.0,
+        "wakeups": 0,
+        "frames": 0
+      }
+    ],
+    "scroll": {
+      "drag": {
+        "first_ms": 25.200000000000003,
+        "hitches": 0,
+        "still": 0,
+        "slowest_ms": 4.57
+      },
+      "wheel": {
+        "first_ms": 9.75,
+        "hitches": 0,
+        "still": 0,
+        "slowest_ms": 2.71
+      }
+    }
+  },
+  {
+    "tag": "text",
+    "scale": 2,
+    "variant": "candidate",
+    "reload_cpu_ms": 50.714285714285715,
+    "ready_ms": 17.0,
+    "rss_kib": 136410.0,
+    "compiler_overlap": false,
+    "idle": [
+      {
+        "cpu": 0.0,
+        "wakeups": 0,
+        "frames": 0
+      },
+      {
+        "cpu": 0.0,
+        "wakeups": 0,
+        "frames": 0
+      }
+    ],
+    "scroll": {
+      "drag": {
+        "first_ms": 27.85,
+        "hitches": 0,
+        "still": 0,
+        "slowest_ms": 2.68
+      },
+      "wheel": {
+        "first_ms": 9.0,
+        "hitches": 0,
+        "still": 0,
+        "slowest_ms": 0.91
+      }
+    }
+  }
+]

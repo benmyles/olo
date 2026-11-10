@@ -1,0 +1,242 @@
+[
+  {
+    "paragraphs": 100,
+    "scale": 1,
+    "direct": {
+      "cold_raster_us": 980.211,
+      "tile_raster_us": 625.090242,
+      "glyph_mask_bytes": 0.0,
+      "glyph_masks": 0.0,
+      "mask_hits": 0.0,
+      "mask_misses": 0.0,
+      "mask_resets": 0.0,
+      "sha256": "c3da6183a2e135ae8129d17beab3dfbeb66638a858cb1560e91832bbeb8faf66"
+    },
+    "cached": {
+      "cold_raster_us": 1395.0005,
+      "tile_raster_us": 77.869125,
+      "glyph_mask_bytes": 361996.0,
+      "glyph_masks": 184.0,
+      "mask_hits": 92000.0,
+      "mask_misses": 184.0,
+      "mask_resets": 0.0,
+      "sha256": "c3da6183a2e135ae8129d17beab3dfbeb66638a858cb1560e91832bbeb8faf66"
+    }
+  },
+  {
+    "paragraphs": 100,
+    "scale": 1.25,
+    "direct": {
+      "cold_raster_us": 845.2,
+      "tile_raster_us": 502.379874,
+      "glyph_mask_bytes": 0.0,
+      "glyph_masks": 0.0,
+      "mask_hits": 0.0,
+      "mask_misses": 0.0,
+      "mask_resets": 0.0,
+      "sha256": "4fda258a6096ef71c29b38b6f1c168c91895ccd5757030b021f91053ba81f226"
+    },
+    "cached": {
+      "cold_raster_us": 869.0525,
+      "tile_raster_us": 57.507193,
+      "glyph_mask_bytes": 333820.0,
+      "glyph_masks": 114.0,
+      "mask_hits": 57000.0,
+      "mask_misses": 114.0,
+      "mask_resets": 0.0,
+      "sha256": "4fda258a6096ef71c29b38b6f1c168c91895ccd5757030b021f91053ba81f226"
+    }
+  },
+  {
+    "paragraphs": 100,
+    "scale": 1.5,
+    "direct": {
+      "cold_raster_us": 737.564,
+      "tile_raster_us": 407.19515,
+      "glyph_mask_bytes": 0.0,
+      "glyph_masks": 0.0,
+      "mask_hits": 0.0,
+      "mask_misses": 0.0,
+      "mask_resets": 0.0,
+      "sha256": "64cf66b86d080b3f17256628024f2221b7fcc07719e37e8d54a5e67fe5c6d936"
+    },
+    "cached": {
+      "cold_raster_us": 765.7529999999999,
+      "tile_raster_us": 61.263418,
+      "glyph_mask_bytes": 317069.0,
+      "glyph_masks": 80.0,
+      "mask_hits": 40000.0,
+      "mask_misses": 80.0,
+      "mask_resets": 0.0,
+      "sha256": "64cf66b86d080b3f17256628024f2221b7fcc07719e37e8d54a5e67fe5c6d936"
+    }
+  },
+  {
+    "paragraphs": 100,
+    "scale": 1.75,
+    "direct": {
+      "cold_raster_us": 708.9175,
+      "tile_raster_us": 381.67103999999995,
+      "glyph_mask_bytes": 0.0,
+      "glyph_masks": 0.0,
+      "mask_hits": 0.0,
+      "mask_misses": 0.0,
+      "mask_resets": 0.0,
+      "sha256": "3ccbe832c1ee56fd360334238df263c205e118548dfe7015bfbe370a6af25ac0"
+    },
+    "cached": {
+      "cold_raster_us": 743.3415,
+      "tile_raster_us": 121.957742,
+      "glyph_mask_bytes": 303832.0,
+      "glyph_masks": 56.0,
+      "mask_hits": 28000.0,
+      "mask_misses": 56.0,
+      "mask_resets": 0.0,
+      "sha256": "3ccbe832c1ee56fd360334238df263c205e118548dfe7015bfbe370a6af25ac0"
+    }
+  },
+  {
+    "paragraphs": 100,
+    "scale": 2,
+    "direct": {
+      "cold_raster_us": 569.5735,
+      "tile_raster_us": 309.432007,
+      "glyph_mask_bytes": 0.0,
+      "glyph_masks": 0.0,
+      "mask_hits": 0.0,
+      "mask_misses": 0.0,
+      "mask_resets": 0.0,
+      "sha256": "5a7394e2aafe30b959ade9c9923587b2e345990cdb8a6cdf408f145e6376a674"
+    },
+    "cached": {
+      "cold_raster_us": 626.1815,
+      "tile_raster_us": 133.327435,
+      "glyph_mask_bytes": 290809.0,
+      "glyph_masks": 36.0,
+      "mask_hits": 18000.0,
+      "mask_misses": 36.0,
+      "mask_resets": 0.0,
+      "sha256": "5a7394e2aafe30b959ade9c9923587b2e345990cdb8a6cdf408f145e6376a674"
+    }
+  },
+  {
+    "paragraphs": 1000,
+    "scale": 1,
+    "direct": {
+      "cold_raster_us": 907.6675,
+      "tile_raster_us": 624.07665,
+      "glyph_mask_bytes": 0.0,
+      "glyph_masks": 0.0,
+      "mask_hits": 0.0,
+      "mask_misses": 0.0,
+      "mask_resets": 0.0,
+      "sha256": "c3da6183a2e135ae8129d17beab3dfbeb66638a858cb1560e91832bbeb8faf66"
+    },
+    "cached": {
+      "cold_raster_us": 982.3879999999999,
+      "tile_raster_us": 71.287488,
+      "glyph_mask_bytes": 361996.0,
+      "glyph_masks": 184.0,
+      "mask_hits": 92000.0,
+      "mask_misses": 184.0,
+      "mask_resets": 0.0,
+      "sha256": "c3da6183a2e135ae8129d17beab3dfbeb66638a858cb1560e91832bbeb8faf66"
+    }
+  },
+  {
+    "paragraphs": 1000,
+    "scale": 1.25,
+    "direct": {
+      "cold_raster_us": 758.7565,
+      "tile_raster_us": 497.920919,
+      "glyph_mask_bytes": 0.0,
+      "glyph_masks": 0.0,
+      "mask_hits": 0.0,
+      "mask_misses": 0.0,
+      "mask_resets": 0.0,
+      "sha256": "4fda258a6096ef71c29b38b6f1c168c91895ccd5757030b021f91053ba81f226"
+    },
+    "cached": {
+      "cold_raster_us": 762.162,
+      "tile_raster_us": 58.28765,
+      "glyph_mask_bytes": 333820.0,
+      "glyph_masks": 114.0,
+      "mask_hits": 57000.0,
+      "mask_misses": 114.0,
+      "mask_resets": 0.0,
+      "sha256": "4fda258a6096ef71c29b38b6f1c168c91895ccd5757030b021f91053ba81f226"
+    }
+  },
+  {
+    "paragraphs": 1000,
+    "scale": 1.5,
+    "direct": {
+      "cold_raster_us": 631.079,
+      "tile_raster_us": 402.40654100000006,
+      "glyph_mask_bytes": 0.0,
+      "glyph_masks": 0.0,
+      "mask_hits": 0.0,
+      "mask_misses": 0.0,
+      "mask_resets": 0.0,
+      "sha256": "64cf66b86d080b3f17256628024f2221b7fcc07719e37e8d54a5e67fe5c6d936"
+    },
+    "cached": {
+      "cold_raster_us": 668.1315,
+      "tile_raster_us": 61.926469,
+      "glyph_mask_bytes": 317069.0,
+      "glyph_masks": 80.0,
+      "mask_hits": 40000.0,
+      "mask_misses": 80.0,
+      "mask_resets": 0.0,
+      "sha256": "64cf66b86d080b3f17256628024f2221b7fcc07719e37e8d54a5e67fe5c6d936"
+    }
+  },
+  {
+    "paragraphs": 1000,
+    "scale": 1.75,
+    "direct": {
+      "cold_raster_us": 601.4465,
+      "tile_raster_us": 388.15545199999997,
+      "glyph_mask_bytes": 0.0,
+      "glyph_masks": 0.0,
+      "mask_hits": 0.0,
+      "mask_misses": 0.0,
+      "mask_resets": 0.0,
+      "sha256": "3ccbe832c1ee56fd360334238df263c205e118548dfe7015bfbe370a6af25ac0"
+    },
+    "cached": {
+      "cold_raster_us": 621.963,
+      "tile_raster_us": 122.539941,
+      "glyph_mask_bytes": 303832.0,
+      "glyph_masks": 56.0,
+      "mask_hits": 28000.0,
+      "mask_misses": 56.0,
+      "mask_resets": 0.0,
+      "sha256": "3ccbe832c1ee56fd360334238df263c205e118548dfe7015bfbe370a6af25ac0"
+    }
+  },
+  {
+    "paragraphs": 1000,
+    "scale": 2,
+    "direct": {
+      "cold_raster_us": 491.9235,
+      "tile_raster_us": 305.900443,
+      "glyph_mask_bytes": 0.0,
+      "glyph_masks": 0.0,
+      "mask_hits": 0.0,
+      "mask_misses": 0.0,
+      "mask_resets": 0.0,
+      "sha256": "5a7394e2aafe30b959ade9c9923587b2e345990cdb8a6cdf408f145e6376a674"
+    },
+    "cached": {
+      "cold_raster_us": 541.7005,
+      "tile_raster_us": 132.402893,
+      "glyph_mask_bytes": 290809.0,
+      "glyph_masks": 36.0,
+      "mask_hits": 18000.0,
+      "mask_misses": 36.0,
+      "mask_resets": 0.0,
+      "sha256": "5a7394e2aafe30b959ade9c9923587b2e345990cdb8a6cdf408f145e6376a674"
+    }
+  }
+]

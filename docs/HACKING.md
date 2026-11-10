@@ -14770,3 +14770,14 @@ nodes, repeated-source fetch reuse, live scales/themes and link navigation on an
 owned Agent Screen. Independent component geometry/pixel results are pinned in
 `crates/web/tests/image*-fixtures`; known nonpasses are explicit and do not count
 as site acceptance.
+
+Browser glyph coverage uses a bounded worker-local A8 cache (8 MiB payload,
+4,096 entries per tile painter, including 256 KiB scratch). It preserves exact
+device coordinates and native raster/compositing rounding; translating outlines
+to a small mask origin changed pixels. Cache keys include the immutable outline
+and full transform; color is applied on drawing. Tile-edge/large glyphs retain
+the direct clipped renderer. Navigation clears coverage and scale changes select
+new entries. `paint_bench N direct|cached` measures identical tile bytes, cold and
+repeated raster times, hits and retained bytes. See `docs/browser/ENGINE.md` for
+the allocation accounting and limits. This does not close Chrome glyph-pixel
+nonpasses.

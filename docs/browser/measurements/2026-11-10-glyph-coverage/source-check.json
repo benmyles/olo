@@ -1,0 +1,13 @@
+{
+  "source_sha256": {
+    "apps/browser/src/worker.rs": "8f3dddba9cd7db9db32899cbc222d18013936fcecd14e1748443bba5059061e8",
+    "crates/web/src/paint/glyph.rs": "7355f321812a8ad9bba53e6975bfefbbfc1285640ac0a88e16b03c647a1d246d",
+    "crates/web/src/paint/glyph_mask.rs": "03266d6054fd1d87fd412efdb23f0d4bd7a3802d54d6c9df0a3a4de85898112e",
+    "crates/web/src/paint/mod.rs": "52c8122accd7c206f86a40db22dfc842ec9dc62c7d8bac64a5e7eac0b20b6538",
+    "crates/web/src/paint/raster.rs": "d767be4b144d52146553fffebb7f86e1027d6a6ff678772bad9f508ff31e48f4",
+    "crates/web/examples/paint_bench.rs": "497330128d90db970e141e1a45f70846ec8e81b032dd6b521a4100675ade092b"
+  },
+  "browser_sha256": "379d4c5f28af6666e15e32971b29e34729c37c6d99b7d3f301ea5c556e997273",
+  "bench_sha256": "163347819c92f92e4335638c061c243159c46f7d1bffaf388cfd4751f2d68720",
+  "measured_candidate_matches_final_release": true
+}

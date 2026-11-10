@@ -1681,6 +1681,7 @@ fn render(
         let _static_sheets = previous.as_ref().map(|c| c.page.parsed_sheets());
         *cached = None;
         painter.clear_image_cache();
+        painter.clear_glyph_masks();
         // (The pool's tile painters let go of theirs too.)
         TILE_PAINTERS.fetch_add(1, Ordering::Relaxed);
         cache.clear();

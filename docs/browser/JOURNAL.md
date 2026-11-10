@@ -8140,3 +8140,74 @@ separation remains useful; web placement follows measured Chrome behavior.
 The person's session was not installed into or reloaded. Website acceptance
 remains **0/100**; arbitrary fonts, glyph masks, rendering preferences, VDMX,
 text-rendering overrides, color glyphs and general browser parity remain open.
+
+## 2026-11-10 — bounded glyph coverage reuse
+
+Retain A8 glyph coverage on tile painters, with exact one-to-one device pixels,
+full transform/outline identity, color-independent reuse and navigation cleanup.
+The payload budget is 8 MiB / 4,096 entries per painter, including 256 KiB scratch
+and charging outline payload per entry. Allocation headers and spare container
+capacity are extra. No idle work was added. BeOS's separation of font attributes,
+metrics and drawing remains useful; browser coverage stays on its page workers.
+
+The first compact-mask implementation changed clipped curves, and moving curves
+to a mask origin changed floating-point subdivision even without clipping. The
+retained implementation rasterizes at the original tile coordinates, crops only
+afterwards and uses direct drawing for tile-edge and large glyphs. A8 coverage
+also preserves clipping/tint/alpha rounding order; pre-tinted RGBA changed pixels.
+Tests cover 10,000 fractional transforms, shear/reflection, viewport clipping,
+soft clips, translucent colors/backgrounds, budgets, identity, cancellation and
+clear. Installed and downloaded font pages are pixel-identical to the baseline
+at all five scales. All ten benchmark tile hashes match direct drawing.
+
+Release ABBA, 500 repeated 256×256 tiles per case, no compiler overlap:
+
+| DPR | 1,000-row repeated raster µs, direct→cached | Cold raster µs, direct→cached | Retained payload bytes |
+|---|---:|---:|---:|
+| 1 | 624.08→71.29 | 907.67→982.39 | 361,996 |
+| 1.25 | 497.92→58.29 | 758.76→762.16 | 333,820 |
+| 1.5 | 402.41→61.93 | 631.08→668.13 | 317,069 |
+| 1.75 | 388.16→122.54 | 601.45→621.96 | 303,832 |
+| 2 | 305.90→132.40 | 491.92→541.70 | 290,809 |
+
+The 100-row cases also improve repeated raster (2.3–8.7×), but the first 1×
+cold tile rises 980.21→1,395.00 µs. Across both sizes, repeated drawing improves
+2.3–8.8× and cold rendering costs an additional 0.003–0.415 ms. These are CPU
+tile measurements, not evidence of browser-wide superiority.
+
+Owned-screen Browser ABBA versus `ae3f9701`, seven reloads per run:
+
+| Page / DPR | CPU ms/reload | Worker-ready ms | RSS KiB | Drag first ms | Wheel first ms |
+|---|---:|---:|---:|---:|---:|
+| ordinary / 1.25 | 33.57→33.57 | 25→24 | 130,708→132,354 | 26.40→27.40 | 8.90→9.05 |
+| ordinary / 2 | 37.86→36.43 | 24.5→24 | 138,174→139,318 | 28.50→28.50 | 9.05→9.15 |
+| text / 1.25 | 38.57→40.71 | 17→16.5 | 129,254→130,980 | 28.45→28.55 | 8.90→7.10 |
+| text / 2 | 47.14→50.71 | 17→17 | 136,470→136,410 | 25.20→27.85 | 9.75→9.00 |
+
+All 16 idle samples: zero CPU, wakeups and frames. All 32 drag/wheel checks:
+zero hitches/still frames. The first ordinary 1.25× baseline run recorded another
+compiler before sampling; the other runs recorded none. Raw measurements preserve
+load averages, compiler snapshots, slowest draws and binary hashes. Text-heavy
+cold CPU and some first-input latency increased; memory differences are small
+observations, not a general memory-saving claim.
+
+Validation: full release workspace suite **2,181 passed, zero failed, 136 existing
+ignored**; workspace release build; Browser layout lints at 1280×800 and 1440×900.
+All 45 visual reviews (before, intermediate, final: three themes × five live
+scales each) are clean at odd x=49. Compared client interiors are unchanged;
+whole-image differences are in exterior decoration/background pixels. No visible
+browser design changed, so raw captures are archived without a new visual-design
+journal entry. The owned screen was stopped; no install/reload of the person's
+session occurred.
+
+The first full workspace run exposed the sandbox probe's hard-coded `~/src`
+assumption. Its mount parents now derive from the actual checkout; the isolation
+test and complete rerun pass. Mount policy is unchanged. Also verified the kit's
+Cmd+W closes the static Browser and its process; Cmd+Q is not a declared binding.
+Close during active network/JS work remains unverified.
+
+Analytic glyph prototypes and their error measurements are retained as rejected
+experiments: aggregate errors improved but new curve outliers appeared. No Zeno
+dependency or new raster policy shipped. Chrome glyph pixels and website acceptance
+remain open (**0/100**). Evidence and reproduction scripts are in
+`measurements/2026-11-10-glyph-coverage/`, with the summary alongside it.

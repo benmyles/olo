@@ -1,0 +1,42 @@
+[
+  {
+    "scale": 1,
+    "different_pixels": 0,
+    "size": [
+      1000,
+      1850
+    ]
+  },
+  {
+    "scale": 1.25,
+    "different_pixels": 0,
+    "size": [
+      1250,
+      2312
+    ]
+  },
+  {
+    "scale": 1.5,
+    "different_pixels": 0,
+    "size": [
+      1500,
+      2775
+    ]
+  },
+  {
+    "scale": 1.75,
+    "different_pixels": 0,
+    "size": [
+      1750,
+      3237
+    ]
+  },
+  {
+    "scale": 2,
+    "different_pixels": 0,
+    "size": [
+      2000,
+      3700
+    ]
+  }
+]

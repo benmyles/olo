@@ -4,6 +4,7 @@ mod border;
 mod control;
 pub mod decoration;
 mod glyph;
+mod glyph_mask;
 mod image;
 mod index;
 mod mipmap;
@@ -12,6 +13,7 @@ mod scene;
 mod vector;
 use crate::{css, dom, font, layout};
 pub use glyph::{CacheStats, Engine};
+pub use glyph_mask::MaskStats;
 pub use mipmap::ImageCacheStats;
 pub use raster::{DeviceRect, Tile};
 pub(crate) use scene::about_of;
@@ -85,6 +87,9 @@ pub struct Limits {
     pub glyphs: usize,
     pub path_bytes: usize,
     pub path_segments: usize,
+    /// Device-sized glyph coverage retained across tiles and frames.
+    pub glyph_mask_bytes: usize,
+    pub glyph_masks: usize,
     pub tile_pixels: usize,
     /// Concurrent isolated surfaces, masks and transformed clip geometry.
     pub layer_bytes: usize,
@@ -106,6 +111,8 @@ impl Default for Limits {
             glyphs: 8192,
             path_bytes: 16 * 1024 * 1024,
             path_segments: 262144,
+            glyph_mask_bytes: 8 << 20,
+            glyph_masks: 4096,
             tile_pixels: 512 * 512,
             layer_bytes: 16 << 20,
             layer_pixel_work: 64 << 20,

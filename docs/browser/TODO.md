@@ -808,6 +808,10 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   `measurements/2026-11-10-text-baselines.json` retains all pixel nonpasses:
   matching baselines does not establish matching glyph masks. Hinting/VDMX,
   rendering preferences and text-rendering overrides remain incomplete.
+- [x] Bounded worker glyph coverage reuse, preserving direct pixels under
+  clipping/transforms/transparency. Release repeated tiles improve 2.3–8.8×;
+  cold rendering and some input latency cost more. See
+  `measurements/2026-11-10-glyph-coverage.json`; no Chrome pixel-parity claim.
 - [ ] Retained GPU painting, clipping, compositing, scrolling, images,
   SVG, canvas, fonts, video and audio; measure each on release builds.
 - [ ] Native browser shell, tabs/navigation/find/history/bookmarks/downloads.
@@ -1079,6 +1083,9 @@ this is a harness correction, not a browser speedup.
 - [x] Clarify probe shutdown: Cmd+Q was not proof of process termination; explicit
   documented menu quit exits promptly. Harnesses must invoke quit, await actual
   window PID and verify fresh launch identity; forwarded launches aren't fresh.
-- [ ] Verify Browser's human quit shortcut and last-window lifecycle separately:
-  the Cmd+Q probe left a live single-instance process; explicit menu quit exits.
-  Correct harness cleanup is not proof that every human quit path works.
+- [x] Verify the static single-window Close path: the shared kit's Cmd+W
+  fallback requests window close and the Browser process exits. The menu declares
+  no Cmd+Q binding, so that earlier probe was not a supported shortcut.
+  `2026-11-10-glyph-coverage/close-shortcut.json` records the owned-screen check.
+- [ ] Verify close/cancellation during in-flight networking and JavaScript;
+  static-window exit is not evidence for those paths.

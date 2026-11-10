@@ -32,6 +32,7 @@ pub(super) struct ShadowMask {
     pub data: Box<[u8]>,
 }
 pub struct Engine {
+    pub(super) glyph_masks: Option<Box<super::glyph_mask::Cache>>,
     pub(super) image_mips: Option<Box<super::mipmap::Cache>>,
     pub(super) shadows: HashMap<(u32, u32, [[i32; 2]; 4], u64), Arc<ShadowMask>>,
     pub(super) shadow_bytes: usize,
@@ -47,7 +48,7 @@ impl Default for Engine {
 }
 impl Engine {
     pub fn new(limits: Limits) -> Self {
-        Self { image_mips: None, shadows: HashMap::new(), shadow_bytes: 0, fonts: HashMap::new(), limits, clock: 0, stats: CacheStats::default() }
+        Self { glyph_masks: None, image_mips: None, shadows: HashMap::new(), shadow_bytes: 0, fonts: HashMap::new(), limits, clock: 0, stats: CacheStats::default() }
     }
     pub(super) fn limits(&self) -> Limits {
         self.limits
@@ -71,6 +72,7 @@ impl Engine {
         Ok(mask)
     }
     pub fn clear(&mut self) {
+        self.clear_glyph_masks();
         self.clear_image_cache();
         self.shadows.clear();
         self.shadow_bytes = 0;
@@ -80,6 +82,13 @@ impl Engine {
     }
     pub fn cache_stats(&self) -> CacheStats {
         self.stats
+    }
+    /// Drop device coverage on navigation; outline shapes can remain shared.
+    pub fn clear_glyph_masks(&mut self) {
+        self.glyph_masks = None;
+    }
+    pub fn glyph_mask_stats(&self) -> super::MaskStats {
+        self.glyph_masks.as_ref().map_or_else(Default::default, |c| c.stats())
     }
     pub fn image_cache_stats(&self) -> super::ImageCacheStats {
         self.image_mips.as_ref().map_or_else(Default::default, |c| c.stats())

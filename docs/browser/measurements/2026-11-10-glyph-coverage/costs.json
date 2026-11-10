@@ -1,0 +1,4164 @@
+[
+  {
+    "load_before": {
+      "cpu_ms": 570.0,
+      "rss": "132280 kB",
+      "peak_rss": "134184 kB",
+      "threads": "17",
+      "load": [
+        9.12255859375,
+        18.67578125,
+        27.34033203125
+      ]
+    },
+    "load_after": {
+      "cpu_ms": 810.0,
+      "rss": "130332 kB",
+      "peak_rss": "134184 kB",
+      "threads": "17",
+      "load": [
+        9.12255859375,
+        18.67578125,
+        27.34033203125
+      ]
+    },
+    "load_cpu_ms": 240.0,
+    "compilers_before": "3974241       2  225\n3974629       1  149\n",
+    "compilers_after": "",
+    "scale": 1.25,
+    "tag": "ordinary",
+    "variant": "baseline",
+    "binary_sha256": "bf6db85a7e08691273e0dc90c3cbf8827168e43e20783d66f07f7555f625b4aa",
+    "worker_ready_ms": [
+      26,
+      32,
+      24,
+      25,
+      24,
+      25,
+      25
+    ],
+    "idle": {
+      "seconds": 2.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 0
+      },
+      "threads": [
+        {
+          "tid": 3974665,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3974670,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3974674,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3974676,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3974677,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3974678,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3974680,
+          "name": "browser:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3974686,
+          "name": "browse:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3974714,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3974717,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3974718,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3974719,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3974720,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3974744,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3974745,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3974747,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3974748,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.33,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 24.2,
+        "slowest_draw_ms": 0.81,
+        "distance": 692.0,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.963,
+          "sd": 0.016,
+          "min": 0.961,
+          "max": 1.067,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 51,
+        "moving_frames": 49,
+        "frame_ms": 8.37,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 9.0,
+        "slowest_draw_ms": 0.52,
+        "distance": 130.4,
+        "reached_end": false,
+        "notches": {
+          "count": 3,
+          "frames_each": [
+            16,
+            17,
+            16
+          ],
+          "jumps_up": 0,
+          "worst_jump": 0.0
+        }
+      }
+    ],
+    "log": "1-10T10:20:40.038219Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.6 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.30 ms, strata 1.03 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.3 ms, boxes 1.6 ms, text 2.3 ms, layout 2.7 ms, paint 4.9 ms (nothing before build 3.5, finish 1.4; 2003 boxes)\nBrowser: static page ready 26 ms after the request\n2026-11-10T10:20:40.546775Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.6 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.33 ms, strata 1.06 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 10.7 ms, boxes 2.8 ms, text 2.9 ms, layout 2.8 ms, paint 6.3 ms (nothing before build 4.9, finish 1.4; 2003 boxes)\nBrowser: static page ready 32 ms after the request\n2026-11-10T10:20:41.054159Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.5 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.28 ms, strata 0.98 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 7.9 ms, boxes 1.6 ms, text 2.0 ms, layout 2.5 ms, paint 4.5 ms (nothing before build 3.1, finish 1.4; 2003 boxes)\nBrowser: static page ready 24 ms after the request\n2026-11-10T10:20:41.560713Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.5 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.27 ms, strata 0.92 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.1 ms, boxes 1.7 ms, text 2.1 ms, layout 2.6 ms, paint 4.4 ms (nothing before build 3.2, finish 1.2; 2003 boxes)\nBrowser: static page ready 25 ms after the request\n2026-11-10T10:20:42.066796Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.5 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.29 ms, strata 0.95 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.0 ms, boxes 1.6 ms, text 2.0 ms, layout 2.5 ms, paint 4.3 ms (nothing before build 3.0, finish 1.3; 2003 boxes)\nBrowser: static page ready 24 ms after the request\n2026-11-10T10:20:42.573364Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.5 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.32 ms, strata 1.06 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.2 ms, boxes 1.8 ms, text 2.2 ms, layout 2.6 ms, paint 4.9 ms (nothing before build 3.4, finish 1.4; 2003 boxes)\nBrowser: static page ready 25 ms after the request\n2026-11-10T10:20:43.079891Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.5 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.38 ms, strata 1.00 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.2 ms, boxes 1.7 ms, text 2.2 ms, layout 2.6 ms, paint 4.6 ms (nothing before build 3.2, finish 1.4; 2003 boxes)\nBrowser: static page ready 25 ms after the request\n"
+  },
+  {
+    "load_before": {
+      "cpu_ms": 640.0,
+      "rss": "130552 kB",
+      "peak_rss": "130552 kB",
+      "threads": "17",
+      "load": [
+        8.25439453125,
+        18.17578125,
+        27.08447265625
+      ]
+    },
+    "load_after": {
+      "cpu_ms": 880.0,
+      "rss": "131812 kB",
+      "peak_rss": "133812 kB",
+      "threads": "17",
+      "load": [
+        8.25439453125,
+        18.17578125,
+        27.08447265625
+      ]
+    },
+    "load_cpu_ms": 240.0,
+    "compilers_before": "",
+    "compilers_after": "",
+    "scale": 1.25,
+    "tag": "ordinary",
+    "variant": "candidate",
+    "binary_sha256": "379d4c5f28af6666e15e32971b29e34729c37c6d99b7d3f301ea5c556e997273",
+    "worker_ready_ms": [
+      26,
+      26,
+      19,
+      24,
+      24,
+      24,
+      24
+    ],
+    "idle": {
+      "seconds": 2.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 0
+      },
+      "threads": [
+        {
+          "tid": 3975955,
+          "name": "olo-browser",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3975960,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3975962,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3975964,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3975965,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3975966,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3975970,
+          "name": "olo-bro:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3975974,
+          "name": "olo-br:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3975989,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3975990,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3975991,
+          "name": "olo-browser",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3975994,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3975995,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3975998,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3975999,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3976000,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3976001,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.36,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 26.2,
+        "slowest_draw_ms": 0.66,
+        "distance": 687.2,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.957,
+          "sd": 0.0,
+          "min": 0.957,
+          "max": 0.957,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 51,
+        "moving_frames": 49,
+        "frame_ms": 8.37,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 9.1,
+        "slowest_draw_ms": 0.55,
+        "distance": 131.2,
+        "reached_end": false,
+        "notches": {
+          "count": 3,
+          "frames_each": [
+            16,
+            17,
+            16
+          ],
+          "jumps_up": 0,
+          "worst_jump": 0.0
+        }
+      }
+    ],
+    "log": "6-11-10T10:20:50.576103Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.5 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.52 ms, strata 0.96 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.4 ms, boxes 1.7 ms, text 2.1 ms, layout 2.6 ms, paint 4.8 ms (nothing before build 3.3, finish 1.5; 2003 boxes)\nBrowser: static page ready 26 ms after the request\n2026-11-10T10:20:51.082981Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.4 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.27 ms, strata 0.96 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.6 ms, boxes 1.8 ms, text 2.2 ms, layout 2.5 ms, paint 4.4 ms (nothing before build 3.2, finish 1.3; 2003 boxes)\nBrowser: static page ready 26 ms after the request\n2026-11-10T10:20:51.589192Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.4 ms, text 1000\u00d71.1 ms, finish 1003\u00d70.0 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.25 ms, strata 0.56 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.2 ms, style 5.9 ms, boxes 1.5 ms, text 1.6 ms, layout 2.0 ms, paint 3.0 ms (nothing before build 2.2, finish 0.8; 2003 boxes)\nBrowser: static page ready 19 ms after the request\n2026-11-10T10:20:52.095420Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.5 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.24 ms, strata 0.90 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.2 ms, boxes 1.7 ms, text 2.2 ms, layout 2.5 ms, paint 4.1 ms (nothing before build 3.0, finish 1.2; 2003 boxes)\nBrowser: static page ready 24 ms after the request\n2026-11-10T10:20:52.602088Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.5 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.25 ms, strata 0.91 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.3 ms, boxes 1.6 ms, text 2.0 ms, layout 2.4 ms, paint 4.3 ms (nothing before build 3.1, finish 1.2; 2003 boxes)\nBrowser: static page ready 24 ms after the request\n2026-11-10T10:20:53.108557Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.5 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.28 ms, strata 0.98 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.1 ms, boxes 1.7 ms, text 2.0 ms, layout 2.5 ms, paint 4.5 ms (nothing before build 3.2, finish 1.3; 2003 boxes)\nBrowser: static page ready 24 ms after the request\n2026-11-10T10:20:53.615045Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.4 ms, text 1000\u00d71.4 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.24 ms, strata 0.89 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.2 ms, boxes 1.6 ms, text 2.1 ms, layout 2.3 ms, paint 4.0 ms (nothing before build 2.9, finish 1.2; 2003 boxes)\nBrowser: static page ready 24 ms after the request\n"
+  },
+  {
+    "load_before": {
+      "cpu_ms": 700.0,
+      "rss": "131672 kB",
+      "peak_rss": "131672 kB",
+      "threads": "17",
+      "load": [
+        7.7470703125,
+        17.7412109375,
+        26.84765625
+      ]
+    },
+    "load_after": {
+      "cpu_ms": 930.0,
+      "rss": "132896 kB",
+      "peak_rss": "135628 kB",
+      "threads": "17",
+      "load": [
+        7.36669921875,
+        17.49609375,
+        26.71923828125
+      ]
+    },
+    "load_cpu_ms": 230.0,
+    "compilers_before": "",
+    "compilers_after": "",
+    "scale": 1.25,
+    "tag": "ordinary",
+    "variant": "candidate",
+    "binary_sha256": "379d4c5f28af6666e15e32971b29e34729c37c6d99b7d3f301ea5c556e997273",
+    "worker_ready_ms": [
+      25,
+      24,
+      24,
+      24,
+      24,
+      24,
+      24
+    ],
+    "idle": {
+      "seconds": 2.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 0
+      },
+      "threads": [
+        {
+          "tid": 3976676,
+          "name": "olo-browser",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3976681,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3976683,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3976685,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3976687,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3976688,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3976690,
+          "name": "olo-bro:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3976694,
+          "name": "olo-br:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3976713,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3976714,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3976715,
+          "name": "olo-browser",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3976716,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3976717,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3976721,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3976722,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3976723,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3976724,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.34,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 28.6,
+        "slowest_draw_ms": 0.64,
+        "distance": 689.6,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.967,
+          "sd": 0.026,
+          "min": 0.96,
+          "max": 1.066,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 51,
+        "moving_frames": 49,
+        "frame_ms": 8.37,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 9.0,
+        "slowest_draw_ms": 0.52,
+        "distance": 131.2,
+        "reached_end": false,
+        "notches": {
+          "count": 3,
+          "frames_each": [
+            16,
+            17,
+            16
+          ],
+          "jumps_up": 0,
+          "worst_jump": 0.0
+        }
+      }
+    ],
+    "log": "6-11-10T10:21:01.070443Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.6 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.29 ms, strata 0.96 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.3 ms, boxes 1.6 ms, text 2.0 ms, layout 2.6 ms, paint 4.5 ms (nothing before build 3.2, finish 1.3; 2003 boxes)\nBrowser: static page ready 25 ms after the request\n2026-11-10T10:21:01.576457Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.5 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.25 ms, strata 0.93 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 7.9 ms, boxes 1.6 ms, text 2.3 ms, layout 2.5 ms, paint 4.3 ms (nothing before build 3.1, finish 1.2; 2003 boxes)\nBrowser: static page ready 24 ms after the request\n2026-11-10T10:21:02.082952Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.4 ms, text 1000\u00d71.5 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.23 ms, strata 0.93 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.2 ms, boxes 1.6 ms, text 2.0 ms, layout 2.4 ms, paint 4.1 ms (nothing before build 2.9, finish 1.2; 2003 boxes)\nBrowser: static page ready 24 ms after the request\n2026-11-10T10:21:02.588977Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.5 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.27 ms, strata 0.96 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.0 ms, boxes 1.6 ms, text 2.0 ms, layout 2.4 ms, paint 4.4 ms (nothing before build 3.1, finish 1.3; 2003 boxes)\nBrowser: static page ready 24 ms after the request\n2026-11-10T10:21:03.095376Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.5 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.24 ms, strata 0.91 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.0 ms, boxes 1.6 ms, text 2.0 ms, layout 2.5 ms, paint 4.2 ms (nothing before build 3.1, finish 1.2; 2003 boxes)\nBrowser: static page ready 24 ms after the request\n2026-11-10T10:21:03.601234Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.4 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.27 ms, strata 0.95 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.2 ms, boxes 1.7 ms, text 2.0 ms, layout 2.3 ms, paint 4.3 ms (nothing before build 3.0, finish 1.2; 2003 boxes)\nBrowser: static page ready 24 ms after the request\n2026-11-10T10:21:04.107588Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.6 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.24 ms, strata 0.93 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.0 ms, boxes 1.6 ms, text 2.0 ms, layout 2.6 ms, paint 4.2 ms (nothing before build 3.0, finish 1.2; 2003 boxes)\nBrowser: static page ready 24 ms after the request\n"
+  },
+  {
+    "load_before": {
+      "cpu_ms": 720.0,
+      "rss": "129828 kB",
+      "peak_rss": "129828 kB",
+      "threads": "17",
+      "load": [
+        7.0966796875,
+        17.27197265625,
+        26.59716796875
+      ]
+    },
+    "load_after": {
+      "cpu_ms": 950.0,
+      "rss": "131084 kB",
+      "peak_rss": "134088 kB",
+      "threads": "17",
+      "load": [
+        7.0888671875,
+        17.10107421875,
+        26.49169921875
+      ]
+    },
+    "load_cpu_ms": 230.0,
+    "compilers_before": "",
+    "compilers_after": "",
+    "scale": 1.25,
+    "tag": "ordinary",
+    "variant": "baseline",
+    "binary_sha256": "bf6db85a7e08691273e0dc90c3cbf8827168e43e20783d66f07f7555f625b4aa",
+    "worker_ready_ms": [
+      24,
+      24,
+      25,
+      26,
+      24,
+      24,
+      25
+    ],
+    "idle": {
+      "seconds": 2.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 0
+      },
+      "threads": [
+        {
+          "tid": 3977380,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3977386,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3977388,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3977390,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3977392,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3977393,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3977394,
+          "name": "browser:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3977398,
+          "name": "browse:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3977414,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3977415,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3977416,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3977418,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3977419,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3977421,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3977422,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3977423,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3977424,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.34,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 28.6,
+        "slowest_draw_ms": 0.58,
+        "distance": 685.6,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.96,
+          "sd": 0.011,
+          "min": 0.959,
+          "max": 1.065,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 52,
+        "moving_frames": 50,
+        "frame_ms": 8.37,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 8.8,
+        "slowest_draw_ms": 0.95,
+        "distance": 130.4,
+        "reached_end": false,
+        "notches": {
+          "count": 4,
+          "frames_each": [
+            16,
+            17,
+            2,
+            15
+          ],
+          "jumps_up": 0,
+          "worst_jump": 0.0
+        }
+      }
+    ],
+    "log": "6-11-10T10:21:11.454458Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.4 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.26 ms, strata 0.97 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.0 ms, boxes 1.6 ms, text 2.1 ms, layout 2.4 ms, paint 4.3 ms (nothing before build 3.0, finish 1.3; 2003 boxes)\nBrowser: static page ready 24 ms after the request\n2026-11-10T10:21:11.961004Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.6 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.23 ms, strata 0.91 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 7.8 ms, boxes 1.7 ms, text 2.1 ms, layout 2.6 ms, paint 4.2 ms (nothing before build 3.0, finish 1.2; 2003 boxes)\nBrowser: static page ready 24 ms after the request\n2026-11-10T10:21:12.466542Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.4 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.29 ms, strata 0.94 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.3 ms, boxes 1.8 ms, text 2.1 ms, layout 2.4 ms, paint 4.2 ms (nothing before build 3.0, finish 1.3; 2003 boxes)\nBrowser: static page ready 25 ms after the request\n2026-11-10T10:21:12.972862Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.5 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.30 ms, strata 1.00 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.5 ms, boxes 1.8 ms, text 2.4 ms, layout 2.7 ms, paint 4.9 ms (nothing before build 3.5, finish 1.4; 2003 boxes)\nBrowser: static page ready 26 ms after the request\n2026-11-10T10:21:13.481685Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.4 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.22 ms, strata 0.92 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.1 ms, boxes 1.6 ms, text 2.2 ms, layout 2.4 ms, paint 4.1 ms (nothing before build 3.0, finish 1.2; 2003 boxes)\nBrowser: static page ready 24 ms after the request\n2026-11-10T10:21:13.988417Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.5 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.26 ms, strata 0.91 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.1 ms, boxes 1.6 ms, text 2.0 ms, layout 2.6 ms, paint 4.2 ms (nothing before build 3.0, finish 1.2; 2003 boxes)\nBrowser: static page ready 24 ms after the request\n2026-11-10T10:21:14.494407Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.5 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.27 ms, strata 0.96 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.3 ms, boxes 1.7 ms, text 2.2 ms, layout 2.5 ms, paint 4.5 ms (nothing before build 3.2, finish 1.3; 2003 boxes)\nBrowser: static page ready 25 ms after the request\n"
+  },
+  {
+    "load_before": {
+      "cpu_ms": 690.0,
+      "rss": "128036 kB",
+      "peak_rss": "128036 kB",
+      "threads": "17",
+      "load": [
+        6.92138671875,
+        16.89990234375,
+        26.3759765625
+      ]
+    },
+    "load_after": {
+      "cpu_ms": 960.0,
+      "rss": "129136 kB",
+      "peak_rss": "131272 kB",
+      "threads": "17",
+      "load": [
+        6.52685546875,
+        16.65234375,
+        26.24462890625
+      ]
+    },
+    "load_cpu_ms": 270.0,
+    "compilers_before": "",
+    "compilers_after": "",
+    "scale": 1.25,
+    "tag": "text",
+    "variant": "baseline",
+    "binary_sha256": "bf6db85a7e08691273e0dc90c3cbf8827168e43e20783d66f07f7555f625b4aa",
+    "worker_ready_ms": [
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      16
+    ],
+    "idle": {
+      "seconds": 2.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 0
+      },
+      "threads": [
+        {
+          "tid": 3978121,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978128,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978130,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978132,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978134,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978135,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978137,
+          "name": "browser:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978142,
+          "name": "browse:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978158,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978159,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978160,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978161,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978162,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978188,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978189,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978190,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978191,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.33,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 28.4,
+        "slowest_draw_ms": 0.55,
+        "distance": 687.2,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.964,
+          "sd": 0.019,
+          "min": 0.96,
+          "max": 1.067,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 53,
+        "moving_frames": 51,
+        "frame_ms": 8.34,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 8.9,
+        "slowest_draw_ms": 0.47,
+        "distance": 132.8,
+        "reached_end": false,
+        "notches": {
+          "count": 3,
+          "frames_each": [
+            17,
+            18,
+            16
+          ],
+          "jumps_up": 1,
+          "worst_jump": 0.6
+        }
+      }
+    ],
+    "log": "6-11-10T10:21:21.705047Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d72.1 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.09 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.7 ms, text 1.1 ms, layout 3.1 ms, paint 8.4 ms (nothing before build 8.2, finish 0.2; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:21:22.210809Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d72.2 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.06 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.7 ms, text 1.1 ms, layout 3.3 ms, paint 8.7 ms (nothing before build 8.5, finish 0.1; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:21:22.716976Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d72.0 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.06 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.7 ms, text 1.0 ms, layout 3.0 ms, paint 8.7 ms (nothing before build 8.6, finish 0.1; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:21:23.224213Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d72.0 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.06 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.8 ms, text 1.1 ms, layout 3.0 ms, paint 8.5 ms (nothing before build 8.3, finish 0.2; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:21:23.731818Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d72.0 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.06 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.7 ms, text 1.1 ms, layout 3.0 ms, paint 8.8 ms (nothing before build 8.6, finish 0.1; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:21:24.237735Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d72.0 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.06 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.7 ms, text 1.1 ms, layout 3.1 ms, paint 8.9 ms (nothing before build 8.7, finish 0.1; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:21:24.743755Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.9 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.06 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 0.9 ms, boxes 0.6 ms, text 1.1 ms, layout 2.8 ms, paint 8.4 ms (nothing before build 8.3, finish 0.1; 2003 boxes)\nBrowser: static page ready 16 ms after the request\n"
+  },
+  {
+    "load_before": {
+      "cpu_ms": 730.0,
+      "rss": "128524 kB",
+      "peak_rss": "128524 kB",
+      "threads": "17",
+      "load": [
+        6.404296875,
+        16.45849609375,
+        26.13037109375
+      ]
+    },
+    "load_after": {
+      "cpu_ms": 1020.0,
+      "rss": "130964 kB",
+      "peak_rss": "132084 kB",
+      "threads": "17",
+      "load": [
+        6.21142578125,
+        16.25146484375,
+        26.01123046875
+      ]
+    },
+    "load_cpu_ms": 290.0,
+    "compilers_before": "",
+    "compilers_after": "",
+    "scale": 1.25,
+    "tag": "text",
+    "variant": "candidate",
+    "binary_sha256": "379d4c5f28af6666e15e32971b29e34729c37c6d99b7d3f301ea5c556e997273",
+    "worker_ready_ms": [
+      17,
+      17,
+      12,
+      16,
+      17,
+      17,
+      17
+    ],
+    "idle": {
+      "seconds": 2.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 0
+      },
+      "threads": [
+        {
+          "tid": 3978672,
+          "name": "olo-browser",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978677,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978679,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978681,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978682,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978683,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978684,
+          "name": "olo-bro:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978688,
+          "name": "olo-br:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978704,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978705,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978706,
+          "name": "olo-browser",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978707,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978708,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978709,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978710,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978711,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3978712,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.3,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 28.7,
+        "slowest_draw_ms": 0.73,
+        "distance": 688.8,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.97,
+          "sd": 0.024,
+          "min": 0.964,
+          "max": 1.071,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 52,
+        "moving_frames": 50,
+        "frame_ms": 8.35,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 5.0,
+        "slowest_draw_ms": 0.63,
+        "distance": 130.4,
+        "reached_end": false,
+        "notches": {
+          "count": 3,
+          "frames_each": [
+            17,
+            17,
+            16
+          ],
+          "jumps_up": 1,
+          "worst_jump": 0.6
+        }
+      }
+    ],
+    "log": "6-11-10T10:21:31.794823Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.9 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.09 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.7 ms, text 1.0 ms, layout 2.8 ms, paint 8.4 ms (nothing before build 8.3, finish 0.2; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:21:32.301276Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d72.1 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.10 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 0.9 ms, boxes 0.6 ms, text 1.0 ms, layout 3.1 ms, paint 8.4 ms (nothing before build 8.3, finish 0.2; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:21:32.807408Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.4 ms, text 1000\u00d71.3 ms, finish 1003\u00d70.0 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.08 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.2 ms, style 0.7 ms, boxes 0.6 ms, text 0.8 ms, layout 2.1 ms, paint 6.0 ms (nothing before build 5.8, finish 0.1; 2003 boxes)\nBrowser: static page ready 12 ms after the request\n2026-11-10T10:21:33.313631Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.4 ms, text 1000\u00d71.8 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.06 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 0.9 ms, boxes 0.6 ms, text 1.0 ms, layout 2.8 ms, paint 8.5 ms (nothing before build 8.3, finish 0.1; 2003 boxes)\nBrowser: static page ready 16 ms after the request\n2026-11-10T10:21:33.821726Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d72.0 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.05 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.7 ms, text 1.1 ms, layout 3.0 ms, paint 8.5 ms (nothing before build 8.3, finish 0.1; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:21:34.328001Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.9 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.06 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.7 ms, text 1.0 ms, layout 2.8 ms, paint 8.5 ms (nothing before build 8.4, finish 0.1; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:21:34.834272Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d72.0 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.05 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 0.9 ms, boxes 0.7 ms, text 1.0 ms, layout 3.0 ms, paint 8.5 ms (nothing before build 8.4, finish 0.1; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n"
+  },
+  {
+    "load_before": {
+      "cpu_ms": 710.0,
+      "rss": "128536 kB",
+      "peak_rss": "128536 kB",
+      "threads": "17",
+      "load": [
+        6.1142578125,
+        16.064453125,
+        25.89794921875
+      ]
+    },
+    "load_after": {
+      "cpu_ms": 990.0,
+      "rss": "130996 kB",
+      "peak_rss": "132636 kB",
+      "threads": "17",
+      "load": [
+        5.70458984375,
+        15.81396484375,
+        25.76416015625
+      ]
+    },
+    "load_cpu_ms": 280.0,
+    "compilers_before": "",
+    "compilers_after": "",
+    "scale": 1.25,
+    "tag": "text",
+    "variant": "candidate",
+    "binary_sha256": "379d4c5f28af6666e15e32971b29e34729c37c6d99b7d3f301ea5c556e997273",
+    "worker_ready_ms": [
+      16,
+      16,
+      17,
+      17,
+      16,
+      13,
+      12
+    ],
+    "idle": {
+      "seconds": 2.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 0
+      },
+      "threads": [
+        {
+          "tid": 3979038,
+          "name": "olo-browser",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979043,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979045,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979047,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979048,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979049,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979050,
+          "name": "olo-bro:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979054,
+          "name": "olo-br:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979069,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979070,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979071,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979072,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979073,
+          "name": "olo-browser",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979077,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979078,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979079,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979080,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.34,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 28.4,
+        "slowest_draw_ms": 0.67,
+        "distance": 687.2,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.963,
+          "sd": 0.019,
+          "min": 0.959,
+          "max": 1.066,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 51,
+        "moving_frames": 49,
+        "frame_ms": 8.35,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 9.2,
+        "slowest_draw_ms": 0.47,
+        "distance": 131.2,
+        "reached_end": false,
+        "notches": {
+          "count": 3,
+          "frames_each": [
+            16,
+            17,
+            16
+          ],
+          "jumps_up": 0,
+          "worst_jump": 0.0
+        }
+      }
+    ],
+    "log": "6-11-10T10:21:42.158239Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d72.0 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.11 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.7 ms, text 1.0 ms, layout 2.9 ms, paint 8.4 ms (nothing before build 8.2, finish 0.2; 2003 boxes)\nBrowser: static page ready 16 ms after the request\n2026-11-10T10:21:42.665053Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.8 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.03 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.6 ms, text 1.0 ms, layout 2.7 ms, paint 8.4 ms (nothing before build 8.3, finish 0.1; 2003 boxes)\nBrowser: static page ready 16 ms after the request\n2026-11-10T10:21:43.170581Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d72.0 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.04 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.7 ms, text 1.1 ms, layout 3.0 ms, paint 8.4 ms (nothing before build 8.3, finish 0.1; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:21:43.678171Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.4 ms, text 1000\u00d71.9 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.06 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.6 ms, text 1.0 ms, layout 2.8 ms, paint 8.5 ms (nothing before build 8.4, finish 0.1; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:21:44.185845Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d72.0 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.07 ms, strata 0.04 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 0.9 ms, boxes 0.6 ms, text 1.1 ms, layout 2.9 ms, paint 8.4 ms (nothing before build 8.3, finish 0.1; 2003 boxes)\nBrowser: static page ready 16 ms after the request\n2026-11-10T10:21:44.691862Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.4 ms, text 1000\u00d71.4 ms, finish 1003\u00d70.0 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.02 ms, strata 0.03 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.2 ms, style 0.7 ms, boxes 0.7 ms, text 0.8 ms, layout 2.2 ms, paint 5.9 ms (nothing before build 5.8, finish 0.1; 2003 boxes)\nBrowser: static page ready 13 ms after the request\n2026-11-10T10:21:45.198410Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.4 ms, text 1000\u00d71.3 ms, finish 1003\u00d70.0 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.02 ms, strata 0.04 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.2 ms, style 0.8 ms, boxes 0.6 ms, text 0.8 ms, layout 2.1 ms, paint 6.0 ms (nothing before build 5.9, finish 0.1; 2003 boxes)\nBrowser: static page ready 12 ms after the request\n"
+  },
+  {
+    "load_before": {
+      "cpu_ms": 710.0,
+      "rss": "128428 kB",
+      "peak_rss": "128428 kB",
+      "threads": "17",
+      "load": [
+        5.32763671875,
+        15.56787109375,
+        25.630859375
+      ]
+    },
+    "load_after": {
+      "cpu_ms": 980.0,
+      "rss": "129372 kB",
+      "peak_rss": "131308 kB",
+      "threads": "17",
+      "load": [
+        5.06103515625,
+        15.34228515625,
+        25.50390625
+      ]
+    },
+    "load_cpu_ms": 270.0,
+    "compilers_before": "",
+    "compilers_after": "",
+    "scale": 1.25,
+    "tag": "text",
+    "variant": "baseline",
+    "binary_sha256": "bf6db85a7e08691273e0dc90c3cbf8827168e43e20783d66f07f7555f625b4aa",
+    "worker_ready_ms": [
+      17,
+      16,
+      17,
+      14,
+      17,
+      17,
+      17
+    ],
+    "idle": {
+      "seconds": 2.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 0
+      },
+      "threads": [
+        {
+          "tid": 3979377,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979382,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979384,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979386,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979387,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979388,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979389,
+          "name": "browser:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979393,
+          "name": "browse:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979410,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979411,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979412,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979413,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979414,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979417,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979418,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979419,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979420,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.33,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 28.5,
+        "slowest_draw_ms": 0.61,
+        "distance": 685.6,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.961,
+          "sd": 0.011,
+          "min": 0.96,
+          "max": 1.067,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 51,
+        "moving_frames": 49,
+        "frame_ms": 8.36,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 8.9,
+        "slowest_draw_ms": 0.46,
+        "distance": 130.4,
+        "reached_end": false,
+        "notches": {
+          "count": 3,
+          "frames_each": [
+            16,
+            17,
+            16
+          ],
+          "jumps_up": 0,
+          "worst_jump": 0.0
+        }
+      }
+    ],
+    "log": "6-11-10T10:21:52.522867Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.9 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.07 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.7 ms, text 1.0 ms, layout 2.9 ms, paint 8.3 ms (nothing before build 8.1, finish 0.1; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:21:53.029294Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.9 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.06 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.6 ms, text 1.0 ms, layout 2.8 ms, paint 8.5 ms (nothing before build 8.4, finish 0.1; 2003 boxes)\nBrowser: static page ready 16 ms after the request\n2026-11-10T10:21:53.537042Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.9 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.05 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.6 ms, text 1.1 ms, layout 2.9 ms, paint 8.6 ms (nothing before build 8.5, finish 0.1; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:21:54.043015Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.3 ms, text 1000\u00d71.5 ms, finish 1003\u00d70.0 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.02 ms, strata 0.03 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.2 ms, style 0.8 ms, boxes 0.8 ms, text 0.8 ms, layout 2.2 ms, paint 7.2 ms (nothing before build 7.2, finish 0.1; 2003 boxes)\nBrowser: static page ready 14 ms after the request\n2026-11-10T10:21:54.549420Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.9 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.05 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 0.9 ms, boxes 0.6 ms, text 1.0 ms, layout 2.9 ms, paint 8.6 ms (nothing before build 8.5, finish 0.1; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:21:55.056267Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.9 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.07 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.8 ms, text 1.0 ms, layout 2.8 ms, paint 8.3 ms (nothing before build 8.2, finish 0.2; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:21:55.563205Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.9 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.05 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.7 ms, text 1.0 ms, layout 2.8 ms, paint 8.5 ms (nothing before build 8.4, finish 0.1; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n"
+  },
+  {
+    "load_before": {
+      "cpu_ms": 700.0,
+      "rss": "138756 kB",
+      "peak_rss": "141032 kB",
+      "threads": "17",
+      "load": [
+        4.6552734375,
+        15.08740234375,
+        25.36669921875
+      ]
+    },
+    "load_after": {
+      "cpu_ms": 970.0,
+      "rss": "138080 kB",
+      "peak_rss": "147020 kB",
+      "threads": "17",
+      "load": [
+        4.84326171875,
+        14.953125,
+        25.267578125
+      ]
+    },
+    "load_cpu_ms": 270.0,
+    "compilers_before": "",
+    "compilers_after": "",
+    "scale": 2,
+    "tag": "ordinary",
+    "variant": "baseline",
+    "binary_sha256": "bf6db85a7e08691273e0dc90c3cbf8827168e43e20783d66f07f7555f625b4aa",
+    "worker_ready_ms": [
+      25,
+      23,
+      24,
+      25,
+      26,
+      26,
+      28
+    ],
+    "idle": {
+      "seconds": 2.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 0
+      },
+      "threads": [
+        {
+          "tid": 3979740,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979746,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979748,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979750,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979751,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979752,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979755,
+          "name": "browser:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979759,
+          "name": "browse:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979774,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979776,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979777,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979779,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979780,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979783,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979784,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979785,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3979786,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.36,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 28.6,
+        "slowest_draw_ms": 0.93,
+        "distance": 713.5,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.997,
+          "sd": 0.01,
+          "min": 0.931,
+          "max": 1.064,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 60,
+        "moving_frames": 58,
+        "frame_ms": 8.36,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 8.9,
+        "slowest_draw_ms": 2.23,
+        "distance": 131.5,
+        "reached_end": false,
+        "notches": {
+          "count": 3,
+          "frames_each": [
+            19,
+            20,
+            19
+          ],
+          "jumps_up": 0,
+          "worst_jump": 0.0
+        }
+      }
+    ],
+    "log": "1-10T10:22:02.868524Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.5 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.25 ms, strata 0.98 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.0 ms, boxes 1.6 ms, text 2.0 ms, layout 2.5 ms, paint 4.4 ms (nothing before build 3.2, finish 1.3; 2003 boxes)\nBrowser: static page ready 25 ms after the request\n2026-11-10T10:22:03.374739Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.5 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.24 ms, strata 0.91 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 7.9 ms, boxes 1.6 ms, text 2.1 ms, layout 2.5 ms, paint 4.1 ms (nothing before build 2.9, finish 1.2; 2003 boxes)\nBrowser: static page ready 23 ms after the request\n2026-11-10T10:22:03.881137Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.4 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.22 ms, strata 0.90 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.4 ms, boxes 1.7 ms, text 2.1 ms, layout 2.4 ms, paint 4.1 ms (nothing before build 2.9, finish 1.1; 2003 boxes)\nBrowser: static page ready 24 ms after the request\n2026-11-10T10:22:04.387424Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.6 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.28 ms, strata 0.97 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.1 ms, boxes 1.6 ms, text 2.1 ms, layout 2.7 ms, paint 4.4 ms (nothing before build 3.2, finish 1.3; 2003 boxes)\nBrowser: static page ready 25 ms after the request\n2026-11-10T10:22:04.894817Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.6 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.27 ms, strata 1.03 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.6 ms, style 8.6 ms, boxes 1.8 ms, text 2.2 ms, layout 2.7 ms, paint 4.6 ms (nothing before build 3.3, finish 1.4; 2003 boxes)\nBrowser: static page ready 26 ms after the request\n2026-11-10T10:22:05.404069Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.6 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.29 ms, strata 1.01 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.4 ms, boxes 1.7 ms, text 2.3 ms, layout 2.7 ms, paint 4.7 ms (nothing before build 3.3, finish 1.3; 2003 boxes)\nBrowser: static page ready 26 ms after the request\n2026-11-10T10:22:05.914676Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.6 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.29 ms, strata 0.99 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 9.7 ms, boxes 2.7 ms, text 2.4 ms, layout 2.8 ms, paint 5.0 ms (nothing before build 3.6, finish 1.4; 2003 boxes)\nBrowser: static page ready 28 ms after the request\n"
+  },
+  {
+    "load_before": {
+      "cpu_ms": 670.0,
+      "rss": "138000 kB",
+      "peak_rss": "138000 kB",
+      "threads": "17",
+      "load": [
+        4.455078125,
+        14.70458984375,
+        25.1318359375
+      ]
+    },
+    "load_after": {
+      "cpu_ms": 940.0,
+      "rss": "138800 kB",
+      "peak_rss": "148144 kB",
+      "threads": "17",
+      "load": [
+        4.6591796875,
+        14.57666015625,
+        25.0341796875
+      ]
+    },
+    "load_cpu_ms": 270.0,
+    "compilers_before": "",
+    "compilers_after": "",
+    "scale": 2,
+    "tag": "ordinary",
+    "variant": "candidate",
+    "binary_sha256": "379d4c5f28af6666e15e32971b29e34729c37c6d99b7d3f301ea5c556e997273",
+    "worker_ready_ms": [
+      24,
+      24,
+      25,
+      24,
+      25,
+      25,
+      25
+    ],
+    "idle": {
+      "seconds": 2.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 0
+      },
+      "threads": [
+        {
+          "tid": 3981095,
+          "name": "olo-browser",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3981101,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3981103,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3981105,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3981106,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3981107,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3981128,
+          "name": "olo-bro:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3981133,
+          "name": "olo-br:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3981231,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3981233,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3981234,
+          "name": "olo-browser",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3981235,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3981236,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3981261,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3981262,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3981263,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3981264,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.33,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 28.5,
+        "slowest_draw_ms": 0.84,
+        "distance": 714.0,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 1.001,
+          "sd": 0.012,
+          "min": 0.934,
+          "max": 1.067,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 60,
+        "moving_frames": 58,
+        "frame_ms": 8.35,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 9.2,
+        "slowest_draw_ms": 1.15,
+        "distance": 131.0,
+        "reached_end": false,
+        "notches": {
+          "count": 3,
+          "frames_each": [
+            19,
+            20,
+            19
+          ],
+          "jumps_up": 0,
+          "worst_jump": 0.0
+        }
+      }
+    ],
+    "log": "6-11-10T10:22:13.277636Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.4 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.24 ms, strata 0.93 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.3 ms, boxes 1.8 ms, text 2.0 ms, layout 2.4 ms, paint 4.5 ms (nothing before build 3.3, finish 1.2; 2003 boxes)\nBrowser: static page ready 24 ms after the request\n2026-11-10T10:22:13.783700Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.4 ms, text 1000\u00d71.4 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.31 ms, strata 0.98 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.3 ms, boxes 1.8 ms, text 1.9 ms, layout 2.3 ms, paint 4.3 ms (nothing before build 3.0, finish 1.3; 2003 boxes)\nBrowser: static page ready 24 ms after the request\n2026-11-10T10:22:14.290759Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.6 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.26 ms, strata 0.95 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.1 ms, boxes 1.6 ms, text 2.1 ms, layout 2.7 ms, paint 4.3 ms (nothing before build 3.1, finish 1.2; 2003 boxes)\nBrowser: static page ready 25 ms after the request\n2026-11-10T10:22:14.799015Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.4 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.25 ms, strata 0.97 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.2 ms, boxes 1.7 ms, text 2.1 ms, layout 2.4 ms, paint 4.3 ms (nothing before build 3.0, finish 1.3; 2003 boxes)\nBrowser: static page ready 24 ms after the request\n2026-11-10T10:22:15.305419Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.5 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.24 ms, strata 0.95 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.4 ms, boxes 1.8 ms, text 2.1 ms, layout 2.5 ms, paint 4.7 ms (nothing before build 3.5, finish 1.2; 2003 boxes)\nBrowser: static page ready 25 ms after the request\n2026-11-10T10:22:15.812112Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.6 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.34 ms, strata 1.04 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.3 ms, boxes 1.7 ms, text 2.1 ms, layout 2.6 ms, paint 4.6 ms (nothing before build 3.2, finish 1.4; 2003 boxes)\nBrowser: static page ready 25 ms after the request\n2026-11-10T10:22:16.318268Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.5 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.28 ms, strata 0.97 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.4 ms, boxes 1.7 ms, text 2.1 ms, layout 2.6 ms, paint 4.5 ms (nothing before build 3.2, finish 1.3; 2003 boxes)\nBrowser: static page ready 25 ms after the request\n"
+  },
+  {
+    "load_before": {
+      "cpu_ms": 700.0,
+      "rss": "137748 kB",
+      "peak_rss": "137748 kB",
+      "threads": "17",
+      "load": [
+        5.0068359375,
+        14.48388671875,
+        24.94775390625
+      ]
+    },
+    "load_after": {
+      "cpu_ms": 940.0,
+      "rss": "139836 kB",
+      "peak_rss": "147880 kB",
+      "threads": "17",
+      "load": [
+        5.08642578125,
+        14.3427734375,
+        24.845703125
+      ]
+    },
+    "load_cpu_ms": 240.0,
+    "compilers_before": "",
+    "compilers_after": "",
+    "scale": 2,
+    "tag": "ordinary",
+    "variant": "candidate",
+    "binary_sha256": "379d4c5f28af6666e15e32971b29e34729c37c6d99b7d3f301ea5c556e997273",
+    "worker_ready_ms": [
+      24,
+      24,
+      20,
+      19,
+      19,
+      24,
+      24
+    ],
+    "idle": {
+      "seconds": 2.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 0
+      },
+      "threads": [
+        {
+          "tid": 3982110,
+          "name": "olo-browser",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982115,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982117,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982119,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982120,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982121,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982123,
+          "name": "olo-bro:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982127,
+          "name": "olo-br:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982146,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982147,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982148,
+          "name": "olo-browser",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982149,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982150,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982154,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982155,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982156,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982157,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.35,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 28.5,
+        "slowest_draw_ms": 1.02,
+        "distance": 713.5,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.998,
+          "sd": 0.0,
+          "min": 0.998,
+          "max": 0.998,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 60,
+        "moving_frames": 58,
+        "frame_ms": 8.35,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 9.1,
+        "slowest_draw_ms": 0.6,
+        "distance": 132.0,
+        "reached_end": false,
+        "notches": {
+          "count": 3,
+          "frames_each": [
+            19,
+            20,
+            19
+          ],
+          "jumps_up": 0,
+          "worst_jump": 0.0
+        }
+      }
+    ],
+    "log": "6-11-10T10:22:23.679027Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.5 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.25 ms, strata 0.91 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.1 ms, boxes 1.6 ms, text 2.0 ms, layout 2.5 ms, paint 4.1 ms (nothing before build 2.9, finish 1.2; 2003 boxes)\nBrowser: static page ready 24 ms after the request\n2026-11-10T10:22:24.184827Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.5 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.27 ms, strata 0.95 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.4 ms, boxes 1.6 ms, text 2.0 ms, layout 2.4 ms, paint 4.3 ms (nothing before build 3.0, finish 1.2; 2003 boxes)\nBrowser: static page ready 24 ms after the request\n2026-11-10T10:22:24.690709Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.4 ms, text 1000\u00d71.2 ms, finish 1003\u00d70.0 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.23 ms, strata 0.55 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 6.5 ms, boxes 1.5 ms, text 1.6 ms, layout 2.0 ms, paint 3.0 ms (nothing before build 2.2, finish 0.8; 2003 boxes)\nBrowser: static page ready 20 ms after the request\n2026-11-10T10:22:25.197104Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.4 ms, text 1000\u00d71.3 ms, finish 1003\u00d70.0 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.24 ms, strata 0.57 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.2 ms, style 5.9 ms, boxes 1.5 ms, text 1.5 ms, layout 2.1 ms, paint 3.0 ms (nothing before build 2.2, finish 0.8; 2003 boxes)\nBrowser: static page ready 19 ms after the request\n2026-11-10T10:22:25.703610Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.4 ms, text 1000\u00d71.1 ms, finish 1003\u00d70.0 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.25 ms, strata 0.57 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.2 ms, style 5.8 ms, boxes 1.5 ms, text 1.5 ms, layout 1.9 ms, paint 3.0 ms (nothing before build 2.2, finish 0.8; 2003 boxes)\nBrowser: static page ready 19 ms after the request\n2026-11-10T10:22:26.208941Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.5 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.25 ms, strata 0.96 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 7.9 ms, boxes 1.6 ms, text 2.0 ms, layout 2.5 ms, paint 4.2 ms (nothing before build 2.9, finish 1.2; 2003 boxes)\nBrowser: static page ready 24 ms after the request\n2026-11-10T10:22:26.715207Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.4 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.28 ms, strata 0.98 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.3 ms, boxes 1.6 ms, text 2.1 ms, layout 2.4 ms, paint 4.5 ms (nothing before build 3.2, finish 1.3; 2003 boxes)\nBrowser: static page ready 24 ms after the request\n"
+  },
+  {
+    "load_before": {
+      "cpu_ms": 660.0,
+      "rss": "137552 kB",
+      "peak_rss": "137552 kB",
+      "threads": "17",
+      "load": [
+        5.31982421875,
+        14.2373046875,
+        24.7548828125
+      ]
+    },
+    "load_after": {
+      "cpu_ms": 920.0,
+      "rss": "138268 kB",
+      "peak_rss": "147448 kB",
+      "threads": "17",
+      "load": [
+        5.2138671875,
+        14.06689453125,
+        24.64306640625
+      ]
+    },
+    "load_cpu_ms": 260.0,
+    "compilers_before": "",
+    "compilers_after": "",
+    "scale": 2,
+    "tag": "ordinary",
+    "variant": "baseline",
+    "binary_sha256": "bf6db85a7e08691273e0dc90c3cbf8827168e43e20783d66f07f7555f625b4aa",
+    "worker_ready_ms": [
+      24,
+      24,
+      24,
+      24,
+      25,
+      24,
+      25
+    ],
+    "idle": {
+      "seconds": 2.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 0
+      },
+      "threads": [
+        {
+          "tid": 3982486,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982491,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982493,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982495,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982496,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982497,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982498,
+          "name": "browser:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982502,
+          "name": "browse:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982518,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982519,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982520,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982521,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982522,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982523,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982524,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982525,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3982526,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.35,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 28.4,
+        "slowest_draw_ms": 1.06,
+        "distance": 713.5,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.998,
+          "sd": 0.0,
+          "min": 0.998,
+          "max": 0.998,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 60,
+        "moving_frames": 58,
+        "frame_ms": 8.38,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 9.2,
+        "slowest_draw_ms": 0.83,
+        "distance": 131.0,
+        "reached_end": false,
+        "notches": {
+          "count": 4,
+          "frames_each": [
+            19,
+            20,
+            2,
+            17
+          ],
+          "jumps_up": 0,
+          "worst_jump": 0.0
+        }
+      }
+    ],
+    "log": "6-11-10T10:22:33.777193Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.5 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.26 ms, strata 0.91 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 7.9 ms, boxes 1.7 ms, text 2.2 ms, layout 2.5 ms, paint 4.2 ms (nothing before build 3.0, finish 1.2; 2003 boxes)\nBrowser: static page ready 24 ms after the request\n2026-11-10T10:22:34.283893Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.5 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.32 ms, strata 0.98 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.1 ms, boxes 1.7 ms, text 2.0 ms, layout 2.5 ms, paint 4.5 ms (nothing before build 3.2, finish 1.3; 2003 boxes)\nBrowser: static page ready 24 ms after the request\n2026-11-10T10:22:34.791058Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.6 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.24 ms, strata 0.93 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 7.8 ms, boxes 1.6 ms, text 2.1 ms, layout 2.6 ms, paint 4.1 ms (nothing before build 3.0, finish 1.2; 2003 boxes)\nBrowser: static page ready 24 ms after the request\n2026-11-10T10:22:35.297393Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.6 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.24 ms, strata 0.92 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 7.9 ms, boxes 1.6 ms, text 2.0 ms, layout 2.6 ms, paint 4.2 ms (nothing before build 3.0, finish 1.2; 2003 boxes)\nBrowser: static page ready 24 ms after the request\n2026-11-10T10:22:35.803514Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.6 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.26 ms, strata 0.90 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.0 ms, boxes 1.6 ms, text 2.1 ms, layout 2.6 ms, paint 4.3 ms (nothing before build 3.1, finish 1.2; 2003 boxes)\nBrowser: static page ready 25 ms after the request\n2026-11-10T10:22:36.309619Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.5 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.27 ms, strata 0.91 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 7.9 ms, boxes 1.7 ms, text 2.1 ms, layout 2.5 ms, paint 4.2 ms (nothing before build 3.0, finish 1.2; 2003 boxes)\nBrowser: static page ready 24 ms after the request\n2026-11-10T10:22:36.815545Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 1 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.5 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.28 ms, strata 0.99 ms (6000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 8.2 ms, boxes 1.6 ms, text 2.1 ms, layout 2.5 ms, paint 4.3 ms (nothing before build 3.0, finish 1.3; 2003 boxes)\nBrowser: static page ready 25 ms after the request\n"
+  },
+  {
+    "load_before": {
+      "cpu_ms": 700.0,
+      "rss": "134744 kB",
+      "peak_rss": "134744 kB",
+      "threads": "17",
+      "load": [
+        4.9560546875,
+        13.8662109375,
+        24.52099609375
+      ]
+    },
+    "load_after": {
+      "cpu_ms": 1040.0,
+      "rss": "136748 kB",
+      "peak_rss": "144280 kB",
+      "threads": "17",
+      "load": [
+        4.79931640625,
+        13.685546875,
+        24.4052734375
+      ]
+    },
+    "load_cpu_ms": 340.0,
+    "compilers_before": "",
+    "compilers_after": "",
+    "scale": 2,
+    "tag": "text",
+    "variant": "baseline",
+    "binary_sha256": "bf6db85a7e08691273e0dc90c3cbf8827168e43e20783d66f07f7555f625b4aa",
+    "worker_ready_ms": [
+      18,
+      14,
+      17,
+      17,
+      17,
+      17,
+      17
+    ],
+    "idle": {
+      "seconds": 2.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 0
+      },
+      "threads": [
+        {
+          "tid": 3984193,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984198,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984200,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984202,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984203,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984204,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984205,
+          "name": "browser:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984209,
+          "name": "browse:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984228,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984229,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984230,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984231,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984232,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984235,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984236,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984237,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984238,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.33,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 22.1,
+        "slowest_draw_ms": 0.87,
+        "distance": 719.5,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 1.001,
+          "sd": 0.0,
+          "min": 1.001,
+          "max": 1.001,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 59,
+        "moving_frames": 57,
+        "frame_ms": 8.35,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 12.2,
+        "slowest_draw_ms": 2.71,
+        "distance": 133.0,
+        "reached_end": false,
+        "notches": {
+          "count": 3,
+          "frames_each": [
+            18,
+            20,
+            19
+          ],
+          "jumps_up": 0,
+          "worst_jump": 0.0
+        }
+      }
+    ],
+    "log": "6-11-10T10:22:44.192094Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d72.1 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.07 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.7 ms, text 1.1 ms, layout 3.1 ms, paint 9.1 ms (nothing before build 8.9, finish 0.2; 2003 boxes)\nBrowser: static page ready 18 ms after the request\n2026-11-10T10:22:44.699005Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.3 ms, text 1000\u00d71.5 ms, finish 1003\u00d70.0 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.09 ms, strata 0.03 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.2 ms, style 0.8 ms, boxes 0.6 ms, text 0.8 ms, layout 2.2 ms, paint 7.3 ms (nothing before build 7.1, finish 0.1; 2003 boxes)\nBrowser: static page ready 14 ms after the request\n2026-11-10T10:22:45.204934Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.9 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.07 ms, strata 0.06 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.1 ms, boxes 0.7 ms, text 1.1 ms, layout 2.9 ms, paint 8.6 ms (nothing before build 8.5, finish 0.2; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:22:45.712170Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d72.0 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.06 ms, strata 0.06 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.7 ms, text 1.0 ms, layout 2.9 ms, paint 8.9 ms (nothing before build 8.8, finish 0.2; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:22:46.218205Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d72.1 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.06 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.7 ms, text 1.1 ms, layout 3.1 ms, paint 8.4 ms (nothing before build 8.2, finish 0.2; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:22:46.724710Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d72.0 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.15 ms, strata 0.06 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.6 ms, text 1.0 ms, layout 3.2 ms, paint 8.8 ms (nothing before build 8.5, finish 0.2; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:22:47.231496Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d72.0 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.04 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.9 ms, text 1.0 ms, layout 3.0 ms, paint 8.6 ms (nothing before build 8.5, finish 0.1; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n"
+  },
+  {
+    "load_before": {
+      "cpu_ms": 720.0,
+      "rss": "133696 kB",
+      "peak_rss": "133696 kB",
+      "threads": "17",
+      "load": [
+        4.4482421875,
+        13.31689453125,
+        24.169921875
+      ]
+    },
+    "load_after": {
+      "cpu_ms": 1080.0,
+      "rss": "136328 kB",
+      "peak_rss": "143328 kB",
+      "threads": "17",
+      "load": [
+        4.4482421875,
+        13.31689453125,
+        24.169921875
+      ]
+    },
+    "load_cpu_ms": 360.0,
+    "compilers_before": "",
+    "compilers_after": "",
+    "scale": 2,
+    "tag": "text",
+    "variant": "candidate",
+    "binary_sha256": "379d4c5f28af6666e15e32971b29e34729c37c6d99b7d3f301ea5c556e997273",
+    "worker_ready_ms": [
+      17,
+      17,
+      16,
+      17,
+      17,
+      17,
+      17
+    ],
+    "idle": {
+      "seconds": 2.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 0
+      },
+      "threads": [
+        {
+          "tid": 3984475,
+          "name": "olo-browser",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984480,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984482,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984484,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984485,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984486,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984489,
+          "name": "olo-bro:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984494,
+          "name": "olo-br:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984509,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984510,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984511,
+          "name": "olo-browser",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984512,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984513,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984518,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984519,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984520,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984521,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.33,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 26.9,
+        "slowest_draw_ms": 2.68,
+        "distance": 715.0,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 1.0,
+          "sd": 0.0,
+          "min": 1.0,
+          "max": 1.0,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 60,
+        "moving_frames": 58,
+        "frame_ms": 8.35,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 9.2,
+        "slowest_draw_ms": 0.91,
+        "distance": 131.5,
+        "reached_end": false,
+        "notches": {
+          "count": 3,
+          "frames_each": [
+            19,
+            20,
+            19
+          ],
+          "jumps_up": 0,
+          "worst_jump": 0.0
+        }
+      }
+    ],
+    "log": "6-11-10T10:22:54.565337Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d72.0 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.10 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.7 ms, text 1.1 ms, layout 3.0 ms, paint 8.5 ms (nothing before build 8.3, finish 0.2; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:22:55.072659Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d72.0 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.07 ms, strata 0.06 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.9 ms, text 1.1 ms, layout 3.0 ms, paint 8.7 ms (nothing before build 8.5, finish 0.2; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:22:55.579717Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.9 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.05 ms, strata 0.06 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.6 ms, text 1.0 ms, layout 2.9 ms, paint 8.3 ms (nothing before build 8.2, finish 0.1; 2003 boxes)\nBrowser: static page ready 16 ms after the request\n2026-11-10T10:22:56.086333Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.4 ms, text 1000\u00d71.9 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.07 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.7 ms, text 1.1 ms, layout 2.8 ms, paint 8.5 ms (nothing before build 8.4, finish 0.2; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:22:56.592849Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.9 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.09 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 0.9 ms, boxes 0.6 ms, text 1.0 ms, layout 2.8 ms, paint 8.6 ms (nothing before build 8.4, finish 0.2; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:22:57.099141Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d72.0 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.05 ms, strata 0.07 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.6 ms, text 1.1 ms, layout 3.0 ms, paint 8.5 ms (nothing before build 8.4, finish 0.2; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:22:57.606020Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.4 ms, text 1000\u00d71.9 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.19 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.8 ms, text 1.0 ms, layout 2.9 ms, paint 8.6 ms (nothing before build 8.4, finish 0.3; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n"
+  },
+  {
+    "load_before": {
+      "cpu_ms": 140.0,
+      "rss": "134332 kB",
+      "peak_rss": "134332 kB",
+      "threads": "17",
+      "load": [
+        7.66259765625,
+        13.69091796875,
+        24.17431640625
+      ]
+    },
+    "load_after": {
+      "cpu_ms": 490.0,
+      "rss": "136492 kB",
+      "peak_rss": "144204 kB",
+      "threads": "17",
+      "load": [
+        7.66259765625,
+        13.69091796875,
+        24.17431640625
+      ]
+    },
+    "load_cpu_ms": 350.0,
+    "compilers_before": "",
+    "compilers_after": "",
+    "scale": 2,
+    "tag": "text",
+    "variant": "candidate",
+    "binary_sha256": "379d4c5f28af6666e15e32971b29e34729c37c6d99b7d3f301ea5c556e997273",
+    "worker_ready_ms": [
+      17,
+      18,
+      17,
+      18,
+      18,
+      17,
+      13
+    ],
+    "idle": {
+      "seconds": 2.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 0
+      },
+      "threads": [
+        {
+          "tid": 3984767,
+          "name": "olo-browser",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984772,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984773,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984776,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984777,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984778,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984779,
+          "name": "olo-bro:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984783,
+          "name": "olo-br:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984801,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984803,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984804,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984805,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984806,
+          "name": "olo-browser",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984809,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984810,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984811,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3984812,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.35,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 28.8,
+        "slowest_draw_ms": 0.76,
+        "distance": 713.0,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.997,
+          "sd": 0.007,
+          "min": 0.931,
+          "max": 0.998,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 59,
+        "moving_frames": 57,
+        "frame_ms": 8.38,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 8.8,
+        "slowest_draw_ms": 0.66,
+        "distance": 131.5,
+        "reached_end": false,
+        "notches": {
+          "count": 3,
+          "frames_each": [
+            19,
+            19,
+            19
+          ],
+          "jumps_up": 1,
+          "worst_jump": 0.059
+        }
+      }
+    ],
+    "log": "6-11-10T10:23:05.307755Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d72.0 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.08 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.6 ms, text 1.1 ms, layout 3.0 ms, paint 8.7 ms (nothing before build 8.5, finish 0.2; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:23:05.824577Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.9 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.28 ms, strata 0.19 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.6 ms, text 1.0 ms, layout 3.0 ms, paint 9.7 ms (nothing before build 9.2, finish 0.5; 2003 boxes)\nBrowser: static page ready 18 ms after the request\n2026-11-10T10:23:06.331408Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d72.0 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.17 ms, strata 0.06 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.1 ms, boxes 0.7 ms, text 1.1 ms, layout 3.0 ms, paint 8.6 ms (nothing before build 8.4, finish 0.3; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:23:06.838465Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d72.1 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.13 ms, strata 0.06 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.7 ms, text 1.2 ms, layout 3.0 ms, paint 9.0 ms (nothing before build 8.7, finish 0.2; 2003 boxes)\nBrowser: static page ready 18 ms after the request\n2026-11-10T10:23:07.347500Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d72.0 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.09 ms, strata 0.06 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.1 ms, boxes 0.9 ms, text 1.0 ms, layout 3.1 ms, paint 9.0 ms (nothing before build 8.8, finish 0.2; 2003 boxes)\nBrowser: static page ready 18 ms after the request\n2026-11-10T10:23:07.854870Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.9 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.06 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.1 ms, boxes 0.7 ms, text 1.1 ms, layout 2.9 ms, paint 8.6 ms (nothing before build 8.4, finish 0.1; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:23:08.361577Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.4 ms, text 1000\u00d71.4 ms, finish 1003\u00d70.0 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.08 ms, strata 0.04 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.2 ms, style 0.8 ms, boxes 0.7 ms, text 0.8 ms, layout 2.2 ms, paint 6.1 ms (nothing before build 6.0, finish 0.1; 2003 boxes)\nBrowser: static page ready 13 ms after the request\n"
+  },
+  {
+    "load_before": {
+      "cpu_ms": 700.0,
+      "rss": "134432 kB",
+      "peak_rss": "134432 kB",
+      "threads": "17",
+      "load": [
+        6.87158203125,
+        13.322265625,
+        23.94189453125
+      ]
+    },
+    "load_after": {
+      "cpu_ms": 1020.0,
+      "rss": "136192 kB",
+      "peak_rss": "143800 kB",
+      "threads": "17",
+      "load": [
+        6.87158203125,
+        13.322265625,
+        23.94189453125
+      ]
+    },
+    "load_cpu_ms": 320.0,
+    "compilers_before": "",
+    "compilers_after": "",
+    "scale": 2,
+    "tag": "text",
+    "variant": "baseline",
+    "binary_sha256": "bf6db85a7e08691273e0dc90c3cbf8827168e43e20783d66f07f7555f625b4aa",
+    "worker_ready_ms": [
+      14,
+      17,
+      17,
+      17,
+      17,
+      14,
+      17
+    ],
+    "idle": {
+      "seconds": 2.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 0
+      },
+      "threads": [
+        {
+          "tid": 3985170,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3985175,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3985177,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3985179,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3985180,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3985181,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3985182,
+          "name": "browser:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3985186,
+          "name": "browse:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3985203,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3985204,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3985205,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3985206,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3985207,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3985209,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3985210,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3985211,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3985212,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.33,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 28.3,
+        "slowest_draw_ms": 4.57,
+        "distance": 713.5,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 1.0,
+          "sd": 0.01,
+          "min": 0.933,
+          "max": 1.067,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 60,
+        "moving_frames": 58,
+        "frame_ms": 8.31,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 7.3,
+        "slowest_draw_ms": 0.62,
+        "distance": 132.5,
+        "reached_end": false,
+        "notches": {
+          "count": 3,
+          "frames_each": [
+            19,
+            20,
+            19
+          ],
+          "jumps_up": 2,
+          "worst_jump": 1.167
+        }
+      }
+    ],
+    "log": "6-11-10T10:23:15.438968Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.3 ms, text 1000\u00d71.5 ms, finish 1003\u00d70.0 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.03 ms, strata 0.03 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 0.8 ms, boxes 0.8 ms, text 0.8 ms, layout 2.2 ms, paint 6.8 ms (nothing before build 6.7, finish 0.1; 2003 boxes)\nBrowser: static page ready 14 ms after the request\n2026-11-10T10:23:15.945537Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d71.9 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.06 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.6 ms, text 1.0 ms, layout 2.9 ms, paint 8.7 ms (nothing before build 8.6, finish 0.1; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:23:16.451637Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d72.0 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.05 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.4 ms, style 1.0 ms, boxes 0.7 ms, text 1.1 ms, layout 3.0 ms, paint 8.5 ms (nothing before build 8.4, finish 0.1; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:23:16.957837Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d72.1 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.07 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.8 ms, text 1.1 ms, layout 3.1 ms, paint 8.6 ms (nothing before build 8.4, finish 0.2; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:23:17.465119Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d72.0 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.05 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.8 ms, text 1.0 ms, layout 3.0 ms, paint 8.5 ms (nothing before build 8.3, finish 0.1; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n2026-11-10T10:23:17.971566Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.3 ms, text 1000\u00d71.4 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.03 ms, strata 0.03 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.2 ms, style 0.8 ms, boxes 0.7 ms, text 0.8 ms, layout 2.2 ms, paint 7.2 ms (nothing before build 7.1, finish 0.1; 2003 boxes)\nBrowser: static page ready 14 ms after the request\n2026-11-10T10:23:18.478075Z  INFO olo_kit_base::commands: asked to choose a menu command command=reload by=python3 (3974628)\nscripted gather: 0 ms; sheets 2 before, 2 after, 0 differ; rules reused\n  texts: 999 of 1000 reused\nlayout profile: enter 1002\u00d70.5 ms, text 1000\u00d72.0 ms, finish 1003\u00d70.1 ms; 0 of 2003 boxes reused in 0 subtrees (refused: dirty 0, not in flow 0, floats about 0, no old box 0, no record 0, other inputs 0, a float 0, differs inside 0)\nscene finish: sort 0.04 ms, strata 0.05 ms (2000 commands, 1 contexts, 1 strata)\nrender: before style 0.3 ms, style 1.0 ms, boxes 0.6 ms, text 1.0 ms, layout 3.1 ms, paint 8.7 ms (nothing before build 8.5, finish 0.1; 2003 boxes)\nBrowser: static page ready 17 ms after the request\n"
+  }
+]

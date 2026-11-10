@@ -1,0 +1,42 @@
+[
+  {
+    "scale": 1,
+    "mode": 4,
+    "different": 63692,
+    "over_one": 56792,
+    "error": 1803028,
+    "max_error": 238
+  },
+  {
+    "scale": 1.25,
+    "mode": 4,
+    "different": 75709,
+    "over_one": 60330,
+    "error": 524517,
+    "max_error": 98
+  },
+  {
+    "scale": 1.5,
+    "mode": 4,
+    "different": 93760,
+    "over_one": 75546,
+    "error": 682602,
+    "max_error": 93
+  },
+  {
+    "scale": 1.75,
+    "mode": 4,
+    "different": 110295,
+    "over_one": 88721,
+    "error": 817757,
+    "max_error": 111
+  },
+  {
+    "scale": 2,
+    "mode": 4,
+    "different": 127840,
+    "over_one": 103488,
+    "error": 954640,
+    "max_error": 90
+  }
+]

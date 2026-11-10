@@ -14,7 +14,9 @@ mod paint_host;
 fn main() {
     let rounds: usize = std::env::args().nth(1).unwrap_or("30".into()).parse().unwrap();
     assert!(rounds > 0);
-    let uncached = std::env::args().nth(2).as_deref() == Some("uncached");
+    let cache_mode = std::env::args().nth(2).unwrap_or_else(|| "cached".into());
+    let uncached = cache_mode == "uncached";
+    let masks = cache_mode != "direct" && !uncached;
     let mode = std::env::args().nth(3).unwrap_or_else(|| "solid".into());
     let extra = match mode.as_str() {
         "solid" => "",
@@ -27,10 +29,10 @@ fn main() {
     b.load_file(&root.join("../../data/fonts/NotoSans[wght].ttf"), |_| {}, None).unwrap();
     let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Noto Sans"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
     let mut shaper = shaping::Engine::default();
-    let mut painter = paint::Engine::new(paint::Limits { fonts: if uncached { 0 } else { 64 }, ..Default::default() });
     let mut cases = Vec::new();
     for count in [100, 1000] {
         for scale in [1., 1.25, 1.5, 1.75, 2.] {
+            let mut painter = paint::Engine::new(paint::Limits { fonts: if uncached { 0 } else { 64 }, glyph_mask_bytes: if masks { 8 << 20 } else { 0 }, ..Default::default() });
             let host = paint_host::Scaled::new(scope.clone(), scale);
             let source = Arc::from(format!(
                 "<!doctype html><style>html{{font-family:'Noto Sans';font-size:16px;line-height:24px}}body{{margin:0}}p{{margin:0;padding:4px;border-width:1px;border-style:solid;border-color:gray}}p:nth-child(2n){{background-color:#eee}}{extra}</style>{}",
@@ -89,7 +91,9 @@ fn main() {
             }
             let linear_us = at.elapsed().as_secs_f64() * 1e6 / (rounds * 100) as f64;
             let region = paint::DeviceRect { x: 0, y: (1000. * scale) as i32, width: 256, height: 256 };
+            let at = Instant::now();
             let tile = painter.raster(&scene, region, None).unwrap();
+            let cold_raster_us = at.elapsed().as_secs_f64() * 1e6;
             let digest = format!("{:x}", Sha256::digest(tile.rgba()));
             let at = Instant::now();
             for _ in 0..rounds {
@@ -97,11 +101,12 @@ fn main() {
             }
             let raster_us = at.elapsed().as_secs_f64() * 1e6 / rounds as f64;
             let stats = painter.cache_stats();
-            cases.push(json!({"paragraphs":count,"scale":scale,"geometry_sha256":geometry_digest,"load_us":load,"scene_build_us":scene_us,"max_32_box_step_us":max_step,"commands":scene.commands().len(),"command_payload_bytes":scene.command_payload_bytes(),"query_us":query_us,"linear_query_us":linear_us,"tile_raster_us":raster_us,"tile_bytes":tile.rgba().len(),"tile_sha256":digest,"cached_fonts":stats.fonts,"font_source_bytes":stats.font_bytes,"cached_glyphs":stats.glyphs,"outline_payload_bytes":stats.path_bytes,"hits":stats.hits,"misses":stats.misses}));
+            let mask = painter.glyph_mask_stats();
+            cases.push(json!({"glyph_masks":mask.entries,"glyph_mask_bytes":mask.bytes,"mask_hits":mask.hits,"mask_misses":mask.misses,"mask_resets":mask.resets,"cold_raster_us":cold_raster_us,"paragraphs":count,"scale":scale,"geometry_sha256":geometry_digest,"load_us":load,"scene_build_us":scene_us,"max_32_box_step_us":max_step,"commands":scene.commands().len(),"command_payload_bytes":scene.command_payload_bytes(),"query_us":query_us,"linear_query_us":linear_us,"tile_raster_us":raster_us,"tile_bytes":tile.rgba().len(),"tile_sha256":digest,"cached_fonts":stats.fonts,"font_source_bytes":stats.font_bytes,"cached_glyphs":stats.glyphs,"outline_payload_bytes":stats.path_bytes,"hits":stats.hits,"misses":stats.misses}));
         }
     }
     println!(
         "{}",
-        json!({"features":build_features::enabled(),"rounds":rounds,"uncached":uncached,"mode":mode,"scope":"Static page/scene build; indexed vs linear query; outline cache vs disabled; 256px CPU tile. Payload excludes retained DOM/style/layout/text, allocator/header/hash/GPU costs. No website/UI evidence.","cases":cases})
+        json!({"features":build_features::enabled(),"rounds":rounds,"uncached":uncached,"masks":masks,"mode":mode,"scope":"Static page/scene build; indexed vs linear query; outline cache vs disabled; 256px CPU tile. Payload excludes retained DOM/style/layout/text, allocator/header/hash/GPU costs. No website/UI evidence.","cases":cases})
     );
 }

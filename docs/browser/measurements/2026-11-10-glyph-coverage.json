@@ -1,0 +1,549 @@
+{
+  "baseline_commit": "ae3f9701",
+  "release_tests": {
+    "passed": 2181,
+    "failed": 0,
+    "existing_ignored": 136
+  },
+  "workspace_build": "passed",
+  "layout_lint": {
+    "1280x800": 0,
+    "1440x900": 0
+  },
+  "clean_visual_reviews": 45,
+  "native_fixture_pixel_differences": 0,
+  "downloaded_fixture_pixel_differences": 0,
+  "tile_byte_comparisons": "10/10 exact",
+  "website_acceptance": "0/100; unchanged",
+  "benchmarks": [
+    {
+      "paragraphs": 100,
+      "scale": 1,
+      "direct": {
+        "cold_raster_us": 980.211,
+        "tile_raster_us": 625.090242,
+        "glyph_mask_bytes": 0.0,
+        "glyph_masks": 0.0,
+        "mask_hits": 0.0,
+        "mask_misses": 0.0,
+        "mask_resets": 0.0,
+        "sha256": "c3da6183a2e135ae8129d17beab3dfbeb66638a858cb1560e91832bbeb8faf66"
+      },
+      "cached": {
+        "cold_raster_us": 1395.0005,
+        "tile_raster_us": 77.869125,
+        "glyph_mask_bytes": 361996.0,
+        "glyph_masks": 184.0,
+        "mask_hits": 92000.0,
+        "mask_misses": 184.0,
+        "mask_resets": 0.0,
+        "sha256": "c3da6183a2e135ae8129d17beab3dfbeb66638a858cb1560e91832bbeb8faf66"
+      }
+    },
+    {
+      "paragraphs": 100,
+      "scale": 1.25,
+      "direct": {
+        "cold_raster_us": 845.2,
+        "tile_raster_us": 502.379874,
+        "glyph_mask_bytes": 0.0,
+        "glyph_masks": 0.0,
+        "mask_hits": 0.0,
+        "mask_misses": 0.0,
+        "mask_resets": 0.0,
+        "sha256": "4fda258a6096ef71c29b38b6f1c168c91895ccd5757030b021f91053ba81f226"
+      },
+      "cached": {
+        "cold_raster_us": 869.0525,
+        "tile_raster_us": 57.507193,
+        "glyph_mask_bytes": 333820.0,
+        "glyph_masks": 114.0,
+        "mask_hits": 57000.0,
+        "mask_misses": 114.0,
+        "mask_resets": 0.0,
+        "sha256": "4fda258a6096ef71c29b38b6f1c168c91895ccd5757030b021f91053ba81f226"
+      }
+    },
+    {
+      "paragraphs": 100,
+      "scale": 1.5,
+      "direct": {
+        "cold_raster_us": 737.564,
+        "tile_raster_us": 407.19515,
+        "glyph_mask_bytes": 0.0,
+        "glyph_masks": 0.0,
+        "mask_hits": 0.0,
+        "mask_misses": 0.0,
+        "mask_resets": 0.0,
+        "sha256": "64cf66b86d080b3f17256628024f2221b7fcc07719e37e8d54a5e67fe5c6d936"
+      },
+      "cached": {
+        "cold_raster_us": 765.7529999999999,
+        "tile_raster_us": 61.263418,
+        "glyph_mask_bytes": 317069.0,
+        "glyph_masks": 80.0,
+        "mask_hits": 40000.0,
+        "mask_misses": 80.0,
+        "mask_resets": 0.0,
+        "sha256": "64cf66b86d080b3f17256628024f2221b7fcc07719e37e8d54a5e67fe5c6d936"
+      }
+    },
+    {
+      "paragraphs": 100,
+      "scale": 1.75,
+      "direct": {
+        "cold_raster_us": 708.9175,
+        "tile_raster_us": 381.67103999999995,
+        "glyph_mask_bytes": 0.0,
+        "glyph_masks": 0.0,
+        "mask_hits": 0.0,
+        "mask_misses": 0.0,
+        "mask_resets": 0.0,
+        "sha256": "3ccbe832c1ee56fd360334238df263c205e118548dfe7015bfbe370a6af25ac0"
+      },
+      "cached": {
+        "cold_raster_us": 743.3415,
+        "tile_raster_us": 121.957742,
+        "glyph_mask_bytes": 303832.0,
+        "glyph_masks": 56.0,
+        "mask_hits": 28000.0,
+        "mask_misses": 56.0,
+        "mask_resets": 0.0,
+        "sha256": "3ccbe832c1ee56fd360334238df263c205e118548dfe7015bfbe370a6af25ac0"
+      }
+    },
+    {
+      "paragraphs": 100,
+      "scale": 2,
+      "direct": {
+        "cold_raster_us": 569.5735,
+        "tile_raster_us": 309.432007,
+        "glyph_mask_bytes": 0.0,
+        "glyph_masks": 0.0,
+        "mask_hits": 0.0,
+        "mask_misses": 0.0,
+        "mask_resets": 0.0,
+        "sha256": "5a7394e2aafe30b959ade9c9923587b2e345990cdb8a6cdf408f145e6376a674"
+      },
+      "cached": {
+        "cold_raster_us": 626.1815,
+        "tile_raster_us": 133.327435,
+        "glyph_mask_bytes": 290809.0,
+        "glyph_masks": 36.0,
+        "mask_hits": 18000.0,
+        "mask_misses": 36.0,
+        "mask_resets": 0.0,
+        "sha256": "5a7394e2aafe30b959ade9c9923587b2e345990cdb8a6cdf408f145e6376a674"
+      }
+    },
+    {
+      "paragraphs": 1000,
+      "scale": 1,
+      "direct": {
+        "cold_raster_us": 907.6675,
+        "tile_raster_us": 624.07665,
+        "glyph_mask_bytes": 0.0,
+        "glyph_masks": 0.0,
+        "mask_hits": 0.0,
+        "mask_misses": 0.0,
+        "mask_resets": 0.0,
+        "sha256": "c3da6183a2e135ae8129d17beab3dfbeb66638a858cb1560e91832bbeb8faf66"
+      },
+      "cached": {
+        "cold_raster_us": 982.3879999999999,
+        "tile_raster_us": 71.287488,
+        "glyph_mask_bytes": 361996.0,
+        "glyph_masks": 184.0,
+        "mask_hits": 92000.0,
+        "mask_misses": 184.0,
+        "mask_resets": 0.0,
+        "sha256": "c3da6183a2e135ae8129d17beab3dfbeb66638a858cb1560e91832bbeb8faf66"
+      }
+    },
+    {
+      "paragraphs": 1000,
+      "scale": 1.25,
+      "direct": {
+        "cold_raster_us": 758.7565,
+        "tile_raster_us": 497.920919,
+        "glyph_mask_bytes": 0.0,
+        "glyph_masks": 0.0,
+        "mask_hits": 0.0,
+        "mask_misses": 0.0,
+        "mask_resets": 0.0,
+        "sha256": "4fda258a6096ef71c29b38b6f1c168c91895ccd5757030b021f91053ba81f226"
+      },
+      "cached": {
+        "cold_raster_us": 762.162,
+        "tile_raster_us": 58.28765,
+        "glyph_mask_bytes": 333820.0,
+        "glyph_masks": 114.0,
+        "mask_hits": 57000.0,
+        "mask_misses": 114.0,
+        "mask_resets": 0.0,
+        "sha256": "4fda258a6096ef71c29b38b6f1c168c91895ccd5757030b021f91053ba81f226"
+      }
+    },
+    {
+      "paragraphs": 1000,
+      "scale": 1.5,
+      "direct": {
+        "cold_raster_us": 631.079,
+        "tile_raster_us": 402.40654100000006,
+        "glyph_mask_bytes": 0.0,
+        "glyph_masks": 0.0,
+        "mask_hits": 0.0,
+        "mask_misses": 0.0,
+        "mask_resets": 0.0,
+        "sha256": "64cf66b86d080b3f17256628024f2221b7fcc07719e37e8d54a5e67fe5c6d936"
+      },
+      "cached": {
+        "cold_raster_us": 668.1315,
+        "tile_raster_us": 61.926469,
+        "glyph_mask_bytes": 317069.0,
+        "glyph_masks": 80.0,
+        "mask_hits": 40000.0,
+        "mask_misses": 80.0,
+        "mask_resets": 0.0,
+        "sha256": "64cf66b86d080b3f17256628024f2221b7fcc07719e37e8d54a5e67fe5c6d936"
+      }
+    },
+    {
+      "paragraphs": 1000,
+      "scale": 1.75,
+      "direct": {
+        "cold_raster_us": 601.4465,
+        "tile_raster_us": 388.15545199999997,
+        "glyph_mask_bytes": 0.0,
+        "glyph_masks": 0.0,
+        "mask_hits": 0.0,
+        "mask_misses": 0.0,
+        "mask_resets": 0.0,
+        "sha256": "3ccbe832c1ee56fd360334238df263c205e118548dfe7015bfbe370a6af25ac0"
+      },
+      "cached": {
+        "cold_raster_us": 621.963,
+        "tile_raster_us": 122.539941,
+        "glyph_mask_bytes": 303832.0,
+        "glyph_masks": 56.0,
+        "mask_hits": 28000.0,
+        "mask_misses": 56.0,
+        "mask_resets": 0.0,
+        "sha256": "3ccbe832c1ee56fd360334238df263c205e118548dfe7015bfbe370a6af25ac0"
+      }
+    },
+    {
+      "paragraphs": 1000,
+      "scale": 2,
+      "direct": {
+        "cold_raster_us": 491.9235,
+        "tile_raster_us": 305.900443,
+        "glyph_mask_bytes": 0.0,
+        "glyph_masks": 0.0,
+        "mask_hits": 0.0,
+        "mask_misses": 0.0,
+        "mask_resets": 0.0,
+        "sha256": "5a7394e2aafe30b959ade9c9923587b2e345990cdb8a6cdf408f145e6376a674"
+      },
+      "cached": {
+        "cold_raster_us": 541.7005,
+        "tile_raster_us": 132.402893,
+        "glyph_mask_bytes": 290809.0,
+        "glyph_masks": 36.0,
+        "mask_hits": 18000.0,
+        "mask_misses": 36.0,
+        "mask_resets": 0.0,
+        "sha256": "5a7394e2aafe30b959ade9c9923587b2e345990cdb8a6cdf408f145e6376a674"
+      }
+    }
+  ],
+  "browser_costs": [
+    {
+      "tag": "ordinary",
+      "scale": 1.25,
+      "variant": "baseline",
+      "reload_cpu_ms": 33.57142857142857,
+      "ready_ms": 25.0,
+      "rss_kib": 130708.0,
+      "compiler_overlap": true,
+      "idle": [
+        {
+          "cpu": 0.0,
+          "wakeups": 0,
+          "frames": 0
+        },
+        {
+          "cpu": 0.0,
+          "wakeups": 0,
+          "frames": 0
+        }
+      ],
+      "scroll": {
+        "drag": {
+          "first_ms": 26.4,
+          "hitches": 0,
+          "still": 0,
+          "slowest_ms": 0.81
+        },
+        "wheel": {
+          "first_ms": 8.9,
+          "hitches": 0,
+          "still": 0,
+          "slowest_ms": 0.95
+        }
+      }
+    },
+    {
+      "tag": "ordinary",
+      "scale": 1.25,
+      "variant": "candidate",
+      "reload_cpu_ms": 33.57142857142857,
+      "ready_ms": 24.0,
+      "rss_kib": 132354.0,
+      "compiler_overlap": false,
+      "idle": [
+        {
+          "cpu": 0.0,
+          "wakeups": 0,
+          "frames": 0
+        },
+        {
+          "cpu": 0.0,
+          "wakeups": 0,
+          "frames": 0
+        }
+      ],
+      "scroll": {
+        "drag": {
+          "first_ms": 27.4,
+          "hitches": 0,
+          "still": 0,
+          "slowest_ms": 0.66
+        },
+        "wheel": {
+          "first_ms": 9.05,
+          "hitches": 0,
+          "still": 0,
+          "slowest_ms": 0.55
+        }
+      }
+    },
+    {
+      "tag": "ordinary",
+      "scale": 2,
+      "variant": "baseline",
+      "reload_cpu_ms": 37.85714285714286,
+      "ready_ms": 24.5,
+      "rss_kib": 138174.0,
+      "compiler_overlap": false,
+      "idle": [
+        {
+          "cpu": 0.0,
+          "wakeups": 0,
+          "frames": 0
+        },
+        {
+          "cpu": 0.0,
+          "wakeups": 0,
+          "frames": 0
+        }
+      ],
+      "scroll": {
+        "drag": {
+          "first_ms": 28.5,
+          "hitches": 0,
+          "still": 0,
+          "slowest_ms": 1.06
+        },
+        "wheel": {
+          "first_ms": 9.05,
+          "hitches": 0,
+          "still": 0,
+          "slowest_ms": 2.23
+        }
+      }
+    },
+    {
+      "tag": "ordinary",
+      "scale": 2,
+      "variant": "candidate",
+      "reload_cpu_ms": 36.42857142857143,
+      "ready_ms": 24.0,
+      "rss_kib": 139318.0,
+      "compiler_overlap": false,
+      "idle": [
+        {
+          "cpu": 0.0,
+          "wakeups": 0,
+          "frames": 0
+        },
+        {
+          "cpu": 0.0,
+          "wakeups": 0,
+          "frames": 0
+        }
+      ],
+      "scroll": {
+        "drag": {
+          "first_ms": 28.5,
+          "hitches": 0,
+          "still": 0,
+          "slowest_ms": 1.02
+        },
+        "wheel": {
+          "first_ms": 9.149999999999999,
+          "hitches": 0,
+          "still": 0,
+          "slowest_ms": 1.15
+        }
+      }
+    },
+    {
+      "tag": "text",
+      "scale": 1.25,
+      "variant": "baseline",
+      "reload_cpu_ms": 38.57142857142857,
+      "ready_ms": 17.0,
+      "rss_kib": 129254.0,
+      "compiler_overlap": false,
+      "idle": [
+        {
+          "cpu": 0.0,
+          "wakeups": 0,
+          "frames": 0
+        },
+        {
+          "cpu": 0.0,
+          "wakeups": 0,
+          "frames": 0
+        }
+      ],
+      "scroll": {
+        "drag": {
+          "first_ms": 28.45,
+          "hitches": 0,
+          "still": 0,
+          "slowest_ms": 0.61
+        },
+        "wheel": {
+          "first_ms": 8.9,
+          "hitches": 0,
+          "still": 0,
+          "slowest_ms": 0.47
+        }
+      }
+    },
+    {
+      "tag": "text",
+      "scale": 1.25,
+      "variant": "candidate",
+      "reload_cpu_ms": 40.714285714285715,
+      "ready_ms": 16.5,
+      "rss_kib": 130980.0,
+      "compiler_overlap": false,
+      "idle": [
+        {
+          "cpu": 0.0,
+          "wakeups": 0,
+          "frames": 0
+        },
+        {
+          "cpu": 0.0,
+          "wakeups": 0,
+          "frames": 0
+        }
+      ],
+      "scroll": {
+        "drag": {
+          "first_ms": 28.549999999999997,
+          "hitches": 0,
+          "still": 0,
+          "slowest_ms": 0.73
+        },
+        "wheel": {
+          "first_ms": 7.1,
+          "hitches": 0,
+          "still": 0,
+          "slowest_ms": 0.63
+        }
+      }
+    },
+    {
+      "tag": "text",
+      "scale": 2,
+      "variant": "baseline",
+      "reload_cpu_ms": 47.14285714285714,
+      "ready_ms": 17.0,
+      "rss_kib": 136470.0,
+      "compiler_overlap": false,
+      "idle": [
+        {
+          "cpu": 0.0,
+          "wakeups": 0,
+          "frames": 0
+        },
+        {
+          "cpu": 0.0,
+          "wakeups": 0,
+          "frames": 0
+        }
+      ],
+      "scroll": {
+        "drag": {
+          "first_ms": 25.200000000000003,
+          "hitches": 0,
+          "still": 0,
+          "slowest_ms": 4.57
+        },
+        "wheel": {
+          "first_ms": 9.75,
+          "hitches": 0,
+          "still": 0,
+          "slowest_ms": 2.71
+        }
+      }
+    },
+    {
+      "tag": "text",
+      "scale": 2,
+      "variant": "candidate",
+      "reload_cpu_ms": 50.714285714285715,
+      "ready_ms": 17.0,
+      "rss_kib": 136410.0,
+      "compiler_overlap": false,
+      "idle": [
+        {
+          "cpu": 0.0,
+          "wakeups": 0,
+          "frames": 0
+        },
+        {
+          "cpu": 0.0,
+          "wakeups": 0,
+          "frames": 0
+        }
+      ],
+      "scroll": {
+        "drag": {
+          "first_ms": 27.85,
+          "hitches": 0,
+          "still": 0,
+          "slowest_ms": 2.68
+        },
+        "wheel": {
+          "first_ms": 9.0,
+          "hitches": 0,
+          "still": 0,
+          "slowest_ms": 0.91
+        }
+      }
+    }
+  ],
+  "caveats": [
+    "Cold raster is slower; repeated tile raster speedup is not browser speed superiority.",
+    "First ordinary 1.25x baseline run recorded a compiler in its pre-run snapshot; remaining browser runs recorded none.",
+    "Whole screenshots differ in exterior decoration/background pixels; compared client interiors are unchanged.",
+    "Allocator headers and spare container capacity are outside the cache payload budget.",
+    "Original workspace test failed the sandbox probe checkout-path assumption; corrected separately and full rerun passed."
+  ]
+}

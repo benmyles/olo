@@ -2719,3 +2719,27 @@ fall below the device integer. This avoids flooring half-leading down a pixel.
 `measurements/2026-11-10-text-baselines.json` records the live comparisons,
 costs and remaining pixel/scroll nonpasses. No rasterizer or glyph hinting policy
 changed in this correction.
+
+Glyph coverage is retained per tile painter in `paint::glyph_mask`. The key
+leases the immutable outline and includes all six device transform values,
+including the integer tile position: translating curves before rasterization
+changes tiny-skia's floating-point subdivision and can change pixels. A reusable
+512×512 A8 scratch mask renders at the original coordinates, then only the glyph
+rectangle is retained. Glyphs crossing the destination edge, larger than 256×256,
+or drawn into larger destinations use the original clipped path renderer.
+
+The 8 MiB budget includes coverage, the 256 KiB scratch mask and a conservative
+outline payload charge per entry; at most 4,096 entries remain. Allocation
+headers and spare container capacity are additional; this is not an RSS limit. Exhaustion resets the entries during worker
+work, without idle timers. Navigation drops coverage, including the serial
+painter's cache; pool painters already follow the navigation generation. Scale,
+phase, shear and font-outline identity are part of the key. Masks are neither
+resampled nor shared across transforms. Color is applied at draw time, preserving
+tiny-skia 0.12's clip/coverage/premultiplication order and integer rounding.
+
+`Engine::glyph_mask_stats()` exposes retained bytes, entries, hits, misses and
+resets; `clear_glyph_masks()` drops them. `Limits::glyph_mask_bytes = 0` selects
+direct drawing for differential tests and measurements. `paint_bench N direct`
+compares it with `paint_bench N cached`, reporting cold and repeated raster cost,
+coverage retention and tile hashes. This changes reuse, not glyph hinting or
+Chrome pixel compatibility.

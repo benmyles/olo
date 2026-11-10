@@ -1,0 +1,152 @@
+[
+  {
+    "name": "dark-1.25.png",
+    "size": [
+      1263,
+      914
+    ],
+    "diff": null,
+    "different_pixels": 0
+  },
+  {
+    "name": "dark-1.5.png",
+    "size": [
+      1515,
+      1097
+    ],
+    "diff": null,
+    "different_pixels": 0
+  },
+  {
+    "name": "dark-1.75.png",
+    "size": [
+      1768,
+      1279
+    ],
+    "diff": null,
+    "different_pixels": 0
+  },
+  {
+    "name": "dark-1.png",
+    "size": [
+      1010,
+      731
+    ],
+    "diff": null,
+    "different_pixels": 0
+  },
+  {
+    "name": "dark-2.png",
+    "size": [
+      2020,
+      1462
+    ],
+    "diff": null,
+    "different_pixels": 0
+  },
+  {
+    "name": "light-1.25.png",
+    "size": [
+      1263,
+      914
+    ],
+    "diff": [
+      125,
+      0,
+      1263,
+      914
+    ],
+    "different_pixels": 15863
+  },
+  {
+    "name": "light-1.5.png",
+    "size": [
+      1515,
+      1097
+    ],
+    "diff": [
+      150,
+      0,
+      1515,
+      31
+    ],
+    "different_pixels": 20715
+  },
+  {
+    "name": "light-1.75.png",
+    "size": [
+      1768,
+      1279
+    ],
+    "diff": null,
+    "different_pixels": 0
+  },
+  {
+    "name": "light-1.png",
+    "size": [
+      1010,
+      731
+    ],
+    "diff": [
+      100,
+      0,
+      1010,
+      21
+    ],
+    "different_pixels": 10120
+  },
+  {
+    "name": "light-2.png",
+    "size": [
+      2020,
+      1462
+    ],
+    "diff": null,
+    "different_pixels": 0
+  },
+  {
+    "name": "night-1.25.png",
+    "size": [
+      1263,
+      914
+    ],
+    "diff": null,
+    "different_pixels": 0
+  },
+  {
+    "name": "night-1.5.png",
+    "size": [
+      1515,
+      1097
+    ],
+    "diff": null,
+    "different_pixels": 0
+  },
+  {
+    "name": "night-1.75.png",
+    "size": [
+      1768,
+      1279
+    ],
+    "diff": null,
+    "different_pixels": 0
+  },
+  {
+    "name": "night-1.png",
+    "size": [
+      1010,
+      731
+    ],
+    "diff": null,
+    "different_pixels": 0
+  },
+  {
+    "name": "night-2.png",
+    "size": [
+      2020,
+      1462
+    ],
+    "diff": null,
+    "different_pixels": 0
+  }
+]
