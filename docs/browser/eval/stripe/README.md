@@ -14,6 +14,17 @@ without a dedicated eval environment; no personal account is part of this run.
 
 ## Latest checkpoint
 
+2026-11-10, intrinsic image sizing: native classic root bars are integrated,
+and the erroneous horizontal bar is now gone. A definite image width bypassed
+percentage max-width compression, widening an implicit grid track. At the
+matched1000×578 viewport, the four card widths and985×578 client size now agree
+with Chrome at all15 live theme/scale combinations. The card remains about438px
+too low; find the first vertical-flow divergence next. Remaining pixel,
+interaction, pricing and navigation journeys and all30 acceptance configurations
+stay open. Corpus **0/100**. See [evidence](../../measurements/2026-11-10-replaced-intrinsics/README.md).
+
+The preceding checkpoints follow:
+
 2026-11-10, overflow ownership: fixed the source of viewport overflow and
 one-axis clipping in the shared engine, and added typed root scrollbar
 properties. Component measurements and pixels agree with the pinned Chrome

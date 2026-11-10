@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-10
 
+### Browser constrains Stripe’s grid image
+
+*07:18* — Percentage max-width now compresses loaded images with definite width attributes during intrinsic sizing. Stripe’s horizontal overflow is gone; client height is 578 rather than 563 pixels. Other page layout and rendering differences remain; this is not site acceptance.
+
+![Browser constrains Stripe’s grid image](2026-11-10/071827-browser-constrains-stripe-s-grid-image.png)
+
+### Browser before intrinsic image sizing fix
+
+*07:18* — Stripe’s 2464-pixel image widened an implicit grid track and created an erroneous horizontal scrollbar. Owned Agent Screen, light mode at 1×; five scales and three themes recorded in browser measurements.
+
+![Browser before intrinsic image sizing fix](2026-11-10/071826-browser-before-intrinsic-image-sizing-fix.png)
+
 ### Browser: native two-axis viewport scrolling
 
 *06:35* — Classic client space with native horizontal and vertical controls, script position 640,720, and a fixed panel that remains interactive. Checked light, dark and night at 1x, 1.25x, 1.5x, 1.75x and 2x. Website compatibility remains incomplete.

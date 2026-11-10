@@ -169,7 +169,9 @@ impl Job<'_> {
         let border_box = matches!(s.value(P::BoxSizing), Value::Keyword(K::BorderBox));
         let content = |v: f64| (v - if border_box { extra } else { 0. }).max(0.);
         let specified = if ignore_width { None } else { len(P::Width, None, &mut self.scratch)?.map(content) };
-        let minimum = len(P::MinWidth, Some(0.), &mut self.scratch)?.map(content).unwrap_or(0.);
+        // Cyclic percentages in a minimum use a zero basis, retaining the
+        // constant part of calc(), e.g. min-width: calc(50% + 60px).
+        let minimum = used::length(s, P::MinWidth, Some(0.), Some(0.), queries, &mut self.scratch, self.cancel, self.scale)?.map(content).unwrap_or(0.);
         let maximum = len(P::MaxWidth, None, &mut self.scratch)?.map(content).unwrap_or(f64::MAX).max(minimum);
         let mut widths = if let Some(w) = specified {
             inline::IntrinsicWidths { min_content: w, max_content: w }
@@ -214,14 +216,7 @@ impl Job<'_> {
                 (Some(height), Some(ratio)) => height * ratio,
                 _ => w,
             };
-            // A replaced box sized by a percentage (`width: 100%`, or a
-            // percentage `max-width`) is compressible: its min-content
-            // contribution is zero (CSS Sizing 3 §5.2.2), so a grid or flex
-            // track holding a full-width image is not widened by its natural
-            // size (the BBC's 1fr columns took the images' 1000 px).
-            let percentage = |p: P, scratch: &mut math::Scratch| -> Result<bool> { Ok(matches!(s.value(p), Value::Numeric(_)) && len(p, None, scratch)?.is_none()) };
-            let compressible = percentage(P::Width, &mut self.scratch)? || percentage(P::MaxWidth, &mut self.scratch)?;
-            inline::IntrinsicWidths { min_content: if compressible { 0. } else { w }, max_content: w }
+            inline::IntrinsicWidths { min_content: w, max_content: w }
         } else {
             // A grid flowing its items into columns of their own (no
             // columns templated) is as wide as they are side by side.
@@ -261,6 +256,17 @@ impl Job<'_> {
                 inline::IntrinsicWidths { min_content: max_min, max_content: max_max }
             }
         };
+        // Compression also applies when the preferred width is definite:
+        // HTML width=2464 with max-width:100% must not widen an implicit
+        // grid track. Keep max-content intact, and apply the minimum below.
+        // Like Chrome, cyclic preferred/max-width calc() expressions use
+        // zero for this contribution; their constants resolve in final layout.
+        if b.kind.is_compressible() {
+            let percentage = |p| matches!(s.value(p), Value::Numeric(n) if n.expression().dependencies().contains(math::RelativeUnit::Percentage));
+            if (!ignore_width && percentage(P::Width)) || percentage(P::MaxWidth) {
+                widths.min_content = 0.;
+            }
+        }
         widths.min_content = widths.min_content.clamp(minimum, maximum);
         widths.max_content = widths.max_content.clamp(minimum, maximum);
         if ![widths.min_content, widths.max_content, extra].into_iter().all(f64::is_finite) {

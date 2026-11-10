@@ -4516,5 +4516,17 @@
   "title": "Browser: native two-axis viewport scrolling",
   "caption": "Classic client space with native horizontal and vertical controls, script position 640,720, and a fixed panel that remains interactive. Checked light, dark and night at 1x, 1.25x, 1.5x, 1.75x and 2x. Website compatibility remains incomplete.",
   "image": "2026-11-10/063522-browser-native-two-axis-viewport-scrolling.png"
+ },
+ {
+  "time": "2026-11-10T07:18:26",
+  "title": "Browser before intrinsic image sizing fix",
+  "caption": "Stripe\u2019s 2464-pixel image widened an implicit grid track and created an erroneous horizontal scrollbar. Owned Agent Screen, light mode at 1\u00d7; five scales and three themes recorded in browser measurements.",
+  "image": "2026-11-10/071826-browser-before-intrinsic-image-sizing-fix.png"
+ },
+ {
+  "time": "2026-11-10T07:18:27",
+  "title": "Browser constrains Stripe\u2019s grid image",
+  "caption": "Percentage max-width now compresses loaded images with definite width attributes during intrinsic sizing. Stripe\u2019s horizontal overflow is gone; client height is 578 rather than 563 pixels. Other page layout and rendering differences remain; this is not site acceptance.",
+  "image": "2026-11-10/071827-browser-constrains-stripe-s-grid-image.png"
  }
 ]

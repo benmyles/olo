@@ -467,3 +467,51 @@ fn a_deferred_image_makes_its_pixels_once_and_only_when_asked() {
     assert_eq!(image.rgba().len(), 8);
     assert_eq!(made.load(Ordering::Relaxed), 1, "made once");
 }
+
+#[test]
+fn images_in_implicit_grid_tracks_match_chrome_intrinsic_widths() {
+    use sha2::{Digest, Sha256};
+    let cases: serde_json::Value = serde_json::from_str(include_str!("replaced-intrinsic-fixtures/cases.json")).unwrap();
+    let reference: serde_json::Value = serde_json::from_str(include_str!("replaced-intrinsic-fixtures/chrome.json")).unwrap();
+    assert_eq!(format!("{:x}", Sha256::digest(include_bytes!("replaced-intrinsic-fixtures/cases.json"))), reference["cases_sha256"]);
+    let scope = scope();
+    let mut shaper = Engine::default();
+    let mut painter = paint::Engine::default();
+    let pixels = Image::from_rgba(2, 1, vec![255, 0, 0, 255, 255, 0, 0, 255], Default::default(), None).unwrap();
+    let mut failures = Vec::new();
+    for scale in [1., 1.25, 1.5, 1.75, 2.] {
+        let host = paint_host::Scaled::new(scope.clone(), scale);
+        for case in cases.as_array().unwrap() {
+            let expected = reference["rows"].as_array().unwrap().iter().find(|row| row["id"] == case["id"] && row["scale"].as_f64() == Some(scale)).unwrap();
+            let source = format!("<!doctype html><style>{}{}</style>{}", include_str!("flow-fixtures/base.css"), case["css"].as_str().unwrap(), case["html"].as_str().unwrap());
+            let page = page::load_assets(
+                Arc::from(source),
+                &host,
+                &scope,
+                &mut shaper,
+                &mut painter,
+                layout::Viewport { width: 800., height: 600., scale },
+                None,
+                |_, _| {},
+                |kind, _, _| Ok(matches!(kind, page::ResourceKind::Image).then(|| page::Resource::Image(pixels.clone()))),
+            )
+            .unwrap();
+            // A source-less image records one missing resource, not a CSS fallback.
+            assert_eq!(page.stylesheet_issues, usize::from(case["broken"] == true), "{} at {scale}", case["id"]);
+            assert_eq!(page.scene.layout().cache().tree().styles().report().stylesheet_issues, 0);
+            let l = page.scene.layout();
+            for name in case["measure"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()) {
+                let (id, _) =
+                    l.cache().tree().iter().find(|(_, b)| !matches!(b.kind, layout::BoxKind::InlineContent { .. }) && page.document.attribute(b.node, "id").ok().flatten() == Some(name)).unwrap();
+                let rect = l.bounds(id).unwrap();
+                for (key, value) in [("width", rect.width), ("height", rect.height)] {
+                    let want = expected["rects"][name][key].as_f64().unwrap();
+                    if (value - want).abs() > 0.02 {
+                        failures.push(format!("{} at {scale}: {name}.{key} {value} != {want}", case["id"]));
+                    }
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{} differences:\n{}", failures.len(), failures.join("\n"));
+}

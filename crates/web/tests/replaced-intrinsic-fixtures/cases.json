@@ -1,0 +1,554 @@
+[
+  {
+    "id": "percent-max-300px",
+    "html": "<div id=grid><picture id=picture><img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP8z8Dwn4GBgQEADQUCAOAHawIAAAAASUVORK5CYII=\" id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:300px;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;max-width:100%}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ]
+  },
+  {
+    "id": "percent-max-min-content",
+    "html": "<div id=grid><picture id=picture><img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP8z8Dwn4GBgQEADQUCAOAHawIAAAAASUVORK5CYII=\" id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:min-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;max-width:100%}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ]
+  },
+  {
+    "id": "percent-max-max-content",
+    "html": "<div id=grid><picture id=picture><img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP8z8Dwn4GBgQEADQUCAOAHawIAAAAASUVORK5CYII=\" id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:max-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;max-width:100%}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ]
+  },
+  {
+    "id": "calc-max-300px",
+    "html": "<div id=grid><picture id=picture><img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP8z8Dwn4GBgQEADQUCAOAHawIAAAAASUVORK5CYII=\" id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:300px;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;max-width:calc(100% + 40px)}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ]
+  },
+  {
+    "id": "calc-max-min-content",
+    "html": "<div id=grid><picture id=picture><img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP8z8Dwn4GBgQEADQUCAOAHawIAAAAASUVORK5CYII=\" id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:min-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;max-width:calc(100% + 40px)}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ]
+  },
+  {
+    "id": "calc-max-max-content",
+    "html": "<div id=grid><picture id=picture><img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP8z8Dwn4GBgQEADQUCAOAHawIAAAAASUVORK5CYII=\" id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:max-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;max-width:calc(100% + 40px)}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ]
+  },
+  {
+    "id": "percent-width-300px",
+    "html": "<div id=grid><picture id=picture><img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP8z8Dwn4GBgQEADQUCAOAHawIAAAAASUVORK5CYII=\" id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:300px;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;width:100%}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ]
+  },
+  {
+    "id": "percent-width-min-content",
+    "html": "<div id=grid><picture id=picture><img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP8z8Dwn4GBgQEADQUCAOAHawIAAAAASUVORK5CYII=\" id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:min-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;width:100%}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ]
+  },
+  {
+    "id": "percent-width-max-content",
+    "html": "<div id=grid><picture id=picture><img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP8z8Dwn4GBgQEADQUCAOAHawIAAAAASUVORK5CYII=\" id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:max-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;width:100%}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ]
+  },
+  {
+    "id": "calc-width-300px",
+    "html": "<div id=grid><picture id=picture><img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP8z8Dwn4GBgQEADQUCAOAHawIAAAAASUVORK5CYII=\" id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:300px;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;width:calc(100% + 50px)}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ]
+  },
+  {
+    "id": "calc-width-min-content",
+    "html": "<div id=grid><picture id=picture><img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP8z8Dwn4GBgQEADQUCAOAHawIAAAAASUVORK5CYII=\" id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:min-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;width:calc(100% + 50px)}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ]
+  },
+  {
+    "id": "calc-width-max-content",
+    "html": "<div id=grid><picture id=picture><img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP8z8Dwn4GBgQEADQUCAOAHawIAAAAASUVORK5CYII=\" id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:max-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;width:calc(100% + 50px)}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ]
+  },
+  {
+    "id": "minimum-300px",
+    "html": "<div id=grid><picture id=picture><img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP8z8Dwn4GBgQEADQUCAOAHawIAAAAASUVORK5CYII=\" id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:300px;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;max-width:100%;min-width:70px}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ]
+  },
+  {
+    "id": "minimum-min-content",
+    "html": "<div id=grid><picture id=picture><img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP8z8Dwn4GBgQEADQUCAOAHawIAAAAASUVORK5CYII=\" id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:min-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;max-width:100%;min-width:70px}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ]
+  },
+  {
+    "id": "minimum-max-content",
+    "html": "<div id=grid><picture id=picture><img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP8z8Dwn4GBgQEADQUCAOAHawIAAAAASUVORK5CYII=\" id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:max-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;max-width:100%;min-width:70px}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ]
+  },
+  {
+    "id": "calc-minimum-300px",
+    "html": "<div id=grid><picture id=picture><img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP8z8Dwn4GBgQEADQUCAOAHawIAAAAASUVORK5CYII=\" id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:300px;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;max-width:100%;min-width:calc(50% + 60px)}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ]
+  },
+  {
+    "id": "calc-minimum-min-content",
+    "html": "<div id=grid><picture id=picture><img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP8z8Dwn4GBgQEADQUCAOAHawIAAAAASUVORK5CYII=\" id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:min-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;max-width:100%;min-width:calc(50% + 60px)}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ]
+  },
+  {
+    "id": "calc-minimum-max-content",
+    "html": "<div id=grid><picture id=picture><img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP8z8Dwn4GBgQEADQUCAOAHawIAAAAASUVORK5CYII=\" id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:max-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;max-width:100%;min-width:calc(50% + 60px)}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ]
+  },
+  {
+    "id": "fixed-control-300px",
+    "html": "<div id=grid><picture id=picture><img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP8z8Dwn4GBgQEADQUCAOAHawIAAAAASUVORK5CYII=\" id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:300px;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ]
+  },
+  {
+    "id": "fixed-control-min-content",
+    "html": "<div id=grid><picture id=picture><img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP8z8Dwn4GBgQEADQUCAOAHawIAAAAASUVORK5CYII=\" id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:min-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ]
+  },
+  {
+    "id": "fixed-control-max-content",
+    "html": "<div id=grid><picture id=picture><img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP8z8Dwn4GBgQEADQUCAOAHawIAAAAASUVORK5CYII=\" id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:max-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ]
+  },
+  {
+    "id": "fixed-max-300px",
+    "html": "<div id=grid><picture id=picture><img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP8z8Dwn4GBgQEADQUCAOAHawIAAAAASUVORK5CYII=\" id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:300px;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;max-width:90px}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ]
+  },
+  {
+    "id": "fixed-max-min-content",
+    "html": "<div id=grid><picture id=picture><img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP8z8Dwn4GBgQEADQUCAOAHawIAAAAASUVORK5CYII=\" id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:min-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;max-width:90px}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ]
+  },
+  {
+    "id": "fixed-max-max-content",
+    "html": "<div id=grid><picture id=picture><img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP8z8Dwn4GBgQEADQUCAOAHawIAAAAASUVORK5CYII=\" id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:max-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;max-width:90px}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ]
+  },
+  {
+    "id": "broken-percent-max-300px",
+    "html": "<div id=grid><picture id=picture><img  id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:300px;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;max-width:100%}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ],
+    "broken": true
+  },
+  {
+    "id": "broken-percent-max-min-content",
+    "html": "<div id=grid><picture id=picture><img  id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:min-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;max-width:100%}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ],
+    "broken": true
+  },
+  {
+    "id": "broken-percent-max-max-content",
+    "html": "<div id=grid><picture id=picture><img  id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:max-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;max-width:100%}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ],
+    "broken": true
+  },
+  {
+    "id": "broken-calc-max-300px",
+    "html": "<div id=grid><picture id=picture><img  id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:300px;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;max-width:calc(100% + 40px)}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ],
+    "broken": true
+  },
+  {
+    "id": "broken-calc-max-min-content",
+    "html": "<div id=grid><picture id=picture><img  id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:min-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;max-width:calc(100% + 40px)}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ],
+    "broken": true
+  },
+  {
+    "id": "broken-calc-max-max-content",
+    "html": "<div id=grid><picture id=picture><img  id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:max-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;max-width:calc(100% + 40px)}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ],
+    "broken": true
+  },
+  {
+    "id": "broken-percent-width-300px",
+    "html": "<div id=grid><picture id=picture><img  id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:300px;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;width:100%}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ],
+    "broken": true
+  },
+  {
+    "id": "broken-percent-width-min-content",
+    "html": "<div id=grid><picture id=picture><img  id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:min-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;width:100%}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ],
+    "broken": true
+  },
+  {
+    "id": "broken-percent-width-max-content",
+    "html": "<div id=grid><picture id=picture><img  id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:max-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;width:100%}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ],
+    "broken": true
+  },
+  {
+    "id": "broken-calc-width-300px",
+    "html": "<div id=grid><picture id=picture><img  id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:300px;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;width:calc(100% + 50px)}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ],
+    "broken": true
+  },
+  {
+    "id": "broken-calc-width-min-content",
+    "html": "<div id=grid><picture id=picture><img  id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:min-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;width:calc(100% + 50px)}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ],
+    "broken": true
+  },
+  {
+    "id": "broken-calc-width-max-content",
+    "html": "<div id=grid><picture id=picture><img  id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:max-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;width:calc(100% + 50px)}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ],
+    "broken": true
+  },
+  {
+    "id": "broken-minimum-300px",
+    "html": "<div id=grid><picture id=picture><img  id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:300px;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;max-width:100%;min-width:70px}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ],
+    "broken": true
+  },
+  {
+    "id": "broken-minimum-min-content",
+    "html": "<div id=grid><picture id=picture><img  id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:min-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;max-width:100%;min-width:70px}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ],
+    "broken": true
+  },
+  {
+    "id": "broken-minimum-max-content",
+    "html": "<div id=grid><picture id=picture><img  id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:max-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;max-width:100%;min-width:70px}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ],
+    "broken": true
+  },
+  {
+    "id": "broken-calc-minimum-300px",
+    "html": "<div id=grid><picture id=picture><img  id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:300px;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;max-width:100%;min-width:calc(50% + 60px)}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ],
+    "broken": true
+  },
+  {
+    "id": "broken-calc-minimum-min-content",
+    "html": "<div id=grid><picture id=picture><img  id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:min-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;max-width:100%;min-width:calc(50% + 60px)}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ],
+    "broken": true
+  },
+  {
+    "id": "broken-calc-minimum-max-content",
+    "html": "<div id=grid><picture id=picture><img  id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:max-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;max-width:100%;min-width:calc(50% + 60px)}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ],
+    "broken": true
+  },
+  {
+    "id": "broken-fixed-control-300px",
+    "html": "<div id=grid><picture id=picture><img  id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:300px;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ],
+    "broken": true
+  },
+  {
+    "id": "broken-fixed-control-min-content",
+    "html": "<div id=grid><picture id=picture><img  id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:min-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ],
+    "broken": true
+  },
+  {
+    "id": "broken-fixed-control-max-content",
+    "html": "<div id=grid><picture id=picture><img  id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:max-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ],
+    "broken": true
+  },
+  {
+    "id": "broken-fixed-max-300px",
+    "html": "<div id=grid><picture id=picture><img  id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:300px;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;max-width:90px}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ],
+    "broken": true
+  },
+  {
+    "id": "broken-fixed-max-min-content",
+    "html": "<div id=grid><picture id=picture><img  id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:min-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;max-width:90px}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ],
+    "broken": true
+  },
+  {
+    "id": "broken-fixed-max-max-content",
+    "html": "<div id=grid><picture id=picture><img  id=image width=2464 height=800></picture><div id=overlay></div></div>",
+    "css": "#grid{display:grid;width:max-content;height:100px}#picture,#overlay{grid-area:1/1}img{display:block;height:100px;max-width:90px}#overlay{overflow:hidden}",
+    "measure": [
+      "grid",
+      "picture",
+      "image",
+      "overlay"
+    ],
+    "broken": true
+  }
+]

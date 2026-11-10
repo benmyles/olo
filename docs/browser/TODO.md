@@ -24,12 +24,15 @@ positions, fixed geometry/hit testing and history/reload restoration. Root
 wheel defaults follow overflow policy and page cancellation; asynchronous
 wheel decisions preserve GPUI's eased remainder. Stripe's hero now uses the
 client width (~985 instead of 1000 CSS px). At a matched 1000×578 viewport,
-the 1× hero rectangle now equals Chrome: 985×542.03125. **Next: erroneous
-horizontal document overflow**: Olo shows a horizontal bar and client height
-563, whereas Chrome has scrollWidth=clientWidth=985 and client height578.
-Its remaining pixels and journeys still need matched Chrome comparisons before
-accepting configurations.
-See [native scrolling](measurements/2026-11-10-native-scroll/README.md).
+the 1× hero rectangle now equals Chrome: 985×542.03125. The erroneous
+horizontal overflow is now fixed: an image's definite HTML width bypassed
+percentage max-width compression when sizing its implicit grid track. The
+image/card widths and 985×578 client size now match Chrome at all 15 live
+configurations. **Next: locate the first remaining vertical-flow divergence**:
+the Sessions card is about438 pixels too low and document height still differs.
+Continue matched pixels, navigation, pricing and interactive journeys before
+accepting configurations. See [intrinsic image sizing](measurements/2026-11-10-replaced-intrinsics/README.md)
+and [native scrolling](measurements/2026-11-10-native-scroll/README.md).
 
 Open scrolling work: nested classic gutters and complete nested/iframe wheel
 behavior; keyboard defaults; smooth scrolling/scrollend; vertical writing;
@@ -46,9 +49,9 @@ Finish its real pages/journeys and all 30 configurations before choosing
 another site. The engine renders every page end to end and records what it
 substituted in `Page::fallbacks` (see JOURNAL, 2026-11-06 evening); work is
 chosen by what is visibly wrong against Chrome and by the fallback counts,
-not by the first refusal. Stripe's homepage at 1000 × 700 lays out as
-Chrome does in every static section (JOURNAL 2026-11-07); what differs is
-script-driven. No configuration is accepted yet.
+not by the first refusal. The earlier static-section comparison (JOURNAL
+2026-11-07) is historical; fresh matched geometry still differs. No
+configuration is accepted yet.
 
 GitHub's homepage, open (seen against Chrome at 1000 × 700):
 

@@ -1,0 +1,902 @@
+[
+  {
+    "mode": "light",
+    "scale": 1,
+    "data": {
+      "dpr": 1,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "extent": [
+        985,
+        13478
+      ],
+      "boxes": [
+        {
+          "selector": ".sessions-on-demand__wrapper",
+          "rect": [
+            33,
+            2359.625,
+            919,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-background-desktop--desktop",
+          "rect": [
+            33,
+            2359.625,
+            919,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-background-image",
+          "rect": [
+            33,
+            2359.625,
+            919,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-content",
+          "rect": [
+            33,
+            2359.625,
+            919,
+            400
+          ]
+        },
+        {
+          "selector": ".Hero canvas"
+        }
+      ]
+    }
+  },
+  {
+    "mode": "light",
+    "scale": 1.25,
+    "data": {
+      "dpr": 1.25,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "extent": [
+        985,
+        13987
+      ],
+      "boxes": [
+        {
+          "selector": ".sessions-on-demand__wrapper",
+          "rect": [
+            32.79999923706055,
+            2360.012451171875,
+            919.2000122070312,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-background-desktop--desktop",
+          "rect": [
+            32.79999923706055,
+            2360.012451171875,
+            919.2000122070312,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-background-image",
+          "rect": [
+            32.79999923706055,
+            2360.012451171875,
+            919.2000122070312,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-content",
+          "rect": [
+            32.79999923706055,
+            2360.012451171875,
+            919.2000122070312,
+            400
+          ]
+        },
+        {
+          "selector": ".Hero canvas"
+        }
+      ]
+    }
+  },
+  {
+    "mode": "light",
+    "scale": 1.5,
+    "data": {
+      "dpr": 1.5,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "extent": [
+        985,
+        13985
+      ],
+      "boxes": [
+        {
+          "selector": ".sessions-on-demand__wrapper",
+          "rect": [
+            32.66666793823242,
+            2359.83349609375,
+            919.3333740234375,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-background-desktop--desktop",
+          "rect": [
+            32.66666793823242,
+            2359.83349609375,
+            919.3333740234375,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-background-image",
+          "rect": [
+            32.66666793823242,
+            2359.83349609375,
+            919.3333740234375,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-content",
+          "rect": [
+            32.66666793823242,
+            2359.83349609375,
+            919.3333740234375,
+            400
+          ]
+        },
+        {
+          "selector": ".Hero canvas"
+        }
+      ]
+    }
+  },
+  {
+    "mode": "light",
+    "scale": 1.75,
+    "data": {
+      "dpr": 1.75,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "extent": [
+        985,
+        13984
+      ],
+      "boxes": [
+        {
+          "selector": ".sessions-on-demand__wrapper",
+          "rect": [
+            32.57143020629883,
+            2360.9287109375,
+            920.0000610351562,
+            400.0000305175781
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-background-desktop--desktop",
+          "rect": [
+            32.57143020629883,
+            2360.9287109375,
+            920.0000610351562,
+            400.0000305175781
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-background-image",
+          "rect": [
+            32.57143020629883,
+            2360.9287109375,
+            920.0000610351562,
+            400.0000305175781
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-content",
+          "rect": [
+            32.57143020629883,
+            2360.9287109375,
+            920.0000610351562,
+            400.0000305175781
+          ]
+        },
+        {
+          "selector": ".Hero canvas"
+        }
+      ]
+    }
+  },
+  {
+    "mode": "light",
+    "scale": 2,
+    "data": {
+      "dpr": 2,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "extent": [
+        985,
+        13981
+      ],
+      "boxes": [
+        {
+          "selector": ".sessions-on-demand__wrapper",
+          "rect": [
+            33,
+            2359.671875,
+            919,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-background-desktop--desktop",
+          "rect": [
+            33,
+            2359.671875,
+            919,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-background-image",
+          "rect": [
+            33,
+            2359.671875,
+            919,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-content",
+          "rect": [
+            33,
+            2359.671875,
+            919,
+            400
+          ]
+        },
+        {
+          "selector": ".Hero canvas"
+        }
+      ]
+    }
+  },
+  {
+    "mode": "dark",
+    "scale": 1,
+    "data": {
+      "dpr": 1,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "extent": [
+        985,
+        13990
+      ],
+      "boxes": [
+        {
+          "selector": ".sessions-on-demand__wrapper",
+          "rect": [
+            33,
+            2359.625,
+            919,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-background-desktop--desktop",
+          "rect": [
+            33,
+            2359.625,
+            919,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-background-image",
+          "rect": [
+            33,
+            2359.625,
+            919,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-content",
+          "rect": [
+            33,
+            2359.625,
+            919,
+            400
+          ]
+        },
+        {
+          "selector": ".Hero canvas"
+        }
+      ]
+    }
+  },
+  {
+    "mode": "dark",
+    "scale": 1.25,
+    "data": {
+      "dpr": 1.25,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "extent": [
+        985,
+        13987
+      ],
+      "boxes": [
+        {
+          "selector": ".sessions-on-demand__wrapper",
+          "rect": [
+            32.79999923706055,
+            2360.012451171875,
+            919.2000122070312,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-background-desktop--desktop",
+          "rect": [
+            32.79999923706055,
+            2360.012451171875,
+            919.2000122070312,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-background-image",
+          "rect": [
+            32.79999923706055,
+            2360.012451171875,
+            919.2000122070312,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-content",
+          "rect": [
+            32.79999923706055,
+            2360.012451171875,
+            919.2000122070312,
+            400
+          ]
+        },
+        {
+          "selector": ".Hero canvas"
+        }
+      ]
+    }
+  },
+  {
+    "mode": "dark",
+    "scale": 1.5,
+    "data": {
+      "dpr": 1.5,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "extent": [
+        985,
+        13985
+      ],
+      "boxes": [
+        {
+          "selector": ".sessions-on-demand__wrapper",
+          "rect": [
+            32.66666793823242,
+            2359.83349609375,
+            919.3333740234375,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-background-desktop--desktop",
+          "rect": [
+            32.66666793823242,
+            2359.83349609375,
+            919.3333740234375,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-background-image",
+          "rect": [
+            32.66666793823242,
+            2359.83349609375,
+            919.3333740234375,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-content",
+          "rect": [
+            32.66666793823242,
+            2359.83349609375,
+            919.3333740234375,
+            400
+          ]
+        },
+        {
+          "selector": ".Hero canvas"
+        }
+      ]
+    }
+  },
+  {
+    "mode": "dark",
+    "scale": 1.75,
+    "data": {
+      "dpr": 1.75,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "extent": [
+        985,
+        13984
+      ],
+      "boxes": [
+        {
+          "selector": ".sessions-on-demand__wrapper",
+          "rect": [
+            32.57143020629883,
+            2360.9287109375,
+            920.0000610351562,
+            400.0000305175781
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-background-desktop--desktop",
+          "rect": [
+            32.57143020629883,
+            2360.9287109375,
+            920.0000610351562,
+            400.0000305175781
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-background-image",
+          "rect": [
+            32.57143020629883,
+            2360.9287109375,
+            920.0000610351562,
+            400.0000305175781
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-content",
+          "rect": [
+            32.57143020629883,
+            2360.9287109375,
+            920.0000610351562,
+            400.0000305175781
+          ]
+        },
+        {
+          "selector": ".Hero canvas"
+        }
+      ]
+    }
+  },
+  {
+    "mode": "dark",
+    "scale": 2,
+    "data": {
+      "dpr": 2,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "extent": [
+        985,
+        13981
+      ],
+      "boxes": [
+        {
+          "selector": ".sessions-on-demand__wrapper",
+          "rect": [
+            33,
+            2359.671875,
+            919,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-background-desktop--desktop",
+          "rect": [
+            33,
+            2359.671875,
+            919,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-background-image",
+          "rect": [
+            33,
+            2359.671875,
+            919,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-content",
+          "rect": [
+            33,
+            2359.671875,
+            919,
+            400
+          ]
+        },
+        {
+          "selector": ".Hero canvas"
+        }
+      ]
+    }
+  },
+  {
+    "mode": "night",
+    "scale": 1,
+    "data": {
+      "dpr": 1,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "extent": [
+        985,
+        13990
+      ],
+      "boxes": [
+        {
+          "selector": ".sessions-on-demand__wrapper",
+          "rect": [
+            33,
+            2359.625,
+            919,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-background-desktop--desktop",
+          "rect": [
+            33,
+            2359.625,
+            919,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-background-image",
+          "rect": [
+            33,
+            2359.625,
+            919,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-content",
+          "rect": [
+            33,
+            2359.625,
+            919,
+            400
+          ]
+        },
+        {
+          "selector": ".Hero canvas"
+        }
+      ]
+    }
+  },
+  {
+    "mode": "night",
+    "scale": 1.25,
+    "data": {
+      "dpr": 1.25,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "extent": [
+        985,
+        13987
+      ],
+      "boxes": [
+        {
+          "selector": ".sessions-on-demand__wrapper",
+          "rect": [
+            32.79999923706055,
+            2360.012451171875,
+            919.2000122070312,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-background-desktop--desktop",
+          "rect": [
+            32.79999923706055,
+            2360.012451171875,
+            919.2000122070312,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-background-image",
+          "rect": [
+            32.79999923706055,
+            2360.012451171875,
+            919.2000122070312,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-content",
+          "rect": [
+            32.79999923706055,
+            2360.012451171875,
+            919.2000122070312,
+            400
+          ]
+        },
+        {
+          "selector": ".Hero canvas"
+        }
+      ]
+    }
+  },
+  {
+    "mode": "night",
+    "scale": 1.5,
+    "data": {
+      "dpr": 1.5,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "extent": [
+        985,
+        13985
+      ],
+      "boxes": [
+        {
+          "selector": ".sessions-on-demand__wrapper",
+          "rect": [
+            32.66666793823242,
+            2359.83349609375,
+            919.3333740234375,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-background-desktop--desktop",
+          "rect": [
+            32.66666793823242,
+            2359.83349609375,
+            919.3333740234375,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-background-image",
+          "rect": [
+            32.66666793823242,
+            2359.83349609375,
+            919.3333740234375,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-content",
+          "rect": [
+            32.66666793823242,
+            2359.83349609375,
+            919.3333740234375,
+            400
+          ]
+        },
+        {
+          "selector": ".Hero canvas"
+        }
+      ]
+    }
+  },
+  {
+    "mode": "night",
+    "scale": 1.75,
+    "data": {
+      "dpr": 1.75,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "extent": [
+        985,
+        13984
+      ],
+      "boxes": [
+        {
+          "selector": ".sessions-on-demand__wrapper",
+          "rect": [
+            32.57143020629883,
+            2360.9287109375,
+            920.0000610351562,
+            400.0000305175781
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-background-desktop--desktop",
+          "rect": [
+            32.57143020629883,
+            2360.9287109375,
+            920.0000610351562,
+            400.0000305175781
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-background-image",
+          "rect": [
+            32.57143020629883,
+            2360.9287109375,
+            920.0000610351562,
+            400.0000305175781
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-content",
+          "rect": [
+            32.57143020629883,
+            2360.9287109375,
+            920.0000610351562,
+            400.0000305175781
+          ]
+        },
+        {
+          "selector": ".Hero canvas"
+        }
+      ]
+    }
+  },
+  {
+    "mode": "night",
+    "scale": 2,
+    "data": {
+      "dpr": 2,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "extent": [
+        985,
+        13981
+      ],
+      "boxes": [
+        {
+          "selector": ".sessions-on-demand__wrapper",
+          "rect": [
+            33,
+            2359.671875,
+            919,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-background-desktop--desktop",
+          "rect": [
+            33,
+            2359.671875,
+            919,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-background-image",
+          "rect": [
+            33,
+            2359.671875,
+            919,
+            400
+          ]
+        },
+        {
+          "selector": ".sessions-on-demand-content",
+          "rect": [
+            33,
+            2359.671875,
+            919,
+            400
+          ]
+        },
+        {
+          "selector": ".Hero canvas"
+        }
+      ]
+    }
+  }
+]

@@ -8434,3 +8434,48 @@ float 32 scroll exposure and stale JS budget reads remain open. Corpus **0/100**
 Evidence: `measurements/2026-11-10-native-scroll/`. Fetched origin/main was
 already contained (441 ahead, 0 behind before this commit). No personal desktop
 installation/reload or agent delegation.
+
+## 2026-11-10: constrain definite images in implicit grid tracks
+
+Stripe's Sessions image had width=2464 and max-width:100%. Intrinsic sizing
+handled its definite width before considering percentage compression, so the
+picture, image and overlapping content widened to2464px inside a919px wrapper.
+The document became2497px wide and acquired an erroneous horizontal bar.
+Compression now also applies to definite replaced widths, preserving maximum
+content sizing. Cyclic minimums retain calc's constant term with a zero basis.
+Broken-image identity stays in the box kind, preserving Chrome's different
+behavior for an image with no decoded source.
+
+The initial loaded-image regression failed with140 geometry differences.
+The expanded test pins48 loaded/broken cases at five actual Chrome scales:
+240 page observations, four rectangles each. Percentage/calc constraints,
+min/max-content containers and fixed controls pass. Chrome/draft differences
+and untested replaced-element cases are documented, not called conformance.
+Release workspace:2,207 passed,0 failed,136 existing ignored,252 suites;
+release workspace build and Browser lints at1280×800/1440×900 pass.
+
+Owned-screen captures:45 clean native-widget reviews (15 before,15 after,
+15 scrolled to the card), plus15 matched-size Chrome captures. All three themes,
+five live scales, odd x49. Image/card widths now match Chrome at919–920px;
+client height is578 instead of562–563px, with no horizontal overflow. The
+first card driver saw an old DPR after a fixed1.2s wait during tests; it now
+waits for the requested DPR and the complete retry passed unchanged code.
+Before/after screenshots are journaled.
+
+Repeat release ABBA1.25×/2×, after builds/tests/journal work:9,000 cached reads
+6.125→6.203/6.066→6.001ms;20 forced layouts1.500→1.622/1.565→1.583ms;
+CPU/resize18.125→17.500/45.625→42.500ms;RSS156262→156532/164692→164402KiB.
+Drag first movement36.75→36.80/35.45→36.80ms;wheel9.20→9.10/9.20→9.05ms.
+Zero hitches in the repeat, maximum draw1.66→5.33ms. Two stationary wheel
+frames in each variant remain open. All idle samples have zero measured CPU
+and page frames, with existing watchdog wakeups. The initial run overlapped
+journal generation and had two candidate drag hitches/max8.92ms; it is retained
+alongside the repeat. No general speedup or smoothness claim.
+
+Stripe remains active, corpus **0/100**. Its Sessions card is still about438px
+too low and document height differs. Find the first vertical-flow divergence,
+then continue matched pixels, pricing, navigation and interactive journeys and
+all30 configurations. Prior kit performance failures and scrolling gaps remain
+open. Fetched main is contained (442 ahead,0 behind before this checkpoint).
+No personal desktop install/reload or delegation. Evidence:
+`measurements/2026-11-10-replaced-intrinsics/`.

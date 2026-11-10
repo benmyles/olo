@@ -1,0 +1,5292 @@
+{
+  "chrome": {
+    "protocolVersion": "1.3",
+    "product": "Chrome/157.0.8103.38",
+    "revision": "@a733b5afbb3ba618844ff8876b89ad1a774b2f18",
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+    "jsVersion": "15.7.112.23"
+  },
+  "cases_sha256": "bf980c69114e33cf52dcebf81fcef64bf78973894a7a15745ab7bbd0ab7596e8",
+  "rows": [
+    {
+      "scale": 1,
+      "id": "percent-max-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 300,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "percent-max-min-content",
+      "rects": {
+        "grid": {
+          "width": 0,
+          "height": 100
+        },
+        "picture": {
+          "width": 0,
+          "height": 100
+        },
+        "image": {
+          "width": 0,
+          "height": 100
+        },
+        "overlay": {
+          "width": 0,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "percent-max-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "calc-max-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 340,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "calc-max-min-content",
+      "rects": {
+        "grid": {
+          "width": 0,
+          "height": 100
+        },
+        "picture": {
+          "width": 0,
+          "height": 100
+        },
+        "image": {
+          "width": 40,
+          "height": 100
+        },
+        "overlay": {
+          "width": 0,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "calc-max-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "percent-width-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 300,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "percent-width-min-content",
+      "rects": {
+        "grid": {
+          "width": 0,
+          "height": 100
+        },
+        "picture": {
+          "width": 0,
+          "height": 100
+        },
+        "image": {
+          "width": 0,
+          "height": 100
+        },
+        "overlay": {
+          "width": 0,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "percent-width-max-content",
+      "rects": {
+        "grid": {
+          "width": 200,
+          "height": 100
+        },
+        "picture": {
+          "width": 200,
+          "height": 100
+        },
+        "image": {
+          "width": 200,
+          "height": 100
+        },
+        "overlay": {
+          "width": 200,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "calc-width-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 350,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "calc-width-min-content",
+      "rects": {
+        "grid": {
+          "width": 0,
+          "height": 100
+        },
+        "picture": {
+          "width": 0,
+          "height": 100
+        },
+        "image": {
+          "width": 50,
+          "height": 100
+        },
+        "overlay": {
+          "width": 0,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "calc-width-max-content",
+      "rects": {
+        "grid": {
+          "width": 200,
+          "height": 100
+        },
+        "picture": {
+          "width": 200,
+          "height": 100
+        },
+        "image": {
+          "width": 250,
+          "height": 100
+        },
+        "overlay": {
+          "width": 200,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "minimum-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 300,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "minimum-min-content",
+      "rects": {
+        "grid": {
+          "width": 70,
+          "height": 100
+        },
+        "picture": {
+          "width": 70,
+          "height": 100
+        },
+        "image": {
+          "width": 70,
+          "height": 100
+        },
+        "overlay": {
+          "width": 70,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "minimum-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "calc-minimum-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 300,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "calc-minimum-min-content",
+      "rects": {
+        "grid": {
+          "width": 60,
+          "height": 100
+        },
+        "picture": {
+          "width": 60,
+          "height": 100
+        },
+        "image": {
+          "width": 90,
+          "height": 100
+        },
+        "overlay": {
+          "width": 60,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "calc-minimum-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "fixed-control-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "fixed-control-min-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "fixed-control-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "fixed-max-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 90,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "fixed-max-min-content",
+      "rects": {
+        "grid": {
+          "width": 90,
+          "height": 100
+        },
+        "picture": {
+          "width": 90,
+          "height": 100
+        },
+        "image": {
+          "width": 90,
+          "height": 100
+        },
+        "overlay": {
+          "width": 90,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "fixed-max-max-content",
+      "rects": {
+        "grid": {
+          "width": 90,
+          "height": 100
+        },
+        "picture": {
+          "width": 90,
+          "height": 100
+        },
+        "image": {
+          "width": 90,
+          "height": 100
+        },
+        "overlay": {
+          "width": 90,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "broken-percent-max-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "broken-percent-max-min-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "broken-percent-max-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "broken-calc-max-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "broken-calc-max-min-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "broken-calc-max-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "broken-percent-width-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 308,
+          "height": 100
+        },
+        "image": {
+          "width": 308,
+          "height": 100
+        },
+        "overlay": {
+          "width": 308,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "broken-percent-width-min-content",
+      "rects": {
+        "grid": {
+          "width": 308,
+          "height": 100
+        },
+        "picture": {
+          "width": 308,
+          "height": 100
+        },
+        "image": {
+          "width": 308,
+          "height": 100
+        },
+        "overlay": {
+          "width": 308,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "broken-percent-width-max-content",
+      "rects": {
+        "grid": {
+          "width": 308,
+          "height": 100
+        },
+        "picture": {
+          "width": 308,
+          "height": 100
+        },
+        "image": {
+          "width": 308,
+          "height": 100
+        },
+        "overlay": {
+          "width": 308,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "broken-calc-width-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 308,
+          "height": 100
+        },
+        "image": {
+          "width": 358,
+          "height": 100
+        },
+        "overlay": {
+          "width": 308,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "broken-calc-width-min-content",
+      "rects": {
+        "grid": {
+          "width": 308,
+          "height": 100
+        },
+        "picture": {
+          "width": 308,
+          "height": 100
+        },
+        "image": {
+          "width": 358,
+          "height": 100
+        },
+        "overlay": {
+          "width": 308,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "broken-calc-width-max-content",
+      "rects": {
+        "grid": {
+          "width": 308,
+          "height": 100
+        },
+        "picture": {
+          "width": 308,
+          "height": 100
+        },
+        "image": {
+          "width": 358,
+          "height": 100
+        },
+        "overlay": {
+          "width": 308,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "broken-minimum-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "broken-minimum-min-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "broken-minimum-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "broken-calc-minimum-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "broken-calc-minimum-min-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "broken-calc-minimum-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "broken-fixed-control-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "broken-fixed-control-min-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "broken-fixed-control-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "broken-fixed-max-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 90,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "broken-fixed-max-min-content",
+      "rects": {
+        "grid": {
+          "width": 90,
+          "height": 100
+        },
+        "picture": {
+          "width": 90,
+          "height": 100
+        },
+        "image": {
+          "width": 90,
+          "height": 100
+        },
+        "overlay": {
+          "width": 90,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "broken-fixed-max-max-content",
+      "rects": {
+        "grid": {
+          "width": 90,
+          "height": 100
+        },
+        "picture": {
+          "width": 90,
+          "height": 100
+        },
+        "image": {
+          "width": 90,
+          "height": 100
+        },
+        "overlay": {
+          "width": 90,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "percent-max-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 300,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "percent-max-min-content",
+      "rects": {
+        "grid": {
+          "width": 0,
+          "height": 100
+        },
+        "picture": {
+          "width": 0,
+          "height": 100
+        },
+        "image": {
+          "width": 0,
+          "height": 100
+        },
+        "overlay": {
+          "width": 0,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "percent-max-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "calc-max-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 340,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "calc-max-min-content",
+      "rects": {
+        "grid": {
+          "width": 0,
+          "height": 100
+        },
+        "picture": {
+          "width": 0,
+          "height": 100
+        },
+        "image": {
+          "width": 40,
+          "height": 100
+        },
+        "overlay": {
+          "width": 0,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "calc-max-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "percent-width-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 300,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "percent-width-min-content",
+      "rects": {
+        "grid": {
+          "width": 0,
+          "height": 100
+        },
+        "picture": {
+          "width": 0,
+          "height": 100
+        },
+        "image": {
+          "width": 0,
+          "height": 100
+        },
+        "overlay": {
+          "width": 0,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "percent-width-max-content",
+      "rects": {
+        "grid": {
+          "width": 200,
+          "height": 100
+        },
+        "picture": {
+          "width": 200,
+          "height": 100
+        },
+        "image": {
+          "width": 200,
+          "height": 100
+        },
+        "overlay": {
+          "width": 200,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "calc-width-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 350,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "calc-width-min-content",
+      "rects": {
+        "grid": {
+          "width": 0,
+          "height": 100
+        },
+        "picture": {
+          "width": 0,
+          "height": 100
+        },
+        "image": {
+          "width": 50,
+          "height": 100
+        },
+        "overlay": {
+          "width": 0,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "calc-width-max-content",
+      "rects": {
+        "grid": {
+          "width": 200,
+          "height": 100
+        },
+        "picture": {
+          "width": 200,
+          "height": 100
+        },
+        "image": {
+          "width": 250,
+          "height": 100
+        },
+        "overlay": {
+          "width": 200,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "minimum-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 300,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "minimum-min-content",
+      "rects": {
+        "grid": {
+          "width": 70,
+          "height": 100
+        },
+        "picture": {
+          "width": 70,
+          "height": 100
+        },
+        "image": {
+          "width": 70,
+          "height": 100
+        },
+        "overlay": {
+          "width": 70,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "minimum-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "calc-minimum-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 300,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "calc-minimum-min-content",
+      "rects": {
+        "grid": {
+          "width": 60,
+          "height": 100
+        },
+        "picture": {
+          "width": 60,
+          "height": 100
+        },
+        "image": {
+          "width": 90,
+          "height": 100
+        },
+        "overlay": {
+          "width": 60,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "calc-minimum-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "fixed-control-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "fixed-control-min-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "fixed-control-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "fixed-max-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 90,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "fixed-max-min-content",
+      "rects": {
+        "grid": {
+          "width": 90,
+          "height": 100
+        },
+        "picture": {
+          "width": 90,
+          "height": 100
+        },
+        "image": {
+          "width": 90,
+          "height": 100
+        },
+        "overlay": {
+          "width": 90,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "fixed-max-max-content",
+      "rects": {
+        "grid": {
+          "width": 90,
+          "height": 100
+        },
+        "picture": {
+          "width": 90,
+          "height": 100
+        },
+        "image": {
+          "width": 90,
+          "height": 100
+        },
+        "overlay": {
+          "width": 90,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "broken-percent-max-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "broken-percent-max-min-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "broken-percent-max-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "broken-calc-max-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "broken-calc-max-min-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "broken-calc-max-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "broken-percent-width-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 308,
+          "height": 100
+        },
+        "image": {
+          "width": 308,
+          "height": 100
+        },
+        "overlay": {
+          "width": 308,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "broken-percent-width-min-content",
+      "rects": {
+        "grid": {
+          "width": 308,
+          "height": 100
+        },
+        "picture": {
+          "width": 308,
+          "height": 100
+        },
+        "image": {
+          "width": 308,
+          "height": 100
+        },
+        "overlay": {
+          "width": 308,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "broken-percent-width-max-content",
+      "rects": {
+        "grid": {
+          "width": 308,
+          "height": 100
+        },
+        "picture": {
+          "width": 308,
+          "height": 100
+        },
+        "image": {
+          "width": 308,
+          "height": 100
+        },
+        "overlay": {
+          "width": 308,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "broken-calc-width-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 308,
+          "height": 100
+        },
+        "image": {
+          "width": 358,
+          "height": 100
+        },
+        "overlay": {
+          "width": 308,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "broken-calc-width-min-content",
+      "rects": {
+        "grid": {
+          "width": 308,
+          "height": 100
+        },
+        "picture": {
+          "width": 308,
+          "height": 100
+        },
+        "image": {
+          "width": 358,
+          "height": 100
+        },
+        "overlay": {
+          "width": 308,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "broken-calc-width-max-content",
+      "rects": {
+        "grid": {
+          "width": 308,
+          "height": 100
+        },
+        "picture": {
+          "width": 308,
+          "height": 100
+        },
+        "image": {
+          "width": 358,
+          "height": 100
+        },
+        "overlay": {
+          "width": 308,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "broken-minimum-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "broken-minimum-min-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "broken-minimum-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "broken-calc-minimum-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "broken-calc-minimum-min-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "broken-calc-minimum-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "broken-fixed-control-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "broken-fixed-control-min-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "broken-fixed-control-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "broken-fixed-max-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 90,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "broken-fixed-max-min-content",
+      "rects": {
+        "grid": {
+          "width": 90,
+          "height": 100
+        },
+        "picture": {
+          "width": 90,
+          "height": 100
+        },
+        "image": {
+          "width": 90,
+          "height": 100
+        },
+        "overlay": {
+          "width": 90,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "broken-fixed-max-max-content",
+      "rects": {
+        "grid": {
+          "width": 90,
+          "height": 100
+        },
+        "picture": {
+          "width": 90,
+          "height": 100
+        },
+        "image": {
+          "width": 90,
+          "height": 100
+        },
+        "overlay": {
+          "width": 90,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "percent-max-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 300,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "percent-max-min-content",
+      "rects": {
+        "grid": {
+          "width": 0,
+          "height": 100
+        },
+        "picture": {
+          "width": 0,
+          "height": 100
+        },
+        "image": {
+          "width": 0,
+          "height": 100
+        },
+        "overlay": {
+          "width": 0,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "percent-max-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "calc-max-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 340,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "calc-max-min-content",
+      "rects": {
+        "grid": {
+          "width": 0,
+          "height": 100
+        },
+        "picture": {
+          "width": 0,
+          "height": 100
+        },
+        "image": {
+          "width": 40,
+          "height": 100
+        },
+        "overlay": {
+          "width": 0,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "calc-max-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "percent-width-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 300,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "percent-width-min-content",
+      "rects": {
+        "grid": {
+          "width": 0,
+          "height": 100
+        },
+        "picture": {
+          "width": 0,
+          "height": 100
+        },
+        "image": {
+          "width": 0,
+          "height": 100
+        },
+        "overlay": {
+          "width": 0,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "percent-width-max-content",
+      "rects": {
+        "grid": {
+          "width": 200,
+          "height": 100
+        },
+        "picture": {
+          "width": 200,
+          "height": 100
+        },
+        "image": {
+          "width": 200,
+          "height": 100
+        },
+        "overlay": {
+          "width": 200,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "calc-width-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 350,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "calc-width-min-content",
+      "rects": {
+        "grid": {
+          "width": 0,
+          "height": 100
+        },
+        "picture": {
+          "width": 0,
+          "height": 100
+        },
+        "image": {
+          "width": 50,
+          "height": 100
+        },
+        "overlay": {
+          "width": 0,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "calc-width-max-content",
+      "rects": {
+        "grid": {
+          "width": 200,
+          "height": 100
+        },
+        "picture": {
+          "width": 200,
+          "height": 100
+        },
+        "image": {
+          "width": 250,
+          "height": 100
+        },
+        "overlay": {
+          "width": 200,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "minimum-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 300,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "minimum-min-content",
+      "rects": {
+        "grid": {
+          "width": 70,
+          "height": 100
+        },
+        "picture": {
+          "width": 70,
+          "height": 100
+        },
+        "image": {
+          "width": 70,
+          "height": 100
+        },
+        "overlay": {
+          "width": 70,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "minimum-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "calc-minimum-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 300,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "calc-minimum-min-content",
+      "rects": {
+        "grid": {
+          "width": 60,
+          "height": 100
+        },
+        "picture": {
+          "width": 60,
+          "height": 100
+        },
+        "image": {
+          "width": 90,
+          "height": 100
+        },
+        "overlay": {
+          "width": 60,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "calc-minimum-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "fixed-control-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "fixed-control-min-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "fixed-control-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "fixed-max-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 90,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "fixed-max-min-content",
+      "rects": {
+        "grid": {
+          "width": 90,
+          "height": 100
+        },
+        "picture": {
+          "width": 90,
+          "height": 100
+        },
+        "image": {
+          "width": 90,
+          "height": 100
+        },
+        "overlay": {
+          "width": 90,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "fixed-max-max-content",
+      "rects": {
+        "grid": {
+          "width": 90,
+          "height": 100
+        },
+        "picture": {
+          "width": 90,
+          "height": 100
+        },
+        "image": {
+          "width": 90,
+          "height": 100
+        },
+        "overlay": {
+          "width": 90,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "broken-percent-max-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "broken-percent-max-min-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "broken-percent-max-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "broken-calc-max-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "broken-calc-max-min-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "broken-calc-max-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "broken-percent-width-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 308,
+          "height": 100
+        },
+        "image": {
+          "width": 308,
+          "height": 100
+        },
+        "overlay": {
+          "width": 308,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "broken-percent-width-min-content",
+      "rects": {
+        "grid": {
+          "width": 308,
+          "height": 100
+        },
+        "picture": {
+          "width": 308,
+          "height": 100
+        },
+        "image": {
+          "width": 308,
+          "height": 100
+        },
+        "overlay": {
+          "width": 308,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "broken-percent-width-max-content",
+      "rects": {
+        "grid": {
+          "width": 308,
+          "height": 100
+        },
+        "picture": {
+          "width": 308,
+          "height": 100
+        },
+        "image": {
+          "width": 308,
+          "height": 100
+        },
+        "overlay": {
+          "width": 308,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "broken-calc-width-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 308,
+          "height": 100
+        },
+        "image": {
+          "width": 358,
+          "height": 100
+        },
+        "overlay": {
+          "width": 308,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "broken-calc-width-min-content",
+      "rects": {
+        "grid": {
+          "width": 308,
+          "height": 100
+        },
+        "picture": {
+          "width": 308,
+          "height": 100
+        },
+        "image": {
+          "width": 358,
+          "height": 100
+        },
+        "overlay": {
+          "width": 308,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "broken-calc-width-max-content",
+      "rects": {
+        "grid": {
+          "width": 308,
+          "height": 100
+        },
+        "picture": {
+          "width": 308,
+          "height": 100
+        },
+        "image": {
+          "width": 358,
+          "height": 100
+        },
+        "overlay": {
+          "width": 308,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "broken-minimum-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "broken-minimum-min-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "broken-minimum-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "broken-calc-minimum-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "broken-calc-minimum-min-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "broken-calc-minimum-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "broken-fixed-control-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "broken-fixed-control-min-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "broken-fixed-control-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "broken-fixed-max-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 90,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "broken-fixed-max-min-content",
+      "rects": {
+        "grid": {
+          "width": 90,
+          "height": 100
+        },
+        "picture": {
+          "width": 90,
+          "height": 100
+        },
+        "image": {
+          "width": 90,
+          "height": 100
+        },
+        "overlay": {
+          "width": 90,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "broken-fixed-max-max-content",
+      "rects": {
+        "grid": {
+          "width": 90,
+          "height": 100
+        },
+        "picture": {
+          "width": 90,
+          "height": 100
+        },
+        "image": {
+          "width": 90,
+          "height": 100
+        },
+        "overlay": {
+          "width": 90,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "percent-max-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 300,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 300,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "percent-max-min-content",
+      "rects": {
+        "grid": {
+          "width": 0,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 0,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 0,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 0,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "percent-max-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "calc-max-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 300,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 340,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "calc-max-min-content",
+      "rects": {
+        "grid": {
+          "width": 0,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 0,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 40,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 0,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "calc-max-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "percent-width-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 300,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 300,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "percent-width-min-content",
+      "rects": {
+        "grid": {
+          "width": 0,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 0,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 0,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 0,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "percent-width-max-content",
+      "rects": {
+        "grid": {
+          "width": 200.00001525878906,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 200.00001525878906,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 200.00001525878906,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 200.00001525878906,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "calc-width-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 300,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 350.0000305175781,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "calc-width-min-content",
+      "rects": {
+        "grid": {
+          "width": 0,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 0,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 50.000003814697266,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 0,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "calc-width-max-content",
+      "rects": {
+        "grid": {
+          "width": 200.00001525878906,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 200.00001525878906,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 250.00001525878906,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 200.00001525878906,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "minimum-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 300,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 300,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "minimum-min-content",
+      "rects": {
+        "grid": {
+          "width": 70,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 70,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 70,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 70,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "minimum-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "calc-minimum-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 300,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 300,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "calc-minimum-min-content",
+      "rects": {
+        "grid": {
+          "width": 60.000003814697266,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 60.000003814697266,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 90.00000762939453,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 60.000003814697266,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "calc-minimum-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "fixed-control-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "fixed-control-min-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "fixed-control-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "fixed-max-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 300,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 90.00000762939453,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "fixed-max-min-content",
+      "rects": {
+        "grid": {
+          "width": 90.00000762939453,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 90.00000762939453,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 90.00000762939453,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 90.00000762939453,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "fixed-max-max-content",
+      "rects": {
+        "grid": {
+          "width": 90.00000762939453,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 90.00000762939453,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 90.00000762939453,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 90.00000762939453,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "broken-percent-max-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "broken-percent-max-min-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "broken-percent-max-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "broken-calc-max-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "broken-calc-max-min-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "broken-calc-max-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "broken-percent-width-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 308,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 308,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 308,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "broken-percent-width-min-content",
+      "rects": {
+        "grid": {
+          "width": 308,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 308,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 308,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 308,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "broken-percent-width-max-content",
+      "rects": {
+        "grid": {
+          "width": 308,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 308,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 308,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 308,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "broken-calc-width-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 308,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 358.0000305175781,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 308,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "broken-calc-width-min-content",
+      "rects": {
+        "grid": {
+          "width": 308,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 308,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 358.0000305175781,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 308,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "broken-calc-width-max-content",
+      "rects": {
+        "grid": {
+          "width": 308,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 308,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 358.0000305175781,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 308,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "broken-minimum-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "broken-minimum-min-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "broken-minimum-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "broken-calc-minimum-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "broken-calc-minimum-min-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "broken-calc-minimum-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "broken-fixed-control-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "broken-fixed-control-min-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "broken-fixed-control-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 2464,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "broken-fixed-max-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 300,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 90.00000762939453,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "broken-fixed-max-min-content",
+      "rects": {
+        "grid": {
+          "width": 90.00000762939453,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 90.00000762939453,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 90.00000762939453,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 90.00000762939453,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "broken-fixed-max-max-content",
+      "rects": {
+        "grid": {
+          "width": 90.00000762939453,
+          "height": 100.00000762939453
+        },
+        "picture": {
+          "width": 90.00000762939453,
+          "height": 100.00000762939453
+        },
+        "image": {
+          "width": 90.00000762939453,
+          "height": 100.00000762939453
+        },
+        "overlay": {
+          "width": 90.00000762939453,
+          "height": 100.00000762939453
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "percent-max-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 300,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "percent-max-min-content",
+      "rects": {
+        "grid": {
+          "width": 0,
+          "height": 100
+        },
+        "picture": {
+          "width": 0,
+          "height": 100
+        },
+        "image": {
+          "width": 0,
+          "height": 100
+        },
+        "overlay": {
+          "width": 0,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "percent-max-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "calc-max-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 340,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "calc-max-min-content",
+      "rects": {
+        "grid": {
+          "width": 0,
+          "height": 100
+        },
+        "picture": {
+          "width": 0,
+          "height": 100
+        },
+        "image": {
+          "width": 40,
+          "height": 100
+        },
+        "overlay": {
+          "width": 0,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "calc-max-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "percent-width-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 300,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "percent-width-min-content",
+      "rects": {
+        "grid": {
+          "width": 0,
+          "height": 100
+        },
+        "picture": {
+          "width": 0,
+          "height": 100
+        },
+        "image": {
+          "width": 0,
+          "height": 100
+        },
+        "overlay": {
+          "width": 0,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "percent-width-max-content",
+      "rects": {
+        "grid": {
+          "width": 200,
+          "height": 100
+        },
+        "picture": {
+          "width": 200,
+          "height": 100
+        },
+        "image": {
+          "width": 200,
+          "height": 100
+        },
+        "overlay": {
+          "width": 200,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "calc-width-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 350,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "calc-width-min-content",
+      "rects": {
+        "grid": {
+          "width": 0,
+          "height": 100
+        },
+        "picture": {
+          "width": 0,
+          "height": 100
+        },
+        "image": {
+          "width": 50,
+          "height": 100
+        },
+        "overlay": {
+          "width": 0,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "calc-width-max-content",
+      "rects": {
+        "grid": {
+          "width": 200,
+          "height": 100
+        },
+        "picture": {
+          "width": 200,
+          "height": 100
+        },
+        "image": {
+          "width": 250,
+          "height": 100
+        },
+        "overlay": {
+          "width": 200,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "minimum-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 300,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "minimum-min-content",
+      "rects": {
+        "grid": {
+          "width": 70,
+          "height": 100
+        },
+        "picture": {
+          "width": 70,
+          "height": 100
+        },
+        "image": {
+          "width": 70,
+          "height": 100
+        },
+        "overlay": {
+          "width": 70,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "minimum-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "calc-minimum-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 300,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "calc-minimum-min-content",
+      "rects": {
+        "grid": {
+          "width": 60,
+          "height": 100
+        },
+        "picture": {
+          "width": 60,
+          "height": 100
+        },
+        "image": {
+          "width": 90,
+          "height": 100
+        },
+        "overlay": {
+          "width": 60,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "calc-minimum-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "fixed-control-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "fixed-control-min-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "fixed-control-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "fixed-max-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 90,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "fixed-max-min-content",
+      "rects": {
+        "grid": {
+          "width": 90,
+          "height": 100
+        },
+        "picture": {
+          "width": 90,
+          "height": 100
+        },
+        "image": {
+          "width": 90,
+          "height": 100
+        },
+        "overlay": {
+          "width": 90,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "fixed-max-max-content",
+      "rects": {
+        "grid": {
+          "width": 90,
+          "height": 100
+        },
+        "picture": {
+          "width": 90,
+          "height": 100
+        },
+        "image": {
+          "width": 90,
+          "height": 100
+        },
+        "overlay": {
+          "width": 90,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "broken-percent-max-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "broken-percent-max-min-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "broken-percent-max-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "broken-calc-max-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "broken-calc-max-min-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "broken-calc-max-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "broken-percent-width-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 308,
+          "height": 100
+        },
+        "image": {
+          "width": 308,
+          "height": 100
+        },
+        "overlay": {
+          "width": 308,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "broken-percent-width-min-content",
+      "rects": {
+        "grid": {
+          "width": 308,
+          "height": 100
+        },
+        "picture": {
+          "width": 308,
+          "height": 100
+        },
+        "image": {
+          "width": 308,
+          "height": 100
+        },
+        "overlay": {
+          "width": 308,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "broken-percent-width-max-content",
+      "rects": {
+        "grid": {
+          "width": 308,
+          "height": 100
+        },
+        "picture": {
+          "width": 308,
+          "height": 100
+        },
+        "image": {
+          "width": 308,
+          "height": 100
+        },
+        "overlay": {
+          "width": 308,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "broken-calc-width-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 308,
+          "height": 100
+        },
+        "image": {
+          "width": 358,
+          "height": 100
+        },
+        "overlay": {
+          "width": 308,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "broken-calc-width-min-content",
+      "rects": {
+        "grid": {
+          "width": 308,
+          "height": 100
+        },
+        "picture": {
+          "width": 308,
+          "height": 100
+        },
+        "image": {
+          "width": 358,
+          "height": 100
+        },
+        "overlay": {
+          "width": 308,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "broken-calc-width-max-content",
+      "rects": {
+        "grid": {
+          "width": 308,
+          "height": 100
+        },
+        "picture": {
+          "width": 308,
+          "height": 100
+        },
+        "image": {
+          "width": 358,
+          "height": 100
+        },
+        "overlay": {
+          "width": 308,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "broken-minimum-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "broken-minimum-min-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "broken-minimum-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "broken-calc-minimum-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "broken-calc-minimum-min-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "broken-calc-minimum-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "broken-fixed-control-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "broken-fixed-control-min-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "broken-fixed-control-max-content",
+      "rects": {
+        "grid": {
+          "width": 2464,
+          "height": 100
+        },
+        "picture": {
+          "width": 2464,
+          "height": 100
+        },
+        "image": {
+          "width": 2464,
+          "height": 100
+        },
+        "overlay": {
+          "width": 2464,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "broken-fixed-max-300px",
+      "rects": {
+        "grid": {
+          "width": 300,
+          "height": 100
+        },
+        "picture": {
+          "width": 300,
+          "height": 100
+        },
+        "image": {
+          "width": 90,
+          "height": 100
+        },
+        "overlay": {
+          "width": 300,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "broken-fixed-max-min-content",
+      "rects": {
+        "grid": {
+          "width": 90,
+          "height": 100
+        },
+        "picture": {
+          "width": 90,
+          "height": 100
+        },
+        "image": {
+          "width": 90,
+          "height": 100
+        },
+        "overlay": {
+          "width": 90,
+          "height": 100
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "broken-fixed-max-max-content",
+      "rects": {
+        "grid": {
+          "width": 90,
+          "height": 100
+        },
+        "picture": {
+          "width": 90,
+          "height": 100
+        },
+        "image": {
+          "width": 90,
+          "height": 100
+        },
+        "overlay": {
+          "width": 90,
+          "height": 100
+        }
+      }
+    }
+  ]
+}

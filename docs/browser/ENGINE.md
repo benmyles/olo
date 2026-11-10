@@ -2807,3 +2807,21 @@ body scroll aliases and gutter-only VisualViewport resize events remain open.
 The existing 60-layout/0.25-second JS measurement budget can still return stale
 sizes in a single advance. Native activation evidence and measured costs are
 in `measurements/2026-11-10-native-scroll/README.md`; no site is accepted.
+
+
+## Definite replaced widths under percentage constraints
+
+Intrinsic minimum compression applies to loaded replaced boxes even when their
+preferred width is definite (including HTML width attributes). Percentage
+preferred/max-width constraints can shrink their minimum contribution; maximum
+content sizing remains intact. Cyclic min-width uses a zero basis and preserves
+calc's constant term. The box kind records broken-image identity so a failed
+image retains Chrome's distinct intrinsic behavior. This adds no worker, timer
+or per-frame traversal. Computation stays in cancellable layout work.
+
+`tests/replaced-intrinsic-fixtures` pins240 independent Chrome observations,
+including loaded/broken images, implicit grids, percentage/calc constraints and
+min/max-content containers at five live scales. The fixture README documents
+Chrome/draft differences and limits. Native Stripe overflow and release costs
+are recorded in `measurements/2026-11-10-replaced-intrinsics/README.md`. Vertical
+page flow and complete replaced-element conformance remain open.

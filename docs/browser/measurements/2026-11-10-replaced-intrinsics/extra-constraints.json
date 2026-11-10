@@ -1,0 +1,43 @@
+{
+  "result": {
+    "type": "object",
+    "value": [
+      {
+        "rule": "min-height:40px",
+        "grid": 0,
+        "image": 0,
+        "height": 100
+      },
+      {
+        "rule": "min-height:140px",
+        "grid": 0,
+        "image": 0,
+        "height": 140
+      },
+      {
+        "rule": "min-height:calc(50% + 40px)",
+        "grid": 0,
+        "image": 0,
+        "height": 100
+      },
+      {
+        "rule": "padding:10px;border:2px solid;box-sizing:border-box",
+        "grid": 24,
+        "image": 24,
+        "height": 100
+      },
+      {
+        "rule": "min-height:140px;min-width:50px",
+        "grid": 50,
+        "image": 50,
+        "height": 140
+      },
+      {
+        "rule": "min-height:140px;max-width:calc(100% + 40px)",
+        "grid": 0,
+        "image": 40,
+        "height": 140
+      }
+    ]
+  }
+}

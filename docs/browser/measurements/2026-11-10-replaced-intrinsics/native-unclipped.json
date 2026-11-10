@@ -1,0 +1,65 @@
+{
+  "size": [
+    1000,
+    578
+  ],
+  "client": [
+    985,
+    563
+  ],
+  "extent": [
+    2497,
+    14743
+  ],
+  "count": 231,
+  "out": [
+    {
+      "tag": "PICTURE",
+      "cls": "sessions-on-demand-background sessions-on-demand-background-desktop--desktop",
+      "rect": [
+        33,
+        2797.6799512987013,
+        2464,
+        400,
+        2497
+      ],
+      "overflow": "visible",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": []
+    },
+    {
+      "tag": "IMG",
+      "cls": "sessions-on-demand-background-image",
+      "rect": [
+        33,
+        2797.6799512987013,
+        2464,
+        400,
+        2497
+      ],
+      "overflow": "visible",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": []
+    },
+    {
+      "tag": "DIV",
+      "cls": "sessions-on-demand-content",
+      "rect": [
+        33,
+        2797.6799512987013,
+        2464,
+        400,
+        2497
+      ],
+      "overflow": "hidden",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": []
+    }
+  ]
+}

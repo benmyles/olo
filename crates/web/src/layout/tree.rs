@@ -51,12 +51,14 @@ pub enum BoxKind {
     /// and paints only its own decoration.
     InlineReplaced {
         natural: [f32; 2],
+        broken_image: bool,
         /// A checkbox or radio button: on the baseline by its border box's
         /// bottom, its margins aside (as Chrome lines them up).
         toggle: bool,
     },
     BlockReplaced {
         natural: [f32; 2],
+        broken_image: bool,
     },
 }
 impl BoxKind {
@@ -66,6 +68,11 @@ impl BoxKind {
     /// Images, vectors and placeholders: boxes sized by content they do not lay out.
     pub fn is_replaced(self) -> bool {
         matches!(self, Self::InlineImage { .. } | Self::BlockImage { .. } | Self::InlineVector { .. } | Self::BlockVector { .. } | Self::InlineReplaced { .. } | Self::BlockReplaced { .. })
+    }
+    /// Broken images retain their specified width during intrinsic sizing;
+    /// loaded images can shrink under a cyclic percentage width constraint.
+    pub(super) fn is_compressible(self) -> bool {
+        self.is_replaced() && !matches!(self, Self::InlineReplaced { broken_image: true, .. } | Self::BlockReplaced { broken_image: true, .. })
     }
 }
 #[derive(Clone, Debug)]
@@ -361,7 +368,7 @@ impl Tree {
                 Ok(image.natural())
             }
             BoxKind::InlineVector { vector } | BoxKind::BlockVector { vector } => Ok(self.vector(vector).ok_or(Error::Invalid)?.natural()),
-            BoxKind::InlineReplaced { natural, .. } | BoxKind::BlockReplaced { natural } => Ok((f64::from(natural[0]), f64::from(natural[1]))),
+            BoxKind::InlineReplaced { natural, .. } | BoxKind::BlockReplaced { natural, .. } => Ok((f64::from(natural[0]), f64::from(natural[1]))),
             _ => Err(Error::Invalid),
         }
     }
@@ -1594,16 +1601,17 @@ impl BuildJob<'_> {
     /// Add an unrendered replaced element with the given natural size as an
     /// atomic inline or a block, following its display.
     fn replaced(&mut self, node: NodeId, display: Display, container: BoxId, natural: [f32; 2], absolute: bool, in_line: bool) -> Result<()> {
+        let broken_image = self.document.name(node)? == Some("img");
         match display {
             Display::Box { outer: Outer::Inline, .. } if !absolute => {
                 let toggle = self.document.name(node)? == Some("input")
                     && self.document.attribute(node, "type")?.map(str::trim).is_some_and(|t| t.eq_ignore_ascii_case("checkbox") || t.eq_ignore_ascii_case("radio"));
-                self.append_object(node, container, node, BoxKind::InlineReplaced { natural, toggle })
+                self.append_object(node, container, node, BoxKind::InlineReplaced { natural, broken_image, toggle })
             }
-            _ if in_line => self.absolute_object(node, container, BoxKind::BlockReplaced { natural }).map(|_| ()),
+            _ if in_line => self.absolute_object(node, container, BoxKind::BlockReplaced { natural, broken_image }).map(|_| ()),
             _ => {
                 self.flush()?;
-                let id = self.add(node, node, BoxKind::BlockReplaced { natural }, container)?;
+                let id = self.add(node, node, BoxKind::BlockReplaced { natural, broken_image }, container)?;
                 self.boxes[id.index()].absolute = absolute;
                 Ok(())
             }

@@ -1,0 +1,50 @@
+{
+  "1.25": {
+    "before": {
+      "cached_ms": 6.032513499999936,
+      "changed_ms": 1.5442520000000286,
+      "cpu_per_resize_ms": 19.375,
+      "rss_kib": 165790.0,
+      "resize_tool_ms": 410.189279995393,
+      "drag_first_ms": 36.9,
+      "drag_still": 0,
+      "wheel_first_ms": 9.0,
+      "wheel_still": 0
+    },
+    "after": {
+      "cached_ms": 5.353651500000069,
+      "changed_ms": 1.3232790000000136,
+      "cpu_per_resize_ms": 16.875,
+      "rss_kib": 166752.0,
+      "resize_tool_ms": 410.1873195031658,
+      "drag_first_ms": 36.75,
+      "drag_still": 0,
+      "wheel_first_ms": 9.15,
+      "wheel_still": 0
+    }
+  },
+  "2": {
+    "before": {
+      "cached_ms": 6.225441499999931,
+      "changed_ms": 1.5897615000000087,
+      "cpu_per_resize_ms": 46.25,
+      "rss_kib": 164606.0,
+      "resize_tool_ms": 409.081314021023,
+      "drag_first_ms": 37.5,
+      "drag_still": 0,
+      "wheel_first_ms": 9.1,
+      "wheel_still": 2
+    },
+    "after": {
+      "cached_ms": 6.265834999999981,
+      "changed_ms": 1.594985999999949,
+      "cpu_per_resize_ms": 41.25,
+      "rss_kib": 164364.0,
+      "resize_tool_ms": 410.00305200577714,
+      "drag_first_ms": 37.5,
+      "drag_still": 0,
+      "wheel_first_ms": 9.3,
+      "wheel_still": 2
+    }
+  }
+}

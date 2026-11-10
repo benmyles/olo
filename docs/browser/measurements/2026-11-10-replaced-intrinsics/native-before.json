@@ -1,0 +1,940 @@
+{
+  "size": [
+    1000,
+    578
+  ],
+  "client": [
+    985,
+    563
+  ],
+  "extent": [
+    2497,
+    14743
+  ],
+  "count": 231,
+  "out": [
+    {
+      "tag": "UL",
+      "cls": "logo-carousel__marquee",
+      "rect": [
+        17,
+        470.03125,
+        6192,
+        72,
+        6209
+      ],
+      "overflow": "visible",
+      "position": "static",
+      "transform": "matrix(1, 0, 0, 1, 0, 0)",
+      "contain": "none",
+      "ancestors": [
+        {
+          "tag": "DIV",
+          "cls": "logo-carousel__marquee-container",
+          "overflow": "hidden",
+          "transform": "none",
+          "contain": "none"
+        }
+      ]
+    },
+    {
+      "tag": "LI",
+      "cls": "logo-carousel__item",
+      "rect": [
+        6037,
+        470.03125,
+        172,
+        72,
+        6209
+      ],
+      "overflow": "visible",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": [
+        {
+          "tag": "UL",
+          "cls": "logo-carousel__marquee",
+          "overflow": "visible",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "contain": "none"
+        },
+        {
+          "tag": "DIV",
+          "cls": "logo-carousel__marquee-container",
+          "overflow": "hidden",
+          "transform": "none",
+          "contain": "none"
+        }
+      ]
+    },
+    {
+      "tag": "A",
+      "cls": "hds-link",
+      "rect": [
+        6052,
+        489.03125,
+        142,
+        34,
+        6194
+      ],
+      "overflow": "visible",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": [
+        {
+          "tag": "UL",
+          "cls": "logo-carousel__marquee",
+          "overflow": "visible",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "contain": "none"
+        },
+        {
+          "tag": "DIV",
+          "cls": "logo-carousel__marquee-container",
+          "overflow": "hidden",
+          "transform": "none",
+          "contain": "none"
+        }
+      ]
+    },
+    {
+      "tag": "DIV",
+      "cls": "",
+      "rect": [
+        6052,
+        489.03125,
+        142,
+        34,
+        6194
+      ],
+      "overflow": "visible",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": [
+        {
+          "tag": "UL",
+          "cls": "logo-carousel__marquee",
+          "overflow": "visible",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "contain": "none"
+        },
+        {
+          "tag": "DIV",
+          "cls": "logo-carousel__marquee-container",
+          "overflow": "hidden",
+          "transform": "none",
+          "contain": "none"
+        }
+      ]
+    },
+    {
+      "tag": "svg",
+      "cls": "",
+      "rect": [
+        6052,
+        489.03125,
+        142,
+        34,
+        6194
+      ],
+      "overflow": "hidden",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": [
+        {
+          "tag": "UL",
+          "cls": "logo-carousel__marquee",
+          "overflow": "visible",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "contain": "none"
+        },
+        {
+          "tag": "DIV",
+          "cls": "logo-carousel__marquee-container",
+          "overflow": "hidden",
+          "transform": "none",
+          "contain": "none"
+        }
+      ]
+    },
+    {
+      "tag": "LI",
+      "cls": "logo-carousel__item",
+      "rect": [
+        5865,
+        470.03125,
+        172,
+        72,
+        6037
+      ],
+      "overflow": "visible",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": [
+        {
+          "tag": "UL",
+          "cls": "logo-carousel__marquee",
+          "overflow": "visible",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "contain": "none"
+        },
+        {
+          "tag": "DIV",
+          "cls": "logo-carousel__marquee-container",
+          "overflow": "hidden",
+          "transform": "none",
+          "contain": "none"
+        }
+      ]
+    },
+    {
+      "tag": "A",
+      "cls": "hds-link",
+      "rect": [
+        5880,
+        489.03125,
+        142,
+        34,
+        6022
+      ],
+      "overflow": "visible",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": [
+        {
+          "tag": "UL",
+          "cls": "logo-carousel__marquee",
+          "overflow": "visible",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "contain": "none"
+        },
+        {
+          "tag": "DIV",
+          "cls": "logo-carousel__marquee-container",
+          "overflow": "hidden",
+          "transform": "none",
+          "contain": "none"
+        }
+      ]
+    },
+    {
+      "tag": "DIV",
+      "cls": "",
+      "rect": [
+        5880,
+        489.03125,
+        142,
+        34,
+        6022
+      ],
+      "overflow": "visible",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": [
+        {
+          "tag": "UL",
+          "cls": "logo-carousel__marquee",
+          "overflow": "visible",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "contain": "none"
+        },
+        {
+          "tag": "DIV",
+          "cls": "logo-carousel__marquee-container",
+          "overflow": "hidden",
+          "transform": "none",
+          "contain": "none"
+        }
+      ]
+    },
+    {
+      "tag": "svg",
+      "cls": "",
+      "rect": [
+        5880,
+        489.03125,
+        142,
+        34,
+        6022
+      ],
+      "overflow": "hidden",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": [
+        {
+          "tag": "UL",
+          "cls": "logo-carousel__marquee",
+          "overflow": "visible",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "contain": "none"
+        },
+        {
+          "tag": "DIV",
+          "cls": "logo-carousel__marquee-container",
+          "overflow": "hidden",
+          "transform": "none",
+          "contain": "none"
+        }
+      ]
+    },
+    {
+      "tag": "LI",
+      "cls": "logo-carousel__item",
+      "rect": [
+        5693,
+        470.03125,
+        172,
+        72,
+        5865
+      ],
+      "overflow": "visible",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": [
+        {
+          "tag": "UL",
+          "cls": "logo-carousel__marquee",
+          "overflow": "visible",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "contain": "none"
+        },
+        {
+          "tag": "DIV",
+          "cls": "logo-carousel__marquee-container",
+          "overflow": "hidden",
+          "transform": "none",
+          "contain": "none"
+        }
+      ]
+    },
+    {
+      "tag": "A",
+      "cls": "hds-link",
+      "rect": [
+        5708,
+        489.03125,
+        142,
+        34,
+        5850
+      ],
+      "overflow": "visible",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": [
+        {
+          "tag": "UL",
+          "cls": "logo-carousel__marquee",
+          "overflow": "visible",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "contain": "none"
+        },
+        {
+          "tag": "DIV",
+          "cls": "logo-carousel__marquee-container",
+          "overflow": "hidden",
+          "transform": "none",
+          "contain": "none"
+        }
+      ]
+    },
+    {
+      "tag": "DIV",
+      "cls": "",
+      "rect": [
+        5708,
+        489.03125,
+        142,
+        34,
+        5850
+      ],
+      "overflow": "visible",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": [
+        {
+          "tag": "UL",
+          "cls": "logo-carousel__marquee",
+          "overflow": "visible",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "contain": "none"
+        },
+        {
+          "tag": "DIV",
+          "cls": "logo-carousel__marquee-container",
+          "overflow": "hidden",
+          "transform": "none",
+          "contain": "none"
+        }
+      ]
+    },
+    {
+      "tag": "svg",
+      "cls": "",
+      "rect": [
+        5708,
+        489.03125,
+        142,
+        34,
+        5850
+      ],
+      "overflow": "hidden",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": [
+        {
+          "tag": "UL",
+          "cls": "logo-carousel__marquee",
+          "overflow": "visible",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "contain": "none"
+        },
+        {
+          "tag": "DIV",
+          "cls": "logo-carousel__marquee-container",
+          "overflow": "hidden",
+          "transform": "none",
+          "contain": "none"
+        }
+      ]
+    },
+    {
+      "tag": "LI",
+      "cls": "logo-carousel__item",
+      "rect": [
+        5521,
+        470.03125,
+        172,
+        72,
+        5693
+      ],
+      "overflow": "visible",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": [
+        {
+          "tag": "UL",
+          "cls": "logo-carousel__marquee",
+          "overflow": "visible",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "contain": "none"
+        },
+        {
+          "tag": "DIV",
+          "cls": "logo-carousel__marquee-container",
+          "overflow": "hidden",
+          "transform": "none",
+          "contain": "none"
+        }
+      ]
+    },
+    {
+      "tag": "A",
+      "cls": "hds-link",
+      "rect": [
+        5536,
+        489.03125,
+        142,
+        34,
+        5678
+      ],
+      "overflow": "visible",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": [
+        {
+          "tag": "UL",
+          "cls": "logo-carousel__marquee",
+          "overflow": "visible",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "contain": "none"
+        },
+        {
+          "tag": "DIV",
+          "cls": "logo-carousel__marquee-container",
+          "overflow": "hidden",
+          "transform": "none",
+          "contain": "none"
+        }
+      ]
+    },
+    {
+      "tag": "DIV",
+      "cls": "",
+      "rect": [
+        5536,
+        489.03125,
+        142,
+        34,
+        5678
+      ],
+      "overflow": "visible",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": [
+        {
+          "tag": "UL",
+          "cls": "logo-carousel__marquee",
+          "overflow": "visible",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "contain": "none"
+        },
+        {
+          "tag": "DIV",
+          "cls": "logo-carousel__marquee-container",
+          "overflow": "hidden",
+          "transform": "none",
+          "contain": "none"
+        }
+      ]
+    },
+    {
+      "tag": "svg",
+      "cls": "",
+      "rect": [
+        5536,
+        489.03125,
+        142,
+        34,
+        5678
+      ],
+      "overflow": "hidden",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": [
+        {
+          "tag": "UL",
+          "cls": "logo-carousel__marquee",
+          "overflow": "visible",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "contain": "none"
+        },
+        {
+          "tag": "DIV",
+          "cls": "logo-carousel__marquee-container",
+          "overflow": "hidden",
+          "transform": "none",
+          "contain": "none"
+        }
+      ]
+    },
+    {
+      "tag": "LI",
+      "cls": "logo-carousel__item",
+      "rect": [
+        5349,
+        470.03125,
+        172,
+        72,
+        5521
+      ],
+      "overflow": "visible",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": [
+        {
+          "tag": "UL",
+          "cls": "logo-carousel__marquee",
+          "overflow": "visible",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "contain": "none"
+        },
+        {
+          "tag": "DIV",
+          "cls": "logo-carousel__marquee-container",
+          "overflow": "hidden",
+          "transform": "none",
+          "contain": "none"
+        }
+      ]
+    },
+    {
+      "tag": "A",
+      "cls": "hds-link",
+      "rect": [
+        5364,
+        489.03125,
+        142,
+        34,
+        5506
+      ],
+      "overflow": "visible",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": [
+        {
+          "tag": "UL",
+          "cls": "logo-carousel__marquee",
+          "overflow": "visible",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "contain": "none"
+        },
+        {
+          "tag": "DIV",
+          "cls": "logo-carousel__marquee-container",
+          "overflow": "hidden",
+          "transform": "none",
+          "contain": "none"
+        }
+      ]
+    },
+    {
+      "tag": "DIV",
+      "cls": "",
+      "rect": [
+        5364,
+        489.03125,
+        142,
+        34,
+        5506
+      ],
+      "overflow": "visible",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": [
+        {
+          "tag": "UL",
+          "cls": "logo-carousel__marquee",
+          "overflow": "visible",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "contain": "none"
+        },
+        {
+          "tag": "DIV",
+          "cls": "logo-carousel__marquee-container",
+          "overflow": "hidden",
+          "transform": "none",
+          "contain": "none"
+        }
+      ]
+    },
+    {
+      "tag": "svg",
+      "cls": "",
+      "rect": [
+        5364,
+        489.03125,
+        142,
+        34,
+        5506
+      ],
+      "overflow": "hidden",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": [
+        {
+          "tag": "UL",
+          "cls": "logo-carousel__marquee",
+          "overflow": "visible",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "contain": "none"
+        },
+        {
+          "tag": "DIV",
+          "cls": "logo-carousel__marquee-container",
+          "overflow": "hidden",
+          "transform": "none",
+          "contain": "none"
+        }
+      ]
+    },
+    {
+      "tag": "LI",
+      "cls": "logo-carousel__item",
+      "rect": [
+        5177,
+        470.03125,
+        172,
+        72,
+        5349
+      ],
+      "overflow": "visible",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": [
+        {
+          "tag": "UL",
+          "cls": "logo-carousel__marquee",
+          "overflow": "visible",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "contain": "none"
+        },
+        {
+          "tag": "DIV",
+          "cls": "logo-carousel__marquee-container",
+          "overflow": "hidden",
+          "transform": "none",
+          "contain": "none"
+        }
+      ]
+    },
+    {
+      "tag": "A",
+      "cls": "hds-link",
+      "rect": [
+        5192,
+        489.03125,
+        142,
+        34,
+        5334
+      ],
+      "overflow": "visible",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": [
+        {
+          "tag": "UL",
+          "cls": "logo-carousel__marquee",
+          "overflow": "visible",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "contain": "none"
+        },
+        {
+          "tag": "DIV",
+          "cls": "logo-carousel__marquee-container",
+          "overflow": "hidden",
+          "transform": "none",
+          "contain": "none"
+        }
+      ]
+    },
+    {
+      "tag": "DIV",
+      "cls": "",
+      "rect": [
+        5192,
+        489.03125,
+        142,
+        34,
+        5334
+      ],
+      "overflow": "visible",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": [
+        {
+          "tag": "UL",
+          "cls": "logo-carousel__marquee",
+          "overflow": "visible",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "contain": "none"
+        },
+        {
+          "tag": "DIV",
+          "cls": "logo-carousel__marquee-container",
+          "overflow": "hidden",
+          "transform": "none",
+          "contain": "none"
+        }
+      ]
+    },
+    {
+      "tag": "svg",
+      "cls": "",
+      "rect": [
+        5192,
+        489.03125,
+        142,
+        34,
+        5334
+      ],
+      "overflow": "hidden",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": [
+        {
+          "tag": "UL",
+          "cls": "logo-carousel__marquee",
+          "overflow": "visible",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "contain": "none"
+        },
+        {
+          "tag": "DIV",
+          "cls": "logo-carousel__marquee-container",
+          "overflow": "hidden",
+          "transform": "none",
+          "contain": "none"
+        }
+      ]
+    },
+    {
+      "tag": "LI",
+      "cls": "logo-carousel__item",
+      "rect": [
+        5005,
+        470.03125,
+        172,
+        72,
+        5177
+      ],
+      "overflow": "visible",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": [
+        {
+          "tag": "UL",
+          "cls": "logo-carousel__marquee",
+          "overflow": "visible",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "contain": "none"
+        },
+        {
+          "tag": "DIV",
+          "cls": "logo-carousel__marquee-container",
+          "overflow": "hidden",
+          "transform": "none",
+          "contain": "none"
+        }
+      ]
+    },
+    {
+      "tag": "A",
+      "cls": "hds-link",
+      "rect": [
+        5020,
+        489.03125,
+        142,
+        34,
+        5162
+      ],
+      "overflow": "visible",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": [
+        {
+          "tag": "UL",
+          "cls": "logo-carousel__marquee",
+          "overflow": "visible",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "contain": "none"
+        },
+        {
+          "tag": "DIV",
+          "cls": "logo-carousel__marquee-container",
+          "overflow": "hidden",
+          "transform": "none",
+          "contain": "none"
+        }
+      ]
+    },
+    {
+      "tag": "DIV",
+      "cls": "",
+      "rect": [
+        5020,
+        489.03125,
+        142,
+        34,
+        5162
+      ],
+      "overflow": "visible",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": [
+        {
+          "tag": "UL",
+          "cls": "logo-carousel__marquee",
+          "overflow": "visible",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "contain": "none"
+        },
+        {
+          "tag": "DIV",
+          "cls": "logo-carousel__marquee-container",
+          "overflow": "hidden",
+          "transform": "none",
+          "contain": "none"
+        }
+      ]
+    },
+    {
+      "tag": "svg",
+      "cls": "",
+      "rect": [
+        5020,
+        489.03125,
+        142,
+        34,
+        5162
+      ],
+      "overflow": "hidden",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": [
+        {
+          "tag": "UL",
+          "cls": "logo-carousel__marquee",
+          "overflow": "visible",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "contain": "none"
+        },
+        {
+          "tag": "DIV",
+          "cls": "logo-carousel__marquee-container",
+          "overflow": "hidden",
+          "transform": "none",
+          "contain": "none"
+        }
+      ]
+    },
+    {
+      "tag": "LI",
+      "cls": "logo-carousel__item",
+      "rect": [
+        4833,
+        470.03125,
+        172,
+        72,
+        5005
+      ],
+      "overflow": "visible",
+      "position": "static",
+      "transform": "none",
+      "contain": "none",
+      "ancestors": [
+        {
+          "tag": "UL",
+          "cls": "logo-carousel__marquee",
+          "overflow": "visible",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "contain": "none"
+        },
+        {
+          "tag": "DIV",
+          "cls": "logo-carousel__marquee-container",
+          "overflow": "hidden",
+          "transform": "none",
+          "contain": "none"
+        }
+      ]
+    }
+  ]
+}
