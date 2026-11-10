@@ -16,6 +16,7 @@ olo-color = { path = "crates/color" }
 olo-sync = { path = "crates/sync" }
 olo-app = { path = "crates/app" }
 olo-interface = { path = "crates/interface" }
+olo-kit = { path = "crates/kit" }
 olo-net = { path = "crates/net" }
 olo-crash = { path = "crates/crash" }
 olo-video = { path = "crates/video" }

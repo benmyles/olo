@@ -77,6 +77,62 @@ pub fn quit() {
     shared.main.quit();
 }
 
+/// Has `f` run on every window the program has, each on its looper.
+/// From any thread.
+pub fn all_windows(f: impl Fn(&mut WindowCx) + Send + Sync + 'static) {
+    let Some(shared) = shared() else { return };
+    let f = std::sync::Arc::new(f);
+    for looper in shared.loopers.lock().unwrap_or_else(|e| e.into_inner()).iter() {
+        let f = f.clone();
+        looper.post(move |looper| crate::window::each(looper, |cx| f(cx)));
+    }
+}
+
+/// Asks every window the program has for something, each on its
+/// looper, and waits for them all (those that answer within `wait`:
+/// a window whose looper is busy is left out). For a worker or a
+/// service's thread, never a looper: it blocks.
+pub fn ask_windows<T: Send + 'static>(wait: std::time::Duration, f: impl Fn(&mut WindowCx) -> Option<T> + Send + Sync + 'static) -> Vec<T> {
+    let Some(shared) = shared() else { return Vec::new() };
+    debug_assert!(!Looper::on_looper_thread(), "a looper must not wait on the others");
+    let f = std::sync::Arc::new(f);
+    let (tx, rx) = std::sync::mpsc::channel::<Option<Vec<T>>>();
+    let loopers: Vec<LooperHandle> = shared.loopers.lock().unwrap_or_else(|e| e.into_inner()).iter().filter(|l| !l.is_gone()).cloned().collect();
+    let mut asked = 0;
+    for looper in loopers {
+        let (f, tx) = (f.clone(), tx.clone());
+        if looper.post(move |looper| {
+            let mut found = Vec::new();
+            crate::window::each(looper, |cx| found.extend(f(cx)));
+            let _ = tx.send(Some(found));
+        }) {
+            asked += 1;
+        }
+    }
+    drop(tx);
+    let deadline = std::time::Instant::now() + wait;
+    let mut all = Vec::new();
+    for _ in 0..asked {
+        match rx.recv_timeout(deadline.saturating_duration_since(std::time::Instant::now())) {
+            Ok(Some(found)) => all.extend(found),
+            Ok(None) => {}
+            Err(_) => break,
+        }
+    }
+    all
+}
+
+/// The program's text system (its fonts, shaping and glyphs), for what
+/// measures text with no window to hand.
+pub fn text_system() -> std::sync::Arc<crate::TextSystem> {
+    display().text_system.clone()
+}
+
+/// Every window draws everything again (the look changed).
+pub fn refresh_all_windows() {
+    all_windows(|cx| cx.refresh());
+}
+
 /// Keeps the program running with no windows (a service; something that
 /// opens windows when it's asked to).
 pub fn stay_resident() {

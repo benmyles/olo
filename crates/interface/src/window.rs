@@ -94,6 +94,8 @@ pub(crate) struct WindowCore {
     pub(crate) cursor: crate::CursorStyle,
     /// Scenes let go of, to record into again.
     pub(crate) recycled: Vec<crate::Scene>,
+    /// What the kit keeps with the window, one of each type.
+    pub(crate) kept: HashMap<std::any::TypeId, Box<dyn std::any::Any>>,
 }
 
 /// A window, as whatever is running on its looper is handed it: the
@@ -158,6 +160,14 @@ pub(crate) fn open<V: View>(looper: &mut Looper, id: WindowId, params: WindowPar
     Ok(id)
 }
 
+/// Does something with every window on a looper.
+pub(crate) fn each(looper: &mut Looper, mut f: impl FnMut(&mut WindowCx)) {
+    let ids: Vec<WindowId> = looper.state::<Windows>().map(|w| w.map.keys().copied().collect()).unwrap_or_default();
+    for id in ids {
+        with_window(looper, id, &mut f);
+    }
+}
+
 /// How many windows are on a looper.
 pub(crate) fn count(looper: &Looper) -> usize {
     looper.state::<Windows>().map_or(0, |w| w.map.len())
@@ -189,6 +199,7 @@ impl WindowCore {
             glyph_memo: FxHashMap::default(),
             outlines: Default::default(),
             text_style: TextStyle::default(),
+            ext: None,
         };
         WindowCore {
             id,
@@ -223,6 +234,7 @@ impl WindowCore {
             next_frame: Vec::new(),
             cursor: crate::CursorStyle::Arrow,
             recycled: Vec::new(),
+            kept: HashMap::new(),
         }
     }
 
@@ -382,6 +394,62 @@ impl WindowCore {
             }
         }
         true
+    }
+
+    fn agent_nodes(&self, id: NodeId, clip: Bounds<Pixels>, out: &mut Vec<crate::agent::Node>) {
+        let Some(node) = self.nodes.get(id) else { return };
+        if node.style.visibility == crate::Visibility::Hidden {
+            return;
+        }
+        // What it is itself, if it says.
+        if let Some(inter) = &node.inter
+            && let Some(agent) = &inter.agent
+        {
+            out.push(crate::agent::Node {
+                role: agent.role,
+                name: agent.name.clone(),
+                value: agent.value.clone(),
+                bounds: node.bounds,
+                enabled: !inter.disabled,
+                clickable: !inter.disabled && (!inter.click.is_empty() || !inter.mouse_down.is_empty()),
+                focused: node.focused,
+                checked: agent.checked,
+                selected: agent.selected,
+                minimized: false,
+                clip: Some(clip),
+            });
+        }
+        // What its drawing said it holds, moved as the drawing is.
+        if let Some(notes) = &node.notes {
+            let moved = point(node.bounds.origin.x - node.painted_at.x, node.bounds.origin.y - node.painted_at.y);
+            for noted in &notes.agent {
+                let mut noted = noted.clone();
+                noted.bounds.origin = noted.bounds.origin + moved;
+                noted.clip = Some(noted.clip.map_or(clip, |c| Bounds { origin: c.origin + moved, size: c.size }.intersect(&clip)));
+                out.push(noted);
+            }
+        }
+        let inner = match node.style.overflow_mask(node.bounds, self.gfx.rem_size) {
+            Some(mask) => clip.intersect(&mask.bounds),
+            None => clip,
+        };
+        for child in &node.children {
+            self.agent_nodes(*child, inner, out);
+        }
+    }
+
+    fn cut_texts(&self, id: NodeId, out: &mut Vec<(Bounds<Pixels>, SharedString)>) {
+        let Some(node) = self.nodes.get(id) else { return };
+        if node.style.visibility == crate::Visibility::Hidden {
+            return;
+        }
+        if let Some(notes) = &node.notes {
+            let moved = point(node.bounds.origin.x - node.painted_at.x, node.bounds.origin.y - node.painted_at.y);
+            out.extend(notes.cuts.iter().map(|(b, full)| (Bounds { origin: b.origin + moved, size: b.size }, full.clone())));
+        }
+        for child in &node.children {
+            self.cut_texts(*child, out);
+        }
     }
 
     /// The window is gone: what it held goes, and the program hears.
@@ -702,6 +770,46 @@ impl<'a> WindowCx<'a> {
             self.core.gfx.text_style = style;
             self.refresh();
         }
+    }
+
+    /// Something kept with the window, one of each type (made the first
+    /// time it's asked for): a kit's own state for the window.
+    pub fn window_state<T: Default + 'static>(&mut self) -> &mut T {
+        self.core.kept.entry(std::any::TypeId::of::<T>()).or_insert_with(|| Box::new(T::default())).downcast_mut().expect("kept by its type")
+    }
+
+    /// What the window shows, for agents: everything that says what it
+    /// is, in painting order, where it is now and what shows of it.
+    /// This is the window's tree itself, kept: nothing is drawn for it.
+    pub fn agent_nodes(&self) -> Vec<crate::agent::Node> {
+        let mut out = Vec::new();
+        if let Some(root) = self.core.root {
+            let window = Bounds { origin: Point::default(), size: self.core.size };
+            self.core.agent_nodes(root, window, &mut out);
+        }
+        out
+    }
+
+    /// Every text that doesn't show in full: where what shows of it is,
+    /// and the whole of it.
+    pub fn cut_texts(&self) -> Vec<(Bounds<Pixels>, SharedString)> {
+        let mut out = Vec::new();
+        if let Some(root) = self.core.root {
+            self.core.cut_texts(root, &mut out);
+        }
+        out
+    }
+
+    /// Puts something with the window for drawings to fill in
+    /// (`Painter::ext`): what a layout review collects.
+    pub fn set_paint_ext(&mut self, ext: Option<Box<dyn std::any::Any>>) -> Option<Box<dyn std::any::Any>> {
+        std::mem::replace(&mut self.core.gfx.ext, ext)
+    }
+
+    /// Shows what changed now, not when the looper's queue is next dry
+    /// (for what must read the window as it will be: a review).
+    pub fn flush_now(&mut self) {
+        self.flush();
     }
 
     /// Whether the window has the keyboard.

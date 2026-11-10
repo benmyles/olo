@@ -596,8 +596,7 @@ impl WindowCore {
         }
         node.painted_at = bounds.origin;
         node.paint_dirty = false;
-        let empty = !notes.unfinished && !notes.by_visible && notes.agent.is_empty() && notes.cursors.is_empty();
-        node.notes = (!empty).then(|| Box::new(notes));
+        node.notes = (!notes.is_empty()).then(|| Box::new(notes));
     }
 
     /// What can be seen of a node: its bounds within everything that
@@ -689,9 +688,13 @@ fn paint_text(text: &TextNode, bounds: Bounds<Pixels>, p: &mut Painter) {
         let _ = line.paint(origin, laid.line_height, laid.align, Some(bounds), p);
         origin.y += line.size(laid.line_height).height;
     }
-    // What agents read: its text, where it is.
+    // What agents read: its text, where it is; whole, if it's cut
+    // short here.
     if !text.text.trim().is_empty() {
-        p.notes.agent.push(crate::agent::Node::label(text.text.clone(), bounds));
+        p.agent(crate::agent::Node::label(text.text.clone(), bounds));
+        if laid.truncated {
+            p.note_cut(text.text.clone(), bounds);
+        }
     }
 }
 

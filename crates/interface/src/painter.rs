@@ -73,6 +73,9 @@ pub(crate) struct Gfx {
     pub(crate) glyph_memo: FxHashMap<(u32, u32, u32, u8, u8), FoundGlyph>,
     pub(crate) outlines: crate::outline::Outlines,
     pub(crate) text_style: TextStyle,
+    /// Something of the kit's that drawing fills in while it's there
+    /// (what a layout review is told of each thing drawn).
+    pub(crate) ext: Option<Box<dyn std::any::Any>>,
 }
 
 /// What a view left for others as it drew, kept with its display list.
@@ -86,6 +89,15 @@ pub(crate) struct Notes {
     pub(crate) by_visible: bool,
     pub(crate) agent: Vec<crate::agent::Node>,
     pub(crate) cursors: Vec<(Bounds<Pixels>, crate::CursorStyle)>,
+    /// Texts that don't show in full (cut short to fit, or cut by what
+    /// they're in): each whole, and where what shows of it is.
+    pub(crate) cuts: Vec<(Bounds<Pixels>, SharedString)>,
+}
+
+impl Notes {
+    pub(crate) fn is_empty(&self) -> bool {
+        !self.unfinished && !self.by_visible && self.agent.is_empty() && self.cursors.is_empty() && self.cuts.is_empty()
+    }
 }
 
 /// What a view draws with: its drawing is recorded and kept until the
@@ -198,6 +210,42 @@ impl<'a> Painter<'a> {
     /// Something was left out of the drawing, wholly outside the clip.
     pub(crate) fn note_culled(&mut self) {
         self.scene.culled += 1;
+    }
+
+    /// Says what's being drawn is, for agents (a part of a drawing that
+    /// stands for something: a key of a drawn keypad, a row of a drawn
+    /// list). Kept with the drawing.
+    pub fn agent(&mut self, mut node: crate::agent::Node) {
+        node.clip.get_or_insert(self.clip());
+        self.notes.agent.push(node);
+    }
+
+    /// `full` was drawn cut short in `bounds`: its whole is what agents
+    /// read, and what a tip shows when the pointer rests on it.
+    pub fn note_cut(&mut self, full: SharedString, bounds: Bounds<Pixels>) {
+        let shown = bounds.intersect(&self.clip());
+        if shown.size.width > px(0.0) && shown.size.height > px(0.0) && !full.trim().is_empty() {
+            self.notes.cuts.push((shown, full));
+        }
+    }
+
+    /// What clips what's being painted now: what can be seen of the
+    /// view, within any clip of its own. (Unlike
+    /// [`Self::visible_bounds`], asking doesn't make the view drawn again
+    /// when it changes: for notes on a drawing, not for what to draw.)
+    pub fn clip(&self) -> Bounds<Pixels> {
+        self.visible.intersect(&self.content_mask().bounds)
+    }
+
+    /// What the kit put with the window for drawings to fill in
+    /// (`WindowCx::set_paint_ext`), if it's there and of this type.
+    pub fn ext<T: 'static>(&mut self) -> Option<&mut T> {
+        self.gfx.ext.as_mut()?.downcast_mut()
+    }
+
+    /// Whether anything is there to fill in ([`Self::ext`]).
+    pub fn has_ext(&self) -> bool {
+        self.gfx.ext.is_some()
     }
 
     /// What was painted waits for something still coming (a picture
