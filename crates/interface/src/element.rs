@@ -136,6 +136,21 @@ pub(crate) type MeasureFn = Rc<dyn Fn(&dyn Any, Size<Option<Pixels>>, Size<crate
 /// Takes something that happened (on the window's looper).
 pub(crate) type Listener<E> = Rc<dyn Fn(&E, &mut WindowCx)>;
 
+/// What typing does to the text being edited: what a key types, and
+/// what an input method composes.
+#[derive(Clone, Debug)]
+pub enum TextInputEvent {
+    /// Text to put in, in place of the selection (or of what's being
+    /// composed).
+    Insert(String),
+    /// The text being composed so far, shown marked until it's done.
+    Mark(String),
+    /// What was being composed stays as it is.
+    Unmark,
+    /// What was being composed goes.
+    DeleteMarked,
+}
+
 pub(crate) struct CanvasSpec {
     pub(crate) paint: PaintFn,
     /// What the drawing depends on, if the element says: the same key as
@@ -206,6 +221,8 @@ pub(crate) struct Interactivity {
     pub(crate) window_mouse_up: SmallVec<[Listener<MouseUpEvent>; 1]>,
     pub(crate) window_mouse_move: SmallVec<[Listener<MouseMoveEvent>; 1]>,
     pub(crate) focus_changed: SmallVec<[Listener<bool>; 1]>,
+    /// It takes typing while it has the keyboard.
+    pub(crate) text_input: Option<Listener<TextInputEvent>>,
     pub(crate) hover_style: Option<Box<StyleRefinement>>,
     pub(crate) active_style: Option<Box<StyleRefinement>>,
     pub(crate) focus_style: Option<Box<StyleRefinement>>,
@@ -215,6 +232,8 @@ pub(crate) struct Interactivity {
     pub(crate) focusable: bool,
     /// Tab reaches it.
     pub(crate) tab_stop: bool,
+    /// It counts as having the keyboard while anything it holds has it.
+    pub(crate) focus_within: bool,
     /// It's drawn anew when the pointer comes over it, presses it or
     /// leaves, or the keyboard comes or goes.
     pub(crate) paints_by_state: bool,
@@ -478,6 +497,14 @@ pub trait InteractiveElement: Sized {
         self
     }
 
+    /// It takes typing while it (or something in it) has the keyboard:
+    /// what keys type and what an input method composes. A view's own:
+    /// `Cx::text_input`.
+    fn on_text_input(mut self, listener: impl Fn(&TextInputEvent, &mut WindowCx) + 'static) -> Self {
+        self.interactivity().text_input = Some(Rc::new(listener));
+        self
+    }
+
     /// The keyboard came to it (true) or left.
     fn on_focus_changed(mut self, listener: impl Fn(&bool, &mut WindowCx) + 'static) -> Self {
         self.interactivity().focus_changed.push(Rc::new(listener));
@@ -520,6 +547,14 @@ pub trait InteractiveElement: Sized {
         let inter = self.interactivity();
         inter.focusable = true;
         inter.tab_stop = true;
+        self
+    }
+
+    /// It counts as having the keyboard while anything it holds has it:
+    /// its focus style applies and it draws focused (a text control's
+    /// well around its field).
+    fn focus_within(mut self) -> Self {
+        self.interactivity().focus_within = true;
         self
     }
 

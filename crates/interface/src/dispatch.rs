@@ -172,7 +172,34 @@ impl WindowCx<'_> {
         }
     }
 
-    pub(crate) fn dispatch_ime(&mut self, _ime: ImeInput) {}
+    /// What an input method did goes to what takes typing where the
+    /// keyboard is.
+    pub(crate) fn dispatch_ime(&mut self, ime: ImeInput) {
+        let event = match ime {
+            ImeInput::InsertText(text) => crate::TextInputEvent::Insert(text),
+            ImeInput::SetMarkedText(text) => crate::TextInputEvent::Mark(text),
+            ImeInput::UnmarkText => crate::TextInputEvent::Unmark,
+            ImeInput::DeleteText => crate::TextInputEvent::DeleteMarked,
+        };
+        self.to_text_input(&event);
+    }
+
+    /// Hands typing to the nearest thing that takes it, from what has
+    /// the keyboard up. Whether anything did.
+    fn to_text_input(&mut self, event: &crate::TextInputEvent) -> bool {
+        let Some(focus) = self.core.focus else { return false };
+        let path = self.core.path_to(focus);
+        for id in path.iter().rev() {
+            let handler = self.core.nodes.get(*id).and_then(|n| n.inter.as_ref()).filter(|i| !i.disabled).and_then(|i| i.text_input.clone());
+            if let Some(handler) = handler {
+                self.core.current = Some(*id);
+                handler(event, self);
+                self.core.current = None;
+                return true;
+            }
+        }
+        false
+    }
 
     /// Works out what the pointer is over now, and tells what it came
     /// over or left.
@@ -332,12 +359,13 @@ impl WindowCx<'_> {
                 return;
             }
         }
-        // Nothing took it. Tab moves the keyboard on; Return clicks the
-        // window's default button.
+        // Tab moves the keyboard on; Return clicks the window's default
+        // button.
         let key = event.keystroke.key.as_str();
         let plain = !event.keystroke.modifiers.control && !event.keystroke.modifiers.alt && !event.keystroke.modifiers.platform;
         if key == "tab" && plain {
             self.focus_next(event.keystroke.modifiers.shift);
+            return;
         } else if key == "enter" && !event.keystroke.modifiers.modified() {
             let default = self
                 .core
@@ -347,7 +375,16 @@ impl WindowCx<'_> {
                 .find(|id| self.core.nodes.get(*id).and_then(|n| n.inter.as_ref()).is_some_and(|i| i.default_key && !i.disabled) && self.core.is_attached(*id));
             if let Some(default) = default {
                 self.keyboard_click(default, KeyboardButton::Enter);
+                return;
             }
+        }
+        // Nothing took it as a key: what it types goes into the text
+        // where the keyboard is.
+        if event.keystroke.modifiers.is_subset_of(&crate::Modifiers::shift())
+            && let Some(typed) = event.keystroke.key_char.clone()
+            && self.to_text_input(&crate::TextInputEvent::Insert(typed))
+        {
+            return;
         }
     }
 
@@ -451,6 +488,21 @@ impl WindowCx<'_> {
             self.core.state_changed(id);
             for listener in listeners {
                 listener(&focused, self);
+            }
+        }
+        // What holds them and counts the keyboard as its own while it's
+        // inside (`focus_within`).
+        let old = from.map(|f| self.core.path_to(f)).unwrap_or_default();
+        let new = self.core.focus.map(|f| self.core.path_to(f)).unwrap_or_default();
+        for id in old.iter().chain(new.iter()) {
+            let Some(node) = self.core.nodes.get_mut(*id) else { continue };
+            if !node.inter.as_ref().is_some_and(|i| i.focus_within) {
+                continue;
+            }
+            let within = new.contains(id);
+            if node.focused != within {
+                node.focused = within;
+                self.core.state_changed(*id);
             }
         }
     }

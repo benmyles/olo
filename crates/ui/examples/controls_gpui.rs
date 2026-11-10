@@ -5,9 +5,9 @@
 
 use olo_ui::{
     Menu, MenuBar, WindowOptions,
-    gpui::{AppContext as _, Context, IntoElement, ParentElement as _, Render, Styled as _, Window, div, px},
+    gpui::{AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _, Window, div, px},
     metrics as m,
-    widgets::{BBox, Button, CheckBox, LinkButton, RadioButton, StringView, heading, separator},
+    widgets::{BBox, Button, CheckBox, LinkButton, MenuField, RadioButton, StringView, TextControl, TextField, TextFieldEvent, heading, separator, text_field},
 };
 
 struct Controls {
@@ -15,6 +15,12 @@ struct Controls {
     sound: bool,
     radio: usize,
     clicks: u32,
+    speed: usize,
+    name: Entity<TextField>,
+    hinted: Entity<TextField>,
+    off: Entity<TextField>,
+    notes: Entity<TextField>,
+    said: String,
 }
 
 impl Render for Controls {
@@ -92,7 +98,19 @@ impl Render for Controls {
                     .child(Button::new("Disabled").enabled(false))
                     .child(Button::new("OK").default(true).on_click(click())),
             )
-            .child(div().flex().gap(px(m::SPACING)).child(StringView::new(format!("Clicked {} times.", self.clicks))).child(LinkButton::new("Reset")))
+            .child(div().flex().gap(px(m::SPACING)).child(StringView::new(format!("Clicked {} times.{}", self.clicks, self.said))).child(LinkButton::new("Reset")))
+            .child(
+                div()
+                    .flex()
+                    .gap(px(m::SPACING))
+                    .child(TextControl::new(self.name.clone()).label("Name:").width(200.0))
+                    .child(TextControl::new(self.hinted.clone()).width(120.0))
+                    .child(MenuField::new("speed", vec!["Slow".into(), "Medium".into(), "Fast".into()], self.speed).label("Speed:")),
+            )
+            .child(
+                div().flex().gap(px(m::SPACING)).child(TextControl::new(self.off.clone()).label("Off:").width(160.0)).child(MenuField::new("none", vec!["Nothing to choose".into()], 0).enabled(false)),
+            )
+            .child(div().w(px(300.0)).h(px(54.0)).child(self.notes.clone()))
             .child(div().w(px(300.0)).child(StringView::new("A paragraph of text that is long enough to wrap onto a second line in the three hundred points it is given here.").wrap(true)))
             .child(div().w(px(160.0)).child(StringView::new("A long line cut short to fit the box it is in").cut(true)));
         div().size_full().flex().flex_col().child(MenuBar::new(menus, |_, _, _| {})).child(content)
@@ -101,6 +119,28 @@ impl Render for Controls {
 
 fn main() {
     olo_ui::run("olo.controls", |cx| {
-        olo_ui::open_window(cx, WindowOptions::new("Controls", 480.0, 490.0), |_, cx| cx.new(|_| Controls { wrap: true, sound: false, radio: 0, clicks: 0 }));
+        olo_ui::open_window(cx, WindowOptions::new("Controls", 540.0, 640.0), |_, cx| {
+            cx.new(|cx| {
+                let name = text_field(cx, |f| f.name("Name"));
+                name.update(cx, |f, cx| f.set_text("Olo", cx));
+                cx.subscribe(&name, |c: &mut Controls, _, e: &TextFieldEvent, cx| {
+                    c.said = match e {
+                        TextFieldEvent::Changed => " Changed.".into(),
+                        TextFieldEvent::Entered => " Entered.".into(),
+                        _ => return,
+                    };
+                    cx.notify();
+                })
+                .detach();
+                let off = text_field(cx, |f| f.name("Off"));
+                off.update(cx, |f, cx| {
+                    f.set_text("Can't be typed in", cx);
+                    f.set_enabled(false, cx);
+                });
+                let notes = text_field(cx, |f| f.name("Notes").multiline(false));
+                notes.update(cx, |f, cx| f.set_text("Several lines of text in a field that wraps what is typed to its width.\nA second paragraph.", cx));
+                Controls { wrap: true, sound: false, radio: 0, clicks: 0, speed: 1, name, hinted: text_field(cx, |f| f.name("Search").hint("Search")), off, notes, said: String::new() }
+            })
+        });
     });
 }

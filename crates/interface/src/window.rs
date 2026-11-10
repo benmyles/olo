@@ -103,6 +103,8 @@ pub(crate) struct WindowCore {
     /// What a button went down on, until it's let go.
     pub(crate) pressed: Vec<(NodeId, MouseDownEvent)>,
     pub(crate) focus: Option<NodeId>,
+    /// A view to be given the keyboard once it's in the tree.
+    pub(crate) pending_focus: Option<ViewId>,
     /// Nodes that hear the pointer anywhere in the window.
     pub(crate) window_listeners: Vec<NodeId>,
     /// The window has the keyboard.
@@ -322,6 +324,7 @@ impl WindowCore {
             hovered: Vec::new(),
             pressed: Vec::new(),
             focus: None,
+            pending_focus: None,
             window_listeners: Vec::new(),
             active: false,
             closed: false,
@@ -365,6 +368,15 @@ impl WindowCore {
         // (Dropping the view drops the children it owned: they end at
         // the next flush.)
         drop(slot);
+    }
+
+    /// The first node under `id` (or it) that can have the keyboard.
+    fn first_focusable(&self, id: NodeId) -> Option<NodeId> {
+        let node = self.nodes.get(id)?;
+        if node.inter.as_ref().is_some_and(|i| i.focusable && !i.disabled) {
+            return Some(id);
+        }
+        node.children.iter().find_map(|child| self.first_focusable(*child))
     }
 
     /// Whether a node is in what the window shows (not in a view that
@@ -706,6 +718,10 @@ impl<'a> WindowCx<'a> {
                 self.core.reconcile(root, element, view);
             }
         }
+        // The keyboard to a view that asked for it before it was shown.
+        if let Some(view) = self.core.pending_focus.take() {
+            self.focus_view(view);
+        }
         let core = &mut *self.core;
         let bodies_done = flushing.elapsed();
         // Where everything goes.
@@ -841,6 +857,14 @@ impl<'a> WindowCx<'a> {
         self.core.views.get(id)?.view.as_ref()?.as_any().downcast_ref()
     }
 
+    /// The window's own view says what it shows again (something
+    /// outside the window it shows changed: what may be pasted).
+    pub fn invalidate_main_view(&mut self) {
+        if let Some(view) = self.core.main_view.or(self.core.root_view) {
+            self.core.invalidate_view(view);
+        }
+    }
+
     /// Names the view the program knows the window by (see
     /// `main_view`): what its `WindowHandle` reaches.
     pub fn set_main_view<V: View>(&mut self, view: &Child<V>) {
@@ -854,6 +878,46 @@ impl<'a> WindowCx<'a> {
             Some(view) => self.with_any_view(view, |v, id, cx| v.command(id, command, cx)).unwrap_or(false),
             None => false,
         }
+    }
+
+    // ---- The keyboard ----
+
+    /// Gives the keyboard to the first thing in a view that takes it
+    /// (once it's shown, if it isn't yet).
+    pub(crate) fn focus_view(&mut self, view: ViewId) {
+        let found = self.core.views.get(view).and_then(|v| v.root).and_then(|root| self.core.first_focusable(root));
+        match found {
+            Some(node) => self.focus_node(Some(node)),
+            None => {
+                self.core.pending_focus = Some(view);
+                self.core.invalidate_view(view);
+            }
+        }
+    }
+
+    /// Whether the keyboard is with a view or something in it.
+    pub(crate) fn view_has_focus(&self, view: ViewId) -> bool {
+        let Some(root) = self.core.views.get(view).and_then(|v| v.root) else { return false };
+        let mut at = self.core.focus;
+        while let Some(id) = at {
+            if id == root {
+                return true;
+            }
+            at = self.core.nodes.get(id).and_then(|n| n.parent);
+        }
+        false
+    }
+
+    /// Whether the window has a default button now (Return, when what
+    /// has the keyboard lets it go on, clicks it).
+    pub fn has_default_button(&self) -> bool {
+        self.core.window_listeners.iter().any(|id| self.core.nodes.get(*id).and_then(|n| n.inter.as_ref()).is_some_and(|i| i.default_key && !i.disabled) && self.core.is_attached(*id))
+    }
+
+    /// Tells the input method where the text being typed is (its caret,
+    /// in the window): its window opens beside it.
+    pub fn set_ime_position(&mut self, bounds: Bounds<Pixels>) {
+        self.on_display(move |window| window.update_ime_position(bounds));
     }
 
     // ---- Windows on this looper ----

@@ -382,7 +382,10 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut AppCx)) {
             tracing::warn!("the display is gone");
             quit();
         }
-        DisplayEvent::DisplaysChanged | DisplayEvent::ClipboardChanged | DisplayEvent::KeyboardLayoutChanged => {}
+        // What may be pasted changed: every window's own view says what
+        // it shows again (its menus' Paste).
+        DisplayEvent::ClipboardChanged => all_windows(|cx| cx.invalidate_main_view()),
+        DisplayEvent::DisplaysChanged | DisplayEvent::KeyboardLayoutChanged => {}
     })));
     build(&mut AppCx { looper: &mut looper });
     looper.run();

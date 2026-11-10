@@ -5,6 +5,7 @@ move from one to the other.
 
   kit-compare OLD NEW [ARGS...] [--scales 1,1.5,2] [--themes light,dark]
               [--size WxH] [--out DIR] [--tolerance N] [--settle SECONDS]
+              [--do STEPS]
 
 OLD and NEW are programs as `tsession run` takes them (a name in
 target/<profile> or its examples, or a path). Each is started alone in a
@@ -36,7 +37,7 @@ def windows():
         return []
 
 
-def shot(program, args, scale, theme, size, settle, path):
+def shot(program, args, scale, theme, size, settle, path, steps=()):
     tsession("stop", NAME, check=False)
     tsession("start", NAME, size, f"--{theme}", "--scale", str(scale))
     try:
@@ -57,6 +58,21 @@ def shot(program, args, scale, theme, size, settle, path):
         # (The pointer out of the way: nothing lit under it.)
         tsession("move", NAME, "2", "2")
         time.sleep(0.2)
+        for step in steps:
+            words = step.split()
+            if not words:
+                continue
+            if words[0] == "wait":
+                time.sleep(float(words[1]))
+                continue
+            if words[0] in ("click", "move", "down", "tap"):
+                words[1], words[2] = str(float(words[1]) + c["x"]), str(float(words[2]) + c["y"])
+            elif words[0] == "drag":
+                words[1:5] = [str(float(w) + (c["x"] if i % 2 == 0 else c["y"])) for i, w in enumerate(words[1:5])]
+            elif words[0] == "type":
+                words = ["type", step.split(None, 1)[1]]
+            tsession(words[0], NAME, *words[1:])
+            time.sleep(0.15)
         tsession("shot", NAME, path, str(c["x"]), str(c["y"]), str(c["width"]), str(c["height"]))
         return c
     finally:
@@ -80,6 +96,7 @@ def main():
     out = opt("--out", "/var/tmp/olo-kit-compare")
     tolerance = int(opt("--tolerance", "0"))
     settle = float(opt("--settle", "1.0"))
+    steps = [w.strip() for w in opt("--do", "").split(";")]
     if len(a) < 2:
         sys.exit(__doc__)
     old, new, args = a[0], a[1], a[2:]
@@ -91,8 +108,8 @@ def main():
         for theme in themes:
             tag = f"{scale}x-{theme}"
             po, pn = os.path.join(out, f"old-{tag}.png"), os.path.join(out, f"new-{tag}.png")
-            co = shot(old, args, scale, theme, size, settle, po)
-            cn = shot(new, args, scale, theme, size, settle, pn)
+            co = shot(old, args, scale, theme, size, settle, po, steps)
+            cn = shot(new, args, scale, theme, size, settle, pn, steps)
             io, inew = Image.open(po).convert("RGB"), Image.open(pn).convert("RGB")
             if io.size != inew.size:
                 print(f"DIFF {tag}: sizes differ, {io.size} and {inew.size} (content {co['width']}x{co['height']} and {cn['width']}x{cn['height']})")
@@ -110,8 +127,8 @@ def main():
                 os.remove(po)
                 os.remove(pn)
                 continue
-            count = sum(1 for v in mask.getdata() if v)
-            worst = max(max(px) for px in diff.getdata())
+            count = mask.histogram()[255]
+            worst = max(hi for _, hi in diff.getextrema())
             where = os.path.join(out, f"diff-{tag}.png")
             mask.save(where)
             print(f"DIFF {tag}: {count} pixels differ (most by {worst}) within {box}; see {po}, {pn}, {where}")
