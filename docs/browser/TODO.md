@@ -202,9 +202,18 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
   incremental preservation. Outside markers reserve room above the first
   content baseline, including block descendants; empty items have a line
   without synthetic text. 80 Chrome geometry observations at five DPRs pass.
+- [x] HTML list numbering: reversed/default/explicit starts, `li.value`,
+  signed integer parsing and saturation, suppressed markers, hidden items,
+  nested/wrapped lists and inline/atomic inline items. Chrome-recorded
+  numbering and IDL reflection fixtures pass; mutations invalidate both
+  layout reuse paths. Reversed counts use one bounded, cancellable traversal.
 - [ ] Complete markers: generated content/images/counters, allowed-property
   restrictions, computed `display`, vertical writing and RTL positioning,
   bullet glyph shapes/horizontal gaps. Geometry coverage is not a pixel pass.
+  Counter scoping/reset, style containment and author CSS overriding HTML
+  counter hints still need a unified counter implementation. Existing
+  generic counters also apply set/increment in the wrong order; verify
+  their generated text against Chrome when correcting it.
 - [x] Web IDL observer methods are enumerable for wrappers such as Zone.js;
   keep ECMAScript Date methods non-enumerable and recorded prototype shapes
   intact. Regression covers IntersectionObserver, ResizeObserver and

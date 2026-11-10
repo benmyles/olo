@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-09
 
+### Browser list numbering after
+
+*21:59* — Chrome-referenced numbering, HTML integer reflection, mutation invalidation, and inline markers. Light/dark/night reviews at 1, 1.25, 1.5, 1.75, 2x are clean; marker spacing and full CSS counters remain open.
+
+![Browser list numbering after](2026-11-09/215905-browser-list-numbering-after.png)
+
+### Browser list numbering before
+
+*21:59* — Release 5a64f274: reversed lists count upward, suppressed markers skip ordinals, wrapped and inline lists lose numbering, and large values overflow. Owned Agent Screen, scale 1, window x=49.
+
+![Browser list numbering before](2026-11-09/215903-browser-list-numbering-before.png)
+
 ### Passwords setup at a short height: after
 
 *20:09* — The blank space above the form yields before its controls. Both actions remain visible, with the shared window inset below them. Live light, dark and night reviews at 1, 1.25, 1.5, 1.75 and 2x have no findings.

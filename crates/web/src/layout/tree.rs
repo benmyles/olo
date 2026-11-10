@@ -483,12 +483,19 @@ struct Cursor {
     next: Option<NodeId>,
     container: BoxId,
     style: StyleKey,
+    /// The enclosing list box, carried through wrappers in constant time.
+    list_owner: Option<NodeId>,
     close: bool,
     inline: bool,
     /// The element whose `::after` content comes once its children are built.
     after: Option<NodeId>,
     /// The paragraph an atomic inline interrupted, resumed when its content is built.
     restore: Option<Box<Pending>>,
+}
+#[derive(Clone, Copy)]
+struct ListCounter {
+    value: i64,
+    step: i32,
 }
 struct Pending {
     container: BoxId,
@@ -523,7 +530,7 @@ pub struct BuildJob<'a> {
     controls: Vec<Control>,
     open: Vec<OpenInline>,
     /// The last ordinal given in each list (by the list's node).
-    list_counters: std::collections::HashMap<NodeId, i64>,
+    list_counters: crate::dom::NodeMap<ListCounter>,
     /// CSS counters in scope (CSS Lists 3 §4): each its name, value and the
     /// depth of the frame it belongs to (it ends when that frame does: an
     /// element's counter reaches its following siblings).
@@ -575,7 +582,16 @@ impl<'a> BuildJob<'a> {
             list_counters: Default::default(),
             counters: Vec::new(),
             quote_depth: 0,
-            stack: vec![Cursor { next: document.composed_first_child(document.root())?, container: root, style: document.root().into(), close: false, inline: false, after: None, restore: None }],
+            stack: vec![Cursor {
+                next: document.composed_first_child(document.root())?,
+                container: root,
+                style: document.root().into(),
+                list_owner: None,
+                close: false,
+                inline: false,
+                after: None,
+                restore: None,
+            }],
             pending: None,
             progress: BuildProgress { boxes: 1, ..Default::default() },
             failed: false,
@@ -741,13 +757,14 @@ impl<'a> BuildJob<'a> {
         if self.stack.len() >= self.limits.depth {
             return Err(Error::Limit);
         }
-        self.stack.push(Cursor { next: self.document.composed_first_child(node)?, container, style: style.into(), close, inline: false, after: Some(node), restore: None });
+        let list_owner = self.child_list_owner(node)?;
+        self.stack.push(Cursor { next: self.document.composed_first_child(node)?, container, style: style.into(), list_owner, close, inline: false, after: Some(node), restore: None });
         Ok(())
     }
     /// An atomic inline (inline-block, inline-flex, inline-grid, inline-table):
     /// a block formatting context that sits in its paragraph as one object.
     /// Its own content is built with the paragraph set aside, then resumed.
-    fn atomic(&mut self, node: NodeId, container: BoxId, flex_or_grid: bool, absolute: bool) -> Result<()> {
+    fn atomic(&mut self, node: NodeId, container: BoxId, style: &Style, absolute: bool) -> Result<()> {
         self.append_object(node, container, node, BoxKind::Block { flow_root: true, root: false, absolute })?;
         let p = self.pending.as_ref().ok_or(Error::Invalid)?;
         let block = self.boxes[p.text_box.index()].last_child.ok_or(Error::Invalid)?;
@@ -755,16 +772,112 @@ impl<'a> BuildJob<'a> {
         if self.stack.len() >= self.limits.depth {
             return Err(Error::Limit);
         }
-        let _ = flex_or_grid;
+        let owner = self.stack.last().and_then(|f| f.list_owner);
         let restore = self.pending.take().map(Box::new);
-        self.stack.push(Cursor { next: self.document.composed_first_child(node)?, container: block, style: node.into(), close: true, inline: false, after: Some(node), restore });
+        let list_owner = self.child_list_owner(node)?;
+        self.stack.push(Cursor { next: self.document.composed_first_child(node)?, container: block, style: node.into(), list_owner, close: true, inline: false, after: Some(node), restore });
+        if matches!(style.value(Property::Display), Value::Display(Display::Box { list_item: true, .. })) {
+            self.marker(node, block, style, owner)?;
+        }
         self.generated(node, block, PseudoElement::Before)?;
         Ok(())
+    }
+    fn is_list_owner(&self, node: NodeId) -> Result<bool> {
+        Ok(self.document.node_type(node)? == NodeType::Element
+            && self.document.namespace(node)? == Some(crate::dom::Namespace::Html)
+            && matches!(self.document.name(node)?, Some("ol" | "ul" | "menu"))
+            && self.styles.snapshot(node).is_some_and(|s| !matches!(s.value(Property::Display), Value::Display(Display::None | Display::Contents))))
+    }
+    fn child_list_owner(&self, node: NodeId) -> Result<Option<NodeId>> {
+        Ok(if self.is_list_owner(node)? { Some(node) } else { self.stack.last().and_then(|f| f.list_owner) })
+    }
+    /// Count only rendered items owned by this list. A reversed list needs
+    /// this once, not a sibling scan for every item. Nested list boxes own
+    /// their descendants; display:contents wrappers do not. The traversal
+    /// is iterative, bounded and cancellable like the main tree builder.
+    fn reversed_items(&self, owner: NodeId) -> Result<i32> {
+        let mut stack = vec![self.document.composed_first_child(owner)?];
+        let (mut visited, mut count) = (0usize, 0i32);
+        while let Some(next) = stack.last_mut() {
+            check(self.cancel)?;
+            let Some(node) = *next else {
+                stack.pop();
+                continue;
+            };
+            *next = self.document.composed_next_sibling(node)?;
+            visited += 1;
+            if visited > self.limits.nodes || stack.len() > self.limits.depth {
+                return Err(Error::Limit);
+            }
+            if closed_details_hides(self.document, node)? {
+                continue;
+            }
+            if self.document.node_type(node)? == NodeType::Element {
+                let s = self.styles.snapshot(node).ok_or(Error::Stale)?;
+                if matches!(s.value(Property::Display), Value::Display(Display::None)) {
+                    continue;
+                }
+                if matches!(s.value(Property::Display), Value::Display(Display::Box { list_item: true, .. })) {
+                    count = count.saturating_add(1);
+                }
+                if self.is_list_owner(node)? {
+                    continue;
+                }
+            }
+            stack.push(self.document.composed_first_child(node)?);
+        }
+        Ok(count)
+    }
+    fn list_ordinal(&mut self, node: NodeId, s: &Style, owner: Option<NodeId>) -> Result<i32> {
+        let owner = owner.or(self.document.composed_parent(node)?).unwrap_or(self.document.root());
+        if !self.list_counters.contains_key(&owner) {
+            if self.list_counters.len() >= self.limits.nodes {
+                return Err(Error::Limit);
+            }
+            let ordered = self.document.node_type(owner)? == NodeType::Element && self.document.namespace(owner)? == Some(crate::dom::Namespace::Html) && self.document.name(owner)? == Some("ol");
+            let reversed = ordered && self.document.attribute(owner, "reversed")?.is_some();
+            let step = if reversed { -1 } else { 1 };
+            let start = if ordered { self.document.integer_attribute(owner, "start")? } else { None };
+            let value = match start {
+                Some(n) => i64::from(n) - i64::from(step),
+                None if reversed => i64::from(self.reversed_items(owner)?) + 1,
+                None => 0,
+            };
+            self.list_counters.insert(owner, ListCounter { value, step });
+        }
+        let change = |property| match s.value(property) {
+            Value::Content(c) => {
+                c.0.iter()
+                    .filter_map(|part| match part {
+                        crate::css::properties::ContentPart::Change(name, value) if name.as_ref() == "list-item" => Some(*value),
+                        _ => None,
+                    })
+                    .fold(None::<i64>, |previous, value| Some(if property == Property::CounterIncrement { previous.unwrap_or(0).saturating_add(value) } else { value }))
+            }
+            _ => None,
+        };
+        let explicit = if self.document.namespace(node)? == Some(crate::dom::Namespace::Html) && self.document.name(node)? == Some("li") {
+            self.document.integer_attribute(node, "value")?.map(i64::from)
+        } else {
+            None
+        };
+        let counter = self.list_counters.get_mut(&owner).ok_or(Error::Invalid)?;
+        let increment = change(Property::CounterIncrement);
+        let value = match change(Property::CounterSet).or(explicit) {
+            Some(value) => value,
+            None => counter.value.saturating_add(increment.unwrap_or(i64::from(counter.step))),
+        };
+        // Blink's list ordinal is a saturating signed 32-bit value. In
+        // particular, an adversarial value cannot wrap or panic here.
+        counter.value = value.clamp(i64::from(i32::MIN), i64::from(i32::MAX));
+        Ok(counter.value as i32)
     }
     /// A list item's marker (CSS Lists 3 §3): the counter or bullet for its
     /// `list-style-type`, as a positioned block before the item's content
     /// (`outside`) or the first run of its text (`inside`).
-    fn marker(&mut self, node: NodeId, item: BoxId, s: &Style) -> Result<()> {
+    fn marker(&mut self, node: NodeId, item: BoxId, s: &Style, owner: Option<NodeId>) -> Result<()> {
+        // An item advances the list even when its marker is suppressed.
+        let ordinal = self.list_ordinal(node, s, owner)?;
         let Value::Keyword(kind) = s.value(Property::ListStyleType) else { return Ok(()) };
         if *kind == Keyword::None {
             return Ok(());
@@ -772,27 +885,13 @@ impl<'a> BuildJob<'a> {
         if !matches!(s.value(Property::ListStyleImage), Value::Keyword(Keyword::None)) {
             self.note("list-style-image as the type's marker", node);
         }
-        // Ordinal: the item's `value`, else one past the previous item of
-        // the same list (its `start`, `reversed` not implemented).
-        let parent = self.document.parent(node)?;
-        let ordinal = match self.document.attribute(node, "value")?.and_then(|v| v.trim().parse::<i64>().ok()) {
-            Some(v) => v,
-            None => match parent.and_then(|p| self.list_counters.get(&p)) {
-                Some(&n) => n + 1,
-                None => parent.and_then(|p| self.document.attribute(p, "start").ok().flatten()).and_then(|v| v.trim().parse::<i64>().ok()).unwrap_or(1),
-            },
-        };
-        if let Some(p) = parent {
-            if self.list_counters.len() >= 65536 {
-                self.list_counters.clear();
-            }
-            self.list_counters.insert(p, ordinal);
-        }
-        let text = marker_text(*kind, ordinal);
+        let text = marker_text(*kind, i64::from(ordinal));
         // (Its text in its `::marker` style when rules give it one: their
         // colour and font.)
         let text_style = if self.styles.pseudo(node, PseudoElement::Marker).is_some() { StyleKey::pseudo(node, PseudoElement::Marker) } else { node.into() };
-        if matches!(s.value(Property::ListStylePosition), Value::Keyword(Keyword::Inside)) {
+        if matches!(s.value(Property::ListStylePosition), Value::Keyword(Keyword::Inside))
+            || matches!(s.value(Property::Display), Value::Display(Display::Box { outer: Outer::Inline, inner: Inner::Flow, .. }))
+        {
             self.pending(item)?;
             return self.append(node, item, text_style, &text, None);
         }
@@ -1021,7 +1120,7 @@ impl<'a> BuildJob<'a> {
                 }
                 continue;
             };
-            let (container, parent_style) = (frame.container, frame.style);
+            let (container, parent_style, list_owner) = (frame.container, frame.style, frame.list_owner);
             frame.next = self.document.composed_next_sibling(node)?;
             self.progress.visited += 1;
             if self.progress.visited > self.limits.nodes {
@@ -1286,14 +1385,11 @@ impl<'a> BuildJob<'a> {
                             if !matches!(s.value(Property::VerticalAlign), Value::Keyword(Keyword::Baseline | Keyword::Middle | Keyword::Top | Keyword::Bottom)) {
                                 self.note("vertical-align on an atomic inline", node);
                             }
-                            self.atomic(node, container, matches!(inner, Inner::Flex | Inner::Grid), false)?;
+                            self.atomic(node, container, s, false)?;
                         }
                         Display::Box { outer: Outer::Inline, inner, list_item } => {
                             if inner == Inner::Ruby {
                                 self.note("ruby as inline", node);
-                            }
-                            if list_item {
-                                self.note("inline list item as inline", node);
                             }
                             if position != Keyword::Static {
                                 self.note("positioned inline", node);
@@ -1315,6 +1411,9 @@ impl<'a> BuildJob<'a> {
                             self.open_inline(node, container)?;
                             self.push(node, container, node, false)?;
                             self.stack.last_mut().unwrap().inline = true;
+                            if list_item {
+                                self.marker(node, container, s, list_owner)?;
+                            }
                             self.generated(node, container, PseudoElement::Before)?;
                         }
                         Display::Box { outer: Outer::Block | Outer::RunIn, inner, list_item } => {
@@ -1326,7 +1425,7 @@ impl<'a> BuildJob<'a> {
                                 Inner::Ruby => self.note("ruby as block", node),
                             }
                             if !list_item && self.in_line(s, absolute, container) {
-                                self.atomic(node, container, matches!(inner, Inner::Flex | Inner::Grid), true)?;
+                                self.atomic(node, container, s, true)?;
                                 continue;
                             }
                             self.flush()?;
@@ -1334,7 +1433,7 @@ impl<'a> BuildJob<'a> {
                             let id = self.add(node, node, BoxKind::Block { flow_root: inner != Inner::Flow, root, absolute }, container)?;
                             self.push(node, id, node, true)?;
                             if list_item {
-                                self.marker(node, id, s)?;
+                                self.marker(node, id, s, list_owner)?;
                             }
                             self.generated(node, id, PseudoElement::Before)?;
                         }

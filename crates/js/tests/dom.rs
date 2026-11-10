@@ -27,6 +27,16 @@ fn dom_page() {
     assert_eq!(report.scripts, 6);
 }
 #[test]
+fn list_integer_reflection_matches_chrome() {
+    let page = format!("<script>console.log(JSON.stringify({}));</script>", include_str!("list-reflection.js"));
+    let (report, _) = run(&page);
+    assert!(report.errors.is_empty(), "{:?}", report.errors);
+    assert_eq!(report.console.len(), 1);
+    let expected: serde_json::Value = serde_json::from_str(include_str!("list-reflection.json")).unwrap();
+    let got: serde_json::Value = serde_json::from_str(report.console[0].strip_prefix("[log] ").unwrap()).unwrap();
+    assert_eq!(got, expected);
+}
+#[test]
 fn scripts_in_order_then_async() {
     let page = "<script async src=a.js></script><script>1</script><script type=module>2</script><script defer src=b.js></script><script type=text/template>no</script><script nomodule>3</script>";
     let parsed = html::parse(Arc::from(page), Default::default(), None).unwrap();

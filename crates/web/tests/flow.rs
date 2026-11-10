@@ -692,6 +692,25 @@ fn stale_contexts_cancellation_quotas_and_poisoning() {
 }
 
 #[test]
+fn reversed_list_lookahead_obeys_limits_and_cancellation() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let s = scope();
+    let input = format!("<ol reversed>{}</ol>", "<li>A</li>".repeat(64));
+    let (d, t) = tree(&input, "li{display:list-item}ol{list-style-type:decimal}", &s, 1);
+    let styles = t.styles().clone();
+    // The first item looks ahead over the list, so a small node budget
+    // fails immediately without building an unbounded counter cache.
+    let mut j = layout::BuildJob::new(&d, styles.clone(), layout::BuildLimits { nodes: 32, ..Default::default() }, None).unwrap();
+    assert!(matches!(j.step(32), Err(layout::Error::Limit)));
+    assert!(matches!(j.finish(), Err(layout::Error::Failed)));
+    let cancel = AtomicBool::new(false);
+    let mut j = layout::BuildJob::new(&d, styles, Default::default(), Some(&cancel)).unwrap();
+    j.step(1).unwrap();
+    cancel.store(true, Ordering::Relaxed);
+    assert!(matches!(j.step(1), Err(layout::Error::Cancelled)));
+}
+
+#[test]
 fn styled_spans_shape_in_their_own_fonts_and_raise_the_line() {
     let s = scope();
     let mut e = Engine::default();

@@ -1408,6 +1408,36 @@ impl Document {
         }
         Ok(None)
     }
+    /// HTML's signed integer attribute syntax, within a Web IDL `long`:
+    /// ASCII leading whitespace and an optional sign, then decimal digits.
+    /// Trailing non-digits are ignored; missing, invalid or out of range is None.
+    pub fn integer_attribute(&self, id: NodeId, name: &str) -> Result<Option<i32>> {
+        let Some(value) = self.attribute(id, name)? else { return Ok(None) };
+        let mut bytes = value.bytes().skip_while(|b| matches!(b, b' ' | b'\t' | b'\n' | b'\r' | 0x0c)).peekable();
+        let negative = bytes.peek() == Some(&b'-');
+        if matches!(bytes.peek(), Some(b'+' | b'-')) {
+            bytes.next();
+        }
+        if !bytes.peek().is_some_and(u8::is_ascii_digit) {
+            return Ok(None);
+        }
+        let limit = if negative { 2147483648u32 } else { 2147483647u32 };
+        let mut n = 0u32;
+        for b in bytes.take_while(u8::is_ascii_digit) {
+            let Some(next) = n.checked_mul(10).and_then(|n| n.checked_add(u32::from(b - b'0'))).filter(|&n| n <= limit) else { return Ok(None) };
+            n = next;
+        }
+        Ok(Some(if negative { (-i64::from(n)) as i32 } else { n as i32 }))
+    }
+
+    /// These attributes change generated marker text even when no CSS
+    /// selector or computed value changes. Both style reuse paths must
+    /// invalidate geometry; the box builder reads the attributes itself.
+    pub(crate) fn attribute_changes_list_numbering(&self, id: NodeId, name: &str) -> bool {
+        matches!(name, "start" | "reversed" | "value")
+            && self.namespace(id).ok().flatten() == Some(Namespace::Html)
+            && matches!((self.name(id).ok().flatten(), name), (Some("ol"), "start" | "reversed") | (Some("li"), "value"))
+    }
     pub fn set_attribute<'a>(&mut self, id: NodeId, name: &str, value: impl Into<Cow<'a, str>>) -> Result<bool> {
         let value = value.into();
         let at = self.resolve(id)?;

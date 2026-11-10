@@ -7658,3 +7658,58 @@ launches, so this is a frame-budget check, not evidence of a speedup.
 The release workspace build passes. No website is newly accepted by these
 integration checks; the browser's production/security/standards gaps remain.
 `cargo ui-lint` also passes after the integration fixes.
+
+### 2026-11-09 — list numbering, reflection and mutation invalidation
+
+HTML lists now count down when reversed, derive their default start from
+rendered items, honor signed `start`/`value` prefixes and saturate at signed
+32-bit limits. A suppressed marker still advances the ordinal; display:none
+items do not, while visibility:hidden items do. Wrappers retain their list
+owner, nested list boxes start independent sequences, and display:contents
+lists share the enclosing sequence. Inline and atomic inline list items
+now generate markers. Explicit list-item increments compound, and sets take
+precedence. Reversed lookahead runs once per list, iteratively, within node
+and depth limits, with cancellation checks.
+
+The JS `ol.start` and `li.value` properties reflect signed integers with
+Web IDL long conversion on assignment. Layout reuse now invalidates marker
+text when list attributes change, both through a small style patch and the
+full incremental style job. Insertion/removal and hidden-item changes also
+update numbers. Chrome 157.0.8103.38 independently supplies 70 AX marker
+observations and 56 reflection observations; fixtures retain its revision and
+source hash. Five new release regressions bring the browser/web/JS suites to
+535 passing tests, zero failures and two existing ignored tests. The release
+workspace build, format check and `cargo ui-lint` pass (lint's initial process
+was terminated; an unchanged retry passed).
+
+Native before/after captures and all 30 clean reviews cover light, dark and
+night, with live 1, 1.25, 1.5, 1.75, 2× changes and window x=49. Images and
+harnesses are in `measurements/2026-11-09-lists`; the screenshot journal
+records the visible numbering correction. Numbering agreement does not mean
+complete marker layout: spacing, writing modes, generated content/images,
+CSS counter scoping/reset and HTML hint precedence remain open.
+
+Release measurements are in `measurements/2026-11-09-list-numbering.json`.
+Each workload contains 1,000 items; the repeated sweep uses alternating
+baseline/candidate/candidate/baseline, seven reloads per launch, 2 s idle,
+and drag/wheel checks. DPR1, 1000×700 content, observed 8.33 ms steady frame
+interval. Worker-ready is not presentation latency. Medians from the repeated
+sweep:
+
+| Measurement | Before | After |
+|---|---:|---:|
+| Forward list worker-ready / box build | 22 / 1.4 ms | 24.5 / 1.4 ms |
+| Reversed list worker-ready / box build | 23 / 1.4 ms | 25.5 / 1.7 ms |
+| Ordinary page worker-ready / box build | 12 / 0.75 ms | 12.5 / 0.75 ms |
+| Forward drag / wheel first movement | 28.75 / 9.25 ms | 26.3 / 10.75 ms |
+| Reversed drag / wheel first movement | 28.95 / 10.1 ms | 28.8 / 10.6 ms |
+| Ordinary drag / wheel first movement | 29.45 / 10 ms | 28.65 / 9.3 ms |
+
+Every idle sample has 0% CPU and zero frames. Other work compiled during
+parts of both sweeps, including the repeat: retain all observations and do
+not infer a speedup or a clean performance pass. The repeat includes one
+candidate drag hitch on each list and five hitches on each ordinary-page
+variant. Slowest ordinary draws are 13.32 / 17.34 ms; candidate list draws
+stay below 2.68 ms. The reversed baseline produces wrong numbers. This is a
+measured compatibility correction, not Chrome superiority or production
+acceptance.

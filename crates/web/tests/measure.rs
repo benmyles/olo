@@ -150,6 +150,81 @@ fn marker_styles_survive_reuse_and_change_with_their_originating_item() {
         last = m;
     }
 }
+fn marker_number(m: &page::Measured, node: olo_web::dom::NodeId) -> String {
+    let tree = m.layout().cache().tree();
+    let mut text = String::new();
+    for (_, b) in tree.iter() {
+        if let layout::BoxKind::InlineContent { source } = b.kind {
+            let source = tree.text_source(source).unwrap();
+            for span in source.spans.iter().filter(|s| s.node == node) {
+                text.push_str(&source.source[span.range.start as usize..span.range.end as usize]);
+            }
+        }
+    }
+    // Numbering only: the existing marker spacing/glyph differences are
+    // tracked separately. Chrome's AX marker uses a space, ours a NBSP.
+    text.replace('\u{fffc}', "").trim_end().to_owned()
+}
+#[test]
+fn list_numbering_matches_chrome() {
+    use sha2::{Digest, Sha256};
+    let oracle: serde_json::Value = serde_json::from_str(include_str!("list-fixtures/chrome.json")).unwrap();
+    assert_eq!(format!("{:x}", Sha256::digest(include_bytes!("list-fixtures/lists.html"))), oracle["source_sha256"]);
+    let (measurer, host, doc, viewport) = measurer_for(include_str!("list-fixtures/lists.html"));
+    let m = measurer.measure(&doc, &host, &mut shaping::Engine::default(), viewport, None, None).unwrap();
+    for row in oracle["rows"].as_array().unwrap() {
+        let id = row["id"].as_str().unwrap();
+        let expected = row["markers"].as_array().unwrap().iter().map(|s| s.as_str().unwrap()).collect::<String>();
+        assert_eq!(marker_number(&m, find(&doc, id)), expected.trim_end(), "#{id}");
+    }
+}
+#[test]
+fn list_numbering_follows_mutations_and_reuse() {
+    let (measurer, host, mut doc, viewport) = measurer_for("<!doctype html><ol id=o><li id=a>A</li><li id=b>B</li><li id=c>C</li></ol>");
+    let mut shaper = shaping::Engine::default();
+    let mut last = measurer.measure(&doc, &host, &mut shaper, viewport, None, None).unwrap();
+    for (id, attr, value, expected) in [
+        ("o", "reversed", "", ["3.", "2.", "1."]),
+        ("o", "start", " +10x", ["10.", "9.", "8."]),
+        ("b", "value", "-2", ["10.", "-2.", "-3."]),
+        ("b", "value", "2147483648", ["10.", "9.", "8."]),
+        ("o", "start", "invalid", ["3.", "2.", "1."]),
+        ("b", "style", "list-style-type:none", ["3.", "", "1."]),
+        ("b", "style", "display:none", ["2.", "", "1."]),
+        ("b", "style", "", ["3.", "2.", "1."]),
+    ] {
+        doc.set_attribute(find(&doc, id), attr, value).unwrap();
+        let next = measurer.measure(&doc, &host, &mut shaper, viewport, Some(last), None).unwrap();
+        let fresh = measurer.measure(&doc, &host, &mut shaper, viewport, None, None).unwrap();
+        for (id, expected) in ["a", "b", "c"].into_iter().zip(expected) {
+            let n = find(&doc, id);
+            assert_eq!(marker_number(&next, n), expected, "#{id} after {attr}={value}");
+            assert_eq!(marker_number(&next, n), marker_number(&fresh, n));
+            assert_eq!(next.border_box(n), fresh.border_box(n));
+        }
+        last = next;
+    }
+    doc.remove_attribute(find(&doc, "o"), "reversed").unwrap();
+    let next = measurer.measure(&doc, &host, &mut shaper, viewport, Some(last), None).unwrap();
+    assert_eq!(marker_number(&next, find(&doc, "a")), "1.");
+    assert_eq!(marker_number(&next, find(&doc, "c")), "3.");
+    // Over the patch budget: the incremental style job must invalidate
+    // ordinals too, even though these attributes change no CSS value.
+    for i in 0..257 {
+        doc.set_attribute(find(&doc, "a"), &format!("data-change-{i}"), "x").unwrap();
+    }
+    doc.set_attribute(find(&doc, "o"), "reversed", "").unwrap();
+    let next = measurer.measure(&doc, &host, &mut shaper, viewport, Some(next), None).unwrap();
+    assert_eq!(marker_number(&next, find(&doc, "a")), "3.");
+    let added = doc.create_element("li", olo_web::dom::Namespace::Html).unwrap();
+    doc.append_child(find(&doc, "o"), added).unwrap();
+    let next = measurer.measure(&doc, &host, &mut shaper, viewport, Some(next), None).unwrap();
+    assert_eq!(marker_number(&next, find(&doc, "a")), "4.");
+    assert_eq!(marker_number(&next, added), "1.");
+    doc.detach(added).unwrap();
+    let next = measurer.measure(&doc, &host, &mut shaper, viewport, Some(next), None).unwrap();
+    assert_eq!(marker_number(&next, find(&doc, "a")), "3.");
+}
 fn find(doc: &olo_web::dom::Document, id: &str) -> olo_web::dom::NodeId {
     let mut stack = vec![doc.root()];
     while let Some(n) = stack.pop() {

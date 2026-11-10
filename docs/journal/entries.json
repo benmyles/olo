@@ -4408,5 +4408,17 @@
   "title": "Passwords setup at a short height: after",
   "caption": "The blank space above the form yields before its controls. Both actions remain visible, with the shared window inset below them. Live light, dark and night reviews at 1, 1.25, 1.5, 1.75 and 2x have no findings.",
   "image": "2026-11-09/200900-passwords-setup-at-a-short-height-after.png"
+ },
+ {
+  "time": "2026-11-09T21:59:03",
+  "title": "Browser list numbering before",
+  "caption": "Release 5a64f274: reversed lists count upward, suppressed markers skip ordinals, wrapped and inline lists lose numbering, and large values overflow. Owned Agent Screen, scale 1, window x=49.",
+  "image": "2026-11-09/215903-browser-list-numbering-before.png"
+ },
+ {
+  "time": "2026-11-09T21:59:05",
+  "title": "Browser list numbering after",
+  "caption": "Chrome-referenced numbering, HTML integer reflection, mutation invalidation, and inline markers. Light/dark/night reviews at 1, 1.25, 1.5, 1.75, 2x are clean; marker spacing and full CSS counters remain open.",
+  "image": "2026-11-09/215905-browser-list-numbering-after.png"
  }
 ]

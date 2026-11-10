@@ -662,6 +662,7 @@ impl<'a> Job<'a> {
                             invalidate(*n, keys, &mut nodes);
                         }
                         crate::dom::Change::Attribute { node: n, name, old, new } => {
+                            geometry_kept &= !document.attribute_changes_list_numbering(*n, name);
                             nodes.insert(*n);
                             // A host's child asking for another slot: its
                             // host's children change their slots.

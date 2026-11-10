@@ -3887,6 +3887,7 @@ fn patchable(doc: &Document, rules: &css::cascade::RuleSet, revision: u64) -> st
                 add(*n, false);
             }
             crate::dom::Change::Attribute { node, name: attribute, old, new } => {
+                relayout |= doc.attribute_changes_list_numbering(*node, attribute);
                 let keys = style::attribute_keys(attribute, old.as_deref(), new.as_deref());
                 if has_keys.attribute_flips(attribute, old.as_deref(), new.as_deref()) || keys.iter().skip(1).any(|k| has_keys.has_key(k)) {
                     let mut reached = Vec::new();

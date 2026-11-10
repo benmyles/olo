@@ -2949,6 +2949,7 @@ const NATIVES: &[&str] = &[
     "textContent",
     "setTextContent",
     "attr",
+    "integerAttr",
     "setAttr",
     "removeAttr",
     "attrNames",
@@ -3567,6 +3568,15 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                 let value = state.borrow().document.attribute(n, &attribute).ok().flatten().map(|v| v.to_owned());
                 match value {
                     Some(v) => rv.set(string(scope, &v)),
+                    None => rv.set_null(),
+                }
+            }
+        }
+        "integerAttr" => {
+            if let Some(n) = node(scope, 0) {
+                let attribute = attribute_name(&state, n, arg_string(scope, &args, 1));
+                match state.borrow().document.integer_attribute(n, &attribute).ok().flatten() {
+                    Some(v) => rv.set_int32(v),
                     None => rv.set_null(),
                 }
             }

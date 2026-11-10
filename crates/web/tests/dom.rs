@@ -13,6 +13,38 @@ fn children(doc: &Document, id: NodeId) -> Vec<NodeId> {
 }
 
 #[test]
+fn signed_integer_attributes_follow_html_prefix_parsing() {
+    let mut doc = document();
+    let li = element(&mut doc, "li");
+    assert_eq!(doc.integer_attribute(li, "value"), Ok(None));
+    for (text, expected) in [
+        ("0", Some(0)),
+        ("-0", Some(0)),
+        (" \t\n\r\u{c}+12junk", Some(12)),
+        ("-4x", Some(-4)),
+        ("1.5", Some(1)),
+        ("1e3", Some(1)),
+        ("2147483647", Some(i32::MAX)),
+        ("-2147483648", Some(i32::MIN)),
+        ("000000000000000000000000000000000002", Some(2)),
+        ("2147483648", None),
+        ("-2147483649", None),
+        ("99999999999999999999999", None),
+        ("", None),
+        ("+", None),
+        ("-", None),
+        ("+ 1", None),
+        ("--1", None),
+        ("\u{b}1", None),
+        ("\u{a0}1", None),
+        ("１２", None),
+    ] {
+        doc.set_attribute(li, "value", text).unwrap();
+        assert_eq!(doc.integer_attribute(li, "value"), Ok(expected), "{text:?}");
+    }
+}
+
+#[test]
 fn scoped_generation_handles_reject_old_navigation_and_reused_slots() {
     let mut doc = document();
     let mut other = document();

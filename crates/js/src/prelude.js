@@ -1305,6 +1305,15 @@
       for (const proto of at(homes[prop])) if (!Object.prototype.hasOwnProperty.call(proto, prop)) Object.defineProperty(proto, prop, d);
     }
   }
+  // List ordinals reflect HTML signed integers. The getter's default is
+  // independent of a reversed list's rendered first number. A setter is
+  // Web IDL long conversion, then an attribute mutation (also restyles).
+  for (const [proto, attr, fallback] of [[HTMLOListElement.prototype, 'start', 1], [HTMLLIElement.prototype, 'value', 0]]) {
+    Object.defineProperty(proto, attr, { configurable: true, enumerable: true,
+      get() { const v = N.integerAttr(this, attr); return v === null ? fallback : v; },
+      set(v) { N.setAttr(this, attr, String((+v) | 0)); }
+    });
+  }
   // A link's URL in parts (HTML's HTMLHyperlinkElementUtils): read from
   // its resolved href, each set writes the href back.
   for (const proto of [HTMLAnchorElement.prototype, HTMLAreaElement.prototype]) {
