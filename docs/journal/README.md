@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-09
 
+### Window tab menu: Close Others in a group
+
+*16:01* — A window in a group: Close Others after Close closes every other window of its group, each as its close box would (one with unsaved work asks).
+
+![Window tab menu: Close Others in a group](2026-11-09/160104-window-tab-menu-close-others-in-a-group.png)
+
 ### Terminal: Auto Approve in a tab's menu
 
 *15:21* — Beside Keep It Going (and in Tabs). Turned on from the commands socket (an agent, the palette), it asks the person first.

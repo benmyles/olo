@@ -3838,5 +3838,11 @@
   "title": "Terminal: Auto Approve in a tab's menu",
   "caption": "Beside Keep It Going (and in Tabs). Turned on from the commands socket (an agent, the palette), it asks the person first.",
   "image": "2026-11-09/152147-terminal-auto-approve-in-a-tab-s-menu.png"
+ },
+ {
+  "time": "2026-11-09T16:01:04",
+  "title": "Window tab menu: Close Others in a group",
+  "caption": "A window in a group: Close Others after Close closes every other window of its group, each as its close box would (one with unsaved work asks).",
+  "image": "2026-11-09/160104-window-tab-menu-close-others-in-a-group.png"
  }
 ]

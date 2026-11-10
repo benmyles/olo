@@ -354,6 +354,12 @@ pub fn build(f: &Facts) -> Menu {
         Some((label, keys, enabled)) => item(m, label.clone(), "app-close", keys.clone(), *enabled),
         None => item(m, "Close".into(), "close", app_keys(f, "close"), true),
     };
+    if f.grouped {
+        // Every other window in its group (Ben, 2026-11-09: "we need a
+        // "Close Others" option when right clicking a menu on a window tab
+        // that's part of a group"), as a browser's Close Other Tabs.
+        m = m.item("Close Others", "close-others");
+    }
     match &f.app.quit {
         Some((label, keys, enabled)) => item(m, quit_label(f, Some(label)), "app-quit", keys.clone(), *enabled),
         None => item(m, quit_label(f, None), "quit-all", app_keys(f, "quit"), true),
@@ -372,6 +378,19 @@ pub fn perform(window: u64, app: &Owner, command: &str) {
         let _ = std::thread::Builder::new().name("window-menu-do".into()).spawn(move || {
             if !olo_ui::commands::invoke_in(pid, surface, command) {
                 tracing::warn!("the app (pid {pid}) didn't take its {command}");
+            }
+        });
+        return;
+    }
+    // The other windows of its group, each closed as its own close box
+    // closes it (an app that asks first, unsaved work, still asks).
+    if command == "close-others" {
+        let _ = std::thread::Builder::new().name("window-menu-do".into()).spawn(move || {
+            let Ok(mut c) = Client::connect() else { return };
+            let Ok(Reply::Windows { windows }) = c.request(&Request::ListWindows) else { return };
+            let Some(group) = windows.iter().find(|w| w.id == window).and_then(|w| w.group) else { return };
+            for w in windows.iter().filter(|w| w.group == Some(group) && w.id != window) {
+                let _ = c.request(&Request::Close { id: w.id });
             }
         });
         return;
@@ -575,7 +594,7 @@ mod tests {
                 || c.strip_prefix("tile-with:").is_some_and(|id| id.parse::<u64>().is_ok())
                 || c.strip_prefix("window-to:").is_some_and(|id| id.parse::<u64>().is_ok())
                 || c.strip_prefix("group-to:").is_some_and(|id| id.parse::<u64>().is_ok())
-                || ["send-to-back", "on-top", "close", "quit-all", "ungroup", "float", "float-group", "unfloat", tracker::COMMAND].contains(&c.as_str());
+                || ["send-to-back", "on-top", "close", "close-others", "quit-all", "ungroup", "float", "float-group", "unfloat", tracker::COMMAND].contains(&c.as_str());
             assert!(known, "{c}");
         }
         // Each agent screen running, and a new one; none where the
@@ -589,6 +608,8 @@ mod tests {
         let mut alone = Vec::new();
         commands(&build(&Facts { grouped: false, ..facts.clone() }), &mut alone);
         assert!(!alone.contains(&"ungroup".to_owned()));
+        // Close Others only for a window in one, after its Close.
+        assert!(!alone.contains(&"close-others".to_owned()) && alone.ends_with(&["close".to_owned(), "quit-all".to_owned()]));
         // Into another of its app's windows; its group too, if in one.
         assert!(all.contains(&"window-to:12".to_owned()) && all.contains(&"group-to:12".to_owned()));
         assert!(alone.contains(&"window-to:12".to_owned()) && !alone.contains(&"group-to:12".to_owned()));
@@ -638,13 +659,13 @@ mod tests {
         // windows, under every app's keys in the profile.
         assert_eq!(keys_of("Close"), Some(Some("⌘W".into())));
         assert_eq!(keys_of("Quit Gedit"), Some(Some("⌘Q".into())));
-        assert!(all.ends_with(&["close".to_owned(), "quit-all".to_owned()]));
+        assert!(all.ends_with(&["close".to_owned(), "close-others".to_owned(), "quit-all".to_owned()]));
         let mut windows = facts.clone();
         windows.keys.platform = olo_protocol::shortcuts::Platform::Windows;
         let on_windows = build(&windows);
         let said: Vec<(String, Option<String>)> =
-            on_windows.items.iter().rev().take(2).filter_map(|i| if let menu::MenuItem::Action(a) = i { Some((a.label.clone(), a.keys.clone())) } else { None }).collect();
-        assert_eq!(said, [("Quit Gedit".to_owned(), Some("Ctrl+Q".to_owned())), ("Close".to_owned(), Some("Ctrl+W".to_owned()))]);
+            on_windows.items.iter().rev().take(3).filter_map(|i| if let menu::MenuItem::Action(a) = i { Some((a.label.clone(), a.keys.clone())) } else { None }).collect();
+        assert_eq!(said, [("Quit Gedit".to_owned(), Some("Ctrl+Q".to_owned())), ("Close Others".to_owned(), None), ("Close".to_owned(), Some("Ctrl+W".to_owned()))]);
         // A kit app's are its own, from that window's menus: Terminal's
         // Close Tab with a tab of several, chosen in the app.
         let kit = Facts {
@@ -660,8 +681,15 @@ mod tests {
         };
         let kit_menu = build(&kit);
         let last: Vec<(String, String, Option<String>)> =
-            kit_menu.items.iter().rev().take(2).filter_map(|i| if let menu::MenuItem::Action(a) = i { Some((a.label.clone(), a.command.clone(), a.keys.clone())) } else { None }).collect();
-        assert_eq!(last, [("Quit Terminal".to_owned(), "app-quit".to_owned(), Some("⌘Q".to_owned())), ("Close Tab".to_owned(), "app-close".to_owned(), Some("⌘W".to_owned()))]);
+            kit_menu.items.iter().rev().take(3).filter_map(|i| if let menu::MenuItem::Action(a) = i { Some((a.label.clone(), a.command.clone(), a.keys.clone())) } else { None }).collect();
+        assert_eq!(
+            last,
+            [
+                ("Quit Terminal".to_owned(), "app-quit".to_owned(), Some("⌘Q".to_owned())),
+                ("Close Others".to_owned(), "close-others".to_owned(), None),
+                ("Close Tab".to_owned(), "app-close".to_owned(), Some("⌘W".to_owned()))
+            ]
+        );
         let Some(menu::MenuItem::Submenu(spaces)) = menu.items.iter().find(|i| matches!(i, menu::MenuItem::Submenu(s) if s.title == "Move to Workspace")) else { panic!() };
         let menu::MenuItem::Action(first) = &spaces.items[0] else { panic!() };
         // Every display's workspaces, named for theirs, left to right: its

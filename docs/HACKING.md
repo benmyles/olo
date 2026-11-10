@@ -6063,7 +6063,10 @@ at the group's size). Back over its own group, it goes back in. A plain
 drag still moves the whole group. The window menu (the palette's) has
 Remove from Group, and Move to Window ▸ (its app's other windows where
 it shows, a group's once: into its group) and, in a group, Move Group to
-Window ▸ (every window of its group, `GroupWindow` each). Dialogs, fixed-size panels and fullscreen windows
+Window ▸ (every window of its group, `GroupWindow` each) and Close
+Others after its Close (Ben, 2026-11-09: every other window of its
+group, `Close` each, as its close box does: one that asks first still
+asks). Dialogs, fixed-size panels and fullscreen windows
 never group (`groupable`). Agents do the same with `GroupWindow { id,
 with, index }` (into `with`'s group, or a new one with it), `UngroupWindow
 { id }` and `MoveTab { id, index }`; `WindowInfo` says `group` (a number
