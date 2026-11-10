@@ -1,0 +1,238 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/ben/worktrees/olo/browser/smithay/smithay/Cargo.toml
+workspace: /home/ben/worktrees/olo/browser/Cargo.toml
+   Compiling olo-web v0.1.0 (/home/ben/worktrees/olo/browser/crates/web)
+   Compiling olo-js v0.1.0 (/home/ben/worktrees/olo/browser/crates/js)
+warning: unnecessary parentheses around closure body
+  --> crates/web/src/chunked.rs:55:143
+   |
+55 | ...e_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+   |                                                    ^                              ^
+   |
+   = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+   |
+55 -         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+55 +         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| i * CHUNK..i * CHUNK + c.len())
+   |
+
+warning: unused attribute `allow`
+  --> crates/web/src/paint/image.rs:44:1
+   |
+44 | #[allow(clippy::too_many_arguments)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: the built-in attribute `allow` will be ignored, since it's applied to the macro invocation `thread_local`
+  --> crates/web/src/paint/image.rs:45:1
+   |
+45 | thread_local! {
+   | ^^^^^^^^^^^^
+   = note: `#[warn(unused_attributes)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `size` is never read
+   --> crates/web/src/css/properties/font.rs:274:20
+    |
+274 |     let mut size = None;
+    |                    ^^^^ this value is reassigned later and never used
+...
+353 |     size = Some(super::parse::component(Property::FontSize.grammar(), c, limits, cancelled)?);
+    |     ---- `size` is overwritten here before the previous value is read
+    |
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `family` is never read
+   --> crates/web/src/css/properties/font.rs:276:22
+    |
+276 |     let mut family = None;
+    |                      ^^^^ this value is reassigned later and never used
+...
+363 |     family = Some(Families::parse(parts[i..].iter().copied(), cancelled)?);
+    |     ------ `family` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+   --> crates/web/src/css/style/job.rs:536:25
+    |
+536 |                     let mut walk = |root: NodeId, reach: &selectors::Reach, nodes: &mut crate::dom::NodeSet| {
+    |                         ----^^^^
+    |                         |
+    |                         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates/web/src/page/interaction.rs:38:13
+   |
+38 |         let mut differ = |a: Option<NodeId>, b: Option<NodeId>, state: State, out: &mut Vec<(NodeId, &'static str)>| {
+   |             ----^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: value assigned to `path` is never read
+   --> crates/web/src/page.rs:972:24
+    |
+972 |         let mut path = String::new();
+    |                        ^^^^^^^^^^^^^ this value is reassigned later and never used
+...
+982 |                             path = format!("patched in place, {} elements", nodes.len());
+    |                             ---- `path` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+    --> crates/web/src/page.rs:3963:13
+     |
+3963 |         let mut subject = |a: crate::dom::NodeId, reached: &mut Vec<crate::dom::NodeId>| {
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: value assigned to `skip` is never read
+    --> crates/web/src/svg/viewport.rs:949:24
+     |
+ 949 |         let mut skip = false;
+     |                        ^^^^^ this value is reassigned later and never used
+...
+1019 |             skip = true;
+     |             ----------- `skip` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+  --> crates/web/src/text/prepare.rs:79:23
+   |
+79 |         let single = |mut it: &mut dyn Iterator<Item = char>| {
+   |                       ----^^
+   |                       |
+   |                       help: remove this `mut`
+
+warning: method `get_mut` is never used
+  --> crates/web/src/chunked.rs:57:19
+   |
+22 | impl<T: Clone> Chunked<T> {
+   | ------------------------- method in this implementation
+...
+57 |     pub(crate) fn get_mut(&mut self, i: usize) -> Option<&mut T> {
+   |                   ^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated function `new` is never used
+  --> crates/web/src/paint/index.rs:16:12
+   |
+15 | impl Index {
+   | ---------- associated function in this implementation
+16 |     pub fn new(commands: &[Command], transforms: &[[f64; 6]], cancel: Option<&AtomicBool>) -> Result<Self> {
+   |            ^^^
+
+warning: variant `Quad` is never constructed
+   --> crates/web/src/svg/script.rs:258:5
+    |
+256 | enum Seg {
+    |      --- variant in this enum
+257 |     Line(F, F),
+258 |     Quad([F; 3]),
+    |     ^^^^
+    |
+    = note: `Seg` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: unused doc comment
+    --> crates/js/src/lib.rs:3402:1
+     |
+3402 | /// Every `__olo.*` function: `args.data()` names it.
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ rustdoc does not generate documentation for macro invocations
+     |
+     = help: to document an item produced by a macro, the macro must produce the documentation as part of its expansion
+     = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `Shader`
+ --> crates/js/src/canvas.rs:9:104
+  |
+9 | use tiny_skia::{BlendMode, FillRule, LineCap, LineJoin, Mask, Paint, Path, PathBuilder, Pixmap, Point, Shader, Stroke, Transform};
+  |                                                                                                        ^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `text` is never read
+    --> crates/js/src/lib.rs:2680:20
+     |
+2680 |     let mut text = String::new();
+     |                    ^^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2689 |         text = if name.is_empty() {
+     |         ---- `text` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: calls to `std::mem::drop` with a reference instead of an owned value does nothing
+    --> crates/js/src/lib.rs:2316:13
+     |
+2316 |             drop(s);
+     |             ^^^^^-^
+     |                  |
+     |                  argument has type `&mut State`
+     |
+     = note: `#[warn(dropping_references)]` on by default
+help: use `let _ = ...` to ignore the expression or result
+     |
+2316 -             drop(s);
+2316 +             let _ = s;
+     |
+
+warning: `olo-js` (lib) generated 4 warnings (run `cargo fix --lib -p olo-js` to apply 1 suggestion)
+warning: `olo-web` (lib) generated 13 warnings (run `cargo fix --lib -p olo-web` to apply 6 suggestions)
+warning: struct `Classic` is never constructed
+  --> crates/js/tests/../../web/tests/support/classic_host.rs:13:12
+   |
+13 | pub struct Classic {
+   |            ^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated function `new` is never used
+  --> crates/js/tests/../../web/tests/support/classic_host.rs:19:12
+   |
+18 | impl Classic {
+   | ------------ associated function in this implementation
+19 |     pub fn new(scope: olo_web::font::Scope, view: layout::Viewport) -> Self {
+   |            ^^^
+
+warning: struct `Scaled` is never constructed
+ --> crates/js/tests/../../web/tests/support/paint_host.rs:7:12
+  |
+7 | pub struct Scaled(pub native_host::NativeHost, pub f64);
+  |            ^^^^^^
+
+warning: associated function `new` is never used
+  --> crates/js/tests/../../web/tests/support/paint_host.rs:36:12
+   |
+35 | impl Scaled {
+   | ----------- associated function in this implementation
+36 |     pub fn new(scope: olo_web::font::Scope, scale: f64) -> Self {
+   |            ^^^
+
+warning: struct `NativeHost` is never constructed
+  --> crates/js/tests/../../web/tests/support/native_font_host.rs:12:12
+   |
+12 | pub struct NativeHost(pub Scope);
+   |            ^^^^^^^^^^
+
+warning: struct `FixtureHost` is never constructed
+ --> crates/js/tests/../../web/tests/support/style_host.rs:7:12
+  |
+7 | pub struct FixtureHost;
+  |            ^^^^^^^^^^^
+
+warning: `olo-js` (test "scroll_into_view") generated 6 warnings
+    Finished `release` profile [optimized + debuginfo] target(s) in 17.51s
+     Running tests/scroll_into_view.rs (target/release/deps/scroll_into_view-9f09efe95f73213a)
+
+running 2 tests
+test smooth_scroll_finishes_and_rests_without_layout_polling ... ok
+test ancestor_alignment_matches_independent_chrome ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running tests/scrollbars.rs (target/release/deps/scrollbars-a90312e24d6948ca)
+
+running 3 tests
+test fixed_geometry_and_pointer_coordinates_follow_both_scroll_axes ... ok
+test viewport_scroll_requests_snap_clamp_and_coalesce ... ok
+test live_classic_metrics_and_cached_reads ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s

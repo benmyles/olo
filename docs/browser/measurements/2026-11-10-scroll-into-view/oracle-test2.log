@@ -1,0 +1,394 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/ben/worktrees/olo/browser/smithay/smithay/Cargo.toml
+workspace: /home/ben/worktrees/olo/browser/Cargo.toml
+warning: unnecessary parentheses around closure body
+  --> crates/web/src/chunked.rs:55:143
+   |
+55 | ...e_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+   |                                                    ^                              ^
+   |
+   = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+   |
+55 -         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+55 +         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| i * CHUNK..i * CHUNK + c.len())
+   |
+
+warning: unused attribute `allow`
+  --> crates/web/src/paint/image.rs:44:1
+   |
+44 | #[allow(clippy::too_many_arguments)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: the built-in attribute `allow` will be ignored, since it's applied to the macro invocation `thread_local`
+  --> crates/web/src/paint/image.rs:45:1
+   |
+45 | thread_local! {
+   | ^^^^^^^^^^^^
+   = note: `#[warn(unused_attributes)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `size` is never read
+   --> crates/web/src/css/properties/font.rs:274:20
+    |
+274 |     let mut size = None;
+    |                    ^^^^ this value is reassigned later and never used
+...
+353 |     size = Some(super::parse::component(Property::FontSize.grammar(), c, limits, cancelled)?);
+    |     ---- `size` is overwritten here before the previous value is read
+    |
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `family` is never read
+   --> crates/web/src/css/properties/font.rs:276:22
+    |
+276 |     let mut family = None;
+    |                      ^^^^ this value is reassigned later and never used
+...
+363 |     family = Some(Families::parse(parts[i..].iter().copied(), cancelled)?);
+    |     ------ `family` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+   --> crates/web/src/css/style/job.rs:536:25
+    |
+536 |                     let mut walk = |root: NodeId, reach: &selectors::Reach, nodes: &mut crate::dom::NodeSet| {
+    |                         ----^^^^
+    |                         |
+    |                         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates/web/src/page/interaction.rs:38:13
+   |
+38 |         let mut differ = |a: Option<NodeId>, b: Option<NodeId>, state: State, out: &mut Vec<(NodeId, &'static str)>| {
+   |             ----^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: value assigned to `path` is never read
+   --> crates/web/src/page.rs:972:24
+    |
+972 |         let mut path = String::new();
+    |                        ^^^^^^^^^^^^^ this value is reassigned later and never used
+...
+982 |                             path = format!("patched in place, {} elements", nodes.len());
+    |                             ---- `path` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+    --> crates/web/src/page.rs:3963:13
+     |
+3963 |         let mut subject = |a: crate::dom::NodeId, reached: &mut Vec<crate::dom::NodeId>| {
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: value assigned to `skip` is never read
+    --> crates/web/src/svg/viewport.rs:949:24
+     |
+ 949 |         let mut skip = false;
+     |                        ^^^^^ this value is reassigned later and never used
+...
+1019 |             skip = true;
+     |             ----------- `skip` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+  --> crates/web/src/text/prepare.rs:79:23
+   |
+79 |         let single = |mut it: &mut dyn Iterator<Item = char>| {
+   |                       ----^^
+   |                       |
+   |                       help: remove this `mut`
+
+warning: method `get_mut` is never used
+  --> crates/web/src/chunked.rs:57:19
+   |
+22 | impl<T: Clone> Chunked<T> {
+   | ------------------------- method in this implementation
+...
+57 |     pub(crate) fn get_mut(&mut self, i: usize) -> Option<&mut T> {
+   |                   ^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated function `new` is never used
+  --> crates/web/src/paint/index.rs:16:12
+   |
+15 | impl Index {
+   | ---------- associated function in this implementation
+16 |     pub fn new(commands: &[Command], transforms: &[[f64; 6]], cancel: Option<&AtomicBool>) -> Result<Self> {
+   |            ^^^
+
+warning: variant `Quad` is never constructed
+   --> crates/web/src/svg/script.rs:258:5
+    |
+256 | enum Seg {
+    |      --- variant in this enum
+257 |     Line(F, F),
+258 |     Quad([F; 3]),
+    |     ^^^^
+    |
+    = note: `Seg` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: `olo-web` (lib) generated 13 warnings (run `cargo fix --lib -p olo-web` to apply 6 suggestions)
+warning: unused doc comment
+    --> crates/js/src/lib.rs:3402:1
+     |
+3402 | /// Every `__olo.*` function: `args.data()` names it.
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ rustdoc does not generate documentation for macro invocations
+     |
+     = help: to document an item produced by a macro, the macro must produce the documentation as part of its expansion
+     = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `Shader`
+ --> crates/js/src/canvas.rs:9:104
+  |
+9 | use tiny_skia::{BlendMode, FillRule, LineCap, LineJoin, Mask, Paint, Path, PathBuilder, Pixmap, Point, Shader, Stroke, Transform};
+  |                                                                                                        ^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `text` is never read
+    --> crates/js/src/lib.rs:2680:20
+     |
+2680 |     let mut text = String::new();
+     |                    ^^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2689 |         text = if name.is_empty() {
+     |         ---- `text` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: calls to `std::mem::drop` with a reference instead of an owned value does nothing
+    --> crates/js/src/lib.rs:2316:13
+     |
+2316 |             drop(s);
+     |             ^^^^^-^
+     |                  |
+     |                  argument has type `&mut State`
+     |
+     = note: `#[warn(dropping_references)]` on by default
+help: use `let _ = ...` to ignore the expression or result
+     |
+2316 -             drop(s);
+2316 +             let _ = s;
+     |
+
+warning: `olo-js` (lib) generated 4 warnings (run `cargo fix --lib -p olo-js` to apply 1 suggestion)
+   Compiling olo-js v0.1.0 (/home/ben/worktrees/olo/browser/crates/js)
+warning: struct `Classic` is never constructed
+  --> crates/js/tests/../../web/tests/support/classic_host.rs:13:12
+   |
+13 | pub struct Classic {
+   |            ^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated function `new` is never used
+  --> crates/js/tests/../../web/tests/support/classic_host.rs:19:12
+   |
+18 | impl Classic {
+   | ------------ associated function in this implementation
+19 |     pub fn new(scope: olo_web::font::Scope, view: layout::Viewport) -> Self {
+   |            ^^^
+
+warning: struct `Scaled` is never constructed
+ --> crates/js/tests/../../web/tests/support/paint_host.rs:7:12
+  |
+7 | pub struct Scaled(pub native_host::NativeHost, pub f64);
+  |            ^^^^^^
+
+warning: associated function `new` is never used
+  --> crates/js/tests/../../web/tests/support/paint_host.rs:36:12
+   |
+35 | impl Scaled {
+   | ----------- associated function in this implementation
+36 |     pub fn new(scope: olo_web::font::Scope, scale: f64) -> Self {
+   |            ^^^
+
+warning: struct `NativeHost` is never constructed
+  --> crates/js/tests/../../web/tests/support/native_font_host.rs:12:12
+   |
+12 | pub struct NativeHost(pub Scope);
+   |            ^^^^^^^^^^
+
+warning: struct `FixtureHost` is never constructed
+ --> crates/js/tests/../../web/tests/support/style_host.rs:7:12
+  |
+7 | pub struct FixtureHost;
+  |            ^^^^^^^^^^^
+
+warning: `olo-js` (test "scroll_into_view") generated 6 warnings
+    Finished `release` profile [optimized + debuginfo] target(s) in 2.23s
+     Running tests/scroll_into_view.rs (target/release/deps/scroll_into_view-9f09efe95f73213a)
+
+running 2 tests
+test smooth_scroll_finishes_and_rests_without_layout_polling ... ok
+test ancestor_alignment_matches_independent_chrome ... FAILED
+
+failures:
+
+---- ancestor_alignment_matches_independent_chrome stdout ----
+
+thread 'ancestor_alignment_matches_independent_chrome' (2824548) panicked at crates/js/tests/scroll_into_view.rs:20:2:
+152 discrepancies:
+1 "null" offsets[1]: 525 != 905
+1 "null" offsets[3]: 293 != 353
+1 "null" offsets[5]: 200 != 300
+1 "null" rect[1]: 540 != 0
+1 "oversized-cover" offsets[1]: 705 != 525
+1 "oversized-cover" offsets[2]: 433 != 393
+1 "oversized-cover" offsets[3]: 333 != 293
+1 "oversized-cover" rect[0]: 45 != 85
+1 "oversized-cover" rect[1]: 200 != 420
+1 "oversized-before" offsets[1]: 705 != 525
+1 "oversized-before" offsets[2]: 103 != 303
+1 "oversized-before" offsets[3]: 103 != 283
+1 "oversized-before" rect[0]: 45 != -155
+1 "oversized-after" offsets[1]: 705 != 525
+1 "oversized-after" offsets[2]: 453 != 393
+1 "oversized-after" offsets[3]: 353 != 293
+1 "oversized-after" rect[0]: 45 != 105
+1 "oversized-after" rect[1]: 200 != 440
+1 "fixed-target" offsets[2]: 453 != 0
+1 "fixed-target" offsets[4]: 402 != 0
+1 "fixed-target" rect[0]: 45 != 900
+1.25 "default" offsets[2]: 392 != 392.7999877929687
+1.25 "default" offsets[3]: 352 != 352.79998779296875
+1.25 "default" rect[0]: 245.19999999999993 != 244.40000915527344
+1.25 "default" rect[1]: 0.3999999999998636 != -0.4000000059604645
+1.25 "true" offsets[2]: 392 != 392.7999877929687
+1.25 "true" offsets[3]: 352 != 352.79998779296875
+1.25 "true" rect[0]: 245.19999999999993 != 244.40000915527344
+1.25 "true" rect[1]: 0.3999999999998636 != -0.4000000059604645
+1.25 "false" offsets[2]: 392 != 392.7999877929687
+1.25 "false" offsets[3]: 292 != 292.79998779296875
+1.25 "false" rect[0]: 245.19999999999993 != 244.40000915527344
+1.25 "false" rect[1]: 540.3999999999999 != 539.6000366210938
+1.25 "null" offsets[1]: 524.8 != 904.7999877929688
+1.25 "null" offsets[2]: 392 != 392.7999877929687
+1.25 "null" offsets[3]: 292 != 352.79998779296875
+1.25 "null" offsets[5]: 200 != 300
+1.25 "null" rect[0]: 245.19999999999993 != 244.40000915527344
+1.25 "null" rect[1]: 540.3999999999999 != -0.4000000059604645
+1.25 "start" offsets[2]: 452 != 452.7999877929687
+1.25 "start" offsets[3]: 352 != 352.79998779296875
+1.25 "start" rect[0]: 0.39999999999993463 != -0.4000000059604645
+1.25 "start" rect[1]: 0.3999999999998636 != -0.4000000059604645
+1.25 "center" offsets[1]: 715.2 != 714.4000244140625
+1.25 "center" offsets[2]: 423.2 != 422.3999938964844
+1.25 "center" offsets[4]: 349.6 != 350.3999938964844
+1.25 "center" offsets[5]: 249.6 != 250.3999938964844
+1.25 "end" offsets[2]: 392 != 392.7999877929687
+1.25 "end" offsets[3]: 292 != 292.79998779296875
+1.25 "end" rect[0]: 245.19999999999993 != 244.40000915527344
+1.25 "end" rect[1]: 540.3999999999999 != 539.6000366210938
+1.25 "nearest" offsets[2]: 392 != 392.7999877929687
+1.25 "nearest" offsets[3]: 292 != 292.79998779296875
+1.25 "nearest" rect[0]: 245.19999999999993 != 244.40000915527344
+1.25 "nearest" rect[1]: 540.3999999999999 != 539.6000366210938
+1.25 "oversized-cover" offsets[1]: 704.8 != 524.7999877929688
+1.25 "oversized-cover" offsets[2]: 432.8 != 392.7999877929687
+1.25 "oversized-cover" offsets[3]: 332 != 292.79998779296875
+1.25 "oversized-cover" rect[0]: 44.39999999999998 != 84.4000015258789
+1.25 "oversized-cover" rect[1]: 200.39999999999984 != 419.6000061035156
+1.25 "oversized-before" offsets[1]: 704.8 != 524.7999877929688
+1.25 "oversized-before" offsets[2]: 102.4 != 302.3999938964844
+1.25 "oversized-before" offsets[3]: 102.4 != 282.3999938964844
+1.25 "oversized-before" rect[0]: 44.79999999999998 != -155.1999969482422
+1.25 "oversized-after" offsets[1]: 704.8 != 524.7999877929688
+1.25 "oversized-after" offsets[2]: 452.8 != 392.7999877929687
+1.25 "oversized-after" offsets[3]: 352.8 != 292.79998779296875
+1.25 "oversized-after" offsets[4]: 29.6 != 30.399999618530273
+1.25 "oversized-after" rect[0]: 44.7999999999999 != 104
+1.25 "oversized-after" rect[1]: 199.79999999999995 != 439.8000183105469
+1.25 "margins-padding" offsets[1]: 887.2 != 886.4000244140625
+1.25 "margins-padding" offsets[3]: 363.2 != 364
+1.25 "hidden-container" offsets[2]: 392 != 392.7999877929687
+1.25 "hidden-container" offsets[3]: 292 != 292.79998779296875
+1.25 "hidden-container" rect[0]: 245.19999999999993 != 244.40000915527344
+1.25 "hidden-container" rect[1]: 540.3999999999999 != 539.6000366210938
+1.25 "clip-container" offsets[0]: 44 != 44.79999923706055
+1.25 "clip-container" offsets[3]: 652 != 652.7999877929688
+1.25 "clip-container" rect[0]: 0.39999999999997726 != -0.4000000059604645
+1.25 "clip-container" rect[1]: 0.3999999999998636 != -0.4000000059604645
+1.25 "fixed-target" offsets[2]: 452 != 0
+1.25 "fixed-target" offsets[4]: 403.2 != 0
+1.25 "fixed-target" rect[0]: 44.80000000000001 != 900
+1.5 "null" offsets[1]: 524.6666666666666 != 904.6666870117188
+1.5 "null" offsets[3]: 292.6666666666667 != 352.6666564941406
+1.5 "null" offsets[5]: 200 != 300
+1.5 "null" rect[1]: 540.0000000000001 != 0
+1.5 "already-visible" offsets[1]: 524 != 524.6666870117188
+1.5 "already-visible" rect[1]: 540.3333333333333 != 539.6666870117188
+1.5 "oversized-cover" offsets[1]: 704.6666666666666 != 524.6666870117188
+1.5 "oversized-cover" offsets[2]: 432.6666666666667 != 392.6666564941406
+1.5 "oversized-cover" offsets[3]: 332.6666666666667 != 292.6666564941406
+1.5 "oversized-cover" rect[0]: 44.666666666666686 != 84.66667175292969
+1.5 "oversized-cover" rect[1]: 199.9999999999999 != 420
+1.5 "oversized-before" offsets[1]: 704.6666666666666 != 524.6666870117188
+1.5 "oversized-before" offsets[2]: 102.66666666666669 != 302.6666564941406
+1.5 "oversized-before" offsets[3]: 102.66666666666669 != 282.6666564941406
+1.5 "oversized-before" rect[0]: 44.66666666666667 != -155.33334350585938
+1.5 "oversized-after" offsets[1]: 704.6666666666666 != 524.6666870117188
+1.5 "oversized-after" offsets[2]: 452.6666666666667 != 392.6666564941406
+1.5 "oversized-after" offsets[3]: 352.6666666666667 != 292.6666564941406
+1.5 "oversized-after" rect[0]: 44.666666666666686 != 104.66667175292967
+1.5 "oversized-after" rect[1]: 199.66666666666663 != 439.6666870117187
+1.5 "fixed-target" offsets[2]: 452.6666666666667 != 0
+1.5 "fixed-target" offsets[4]: 402.6666666666667 != 0
+1.5 "fixed-target" rect[0]: 44.666666666666515 != 900
+1.75 "null" offsets[1]: 524.5714285714286 != 904.5714111328124
+1.75 "null" offsets[3]: 293.14285714285717 != 353.1428527832031
+1.75 "null" offsets[5]: 200 != 300
+1.75 "null" rect[1]: 539.7142857142859 != -0.2857142984867096
+1.75 "start" offsets[0]: 44 != 44.57143020629883
+1.75 "start" rect[0]: 0.2857142857142776 != -0.2857142984867096
+1.75 "center" offsets[2]: 422.2857142857143 != 422.8571472167969
+1.75 "center" rect[0]: 144.85714285714283 != 144.2857208251953
+1.75 "oversized-cover" offsets[1]: 704.5714285714286 != 524.5714111328125
+1.75 "oversized-cover" offsets[2]: 433.1428571428572 != 393.1428527832031
+1.75 "oversized-cover" offsets[3]: 332.57142857142856 != 293.1428527832031
+1.75 "oversized-cover" rect[0]: 44.28571428571422 != 84.28572082519531
+1.75 "oversized-cover" rect[1]: 200.28571428571425 != 419.71429443359375
+1.75 "oversized-before" offsets[1]: 704.5714285714286 != 524.5714111328125
+1.75 "oversized-before" offsets[2]: 102.85714285714286 != 302.8571472167969
+1.75 "oversized-before" offsets[3]: 102.85714285714286 != 282.8571472167969
+1.75 "oversized-before" rect[0]: 44.57142857142853 != -155.42857360839844
+1.75 "oversized-after" offsets[1]: 704.5714285714286 != 524.5714111328125
+1.75 "oversized-after" offsets[2]: 452.57142857142856 != 393.1428527832031
+1.75 "oversized-after" offsets[3]: 352.57142857142856 != 293.1428527832031
+1.75 "oversized-after" rect[0]: 44.57142857142861 != 104.00000762939452
+1.75 "oversized-after" rect[1]: 200.1428571428571 != 439.5714416503906
+1.75 "fixed-target" offsets[2]: 452.57142857142856 != 0
+1.75 "fixed-target" offsets[4]: 402.8571428571428 != 0
+1.75 "fixed-target" rect[0]: 44.57142857142861 != 900.0000610351562
+2 "null" offsets[1]: 525 != 905
+2 "null" offsets[3]: 293 != 353
+2 "null" offsets[5]: 200 != 300
+2 "null" rect[1]: 540 != 0
+2 "oversized-cover" offsets[1]: 705 != 525
+2 "oversized-cover" offsets[2]: 433 != 393
+2 "oversized-cover" offsets[3]: 333 != 293
+2 "oversized-cover" rect[0]: 45 != 85
+2 "oversized-cover" rect[1]: 200 != 420
+2 "oversized-before" offsets[1]: 705 != 525
+2 "oversized-before" offsets[2]: 103 != 303
+2 "oversized-before" offsets[3]: 103 != 283
+2 "oversized-before" rect[0]: 45 != -155
+2 "oversized-after" offsets[1]: 705 != 525
+2 "oversized-after" offsets[2]: 453 != 393
+2 "oversized-after" offsets[3]: 353 != 293
+2 "oversized-after" rect[0]: 45 != 105
+2 "oversized-after" rect[1]: 200 != 440
+2 "fixed-target" offsets[2]: 453 != 0
+2 "fixed-target" offsets[4]: 402 != 0
+2 "fixed-target" rect[0]: 45 != 900
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    ancestor_alignment_matches_independent_chrome
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+error: test failed, to rerun pass `-p olo-js --test scroll_into_view`

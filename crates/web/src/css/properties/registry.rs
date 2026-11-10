@@ -81,6 +81,7 @@ macro_rules! keyword_registry {
 }
 keyword_registry! {
     Absolute => "absolute",
+    Smooth => "smooth",
     All => "all",
     Alpha => "alpha",
     Alternate => "alternate",
@@ -455,6 +456,23 @@ property_registry! {
     RowGap, "row-gap", Grammar::Numeric(NumericKind::LengthPercentage, Range::Nonnegative, &[Keyword::Normal]), "normal", false;
     Rx, "rx", Grammar::Numeric(NumericKind::LengthPercentage, Range::Nonnegative, &[Keyword::Auto]), "auto", false;
     Ry, "ry", Grammar::Numeric(NumericKind::LengthPercentage, Range::Nonnegative, &[Keyword::Auto]), "auto", false;
+    ScrollBehavior, "scroll-behavior", Grammar::Keywords(&[Keyword::Auto,Keyword::Smooth]), "auto", false;
+    ScrollMarginBlockEnd, "scroll-margin-block-end", Grammar::Numeric(NumericKind::Length, Range::All, &[]), "0", false;
+    ScrollMarginBlockStart, "scroll-margin-block-start", Grammar::Numeric(NumericKind::Length, Range::All, &[]), "0", false;
+    ScrollMarginBottom, "scroll-margin-bottom", Grammar::Numeric(NumericKind::Length, Range::All, &[]), "0", false;
+    ScrollMarginInlineEnd, "scroll-margin-inline-end", Grammar::Numeric(NumericKind::Length, Range::All, &[]), "0", false;
+    ScrollMarginInlineStart, "scroll-margin-inline-start", Grammar::Numeric(NumericKind::Length, Range::All, &[]), "0", false;
+    ScrollMarginLeft, "scroll-margin-left", Grammar::Numeric(NumericKind::Length, Range::All, &[]), "0", false;
+    ScrollMarginRight, "scroll-margin-right", Grammar::Numeric(NumericKind::Length, Range::All, &[]), "0", false;
+    ScrollMarginTop, "scroll-margin-top", Grammar::Numeric(NumericKind::Length, Range::All, &[]), "0", false;
+    ScrollPaddingBlockEnd, "scroll-padding-block-end", Grammar::Numeric(NumericKind::LengthPercentage, Range::Nonnegative, &[Keyword::Auto]), "auto", false;
+    ScrollPaddingBlockStart, "scroll-padding-block-start", Grammar::Numeric(NumericKind::LengthPercentage, Range::Nonnegative, &[Keyword::Auto]), "auto", false;
+    ScrollPaddingBottom, "scroll-padding-bottom", Grammar::Numeric(NumericKind::LengthPercentage, Range::Nonnegative, &[Keyword::Auto]), "auto", false;
+    ScrollPaddingInlineEnd, "scroll-padding-inline-end", Grammar::Numeric(NumericKind::LengthPercentage, Range::Nonnegative, &[Keyword::Auto]), "auto", false;
+    ScrollPaddingInlineStart, "scroll-padding-inline-start", Grammar::Numeric(NumericKind::LengthPercentage, Range::Nonnegative, &[Keyword::Auto]), "auto", false;
+    ScrollPaddingLeft, "scroll-padding-left", Grammar::Numeric(NumericKind::LengthPercentage, Range::Nonnegative, &[Keyword::Auto]), "auto", false;
+    ScrollPaddingRight, "scroll-padding-right", Grammar::Numeric(NumericKind::LengthPercentage, Range::Nonnegative, &[Keyword::Auto]), "auto", false;
+    ScrollPaddingTop, "scroll-padding-top", Grammar::Numeric(NumericKind::LengthPercentage, Range::Nonnegative, &[Keyword::Auto]), "auto", false;
     ScrollbarGutter, "scrollbar-gutter", Grammar::ScrollbarGutter, "auto", false;
     ScrollbarWidth, "scrollbar-width", Grammar::Keywords(&[Keyword::Auto,Keyword::Thin,Keyword::None]), "auto", false;
     StopColor, "stop-color", Grammar::Color(&[]), "black", false;
@@ -513,7 +531,7 @@ shorthand_registry! {
     // and the not-yet-implemented unicode-bidi are excluded by definition.
     WebkitMask, "-webkit-mask", [MaskImage,MaskPosition,MaskSize,MaskRepeat], Background;
     WebkitTextDecoration, "-webkit-text-decoration", [TextDecorationLine,TextDecorationStyle,TextDecorationColor,TextDecorationThickness], TextDecoration;
-    All, "all", [WebkitBoxOrient,AccentColor,AlignContent,AlignItems,AlignSelf,AnimationDelay,AnimationDirection,AnimationDuration,AnimationFillMode,AnimationIterationCount,AnimationName,AnimationPlayState,AnimationTimingFunction,Appearance,AspectRatio,BackdropFilter,BackgroundClip,BackgroundColor,BackgroundImage,BackgroundOrigin,BackgroundPosition,BackgroundRepeat,BackgroundSize,BlockSize,BorderBottomColor,BorderBottomLeftRadius,BorderBottomRightRadius,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderSpacing,BorderTopColor,BorderTopLeftRadius,BorderTopRightRadius,BorderTopStyle,BorderTopWidth,Bottom,BoxShadow,BoxSizing,CaretColor,Clear,Clip,ClipPath,ClipRule,Color,ColorScheme,ColumnGap,ContainerName,ContainerType,Content,CounterIncrement,CounterReset,CounterSet,Display,Fill,FillOpacity,FillRule,Filter,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FloodColor,FloodOpacity,FontFamily,FontFeatureSettings,FontSize,FontStyle,FontWeight,FontWidth,GridAutoColumns,GridAutoFlow,GridAutoRows,GridColumnEnd,GridColumnStart,GridRowEnd,GridRowStart,GridTemplateAreas,GridTemplateColumns,GridTemplateRows,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,JustifyContent,JustifyItems,JustifySelf,Left,LetterSpacing,LineClamp,LineHeight,ListStyleImage,ListStylePosition,ListStyleType,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaskImage,MaskMode,MaskPosition,MaskRepeat,MaskSize,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,MixBlendMode,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Quotes,Resize,Right,RowGap,ScrollbarGutter,ScrollbarWidth,StopColor,StopOpacity,Stroke,StrokeOpacity,TableLayout,TextAlign,TextAlignLast,TextDecorationColor,TextDecorationLine,TextDecorationStyle,TextDecorationThickness,TextBoxEdge,TextBoxTrim,TextOrientation,TextOverflow,TextTransform,TextUnderlineOffset,TextWrapMode,TextWrapStyle,Top,Transform,TransformOrigin,TransitionDelay,TransitionDuration,TransitionProperty,TransitionTimingFunction,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,X,Y,Rx,Ry,ZIndex], WideOnly;
+    All, "all", [WebkitBoxOrient,AccentColor,AlignContent,AlignItems,AlignSelf,AnimationDelay,AnimationDirection,AnimationDuration,AnimationFillMode,AnimationIterationCount,AnimationName,AnimationPlayState,AnimationTimingFunction,Appearance,AspectRatio,BackdropFilter,BackgroundClip,BackgroundColor,BackgroundImage,BackgroundOrigin,BackgroundPosition,BackgroundRepeat,BackgroundSize,BlockSize,BorderBottomColor,BorderBottomLeftRadius,BorderBottomRightRadius,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderSpacing,BorderTopColor,BorderTopLeftRadius,BorderTopRightRadius,BorderTopStyle,BorderTopWidth,Bottom,BoxShadow,BoxSizing,CaretColor,Clear,Clip,ClipPath,ClipRule,Color,ColorScheme,ColumnGap,ContainerName,ContainerType,Content,CounterIncrement,CounterReset,CounterSet,Display,Fill,FillOpacity,FillRule,Filter,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FloodColor,FloodOpacity,FontFamily,FontFeatureSettings,FontSize,FontStyle,FontWeight,FontWidth,GridAutoColumns,GridAutoFlow,GridAutoRows,GridColumnEnd,GridColumnStart,GridRowEnd,GridRowStart,GridTemplateAreas,GridTemplateColumns,GridTemplateRows,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,JustifyContent,JustifyItems,JustifySelf,Left,LetterSpacing,LineClamp,LineHeight,ListStyleImage,ListStylePosition,ListStyleType,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaskImage,MaskMode,MaskPosition,MaskRepeat,MaskSize,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,MixBlendMode,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Quotes,Resize,Right,RowGap,ScrollBehavior,ScrollMarginBlockEnd,ScrollMarginBlockStart,ScrollMarginBottom,ScrollMarginInlineEnd,ScrollMarginInlineStart,ScrollMarginLeft,ScrollMarginRight,ScrollMarginTop,ScrollPaddingBlockEnd,ScrollPaddingBlockStart,ScrollPaddingBottom,ScrollPaddingInlineEnd,ScrollPaddingInlineStart,ScrollPaddingLeft,ScrollPaddingRight,ScrollPaddingTop,ScrollbarGutter,ScrollbarWidth,StopColor,StopOpacity,Stroke,StrokeOpacity,TableLayout,TextAlign,TextAlignLast,TextDecorationColor,TextDecorationLine,TextDecorationStyle,TextDecorationThickness,TextBoxEdge,TextBoxTrim,TextOrientation,TextOverflow,TextTransform,TextUnderlineOffset,TextWrapMode,TextWrapStyle,Top,Transform,TransformOrigin,TransitionDelay,TransitionDuration,TransitionProperty,TransitionTimingFunction,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,X,Y,Rx,Ry,ZIndex], WideOnly;
     Animation, "animation", [AnimationName,AnimationDuration,AnimationTimingFunction,AnimationDelay,AnimationIterationCount,AnimationDirection,AnimationFillMode,AnimationPlayState], Animation;
     Background, "background", [BackgroundColor,BackgroundImage,BackgroundPosition,BackgroundSize,BackgroundRepeat,BackgroundClip,BackgroundOrigin], Background;
     Border, "border", [BorderTopWidth,BorderRightWidth,BorderBottomWidth,BorderLeftWidth,BorderTopStyle,BorderRightStyle,BorderBottomStyle,BorderLeftStyle,BorderTopColor,BorderRightColor,BorderBottomColor,BorderLeftColor], Border;
@@ -561,6 +579,12 @@ shorthand_registry! {
     PlaceContent, "place-content", [AlignContent,JustifyContent], Repeat;
     PlaceItems, "place-items", [AlignItems,JustifyItems], Repeat;
     PlaceSelf, "place-self", [AlignSelf,JustifySelf], Repeat;
+    ScrollMargin, "scroll-margin", [ScrollMarginTop,ScrollMarginRight,ScrollMarginBottom,ScrollMarginLeft], Quad;
+    ScrollMarginBlock, "scroll-margin-block", [ScrollMarginBlockStart,ScrollMarginBlockEnd], Repeat;
+    ScrollMarginInline, "scroll-margin-inline", [ScrollMarginInlineStart,ScrollMarginInlineEnd], Repeat;
+    ScrollPadding, "scroll-padding", [ScrollPaddingTop,ScrollPaddingRight,ScrollPaddingBottom,ScrollPaddingLeft], Quad;
+    ScrollPaddingBlock, "scroll-padding-block", [ScrollPaddingBlockStart,ScrollPaddingBlockEnd], Repeat;
+    ScrollPaddingInline, "scroll-padding-inline", [ScrollPaddingInlineStart,ScrollPaddingInlineEnd], Repeat;
     TextBox, "text-box", [TextBoxTrim,TextBoxEdge], TextBox;
     TextDecoration, "text-decoration", [TextDecorationLine,TextDecorationStyle,TextDecorationColor,TextDecorationThickness], TextDecoration;
     TextWrap, "text-wrap", [TextWrapMode,TextWrapStyle], TextWrap;

@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-10
 
+### Browser scrolls to the requested testimonial
+
+*10:03* — General ancestor and smooth scrolling move Stripe’s actual Jobber button to Chrome’s endpoint at five scales in light, dark and night modes. Page pixels, delayed selection paints and other journeys remain open; Stripe is not accepted.
+
+![Browser scrolls to the requested testimonial](2026-11-10/100318-browser-scrolls-to-the-requested-testimonial.png)
+
+### Browser before ancestor scrolling
+
+*10:03* — Clicking Stripe’s Jobber control leaves the carousel on Mindbody: scrollIntoView was an empty stub.
+
+![Browser before ancestor scrolling](2026-11-10/100316-browser-before-ancestor-scrolling.png)
+
 ### Browser with consistent fractional text fitting
 
 *09:05* — The author stays on one line; the carousel loses the extra 25.2px. Text and intrinsic sizing share font-size quantization, and fitting follows Chrome’s one-layout-unit allowance. Full-page layout and testimonial activation remain open.

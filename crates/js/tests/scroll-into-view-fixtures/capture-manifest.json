@@ -1,0 +1,30 @@
+{
+  "browser": {
+    "protocolVersion": "1.3",
+    "product": "Chrome/157.0.8103.38",
+    "revision": "@a733b5afbb3ba618844ff8876b89ad1a774b2f18",
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+    "jsVersion": "15.7.112.23"
+  },
+  "screen": "codex-browser",
+  "scales": [
+    1,
+    1.25,
+    1.5,
+    1.75,
+    2
+  ],
+  "viewport": [
+    800,
+    600
+  ],
+  "sources": {
+    "base.html": "e77fceb4d598fb90e7d74a3f9aa719d2e66d59a658bf615a5593b4d7f6905181",
+    "journey.js": "52a4b349db303e9e71e4ddf21b6026ff7d40fb8f25cabdd435e03efe4535be20",
+    "chrome.json": "833454f96b5a4a0a23e232e57d7bc5df8305cd425e1781519ecd18dab4d9649b",
+    "smooth.js": "a81ea05a2d34d51742a2659b1d2435605356a577b73d3304758367c2a88c88e2",
+    "chrome-smooth.json": "512fd10bc55c223e33e99ad70db6bc64a6ac35aaf15d6e7a7d0cb358d8225cce",
+    "idl.js": "6aefea9e2c49361e3a2bb0c827ec6d2c7a141235ff7a8fbf1643841f5a1694e7",
+    "chrome-idl.json": "1c4ba0e78d07e75c6faa3ca2cc847d5e8e21c066f717b04f1982658cc76ed82a"
+  }
+}

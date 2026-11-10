@@ -1,0 +1,15 @@
+Browser: limits Limits { memory_high: 4294967296, memory_max: 6442450944, swap_max: 268435456, cpu_quota_us: 4000000, cpu_weight: 50, tasks_max: 512 }
+Browser fonts: 240 system font files mapped
+Browser: static page ready 3 ms after the request
+Browser scripts: 1 run, 0 errors, 0 console lines, 0 timers, 1 listeners, 0 layouts (0 ms), revision 36 -> 36, 13 ms (12 ms of this thread's CPU)
+Browser: scripted page ready 19 ms after the request
+  live: 9 node wrappers, 9 of them in the document
+  live: in 2.1 s, 2 advances (2 ticks, at most 1 in one; 0 ms of scripts, 0 WebGL calls in 0 ms), 0 renders (0 ms); 0 layouts for measurements so far
+  memory: scripts' heap 2 of 3 MB, their pictures 0 MB (0), the page's pictures 0 MB
+  live: the page's focus moved to Some(NodeId { document: 3, slot: 9, generation: 1 })
+  layout for scripts: style 0.6 ms, boxes 0.0 ms, text 0.2 ms, layout 0.1 ms, index 0.0 ms, all 0.9 ms (call 0.9 ms): full job: nothing before
+  live render: revision 36 -> 36 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.0)
+  content: focus targets 0.00 ms, labels 0.03 ms (2 labels)
+  moved: 0 rects, all off screen; first None; viewport 0..578
+  tiles: 0 of 12 repainted in 0.0 ms
+  live console: [log] SCROLL_ANIMATION {"result":{"interrupted":false},"samples":[[16.451375999999982,1,1],[25.170730999999705,4,2],[41.89395000000013,11,5],[58.56245399999989,23,10],[75.2354249999994,39,17],[91.89623800000027,59,25],[108.56671800000004,84,36],[125.24404500000037,113,48],[142.01406700000007,146,63],[158.590189,183,78],[175.23034300000018,223,96],[191.89204699999982,266,114],[208.53701499999943,311,133],[225.35092600000007,357,153],[242.37675199999967,403,173],[258.5695559999999,446,191],[275.23131500000045,488,209],[291.8917299999998,528,226],[308.5541410000005,564,242],[325.27184799999986,596,255],[341.9266330000005,624,267],[358.567282,647,277],[375.2672760000005,666,286],[391.97788000000037,681,292],[408.6069480000001,692,296],[425.2561289999999,698,299],[441.97343700000056,700,300]],"elapsed":457.62680800000044,"offset":[700,300]}

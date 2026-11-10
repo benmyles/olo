@@ -1,0 +1,3959 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/ben/worktrees/olo/browser/smithay/smithay/Cargo.toml
+workspace: /home/ben/worktrees/olo/browser/Cargo.toml
+warning: unnecessary parentheses around closure body
+  --> crates/web/src/chunked.rs:55:143
+   |
+55 | ...e_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+   |                                                    ^                              ^
+   |
+   = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+   |
+55 -         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+55 +         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| i * CHUNK..i * CHUNK + c.len())
+   |
+
+warning: unused attribute `allow`
+  --> crates/web/src/paint/image.rs:44:1
+   |
+44 | #[allow(clippy::too_many_arguments)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: the built-in attribute `allow` will be ignored, since it's applied to the macro invocation `thread_local`
+  --> crates/web/src/paint/image.rs:45:1
+   |
+45 | thread_local! {
+   | ^^^^^^^^^^^^
+   = note: `#[warn(unused_attributes)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `size` is never read
+   --> crates/web/src/css/properties/font.rs:274:20
+    |
+274 |     let mut size = None;
+    |                    ^^^^ this value is reassigned later and never used
+...
+353 |     size = Some(super::parse::component(Property::FontSize.grammar(), c, limits, cancelled)?);
+    |     ---- `size` is overwritten here before the previous value is read
+    |
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `family` is never read
+   --> crates/web/src/css/properties/font.rs:276:22
+    |
+276 |     let mut family = None;
+    |                      ^^^^ this value is reassigned later and never used
+...
+363 |     family = Some(Families::parse(parts[i..].iter().copied(), cancelled)?);
+    |     ------ `family` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+   --> crates/web/src/css/style/job.rs:536:25
+    |
+536 |                     let mut walk = |root: NodeId, reach: &selectors::Reach, nodes: &mut crate::dom::NodeSet| {
+    |                         ----^^^^
+    |                         |
+    |                         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates/web/src/page/interaction.rs:38:13
+   |
+38 |         let mut differ = |a: Option<NodeId>, b: Option<NodeId>, state: State, out: &mut Vec<(NodeId, &'static str)>| {
+   |             ----^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: value assigned to `path` is never read
+   --> crates/web/src/page.rs:972:24
+    |
+972 |         let mut path = String::new();
+    |                        ^^^^^^^^^^^^^ this value is reassigned later and never used
+...
+982 |                             path = format!("patched in place, {} elements", nodes.len());
+    |                             ---- `path` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+    --> crates/web/src/page.rs:3963:13
+     |
+3963 |         let mut subject = |a: crate::dom::NodeId, reached: &mut Vec<crate::dom::NodeId>| {
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: value assigned to `skip` is never read
+    --> crates/web/src/svg/viewport.rs:949:24
+     |
+ 949 |         let mut skip = false;
+     |                        ^^^^^ this value is reassigned later and never used
+...
+1019 |             skip = true;
+     |             ----------- `skip` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+  --> crates/web/src/text/prepare.rs:79:23
+   |
+79 |         let single = |mut it: &mut dyn Iterator<Item = char>| {
+   |                       ----^^
+   |                       |
+   |                       help: remove this `mut`
+
+warning: method `get_mut` is never used
+  --> crates/web/src/chunked.rs:57:19
+   |
+22 | impl<T: Clone> Chunked<T> {
+   | ------------------------- method in this implementation
+...
+57 |     pub(crate) fn get_mut(&mut self, i: usize) -> Option<&mut T> {
+   |                   ^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated function `new` is never used
+  --> crates/web/src/paint/index.rs:16:12
+   |
+15 | impl Index {
+   | ---------- associated function in this implementation
+16 |     pub fn new(commands: &[Command], transforms: &[[f64; 6]], cancel: Option<&AtomicBool>) -> Result<Self> {
+   |            ^^^
+
+warning: variant `Quad` is never constructed
+   --> crates/web/src/svg/script.rs:258:5
+    |
+256 | enum Seg {
+    |      --- variant in this enum
+257 |     Line(F, F),
+258 |     Quad([F; 3]),
+    |     ^^^^
+    |
+    = note: `Seg` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: `olo-web` (lib) generated 13 warnings (run `cargo fix --lib -p olo-web` to apply 6 suggestions)
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+  --> gpui/gpui/src/platform/linux/dispatcher.rs:51:18
+   |
+51 |                 .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+   |                  ^^^^^^^^^^^^
+   |
+   = note: `#[warn(deprecated)]` on by default
+help: replace the use of the deprecated method
+   |
+51 -                 .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+51 +                 .try_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+   |
+
+warning: method `holds_clipboard` is never used
+   --> gpui/gpui/src/platform.rs:269:8
+    |
+162 | pub(crate) trait Platform: 'static {
+    |                  -------- method in this trait
+...
+269 |     fn holds_clipboard(&self) -> bool {
+    |        ^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `selected_text_range` is never used
+    --> gpui/gpui/src/platform.rs:1282:8
+     |
+1277 | impl PlatformInputHandler {
+     | ------------------------- method in this implementation
+...
+1282 |     fn selected_text_range(&mut self, ignore_disabled_input: bool) -> Option<UTF16Selection> {
+     |        ^^^^^^^^^^^^^^^^^^^
+
+warning: method `holds_clipboard` is never used
+  --> gpui/gpui/src/platform/linux/platform.rs:80:8
+   |
+46 | pub trait LinuxClient {
+   |           ----------- method in this trait
+...
+80 |     fn holds_clipboard(&self) -> bool {
+   |        ^^^^^^^^^^^^^^^
+
+warning: field `italic` is never read
+  --> gpui/gpui/src/platform/linux/text_system.rs:38:5
+   |
+34 | struct Source {
+   |        ------ field in this struct
+...
+38 |     italic: bool,
+   |     ^^^^^^
+
+warning: methods `set_theme` and `set_size` are never used
+  --> gpui/gpui/src/platform/linux/wayland/cursor.rs:76:12
+   |
+33 | impl Cursor {
+   | ----------- methods in this implementation
+...
+76 |     pub fn set_theme(&mut self, theme_name: String) {
+   |            ^^^^^^^^^
+...
+89 |     pub fn set_size(&mut self, size: u32) {
+   |            ^^^^^^^^
+
+warning: method `set_appearance` is never used
+    --> gpui/gpui/src/platform/linux/wayland/window.rs:1951:12
+     |
+1008 | impl WaylandWindowStatePtr {
+     | -------------------------- method in this implementation
+...
+1951 |     pub fn set_appearance(&mut self, appearance: WindowAppearance) {
+     |            ^^^^^^^^^^^^^^
+
+warning: associated function `ahead` is never used
+  --> gpui/gpui/src/platform/blade/blade_context.rs:53:12
+   |
+49 | impl BladeContext {
+   | ----------------- associated function in this implementation
+...
+53 |     pub fn ahead() -> std::thread::JoinHandle<anyhow::Result<BladeContext>> {
+   |            ^^^^^
+
+warning: `gpui` (lib) generated 8 warnings (run `cargo fix --lib -p gpui` to apply 1 suggestion)
+warning: unused import: `crate::mp4box::*`
+ --> vendor/mp4/src/writer.rs:4:5
+  |
+4 | use crate::mp4box::*;
+  |     ^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: use of deprecated constant `std::u32::MAX`: replaced by the `MAX` associated constant on this type
+   --> vendor/mp4/src/mp4box/mp4a.rs:269:32
+    |
+269 |     if size as u64 > std::u32::MAX as u64 {
+    |                                ^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated constant `std::u32::MAX`: replaced by the `MAX` associated constant on this type
+   --> vendor/mp4/src/writer.rs:120:34
+    |
+120 |         if mdat_size > std::u32::MAX as u64 {
+    |                                  ^^^
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/types.rs:692:14
+    |
+692 |     fn title(&self) -> Option<Cow<str>>;
+    |              ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |              |
+    |              the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+    = note: `#[warn(mismatched_lifetime_syntaxes)]` on by default
+help: use `'_` for type paths
+    |
+692 |     fn title(&self) -> Option<Cow<'_, str>>;
+    |                                   +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/types.rs:698:16
+    |
+698 |     fn summary(&self) -> Option<Cow<str>>;
+    |                ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |                |
+    |                the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+698 |     fn summary(&self) -> Option<Cow<'_, str>>;
+    |                                     +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/types.rs:702:14
+    |
+702 |     fn title(&self) -> Option<Cow<str>> {
+    |              ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |              |
+    |              the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+702 |     fn title(&self) -> Option<Cow<'_, str>> {
+    |                                   +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/types.rs:714:16
+    |
+714 |     fn summary(&self) -> Option<Cow<str>> {
+    |                ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |                |
+    |                the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+714 |     fn summary(&self) -> Option<Cow<'_, str>> {
+    |                                     +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/types.rs:720:14
+    |
+720 |     fn title(&self) -> Option<Cow<str>> {
+    |              ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |              |
+    |              the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+720 |     fn title(&self) -> Option<Cow<'_, str>> {
+    |                                   +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/types.rs:732:16
+    |
+732 |     fn summary(&self) -> Option<Cow<str>> {
+    |                ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |                |
+    |                the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+732 |     fn summary(&self) -> Option<Cow<'_, str>> {
+    |                                     +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/mp4box/ilst.rs:169:14
+    |
+169 |     fn title(&self) -> Option<Cow<str>> {
+    |              ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |              |
+    |              the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+169 |     fn title(&self) -> Option<Cow<'_, str>> {
+    |                                   +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/mp4box/ilst.rs:181:16
+    |
+181 |     fn summary(&self) -> Option<Cow<str>> {
+    |                ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |                |
+    |                the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+181 |     fn summary(&self) -> Option<Cow<'_, str>> {
+    |                                     +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/mp4box/ilst.rs:190:22
+    |
+190 | fn item_to_str(item: &IlstItemBox) -> Cow<str> {
+    |                      ^^^^^^^^^^^^     ^^^^^^^^ the same lifetime is hidden here
+    |                      |
+    |                      the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+190 | fn item_to_str(item: &IlstItemBox) -> Cow<'_, str> {
+    |                                           +++
+
+warning: `mp4` (lib) generated 12 warnings (run `cargo fix --lib -p mp4` to apply 10 suggestions)
+   Compiling olo-js v0.1.0 (/home/ben/worktrees/olo/browser/crates/js)
+warning: hidden lifetime parameters in types are deprecated
+   --> crates/app_server/src/toolkits.rs:117:49
+    |
+117 |         let keys: Vec<(&str, olo_system::dconf::Setting)> = settings
+    |                              -------------------^^^^^^^
+    |                              |
+    |                              expected lifetime parameter
+    |
+note: the lint level is defined here
+   --> crates/app_server/src/lib.rs:1:9
+    |
+  1 | #![warn(rust_2018_idioms)]
+    |         ^^^^^^^^^^^^^^^^
+    = note: `#[warn(elided_lifetimes_in_paths)]` implied by `#[warn(rust_2018_idioms)]`
+help: indicate the anonymous lifetime
+    |
+117 |         let keys: Vec<(&str, olo_system::dconf::Setting<'_>)> = settings
+    |                                                        ++++
+
+warning: `app_server` (lib) generated 1 warning
+warning: `gpui` (lib) generated 8 warnings (8 duplicates)
+warning: variable does not need to be mutable
+   --> apps/passwords/src/edit.rs:649:13
+    |
+649 |         let mut f = |id: &str, section: &str| EditField { section: Some(section.into()), ..field(id, id, ItemFieldType::Text) };
+    |             ----^
+    |             |
+    |             help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `power_button_tab` is never used
+   --> apps/preferences/src/keyboard.rs:140:8
+    |
+140 | pub fn power_button_tab(st: &mut State) {
+    |        ^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `olo-passwords` (bin "olo-passwords" test) generated 1 warning (run `cargo fix --bin "olo-passwords" -p olo-passwords --tests` to apply 1 suggestion)
+warning: `olo-preferences` (bin "olo-preferences" test) generated 1 warning
+warning: field `from` is never read
+   --> apps/screenshot/src/library.rs:139:9
+    |
+138 |     Trashed {
+    |     ------- field in this variant
+139 |         from: PathBuf,
+    |         ^^^^
+    |
+    = note: `Change` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `olo-screenshot` (bin "olo-screenshot" test) generated 1 warning
+warning: value assigned to `serial` is never read
+  --> apps/portal/examples/remote_test.rs:66:22
+   |
+66 |     let mut serial = 0;
+   |                      ^ this value is reassigned later and never used
+...
+93 |                 ei::Event::Handshake(_, ei::handshake::Event::Connection { serial: s, .. }) => serial = s,
+   |                                                                                                ---------- `serial` is overwritten here before the previous value is read
+   |
+   = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `serial` is never read
+   --> apps/portal/examples/remote_test.rs:93:96
+    |
+ 93 |                 ei::Event::Handshake(_, ei::handshake::Event::Connection { serial: s, .. }) => serial = s,
+    |                                                                                                ^^^^^^^^^^ this value is reassigned later and never used
+...
+108 |                     serial = s;
+    |                     ---------- `serial` is overwritten here before the previous value is read
+
+warning: `olo-portal` (example "remote_test") generated 2 warnings
+warning: unused import: `Color32F`
+   --> crates/app_server/src/color.rs:497:30
+    |
+497 |             renderer::{Bind, Color32F, Frame, ImportMem, Offscreen, Renderer},
+    |                              ^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused `SyncPoint` that must be used
+   --> crates/app_server/src/color.rs:438:13
+    |
+438 |             frame.finish().unwrap();
+    |             ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `SyncPoint` may contain a fence that should be awaited, failing to do so may result in unexpected rendering artifacts
+    = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default
+help: use `let _ = ...` to ignore the resulting value
+    |
+438 |             let _ = frame.finish().unwrap();
+    |             +++++++
+
+warning: unused `SyncPoint` that must be used
+   --> crates/app_server/src/color.rs:462:13
+    |
+462 |             frame.finish().unwrap();
+    |             ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `SyncPoint` may contain a fence that should be awaited, failing to do so may result in unexpected rendering artifacts
+help: use `let _ = ...` to ignore the resulting value
+    |
+462 |             let _ = frame.finish().unwrap();
+    |             +++++++
+
+warning: unused `SyncPoint` that must be used
+   --> crates/app_server/src/color.rs:473:13
+    |
+473 |             frame.finish().unwrap();
+    |             ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `SyncPoint` may contain a fence that should be awaited, failing to do so may result in unexpected rendering artifacts
+help: use `let _ = ...` to ignore the resulting value
+    |
+473 |             let _ = frame.finish().unwrap();
+    |             +++++++
+
+warning: `app_server` (lib test) generated 5 warnings (1 duplicate) (run `cargo fix --lib -p app_server --tests` to apply 1 suggestion)
+warning: function `test_basic_highlight_style_combination` is never used
+    --> gpui/gpui/src/style.rs:1298:8
+     |
+1298 |     fn test_basic_highlight_style_combination() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_combine_highlights` is never used
+    --> gpui/gpui/src/style.rs:1382:8
+     |
+1382 |     fn test_combine_highlights() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `gpui` (lib test) generated 10 warnings (8 duplicates)
+warning: unused import: `px`
+  --> crates/ui/examples/hdr_probe.rs:14:163
+   |
+14 | ...r, RenderImage, Styled as _, Window, canvas, div, fill, point, px, rgb, size},
+   |                                                                   ^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates/ui/examples/hdr_card.rs:72:25
+   |
+72 | ...   let mut row = |y, n: usize, paint: &mut dyn FnMut(&mut Window, usize, Bounds<olo_ui::gpui::Pixels>), names: &[String], window:...
+   |           ----^^^
+   |           |
+   |           help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `olo-ui` (example "hdr_probe") generated 1 warning (run `cargo fix --example "hdr_probe" -p olo-ui` to apply 1 suggestion)
+warning: `olo-ui` (example "hdr_card") generated 1 warning (run `cargo fix --example "hdr_card" -p olo-ui` to apply 1 suggestion)
+   Compiling olo-web v0.1.0 (/home/ben/worktrees/olo/browser/crates/web)
+warning: unused doc comment
+    --> crates/js/src/lib.rs:3402:1
+     |
+3402 | /// Every `__olo.*` function: `args.data()` names it.
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ rustdoc does not generate documentation for macro invocations
+     |
+     = help: to document an item produced by a macro, the macro must produce the documentation as part of its expansion
+     = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `Shader`
+ --> crates/js/src/canvas.rs:9:104
+  |
+9 | use tiny_skia::{BlendMode, FillRule, LineCap, LineJoin, Mask, Paint, Path, PathBuilder, Pixmap, Point, Shader, Stroke, Transform};
+  |                                                                                                        ^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `text` is never read
+    --> crates/js/src/lib.rs:2680:20
+     |
+2680 |     let mut text = String::new();
+     |                    ^^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2689 |         text = if name.is_empty() {
+     |         ---- `text` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: calls to `std::mem::drop` with a reference instead of an owned value does nothing
+    --> crates/js/src/lib.rs:2316:13
+     |
+2316 |             drop(s);
+     |             ^^^^^-^
+     |                  |
+     |                  argument has type `&mut State`
+     |
+     = note: `#[warn(dropping_references)]` on by default
+help: use `let _ = ...` to ignore the expression or result
+     |
+2316 -             drop(s);
+2316 +             let _ = s;
+     |
+
+warning: `olo-js` (lib) generated 4 warnings (run `cargo fix --lib -p olo-js` to apply 1 suggestion)
+warning: `olo-js` (lib test) generated 4 warnings (4 duplicates)
+warning: variable does not need to be mutable
+   --> crates/web/tests/measure.rs:519:10
+    |
+519 |     let (mut measurer, host, doc, viewport) = measurer_for(&format!("<!doctype html>{instance}{instance}{instance}"));
+    |          ----^^^^^^^^
+    |          |
+    |          help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> crates/web/tests/measure.rs:543:10
+    |
+543 |     let (mut measurer, host, doc, viewport) =
+    |          ----^^^^^^^^
+    |          |
+    |          help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/web/tests/measure.rs:557:10
+    |
+557 |     let (mut measurer, host, doc, viewport) = measurer_for(&format!("<!doctype html>{}", instance.repeat(9)));
+    |          ----^^^^^^^^
+    |          |
+    |          help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/web/tests/measure.rs:579:10
+    |
+579 |     let (mut measurer, host, doc, viewport) = measurer_for(
+    |          ----^^^^^^^^
+    |          |
+    |          help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/web/tests/measure.rs:596:10
+    |
+596 |     let (mut measurer, host, doc, viewport) =
+    |          ----^^^^^^^^
+    |          |
+    |          help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/web/tests/measure.rs:609:10
+    |
+609 |     let (mut measurer, host, doc, viewport) = measurer_for(
+    |          ----^^^^^^^^
+    |          |
+    |          help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/web/tests/measure.rs:626:10
+    |
+626 |     let (mut measurer, host, doc, viewport) = measurer_for(
+    |          ----^^^^^^^^
+    |          |
+    |          help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/web/tests/measure.rs:674:10
+    |
+674 |     let (mut measurer, host, doc, viewport) = measurer_for(
+    |          ----^^^^^^^^
+    |          |
+    |          help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/web/tests/measure.rs:693:10
+    |
+693 |     let (mut measurer, host, doc, viewport) = measurer_for(
+    |          ----^^^^^^^^
+    |          |
+    |          help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/web/tests/measure.rs:711:10
+    |
+711 |     let (mut measurer, host, doc, viewport) = measurer_for(
+    |          ----^^^^^^^^
+    |          |
+    |          help: remove this `mut`
+
+   Compiling olo-browser v0.1.0 (/home/ben/worktrees/olo/browser/apps/browser)
+warning: `olo-web` (test "measure") generated 10 warnings (run `cargo fix --test "measure" -p olo-web` to apply 10 suggestions)
+warning: struct `Classic` is never constructed
+  --> crates/js/tests/../../web/tests/support/classic_host.rs:13:12
+   |
+13 | pub struct Classic {
+   |            ^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated function `new` is never used
+  --> crates/js/tests/../../web/tests/support/classic_host.rs:19:12
+   |
+18 | impl Classic {
+   | ------------ associated function in this implementation
+19 |     pub fn new(scope: olo_web::font::Scope, view: layout::Viewport) -> Self {
+   |            ^^^
+
+warning: struct `Scaled` is never constructed
+ --> crates/js/tests/../../web/tests/support/paint_host.rs:7:12
+  |
+7 | pub struct Scaled(pub native_host::NativeHost, pub f64);
+  |            ^^^^^^
+
+warning: associated function `new` is never used
+  --> crates/js/tests/../../web/tests/support/paint_host.rs:36:12
+   |
+35 | impl Scaled {
+   | ----------- associated function in this implementation
+36 |     pub fn new(scope: olo_web::font::Scope, scale: f64) -> Self {
+   |            ^^^
+
+warning: struct `NativeHost` is never constructed
+  --> crates/js/tests/../../web/tests/support/native_font_host.rs:12:12
+   |
+12 | pub struct NativeHost(pub Scope);
+   |            ^^^^^^^^^^
+
+warning: struct `FixtureHost` is never constructed
+ --> crates/js/tests/../../web/tests/support/style_host.rs:7:12
+  |
+7 | pub struct FixtureHost;
+  |            ^^^^^^^^^^^
+
+warning: `olo-js` (test "scroll_into_view") generated 6 warnings
+warning: calls to `std::mem::drop` with a value that implements `Copy` does nothing
+  --> crates/web/examples/compile_queue_bench.rs:86:49
+   |
+86 |         let wake: page::Wake = Arc::new(move || drop(tx.send(i)));
+   |                                                 ^^^^^----------^
+   |                                                      |
+   |                                                      argument has type `Result<(), SendError<usize>>`
+   |
+   = note: use `let _ = ...` to ignore the expression or result
+   = note: `#[warn(dropping_copy_types)]` on by default
+
+warning: `olo-web` (example "compile_queue_bench") generated 1 warning
+warning: function cannot return without recursing
+  --> crates/crash/tests/crashes.rs:43:13
+   |
+43 |             fn deeper(n: u64) -> u64 {
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^ cannot return without recursing
+44 |                 let a = std::hint::black_box([n as u8; 4096]);
+45 |                 deeper(n + 1) + u64::from(a[0])
+   |                 ------------- recursive call site
+   |
+   = help: a `loop` may express intention better if this is on purpose
+   = note: `#[warn(unconditional_recursion)]` on by default
+
+warning: `olo-crash` (test "crashes") generated 1 warning
+warning: unused import: `super::*`
+  --> crates/sync/src/lib.rs:25:9
+   |
+25 |     use super::*;
+   |         ^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `olo-sync` (lib test) generated 1 warning (run `cargo fix --lib -p olo-sync --tests` to apply 1 suggestion)
+warning: calls to `std::mem::drop` with a value that implements `Copy` does nothing
+  --> crates/web/examples/refresh_bench.rs:45:49
+   |
+45 |         let wake: page::Wake = Arc::new(move || drop(tx.send(())));
+   |                                                 ^^^^^-----------^
+   |                                                      |
+   |                                                      argument has type `Result<(), SendError<()>>`
+   |
+   = note: use `let _ = ...` to ignore the expression or result
+   = note: `#[warn(dropping_copy_types)]` on by default
+
+warning: `olo-web` (example "refresh_bench") generated 1 warning
+warning: unnecessary parentheses around type
+   --> apps/browser/src/worker.rs:800:28
+    |
+800 |     paint_identity: Option<(((usize, u64), u32, u32, u64))>,
+    |                            ^                             ^
+    |
+    = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+    |
+800 -     paint_identity: Option<(((usize, u64), u32, u32, u64))>,
+800 +     paint_identity: Option<((usize, u64), u32, u32, u64)>,
+    |
+
+warning: variable does not need to be mutable
+   --> apps/browser/src/frames.rs:369:21
+    |
+369 |                 let mut take = |m: Message, realm: &mut olo_js::Realm| match m {
+    |                     ----^^^^
+    |                     |
+    |                     help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `0` is never read
+   --> apps/browser/src/worker.rs:439:16
+    |
+439 |     SelectMenu(u64, SelectMenu),
+    |     ---------- ^^^
+    |     |
+    |     field in this variant
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+help: consider changing the field to be of unit type to suppress this warning while preserving the field numbering, or remove the field
+    |
+439 -     SelectMenu(u64, SelectMenu),
+439 +     SelectMenu((), SelectMenu),
+    |
+
+warning: `olo-browser` (bin "olo-browser" test) generated 3 warnings (run `cargo fix --bin "olo-browser" -p olo-browser --tests` to apply 2 suggestions)
+warning: calls to `std::mem::drop` with a value that implements `Copy` does nothing
+    --> crates/web/src/page.rs:4933:43
+     |
+4933 |         let wake: Wake = Arc::new(move || drop(tx.send(())));
+     |                                           ^^^^^-----------^
+     |                                                |
+     |                                                argument has type `std::result::Result<(), SendError<()>>`
+     |
+     = note: use `let _ = ...` to ignore the expression or result
+     = note: `#[warn(dropping_copy_types)]` on by default
+
+warning: calls to `std::mem::drop` with a value that implements `Copy` does nothing
+    --> crates/web/src/page.rs:4957:43
+     |
+4957 |         let good: Wake = Arc::new(move || drop(tx.send(())));
+     |                                           ^^^^^-----------^
+     |                                                |
+     |                                                argument has type `std::result::Result<(), SendError<()>>`
+     |
+     = note: use `let _ = ...` to ignore the expression or result
+
+warning: `olo-web` (lib test) generated 15 warnings (13 duplicates)
+warning: calls to `std::mem::drop` with a value that implements `Copy` does nothing
+    --> crates/web/tests/paint.rs:2069:54
+     |
+2069 |     let wake: olo_web::page::Wake = Arc::new(move || drop(tx.send(())));
+     |                                                      ^^^^^-----------^
+     |                                                           |
+     |                                                           argument has type `Result<(), SendError<()>>`
+     |
+     = note: use `let _ = ...` to ignore the expression or result
+     = note: `#[warn(dropping_copy_types)]` on by default
+
+warning: calls to `std::mem::drop` with a value that implements `Copy` does nothing
+    --> crates/web/tests/paint.rs:2101:57
+     |
+2101 |     let resumed: olo_web::page::Wake = Arc::new(move || drop(tx.send(())));
+     |                                                         ^^^^^-----------^
+     |                                                              |
+     |                                                              argument has type `Result<(), SendError<()>>`
+     |
+     = note: use `let _ = ...` to ignore the expression or result
+
+warning: `olo-web` (test "paint") generated 2 warnings
+    Finished `release` profile [optimized + debuginfo] target(s) in 2m 42s
+warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+     Running unittests src/lib.rs (target/release/deps/app_server-d54b0ed324b7847a)
+
+running 198 tests
+test color::tests::gpu_cost ... ignored
+test apple_keys::tests::magic_keyboards_by_their_ids ... ok
+test color::tests::how_each_display_is_drawn ... ok
+test cursor::track_tests::stays_put_when_stopped_or_unsure ... ok
+test desktop::settings_tests::touch_kept_only_when_off ... ok
+test cursor::tests::names_map_to_haiku_cursors ... ok
+test apple_keys::tests::globe_alone_only ... ok
+test frames::tests::a_frame_from_a_look_of_its_own_is_not_judged ... ok
+test frames::tests::a_long_clean_run_narrows_it_again ... ok
+test color::tests::hdr_metadata_as_the_kernel_reads_it ... ok
+test cursor::track_tests::interpolates_between_reports_a_little_behind ... ok
+test cursor::track_tests::goes_on_a_little_past_the_last_report ... ok
+test frames::tests::cheap_frames_keep_smithays_split ... ok
+test desktop::settings_tests::old_terminal_app_ids_are_olos ... ok
+test headless::gpu_timing::gpu_upload_timing ... ignored
+test apple_keys::tests::the_row_turned_round ... ok
+test color::tests::a_panels_hdr_in_its_own_colours_a_monitors_in_bt2020 ... ok
+test hints::tests::what_cannot_be_clicked_goes ... ok
+test color_management::tests::descriptions_and_what_they_convert_from ... ok
+test capture::tests::dmabufs_of_bgrx_and_bgra_only ... ok
+test grabs::tests::what_may_be_taken ... ok
+test input_counts::tests::counts_the_last_minute ... ok
+test input_handler::clamp_tests::pointer_stays_on_screens ... ok
+test hints::tests::controls_in_their_boxes ... ok
+test keymap::tests::arrows_navigate ... ok
+test keymap::tests::beos_keys ... ok
+test keymap::tests::browsers_go_back_and_change_tabs ... ok
+test keymap::tests::caps_lock_is_ctrl_and_plain_keys_pass ... ok
+test keymap::tests::chrome_gets_its_own_keys ... ok
+test hints::tests::groups_open_smallest_first_and_runs_share_a_letter ... ok
+test frames::tests::costly_frames_start_sooner ... ok
+test frames::tests::a_drop_widens_the_budget_and_is_reported ... ok
+test ipc::tests::subscribers_get_only_what_they_asked_for ... ok
+test keymap::tests::alt_and_super_swapped ... ok
+test hints::tests::a_background_that_takes_clicks_is_not_a_target ... ok
+test hints::tests::a_control_around_its_own_field_is_one ... ok
+test keymap::tests::command_and_option_keep_their_own_switching ... ok
+test hints::tests::an_open_menu_is_all_there_is ... ok
+test hints::tests::content_first_then_windows_and_deskbar ... ok
+test hints::tests::letters_from_keys ... ok
+test hints::tests::trees_from_the_kit_parse ... ok
+test keymap::tests::command_is_ctrl ... ok
+test keymap::tests::control_pressed_twice_shows_hints ... ok
+test keymap::tests::option_comes_back_after_option_tab ... ok
+test keymap::tests::slack_takes_chromes_keys ... ok
+test keymap::tests::option_tab_is_ctrl_tab ... ok
+test keymap::tests::terminals_keep_ctrl ... ok
+test keymap::tests::tiling_and_find ... ok
+test keymap::tests::twitcher ... ok
+test icon_theme::tests::every_icon_is_olos ... ok
+test input_counts::tests::an_event_costs_nanoseconds ... ok
+test keymap::tests::records_a_shortcut ... ok
+test momentum::tests::a_flick_glides_and_slows_to_rest ... ok
+test momentum::tests::length_scales_the_glide ... ok
+test momentum::tests::slow_or_resting_fingers_dont_glide ... ok
+test momentum::tests::touching_again_stops_it ... ok
+test night::tests::a_gradual_shift_is_never_seen_to_step ... ok
+test keymap::tests::reset_releases_everything ... ok
+test keymap::tests::screenshots ... ok
+test keymap::tests::disabled_passes_through ... ok
+test keymap::tests::control_tab_is_the_next_tab ... ok
+test night::tests::ctm_is_a_diagonal_of_gains ... ok
+test night::tests::ramps_scale_linearly ... ok
+test night::tests::fades_ease_to_the_end ... ok
+test keymap::tests::grabbed_chords_go_to_their_program ... ok
+test osd::tests::any_level_lights_a_segment ... ok
+test osd::tests::osd_sheet ... ok
+test night::tests::warmth_in_hdr_is_light_scaled ... ok
+test night::tests::neutral_is_white_and_warm_is_red ... ok
+test overview::tests::panes_in_the_grid_that_makes_them_biggest ... ok
+test pace::tests::a_flick_glides_on_from_where_the_fingers_left_off ... ok
+test pace::tests::a_lift_sends_the_rest_then_the_stop ... ok
+test overview::tests::one_pane_fills_the_area ... ok
+test keymap::tests::lock_and_shared_ctrl ... ok
+test overview::tests::windows_spread_without_covering_each_other ... ok
+test plymouth::tests::its_measures_are_the_kits ... ok
+test overview::tests::a_lone_window_keeps_to_the_most ... ok
+test plymouth::tests::its_settings_say_where_it_is ... ok
+test pace::tests::a_report_is_when_the_pad_said ... ok
+test pace::tests::every_frame_moves_as_far ... ok
+test plymouth::tests::plymouth_sheet ... ok
+test power_button::tests::holds_come_in_order ... ok
+test pace::tests::touching_again_sends_the_rest_and_stops ... ok
+test rescue::tests::rescue_cost ... ignored
+test power_button::tests::only_the_computers_own ... ok
+test rescue::tests::rescue_keeps_to_its_workspace ... ok
+test power::tests::built_in_panels ... ok
+test power::tests::headless_simulates_a_backlight ... ok
+test keymap::tests::other_apps_move_by_word_with_option ... ok
+test scroll::tests::chromium_matches_olo ... ok
+test scroll::tests::gtk3_matches_olo ... ok
+test security_key::tests::a_touch_alone_types_nothing ... ok
+test security_key::tests::three_in_a_row_type_the_third ... ok
+test keymap::tests::tap_finds_but_a_chord_does_not ... ok
+test keymap::tests::shift_option_tab_is_ctrl_shift_tab ... ok
+test keymap::tests::option_tab_is_twitcher_for_this_workspace ... ok
+test keymap::tests::twitcher_arrows_letters_and_esc ... ok
+test shell::arrange_tests::saved_positions_and_rows ... ok
+test rescue::tests::safe_settings_keep_the_keyboard_layout_and_drop_what_breaks_a_screen ... ok
+test shell::autofit::tests::a_fitting_tree_is_left_alone ... ok
+test keymap::tests::windows_keys ... ok
+test layout::tests::the_workspaces_showing_come_back ... ok
+test shell::arrange_tests::gaps_close ... ok
+test rescue::tests::the_chord_from_any_side_and_its_delete_unseen ... ok
+test render::mirror_tests::fits_and_centres ... ok
+test rescue::tests::each_display_at_a_scale_that_fits_rescue ... ok
+test security_key::tests::touches_too_far_apart_are_no_row ... ok
+test shell::autofit::tests::a_split_turned_is_enough ... ok
+test shell::autofit::tests::arranged_anew_where_turning_splits_wont_do ... ok
+test shell::autofit::tests::where_nothing_fits_the_least_overlap ... ok
+test shell::autotile::tests::dragged_edges_stay_where_let_go ... ok
+test shell::autotile::tests::kept_places_take_room_only_when_they_hold_it ... ok
+test shell::autotile::tests::main_and_stack_shape ... ok
+test shell::autofit::tests::places_held_and_kept_come_along ... ok
+test shell::autotile::tests::sizes_that_float_a_window ... ok
+test shell::autofit::tests::many_windows_keep_their_order_and_fit ... ok
+test shell::autotile::tests::a_closed_window_gives_its_room_to_its_neighbour ... ok
+test shell::autofit::tests::the_most_tiles_it_searches_every_way_quickly ... ok
+test shell::autotile::tests::zooming_along_makes_a_column_beside_the_rest ... ok
+test shell::deco::title_tests::tab_timing ... ignored
+test shell::autotile::tests::a_tile_at_its_least_beside_the_edge_stays_so ... ok
+test shell::deco::line_tests::frame_bands_at_every_scale ... ok
+test shell::deco::title_tests::long_titles_are_cut ... ok
+test shell::glow::tests::whole_then_fading ... ok
+test shell::glow::tests::strongest_at_the_outline ... ok
+test shell::groups::tests::groupings_keep_through_a_restart ... ok
+test shell::autotile::tests::drops_swap_in_the_middle_and_go_beside_at_the_edges ... ok
+test shell::autotile::tests::even_trees_split_across_the_longer_side ... ok
+test shell::pip::tests::what_is_picture_in_picture ... ok
+test shell::tabdrag::tests::a_tab_tears_off_once_pulled_away_from_the_bar ... ok
+test shell::groups::tests::a_held_tab_goes_where_its_middle_is ... ok
+test shell::groups::tests::a_tie_keeps_the_place_it_has ... ok
+test shell::tiling::tests::a_drag_goes_as_far_as_it_may ... ok
+test shell::groups::tests::a_window_brought_forward_waits_once ... ok
+test shell::tiling::tests::a_neighbour_on_two_sides_follows_both ... ok
+test shell::tiling::tests::a_window_too_big_for_its_tile_gives_way_inwards ... ok
+test shell::tiling::tests::dragged_parts_come_back_as_they_were ... ok
+test shell::groups::tests::tabs_side_by_side_or_shared_alike ... ok
+test shell::tiling::tests::grids ... ok
+test shell::tiling::tests::into_reach_moves_as_little_as_it_takes ... ok
+test shell::tiling::tests::rolled_windows_fan_out_in_one_cell ... ok
+test shell::tiling::tests::unzooming_along_one_axis_leaves_the_other ... ok
+test shell::tiling::tests::zooming_along_one_axis_keeps_the_other ... ok
+test showing::tests::rings_fade_and_go ... ok
+test showing::tests::the_pointer_glides_without_overshooting ... ok
+test showing::tests::typing_is_never_shown_alone ... ok
+test sockfile::tests::leaves_a_replaced_file_alone ... ok
+test tiles::tests::a_studio_displays_tiles ... ok
+test tiles::tests::live ... ignored
+test shell::tiling::tests::unzooming_along_puts_back_what_fitting_changed ... ok
+test shell::autotile::tests::splits_keep_minimum_sizes ... ok
+test shell::autotile::tests::tiles_on_screen_make_the_tree_they_came_from ... ok
+test shell::autotile::tests::an_old_kept_place_isnt_saved_by_its_old_slots ... ok
+test touch_filter::tests::frame_cost ... ignored
+test shell::autotile::tests::neighbours_share_their_edges_exactly ... ok
+test shell::tiling::tests::halves_leave_the_gap_between_them ... ok
+test spotlight::tests::waits_then_fades_in_and_out ... ok
+test touch_filter::tests::a_keyboards_keys_are_noted_with_names_libinput_has ... ok
+test touch_filter::tests::hover_and_palms_have_no_size_and_cant_click ... ok
+test shell::autotile::tests::a_drag_lays_out_as_the_tree_will ... ok
+test shell::autotile::tests::trees_kept_across_a_restart ... ok
+test shell::autotile::tests::tiling_commands_tile_the_rest_around ... ok
+test touch_filter::tests::no_click_unless_the_driver_clicks ... ok
+test touch_filter::tests::replay_capture ... ignored
+test touch_filter::tests::quirk_lines_as_libinput_takes_them ... ok
+test touch_filter::tests::thinkpad_frame_cost ... ignored
+test touch_health::tests::note_cost ... ignored
+test touch_filter::tests::renders_the_settings ... ok
+test twitcher::tests::cells_under_the_pointer ... ok
+test twitcher::tests::letters_run_across_rows ... ok
+test touch_filter::tests::the_quirk_lets_pressure_through ... ok
+test touch_filter::tests::without_pressure_frames_pass_untouched ... ok
+test touch_health::tests::latencies_over_the_last_minute ... ok
+test udev::tests::left_asleep_here ... ignored
+test touch_filter::tests::a_light_swipe_counts ... ok
+test udev::tests::modes_kept_by_their_timings ... ok
+test udev::tests::mouse_dpi_reads_the_default ... ok
+test touch_filter::tests::frames_never_grow ... ok
+test toolkits::tests::files_keep_the_users_css ... ok
+test veil::tests::sizes_fit_without_resampling ... ok
+test veil::tests::stages_go_by_displays_and_windows ... ok
+test touch_filter::tests::a_touch_ends_only_after_leaving_the_glass ... ok
+test wallpaper::tests::covers_and_crops ... ok
+test touch_filter::tests::palm_model_scores_as_rust_does ... ok
+test wallpaper::tests::wallpaper_cost ... ignored
+test wallpaper::tests::preferences_and_app_server_find_the_same_gain_maps ... ok
+test zoom::tests::follows_clicks_holds_and_zooms_out ... ok
+test xcursor::tests::files_are_xcursor ... ok
+test veil::tests::veil_sheet ... ok
+test icon_theme::tests::writes_the_theme_for_the_look ... ok
+test twitcher::tests::names_and_sizes ... ok
+test touch_filter::tests::a_thinkpads_palms_stay_palms ... ok
+test twitcher::tests::a_cut_label_shows_whole_under_the_panel ... ok
+test text::tests::capitals_centre_where_asked ... ok
+test xcursor::tests::writes_the_cursors ... ok
+test color::tests::the_gpu_converts_as_the_cpu_does ... ok
+test plymouth::tests::the_pictures_line_up ... ok
+test wallpaper::tests::jpeg_xl ... ok
+
+test result: ok. 187 passed; 0 failed; 11 ignored; 0 measured; 0 filtered out; finished in 1.98s
+
+     Running unittests src/main.rs (target/release/deps/olo_app_server-9c08b16108871c09)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/surface_locks.rs (target/release/deps/surface_locks-8574f9d4cdd0c7ee)
+
+running 3 tests
+test catches_a_bare_call ... ok
+test catches_the_unzoom_hang ... ok
+test nothing_relocks_a_surface ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running unittests src/lib.rs (target/release/deps/blade_graphics-ecb9d9c783be7274)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/release/deps/blade_util-6e7bcd06d18b9c7e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/gpui.rs (target/release/deps/gpui-10de073b93b76cdb)
+
+running 89 tests
+test bounds_tree::tests::bounds_tree_cards ... ignored
+test app::entity_map::test::test_entity_map_weak_upgrade_before_cleanup ... ok
+test app::entity_map::test::test_entity_map_slot_assignment_before_cleanup ... ok
+test app::test::test_gpui_borrow ... ok
+test arena::tests::test_arena ... ok
+test elastic::handoff_tests::a_glide_after_the_fingers_lifted_past_an_end_goes_on_from_there ... ok
+test color::tests::test_deserialize_four_value_hex_to_rgba ... ok
+test elastic::fit_tests::nothing_to_scroll_nothing_to_stretch ... ok
+test color::tests::test_deserialize_three_value_hex_to_rgba ... ok
+test elastic::tests::a_glide_bounces_off_an_end_and_a_wheel_stops_there ... ok
+test elastic::tests::fingers_pull_past_an_end_and_it_springs_back ... ok
+test elastic::tests::the_rubber_band_comes_undone ... ok
+test elements::list::test::test_reset_after_paint_before_scroll ... ok
+test interactive::test::deferred_wheel_completes_once_and_cancels_when_abandoned ... ok
+test geometry::tests::test_bounds_intersects ... ok
+test arena::tests::test_arena_alignment ... ok
+test elements::list::test::test_scroll_by_positive_and_negative_distance ... ok
+test arena::tests::test_arena_grow ... ok
+test keymap::context::tests::test_actions_definition ... ok
+test key_dispatch::tests::test_keybinding_for_action_bounds ... ok
+test arena::tests::test_arena_use_after_clear - should panic ... ok
+test keymap::context::tests::test_child_operator ... ok
+test color::tests::test_background_solid ... ok
+test color::tests::test_deserialize_eight_value_hex_to_rgba ... ok
+test color::tests::test_deserialize_eight_value_hex_with_mixed_case_to_rgba ... ok
+test color::tests::test_deserialize_eight_value_hex_with_padding_to_rgba ... ok
+test color::tests::test_deserialize_six_value_hex_to_rgba ... ok
+test keymap::context::tests::test_parse_context ... ok
+test keymap::context::tests::test_parse_negations ... ok
+test keymap::context::tests::test_parse_identifiers ... ok
+test keymap::context::tests::test_parse_parenthesized_expressions ... ok
+test keymap::tests::test_bindings_for_action ... ok
+test keymap::tests::test_context_precedence_with_same_source ... ok
+test keymap::tests::test_disable_deeper ... ok
+test keymap::tests::test_fail_to_disable ... ok
+test keymap::tests::test_keymap ... ok
+test keymap::tests::test_keymap_disabled ... ok
+test keymap::tests::test_multiple_keystroke_binding_disabled ... ok
+test keymap::tests::test_override_multikey ... ok
+test keymap::tests::test_overriding_prefix ... ok
+test keymap::tests::test_depth_precedence ... ok
+test keymap::tests::test_pending_match_enabled ... ok
+test keymap::tests::test_pending_match_enabled_extended ... ok
+test keymap::tests::test_simple_disable ... ok
+test keymap::tests::test_source_precedence_sorting ... ok
+test platform::linux::text_system::tests::shaping_cost ... ignored
+test platform::blade::blade_context::tests::test_parse_device_id ... ok
+test interactive::test::test_on_events ... ok
+test color::tests::test_background_linear_gradient ... ok
+test keymap::context::tests::test_parse_boolean_operators ... ok
+test scene::cull_tests::hidden_wholly_goes_and_see_through_covers_nothing ... ok
+test bounds_tree::tests::test_insert ... ok
+test platform::linux::text_system::tests::embolden_grows_outlines_and_shrinks_holes ... ok
+test scene::cull_tests::a_rounded_cover_hides_its_middle ... ok
+test scene::tests::a_row_moves_with_its_cells_clips ... ok
+test scene::cull_tests::a_ground_under_others_is_cut_to_what_shows ... ok
+test scene::tests::sprites_in_runs_keep_the_order_sorting_each_gave ... ok
+test tab_stop::tests::test_sibling_groups ... ok
+test tab_stop::tests::test_nested_group ... ok
+test tab_stop::tests::test_sibling_nested_groups ... ok
+test tab_stop::tests::test_sibling_nested_groups_out_of_order ... ok
+test keymap::context::tests::test_not_operator ... ok
+test scene::cull_tests::a_window_ground_under_a_scroll_views_paper ... ok
+test tab_stop::tests::test_tab_handles ... ok
+test tab_stop::tests::test_tab_non_stop_filtering ... ok
+test key_dispatch::tests::test_input_handler_pending ... ok
+test keymap::context::tests::test_is_superset ... ok
+test tab_stop::tests::test_tab_group_functionality ... ok
+test platform::linux::platform::tests::test_is_within_click_distance ... ok
+test tab_stop::tests::test_with_disabled_tab_stop ... ok
+test tab_stop::tests::test_with_multiple_disabled_tab_stops ... ok
+test text_system::line_wrapper::tests::test_is_word_char ... ok
+test text_system::line_wrapper::tests::test_update_run_after_truncation ... ok
+test text_system::line_wrapper::tests::test_wrap_line ... ok
+test text_system::line_wrapper::tests::test_truncate_line ... ok
+test text_system::line_wrapper::tests::test_truncate_multiple_runs ... ok
+test keymap::context::tests::test_parse_equality_operators ... ok
+test text_system::olo_shaping_speed::shaping_speed ... ignored
+test util::tests::test_with_timeout ... ok
+test window::memo_tests::an_animation_frame_asked_outside_drawing ... ok
+test window::memo_tests::memos_survive_a_cached_view_replayed ... ok
+test yuv::tests::video_s_numbers_become_rgb ... ok
+test text_system::olo_shaping_speed::words_shape_as_the_whole_line ... ok
+test scene::cull_tests::uncovered_is_the_rest_exactly ... ok
+test elastic::lift_tests::a_glide_taking_over_from_pulling_fingers_springs_back ... ok
+test platform::blade::blade_atlas::tests::a_texture_let_go_before_its_frame ... ok
+test platform::linux::text_system::tests::fill_is_exact ... ok
+test platform::linux::text_system::tests::sharp_glyphs_stay_in_their_box ... ok
+test bounds_tree::tests::test_random_iterations has been running for over 60 seconds
+test bounds_tree::tests::test_random_iterations ... ok
+
+test result: ok. 86 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 97.30s
+
+     Running tests/action_macros.rs (target/release/deps/action_macros-0872fa40eec3ef27)
+
+running 1 test
+test test_action_macros ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/gpui_macros.rs (target/release/deps/gpui_macros-4b21454d625c08e4)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/derive_context.rs (target/release/deps/derive_context-6d24697d87d21a2b)
+
+running 1 test
+test test_derive_context ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/derive_inspector_reflection.rs (target/release/deps/derive_inspector_reflection-ef000a96af74860a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/render_test.rs (target/release/deps/render_test-ff853c528245df4d)
+
+running 1 test
+test test_derive_render ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/collections.rs (target/release/deps/gpui_collections-e3d8f1942fb8a294)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/derive_refineable.rs (target/release/deps/gpui_derive_refineable-d0c03e91799d65f3)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/refineable.rs (target/release/deps/gpui_refineable-851936124800be17)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/semantic_version.rs (target/release/deps/gpui_semantic_version-b88041a4eb1902fe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/sum_tree.rs (target/release/deps/gpui_sum_tree-61f45006fb98e171)
+
+running 10 tests
+test tests::test_edit ... ok
+test tests::test_extend_and_push_tree ... ok
+test tests::test_from_iter ... ok
+test tests::test_cursor ... ok
+test tree_map::tests::test_basic ... ok
+test tree_map::tests::test_extend ... ok
+test tree_map::tests::test_insert_tree ... ok
+test tree_map::tests::test_iter_from ... ok
+test tree_map::tests::test_remove_between_and_path_successor ... ok
+test tests::test_random ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (target/release/deps/util-f736dd3e8263f2d0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/release/deps/olo_activity-bb8ad1cb19a27f3f)
+
+running 22 tests
+test actions::tests::only_listed_tunables ... ok
+test details::tests::limits_parse ... ok
+test sections::tests::columns_fit ... ok
+test sections::tests::durations ... ok
+test smart::tests::needs_root ... ok
+test smart::tests::reads_a_health_log ... ok
+test smart::tests::the_command_is_the_kernels ... ok
+test details::tests::regions_sum ... ok
+test helper::tests::messages_round_trip ... ok
+test pid_tests::commands_for_several ... ok
+test processes::tests::times ... ok
+test sample::tests::units ... ok
+test sample::tests::addresses_and_pressure ... ok
+test sample::tests::apple_chips ... ok
+test sample::tests::cpu_lines_read ... ok
+test sample::tests::mounts ... ok
+test sample::tests::sensor_names ... ok
+test sample::tests::probes_this_machine ... ok
+test details::tests::reads_itself ... ok
+test actions::tests::acts_on_a_child ... ok
+test sample::tests::lists_processes ... ok
+test sample::tests::samples_add_up ... ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.63s
+
+     Running unittests src/lib.rs (target/release/deps/olo_ai-b1fcaba9bf6bff22)
+
+running 9 tests
+test tests::a_follow_up_carries_the_conversation ... ok
+test tests::asks_openai_in_its_shape ... ok
+test tests::asks_with_effort_schema_and_fallbacks ... ok
+test tests::astra_by_default_and_for_models_no_longer_offered ... ok
+test tests::reads_answers ... ok
+test tests::reads_openai_answers ... ok
+test tests::waits_before_trying_again ... ok
+test tests::reads_json_still_being_written ... ok
+test tests::tries_again_when_turned_away ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src/main.rs (target/release/deps/olo_airpods-01c5d3eff7a0ea24)
+
+running 6 tests
+test keys::tests::hex_round_trips ... ok
+test resample::tests::dry_fades_rather_than_cuts ... ok
+test service::tests::one_try_at_a_time ... ok
+test service::tests::taken_by_another_device_they_are_left_alone_until_free_a_minute ... ok
+test resample::tests::a_tone_comes_through_at_the_new_rate ... ok
+test resample::tests::follows_a_faster_clock_without_dropping ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.53s
+
+     Running unittests src/lib.rs (target/release/deps/olo_app-6470756ec6c21b52)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/looper.rs (target/release/deps/looper-8723566fcc9a5843)
+
+running 8 tests
+test deferred_goes_first ... ok
+test idle_and_removal ... ok
+test latest_gathers ... ok
+test a_looper_gone_takes_nothing ... ok
+test messages_arrive_in_order ... ok
+test tasks_and_answers ... ok
+test the_pool_starts_threads_for_work ... ok
+test timers_run_when_due ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running unittests src/lib.rs (target/release/deps/olo_appimage-c74c947803a7a694)
+
+running 3 tests
+test tests::entries_made ... ok
+test tests::names_from_files ... ok
+test tests::entries_kept ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/main.rs (target/release/deps/olo_browser-0c2bd211fd5e3fed)
+
+running 20 tests
+test cookies::tests::cookie_dates_parse_as_browsers_read_them ... ok
+test navigation::tests::navigation_index_cost ... ignored, Release component measurement, run explicitly with --ignored --nocapture
+test cookies::tests::cookies_go_back_by_domain_path_and_scheme ... ok
+test cookies::tests::samesite_holds_cross_site_requests ... ok
+test cookies::tests::a_public_suffix_or_another_domain_is_refused ... ok
+test history::tests::branching_redirects_scroll_groups_and_restore ... ok
+test links::tests::native_link_resolution_descendants_schemes_and_capabilities ... ok
+test navigation::tests::fragments_follow_raw_then_decoded_id_and_name_precedence ... ok
+test navigation::tests::keyboard_targets_include_offscreen_links_with_tabindex_and_inert_filtering ... ok
+test network::tests::referrers_follow_strict_origin_when_cross_origin ... ok
+test network::tests::schemes_mixed_content_credentials_and_decoded_limits ... ok
+test worker::tests::extreme_document_scroll_still_leaves_room_for_viewport_and_tile ... ok
+test worker::tests::viewport_restyle_reuses_dom_and_compiled_external_sheets ... ok
+test network::tests::wrong_css_mime_is_rejected ... ok
+test network::tests::cancellation_wakes_a_pending_response ... ok
+test network::tests::compressed_bodies_are_decoded_and_the_decoded_size_is_bounded ... ok
+test network::tests::image_data_and_http_use_bounded_worker_decode ... ok
+test network::tests::document_redirect_cannot_enter_the_local_filesystem ... ok
+test network::tests::redirect_final_url_charset_css_and_plain_text ... ok
+test network::tests::resources_fetched_ahead_go_together_once_and_a_load_joins_them ... ok
+
+test result: ok. 19 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.32s
+
+     Running unittests src/main.rs (target/release/deps/olo_brush-1441f11d18c27d45)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/release/deps/olo_bus-e879292b78157b12)
+
+running 1 test
+test fdo::dbus::tests::rules_as_chrome_sends_them ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/release/deps/olo_bus-a159c408f2463cd4)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/release/deps/olo_camera-e46251c402b0a65d)
+
+running 4 tests
+test tests::jpeg_frames_decode ... ok
+test tests::picks_the_nearest_size ... ok
+test tests::yuyv_greys_and_colours ... ok
+test tests::the_stand_in_streams ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running unittests src/lib.rs (target/release/deps/olo_capture-0a5d3bf59213b34f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/release/deps/olo_chrome-13a1862914511ad4)
+
+running 17 tests
+test downloads::tests::names_and_hosts ... ok
+test prefs::tests::a_screens_profile_starts_ready ... ok
+test downloads::tests::progress_of_all ... ok
+test slack::tests::palette_entries_are_only_slacks_commands ... ok
+test host::tests::only_browser_requests_pass ... ok
+test install::tests::finds_the_newest_package ... ok
+test prefs::tests::defaults_fill_only_gaps ... ok
+test extension::tests::ids_and_crx ... ok
+test slack::tests::picture_names_stay_in_their_folder ... ok
+test extension::tests::one_copy_for_every_profile ... ok
+test install::tests::unpacks_only_chrome ... ok
+test singleton::tests::hands_the_link_over ... ok
+test extension::tests::set_up_writes_everything_once ... ok
+test profile::tests::finds_the_profiles_with_the_storage_open ... ok
+test profile::tests::finds_the_profile_holding_the_token ... ok
+test prefs::tests::profiles_are_set_up_once ... ok
+test slack::status_tests::slack_s_status_follows_olo_s ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.76s
+
+     Running unittests src/lib.rs (target/release/deps/olo_color-3ef4598560bb7f20)
+
+running 6 tests
+test tests::coverage_of_the_standard_gamuts ... ok
+test tests::srgb_into_display_p3 ... ok
+test tests::srgb_to_xyz_is_the_standards ... ok
+test tests::transfers_round_trip ... ok
+test tests::the_thinkpads_oled ... ok
+test tests::whites_adapt ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (target/release/deps/olo_complete-7552c31af0284cf7)
+
+running 13 tests
+test output::tests::printed_commands_and_prompts ... ok
+test output::tests::bens_restored_tab_suggests_the_resume ... ok
+test history::tests::history_files_with_times_and_without ... ok
+test history::tests::the_record_round_trips ... ok
+test index::tests::a_restored_shell_carries_on_the_old_ones_commands ... ok
+test index::tests::candidates_start_with_the_line_and_the_likeliest_come_first ... ok
+test kernels::tests::simd_does_the_reference_arithmetic ... ok
+test train::tests::replay_makes_examples_from_what_came_before ... ok
+test train::tests::simd_and_plain_train_alike ... ok
+test index::tests::features_see_the_folder_the_order_and_the_shell ... ok
+test kernels::tests::the_baseline_weighs_its_features_as_written ... ok
+test train::tests::fine_tuning_learns_this_persons_order ... ok
+test protocol::tests::a_brush_that_asks_is_found_by_its_mark ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s
+
+     Running unittests src/main.rs (target/release/deps/olo_complete-0e637b8f7451f71c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/release/deps/olo_crash-520b504e5df96e6b)
+
+running 2 tests
+test tests::names_and_numbers_as_written ... ok
+test tests::only_the_newest_reports_are_kept ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/crashes.rs (target/release/deps/crashes-33ee3b09ed3fa4f8)
+
+running 10 tests
+test install_cost ... ignored
+test child ... ok
+test a_segfault_is_reported_and_still_ends_the_program_as_one ... ok
+test a_sent_segv_ends_the_program_and_names_its_sender ... ok
+test a_stack_overflow_is_reported_once_and_std_still_says_so ... ok
+test stderr_that_went_nowhere_goes_to_the_journal ... ok
+test a_worker_panic_is_reported_and_the_program_goes_on ... ok
+test a_panic_is_reported_with_its_backtrace ... ok
+test an_abort_is_reported_once ... ok
+test stderr_that_goes_somewhere_is_left_alone ... ok
+
+test result: ok. 9 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running tests/every_program.rs (target/release/deps/every_program-e69bfe6d6b27dd27)
+
+running 1 test
+test every_program_installs_it_first ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.59s
+
+     Running unittests src/main.rs (target/release/deps/olo_dconf-f75ebd1dd04bb758)
+
+running 4 tests
+test changeset::tests::changes_made_and_told ... ok
+test changeset::tests::reads_what_clients_send ... ok
+test gvdb::tests::folders_link_their_children ... ok
+test gvdb::tests::written_and_read_back ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/main.rs (target/release/deps/olo_deskbar-9f1faca7e26b0d8c)
+
+running 10 tests
+test approve::tests::lengths_are_what_app_server_takes ... ok
+test sni::tests::badges_follow_updates ... ok
+test sni::tests::layout_nodes ... ok
+test sni::tests::menus_become_olo_menus ... ok
+test sni::tests::pictures_and_labels ... ok
+test status::tests::formats ... ok
+test tests::listings_read_well ... ok
+test tests::notes_find_their_application ... ok
+test widgets::tests::frames_follow_the_pixels ... ok
+test widgets::tests::levels_move_the_whole_interval ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/release/deps/olo_deskcalc-c632702a593fda91)
+
+running 5 tests
+test expr::tests::arithmetic ... ok
+test expr::tests::errors ... ok
+test expr::tests::formatting ... ok
+test expr::tests::functions ... ok
+test expr::tests::implicit_and_constants ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/release/deps/olo_disk_usage-2c01ed11dc53fb24)
+
+running 6 tests
+test volumes::tests::parses_mountinfo ... ok
+test chart::tests::slices_share_the_circle_by_size ... ok
+test chart::tests::tiny_slices_are_left_out ... ok
+test tests::paths_show_home_as_tilde ... ok
+test volumes::tests::crosses_only_new_parts_of_the_same_file_system ... ok
+test scan::tests::sizes_add_up_and_hard_links_count_once ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (target/release/deps/olo_diskbackup-53473c7b8fc37815)
+
+running 9 tests
+test oauth::tests::a_clients_file ... ok
+test keep::tests::hourly_and_daily ... ok
+test crypto::tests::seal_open_and_ids ... ok
+test exclude::tests::groups_and_patterns ... ok
+test repo::tests::blobs_round_trip ... ok
+test lock::tests::shared_and_exclusive ... ok
+test store::tests::limits_pace ... ok
+test chunker::tests::an_insertion_moves_only_nearby_cuts ... ok
+test chunker::tests::sizes ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.55s
+
+     Running tests/drive.rs (target/release/deps/drive-ac867397d2f4dc70)
+
+running 1 test
+test sign_in_then_back_up_restore_and_tidy ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.29s
+
+     Running tests/lookup.rs (target/release/deps/lookup-31cc18c53ff1147f)
+
+running 1 test
+test versions_and_marks ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.27s
+
+     Running tests/network.rs (target/release/deps/network-0faf8bf97dc1e1cd)
+
+running 1 test
+test a_backup_goes_on_across_network_changes ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.89s
+
+     Running tests/prune.rs (target/release/deps/prune-35441f3b9461edf7)
+
+running 7 tests
+test index_lost_then_back_up ... ok
+test index_lost_found_again ... ok
+test stopped_backup_kept_and_resumed ... ok
+test index_damaged_healed ... ok
+test stopped_backup_goes_on ... ok
+test forget_then_prune ... ok
+test checked_damaged_repaired ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.15s
+
+     Running tests/round_trip.rs (target/release/deps/round_trip-3a04272887af973d)
+
+running 2 tests
+test throughput ... ignored
+test back_up_change_back_up_restore_both ... ok
+
+test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.37s
+
+     Running unittests src/main.rs (target/release/deps/olo_diskbackup-8fd1b2e8780e19b2)
+
+running 10 tests
+test agent_setup::tests::google_logins_first ... ok
+test agent_setup::tests::shared_once ... ok
+test app::undo_tests::undo_puts_back_only_what_the_step_changed ... ok
+test window::tests::how_far_and_how_long ... ok
+test agent_setup::tests::the_brief_says_where_what_and_how ... ok
+test window::tests::the_headline_says_how_it_stands ... ok
+test window::tests::unfinished_and_checks_said ... ok
+test window::tests::what_is_kept_said_plainly ... ok
+test window::tests::words_for_times ... ok
+test lint::ui_lint_main_window ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.15s
+
+     Running tests/set_up_drive.rs (target/release/deps/set_up_drive-a09031eb05cd7ded)
+
+running 3 tests
+test serve_google ... ignored
+test agent_setup_done ... ok
+test set_up_then_back_up ... ok
+
+test result: ok. 2 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.91s
+
+     Running unittests src/lib.rs (target/release/deps/olo_doctor-1c2e7f569f2725e4)
+
+running 43 tests
+test checks::tests::rule_ids_are_read_from_the_rule ... ok
+test checks::tests::temporary_files_in_memory_are_moved_to_disk ... ok
+test checks::tests::gnome_s_services_found_and_quit ... ok
+test checks::tests::a_well_set_up_machine_is_all_fine ... ok
+test checks::tests::a_stuck_nvidia_card_is_started_again ... ok
+test checks::tests::a_thunderbolt_dock_waiting_is_allowed ... ok
+test checks::tests::a_security_key_the_person_cant_open ... ok
+test checks::tests::olo_s_login_screen_is_offered ... ok
+test checks::tests::intel_graphics_decode_every_video ... ok
+test checks::tests::finds_what_is_wrong_and_what_is_fine ... ok
+test crashes::tests::reports_are_read_and_told_as_a_person_would_say_them ... ok
+test fix::live::rpm_fusion_s_release_package_is_there ... ignored, the network
+test fix::tests::a_kernel_argument_everywhere_the_command_line_is_kept ... ok
+test checks::tests::diskbackup_checks ... ok
+test fix::tests::files_are_written_whole_and_removed ... ok
+test fix::tests::signalling_a_gone_process_is_fine ... ok
+test fix::tests::steps_round_trip ... ok
+test checks::tests::another_logins_desktop_is_left_alone ... ok
+test checks::tests::a_login_screen_handed_over_is_said ... ok
+test notify::tests::a_crash_is_told_once_and_forgotten_when_its_report_goes ... ok
+test notify::tests::a_suggestion_is_told_once_ever ... ok
+test notify::tests::problems_are_told_once_and_again_when_they_come_back ... ok
+test releases::tests::a_hash_from_either_kind_of_sums_file ... ok
+test releases::tests::installs_from_github ... ignored
+test helper::tests::the_helper_runs_steps_in_order_and_stops_at_a_failure ... ok
+test releases::tests::the_program_out_of_a_tar_xz ... ok
+test fix::tests::a_release_package_comes_from_the_first_place_that_has_it ... ok
+test suggest::tests::worktrunk_follows_terminals_place ... ok
+test checks::tests::programs_show_in_folder_with_tracker ... ok
+test checks::tests::the_login_keyring_opens_at_login ... ok
+test checks::tests::the_healer_is_current_by_its_source ... ok
+test checks::tests::thinkpad_graphics_and_sound ... ok
+test checks::tests::one_login_keyring ... ok
+test checks::tests::ignored_findings_are_set_aside ... ok
+test checks::tests::the_power_buttons_helper ... ok
+test checks::tests::a_bluetooth_controller_that_doesnt_answer ... ok
+test login_screen::tests::a_unit_not_this_builds_is_stale ... ok
+test checks::tests::thunderbolt5_usb2 ... ok
+test checks::tests::the_sessions_tmpdir ... ok
+test checks::tests::the_built_in_panels_hdr_at_start ... ok
+test checks::tests::token_pool_twice_or_without_its_gateway ... ok
+test suggest::tests::programs_suggested_or_said_installed ... ok
+test suggest::tests::brush_suggested_or_applied ... ok
+
+test result: ok. 41 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.51s
+
+     Running unittests src/main.rs (target/release/deps/olo_doctor-19e7fa9d290e39cd)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/olo-suggestions.rs (target/release/deps/olo_suggestions-9ef9d5288ed03fbf)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/release/deps/olo_drive_setup-531b0f05f4cf2621)
+
+running 3 tests
+test map::tests::widths_share_by_size_with_a_minimum ... ok
+test tests::names_fit_their_file_system ... ok
+test tests::rows_show_disks_volumes_and_free_space ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/release/deps/olo_eld-5a1180810b7d0f0b)
+
+running 3 tests
+test bits::tests::reads_across_bytes ... ok
+test imdct::tests::matches_the_definition ... ok
+test tests::reads_the_airpods_config ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/fdk.rs (target/release/deps/fdk-df2c0ac00351d582)
+
+running 2 tests
+test decodes_a_capture_as_libfdk_does ... ignored
+test decodes_as_libfdk_does ... ok
+
+test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (target/release/deps/olo_emoji-94180fac76584407)
+
+running 3 tests
+test emoji_chars::which_start_an_emoji ... ok
+test render::tests::radii_clamped_at_zero ... ok
+test render::tests::single_and_sequences ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src/main.rs (target/release/deps/olo_emoji_picker-0d023dd33f3a2734)
+
+running 4 tests
+test ai::tests::keeps_known_emoji_once ... ok
+test data::tests::tones_and_groups ... ok
+test data::tests::picked_lately_come_first ... ok
+test data::tests::finds_by_name_keyword_shortcode_and_typo ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (target/release/deps/olo_face-0ca9d43b88e5faef)
+
+running 4 tests
+test emitter::tests::this_machines_units ... ignored
+test model::tests::recognises_a_face_in_grey ... ignored
+test model::tests::the_template_aligns_to_itself ... ok
+test emitter::tests::values_to_try ... ok
+
+test result: ok. 2 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/faced.rs (target/release/deps/olo_faced-15014a3a0840062b)
+
+running 1 test
+test tests::pam_lines_in_and_out ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/release/deps/olo_fido-739fad538b2fc7cb)
+
+running 13 tests
+test seal::tests::sealed_opens_with_its_secret_only ... ok
+test hid::tests::a_fido_interface_by_its_descriptor ... ok
+test hid::tests::hidraw_announcements ... ok
+test tests::info_from_the_soft_key ... ok
+test pin::tests::both_sides_agree_and_round_trip ... ok
+test pin::tests::protocol_two_keys_are_ctaps ... ok
+test ctap::tests::long_messages_in_continuations ... ok
+test tests::nothing_waited_for_without_a_key_set_up ... ok
+test ctap::tests::canonical_maps ... ok
+test tests::a_missed_touch_is_asked_for_again ... ok
+test tests::cancelled_while_waiting_for_a_touch ... ok
+test tests::a_key_with_a_pin ... ok
+test tests::set_up_then_unlocked_by_its_key_only ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+
+     Running unittests src/main.rs (target/release/deps/olo_fuzz-a06633e10cf33db7)
+
+running 1 test
+test sweep::tests::names_its_sessions ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/sandbox.rs (target/release/deps/sandbox-b2387573238972ba)
+
+running 1 test
+test the_sandbox_is_sealed ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running unittests src/lib.rs (target/release/deps/olo_greet-961ed11b762af762)
+
+running 4 tests
+test sessions::tests::the_desktops_olo_first ... ok
+test tests::words_are_a_line_of_json ... ok
+test users::tests::people_with_accounts ... ok
+test pam::tests::a_conversation_through_private_services ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running unittests src/main.rs (target/release/deps/olo_greeter-223a126fbbe1cf0a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/release/deps/olo_hvif-2694cb0027f08935)
+
+running 5 tests
+test cursor::tests::sheet ... ok
+test tests::fills_a_square ... ok
+test tests::gradient_table_holds_the_ends ... ok
+test tests::reads_coords_and_floats ... ok
+test cursor::tests::every_cursor_parses_and_draws ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running unittests src/lib.rs (target/release/deps/olo_images-caaff127a7e46074)
+
+running 23 tests
+test tests::hdr_cost ... ignored
+test tests::hdr_pattern ... ignored
+test tests::p3_cost ... ignored
+test hdr::tests::hlg_reference_white_is_white ... ok
+test raster::tests::borrowed_reader_checks_cancellation_between_bounded_reads ... ok
+test tests::brands ... ok
+test hdr::tests::pq_paper_white_is_white_and_highlights_roll_off ... ok
+test hdr::tests::to_display_p3 ... ok
+test tests::hdr10_video_is_shown_for_an_srgb_screen ... ok
+test lottie::tests::the_heart_beats ... ok
+test hdr::tests::to_hdr10 ... ok
+test lottie::tests::straight_bgra ... ok
+test tests::samples ... ignored
+test webm::tests::plays_vp9_with_alpha ... ignored
+test lottie::tests::gzipped_as_a_tgs ... ok
+test tests::yuv_fast_path ... ok
+test webm::tests::not_webm ... ok
+test lottie::tests::what_isnt_lottie ... ok
+test gain::tests::applied_white_is_sdr_white_and_full_gain_four_times_it ... ok
+test raster::tests::a_gif_without_a_colour_table_is_transparent ... ok
+test hdr::tests::bt2020_green_fits_srgb_and_greys_stay_grey ... ok
+test gain::tests::what_stands_out_shines_and_plain_bright_areas_dont ... ok
+test tests::p3_photos_open_in_srgb ... ok
+
+test result: ok. 18 passed; 0 failed; 5 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/bin/wallpaper-hdr.rs (target/release/deps/wallpaper_hdr-a12fbd407236363e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/raster.rs (target/release/deps/raster-df9b3e8464e15243)
+
+running 6 tests
+test jpeg_exif_rotates_and_png_profile_converts_like_native_files ... ok
+test bounded_bytes_decode_lossless_formats_without_files ... ok
+test oversized_png_headers_fail_before_the_incompatible_pixel_body ... ok
+test sixteen_bit_sources_check_native_surface_before_conversion ... ok
+test encoded_dimensions_pixels_and_surfaces_fail_closed ... ok
+test avif_decodes_on_the_bounded_path_with_its_alpha ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src/main.rs (target/release/deps/olo_installer-42ae1e6abf738f4b)
+
+running 5 tests
+test bundle::tests::a_checksum_file_names_the_hash ... ok
+test plan::tests::a_tmpfiles_file_s_folders ... ok
+test plan::tests::the_session_entry_names_the_person_s_session ... ok
+test plan::tests::what_was_installed_is_chosen_again ... ok
+test bundle::tests::unpacked_and_placed ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src/lib.rs (target/release/deps/olo_js-cd631b52c74cb8e7)
+
+running 13 tests
+test modules::tests::a_later_map_adds_only_what_earlier_ones_left_unmapped ... ok
+test crypto::tests::digests_and_hmac_match_their_known_answers ... ok
+test modules::tests::bare_names_prefixes_and_scopes_resolve_as_html_says ... ok
+test rtc::tests::a_binding_response_gives_its_mapped_address ... ok
+test rtc::tests::a_certificate_is_chromes_kind ... ok
+test wrappers::tests::shared_images_are_charged_once_and_released_after_the_last_binding ... ok
+test environment_tests::media_query_ownership_follows_change_listeners ... ok
+test wrappers::tests::dom_edges_preserve_identity_and_unreachable_cycles_are_collected ... ok
+test wrappers::tests::shadow_and_template_ownership_does_not_change_dom_parents ... ok
+test wrappers::tests::a_host_started_image_request_also_pins_its_detached_element ... ok
+test wrappers::tests::fragment_moves_and_replacing_children_remove_old_ownership_edges ... ok
+test wrappers::tests::an_in_flight_image_is_alive_through_its_load_event_then_reclaimed ... ok
+test wrappers::tests::bulk_dom_moves_do_not_normalize_api_object_maps_during_marking ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.77s
+
+     Running tests/dom.rs (target/release/deps/dom-d745bfa2cbae7ad3)
+
+running 61 tests
+test current_script_is_the_running_classic_scripts_element ... ok
+test detached_images_keep_their_pixels_between_frames ... ok
+test an_elements_load_event_never_reaches_the_window ... ok
+test a_logged_error_s_stack_is_not_formatted ... ok
+test builtins_keep_their_own_string_tags ... ok
+test a_picture_a_script_makes_or_changes_loads_its_image ... ok
+test an_images_superseded_load_neither_shows_nor_fires ... ok
+test declarative_shadow_roots_are_their_hosts_shadow_roots ... ok
+test a_peer_connection_offers_and_gathers_as_chrome_s ... ok
+test cross_origin_requests_follow_cors ... ok
+test an_upgraded_elements_observed_attributes_reach_its_callback ... ok
+test a_clicked_link_is_followed_unless_the_page_cancels_it ... ok
+test a_box_a_person_scrolls_tells_its_scripts ... ok
+test canvas_to_data_url_encodes_what_was_drawn ... ok
+test an_about_blank_iframe_is_a_window_of_its_own ... ok
+test idle_callbacks_run_at_the_next_idle_moment ... ok
+test documents_have_element_children_and_iframes_a_sandbox_list ... ok
+test dialogs_open_close_and_summaries_toggle_their_details ... ok
+test ids_and_names_follow_the_document ... ok
+test errors_are_reported_not_fatal ... ok
+test document_position_and_custom_elements_without_walking_everything ... ok
+test match_media_answers_whole_queries_as_the_sheets_do ... ok
+test listeners_without_this_go_to_the_global_and_signals_remove_them ... ok
+test frames_post_messages_through_the_browser ... ok
+test media_elements_play_through_the_browsers_player ... ok
+test scripts_in_order_then_async ... ok
+test dom_page ... ok
+test list_integer_reflection_matches_chrome ... ok
+test pressing_a_select_asks_for_its_menu_and_a_choice_is_the_persons ... ok
+test modules_and_deferred_scripts_run_after_the_parser_blocking_ones ... ok
+test observer_operations_are_enumerable_without_changing_ecmascript_builtins ... ok
+test raw_text_elements_serialize_their_text_as_it_is ... ok
+test page_images_fire_their_load_or_error_before_the_windows_load ... ok
+test slots_tell_when_what_they_are_handed_changes ... ok
+test response_headers_are_shown_as_fetch_filters_them ... ok
+test ranges_hold_cut_and_measure ... ok
+test stacks_show_the_page_s_frames_only ... ok
+test text_comments_and_fragments_are_constructed ... ok
+test page_functions_read_as_their_source ... ok
+test svg_elements_take_their_geometry_methods ... ok
+test posted_tasks_keep_their_delay_signal_and_result ... ok
+test responses_stream_their_bodies_and_take_streams ... ok
+test the_page_is_not_a_touch_device ... ok
+test modules_import_bare_names_through_the_import_map ... ok
+test style_answers_in_for_the_properties_the_engine_knows ... ok
+test streamed_text_decodes_across_chunks_and_through_pipes ... ok
+test text_and_comments_have_element_siblings ... ok
+test the_console_runs_none_of_the_page_s_code ... ok
+test style_sheets_take_inserted_rules_and_write_them_back ... ok
+test tree_walkers_step_in_document_order_skip_and_reject_and_define_reaches_shadow_trees ... ok
+test token_lists_take_a_string_as_their_value ... ok
+test the_battery_is_read ... ok
+test the_window_is_shaped_as_chrome_s ... ok
+test web_crypto_encrypts_and_derives_keys ... ok
+test web_crypto_digests_and_signs_and_form_data_bodies_are_multipart ... ok
+test the_dom_is_shaped_as_chrome_s ... ok
+test typing_ticking_and_submitting_a_form ... ok
+test the_parsers_stylesheet_links_fire_load ... ok
+test window_post_message_reaches_its_own_window ... ok
+test the_persons_input_is_trusted_and_uncaught_errors_reach_error_listeners ... ok
+test unhandled_rejections_are_reported_and_cancellable ... ok
+
+test result: ok. 61 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.77s
+
+     Running tests/environment.rs (target/release/deps/environment-469f5c63bd5d8a09)
+
+running 2 tests
+test environment_updates_are_atomic_coalesced_and_frame_ordered ... ok
+test media_listeners_dpr_theme_and_reverted_changes ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests/scroll_into_view.rs (target/release/deps/scroll_into_view-bd638551b4350fc0)
+
+running 5 tests
+test vertical_rl_block_layout_matches_chrome ... ignored, vertical-rl block layout does not place its wide child from the block-start edge; retained Chrome nonpass
+test child_mutated_before_parent_inherits_final_parent_style ... ok
+test smooth_scroll_finishes_and_rests_without_layout_polling ... ok
+test smooth_sequence_matches_chrome ... ok
+test ancestor_alignment_matches_independent_chrome ... ok
+
+test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 2.84s
+
+     Running tests/scrollbars.rs (target/release/deps/scrollbars-425e019181020657)
+
+running 3 tests
+test fixed_geometry_and_pointer_coordinates_follow_both_scroll_axes ... ok
+test viewport_scroll_requests_snap_clamp_and_coalesce ... ok
+test live_classic_metrics_and_cached_reads ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.16s
+
+     Running unittests src/lib.rs (target/release/deps/olo_keychain-1ff3682c121d43ce)
+
+running 6 tests
+test ssh_config::tests::finds_and_replaces_another_agent ... ok
+test tests::matching ... ok
+test tests::nearest_logins_first ... ok
+test tests::round_trip ... ok
+test tests::rp_ids ... ok
+test tests::service ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (target/release/deps/olo_kit_base-ab337f4c79c6da81)
+
+running 42 tests
+test clock::tests::as_people_read_it ... ok
+test files::tests::natural_order ... ok
+test files::tests::progress_and_expected_sizes ... ok
+test masonry::tests::a_wide_one_fills_its_hole_first ... ok
+test keys::tests::keys_as_apps_see_them ... ok
+test masonry::tests::fits_columns ... ok
+test gpu::tests::beside_another ... ok
+test instance::tests::a_launch_given_up_on_is_not_taken ... ok
+test list::tests::selection_keys ... ok
+test list::tests::typing_selects ... ok
+test masonry::tests::arrows_go_by_place ... ok
+test layout_review::tests::a_shadow_is_not_text_over_text ... ok
+test layout_review::tests::controls_on_their_own_grid_are_not_form_columns ... ok
+test layout_review::tests::controls_with_one_id_are_found ... ok
+test layout_review::tests::scroll_arrows_are_not_form_sections ... ok
+test layout_review::tests::text_over_a_control_is_found ... ok
+test list::tests::selection_bands ... ok
+test list::tests::selection_clicks ... ok
+test masonry::tests::packs_into_the_lowest_column ... ok
+test moving::tests::started_on_a_screen_given_to_the_person_has_no_home ... ok
+test places::tests::standard_folders_start_at_home ... ok
+test restore::tests::nothing_to_carry_writes_nothing ... ok
+test search::tests::filters_are_set_in_the_text ... ok
+test search::tests::keeps_only_filters ... ok
+test spell::tests::check_cost ... ignored
+test moving::tests::from_screen_to_screen_keeps_the_first_home ... ok
+test search::tests::scores_put_the_best_first ... ok
+test moving::tests::going_to_a_screen_remembers_home ... ok
+test notify::tests::notify_arguments ... ok
+test places::tests::apps_folders_kept ... ok
+test search::tests::matches_every_term ... ok
+test search::tests::needles_find_and_mark ... ok
+test search::tests::suggests_filters_and_values ... ok
+test spell::tests::olos_own_names ... ok
+test spell::tests::word_at_the_caret ... ok
+test spell::tests::words_of_prose_only ... ok
+test instance::tests::a_launch_is_taken_or_refused ... ok
+test search::tests::parses_words_phrases_and_filters ... ok
+test store::tests::written_whole_and_private ... ok
+test instance::tests::the_running_copy_is_waited_for ... ok
+test restore::tests::inherited_children_are_reaped ... ok
+test watch::tests::files_and_folders_as_they_change ... ok
+
+test result: ok. 41 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.37s
+
+     Running unittests src/main.rs (target/release/deps/olo_lock-ae8928c768aadc84)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/release/deps/olo_login-70afbcd8f125576c)
+
+running 1 test
+test plymouth::tests::plymouth_hears_its_own_protocol ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/flow.rs (target/release/deps/flow-77b2b533053a9c76)
+
+running 1 test
+test a_login_from_start_to_finish ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+     Running unittests src/lib.rs (target/release/deps/olo_login_key-feaef4feb2390a02)
+
+running 1 test
+test tests::the_same_password_gives_the_same_key_for_its_user_only ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.62s
+
+     Running unittests src/main.rs (target/release/deps/olo_logs-48a19a94bcea3ee3)
+
+running 15 tests
+test journal::tests::reads_the_real_journal ... ignored, reads this machine's journal
+test model::tests::levels_from_glib_and_priority ... ok
+test highlight::tests::spans_cover_the_text ... ok
+test model::tests::queries ... ok
+test model::tests::file_lines ... ok
+test model::tests::olo_stderr_is_news ... ok
+test model::tests::chromium_lines ... ok
+test model::tests::ansi_is_stripped ... ok
+test journal::tests::follows_a_growing_file ... ok
+test tests::every_real_line_highlights ... ignored, reads this machine's journal
+test highlight::tests::a_tracing_line ... ok
+test tests::iso_times ... ok
+test model::tests::tracing_lines_are_cleaned ... ok
+test tests::reads_and_follows_a_file ... ok
+test journal::tests::reads_both_layouts ... ok
+
+test result: ok. 13 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (target/release/deps/olo_mse-6fbddb4f0fab3999)
+
+running 3 tests
+test tests::types ... ok
+test tests::mp4_segments_give_ranges_and_frames ... ok
+test tests::webm_clusters_give_ranges ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/release/deps/olo_net-816d384274adf89d)
+
+running 9 tests
+test netlink::tests::the_kernel_answers ... ok
+test tests::a_failure_that_isnt_the_networks_is_its_own ... ok
+test tests::made_once_a_network ... ok
+test netlink::tests::messages_and_attributes_are_read ... ok
+test sockets::tests::loopback_and_listeners_are_left_alone ... ok
+test sockets::tests::a_cut_connection_wakes_its_reader ... ok
+test tests::a_nudge_wakes_a_waiter ... ok
+test http::tests::a_download_goes_on_where_it_broke_off ... ok
+test http::tests::whole_again_is_passed_over ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running tests/netns.rs (target/release/deps/netns-6086d29528e9f0be)
+
+running 1 test
+test network_changes ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.15s
+
+     Running unittests src/main.rs (target/release/deps/olo_notifications-bb5896858632a5b0)
+
+running 22 tests
+test gtk::tests::icons ... ok
+test history::tests::search_takes_every_word ... ok
+test history::tests::views_group_as_they_say ... ok
+test markup::tests::styles_and_links ... ok
+test markup::tests::text_and_entities ... ok
+test server::tests::hints_and_timeouts ... ok
+test server::tests::image_data ... ok
+test server::tests::progress_reply_sound_and_kinds ... ok
+test web::tests::tiles ... ok
+test store::tests::read_and_faded ... ok
+test store::tests::taken_out_then_put_back ... ok
+test store::tests::pinned_and_snoozed_stay ... ok
+test web::tests::a_site_becomes_the_app ... ok
+test web::tests::hosts ... ok
+test web::tests::unknown_sites_and_sticky_ones ... ok
+test startup::tests::startup_wav ... ok
+test sound::tests::theme_names ... ok
+test store::tests::one_of_each ... ok
+test store::tests::keeps_replaces_and_persists ... ok
+test gtk::tests::gnotification ... ok
+test startup::tests::olo_says_o_l_o ... ok
+test startup::tests::soft_whole_and_never_clipped ... ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+     Running unittests src/lib.rs (target/release/deps/onepassword-77c3f7816ca623ab)
+
+running 18 tests
+test desktop::tests::small_request_matches_the_official_client ... ok
+test fields::tests::dates ... ok
+test fields::tests::months_and_years ... ok
+test fields::tests::what_the_core_refuses ... ok
+test generate::tests::entropy_and_strength ... ok
+test generate::tests::word_list_is_sorted_and_clean ... ok
+test generate::tests::pins_and_memorable ... ok
+test generate::tests::uniform_enough ... ok
+test reference::tests::rejects ... ok
+test totp::tests::rfc_vectors ... ok
+test generate::tests::random_has_what_was_asked ... ok
+test reference::tests::parses ... ok
+test desktop::tests::payloads_as_text_or_bytes ... ok
+test fields::tests::sent_as_the_core_takes_them ... ok
+test totp::tests::parses_uris_and_secrets ... ok
+test desktop::tests::rejects_bad_frames ... ok
+test desktop::tests::chunks_round_trip ... ok
+test accounts::tests::lists_the_apps_accounts ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running unittests src/bin/fake.rs (target/release/deps/onepassword_fake-e0209ce31137d95a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/desktop.rs (target/release/deps/desktop-3c65f8ea6e5a9902)
+
+running 6 tests
+test errors ... ok
+test expired_sessions_are_renewed ... ok
+test secrets ... ok
+test vaults_and_items ... ok
+test create_edit_archive_delete ... ok
+test files_travel_in_chunks ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.16s
+
+     Running unittests src/main.rs (target/release/deps/olo_op-2b2ab9874de75f06)
+
+running 5 tests
+test tests::arguments ... ok
+test text::tests::masking ... ok
+test tests::fields ... ok
+test text::tests::env_files ... ok
+test text::tests::templates ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/release/deps/olo_palette-2937d0c860d8f82a)
+
+running 28 tests
+test model::tests::tune_cost ... ignored
+test sources::tests::ranking_cost ... ignored
+test sources::tests::ranking_cost_with_the_model ... ignored
+test ask::tests::a_strict_schema ... ok
+test calc::tests::sums ... ok
+test model::tests::features_stay_in_range ... ok
+test model::tests::it_learns_what_the_person_takes ... ok
+test model::tests::untrained_it_ranks_as_the_palette_did ... ok
+test model::tests::what_was_chosen_after_this_typing_comes_first ... ok
+test rank::tests::ranks ... ok
+test sheet::tests::cards_for_the_front_app_text_and_desktop ... ok
+test sources::tests::apps_before_commands_before_files ... ok
+test sources::tests::files_by_name ... ok
+test sources::tests::go_to_a_path_written_whole_that_is_there ... ok
+test sources::tests::nothing_unmatched ... ok
+test sources::tests::open_windows_before_their_app ... ok
+test sources::tests::recently_chosen_comes_first ... ok
+test sources::tests::search_urls ... ok
+test sources::tests::shortcuts_before_files ... ok
+test sources::tests::text_keys_are_shortcuts_pressed_as_keys ... ok
+test sources::tests::recents_keys ... ok
+test sources::tests::the_index_follows_folders_that_change ... ok
+test sources::tests::the_model_untrained_ranks_as_before ... ok
+test sources::tests::ties_sort_without_a_panic_windows_first_in_their_order ... ok
+test window_menu::tests::asks_and_items ... ok
+test ask::tests::reads_an_answer ... ok
+test ask::tests::snippets_are_coloured ... ok
+test sources::tests::settings_by_their_names_and_other_names ... ok
+
+test result: ok. 25 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src/lib.rs (target/release/deps/olo_palm-e41a43b47a49a263)
+
+running 17 tests
+test captures::make_default_model ... ignored
+test captures::on_real_hands ... ignored
+test captures::what_the_runs_dont_show ... ignored
+test kind::tests::make_thinkpad_model ... ignored
+test fingertips::a_resting_fingertip_is_a_finger ... ok
+test kind::tests::the_firmware_flag_is_what_counts_most ... ok
+test kind::unseen::a_palm_back_under_a_new_id_is_still_a_palm ... ok
+test kind::unseen::fingers_it_never_saw_stay_fingers ... ok
+test tests::features_follow_a_contact ... ok
+test tests::too_few_to_train ... ok
+test kind::tests::a_thinkpad_is_its_own_kind ... ok
+test tests::kept_runs_read_back ... ok
+test tests::the_baseline_beats_the_size_rule_untrained ... ok
+test tests::the_baseline_catches_a_palm_over_the_edge ... ok
+test kind::tests::the_thinkpad_model_on_bens_hands ... ok
+test tests::the_baseline_catches_a_hand_resting_low ... ok
+test tests::learns_palms_without_losing_fingers ... ok
+
+test result: ok. 13 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 2.30s
+
+     Running unittests src/lib.rs (target/release/deps/pam_olo_face-18c4f770d109e490)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/release/deps/pam_olo_keyring-07e94e9d9acc677e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/pam.rs (target/release/deps/pam-eaece6d9aad4a6a3)
+
+running 1 test
+test the_login_password_s_key_reaches_the_session_keyring ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.56s
+
+     Running unittests src/main.rs (target/release/deps/olo_passwords-d34f838c1975e1e9)
+
+running 34 tests
+test cli::tests::references ... ok
+test cli::tests::sessions ... ok
+test edit::tests::untitled_sections_show_with_the_built_in_fields ... ok
+test cli::tests::item_json ... ok
+test agent::tests::lists_and_signs_with_a_vaults_keys ... ok
+test agent::tests::reads_openssh_keys ... ok
+test allow::tests::says_what_there_is ... ok
+test cli::tests::copy_reference_resolves_back ... ok
+test edit::tests::a_field_goes_at_the_end_of_its_own_section ... ok
+test vault::tests::fixture ... ignored
+test passkey::tests::kept_in_an_item ... ok
+test agent::tests::reads_an_ed25519_pkcs8_key ... ok
+test passkey::tests::create_and_sign ... ok
+test store::tests::programs_keep_their_secrets ... ok
+test store::tests::cards_for_a_card_form ... ok
+test store::tests::search_sees_sections_and_fields ... ok
+test vault::tests::ssh_fixture ... ignored
+test vault::tests::through_a_backup ... ignored
+test vault::tests::one_account_stores_carry_over ... ok
+test vault::tests::sealed_and_reopened ... ok
+test sync::tests::an_unreachable_1password_changes_nothing ... ok
+test store::tests::logins_nearest_first ... ok
+test vault::tests::gone_there_goes_here_unless_changed ... ok
+test vault::tests::a_push_racing_an_edit_keeps_the_edit ... ok
+test vault::tests::local_items_move_to_1password_and_conflicts_are_kept ... ok
+test vault::tests::undo_puts_items_back ... ok
+test sync::tests::a_card_expiry_1password_wont_give_is_asked_for ... ok
+test vault::tests::several_accounts_keep_to_their_own_vaults ... ok
+test vault::tests::shared_with_screens ... ok
+test sync::tests::every_kind_of_value_goes_over ... ok
+test sync::tests::several_accounts_in_one_review ... ok
+test sync::tests::nothing_changes_until_approved ... ok
+test sync::tests::both_ways ... ok
+test sync::tests::archived_and_unreadable ... ok
+
+test result: ok. 31 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.60s
+
+     Running unittests src/pbcopy.rs (target/release/deps/olo_pbcopy-ca41bb9f4656526c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/pbpaste.rs (target/release/deps/olo_pbpaste-4b179b56cee05127)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/release/deps/olo_polkit_agent-64acc045b2370ce7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/release/deps/olo_pool-0b56df95fade898f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/release/deps/olo_portal-04211b385b7f911c)
+
+running 17 tests
+test account::tests::asks_by_name ... ok
+test background::tests::login_items ... ok
+test notification::tests::a_program_s_notification_as_the_centre_takes_it ... ok
+test chooser::tests::the_default_comes_first ... ok
+test portal::tests::restore_data_comes_back ... ok
+test print::tests::gtk_settings_and_page_setup ... ok
+test settings::tests::says_the_look_as_the_toolkits_read_it ... ok
+test remote::tests::devices_are_said ... ok
+test shot::tests::colours ... ok
+test shortcuts::tests::triggers ... ok
+test stream::tests::offers_dmabufs_then_memory ... ok
+test files::tests::the_apps_filters ... ok
+test picker::tests::the_window_fits_what_it_offers ... ok
+test chooser::tests::what_is_opened ... ok
+test email::tests::links ... ok
+test picker::tests::pictures_take_the_screens_shape ... ok
+test files::tests::paths_come_as_bytes ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src/main.rs (target/release/deps/olo_preferences-2879390a9411bdf4)
+
+running 45 tests
+test about::tests::uptime ... ok
+test backup::tests::moves_paths_to_the_new_home ... ok
+test backup::tests::names_apps ... ok
+test datetime::tests::labels ... ok
+test backup::tests::displays_by_port_stay_behind ... ok
+test display::tests::snaps_edge_to_edge ... ok
+test appearance::tests::minutes_said_plainly ... ok
+test backup::tests::this_computers_parts ... ok
+test form::tests::a_box_at_its_defaults_has_no_reset ... ok
+test backup::tests::refuses_what_isnt_a_backup ... ok
+test backup::tests::deskbar_widgets_measure_what_is_here ... ok
+test form::tests::reset_puts_back_just_its_box ... ok
+test datetime::tests::parses_times ... ok
+test gpus::tests::what_each_gpu_is_on_now ... ok
+test form::tests::reset_puts_back_one_item_of_a_list ... ok
+test gpus::tests::the_settings_show_what_it_runs_at ... ok
+test backup::tests::a_changed_seal_is_found ... ok
+test notifications::tests::durations ... ok
+test notifications::tests::times ... ok
+test palm_trainer::tests::each_step_asks_one_thing ... ok
+test palm_trainer::tests::steps_judge_touches ... ok
+test panel::tests::deskbar_lists_every_panel ... ok
+test power::tests::summaries ... ok
+test security_keys::tests::keys_named_plainly ... ok
+test themes::tests::a_theme_brings_its_wallpaper ... ok
+test typing_tutor::tests::rows_are_as_wide_as_a_keyboard ... ok
+test typing_tutor::tests::typing_follows_the_line ... ok
+test undo::tests::a_run_merges ... ok
+test undo::tests::undo_puts_back_just_what_changed ... ok
+test voice_try::tests::variants_try_each_choice_once ... ok
+test backup::tests::open_onto_another_computer_leaves_the_vaults ... ok
+test backup::tests::sealed_back_onto_the_same_computer ... ok
+test backup::tests::export_and_import_round_trip ... ok
+test backup::tests::without_a_keyring ... ok
+test lint::ui_lint_command_suggestions ... ok
+test backup::tests::wifi_networks_come_along ... ok
+test backup::tests::only_the_parts_chosen ... ok
+test lint::ui_lint_try_voice ... ok
+test backup::tests::the_gpus_tuning_comes_along ... ok
+test backup::tests::sealed_onto_another_computer ... ok
+test lint::ui_lint_display_colour ... ok
+test lint::ui_lint_settings_index ... ok
+test lint::ui_lint_keyboards_tab ... ok
+test lint::ui_lint_every_panel ... ok
+test lint::ui_lint_the_palm_trainer ... ok
+
+test result: ok. 45 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.20s
+
+     Running unittests src/lib.rs (target/release/deps/olo_preview-89b8f761fee34be3)
+
+running 38 tests
+test opus::tests::opus_file ... ignored
+test stretch::tests::stretch_cost ... ignored
+test bitmap::tests::premultiplies_rounding ... ok
+test opus::tests::heads ... ok
+test table::tests::headers ... ok
+test media::tests::avcc_conversion ... ok
+test media::tests::hdr10_sample_entry_colour ... ok
+test table::tests::columns ... ok
+test table::tests::nan_cells_sort ... ok
+test edit::tests::steps_and_sizes ... ok
+test bitmap::tests::round_trips_through_bgra ... ok
+test doc::tests::markdown_blocks ... ok
+test table::tests::sorts_and_filters ... ok
+test doc::tests::markdown_pictures ... ok
+test archive::tests::zip_and_targz ... ok
+test video::tests::av1_in_mp4 ... ignored
+test video::tests::b_frames ... ignored
+test ui::rich::tests::room_between ... ok
+test ui::rich::tests::slugs ... ok
+test doc::tests::word_documents ... ok
+test edit::tests::saves_each_format ... ok
+test video::tests::hdr10_in_the_stream ... ignored
+test video::tests::hevc_plays ... ignored
+test video::tests::keeps_up ... ignored
+test video::tests::plays_across_another_encoders_entry ... ignored
+test video::tests::seek_cost ... ignored
+test video::tests::seeks_to_the_frame ... ignored
+test video::tests::vp9_plays ... ignored
+[OpenH264] this = 0x0x7f0c98000db0, Warning:ParamValidation(), AdaptiveQuant(1) is not supported yet for screen content, auto turned off
+[OpenH264] this = 0x0x7f0c98000db0, Warning:ParamValidation(), BackgroundDetection(1) is not supported yet for screen content, auto turned off
+[OpenH264] this = 0x0x7f0c98000db0, Warning:bEnableFrameSkip = 0,bitrate can't be controlled for RC_QUALITY_MODE,RC_BITRATE_MODE and RC_TIMESTAMP_MODE without enabling skip frame.
+test edit::tests::editor_undo_and_dirty ... ok
+test video::tests::compact_pictures_match_openh264 ... ok
+test stretch::tests::rate_without_pitch ... ok
+test video::tests::seeks_into_a_long_picture ... ok
+test text::tests::toml_and_units_are_found_by_name ... ok
+test text::tests::colours_ini_and_units ... ok
+test text::tests::colours_toml ... ok
+test doc::tests::markdown_details ... ok
+test text::tests::colours_rust ... ok
+test text::tests::colours_justfiles ... ok
+
+test result: ok. 27 passed; 0 failed; 11 ignored; 0 measured; 0 filtered out; finished in 0.35s
+
+     Running unittests src/bin/fakesound.rs (target/release/deps/olo_fakesound-c25d3d6c2737bf15)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/release/deps/olo_print-79dc4895742e11eb)
+
+running 3 tests
+test ipp::tests::request_and_response_encode ... ok
+test ipp::tests::talks_to_cups ... ok
+test pdf::tests::makes_a_pdf ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src/lib.rs (target/release/deps/olo_protocol-1c84ee119fbbb883)
+
+running 44 tests
+test airpods::tests::levels_said ... ok
+test diskbackup::words::tests::a_backup_said_plainly ... ok
+test airpods::tests::requests_read_as_json ... ok
+test deskbar::tests::a_graphs_history ... ok
+test keep_going_tests::keep_going_says ... ok
+test keyboards::tests::known_by_the_name_its_driver_gives ... ok
+test keyboards::tests::security_keys_arent_keyboards ... ok
+test mice::tests::each_mouse_gets_its_own_its_profile_or_the_others ... ok
+test deskbar::tests::widgets_read_whatever_is_left_out ... ok
+test panels::tests::oled_has_no_stripes ... ok
+test panels::tests::bens_displays ... ok
+test notifications::tests::looks ... ok
+test panels::tests::thinkpad_oled ... ok
+test power_button::tests::bens_defaults ... ok
+test sharing::tests::a_share_said ... ok
+test shortcuts::tests::auto_tiling_settings_become_modes ... ok
+test shortcuts::tests::assigning_takes_keys_from_others ... ok
+test performance::tests::settings_read_with_what_they_lack ... ok
+test power_button::tests::kept_as_words ... ok
+test shortcuts::tests::a_chord_is_pressed_as_its_keys ... ok
+test mice::tests::models_are_found_by_ids_then_names ... ok
+test mice::tests::numbers_read_well ... ok
+test notifications::tests::a_site_falls_back_to_its_browser ... ok
+test notifications::tests::an_apps_notifications_drain_together ... ok
+test notifications::tests::apps_default_to_everything ... ok
+test notifications::tests::do_not_disturb ... ok
+test notifications::tests::fading ... ok
+test shortcuts::tests::app_keys_never_clash ... ok
+test shortcuts::tests::chords_round_trip ... ok
+test shortcuts::tests::chrome_keys_say_what_chrome_takes ... ok
+test shortcuts::tests::defaults_never_clash ... ok
+test shortcuts::tests::modes_by_workspace_and_display ... ok
+test tests::display_settings_merge_key_and_connector ... ok
+test tests::displays_numbered_left_to_right ... ok
+test tests::night_window_wraps_midnight ... ok
+test tests::request_wire_format_is_tagged ... ok
+test tests::settings_before_profiles_become_one ... ok
+test tests::settings_tolerate_missing_fields ... ok
+test tests::touch_is_on_unless_turned_off ... ok
+test touchpad::tests::kinds ... ok
+test touchpad::tests::profiles_keep_personal_choices ... ok
+test tests::display_keys_follow_the_monitor ... ok
+test tests::a_gradual_night_shifts_in_only ... ok
+test shortcuts::tests::profiles_say_when_they_are_changed ... ok
+
+test result: ok. 44 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/main.rs (target/release/deps/olo_rescue-40a4126809d2960a)
+
+running 3 tests
+test procs::tests::a_name_with_parentheses_and_spaces ... ok
+test term::tests::keys_as_xterm_sends_them ... ok
+test procs::tests::this_users_processes_are_found ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (target/release/deps/olo_richtext-e9e46ddbed57cdf6)
+
+running 12 tests
+test tests::writes_samples ... ok
+test rtf::tests::reads_what_word_writes ... ok
+test rtf::tests::reads_word_95_lists_and_surrogates ... ok
+test rtf::tests::round_trip ... ok
+test tests::odt_round_trip ... ok
+test rtf::tests::reads_tables ... ok
+test tests::reads_named_file ... ok
+test tests::docx_round_trip ... ok
+test rtf::tests::not_rtf ... ok
+test tests::pictures_kinds_and_sizes ... ok
+test tests::tidy_joins_and_splits ... ok
+test rtf::tests::writes_ascii_only ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/main.rs (target/release/deps/olo_screen-f0f07952aded0d5e)
+
+running 22 tests
+test atspi::tests::live ... ignored
+test screens::tests::a_screens_session_is_known_by_its_environment ... ok
+test screens::tests::a_process_start_from_its_stat ... ok
+test export::tests::quiet_stretches_become_cards ... ok
+test screens::tests::paced_input ... ok
+test atspi::tests::roles_as_accesskit_names_them ... ok
+test history::tests::lines_say_what_was_done_and_found ... ok
+test viewer::tests::keys_and_notches ... ok
+test viewer::tests::moves_run_together ... ok
+test record::tests::edges_are_partial_tiles ... ok
+test record::tests::keeps_what_changed_and_plays_it_back ... ok
+test stats::tests::counts_a_minute ... ok
+test moving::tests::movable_leaves_out_what_cannot_move ... ok
+test history::tests::reads_what_was_added ... ok
+test history::tests::stats_from_a_history ... ok
+test screens::tests::an_agent_waits_while_the_person_controls ... ok
+test screens::tests::chords ... ok
+test screens::tests::chrome_has_a_profile_of_its_own ... ok
+test screens::tests::keys_for_text ... ok
+test screens::tests::names_and_sockets ... ok
+test shares::tests::how_each_stands ... ok
+test screens::tests::settings_never_lock_or_sleep ... ok
+
+test result: ok. 21 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/main.rs (target/release/deps/olo_screensaver-281e5a2f14a9c06f)
+
+running 1 test
+test tests::halving_averages ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/release/deps/olo_screensavers-eb364323bf29c07e)
+
+running 8 tests
+test tests::clock_steps_fixed ... ok
+test tests::desktop_modules ... ok
+test tests::modules_are_r5s ... ok
+test tests::rng_spreads ... ok
+test tests::all_draw ... ok
+test geom::tests::hsv_primaries ... ok
+test gpui_canvas::tests::line_heights_are_whole_points ... ok
+test geom::tests::fading_keeps_the_colour ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/release/deps/olo_screenshot-a5c61c8a02794eeb)
+
+running 15 tests
+test controls::tests::the_clock_reads_as_a_stopwatch ... ok
+test backdrop::tests::margins_stop_at_what_encoders_take ... ok
+test bubble::tests::the_middle_square_mirrored ... ok
+test capture::tests::names ... ok
+test capture::tests::saves_every_format ... ok
+test capture::tests::sweeping_takes_only_dead_screenshots_pictures ... ok
+test after::tests::says_how_long_and_how_big ... ok
+test inset::timing::draw_per_frame ... ignored
+test backdrop::tests::a_window_on_its_backdrop ... ok
+test after::tests::the_picture_frame_follows_the_video ... ok
+test recording::tests::cuts_come_out_of_what_is_kept ... ok
+test recording::tests::restart_keeps_the_region_dragged_out ... ok
+test inset::tests::the_disc_is_round_and_ringed ... ok
+test library::tests::lists_screen_recordings_newest_first ... ok
+test backdrop::tests::a_window_that_shrinks_is_centred_again ... ok
+
+test result: ok. 14 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/main.rs (target/release/deps/olo_secrets-61f6c531eb49c6de)
+
+running 9 tests
+test login_key::tests::opened_by_the_login_key_alone ... ok
+test session::tests::nonsense_refused ... ok
+test store::tests::healed ... ok
+test kernel::tests::kept_and_forgotten ... ok
+test store::tests::new_ids_from_labels ... ok
+test store::tests::replacing_as_gnome_keyring_does ... ok
+test store::tests::replacing_by_attributes ... ok
+test store::tests::kept_sealed_and_opened_again ... ok
+test session::tests::a_client_and_the_service_agree ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+
+     Running tests/login.rs (target/release/deps/login-a456abfc3be7785c)
+
+running 1 test
+test the_login_password_opens_the_store ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.24s
+
+     Running tests/takeover.rs (target/release/deps/takeover-e4a995dd3f8b9687)
+
+running 1 test
+test takes_over_and_hands_back ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/release/deps/olo_session-88469ebaf4b0ca15)
+
+running 24 tests
+test keyring::live::real_daemon ... ignored
+test keyd::tests::lays_out_like_keyd ... ok
+test graphical::tests::tracker_is_the_file_manager_while_it_runs ... ok
+test upgrade::tests::an_upgrade_asked_for_during_a_build_waits_for_it ... ok
+test retire_tests::this_versions_services ... ok
+test skills::tests::skills_carry_the_marker ... ok
+test tmpdir_tests::reads_doctors_file ... ok
+test graphical::tests::dconf_is_olo_s_while_it_runs ... ok
+test upgrade::tests::a_program_another_started_is_known_so ... ok
+test graphical::tests::pbcopy_and_pbpaste_named ... ok
+test keyd::tests::talks_to_keyd ... ok
+test graphical::tests::others_open_files_in_olo ... ok
+test autostart::tests::which_start ... ok
+test upgrade::tests::finds_and_installs_newer_programs ... ok
+test skills::tests::old_skills_go_only_if_ours ... ok
+test upgrade::tests::old_programs_become_links_to_new_ones ... ok
+test upgrade::tests::icons_come_along ... ok
+test upgrade::tests::fonts_come_along ... ok
+test keyring::tests::starts_the_daemon_pam_left ... ok
+test graphical::tests::files_are_written_once ... ok
+test skills::tests::installs_for_the_agents_there_are ... ok
+test upgrade::tests::themes_come_along ... ok
+test upgrade::tests::a_screen_on_a_replaced_session_is_old ... ok
+test upgrade::tests::a_program_whose_display_has_gone_is_left_over ... ok
+
+test result: ok. 23 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+     Running unittests src/main.rs (target/release/deps/olo_slack-14563c7b5aeecea2)
+
+running 1 test
+test tests::links_become_slack_pages ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/release/deps/olo_smart_tile-04aab6321c52455e)
+
+running 2 tests
+test tests::percent_of_the_area ... ok
+test tests::reads_placements ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/release/deps/olo_styled_edit-765bf50b6acc5f32)
+
+running 51 tests
+test convert::tests::markdown_escapes ... ok
+test doc::tests::mismatched_styles_are_dropped ... ok
+test doc::tests::lists_number_and_nest ... ok
+test convert::tests::markdown_in ... ok
+test convert::tests::markdown_round_trip ... ok
+test doc::tests::paragraphs_follow_the_text ... ok
+test doc::tests::moving_keeps_styles ... ok
+test doc::tests::steps_are_named ... ok
+test doc::tests::deleting_across_runs ... ok
+test doc::tests::finding ... ok
+test doc::tests::paste_keeps_copied_styles ... ok
+test doc::tests::pending_style_for_typing ... ok
+test doc::tests::replacing_takes_the_replaced_style ... ok
+test doc::tests::files_round_trip ... ok
+test convert::tests::html_out ... ok
+test doc::tests::paragraphs_saved_and_loaded ... ok
+test doc::tests::typing_continues_the_style_before ... ok
+test doc::tests::undo_keeps_just_what_changed ... ok
+test doc::tests::multibyte_edits ... ok
+test convert::tests::ruler_settings_in_and_out ... ok
+test convert::tests::pictures_in_every_format ... ok
+test convert::tests::word_and_opendocument_round_trip ... ok
+test markdown::tests::marks_hide_off_the_caret_line_and_show_on_it ... ok
+test markdown::tests::setext_and_links ... ok
+test markdown::tests::spans_cover_each_line ... ok
+test doc::tests::styles_saved_before_the_rename_are_read ... ok
+test convert::tests::tables_in_and_out ... ok
+test doc::tests::undo_redo_and_coalescing ... ok
+test markdown::tests::table_rows_cells_between_pipes ... ok
+test markdown::tests::lines_made_headings_lists_and_back ... ok
+test markdown::tests::numbered_lists_count ... ok
+test markdown::tests::return_continues_lists ... ok
+test pictures::tests::fitting ... ok
+test pictures::tests::folders_beside_documents ... ok
+test pictures::tests::saved_paths_are_relative_and_held_ones_copied ... ok
+test pictures::web_tests::a_picture_on_the_web_has_a_file_of_its_own ... ok
+test table::tests::convert_and_header ... ok
+test table::tests::insert_add_and_delete ... ok
+test tests::guide_words ... ok
+test doc::tests::replace_all_keeps_styles_between ... ok
+test pages::tests::long_text_breaks_pages_and_numbers_them ... ok
+test markdown::tests::blocks_and_marks ... ok
+test convert::tests::code_and_markdown_set_as_they_look ... ok
+test pages::tests::table_rows_are_ruled_cells ... ok
+test pages::tests::words_on_pages ... ok
+test pages::tests::pictures_on_pages ... ok
+test doc::timing::typing_in_a_long_document_is_quick ... ok
+test pages::tests::header_and_footer_in_the_margins ... ok
+test markdown::tests::big_documents_follow_edits_until_parsed ... ok
+test markdown::tests::a_keystroke_in_a_big_document_is_quick ... ok
+test markdown::tests::big_documents_parse_quickly ... ok
+
+test result: ok. 51 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running unittests src/main.rs (target/release/deps/olo_supervisor-ad5a0a026c18b6e5)
+
+running 6 tests
+test detect::tests::a_leak_is_a_steady_climb_not_a_jump ... ok
+test detect::tests::a_spin_from_several_signals ... ok
+test detect::tests::zombies_left_long ... ok
+test detect::tests::memory_only_when_the_system_is_short ... ok
+test priority::tests::lowers_and_puts_back_a_child ... ok
+test sample::tests::sees_itself ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src/lib.rs (target/release/deps/olo_sync-2d9ffb7ab72cbf5c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/release/deps/olo_syntax-893bf10dfe072eab)
+
+running 6 tests
+test tests::files_found_by_name_extension_or_interpreter ... ok
+test tests::capture_names_map_to_classes ... ok
+test tests::edits_keep_colours_on_their_characters ... ok
+test tests::rust_coloured ... ok
+test tests::samples_colour_in_each_language ... ok
+test tests::every_language_parses_and_colours ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.32s
+
+     Running unittests src/lib.rs (target/release/deps/olo_system-024593bee1bdbd90)
+
+running 108 tests
+test audio::listening_tests::listening_live ... ignored
+test audio::live_write::rewrite_input_unchanged ... ignored
+test audio::mic_mute_tests::mic_key ... ignored
+test audio::no_output_tests::live_no_output ... ignored
+test audio::tests::live_devices ... ignored
+test auth::tests::live_wrong_password ... ignored
+test backlight::tests::live_connectors ... ignored
+test backlight::tests::live_read ... ignored
+test backlight::tests::live_read_keyboard ... ignored
+test backlight::tests::live_rewrite ... ignored
+test airpods::adv::tests::opens_the_sealed_levels ... ok
+test battery::limit_tests::live_charge_limit ... ignored
+test airpods::adv::tests::resolves_private_addresses ... ok
+test airpods::link::tests::addresses_go_least_significant_first ... ok
+test airpods::proto::tests::reads_keys ... ok
+test airpods::proto::tests::reads_levels ... ok
+test airpods::proto::tests::reads_the_rest ... ok
+test airpods::proto::tests::writes_messages ... ok
+test audio::tests::bluetooth_cards_with_no_output ... ok
+test airpods::proto::tests::reads_microphone_frames ... ok
+test disks::tests::partition_types ... ok
+test airpods::adv::tests::reads_levels_and_ears ... ok
+test edid::tests::live ... ignored
+test edid::tests::colours_of_the_thinkpads_oled ... ok
+test fingerprint::tests::finger_names ... ok
+test fingerprint::tests::live_start_and_stop ... ignored
+test edid::tests::half_floats ... ok
+test fingerprint::tests::words ... ok
+test edid::tests::reads_name_and_serial ... ok
+test disks::tests::names ... ok
+test dconf::tests::changeset_is_gvariant ... ok
+test auth::tests::users ... ok
+test cpu_tuning::tests::each_preset_sets_what_the_daemon_s_modes_do ... ok
+test github::tests::tokens_from_a_keyring ... ignored
+test gpu_load::tests::live ... ignored
+test github::tests::gh_hosts ... ok
+test gpu_tuning::tests::kept_only_when_changed ... ok
+test github::tests::keyring_text ... ok
+test disks::tests::segments_find_free_space ... ok
+test airpods::proto::tests::reads_who_they_are ... ok
+test disks::tests::space_of_a_mounted_file_system ... ok
+test gpu_tuning::tests::live ... ignored
+test gpu_tuning::tests::live_nvidia_detail ... ignored
+test gpus::tests::live ... ignored
+test audio::tests::channel_volumes ... ok
+test backlight::tests::perceptual_curve ... ok
+test edid::tests::colours_of_a_studio_display_and_a_dell ... ok
+test airpods::tests::knows_them_by_modalias ... ok
+test hid_monitor::tests::live_full ... ignored
+test hid_monitor::tests::live_read ... ignored
+test gpu_tuning::tests::presets ... ok
+test battery::tests::reads_a_fake_battery ... ok
+test keyring_prompt::tests::real_daemon ... ignored
+test keyring_prompt::tests::with_gcr ... ignored
+test live::dconf_write ... ignored
+test live::status ... ignored
+test meters::tests::live ... ignored
+test gpus::tests::names_from_the_database ... ok
+test hid_monitor::tests::finds_the_studio_display_brightness ... ok
+test hosts::tests::checked_before_root_writes_it ... ok
+test hosts::tests::edits_keep_the_rest_of_the_file ... ok
+test listening::tests::who_listens_on_a_port ... ok
+test meters::tests::values_in_words ... ok
+test netconf::tests::checked_before_root_writes_it ... ok
+test netconf::tests::nothing_of_ones_own_is_no_file ... ok
+test netconf::tests::wifi_first_and_dns_round_trip ... ok
+test gpu_tuning::tests::the_plan_s_defaults_and_choices ... ok
+test gpu_tuning::tests::the_plan_sets_the_gpus ... ok
+test netdiag::tests::counts_the_loopback ... ok
+test hid_monitor::tests::ignores_other_devices ... ok
+test hosts::tests::entries_comments_and_ones_turned_off ... ok
+test keyring_prompt::tests::hkdf_matches_rfc_5869 ... ok
+test keyring_prompt::tests::reads_properties ... ok
+test packages::tests::live ... ignored
+test keyring_prompt::tests::shared_secrets_are_the_primes_length ... ok
+test meters::tests::processor_lines ... ok
+test network::enterprise_tests::inner_must_match ... ok
+test power_profile::tests::live ... ignored
+test network::links_tests::rates_and_counters ... ok
+test presence::tests::live ... ignored
+test network::links_tests::strength_and_rate_from_the_signal ... ok
+test network::vpn_tests::what_isnt_a_wireguard_file_is_said ... ok
+test priority::tests::makes_a_thread_realtime ... ignored, asks the system's rtkit
+test packages::tests::ids ... ok
+test polkit::tests::helper_lines ... ok
+test polkit::tests::own_process_subject ... ok
+test procs::timing::a_looks_cost ... ignored
+test recording::tests::records_what_plays_and_switches_takes_in_place ... ignored
+test rfkill::tests::live ... ignored
+test secrets::tests::round_trip ... ignored
+test polkit::tests::user_order ... ok
+test power_profile::tests::names ... ok
+test presence::tests::samples_are_read_as_the_kernel_lays_them_out ... ok
+test priority::tests::a_process_that_is_gone_is_an_error ... ok
+test priority::tests::rtkits_reset_on_fork_is_still_realtime ... ok
+test network::enterprise_tests::peap_with_system_certificates ... ok
+test network::enterprise_tests::security_follows_the_access_point ... ok
+test network::enterprise_tests::tls_with_files ... ok
+test network::vpn_tests::a_wg_quick_file_as_networkmanagers ... ok
+test shaping::tests::netem_options_read_back ... ok
+test shaping::tests::presets_and_checks ... ok
+test shaping::tests::reads_without_root ... ok
+test priority::tests::reads_its_own_nice ... ok
+test auth::tests::conversation_with_private_services ... ok
+test keyring_prompt::tests::exchanges_a_secret ... ok
+test polkit::tests::fake_helper ... ok
+test netdiag::tests::sees_a_connection_of_its_own ... ok
+test procs::tests::the_top_processes ... ok
+
+test result: ok. 75 passed; 0 failed; 33 ignored; 0 measured; 0 filtered out; finished in 0.26s
+
+     Running unittests src/bin/nm_fake.rs (target/release/deps/nm_fake-e0c374fb2cac89ac)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/gpu_tune.rs (target/release/deps/olo_gpu_tune-8375a9a562a0c611)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/net_admin.rs (target/release/deps/olo_net_admin-4cb9647aae466195)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/udisks_fake.rs (target/release/deps/udisks_fake-c4142bd482f603b1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/udisks_fake.rs (target/release/deps/udisks_fake-9e719d6e0aad46ec)
+
+running 1 test
+test against_the_fake ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/release/deps/olo_telegram-436968f6a7bb1688)
+
+running 9 tests
+test bubble::tests::emoji_alone_is_big ... ok
+test bubble::tests::names_to_initials ... ok
+test store::tests::whole_list_drops_what_telegram_no_longer_gives ... ok
+test list::tests::a_group_is_what_its_view_shows ... ok
+test store::tests::list_order ... ok
+test store::tests::pages_and_pending ... ok
+test when::tests::days ... ok
+test voice::tests::a_waveform_of_a_hundred_bars ... ok
+test list::tests::any_unread_is_cheap ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/olo_open.rs (target/release/deps/olo_open-b61b764729119069)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/olo_sudo.rs (target/release/deps/olo_sudo-8cfeaeb53d882cbd)
+
+running 4 tests
+test tests::prompts_and_messages ... ok
+test tests::options_sudo_answers_itself ... ok
+test tests::non_interactive_waits_on_approval ... ok
+test tests::every_way_in_at_once ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 18.79s
+
+     Running unittests src/termd.rs (target/release/deps/olo_termd-1ef49e4782708238)
+
+running 18 tests
+test io::tests::scan_cost ... ignored
+test colors::tests::text_kept_legible ... ok
+test colors::tests::cube_and_grays ... ok
+test graphics::tests::kitty_params ... ok
+test io::tests::other_sequences_pass_through ... ok
+test colors::tests::from_the_look ... ok
+test replay::tests::rebuilds_images ... ok
+test graphics::tests::uri_round_trip ... ok
+test tests::the_tail_joins_wrapped_lines_and_keeps_the_last ... ok
+test replay::tests::rebuilds_the_alternate_screen_and_modes ... ok
+test replay::tests::archives_the_shells_lines_not_a_programs_screen ... ok
+test io::tests::passes_text_and_lifts_images ... ok
+test io::tests::light_and_dark_reports ... ok
+test graphics::tests::sixel_declared_size_and_transparency ... ok
+test graphics::tests::sixel_basic ... ok
+test replay::tests::rebuilds_scrollback_screen_and_cursor ... ok
+test io::tests::split_across_reads ... ok
+test wire::tests::frames_and_descriptors_arrive_in_order ... ok
+
+test result: ok. 17 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/main.rs (target/release/deps/olo_terminal-fde852fba5b4043c)
+
+running 64 tests
+test agent_context::tests::puts_its_hook_in_and_takes_it_out ... ok
+test agent_title::tests::the_words_name_the_command_for_an_agent_without_the_tool ... ok
+test agent_title::tests::names_itself_to_the_agents_and_leaves_the_rest ... ok
+test agent_title::tests::answers_as_a_tool_server ... ok
+test colors::tests::cube_and_grays ... ok
+test drop_tests::shell_quote ... ok
+test agent_title::tests::the_stdio_server_gives_way_to_the_session_s ... ok
+test agent::tests::at_its_prompt ... ok
+test colors::tests::from_the_look ... ok
+test find::tests::whole_words ... ok
+test git::tests::encoded ... ok
+test git::tests::names ... ok
+test git::tests::checks ... ok
+test agent::tests::agents ... ok
+test find::tests::literal_patterns ... ok
+test colors::tests::text_kept_legible ... ok
+test graphics::tests::kitty_params ... ok
+test graphics::tests::sixel_basic ... ok
+test graphics::tests::sixel_declared_size_and_transparency ... ok
+test graphics::tests::uri_round_trip ... ok
+test groups::tests::names_and_colors ... ok
+test io::tests::light_and_dark_reports ... ok
+test io::tests::other_sequences_pass_through ... ok
+test io::tests::passes_text_and_lifts_images ... ok
+test io::tests::scan_cost ... ignored
+test io::tests::split_across_reads ... ok
+test links::tests::broken_words ... ok
+test links::tests::claude_code_lines ... ok
+test git::tests::remotes ... ok
+test settings_tests::colours_for_each_appearance ... ok
+test repos::tests::a_tab_leaves_its_group_only_when_its_own_repository_does ... ok
+test sudo::tests::ancestors_lead_to_init ... ok
+test links::tests::paths ... ok
+test links::tests::urls ... ok
+test find::tests::finds_up_through_scrollback ... ok
+test tile_group_tests::tile_rows_cost ... ignored
+test agent_context::tests::tells_the_group_and_its_places ... ok
+test agent_context::tests::knows_its_parent ... ok
+test agent_context::tests::an_agent_outside_its_tab_finds_its_own_agents_tab ... ok
+test agent_context::tests::agent_screens_words_name_olo_chrome ... ok
+test agent::tests::what_auto_approve_answers ... ok
+test agent::tests::states ... ok
+test find::tests::again_and_wrap ... ok
+test tile_group_tests::every_group_starts_shown_and_each_click_takes_it_out_or_back ... ok
+test tile_group_tests::a_tab_hidden_when_tiled_is_left_out_of_every_row ... ok
+test sudo::tests::the_finger_alongside_the_password ... ok
+test title_service::tests::a_signal_isnt_a_failed_request ... ok
+test title_service::tests::answers_as_an_mcp_server_with_no_sessions ... ok
+test title_service::tests::calls_the_tool ... ok
+test ui::tile_tests::rows_dragged ... ok
+test title_service::tests::reads_a_request_by_its_length_or_its_chunks ... ok
+test title_service::tests::refuses_web_pages_and_other_hosts ... ok
+test ui::tile_tests::a_grid_for_tabs_in_no_group ... ok
+test ui::tile_tests::a_row_for_each_group ... ok
+test view::tests::alt_letters_are_escaped ... ok
+test view::tests::option_arrows_move_by_word ... ok
+test view::tests::ctrl_underscore_is_the_shells ... ok
+test title_service::tests::answers_over_a_connection ... ok
+test agent::tests::codex_goal_clock_isnt_a_change ... ok
+test wire::tests::frames_and_descriptors_arrive_in_order ... ok
+test title_service::tests::finds_who_connected ... ok
+test agent_title::tests::an_upgrade_waits_for_a_message_half_read ... ok
+test agent_title::tests::an_upgrade_while_waiting_goes_at_once ... ok
+test git::tests::worktrees_made_renamed_and_removed ... ok
+
+test result: ok. 62 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.19s
+
+     Running tests/title_service.rs (target/release/deps/title_service-aac62f4f0d272669)
+
+running 1 test
+test upgrades_without_refusing_anyone ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.58s
+
+     Running unittests src/lib.rs (target/release/deps/olo_tg-f15ae335df120558)
+
+running 14 tests
+test model::tests::summaries ... ok
+test net::replay_tests::pinned_chats_given_with_the_archive_stay_in_the_main_list ... ok
+test net::tests::folder_from_the_answer ... ok
+test outbox::tests::waiting_changes_show_over_older_state ... ok
+test demo::tests::demo_answers ... ok
+test demo::tests::entities_found ... ok
+test net::tests::entities_both_ways ... ok
+test outbox::tests::later_changes_replace_and_sent_ones_leave ... ok
+test model::tests::utf16_offsets ... ok
+test net::replay_tests::replayed_updates_change_nothing ... ok
+test net::tests::waveforms_round_trip ... ok
+test model::tests::folders_admit ... ok
+test signin::tests::qr_urls ... ok
+test account::tests::sessions_round_trip_through_files ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (target/release/deps/olo_theme-f2047dc6f44692f3)
+
+running 11 tests
+test looks::tests::palettes_round_trip_as_json ... ok
+test looks::tests::terminals_read ... ok
+test tests::tint_matches_direction ... ok
+test toolkit::tests::stylesheets_have_the_palette ... ok
+test catppuccin::tests::as_its_palette ... ok
+test looks::tests::ids_are_unique_and_known ... ok
+test looks::tests::beos_is_r5_in_every_theme ... ok
+test looks::tests::terminal_choices ... ok
+test looks::tests::text_reads_everywhere ... ok
+test looks::tests::every_look_is_its_own ... ok
+test toolkit::tests::a_name_per_look ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/release/deps/olo_token_pool-764dae55aa0e4e64)
+
+running 24 tests
+test drain::tests::listeners_handed_over_by_port ... ok
+test gateway::tests::headers_kept_back ... ok
+test gateway::tests::scans_usage_only ... ok
+test model::tests::families ... ok
+test activity::tests::counts_by_minute_and_client ... ok
+test drain::tests::busy_while_something_is_under_way ... ok
+test upstream::tests::every_meter_reported ... ok
+test model::tests::credits_are_spent_before_they_expire ... ok
+test upstream::tests::headers_and_rejections ... ok
+test model::tests::merging_keeps_known_resets ... ok
+test model::tests::credentials_never_print ... ok
+test schedule::tests::ties_and_unknowns ... ok
+test schedule::tests::stickiness ... ok
+test schedule::tests::earliest_expiry_first ... ok
+test peer::tests::knows_the_clients ... ok
+test import::tests::reads_both ... ok
+test schedule::tests::model_meters_and_cooldowns ... ok
+test upstream::tests::betas_and_tokens ... ok
+test upstream::tests::usage_reports ... ok
+test running::tests::tells_where_connections_go ... ok
+test store::tests::seals_and_opens ... ok
+test clients::tests::on_off_and_the_old_way_moved_over ... ok
+test peer::tests::finds_who_connected ... ok
+test codex_daemon::tests::knows_the_daemon_by_its_start ... ok
+
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running tests/clients.rs (target/release/deps/clients-ee67ea9cf0a52f6d)
+
+running 3 tests
+test claude_code_on_its_subscription_through_the_proxy ... ignored, runs the real Claude Code (CLAUDE_BIN)
+test codex_daemon_follows_the_pool ... ignored, runs the real Codex (CODEX_BIN)
+test codex_on_its_subscription_through_the_proxy ... ignored, runs the real Codex (CODEX_BIN)
+
+test result: ok. 0 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/drain.rs (target/release/deps/drain-a84f361f68f68a3f)
+
+running 5 tests
+test a_client_turned_off_passes_through_from_its_next_request ... ok
+test an_upgrade_that_never_comes_takes_connections_again ... ok
+test two_copies_renew_a_sign_in_once ... ok
+test an_upgrade_finishes_what_is_under_way_and_hands_the_rest_over ... ok
+test a_new_copy_answers_at_once_while_the_old_finishes ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.53s
+
+     Running tests/gateway.rs (target/release/deps/gateway-3e8f8edec51a24e2)
+
+running 5 tests
+test redeems_a_credit_when_all_are_out ... ok
+test switches_by_the_model_whose_meter_ran_out ... ok
+test a_compressed_codex_request_refused_goes_again_plain ... ok
+test drains_and_fails_over ... ok
+test a_request_goes_on_across_a_network_change ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.61s
+
+     Running tests/intercept.rs (target/release/deps/intercept-7e1d2908bfaa89d3)
+
+running 4 tests
+test only_the_model_requests_are_the_pools ... ok
+test switches_protocols_where_it_passes_through_not_where_it_pools ... ok
+test opens_the_providers_hosts_and_tunnels_the_rest ... ok
+test a_client_that_doesnt_wait_for_the_connect_answer ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+     Running tests/others.rs (target/release/deps/others-d871d982d0c042da)
+
+running 1 test
+test others_go_straight_through ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running unittests src/main.rs (target/release/deps/olo_tracker-fc883855158b80c2)
+
+running 19 tests
+test fs::tests::copy_names ... ok
+test filemanager::tests::local_files_only ... ok
+test goto::tests::names_and_completions ... ok
+test goto::tests::paths_as_typed_and_copied ... ok
+test model::tests::folders_by_name_then_files_newest_first ... ok
+test undo::tests::icons_back_and_forth ... ok
+test undo::tests::inverses ... ok
+test ops::tests::an_emptying_swaps_and_puts_back_what_is_left ... ok
+test fs::tests::downloads_show_as_they_will_be ... ok
+test ops::tests::cancel_removes_partial_copy ... ok
+test undo::tests::a_rename_undone_or_said_why_not ... ok
+test ops::tests::restore_from_the_trash ... ok
+test undo::tests::a_move_goes_back_and_forth ... ok
+test ops::tests::copy_move_duplicate ... ok
+test find::tests::names_contents_and_filters ... ok
+test watch::tests::a_folder_swapped_for_another_is_still_followed ... ok
+test watch::tests::a_folder_whose_parent_is_renamed_is_let_go ... ok
+test watch::tests::sees_changes ... ok
+test watch::tests::a_folder_put_back_later_is_followed ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.57s
+
+     Running unittests src/lib.rs (target/release/deps/olo_ui-bf08fe5a998544a1)
+
+running 37 tests
+test editor::tests::differences ... ok
+test agent::tests::cut_text_read_whole ... ok
+test brand::tests::shrinking_keeps_colour_under_soft_edges ... ok
+test due::tests::a_notice_goes_of_itself ... ok
+test editor::tests::words ... ok
+test keys::tests::shifted_symbols_are_their_keys_with_shift ... ok
+test menu::tests::move_to_window_lists_the_others ... ok
+test menu::tests::separators_tidied ... ok
+test menu::tests::sorted_by_what_they_say_within_separators_and_down ... ok
+test search::tests::runs_colour_and_mark ... ok
+test undo::tests::back_and_forth ... ok
+test undo::tests::runs_merge ... ok
+test widgets::alert::tests::the_seconds_left_round_up_and_end_at_nought ... ok
+test widgets::charts::heatmap_tests::a_heatmaps_grid ... ok
+test file_panel::tests::names_in_reading_order ... ok
+test widgets::image_view::resample_timing::filters ... ignored
+test widgets::dashboard::tests::flows_into_columns ... ok
+test widgets::find_bar::tests::what_it_says ... ok
+test widgets::ruler::tests::lengths ... ok
+test widgets::side_pane::tests::a_side_pane_sizes_goes_and_comes_back ... ok
+test widgets::sidebar::tests::steps_over_headings ... ok
+test widgets::slim_scroll::tests::the_thumb_is_as_long_as_what_shows_and_runs_the_track ... ok
+test widgets::strip::tests::a_group_goes_between_groups ... ok
+test widgets::strip::tests::a_tab_dropped_among_a_groups_joins_it ... ok
+test widgets::strip::tests::tabs_take_what_their_titles_need_and_the_widest_give_way ... ok
+test widgets::text_view::tests::words_are_found ... ok
+test widgets::toolbar::tests::a_tool_is_what_its_menu_says ... ok
+test widgets::charts::tests::values_at_a_time ... ok
+test widgets::toolbar::tests::rows_wrap_at_separators_and_the_rest_goes_in_more ... ok
+test widgets::charts::tests::nice_tops ... ok
+test editor::tests::rows_cells_and_columns ... ok
+test editor::tests::utf16_offsets ... ok
+test menu::tests::a_bar_of_an_app_builds_its_menus_when_it_changes ... ok
+test editor::tests::spans_cover_the_paragraph ... ok
+test widgets::charts::tests::cells_fit ... ok
+test editor::layout::tests::styles_are_drawn_in_their_faces ... ok
+test editor::layout::tests::rows_wrap_at_spaces_and_tabs_go_to_stops ... ok
+
+test result: ok. 36 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/lint.rs (target/release/deps/lint-b54b6d7646831f45)
+
+running 6 tests
+test ui_lint_due_wakes_once_at_its_time ... ok
+test ui_lint_document_geometry_stays_structured_and_native_controls_still_check ... ok
+test ui_lint_a_kit_form_is_clean ... ok
+test ui_lint_cut_gpui_text_is_read_whole ... ok
+test ui_lint_finds_controls_over_each_other ... ok
+test ui_lint_a_tab_strip_is_clean ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+     Running unittests src/lib.rs (target/release/deps/olo_vaapi-224094fce0ef8981)
+
+running 5 tests
+test tests::levels_by_size_and_rate ... ok
+test tests::bits_go_in_most_significant_first ... ok
+test tests::an_obu_says_its_size_in_the_bytes_asked ... ok
+test tests::tiles_as_av1_allows ... ok
+test tests::ns_codes_as_av1_reads ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/decode.rs (target/release/deps/decode-675fd4621997bc1b)
+
+running 10 tests
+test hevc_with_b_frames ... ok
+test h264_high_with_b_frames ... ok
+test a_reset_starts_again_at_a_key_frame ... ok
+test h264_pictures_are_the_reference_decoder_s ... ok
+test vp9_frames_shown_again_and_hidden_ones ... ok
+test vp9_pictures_are_the_reference_decoder_s ... ok
+test hevc_films ... ok
+test hevc_pictures_are_the_reference_decoder_s ... ok
+test av1_pictures_are_the_reference_decoder_s ... ok
+test held_pictures_are_the_same ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.69s
+
+     Running unittests src/lib.rs (target/release/deps/olo_video-c8d2ffb069489cc4)
+
+running 35 tests
+test export::tests::make_4k60 ... ignored
+test export::tests::make_4k60_y4m ... ignored
+test export::tests::make_fixture ... ignored
+test config::tests::a_reduced_sequence_header_says_its_level ... ok
+test gif::tests::averages_when_smaller ... ok
+test opus::tests::crc_is_oggs ... ok
+test config::tests::exp_golomb_and_emulation_prevention ... ok
+test config::tests::obus_are_read ... ok
+test export::tests::sizes_keep_the_crop_s_shape ... ok
+test tests::codec_sizes ... ignored
+test tests::encode_cost ... ignored
+test tests::encoder_opening ... ignored
+test tests::nvenc_cost_by_codec ... ignored
+test tests::nvenc_makes_h264_that_decodes ... ignored
+[OpenH264] this = 0x0x7f9a34000de0, Warning:ParamValidation(), AdaptiveQuant(1) is not supported yet for screen content, auto turned off
+[OpenH264] this = 0x0x7f9a34000de0, Warning:ParamValidation(), BackgroundDetection(1) is not supported yet for screen content, auto turned off
+[OpenH264] this = 0x0x7f9a34000de0, Warning:bEnableFrameSkip = 0,bitrate can't be controlled for RC_QUALITY_MODE,RC_BITRATE_MODE and RC_TIMESTAMP_MODE without enabling skip frame.
+test tests::nvenc_makes_hevc_and_av1_mp4s ... ignored
+test tests::battery_or_mains ... ok
+test export::tests::what_is_cut_collapses ... ok
+test tests::vaapi_sizes ... ignored
+[OpenH264] this = 0x0x7f99f4000da0, Warning:ParamValidation(), AdaptiveQuant(1) is not supported yet for screen content, auto turned off
+[OpenH264] this = 0x0x7f99f4000da0, Warning:ParamValidation(), BackgroundDetection(1) is not supported yet for screen content, auto turned off
+[OpenH264] this = 0x0x7f99f4000da0, Warning:bEnableFrameSkip = 0,bitrate can't be controlled for RC_QUALITY_MODE,RC_BITRATE_MODE and RC_TIMESTAMP_MODE without enabling skip frame.
+test tests::annex_b_into_units ... ok
+[OpenH264] this = 0x0x7f99fc001240, Warning:ParamValidation(), AdaptiveQuant(1) is not supported yet for screen content, auto turned off
+[OpenH264] this = 0x0x7f99fc001240, Warning:ParamValidation(), BackgroundDetection(1) is not supported yet for screen content, auto turned off
+[OpenH264] this = 0x0x7f99fc001240, Warning:bEnableFrameSkip = 0,bitrate can't be controlled for RC_QUALITY_MODE,RC_BITRATE_MODE and RC_TIMESTAMP_MODE without enabling skip frame.
+test gif::tests::only_what_changed ... ok
+[OpenH264] this = 0x0x7f9a30024110, Warning:ParamValidation(), AdaptiveQuant(1) is not supported yet for screen content, auto turned off
+[OpenH264] this = 0x0x7f9a30024110, Warning:ParamValidation(), BackgroundDetection(1) is not supported yet for screen content, auto turned off
+[OpenH264] this = 0x0x7f9a30024110, Warning:bEnableFrameSkip = 0,bitrate can't be controlled for RC_QUALITY_MODE,RC_BITRATE_MODE and RC_TIMESTAMP_MODE without enabling skip frame.
+[OpenH264] this = 0x0x7f9a04022f90, Warning:ParamValidation(), AdaptiveQuant(1) is not supported yet for screen content, auto turned off
+[OpenH264] this = 0x0x7f9a04022f90, Warning:ParamValidation(), BackgroundDetection(1) is not supported yet for screen content, auto turned off
+[OpenH264] this = 0x0x7f9a04022f90, Warning:bEnableFrameSkip = 0,bitrate can't be controlled for RC_QUALITY_MODE,RC_BITRATE_MODE and RC_TIMESTAMP_MODE without enabling skip frame.
+test tests::the_vaapi_sequence_header_reads_back ... ok
+[OpenH264] this = 0x0x7f9a10002da0, Warning:ParamValidation(), AdaptiveQuant(1) is not supported yet for screen content, auto turned off
+[OpenH264] this = 0x0x7f9a10002da0, Warning:ParamValidation(), BackgroundDetection(1) is not supported yet for screen content, auto turned off
+[OpenH264] this = 0x0x7f9a10002da0, Warning:bEnableFrameSkip = 0,bitrate can't be controlled for RC_QUALITY_MODE,RC_BITRATE_MODE and RC_TIMESTAMP_MODE without enabling skip frame.
+[OpenH264] this = 0x0x7f9a10005f30, Warning:ParamValidation(), AdaptiveQuant(1) is not supported yet for screen content, auto turned off
+[OpenH264] this = 0x0x7f9a10005f30, Warning:ParamValidation(), BackgroundDetection(1) is not supported yet for screen content, auto turned off
+[OpenH264] this = 0x0x7f9a10005f30, Warning:bEnableFrameSkip = 0,bitrate can't be controlled for RC_QUALITY_MODE,RC_BITRATE_MODE and RC_TIMESTAMP_MODE without enabling skip frame.
+[OpenH264] this = 0x0x7f9a100df740, Warning:ParamValidation(), AdaptiveQuant(1) is not supported yet for screen content, auto turned off
+[OpenH264] this = 0x0x7f9a100df740, Warning:ParamValidation(), BackgroundDetection(1) is not supported yet for screen content, auto turned off
+[OpenH264] this = 0x0x7f9a100df740, Warning:bEnableFrameSkip = 0,bitrate can't be controlled for RC_QUALITY_MODE,RC_BITRATE_MODE and RC_TIMESTAMP_MODE without enabling skip frame.
+test trim::tests::refuses_backwards ... ok
+[OpenH264] this = 0x0x7f9a1c000d50, Warning:ParamValidation(), AdaptiveQuant(1) is not supported yet for screen content, auto turned off
+[OpenH264] this = 0x0x7f9a1c000d50, Warning:ParamValidation(), BackgroundDetection(1) is not supported yet for screen content, auto turned off
+[OpenH264] this = 0x0x7f9a1c000d50, Warning:bEnableFrameSkip = 0,bitrate can't be controlled for RC_QUALITY_MODE,RC_BITRATE_MODE and RC_TIMESTAMP_MODE without enabling skip frame.
+test tests::another_encoders_stream_gets_its_own_sample_entry ... ok
+test tests::an_mp4_written_as_it_goes ... ok
+test aac::tests::a_tone ... ok
+[OpenH264] this = 0x0x7f9a340030f0, Warning:ParamValidation(), AdaptiveQuant(1) is not supported yet for screen content, auto turned off
+[OpenH264] this = 0x0x7f9a340030f0, Warning:ParamValidation(), BackgroundDetection(1) is not supported yet for screen content, auto turned off
+[OpenH264] this = 0x0x7f9a340030f0, Warning:bEnableFrameSkip = 0,bitrate can't be controlled for RC_QUALITY_MODE,RC_BITRATE_MODE and RC_TIMESTAMP_MODE without enabling skip frame.
+test trim::tests::a_recording_trimmed ... ok
+test tests::changed_parameter_sets_are_refused ... ok
+test export::tests::a_recording_cut_cropped_and_halved ... ok
+[OpenH264] this = 0x0x7f9a300298d0, Warning:ParamValidation(), AdaptiveQuant(1) is not supported yet for screen content, auto turned off
+[OpenH264] this = 0x0x7f9a300298d0, Warning:ParamValidation(), BackgroundDetection(1) is not supported yet for screen content, auto turned off
+[OpenH264] this = 0x0x7f9a300298d0, Warning:bEnableFrameSkip = 0,bitrate can't be controlled for RC_QUALITY_MODE,RC_BITRATE_MODE and RC_TIMESTAMP_MODE without enabling skip frame.
+test tests::an_mp4_with_sound ... ok
+test gif::tests::a_recording_made_a_gif ... ok
+test opus::tests::a_voice_written_and_decoded_again ... ok
+test export::tests::the_sound_is_cut_to_the_sample ... ok
+test tests::vaapi_frames_come_back ... ok
+test tests::vaapi_dmabuf_frames_come_back ... ok
+[OpenH264] this = 0x0x7f9a0e3b2810, Warning:ParamValidation(), AdaptiveQuant(1) is not supported yet for screen content, auto turned off
+[OpenH264] this = 0x0x7f9a0e3b2810, Warning:ParamValidation(), BackgroundDetection(1) is not supported yet for screen content, auto turned off
+[OpenH264] this = 0x0x7f9a0e3b2810, Warning:bEnableFrameSkip = 0,bitrate can't be controlled for RC_QUALITY_MODE,RC_BITRATE_MODE and RC_TIMESTAMP_MODE without enabling skip frame.
+test tests::a_recording_goes_on_with_another_encoder ... ok
+
+test result: ok. 25 passed; 0 failed; 10 ignored; 0 measured; 0 filtered out; finished in 3.37s
+
+     Running tests/reference.rs (target/release/deps/reference-d8d68fcf61f2d70d)
+
+running 4 tests
+test vp9_10_bit_is_the_reference_decoder_s ... ok
+test av1_10_bit_is_the_reference_decoder_s ... ok
+test vp9_in_tiles_is_the_reference_decoder_s ... ok
+test hevc_main_10_is_the_reference_decoder_s ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.88s
+
+     Running unittests src/main.rs (target/release/deps/olo_viewer-d193a47d398128c1)
+
+running 17 tests
+test pdfdoc::sample::sample_pdf ... ignored
+test pdfdoc::tests::dump_fields ... ignored
+test pdfdoc::tests::render_png ... ignored
+test pdfdoc::tests::write_fixture ... ignored
+test pdftext::live::reads_a_real_pdf ... ignored
+test pdfdoc::tests::reads_fields ... ok
+test pdfdoc::tests::marks_saved_before_the_rename_are_ours ... ok
+test pdfdoc::tests::flattens ... ok
+test pdfdoc::tests::render_bytes_hide_our_annotations ... ok
+test pdfdoc::tests::text_helpers ... ok
+test pdftext::tests::carets_from_points ... ok
+test pdftext::tests::spaces_lines_paragraphs_and_hyphens ... ok
+test pdfview::tests::affine_round_trip ... ok
+test signature::tests::normalises ... ok
+test video_edit::tests::what_is_kept_is_the_trim_less_the_cuts ... ok
+test pdfdoc::tests::fills_signs_and_reads_back ... ok
+test video_edit::tests::names_its_copy_beside_it ... ok
+
+test result: ok. 12 passed; 0 failed; 5 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (target/release/deps/olo_voice-9e65b63dcae900bb)
+
+running 4 tests
+test tests::allocations_a_frame ... ignored
+test tests::live_frame_time ... ignored
+test tests::a_spectrum_finds_a_tone ... ok
+test tests::a_trial_measures_each_stage ... ok
+
+test result: ok. 2 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.21s
+
+     Running tests/chain.rs (target/release/deps/chain-9ea8fe21e7d0615b)
+
+running 9 tests
+test the_canceller_learns_a_voices_echo_quickly ... ok
+test a_quiet_voice_is_brought_up_and_a_loud_one_down ... ok
+test echo_is_cancelled ... ok
+test the_delay_is_what_it_says ... ok
+test noise_is_taken_out_and_the_voice_kept ... ok
+test a_clean_voice_comes_through_untouched ... ok
+test talking_over_the_other_person_keeps_the_voice_and_drops_theirs ... ok
+test turning_noise_suppression_down_leaves_more_of_the_room ... ok
+test talking_over_the_music_keeps_the_voice_and_drops_the_echo ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.76s
+
+     Running tests/least_delay.rs (target/release/deps/least_delay-7bedaeee56075026)
+
+running 1 test
+test least_delay_against_deepfilternet ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/speech.rs (target/release/deps/speech-87554b14291c1fdc)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/release/deps/olo_voice-18b31c67be00e452)
+
+running 3 tests
+test engine::tests::named_after_its_microphone ... ok
+test engine::tests::what_the_source_holds_for_its_quantum ... ok
+test tests::the_source_and_its_microphone_are_one ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/release/deps/olo_web-0ed4a59d4e191c2b)
+
+running 38 tests
+test css::animation::tests::progress_follows_delay_count_direction_and_fill ... ok
+test css::media::tests::widths_types_and_logic ... ok
+test css::properties::animation::tests::easings_follow_their_curves ... ok
+test css::media::tests::supports_declarations ... ok
+test css::animation::tests::values_interpolate_by_their_tokens ... ok
+test css::properties::animation::tests::the_shorthand_splits_by_kind_and_order ... ok
+test css::properties::decoration::filter_tests::backdrop_filters_keep_blur_and_saturate_in_order ... ok
+test css::properties::inert_tests::inert_names_are_sorted ... ok
+test css::properties::transform::tests::matrices_compose_in_list_order ... ok
+test font::casefold::tests::every_normative_default_full_mapping ... ok
+test css::properties::font::tests::a_generic_word_inside_an_unquoted_name_is_part_of_it ... ok
+test font::woff::tests::base128_and_255 ... ok
+test font::woff::tests::triplets_follow_the_specification_table ... ok
+test html::bytes::detection_tests::undeclared_utf8_is_utf8_and_other_bytes_windows_1252 ... ok
+test page::sheet_tests::a_failed_callback_does_not_strand_other_rule_waiters ... ok
+test page::sheet_tests::background_rules_discard_a_superseded_request ... ok
+test page::sheet_tests::background_rules_notify_each_live_request_once ... ok
+test page::sheet_tests::background_rules_share_failures_without_retrying_on_the_page ... ok
+test page::sheet_tests::integrity_takes_the_strongest_digest_and_both_base64_forms ... ok
+test paint::decoration::bevel_tests::inset_and_outset_shade_as_chrome ... ok
+test paint::glyph_mask::tests::cache_identity_budgets_and_cancellation ... ok
+test page::sheet_tests::background_rules_ready_before_subscription_are_taken_immediately ... ok
+test text::layout::spacing::tests::edges_belong_to_the_correct_side_of_a_line_break ... ok
+test paint::mipmap::tests::budgets_eviction_weak_lifetimes_and_cancellation ... ok
+test paint::mipmap::tests::odd_axis_weights_are_explicit_and_checker_averages_floor ... ok
+test paint::mipmap::tests::packed_reduction_matches_normalized_weighted_reference ... ok
+test paint::raster::tests::upscale_matches_bilinear_drawing ... ok
+test srcset::tests::sources_densities_and_widths_pick_as_html_says ... ok
+test page::sheet_tests::background_rules_cancel_only_after_the_last_user_leaves ... ok
+test css::properties::decoration::filter_tests::colour_filters_make_one_matrix ... ok
+test css::properties::animation::tests::the_transition_shorthand_splits_by_kind_and_order ... ok
+test font::metrics::tests::installed_font_content_metrics_match_native_chrome ... ok
+test layout::used::layout_grid_survives_fractional_scale_round_trips ... ok
+test paint::raster::tests::blur_matches_the_direct_box_blurs ... ok
+test page::background::tests::bounds_work_removes_queued_inputs_and_keeps_survivors ... ok
+test paint::glyph_mask::tests::transforms_and_viewport_edges_preserve_pixels ... ok
+test paint::glyph_mask::tests::cached_glyphs_preserve_direct_raster_pixels ... ok
+test paint::glyph_mask::tests::fractional_transforms_preserve_pixels ... ok
+
+test result: ok. 38 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.54s
+
+     Running tests/absolute_page.rs (target/release/deps/absolute_page-abaa3691074397da)
+
+running 24 tests
+test an_absolute_replaced_box_takes_its_elements_box_as_containing_block ... ok
+test cells_fill_their_row_and_align_their_content_in_it ... ok
+test clip_rect_hides_an_absolute_box_and_takes_its_hits_away ... ok
+test an_inline_level_absolute_box_takes_its_place_in_its_line ... ok
+test computed_line_height_and_font_family_read_as_chrome_reports_them ... ok
+test container_queries_ask_the_nearest_container_of_their_name ... ok
+test a_fixed_table_takes_its_first_rows_widths ... ok
+test atomic_inlines_align_to_the_line_box_top_bottom_and_middle ... ok
+test a_flex_containers_bare_text_follows_its_align_items ... ok
+test an_svg_with_only_a_viewbox_fills_the_width_at_its_ratio ... ok
+test an_absolute_box_with_a_ratio_takes_its_width_from_its_height ... ok
+test an_absolute_flex_child_sits_as_the_sole_item_would ... ok
+test an_item_spanning_minmax_zero_fr_tracks_does_not_grow_them ... ok
+test column_flex_auto_margins_follow_a_height_given_by_the_parent ... ok
+test absolute_flex_child_does_not_participate_in_flex_distribution ... ok
+test a_transparent_box_over_a_painted_one_takes_the_hit ... ok
+test fixed_boxes_take_the_viewport_unless_a_transform_holds_them ... ok
+test positioned_paint_escapes_intermediate_static_overflow_clip ... ok
+test positioned_nested_descendants_and_auto_content_height ... ok
+test positioned_blocks_wait_for_padding_containing_block_and_do_not_size_flow ... ok
+test what_takes_no_pointer_events_passes_the_point_to_the_box_it_is_in ... ok
+test scroll_containers_move_what_they_hold_within_their_padding_box ... ok
+test text_box_trims_the_first_and_last_lines_to_their_edges ... ok
+test independent_absolute_page_rectangles ... ok
+
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.39s
+
+     Running tests/bytes.rs (target/release/deps/bytes-190b82744cf802df)
+
+running 6 tests
+test css_fixture_bytes_at_every_split_use_independent_expected_encoding ... ok
+test decoded_source_keeps_its_buffer_and_reports_retained_capacity ... ok
+test resource_limits_cancellation_and_failure_are_terminal_and_do_not_leak_output ... ok
+test css_encoding_precedence_prefix_bound_and_exact_byte_pattern ... ok
+test utf8_exhaustive_short_sequences_and_malformed_boundaries_match_reference ... ok
+test all_standard_codecs_preserve_state_and_replacement_across_chunks ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+     Running tests/canvas_text.rs (target/release/deps/canvas_text-d1357334e78af543)
+
+running 2 tests
+test a_canvas_font_string_is_the_css_font_shorthand ... ok
+test text_is_shaped_into_outlines_with_its_metrics ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/cascade.rs (target/release/deps/cascade-0048e44add19abdc)
+
+running 12 tests
+test a_sheet_compiled_again_keeps_its_blocks_and_answers_the_same ... ok
+test actual_dom_matching_nested_layers_multiple_sheets_and_inline_style ... ok
+test all_resets_known_properties_preserves_direction_and_custom_and_chained_rules_descend ... ok
+test cancellation_candidate_sort_work_and_resolution_limits_are_explicit ... ok
+test defaulting_invalid_substitution_and_rollback_cycles ... ok
+test dynamic_custom_rollback_keeps_dependency_guards_and_shared_typed_results ... ok
+test invalid_layer_names_are_atomic_and_namespaces_are_sheet_local ... ok
+test origin_importance_inline_layers_specificity_proximity_and_order ... ok
+test rollback_uses_origin_normal_layer_and_rule_boundaries ... ok
+test taint_policy_isolated_in_pending_cache_and_retained_budget_is_bounded ... ok
+test a_rejected_selector_leaves_the_next_rules_matching ... ok
+test independent_pinned_cascade_ports ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/colors.rs (target/release/deps/colors-fc100e2e774d8d37)
+
+running 11 tests
+test color_spaces_missing_components_clamps_and_computed_phase ... ok
+test conversions_preserve_gamut_and_are_finite_for_extremes ... ok
+test contextual_color_math_uses_live_host_dependencies_and_only_selected_branches ... ok
+test numeric_color_channels_fold_after_type_checking_and_keep_missing_information ... ok
+test retained_precision_storage_and_all_byte_endpoints ... ok
+test syntax_source_is_not_retained_and_context_can_change ... ok
+test bounded_batch_matches_individual_conversions_and_resumes_after_cancel ... ok
+test math_color_quotas_cover_all_channels_and_conditional_nodes ... ok
+test hostile_values_limits_depth_cancellation_and_flat_drop ... ok
+test deterministic_malformed_value_fuzz ... ok
+test independent_pinned_grammar_and_conversion_vectors ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s
+
+     Running tests/containers.rs (target/release/deps/containers-8afaf608f33141f7)
+
+running 3 tests
+test changed_containment_and_viewport_recompute_descendant_box_lengths ... ok
+test early_contexts_and_inherited_pending_lengths_render_with_recorded_fallbacks ... ok
+test box_container_lengths_match_independent_chrome_at_five_native_scales ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/controls.rs (target/release/deps/controls-6c2fa016f84e0f60)
+
+running 3 tests
+test control_state_bounds_cancellation_and_generation_validation ... ok
+test page_css_uses_control_states_and_rebuilds_after_dom_changes ... ok
+test css_control_states_match_independent_chrome_across_tree_and_attribute_changes ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/css.rs (target/release/deps/css-774d882591825c95)
+
+running 6 tests
+test current_unicode_ranges_delimiters_and_declaration_rules ... ok
+test deep_components_and_long_unicode_strings_drop_without_recursion_or_split_utf8 ... ok
+test syntax_is_bounded_cancellable_and_source_backed ... ok
+test pinned_wpt_syntax_assertions_without_claiming_cssom_or_page_execution ... ok
+test independent_generic_css_fixtures ... ok
+test malformed_css_makes_bounded_progress ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+     Running tests/dom.rs (target/release/deps/dom-37a098807b6919fe)
+
+running 21 tests
+test a_cancelled_clone_does_not_allocate_or_mutate_the_document ... ok
+test attributes_preserve_insertion_order_and_namespaces_and_skip_noops ... ok
+test failed_doctype_allocation_reclaims_its_partially_stored_identifiers ... ok
+test moves_fragments_and_rejected_mutations_preserve_order_and_ownership ... ok
+test source_ranges_and_owned_strings_are_retained_and_reclaimed_separately ... ok
+test template_allocation_and_owned_depth_are_preflighted_and_failed_clones_release_content_roots ... ok
+test debug_output_does_not_dump_page_source_or_character_data ... ok
+test template_content_ownership_is_separate_from_children_and_clones_and_reclaims_both ... ok
+test decoded_owned_text_moves_into_the_document_without_a_second_copy ... ok
+test cloning_preserves_order_and_source_text_and_does_not_alias_mutable_buffers ... ok
+test document_type_is_unique_before_the_element_and_never_an_element_child ... ok
+test failed_append_keeps_value_and_reserved_bytes_and_revision_unchanged ... ok
+test limits_preflight_without_losing_the_previous_value_or_children ... ok
+test long_strings_are_held_once_however_many_values_are_them ... ok
+test signed_integer_attributes_follow_html_prefix_parsing ... ok
+test scoped_generation_handles_reject_old_navigation_and_reused_slots ... ok
+test adjacent_text_coalesces_source_ranges_then_grows_with_bounded_capacity ... ok
+test random_reparenting_matches_an_independent_parent_list_model ... ok
+test destroying_deep_and_wide_subtrees_is_iterative_and_reuses_storage ... ok
+test a_full_change_log_is_compacted_not_forgotten ... ok
+test a_compacted_log_forgets_nodes_never_in_the_document ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+     Running tests/environment.rs (target/release/deps/environment-58b3a0f7b6a85dc1)
+
+running 3 tests
+test environment_publication_rejects_uncomputed_duplicate_and_excessive_payloads ... ok
+test environment_substitution_is_indexed_case_sensitive_lazy_and_bounded ... ok
+test real_style_pipeline_matches_chrome_safe_area_fallbacks_and_cycles_at_five_scales ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running tests/flex.rs (target/release/deps/flex-b5f34edba2d9a8d7)
+
+running 3 tests
+test flex_work_is_bounded_cancellable_and_not_published_early ... ok
+test hostile_flex_inputs_fail_without_partial_geometry_or_unbounded_arithmetic ... ok
+test definite_flex_lines_match_original_chrome_at_five_native_scales ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/flow.rs (target/release/deps/flow-93bff343506f0ffe)
+
+running 33 tests
+test a_table_of_plain_children_and_a_caption_is_as_wide_as_they_are ... ok
+test an_inline_block_of_items_wraps_them_at_min_content_and_columns_share_by_max_content ... ok
+test a_newline_before_a_br_lays_out ... ok
+test flex_intrinsic_work_obeys_global_quota_and_cancellation ... ok
+test block_width_padding_border_auto_margins_and_percentages ... ok
+test closed_details_show_their_summary_alone ... ok
+test column_flex_stacks_items_with_gaps_alignment_and_growth ... ok
+test completed_inline_edges_do_not_create_a_line_for_trailing_collapsed_space ... ok
+test flex_reflow_keeps_intrinsics_and_rejects_unimplemented_contexts ... ok
+test empty_inlines_in_a_nowrap_container_lay_out ... ok
+test fit_content_flex_items_inside_a_flex_row_size_from_their_content ... ok
+test fixed_and_sticky_boxes_are_laid_out_without_fallbacks ... ok
+test adjoining_positive_negative_and_empty_block_margins ... ok
+test flex_items_wrapping_inline_level_links_take_their_content_width ... ok
+test identical_paragraphs_share_glyphs_with_distinct_dom_source_mappings ... ok
+test inline_sources_survive_wrap_block_splits_and_resize ... ok
+test inline_fragment_storage_is_bounded_even_across_block_interruptions ... ok
+test semantic_opportunities_cannot_reuse_literal_unicode_nowrap_cache_entries ... ok
+test grid_areas_and_named_lines_place_items ... ok
+test reversed_list_lookahead_obeys_limits_and_cancellation ... ok
+test stale_contexts_cancellation_quotas_and_poisoning ... ok
+test grid_tracks_place_items_and_size_rows_from_content ... ok
+test styled_spans_shape_in_their_own_fonts_and_raise_the_line ... ok
+test tables_size_columns_from_cells_and_place_rows ... ok
+test text_rewritten_in_place_is_the_tree_built_anew ... ok
+test inline_edges_fit_wrap_and_preserve_actual_box_ends ... ok
+test semantic_br_survives_collapsing_and_wbr_wraps_without_a_glyph ... ok
+test used_zero_percentage_edges_restore_cross_span_shaping_without_mutating_cache ... ok
+test definite_flex_reference_runs_through_production_css_and_page_layout ... ok
+test integrated_flex_pages_match_independent_chrome_at_five_native_scales ... ok
+test independent_chrome_inline_spacing ... ok
+test independent_chrome_normal_flow_rectangles ... ok
+test independent_chrome_break_controls ... ok
+
+test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.60s
+
+     Running tests/font_native.rs (target/release/deps/font_native-df4557851bb4486f)
+
+running 16 tests
+test collections_share_one_source_scoped_ids_and_surviving_leases ... ok
+test bounded_outline_heuristics_and_css_estimates_have_provenance ... ok
+test first_available_is_independent_of_reference_glyph_fallback_and_units ... ok
+test writing_modes_choose_reference_advances_and_synthesize_missing_vertical_metrics ... ok
+test independent_raw_hvar_mvar_and_real_noto_variable_metrics ... ok
+test language_range_policy_and_context_identity_are_explicit ... ok
+test localized_family_aliases_full_fold_without_normalization_or_fullname_matching ... ok
+test malformed_limits_cancellation_and_atomic_loads ... ok
+test native_metric_cache_bounds_keys_clone_and_cancel ... ok
+test composite_height_inference_skips_recursion_and_gvar_phantoms_keep_precision ... ok
+test selected_chrome_loaded_font_metrics_bound_the_known_integer_rounding_difference ... ok
+test style_jobs_rebind_language_metrics_and_reject_incoherent_root_or_publication ... ok
+test synthesis_policy_and_explicit_unsupported_new_slopes ... ok
+test unavailable_complete_generics_default_before_next_family_but_incomplete_generics_skip ... ok
+test variable_registered_coordinates_clamp_and_reverse_opentype_slant_sign ... ok
+test width_style_weight_priority_and_directional_search ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/font_pool.rs (target/release/deps/font_pool-b73eaa9244145d5a)
+
+running 9 tests
+test cancellation_and_revision_changes_reject_cached_results_and_poison_the_job ... ok
+test zero_and_saturated_pools_preserve_values_and_bound_retention ... ok
+test context_changes_during_a_pool_hit_are_rejected_before_publication ... ok
+test every_numeric_slant_and_axis_dimension_is_part_of_the_key ... ok
+test failed_misses_do_not_publish_and_successful_pools_do_not_outlive_the_tree ... ok
+test huge_valid_family_lists_skip_optional_hashing_and_preserve_selection ... ok
+test identical_requests_with_different_subject_contexts_never_share ... ok
+test nonadjacent_requests_and_separate_equal_family_sources_share_without_reselecting ... ok
+test pool_scratch_is_charged_to_the_job_budget ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/fonts.rs (target/release/deps/fonts-698497dedf2d3889)
+
+running 3 tests
+test font_face_rules_become_descriptors_with_sources_and_ranges ... ok
+test a_family_split_by_unicode_range_answers_each_character_from_its_face ... ok
+test woff2_files_decode_to_parsable_fonts ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/fractional_fit.rs (target/release/deps/fractional_fit-be9ff955451193ca)
+
+running 1 test
+test natural_width_and_subpixel_shortages_match_chrome_after_reuse ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.91s
+
+     Running tests/html_bytes.rs (target/release/deps/html_bytes-af7bca17bf4c8dce)
+
+running 1 test
+test byte_encoding_priority_and_meta_prescan ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/images.rs (target/release/deps/images-6946483326f6fb65)
+
+running 11 tests
+test a_deferred_image_makes_its_pixels_once_and_only_when_asked ... ok
+test asset_premultiplication_and_shared_binding_budgets ... ok
+test native_image_alpha_tiles_and_restyle_keep_the_same_asset ... ok
+test dimensions_are_cascade_hints_and_one_to_one_pixels_composite_exactly ... ok
+test a_new_frame_of_the_same_size_replaces_its_picture_in_place ... ok
+test minified_alpha_tiles_are_seamless_cached_and_reclaimed ... ok
+test images_past_the_page_binding_limit_are_left_out_not_the_page ... ok
+test independent_native_chrome_image_pixels_and_explicit_nonpasses ... ok
+test independent_chrome_intrinsic_constraints_display_and_dimension_hints ... ok
+test images_in_implicit_grid_tracks_match_chrome_intrinsic_widths ... ok
+test full_pipeline_image_boxes_match_independent_chrome_objects ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.60s
+
+     Running tests/inline.rs (target/release/deps/inline-f46f56b7c2b7a565)
+
+running 15 tests
+test cancellation_quotas_poisoning_and_invalid_options ... ok
+test intrinsic_jobs_bound_work_cancel_and_do_not_publish_partial_sizes ... ok
+test preserved_spaces_hang_conditionally_and_break_spaces_stay_measured ... ok
+test intrinsic_text_widths_follow_wrap_policy_and_hard_breaks ... ok
+test text_builder_validates_provenance_and_caps_before_publication ... ok
+test unsafe_ligature_cuts_nonmonotonic_widths_and_deleted_prefixes ... ok
+test inline_edge_boundaries_isolate_ligatures_and_later_reshape_context ... ok
+test preserved_lf_no_wrap_blank_lines_and_phantom_whitespace ... ok
+test wraps_real_glyphs_trims_edges_and_reuses_width_independent_text ... ok
+test intrinsic_contexts_fail_before_publishing_guessed_sizes ... ok
+test computed_styles_bind_scope_direction_whitespace_and_line_metrics ... ok
+test bidi_visual_slices_and_alignment_follow_each_line ... ok
+test letter_and_word_spacing_widen_shaped_advances ... ok
+test intrinsic_text_min_max_match_original_chrome_fonts_at_five_scales ... ok
+test independent_native_harfbuzz_line_oracle ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests/linebreak.rs (target/release/deps/linebreak-ecfac612f3ffab9e)
+
+running 5 tests
+test prepared_source_breaks_share_storage_and_reverse_iteration ... ok
+test streaming_frontier_limits_cancellation_and_failure_poisoning ... ok
+test required_markers_utf8_offsets_and_constant_combining_state ... ok
+test unicode_18_all_default_line_break_boundaries ... ok
+test ascii_run_boundaries_preserve_quotation_numeric_and_combining_contexts ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s
+
+     Running tests/logical.rs (target/release/deps/logical-bcf6758bcef20301)
+
+running 7 tests
+test inheritance_retains_declared_source_and_all_prefers_physical_on_ties ... ok
+test paired_queries_obey_cancellation_depth_taint_and_memory_limits ... ok
+test pending_values_use_declared_longhand_and_share_shorthand_expansion ... ok
+test rollback_crosses_aliases_and_respects_origin_layer_rule_and_importance ... ok
+test all_ten_mode_direction_combinations_map_every_supported_group ... ok
+test axes_defaulting_variables_upright_and_parent_direction_are_coherent ... ok
+test independent_pinned_logical_ports ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.40s
+
+     Running tests/math.rs (target/release/deps/math-d42592acb3a6b2b5)
+
+running 10 tests
+test computed_numeric_failures_are_bounded_and_do_not_change_specified_programs ... ok
+test computed_calculations_freeze_units_tree_counts_and_preserve_layout_percentages ... ok
+test container_lengths_can_wait_for_layout_while_font_context_is_frozen ... ok
+test ieee_values_stay_inside_calculations_until_materialized ... ok
+test progress_and_tree_counting_use_explicit_live_context ... ok
+test relative_units_are_deferred_and_dependency_bits_follow_the_expression ... ok
+test type_algebra_percentage_policy_and_absolute_unit_conversion ... ok
+test limits_cancellation_depth_flat_storage_and_private_debug ... ok
+test deterministic_hostile_numeric_grammar_fuzz ... ok
+test independent_pinned_numeric_ports ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running tests/measure.rs (target/release/deps/measure-fe29809fc0dd8f11)
+
+running 27 tests
+test a_ratio_svg_with_a_percentage_height_contributes_its_ratio_width ... ok
+test a_column_flex_item_keeps_its_content_height_in_a_clamped_grid_item ... ok
+test an_empty_element_is_placed_where_it_sits ... ok
+test content_sized_widths_are_not_stretched_across ... ok
+test dir_in_a_shadow_tree_follows_the_host ... ok
+test a_pseudo_element_answers_its_own_computed_style ... ok
+test instances_of_a_component_share_their_compiled_sheets ... ok
+test breaking_anywhere_shrinks_min_content_and_a_line_clamp_ends_the_box ... ok
+test live_media_changes_reselect_rules_without_reloading_sheets_or_unchanged_fonts ... ok
+test a_shadow_trees_new_sheet_restyles_only_what_it_reaches ... ok
+test a_parent_turned_flex_blockifies_its_kept_children ... ok
+test marker_styles_survive_reuse_and_change_with_their_originating_item ... ok
+test a_child_added_to_a_host_is_styled_where_its_slot_is ... ok
+test pseudo_elements_are_made_where_their_content_rules_match ... ok
+test list_numbering_matches_chrome ... ok
+test list_numbering_follows_mutations_and_reuse ... ok
+test a_picture_a_script_loaded_measures_its_image_after_the_document_changes ... ok
+test css_counters_follow_pseudo_and_element_mutations ... ok
+test css_counter_sequencing_matches_chrome ... ok
+test outside_markers_reserve_room_and_align_to_the_first_content_baseline ... ok
+test a_length_margin_resolves_to_itself_not_the_room_left_over ... ok
+test a_font_patched_in_place_shapes_its_texts_again ... ok
+test text_baselines_and_content_bounds_match_native_chrome_after_scale_changes ... ok
+test a_components_sheet_counts_once_in_the_css_budget ... ok
+test css_counter_scope_storage_is_bounded ... ok
+test grid_track_distribution_matches_native_chrome ... ok
+test grid_track_distribution_updates_after_size_and_gap_changes ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s
+
+     Running tests/objects.rs (target/release/deps/objects-bc4aff189c3bfded)
+
+running 6 tests
+test atomic_items_fit_without_glyphs_and_expand_only_their_own_line ... ok
+test literal_object_character_remains_font_text_and_semantic_objects_isolate_context ... ok
+test object_metadata_and_metrics_are_mandatory_bounded_and_cancellable ... ok
+test objects_keep_bidi_order_nowrap_and_fractional_advances ... ok
+test independent_object_capture_provenance_is_complete ... ok
+test independent_chrome_atomic_object_positions_and_line_metrics ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+
+     Running tests/overflow.rs (target/release/deps/overflow-516f2c0a6ddc4500)
+
+running 3 tests
+test root_scrollbar_properties_do_not_propagate_from_body_or_inherit ... ok
+test unpainted_overflow_on_an_unclipped_axis_still_reaches_the_page ... ok
+test viewport_source_and_one_axis_clips_match_chrome_after_live_restyles ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/paint.rs (target/release/deps/paint-f4f0d91dafa61eec)
+
+running 66 tests
+test a_grid_items_min_width_is_its_minimum_contribution ... ok
+test a_shadow_trees_sheets_style_its_tree_its_host_and_what_is_slotted ... ok
+test a_shared_ligature_can_be_read_without_an_internal_optional_break_marker ... ok
+test a_declarative_shadow_root_renders_with_its_own_sheet ... ok
+test a_transitioned_property_eases_to_its_new_value_and_says_so ... ok
+test a_style_attribute_a_has_tests_restyles_what_has_it ... ok
+test a_patched_rerender_reports_the_whole_pages_fallbacks ... ok
+test a_blur_spreads_before_its_ancestors_clip_and_scales_with_its_transform ... ok
+test a_transition_patched_over_a_whole_restyle_keeps_its_new_geometry ... ok
+test a_shadow_tree_renders_in_its_hosts_place_with_its_slots ... ok
+test a_live_canvas_is_a_surface_cut_by_its_clip_and_rounded_by_its_own ... ok
+test a_focus_set_by_the_page_matches_focus_within_on_a_rerender ... ok
+test a_patched_element_keeps_its_descendant_rules_and_pseudo_elements ... ok
+test a_z_index_inside_a_positioned_auto_box_rises_above_later_positioned_siblings ... ok
+test an_atomic_inline_takes_its_opacity_filter_and_transform ... ok
+test an_iframe_with_frameborder_0_has_no_border ... ok
+test attribute_changes_reach_through_states_and_not_through_any_element ... ok
+test an_interaction_restyle_matches_only_what_the_states_reach_and_paints_as_a_whole_one ... ok
+test a_repeated_layered_sheet_keeps_its_first_place_in_the_layer_order ... ok
+test checkboxes_radios_and_selects_draw_as_chrome_in_their_scheme ... ok
+test flex_items_lay_out_in_order_modified_document_order ... ok
+test an_opacity_change_patches_its_group_and_paints_as_a_new_scene_would ... ok
+test background_clip_text_paints_the_backgrounds_through_the_glyphs ... ok
+test a_filter_blurs_and_recolours_its_box_past_its_edges ... ok
+test column_flex_items_follow_order_too ... ok
+test background_image_layers_tile_position_size_and_clip ... ok
+test floats_shorten_lines_beside_them_and_clear_moves_below ... ok
+test independent_chrome_native_pixels_not_yet_matching ... ignored, 36 native font-mask/corner/colour-precision observations still fail exactly. See paint-fixtures/README.md.
+test drop_shadow_draws_the_alpha_moved_under_the_box_and_later_functions_colour_both ... ok
+test inline_backgrounds_round_their_ends_and_not_their_line_breaks ... ok
+test cross_node_ligatures_and_clipped_ink_do_not_invent_click_targets ... ok
+test generated_content_paints_before_and_after_text_and_blocks ... ok
+test distant_tiles_keep_local_subpixel_precision ... ok
+test complete_static_pipeline_paints_style_elements_and_reports_inert_scripts ... ok
+test inset_shadows_paint_inside_the_padding_box ... ok
+test inline_elements_paint_at_their_opacity ... ok
+test linked_sheets_use_first_base_and_document_cascade_order ... ok
+test document_input_restyles_link_states_and_keeps_equal_color_owners_separate ... ok
+test gradient_layers_take_their_size_position_and_repeat ... ok
+test pictures_not_here_yet_show_when_they_land ... ok
+test opacity_composites_a_box_and_its_content_as_one_layer ... ok
+test a_class_that_selectors_reach_from_restyles_what_they_reach ... ok
+test inline_spacing_moves_glyphs_without_block_axis_padding_moving_the_line ... ok
+test colors_visibility_clipping_and_positioned_paint_order ... ok
+test intrinsic_widths_and_column_flow_grids ... ok
+test glyph_color_reuse_tracks_real_spans_across_breaks_and_hidden_text ... ok
+test inline_backgrounds_paint_and_an_empty_one_says_it_is_not ... ok
+test a_sheet_linked_again_counts_once_and_too_much_css_drops_sheets_not_the_page ... ok
+test pictures_styles_name_later_are_noted_where_the_styles_changed ... ok
+test text_decoration_underline_and_line_through_paint_under_the_text ... ok
+test structured_text_matches_linear_cluster_reference_and_preserves_literal_zwsp ... ok
+test semantic_breaks_move_paint_and_never_expose_carriers_as_text_or_targets ... ok
+test raster_cancellation_limits_and_cache_reuse ... ok
+test text_edits_restyle_empty_only_when_text_comes_or_goes ... ok
+test text_wrap_balance_evens_the_lines_without_adding_one ... ok
+test the_container_shorthand_makes_a_query_container ... ok
+test rounded_corners_gradients_and_shadows_paint_from_style ... ok
+test unstyled_fields_and_buttons_draw_a_thin_rounded_frame_not_their_bevel ... ok
+test tiled_output_equals_whole_surface_and_index_matches_brute_force ... ok
+test text_overflow_ellipsis_cuts_a_clipped_line_with_its_mark ... ok
+test translucent_and_asymmetric_border_tiles_have_no_seams_or_double_alpha ... ok
+test paints_background_canvas_borders_and_native_glyph_positions ... ok
+test native_pixel_capture_manifest_has_all_inputs_and_immutable_reference_bytes ... ok
+test transforms_move_rotate_and_scale_a_box_with_its_content ... ok
+test a_live_refresh_compiles_new_rules_in_the_background ... ok
+test independent_chrome_native_pixels_at_five_scales ... ok
+
+test result: ok. 65 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+     Running tests/positioned.rs (target/release/deps/positioned-529a06a1b251ea30)
+
+running 2 tests
+test static_side_and_numeric_limits_are_explicit ... ok
+test independent_absolute_axis_constraints ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/properties.rs (target/release/deps/properties-595bd4d7105666ec)
+
+running 12 tests
+test clip_takes_rect_with_or_without_commas_and_auto_sides ... ok
+test display_box_types_aliases_and_order_independent_grammar ... ok
+test inset_shapes_expand_quads_and_reject_invalid_round_syntax ... ok
+test local_clip_urls_are_decoded_bounded_and_share_thin_storage ... ok
+test numeric_dimensions_ranges_zero_percentages_and_integer_rounding ... ok
+test pending_values_share_shorthand_and_invalid_results_become_unset ... ok
+test registry_names_initial_values_and_inheritance_are_typed ... FAILED
+test shorthands_expand_atomically_and_keep_logical_identity ... ok
+test cancellation_work_depth_and_input_quotas_are_checked ... ok
+test scrollbar_declarations_are_typed_and_gutter_is_canonical ... ok
+test typed_colors_and_styles_do_not_retain_source ... ok
+test independent_pinned_property_grammar_expansion_and_numeric_ports ... ok
+
+failures:
+
+---- registry_names_initial_values_and_inheritance_are_typed stdout ----
+
+thread 'registry_names_initial_values_and_inheritance_are_typed' (2908931) panicked at crates/web/tests/properties.rs:36:5:
+assertion `left == right` failed
+  left: 206
+ right: 189
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    registry_names_initial_values_and_inheritance_are_typed
+
+test result: FAILED. 11 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+error: test failed, to rerun pass `-p olo-web --test properties`

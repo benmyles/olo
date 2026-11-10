@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/var/tmp/codex-browser-scroll/setup-live.py", line 2, in <module>
+    n,w=windows();c=chrome();run('wait',screen,'--free')
+        ~~~~~~~^^
+  File "/var/tmp/codex-browser-scroll/common.py", line 8, in windows
+    w=json.loads(run('windows',screen));n=next(x for x in w if x['app_id']=='olo.browser');c=next(x for x in w if x['app_id']=='google-chrome')
+                                          ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+StopIteration

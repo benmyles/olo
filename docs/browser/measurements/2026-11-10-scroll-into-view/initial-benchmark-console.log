@@ -1,0 +1,175 @@
+Browser: limits Limits { memory_high: 4294967296, memory_max: 6442450944, swap_max: 268435456, cpu_quota_us: 4000000, cpu_weight: 50, tasks_max: 512 }
+Browser fonts: 240 system font files mapped
+Browser: static page ready 8 ms after the request
+Browser scripts: 1 run, 0 errors, 0 console lines, 1 timers, 0 listeners, 0 layouts (0 ms), revision 1035 -> 1035, 11 ms (11 ms of this thread's CPU)
+Browser: scripted page ready 29 ms after the request
+  layout for scripts: style 1.7 ms, boxes 0.3 ms, text 0.9 ms, layout 0.9 ms, index 0.0 ms, all 3.9 ms (call 3.9 ms): full job: nothing before; viewport units restyled
+  layout for scripts: style 0.1 ms, boxes 0.0 ms, text 0.0 ms, layout 0.2 ms, index 0.0 ms, all 0.4 ms (call 0.4 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  live render: revision 1035 -> 1055 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.1)
+  content: focus targets 0.00 ms, labels 0.10 ms (21 labels)
+  moved: 0 rects, all off screen; first None; viewport 0..578
+  tiles: 0 of 15 repainted in 0.0 ms
+  layout for scripts: style 0.1 ms, boxes 0.0 ms, text 0.1 ms, layout 0.2 ms, index 0.0 ms, all 0.4 ms (call 0.5 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  live render: revision 1055 -> 1075 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.0)
+  content: focus targets 0.00 ms, labels 0.02 ms (21 labels)
+  moved: 0 rects, all off screen; first None; viewport 0..578
+  tiles: 0 of 15 repainted in 0.0 ms
+  layout for scripts: style 0.1 ms, boxes 0.0 ms, text 0.1 ms, layout 0.3 ms, index 0.0 ms, all 0.5 ms (call 0.5 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.2 ms, index 0.0 ms, all 0.3 ms (call 0.3 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  live render: revision 1075 -> 1095 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.1)
+  content: focus targets 0.00 ms, labels 0.17 ms (21 labels)
+  moved: 0 rects, all off screen; first None; viewport 0..578
+  tiles: 0 of 15 repainted in 0.0 ms
+  layout for scripts: style 0.1 ms, boxes 0.0 ms, text 0.0 ms, layout 0.3 ms, index 0.0 ms, all 0.4 ms (call 0.4 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  live render: revision 1095 -> 1115 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.1)
+  content: focus targets 0.00 ms, labels 0.04 ms (21 labels)
+  moved: 0 rects, all off screen; first None; viewport 0..578
+  tiles: 0 of 15 repainted in 0.0 ms
+  layout for scripts: style 0.1 ms, boxes 0.0 ms, text 0.1 ms, layout 0.3 ms, index 0.0 ms, all 0.5 ms (call 0.6 ms): patched in place, 1 elements
+  layout for scripts: style 0.1 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.3 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  live render: revision 1115 -> 1135 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.0)
+  content: focus targets 0.00 ms, labels 0.11 ms (21 labels)
+  moved: 0 rects, all off screen; first None; viewport 0..578
+  tiles: 0 of 15 repainted in 0.0 ms
+  layout for scripts: style 0.1 ms, boxes 0.0 ms, text 0.0 ms, layout 0.2 ms, index 0.0 ms, all 0.3 ms (call 0.4 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  live render: revision 1135 -> 1155 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.0)
+  content: focus targets 0.00 ms, labels 0.12 ms (21 labels)
+  moved: 0 rects, all off screen; first None; viewport 0..578
+  tiles: 0 of 15 repainted in 0.0 ms
+  layout for scripts: style 0.1 ms, boxes 0.0 ms, text 0.0 ms, layout 0.2 ms, index 0.0 ms, all 0.3 ms (call 0.3 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.2 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  layout for scripts: style 0.0 ms, boxes 0.0 ms, text 0.0 ms, layout 0.1 ms, index 0.0 ms, all 0.1 ms (call 0.2 ms): patched in place, 1 elements
+  live console: [log] SCROLL_BENCH {"cached":[18.235041999999936,13.583349999999996,13.290618999999992,13.85773800000004,13.467365000000086,14.095250999999962,13.016108999999915],"changed":[6.415188000000001,5.499355999999921,5.999614000000008,5.093889999999988,5.484752999999955,5.005631999999991,5.20484799999997],"destinations":[[[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4]],[[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4]],[[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4]],[[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4]],[[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4]],[[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4]],[[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[600,1130.4],[600,930.4],[6
+  live render: revision 1155 -> 1175 in 0 ms (snapshot 0.0, canvases 0.0, rerender 0.0)
+  content: focus targets 0.00 ms, labels 0.02 ms (21 labels)
+  moved: 0 rects, all off screen; first None; viewport 0..578
+  tiles: 0 of 15 repainted in 0.0 ms

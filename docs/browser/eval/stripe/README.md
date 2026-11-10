@@ -14,6 +14,21 @@ without a dedicated eval environment; no personal account is part of this run.
 
 ## Latest checkpoint
 
+2026-11-10, initial ancestor/smooth scrolling: the Jobber control now reaches
+Chrome's endpoint in all15 theme/scale settings using actual pointer clicks.
+At1×, Substack, Lightspeed, Mindbody and Jobber all switch to matching positions;
+computed SVG fills match too. Some matrix captures still show a delayed painted
+selection highlight, so this does not establish visual parity. The synthetic
+live smooth-scroll check has27 intermediate updates and completes without
+further input. Component geometry:135 passing cases, five explicit vertical-rl
+nonpasses. Promise completion/interruption and IDL behavior match the new
+Chrome reference fixtures. See
+[scrolling evidence](../../measurements/2026-11-10-scroll-into-view/README.md).
+Next: resolve selection-paint timing, then events/footer layout and the other
+recorded journeys. Acceptance remains0/30.
+
+The preceding checkpoint follows:
+
 2026-11-10, fractional text fitting: an offscreen author wrapped because of
 floating-point roundoff, adding25.2px to the shared testimonial carousel.
 Line fitting now follows Chrome's one-layout-unit allowance, and mixed-run

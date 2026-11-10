@@ -33,8 +33,8 @@ fn number(v: &Value) -> f64 {
 }
 #[test]
 fn registry_names_initial_values_and_inheritance_are_typed() {
-    assert_eq!(P::ALL.len(), 189);
-    assert_eq!(p::Shorthand::ALL.len(), 51);
+    assert_eq!(P::ALL.len(), 206);
+    assert_eq!(p::Shorthand::ALL.len(), 57);
     for &property in P::ALL {
         assert!(Name::parse(property.as_str()).is_some());
         assert_eq!(Name::parse(&property.as_str().to_ascii_uppercase()), Some(Name::Longhand(property)));

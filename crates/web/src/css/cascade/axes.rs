@@ -89,6 +89,15 @@ impl Axes {
             PaddingTop | PaddingRight | PaddingBottom | PaddingLeft | PaddingBlockStart | PaddingBlockEnd | PaddingInlineStart | PaddingInlineEnd => {
                 sides([PaddingTop, PaddingRight, PaddingBottom, PaddingLeft], [PaddingBlockStart, PaddingBlockEnd, PaddingInlineStart, PaddingInlineEnd])
             }
+            ScrollMarginTop | ScrollMarginRight | ScrollMarginBottom | ScrollMarginLeft | ScrollMarginBlockStart | ScrollMarginBlockEnd | ScrollMarginInlineStart | ScrollMarginInlineEnd => {
+                sides([ScrollMarginTop, ScrollMarginRight, ScrollMarginBottom, ScrollMarginLeft], [ScrollMarginBlockStart, ScrollMarginBlockEnd, ScrollMarginInlineStart, ScrollMarginInlineEnd])
+            }
+            ScrollPaddingTop | ScrollPaddingRight | ScrollPaddingBottom | ScrollPaddingLeft | ScrollPaddingBlockStart | ScrollPaddingBlockEnd | ScrollPaddingInlineStart | ScrollPaddingInlineEnd => {
+                sides(
+                    [ScrollPaddingTop, ScrollPaddingRight, ScrollPaddingBottom, ScrollPaddingLeft],
+                    [ScrollPaddingBlockStart, ScrollPaddingBlockEnd, ScrollPaddingInlineStart, ScrollPaddingInlineEnd],
+                )
+            }
             _ => return None,
         })
     }

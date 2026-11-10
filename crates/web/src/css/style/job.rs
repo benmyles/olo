@@ -1506,12 +1506,17 @@ impl<'a> Job<'a> {
             queue.push((i, rematch));
             *asked.entry(i).or_insert(false) |= rematch;
         }
+        // Mutations arrive in script order, which can put a child before
+        // its parent. Compute in tree order so a child's inherited values
+        // see every pending parent change before `done` can retain it.
+        queue.sort_unstable_by_key(|(i, _)| *i);
         queue.reverse();
         while let Some((i, rematch)) = queue.pop() {
             self.tick()?;
             if !done.insert(i) {
                 continue;
             }
+            let rematch = rematch || asked.get(&i).copied().unwrap_or(false);
             let node = self.tree.styles[i].node;
             let parent_node = self.document.composed_parent(node).map_err(Error::Dom)?;
             let parent = parent_node.and_then(|n| self.tree.index(n));

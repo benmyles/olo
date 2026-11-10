@@ -148,7 +148,7 @@ impl Layout {
     pub fn clamp_viewport_scroll(&self, position: [f64; 2]) -> [f64; 2] {
         let range = self.viewport_scroll_range();
         let scale = self.viewport_geometry().full.scale;
-        range.clamp(range.clamp(position).map(|v| (v * scale + 0.5).floor() / scale))
+        range.clamp(range.clamp(position).map(|v| f64::from(((v as f32) * (scale as f32) + 0.5).floor()) / scale))
     }
     pub fn viewport_scroll_range(&self) -> ScrollRange {
         let geometry = self.viewport_geometry();

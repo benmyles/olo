@@ -1,0 +1,44 @@
+[
+  {
+    "event": "scroll",
+    "offset": 0,
+    "time": 53853.788303999994
+  },
+  {
+    "event": "scrollend",
+    "offset": 0,
+    "time": 53854.05131799999
+  },
+  {
+    "call": [
+      {
+        "behavior": "smooth",
+        "block": "nearest"
+      }
+    ],
+    "offset": 0,
+    "rect": [
+      968,
+      20.89477724806784,
+      951,
+      306.68
+    ]
+  },
+  {
+    "result": {
+      "interrupted": false
+    },
+    "offset": 951,
+    "time": 54995.004468
+  },
+  {
+    "event": "scroll",
+    "offset": 951,
+    "time": 55003.782658
+  },
+  {
+    "event": "scrollend",
+    "offset": 951,
+    "time": 55003.978983999994
+  }
+]

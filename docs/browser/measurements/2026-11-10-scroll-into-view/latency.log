@@ -1,0 +1,8 @@
+before 1.25 [('drag', 28.7), ('wheel', 17.3)]
+after 1.25 [('drag', 28.8), ('wheel', 16.7)]
+after 1.25 [('drag', 28.5), ('wheel', 17.5)]
+before 1.25 [('drag', 28.6), ('wheel', 17.4)]
+before 2 [('drag', 28.1), ('wheel', 17.2)]
+after 2 [('drag', 28.8), ('wheel', 17.4)]
+after 2 [('drag', 28.9), ('wheel', 10.8)]
+before 2 [('drag', 28.9), ('wheel', 18.0)]

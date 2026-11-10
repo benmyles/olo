@@ -1,0 +1,31 @@
+{
+  "result": {
+    "type": "object",
+    "value": {
+      "instant": {
+        "value": {
+          "interrupted": false
+        },
+        "type": "object",
+        "keys": [
+          "interrupted"
+        ]
+      },
+      "bad": {
+        "error": "TypeError"
+      },
+      "brand": {
+        "error": "TypeError"
+      },
+      "into": {
+        "value": {
+          "interrupted": false
+        },
+        "type": "object",
+        "keys": [
+          "interrupted"
+        ]
+      }
+    }
+  }
+}

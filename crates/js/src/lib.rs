@@ -3083,6 +3083,8 @@ const NATIVES: &[&str] = &[
     "matchMedia",
     "scrollOffset",
     "setScrollOffset",
+    "scrollIntoView",
+    "scrollDestination",
     "media",
     "mediaCommand",
     "treeOrder",
@@ -4720,17 +4722,52 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                 let x = args.get(1).number_value(scope).unwrap_or(0.);
                 let y = args.get(2).number_value(scope).unwrap_or(0.);
                 let mut s = state.borrow_mut();
-                let max = s.measured().and_then(|m| Some((m.scroll_size(n)?, m.padding_box(n)?))).map(|((w, h), p)| [(w - p.width).max(0.), (h - p.height).max(0.)]);
-                let moved = match max {
-                    Some(max) => {
-                        let clamp = |v: f64, m: f64| if v.is_finite() { v.clamp(0., m) } else { 0. };
-                        s.document.set_scroll_offset(n, [clamp(x, max[0]), clamp(y, max[1])]).unwrap_or(false)
-                    }
-                    None => false,
-                };
+                let to = s.measured().and_then(|m| m.clamp_element_scroll(n, [x, y]));
+                let moved = to.is_some_and(|to| s.document.set_scroll_offset(n, to).unwrap_or(false));
                 drop(s);
                 rv.set(v8::Boolean::new(scope, moved).into());
             }
+        }
+        "scrollIntoView" => {
+            if let Some(n) = node(scope, 0) {
+                let block = olo_web::page::Alignment::parse(&arg_string(scope, &args, 1));
+                let inline = olo_web::page::Alignment::parse(&arg_string(scope, &args, 2));
+                let nearest = args.get(3).boolean_value(scope);
+                let plans = {
+                    let mut s = state.borrow_mut();
+                    s.measured();
+                    match (s.measured.as_ref(), block, inline) {
+                        (Some(m), Some(block), Some(inline)) => m.scroll_into_view(&s.document, n, s.window_scroll, block, inline, nearest),
+                        _ => Vec::new(),
+                    }
+                };
+                let mut items = Vec::new();
+                for plan in plans {
+                    let element: v8::Local<v8::Value> = plan.node.and_then(|n| wrap(scope, &state, n)).map_or_else(|| v8::null(scope).into(), |v| v.into());
+                    let mut values = vec![element];
+                    for v in plan.from.into_iter().chain(plan.to) {
+                        values.push(v8::Number::new(scope, v).into());
+                    }
+                    values.push(v8::Boolean::new(scope, plan.smooth).into());
+                    items.push(v8::Array::new_with_elements(scope, &values).into());
+                }
+                rv.set(v8::Array::new_with_elements(scope, &items).into());
+            }
+        }
+        "scrollDestination" => {
+            let n = node(scope, 0);
+            let to = [args.get(1).number_value(scope).unwrap_or(0.), args.get(2).number_value(scope).unwrap_or(0.)];
+            let mut s = state.borrow_mut();
+            let to = s
+                .measured()
+                .and_then(|m| match n {
+                    Some(n) => m.clamp_element_scroll(n, to),
+                    None => Some(m.layout().clamp_viewport_scroll(to)),
+                })
+                .unwrap_or([0.; 2]);
+            drop(s);
+            let values: Vec<v8::Local<v8::Value>> = to.into_iter().map(|v| v8::Number::new(scope, v).into()).collect();
+            rv.set(v8::Array::new_with_elements(scope, &values).into());
         }
         "computed" => {
             if let Some(n) = node(scope, 0) {

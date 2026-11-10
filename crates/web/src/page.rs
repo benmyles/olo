@@ -2,6 +2,7 @@
 //! network resources, complete UA defaults and browser runtime remain required.
 mod background;
 mod interaction;
+mod scroll;
 mod viewport;
 use crate::{
     css::{
@@ -15,6 +16,7 @@ use crate::{
     text::shaping,
 };
 pub use interaction::Interaction;
+pub use scroll::{Alignment, ScrollTarget};
 use std::sync::{Arc, atomic::AtomicBool};
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub type Result<T> = std::result::Result<T, Error>;
@@ -1124,11 +1126,12 @@ impl Measurer {
         };
         phases[4] = started.elapsed().as_secs_f64() * 1000. - phases[..4].iter().sum::<f64>();
         phases[5] = started.elapsed().as_secs_f64() * 1000.;
-        Ok(Measured { layout, inlines: Default::default(), text_spans: Default::default(), index, revision: doc.revision(), viewport, phases, defaults, path })
+        Ok(Measured { layout, inlines: Default::default(), text_spans: Default::default(), scroll_extents: Default::default(), index, revision: doc.revision(), viewport, phases, defaults, path })
     }
 }
 /// One layout of the document, queried by node.
 pub struct Measured {
+    scroll_extents: std::sync::OnceLock<crate::dom::NodeMap<scroll::Extent>>,
     layout: Arc<layout::Layout>,
     /// Inline elements' pieces in the paragraphs (text source, source range),
     /// by element: made the first time one is measured.
@@ -1604,33 +1607,7 @@ impl Measured {
     /// How far the box's content reaches (scrollWidth/scrollHeight): the
     /// padding box, extended by descendants that overflow it.
     pub fn scroll_size(&self, node: crate::dom::NodeId) -> Option<(f64, f64)> {
-        let (id, r, g) = self.geometry(node)?;
-        let padding = self.padding_box(node)?;
-        let mut right = padding.x + padding.width;
-        let mut bottom = padding.y + padding.height;
-        let tree = self.layout.cache().tree();
-        let mut stack = vec![id];
-        let mut seen = 0usize;
-        while let Some(at) = stack.pop() {
-            seen += 1;
-            if seen > 1 << 16 {
-                break;
-            }
-            let Some(b) = tree.get(at) else { continue };
-            if at != id
-                && let Some(bounds) = self.layout.bounds(at)
-            {
-                right = right.max(bounds.x + bounds.width);
-                bottom = bottom.max(bounds.y + bounds.height);
-            }
-            let mut child = b.first_child;
-            while let Some(c) = child {
-                stack.push(c);
-                child = tree.get(c).and_then(|n| n.next_sibling);
-            }
-        }
-        let _ = (r, g);
-        Some(((right - padding.x).max(0.), (bottom - padding.y).max(0.)))
+        self.scroll_extent_size(node)
     }
     /// The page's scrollable size (`documentElement.scrollWidth/Height`):
     /// as far as its boxes reach that no ancestor clips and that aren't

@@ -1,0 +1,25 @@
+{
+  "start": [
+    0,
+    0
+  ],
+  "intermediate": true,
+  "end": [
+    280,
+    300
+  ],
+  "ordered": true,
+  "interrupted": [
+    42,
+    23
+  ],
+  "completed": {
+    "interrupted": false
+  },
+  "cancellation": {
+    "interrupted": true
+  },
+  "replacement": {
+    "interrupted": false
+  }
+}

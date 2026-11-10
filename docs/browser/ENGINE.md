@@ -2868,3 +2868,23 @@ web geometry without changing global font hinting or rasterization policy.
 layouts. Known line-height grid rounding and glyph-pixel identity remain open.
 See `measurements/2026-11-10-fractional-fit/README.md` for live Stripe evidence,
 remaining interaction/layout failures and release costs.
+
+## Ancestor scrolling and initial smooth scrolling
+
+`page::Measured` retains a lazy bottom-up overflow map, reused by nested scroll
+sizes/ranges and scrollIntoView planning. Clipped descendants stop contributing
+overflow; fixed descendants are excluded. Inner-to-outer plans apply target
+scroll margins, ancestor scroll padding and start/center/end/nearest alignment.
+Directional ranges permit negative RTL offsets and share device-grid rounding.
+Incremental style patches process pending ancestors before descendants so
+script mutation order cannot leave inherited direction stale.
+
+The realm owns active smooth-scroll state and requests frames only while it
+exists. Completion/interruption resolves the current CSSOM ScrollResult promise;
+invalid arguments/receivers reject it. Scroll and scrollend tasks coalesce.
+A completed animation leaves no frame or timer and reuses its measurement.
+135 independent Chrome geometry cases pass at five scales in fresh/reused
+realms; five vertical-rl-start cases remain explicit ignored nonpasses.
+Transformed ancestor coordinates, snap/iframe traversal, nested classic gutters,
+full vertical layout, body/quirks behavior and exact interruption/timing remain
+open. See [evidence](measurements/2026-11-10-scroll-into-view/README.md).

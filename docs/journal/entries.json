@@ -4564,5 +4564,17 @@
   "title": "Browser with consistent fractional text fitting",
   "caption": "The author stays on one line; the carousel loses the extra 25.2px. Text and intrinsic sizing share font-size quantization, and fitting follows Chrome\u2019s one-layout-unit allowance. Full-page layout and testimonial activation remain open.",
   "image": "2026-11-10/090522-browser-with-consistent-fractional-text-fitting.png"
+ },
+ {
+  "time": "2026-11-10T10:03:16",
+  "title": "Browser before ancestor scrolling",
+  "caption": "Clicking Stripe\u2019s Jobber control leaves the carousel on Mindbody: scrollIntoView was an empty stub.",
+  "image": "2026-11-10/100316-browser-before-ancestor-scrolling.png"
+ },
+ {
+  "time": "2026-11-10T10:03:18",
+  "title": "Browser scrolls to the requested testimonial",
+  "caption": "General ancestor and smooth scrolling move Stripe\u2019s actual Jobber button to Chrome\u2019s endpoint at five scales in light, dark and night modes. Page pixels, delayed selection paints and other journeys remain open; Stripe is not accepted.",
+  "image": "2026-11-10/100318-browser-scrolls-to-the-requested-testimonial.png"
  }
 ]

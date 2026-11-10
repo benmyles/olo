@@ -1,0 +1,46 @@
+{
+  "into": {
+    "interrupted": false
+  },
+  "order": [
+    "behavior",
+    "block",
+    "container",
+    "inline"
+  ],
+  "lengths": [
+    0,
+    0,
+    0
+  ],
+  "invalid": [
+    "TypeError",
+    "TypeError",
+    "TypeError",
+    "TypeError"
+  ],
+  "brands": [
+    "TypeError",
+    "TypeError",
+    "TypeError"
+  ],
+  "symbol": "TypeError",
+  "getterThrow": "RangeError",
+  "omitted": [
+    42,
+    23
+  ],
+  "nonfinite": [
+    42,
+    23
+  ],
+  "getters": [
+    "behavior",
+    "left",
+    "top"
+  ],
+  "last": [
+    15,
+    20
+  ]
+}

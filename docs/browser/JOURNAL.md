@@ -8623,3 +8623,42 @@ Next implement general ancestor alignment and smooth scrolling with Chrome
 oracles, then the remaining events/footer layout differences. No engine
 source changed during the diagnosis. Screen stopped, corpus0/100 unchanged.
 Evidence: `measurements/2026-11-10-testimonial-activation/README.md`.
+
+## 2026-11-10 — ancestor scrolling and initial smooth scrolling
+
+Stripe's Jobber handler reached an empty scrollIntoView stub. It now plans
+inner-to-outer scrolling from retained layout, applies logical alignment and
+scroll margin/padding, and supports nearest-container behavior. Nested ranges
+include RTL negatives and device-grid rounding. Overflow extents are cached
+per measurement instead of walked on every read. Pending style patches run
+ancestors first, fixing stale inherited direction after child-before-parent
+mutations. Smooth scrolling requests frames only while active and resolves
+completion/interruption promises; argument/receiver errors reject them.
+
+135 independent Chrome geometry cases pass in fresh/reused realms at five
+scales; five vertical-rl-start cases remain explicit ignored nonpasses.
+Promise/IDL and smooth sequence oracles pass. The live Jobber button reaches
+Chrome's endpoint in all15 theme/scale settings; four controls match at1×.
+Thirty native kit reviews are clean, but some selection-highlight paints lag
+the matched computed SVG fills. Page pixel parity remains open. A quiet live
+button test records27 intermediate updates with no further input.
+
+Merged main through c1ddf614 (merge e4e86aca), preserving both package entries
+in Cargo.lock. Restored the new Interface Kit's missing test dispatcher and
+constructed the same no-op text system directly in its wrapper tests. Full
+release workspace:2,262 passed,0 failed,140 ignored in260 suites; both Browser
+layout lints pass. No production Browser bytes change from that test repair.
+
+[Evidence](measurements/2026-11-10-scroll-into-view/README.md) includes failures,
+independent oracles, real pointer actions, screenshots and release costs.
+Selection-paint timing, events/footer layout, vertical writing and other
+journeys remain. Stripe0/30; corpus0/100. No personal-session installation,
+reload or GUI interaction.
+
+Release ABBA costs at1.25×/2×:6,000 cached nested reads33.877→12.289ms /
+34.826→12.684ms; CPU per resize10.625→10.625ms /18.750→16.875ms;
+RSS157284→157506KiB /165166→165830KiB. Root drag latency28.65→28.65ms /
+28.50→28.85ms; wheel17.35→17.10ms /17.60→14.10ms. All idle samples0 CPU/frames.
+No root-scroll hitches; maximum draw9.04→3.49ms. New scroll operations do
+additional correct work compared with the former stub; no general Chrome
+performance claim.

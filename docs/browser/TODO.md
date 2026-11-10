@@ -48,13 +48,15 @@ quantization. All1,350 new component observations pass. The section error at
 1.75× falls25.36→0.16px; smaller rounding/pixel differences remain. A settled
 full-page check now finds298.29px main-height difference, concentrated in
 `.events-section-container` (116.43px) and `.footer-cta-section__grid` (181.19px).
-**Next: implement general `scrollIntoView` and smooth scrolling**. Both React
-handlers run and return; Stripe asks the Jobber card to scroll into view with
-`{behavior:"smooth",block:"nearest"}`. Native's method is an empty stub.
-A diagnostic direct scroll of the carousel to951px moves the card and updates
-the active button correctly; the actual button remains broken. See
-[activation diagnosis](measurements/2026-11-10-testimonial-activation/README.md).
-Then investigate those events/footer layouts.
+General `scrollIntoView`, nested ranges and initial smooth scrolling now work,
+including ScrollResult completion/interruption promises. All135 supported
+new geometry cases match Chrome; five vertical-rl cases remain nonpasses.
+The actual Jobber button now reaches Chrome's endpoint in all15 live
+configurations. Native review findings are empty, but page pixels and selection
+transition behavior still need comparison. See
+[scrolling evidence](measurements/2026-11-10-scroll-into-view/README.md).
+**Next: finish testimonial visual/interaction parity, then investigate the
+events/footer layouts.**
 See [fractional fitting evidence](measurements/2026-11-10-fractional-fit/README.md),
 [query measurement evidence](measurements/2026-11-10-query-measurement/README.md)
 and [inline spacing evidence](measurements/2026-11-10-inline-spacing/README.md).
@@ -63,7 +65,7 @@ accepting configurations. See [intrinsic image sizing](measurements/2026-11-10-r
 and [native scrolling](measurements/2026-11-10-native-scroll/README.md).
 
 Open scrolling work: nested classic gutters and complete nested/iframe wheel
-behavior; keyboard defaults; smooth scrolling/scrollend; vertical writing;
+behavior; keyboard defaults; complete smooth-scroll interruption/timing and scrollend ordering; vertical writing;
 transformed/contained overflow; gradient/image canvas in empty stable gutters;
 Chrome's float32 fractional scroll roundoff; gutter-only VisualViewport resize
 events. DOM body scrolling still aliases the viewport. Iframes still restart

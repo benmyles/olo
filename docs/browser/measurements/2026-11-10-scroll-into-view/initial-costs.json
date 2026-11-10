@@ -1,0 +1,1097 @@
+[
+  {
+    "variant": "before",
+    "scale": 1.25,
+    "sha256": "9f81b25498c1f8ac4d1a98d3c42a954d1754e4ada30122faae9f636b83982523",
+    "bench_ms": {
+      "cached": [
+        63.03909799999997,
+        49.85789,
+        33.62884600000001,
+        33.70062299999995,
+        33.201282999999876,
+        33.81634100000008,
+        33.438942999999995
+      ],
+      "changed": [
+        0.9147619999999961,
+        0.26175399999999627,
+        0.19288599999998723,
+        0.16312600000003386,
+        0.19766300000003412,
+        0.18570900000008805,
+        0.1944860000000972
+      ],
+      "destinations": [
+        [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 1090.0,
+      "rss_kib": 154952
+    },
+    "after": {
+      "cpu_ms": 1170.0,
+      "rss_kib": 156904
+    },
+    "resize_ms": [
+      411.1839879769832,
+      418.53212600108236,
+      411.5189809817821,
+      408.6184629704803,
+      409.44286197191104,
+      412.1715290239081,
+      410.8669249690138,
+      411.0769929829985
+    ],
+    "idle": {
+      "seconds": 3.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 2
+      },
+      "threads": [
+        {
+          "tid": 3105015,
+          "name": "script-watchdog",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 2,
+          "preempted": 0
+        },
+        {
+          "tid": 3104950,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3104955,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3104957,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3104960,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3104961,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3104962,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3104965,
+          "name": "browser:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3104970,
+          "name": "browse:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3104990,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3104992,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3104993,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3104994,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3104995,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3104996,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3104997,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3104998,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3104999,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3105000,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3105001,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3105002,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3105003,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3105004,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3105005,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3105006,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3105007,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3105008,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3105009,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3105010,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3105011,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3105012,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3105013,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 3105014,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 97,
+        "error": "nothing moved"
+      },
+      {
+        "kind": "wheel",
+        "frames": 81,
+        "error": "nothing moved"
+      }
+    ],
+    "compositor_before": {
+      "type": "timings",
+      "timings": {
+        "outputs": [],
+        "beats": 0,
+        "latest_beat_us": 0,
+        "slowest": null,
+        "phases": []
+      }
+    },
+    "compositor_after": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 138,
+            "slowest_us": 587,
+            "total_us": 17572
+          }
+        ],
+        "beats": 816,
+        "latest_beat_us": 657,
+        "slowest": [
+          "tick",
+          239
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 236,
+            "total_us": 5407,
+            "slowest_us": 152
+          },
+          {
+            "name": "commit",
+            "count": 43,
+            "total_us": 873,
+            "slowest_us": 72
+          },
+          {
+            "name": "damage and draw",
+            "count": 138,
+            "total_us": 4717,
+            "slowest_us": 175
+          },
+          {
+            "name": "gather (all)",
+            "count": 138,
+            "total_us": 3503,
+            "slowest_us": 338
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 1934,
+            "total_us": 3806,
+            "slowest_us": 19
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 1934,
+            "total_us": 9481,
+            "slowest_us": 54
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 1934,
+            "total_us": 6063,
+            "slowest_us": 27
+          },
+          {
+            "name": "gather: windows",
+            "count": 1934,
+            "total_us": 24215,
+            "slowest_us": 134
+          },
+          {
+            "name": "look (whole)",
+            "count": 138,
+            "total_us": 17918,
+            "slowest_us": 588
+          },
+          {
+            "name": "post_repaint",
+            "count": 138,
+            "total_us": 238,
+            "slowest_us": 3
+          },
+          {
+            "name": "pre_repaint",
+            "count": 138,
+            "total_us": 5893,
+            "slowest_us": 145
+          },
+          {
+            "name": "screenshot",
+            "count": 27,
+            "total_us": 6126,
+            "slowest_us": 341
+          },
+          {
+            "name": "screenshot read back",
+            "count": 27,
+            "total_us": 27979,
+            "slowest_us": 1830
+          },
+          {
+            "name": "space refresh",
+            "count": 1873,
+            "total_us": 21096,
+            "slowest_us": 102
+          },
+          {
+            "name": "tick",
+            "count": 1873,
+            "total_us": 27665,
+            "slowest_us": 218
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 408,
+            "total_us": 3743,
+            "slowest_us": 59
+          },
+          {
+            "name": "tick: groups",
+            "count": 408,
+            "total_us": 12887,
+            "slowest_us": 113
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 408,
+            "total_us": 2371,
+            "slowest_us": 49
+          },
+          {
+            "name": "tick: window infos",
+            "count": 408,
+            "total_us": 6242,
+            "slowest_us": 158
+          }
+        ]
+      }
+    }
+  }
+]

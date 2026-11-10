@@ -1,0 +1,438 @@
+[
+  {
+    "variant": "before",
+    "scale": 1.25,
+    "at": [
+      900,
+      500
+    ],
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 97,
+        "frame_ms": 8.35,
+        "hitches": 0,
+        "still": 1,
+        "first_move_ms": 28.7,
+        "slowest_draw_ms": 0.6,
+        "distance": 686.4,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.947,
+          "sd": 0.102,
+          "min": 0.0,
+          "max": 1.064,
+          "off_25pct": 2,
+          "frames": 93
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 50,
+        "moving_frames": 48,
+        "frame_ms": 8.38,
+        "hitches": 0,
+        "still": 3,
+        "first_move_ms": 17.3,
+        "slowest_draw_ms": 0.61,
+        "distance": 129.6,
+        "reached_end": false,
+        "notches": {
+          "count": 5,
+          "frames_each": [
+            15,
+            2,
+            15,
+            2,
+            14
+          ],
+          "jumps_up": 3,
+          "worst_jump": 0.444
+        }
+      }
+    ]
+  },
+  {
+    "variant": "after",
+    "scale": 1.25,
+    "at": [
+      900,
+      500
+    ],
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 97,
+        "frame_ms": 8.31,
+        "hitches": 0,
+        "still": 1,
+        "first_move_ms": 28.8,
+        "slowest_draw_ms": 1.31,
+        "distance": 686.4,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.954,
+          "sd": 0.101,
+          "min": 0.0,
+          "max": 1.069,
+          "off_25pct": 1,
+          "frames": 93
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 51,
+        "moving_frames": 49,
+        "frame_ms": 8.33,
+        "hitches": 0,
+        "still": 3,
+        "first_move_ms": 16.7,
+        "slowest_draw_ms": 0.51,
+        "distance": 130.4,
+        "reached_end": false,
+        "notches": {
+          "count": 4,
+          "frames_each": [
+            15,
+            17,
+            2,
+            15
+          ],
+          "jumps_up": 2,
+          "worst_jump": 0.444
+        }
+      }
+    ]
+  },
+  {
+    "variant": "after",
+    "scale": 1.25,
+    "at": [
+      900,
+      500
+    ],
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 97,
+        "frame_ms": 8.34,
+        "hitches": 0,
+        "still": 1,
+        "first_move_ms": 28.5,
+        "slowest_draw_ms": 0.64,
+        "distance": 685.6,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.95,
+          "sd": 0.1,
+          "min": 0.0,
+          "max": 1.066,
+          "off_25pct": 1,
+          "frames": 93
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 50,
+        "moving_frames": 48,
+        "frame_ms": 8.34,
+        "hitches": 0,
+        "still": 3,
+        "first_move_ms": 17.5,
+        "slowest_draw_ms": 0.53,
+        "distance": 130.4,
+        "reached_end": false,
+        "notches": {
+          "count": 4,
+          "frames_each": [
+            15,
+            17,
+            2,
+            14
+          ],
+          "jumps_up": 2,
+          "worst_jump": 0.444
+        }
+      }
+    ]
+  },
+  {
+    "variant": "before",
+    "scale": 1.25,
+    "at": [
+      900,
+      500
+    ],
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 97,
+        "frame_ms": 8.36,
+        "hitches": 0,
+        "still": 1,
+        "first_move_ms": 28.6,
+        "slowest_draw_ms": 0.56,
+        "distance": 684.8,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.947,
+          "sd": 0.1,
+          "min": 0.0,
+          "max": 1.064,
+          "off_25pct": 1,
+          "frames": 93
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 49,
+        "moving_frames": 47,
+        "frame_ms": 8.36,
+        "hitches": 0,
+        "still": 3,
+        "first_move_ms": 17.4,
+        "slowest_draw_ms": 0.66,
+        "distance": 129.6,
+        "reached_end": false,
+        "notches": {
+          "count": 5,
+          "frames_each": [
+            14,
+            2,
+            14,
+            2,
+            15
+          ],
+          "jumps_up": 3,
+          "worst_jump": 0.556
+        }
+      }
+    ]
+  },
+  {
+    "variant": "before",
+    "scale": 2,
+    "at": [
+      900,
+      500
+    ],
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 97,
+        "frame_ms": 8.33,
+        "hitches": 0,
+        "still": 1,
+        "first_move_ms": 28.1,
+        "slowest_draw_ms": 0.71,
+        "distance": 714.0,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.989,
+          "sd": 0.103,
+          "min": 0.0,
+          "max": 1.0,
+          "off_25pct": 1,
+          "frames": 93
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 56,
+        "moving_frames": 54,
+        "frame_ms": 8.32,
+        "hitches": 0,
+        "still": 3,
+        "first_move_ms": 17.2,
+        "slowest_draw_ms": 9.04,
+        "distance": 133.0,
+        "reached_end": false,
+        "notches": {
+          "count": 7,
+          "frames_each": [
+            16,
+            2,
+            17,
+            2,
+            1,
+            2,
+            14
+          ],
+          "jumps_up": 7,
+          "worst_jump": 1.0
+        }
+      }
+    ]
+  },
+  {
+    "variant": "after",
+    "scale": 2,
+    "at": [
+      900,
+      500
+    ],
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 97,
+        "frame_ms": 8.35,
+        "hitches": 0,
+        "still": 1,
+        "first_move_ms": 28.8,
+        "slowest_draw_ms": 1.35,
+        "distance": 713.5,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.988,
+          "sd": 0.103,
+          "min": 0.0,
+          "max": 0.999,
+          "off_25pct": 1,
+          "frames": 93
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 57,
+        "moving_frames": 55,
+        "frame_ms": 8.34,
+        "hitches": 0,
+        "still": 3,
+        "first_move_ms": 17.4,
+        "slowest_draw_ms": 3.49,
+        "distance": 133.5,
+        "reached_end": false,
+        "notches": {
+          "count": 6,
+          "frames_each": [
+            17,
+            2,
+            17,
+            2,
+            3,
+            14
+          ],
+          "jumps_up": 7,
+          "worst_jump": 1.0
+        }
+      }
+    ]
+  },
+  {
+    "variant": "after",
+    "scale": 2,
+    "at": [
+      900,
+      500
+    ],
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 97,
+        "frame_ms": 8.34,
+        "hitches": 0,
+        "still": 1,
+        "first_move_ms": 28.9,
+        "slowest_draw_ms": 0.72,
+        "distance": 713.5,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.989,
+          "sd": 0.105,
+          "min": 0.0,
+          "max": 1.066,
+          "off_25pct": 1,
+          "frames": 93
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 58,
+        "moving_frames": 56,
+        "frame_ms": 8.36,
+        "hitches": 0,
+        "still": 3,
+        "first_move_ms": 10.8,
+        "slowest_draw_ms": 0.78,
+        "distance": 133.0,
+        "reached_end": false,
+        "notches": {
+          "count": 7,
+          "frames_each": [
+            1,
+            17,
+            2,
+            17,
+            2,
+            3,
+            14
+          ],
+          "jumps_up": 6,
+          "worst_jump": 1.0
+        }
+      }
+    ]
+  },
+  {
+    "variant": "before",
+    "scale": 2,
+    "at": [
+      900,
+      500
+    ],
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 97,
+        "frame_ms": 8.33,
+        "hitches": 0,
+        "still": 1,
+        "first_move_ms": 28.9,
+        "slowest_draw_ms": 0.82,
+        "distance": 713.5,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.99,
+          "sd": 0.103,
+          "min": 0.0,
+          "max": 1.0,
+          "off_25pct": 1,
+          "frames": 93
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 56,
+        "moving_frames": 54,
+        "frame_ms": 8.37,
+        "hitches": 0,
+        "still": 3,
+        "first_move_ms": 18.0,
+        "slowest_draw_ms": 0.66,
+        "distance": 132.5,
+        "reached_end": false,
+        "notches": {
+          "count": 6,
+          "frames_each": [
+            17,
+            2,
+            17,
+            2,
+            3,
+            13
+          ],
+          "jumps_up": 7,
+          "worst_jump": 1.0
+        }
+      }
+    ]
+  }
+]

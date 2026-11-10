@@ -14835,6 +14835,17 @@ writing and gutter-only VisualViewport resize events remain open. References:
 `docs/browser/measurements/2026-11-10-classic-viewport/` and
 `docs/browser/measurements/2026-11-10-native-scroll/`.
 
+Programmatic ancestor scrolling uses `Measured::scroll_into_view`: one retained
+snapshot plans inner-to-outer destinations, with margin/padding and logical
+alignment. Nested overflow extents are cached per measurement, not walked on
+every scroll read. The JS realm requests frames only while smooth scrolling
+is active, coalesces scroll/scrollend tasks and resolves ScrollResult promises
+on completion/interruption. Hosts must honor `wants_frame` and report native
+scroll changes so user input can cancel an animation. This is initial support:
+transformed ancestors, snap/iframe traversal, nested classic gutters and full
+vertical flow still need work. See `docs/browser/measurements/
+2026-11-10-scroll-into-view/` and the independent JS scrolling fixtures.
+
 Browser DOM wrapper identities are weak V8 handles. Traced, bidirectional
 internal ownership fields retain connected nodes through the document and detached trees
 through script references; shadow/template ownership is included without

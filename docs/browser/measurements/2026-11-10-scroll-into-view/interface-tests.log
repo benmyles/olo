@@ -1,0 +1,785 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/ben/worktrees/olo/browser/smithay/smithay/Cargo.toml
+workspace: /home/ben/worktrees/olo/browser/Cargo.toml
+   Compiling equator-macro v0.4.2
+   Compiling wayland-backend v0.3.17
+   Compiling icu_normalizer v2.2.0
+   Compiling tracing v0.1.44
+   Compiling zvariant_utils v4.2.0
+   Compiling enumflags2 v0.7.12
+   Compiling half v2.7.1
+   Compiling num-rational v0.4.2
+   Compiling profiling-procmacros v1.0.18
+   Compiling rustybuzz v0.20.1
+   Compiling kurbo v0.13.1
+   Compiling zerocopy v0.8.63
+   Compiling equator v0.4.2
+   Compiling arg_enum_proc_macro v0.3.4
+   Compiling strum v0.26.3
+   Compiling ppv-lite86 v0.2.21
+   Compiling peniko v0.6.1
+   Compiling aligned-vec v0.6.4
+   Compiling num-derive v0.4.2
+   Compiling getrandom v0.2.17
+   Compiling vello_common v0.2.0
+   Compiling sharded-slab v0.1.7
+   Compiling calloop v0.13.0
+   Compiling v_frame v0.3.9
+   Compiling parking_lot_core v0.9.12
+   Compiling nanorand v0.7.0
+   Compiling av1-grain v0.2.5
+   Compiling av-scenechange v0.14.1
+   Compiling strum_macros v0.27.2
+   Compiling idna_adapter v1.2.1
+   Compiling gpui_derive_refineable v0.2.2 (/home/ben/worktrees/olo/browser/gpui/derive_refineable)
+   Compiling derive_more v0.99.20
+   Compiling gpui_refineable v0.2.2 (/home/ben/worktrees/olo/browser/gpui/refineable)
+   Compiling wayland-client v0.31.15
+   Compiling naga v25.0.1
+   Compiling usvg v0.45.1
+   Compiling rand_chacha v0.9.0
+   Compiling profiling v1.0.18
+   Compiling tiff v0.11.3
+   Compiling exr v1.74.2
+   Compiling glifo v0.3.0
+   Compiling parking_lot v0.12.5
+   Compiling tracing-subscriber v0.3.23
+   Compiling rav1e v0.8.1
+   Compiling idna v1.1.0
+   Compiling strum v0.27.2
+   Compiling flume v0.11.1
+   Compiling olo-app v0.1.0 (/home/ben/worktrees/olo/browser/crates/app)
+   Compiling filedescriptor v0.8.3
+   Compiling harfrust v0.12.0
+   Compiling gpui-macros v0.2.2 (/home/ben/worktrees/olo/browser/gpui/macros)
+   Compiling wayland-protocols v0.32.13
+   Compiling wayland-protocols v0.31.2
+   Compiling rand v0.9.5
+   Compiling resvg v0.45.1
+   Compiling calloop-wayland-source v0.3.0
+   Compiling blade-graphics v0.7.1 (/home/ben/worktrees/olo/browser/gpui/blade-graphics)
+   Compiling vello_cpu v0.2.0
+   Compiling wayland-cursor v0.31.14
+   Compiling blade-macros v0.3.0
+   Compiling url v2.5.8
+   Compiling ravif v0.13.0
+   Compiling wayland-protocols-plasma v0.2.0
+   Compiling wayland-protocols-wlr v0.3.12
+   Compiling blade-util v0.3.0 (/home/ben/worktrees/olo/browser/gpui/blade-util)
+   Compiling zvariant v5.15.1
+   Compiling olo-interface v0.1.0 (/home/ben/worktrees/olo/browser/crates/interface)
+   Compiling image v0.25.10
+   Compiling zbus_names v4.3.5
+   Compiling zbus v5.19.0
+   Compiling olo-xdg v0.1.0 (/home/ben/worktrees/olo/browser/crates/xdg)
+   Compiling ashpd v0.11.1
+   Compiling olo-protocol v0.1.0 (/home/ben/worktrees/olo/browser/crates/protocol)
+warning: unused imports: `MouseMoveEvent` and `ScrollWheelEvent`
+  --> crates/interface/src/dispatch.rs:17:131
+   |
+17 |     Bounds, ClickEvent, ImeInput, KeyDownEvent, KeyboardButton, KeyboardClickEvent, MouseButton, MouseClickEvent, MouseDownEvent, MouseMoveEvent, M...
+   |                                                                                                                                   ^^^^^^^^^^^^^^
+18 |     ScrollWheelEvent, WindowCx,
+   |     ^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `ImageTriangle`
+  --> crates/interface/src/painter.rs:19:113
+   |
+19 |     AtlasTile, Background, BorderStyle, Bounds, BoxShadow, Corners, DevicePixels, Edges, FontId, GlyphId, Hsla, ImageTriangle, IsZer...
+   |                                                                                                                 ^^^^^^^^^^^^^
+
+warning: unused imports: `Path` and `process::Command`
+ --> crates/interface/src/platform/linux/platform.rs:3:12
+  |
+3 |     path::{Path, PathBuf},
+  |            ^^^^
+4 |     process::Command,
+  |     ^^^^^^^^^^^^^^^^
+
+warning: unused imports: `Context as _` and `anyhow`
+  --> crates/interface/src/platform/linux/platform.rs:16:14
+   |
+16 | use anyhow::{Context as _, anyhow};
+   |              ^^^^^^^^^^^^  ^^^^^^
+
+warning: unused import: `futures::channel::oneshot`
+  --> crates/interface/src/platform/linux/platform.rs:19:5
+   |
+19 | use futures::channel::oneshot;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `ashpd::WindowIdentifier`
+  --> crates/interface/src/platform/linux/wayland/client.rs:11:5
+   |
+11 | use ashpd::WindowIdentifier;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `futures::channel::oneshot::Receiver`
+  --> crates/interface/src/platform/linux/wayland/window.rs:12:5
+   |
+12 | use futures::channel::oneshot::Receiver;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `PromptButton` and `PromptLevel`
+  --> crates/interface/src/platform/linux/wayland/window.rs:34:125
+   |
+34 | ...put, Pixels, PlatformDisplay, PlatformInput, Point, PromptButton, PromptLevel, RequestFrameOptions, ResizeEdge, Size, Tiling,
+   |                                                        ^^^^^^^^^^^^  ^^^^^^^^^^^
+
+warning: unused imports: `PathBuf` and `Path`
+  --> crates/interface/src/platform.rs:31:12
+   |
+31 |     path::{Path, PathBuf},
+   |            ^^^^  ^^^^^^^
+
+warning: unused import: `Weak`
+  --> crates/interface/src/stage.rs:14:14
+   |
+14 |     rc::{Rc, Weak},
+   |              ^^^^
+
+error[E0609]: no field `random` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:115:45
+    |
+115 |         YieldNow { count: self.state.lock().random.random_range(0..10) }
+    |                                             ^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-12877430577195592439.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+115 |         YieldNow { count: self.state.lock().unwrap().random.random_range(0..10) }
+    |                                             +++++++++
+
+error[E0609]: no field `time` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+  --> crates/interface/src/platform/test_dispatcher.rs:70:41
+   |
+70 |         let new_now = self.state.lock().time + by;
+   |                                         ^^^^ unknown field
+   |
+   = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-12877430577195592439.txt'
+   = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+   |
+70 |         let new_now = self.state.lock().unwrap().time + by;
+   |                                         +++++++++
+
+error[E0609]: no field `delayed` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+  --> crates/interface/src/platform/test_dispatcher.rs:74:39
+   |
+74 |             let next_due_time = state.delayed.first().map(|(time, _)| *time);
+   |                                       ^^^^^^^ unknown field
+   |
+   = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-7920363426511525348.txt'
+   = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+   |
+74 |             let next_due_time = state.unwrap().delayed.first().map(|(time, _)| *time);
+   |                                       +++++++++
+
+error[E0609]: no field `time` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+  --> crates/interface/src/platform/test_dispatcher.rs:79:35
+   |
+79 |                 self.state.lock().time = due_time;
+   |                                   ^^^^ unknown field
+   |
+   = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-17851132775828103496.txt'
+   = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+   |
+79 |                 self.state.lock().unwrap().time = due_time;
+   |                                   +++++++++
+
+error[E0609]: no field `time` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+  --> crates/interface/src/platform/test_dispatcher.rs:84:27
+   |
+84 |         self.state.lock().time = new_now;
+   |                           ^^^^ unknown field
+   |
+   = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-4484310266589284811.txt'
+   = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+   |
+84 |         self.state.lock().unwrap().time = new_now;
+   |                           +++++++++
+
+error[E0609]: no field `delayed` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+  --> crates/interface/src/platform/test_dispatcher.rs:88:47
+   |
+88 |         let next_due_time = self.state.lock().delayed.first().map(|(time, _)| *time);
+   |                                               ^^^^^^^ unknown field
+   |
+   = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-12877430577195592439.txt'
+   = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+   |
+88 |         let next_due_time = self.state.lock().unwrap().delayed.first().map(|(time, _)| *time);
+   |                                               +++++++++
+
+error[E0609]: no field `time` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+  --> crates/interface/src/platform/test_dispatcher.rs:90:31
+   |
+90 |             self.state.lock().time = next_due_time;
+   |                               ^^^^ unknown field
+   |
+   = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-13553646591267618357.txt'
+   = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+   |
+90 |             self.state.lock().unwrap().time = next_due_time;
+   |                               +++++++++
+
+error[E0609]: no field `delayed` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:121:47
+    |
+121 |         while let Some((deadline, _)) = state.delayed.first() {
+    |                                               ^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-3760889549973734964.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+121 |         while let Some((deadline, _)) = state.unwrap().delayed.first() {
+    |                                               +++++++++
+
+error[E0609]: no field `time` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:122:34
+    |
+122 |             if *deadline > state.time {
+    |                                  ^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-3760889549973734964.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+122 |             if *deadline > state.unwrap().time {
+    |                                  +++++++++
+
+error[E0609]: no field `delayed` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:125:39
+    |
+125 |             let (_, runnable) = state.delayed.remove(0);
+    |                                       ^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-3760889549973734964.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+125 |             let (_, runnable) = state.unwrap().delayed.remove(0);
+    |                                       +++++++++
+
+error[E0609]: no field `background` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:126:19
+    |
+126 |             state.background.push(runnable);
+    |                   ^^^^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-3760889549973734964.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+126 |             state.unwrap().background.push(runnable);
+    |                   +++++++++
+
+error[E0609]: no field `foreground` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:129:75
+    |
+129 | ...   let foreground_len: usize = if background_only { 0 } else { state.foreground.values().map(|runnables| runnables.len()).sum() };
+    |                                                                         ^^^^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-3760889549973734964.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+129 |         let foreground_len: usize = if background_only { 0 } else { state.unwrap().foreground.values().map(|runnables| runnables.len()).sum() };
+    |                                                                           +++++++++
+
+error[E0609]: no field `background` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:130:36
+    |
+130 |         let background_len = state.background.len();
+    |                                    ^^^^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-3760889549973734964.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+130 |         let background_len = state.unwrap().background.len();
+    |                                    +++++++++
+
+error[E0609]: no field `deprioritized_background` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:135:54
+    |
+135 |             let deprioritized_background_len = state.deprioritized_background.len();
+    |                                                      ^^^^^^^^^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-3760889549973734964.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+135 |             let deprioritized_background_len = state.unwrap().deprioritized_background.len();
+    |                                                      +++++++++
+
+error[E0609]: no field `random` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:139:28
+    |
+139 |             let ix = state.random.random_range(0..deprioritized_background_len);
+    |                            ^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-3760889549973734964.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+139 |             let ix = state.unwrap().random.random_range(0..deprioritized_background_len);
+    |                            +++++++++
+
+error[E0609]: no field `deprioritized_background` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:141:30
+    |
+141 |             runnable = state.deprioritized_background.swap_remove(ix);
+    |                              ^^^^^^^^^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-3760889549973734964.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+141 |             runnable = state.unwrap().deprioritized_background.swap_remove(ix);
+    |                              +++++++++
+
+error[E0609]: no field `random` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:143:33
+    |
+143 |             main_thread = state.random.random_ratio(foreground_len as u32, (foreground_len + background_len) as u32);
+    |                                 ^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-3760889549973734964.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+143 |             main_thread = state.unwrap().random.random_ratio(foreground_len as u32, (foreground_len + background_len) as u32);
+    |                                 +++++++++
+
+error[E0614]: type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>` cannot be dereferenced
+   --> crates/interface/src/platform/test_dispatcher.rs:145:34
+    |
+145 |                 let state = &mut *state;
+    |                                  ^^^^^^ can't be dereferenced
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-3760889549973734964.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+
+error[E0609]: no field `random` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:148:32
+    |
+148 |                 let ix = state.random.random_range(0..background_len);
+    |                                ^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-3760889549973734964.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+148 |                 let ix = state.unwrap().random.random_range(0..background_len);
+    |                                +++++++++
+
+error[E0609]: no field `background` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:149:34
+    |
+149 |                 runnable = state.background.swap_remove(ix);
+    |                                  ^^^^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-3760889549973734964.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+149 |                 runnable = state.unwrap().background.swap_remove(ix);
+    |                                  +++++++++
+
+error[E0609]: no field `is_main_thread` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:153:37
+    |
+153 |         let was_main_thread = state.is_main_thread;
+    |                                     ^^^^^^^^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-3760889549973734964.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+153 |         let was_main_thread = state.unwrap().is_main_thread;
+    |                                     +++++++++
+
+error[E0609]: no field `is_main_thread` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:154:15
+    |
+154 |         state.is_main_thread = main_thread;
+    |               ^^^^^^^^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-3760889549973734964.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+154 |         state.unwrap().is_main_thread = main_thread;
+    |               +++++++++
+
+error[E0609]: no field `is_main_thread` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:157:27
+    |
+157 |         self.state.lock().is_main_thread = was_main_thread;
+    |                           ^^^^^^^^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-17851132775828103496.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+157 |         self.state.lock().unwrap().is_main_thread = was_main_thread;
+    |                           +++++++++
+
+error[E0609]: no field `deprioritized_task_labels` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:163:27
+    |
+163 |         self.state.lock().deprioritized_task_labels.insert(task_label);
+    |                           ^^^^^^^^^^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-12877430577195592439.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+163 |         self.state.lock().unwrap().deprioritized_task_labels.insert(task_label);
+    |                           +++++++++
+
+error[E0609]: no field `allow_parking` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:171:27
+    |
+171 |         self.state.lock().allow_parking
+    |                           ^^^^^^^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-12877430577195592439.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+171 |         self.state.lock().unwrap().allow_parking
+    |                           +++++++++
+
+error[E0609]: no field `allow_parking` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:175:27
+    |
+175 |         self.state.lock().allow_parking = true
+    |                           ^^^^^^^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-12877430577195592439.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+175 |         self.state.lock().unwrap().allow_parking = true
+    |                           +++++++++
+
+error[E0609]: no field `allow_parking` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:179:27
+    |
+179 |         self.state.lock().allow_parking = false
+    |                           ^^^^^^^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-12877430577195592439.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+179 |         self.state.lock().unwrap().allow_parking = false
+    |                           +++++++++
+
+error[E0609]: no field `waiting_hint` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:183:27
+    |
+183 |         self.state.lock().waiting_hint = msg
+    |                           ^^^^^^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-12877430577195592439.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+183 |         self.state.lock().unwrap().waiting_hint = msg
+    |                           +++++++++
+
+error[E0609]: no field `waiting_hint` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:187:27
+    |
+187 |         self.state.lock().waiting_hint.clone()
+    |                           ^^^^^^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-12877430577195592439.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+187 |         self.state.lock().unwrap().waiting_hint.clone()
+    |                           +++++++++
+
+error[E0609]: no field `waiting_backtrace` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:191:27
+    |
+191 |         self.state.lock().waiting_backtrace = Some(Backtrace::new_unresolved());
+    |                           ^^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-12877430577195592439.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+191 |         self.state.lock().unwrap().waiting_backtrace = Some(Backtrace::new_unresolved());
+    |                           +++++++++
+
+error[E0609]: no field `waiting_backtrace` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:195:27
+    |
+195 |         self.state.lock().waiting_backtrace.take();
+    |                           ^^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-12877430577195592439.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+195 |         self.state.lock().unwrap().waiting_backtrace.take();
+    |                           +++++++++
+
+error[E0609]: no field `waiting_backtrace` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:199:27
+    |
+199 |         self.state.lock().waiting_backtrace.take().map(|mut b| {
+    |                           ^^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-12877430577195592439.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+199 |         self.state.lock().unwrap().waiting_backtrace.take().map(|mut b| {
+    |                           +++++++++
+
+error[E0609]: no field `random` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:206:27
+    |
+206 |         self.state.lock().random.clone()
+    |                           ^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-12877430577195592439.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+206 |         self.state.lock().unwrap().random.clone()
+    |                           +++++++++
+
+error[E0609]: no field `block_on_ticks` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:210:27
+    |
+210 |         self.state.lock().block_on_ticks = range;
+    |                           ^^^^^^^^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-12877430577195592439.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+210 |         self.state.lock().unwrap().block_on_ticks = range;
+    |                           +++++++++
+
+error[E0609]: no field `block_on_ticks` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:215:35
+    |
+215 |         let block_on_ticks = lock.block_on_ticks.clone();
+    |                                   ^^^^^^^^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-3760889549973734964.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+215 |         let block_on_ticks = lock.unwrap().block_on_ticks.clone();
+    |                                   +++++++++
+
+error[E0609]: no field `random` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:216:14
+    |
+216 |         lock.random.random_range(block_on_ticks)
+    |              ^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-3760889549973734964.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+216 |         lock.unwrap().random.random_range(block_on_ticks)
+    |              +++++++++
+
+error[E0609]: no field `last_parked` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:219:27
+    |
+219 |         self.state.lock().last_parked.take().as_ref().map(Unparker::unpark);
+    |                           ^^^^^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-12877430577195592439.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+219 |         self.state.lock().unwrap().last_parked.take().as_ref().map(Unparker::unpark);
+    |                           +++++++++
+
+error[E0609]: no field `last_parked` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:223:40
+    |
+223 |         let last = { self.state.lock().last_parked.replace(unparker) };
+    |                                        ^^^^^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-12877430577195592439.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+223 |         let last = { self.state.lock().unwrap().last_parked.replace(unparker) };
+    |                                        +++++++++
+
+error[E0609]: no field `next_id` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:232:50
+    |
+232 |         let id = post_inc(&mut self.state.lock().next_id.0);
+    |                                                  ^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-11446925747697861638.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+232 |         let id = post_inc(&mut self.state.lock().unwrap().next_id.0);
+    |                                                  +++++++++
+
+error[E0609]: no field `is_main_thread` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:239:27
+    |
+239 |         self.state.lock().is_main_thread
+    |                           ^^^^^^^^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-12877430577195592439.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+239 |         self.state.lock().unwrap().is_main_thread
+    |                           +++++++++
+
+error[E0609]: no field `start_time` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:244:15
+    |
+244 |         state.start_time + state.time
+    |               ^^^^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-3760889549973734964.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+244 |         state.unwrap().start_time + state.time
+    |               +++++++++
+
+error[E0609]: no field `time` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:244:34
+    |
+244 |         state.start_time + state.time
+    |                                  ^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-3760889549973734964.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+244 |         state.start_time + state.unwrap().time
+    |                                  +++++++++
+
+error[E0609]: no field `deprioritized_task_labels` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:250:48
+    |
+250 |             if label.is_some_and(|label| state.deprioritized_task_labels.contains(&label)) {
+    |                                                ^^^^^^^^^^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-3760889549973734964.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+250 |             if label.is_some_and(|label| state.unwrap().deprioritized_task_labels.contains(&label)) {
+    |                                                +++++++++
+
+error[E0609]: no field `deprioritized_background` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:251:23
+    |
+251 |                 state.deprioritized_background.push(runnable);
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-3760889549973734964.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+251 |                 state.unwrap().deprioritized_background.push(runnable);
+    |                       +++++++++
+
+error[E0609]: no field `background` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:253:23
+    |
+253 |                 state.background.push(runnable);
+    |                       ^^^^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-3760889549973734964.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+253 |                 state.unwrap().background.push(runnable);
+    |                       +++++++++
+
+error[E0609]: no field `foreground` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:260:27
+    |
+260 |         self.state.lock().foreground.entry(self.id).or_default().push_back(runnable);
+    |                           ^^^^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-12877430577195592439.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+260 |         self.state.lock().unwrap().foreground.entry(self.id).or_default().push_back(runnable);
+    |                           +++++++++
+
+error[E0609]: no field `time` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:266:31
+    |
+266 |         let next_time = state.time + duration;
+    |                               ^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-3760889549973734964.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+266 |         let next_time = state.unwrap().time + duration;
+    |                               +++++++++
+
+error[E0609]: no field `delayed` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:267:30
+    |
+267 |         let ix = match state.delayed.binary_search_by_key(&next_time, |e| e.0) {
+    |                              ^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-3760889549973734964.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+267 |         let ix = match state.unwrap().delayed.binary_search_by_key(&next_time, |e| e.0) {
+    |                              +++++++++
+
+error[E0609]: no field `delayed` on type `Result<MutexGuard<'_, TestDispatcherState>, PoisonError<_>>`
+   --> crates/interface/src/platform/test_dispatcher.rs:270:15
+    |
+270 |         state.delayed.insert(ix, (next_time, runnable));
+    |               ^^^^^^^ unknown field
+    |
+    = note: the full name for the type has been written to '/home/ben/worktrees/olo/browser/target/release/deps/olo_interface-d33a7870dbcc7184.long-type-3760889549973734964.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: one of the expressions' fields has a field of the same name
+    |
+270 |         state.unwrap().delayed.insert(ix, (next_time, runnable));
+    |               +++++++++
+
+warning: unused import: `util::TryFutureExt`
+  --> crates/interface/src/executor.rs:22:5
+   |
+22 | use util::TryFutureExt;
+   |     ^^^^^^^^^^^^^^^^^^
+
+Some errors have detailed explanations: E0609, E0614.
+For more information about an error, try `rustc --explain E0609`.
+warning: `olo-interface` (lib test) generated 11 warnings
+error: could not compile `olo-interface` (lib test) due to 49 previous errors; 11 warnings emitted

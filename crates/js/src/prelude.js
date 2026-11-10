@@ -683,7 +683,10 @@
     insertAdjacentText(where, text) { this.insertAdjacentNodes(where, [N.createText(String(text))]); },
     getBoundingClientRect() { const r = N.boundingRect(this); return r ? new DOMRect(r[0] - scrollXY[0], r[1] - scrollXY[1], r[2], r[3]) : new DOMRect(0, 0, 0, 0); },
     getClientRects() { const v = N.clientRects(this) || []; const out = []; for (let i = 0; i + 3 < v.length; i += 4) out.push(new DOMRect(v[i] - scrollXY[0], v[i + 1] - scrollXY[1], v[i + 2], v[i + 3])); return listOf(out, global.DOMRectList); },
-    focus() { focusElement(this); }, blur() { if (activeElement === this) focusElement(null); }, select() { caretOf.set(this, this.value.length); }, setSelectionRange(a) { caretOf.set(this, Math.max(0, Math.min(Number(a) || 0, this.value.length))); }, scrollIntoView() {}, scrollTo(x, y) { if (typeof x === 'object' && x) { const o = N.scrollOffset(this); y = x.top ?? o[1]; x = x.left ?? o[0]; } scrollElement(this, Number(x) || 0, Number(y) || 0); }, scrollBy(x, y) { const o = N.scrollOffset(this); if (typeof x === 'object' && x) { y = x.top || 0; x = x.left || 0; } scrollElement(this, o[0] + (Number(x) || 0), o[1] + (Number(y) || 0)); }, scroll(x, y) { this.scrollTo(x, y); },
+    focus() { focusElement(this); }, blur() { if (activeElement === this) focusElement(null); }, select() { caretOf.set(this, this.value.length); }, setSelectionRange(a) { caretOf.set(this, Math.max(0, Math.min(Number(a) || 0, this.value.length))); }, async scrollIntoView(arg=undefined) { return scrollIntoView(this,arg); },
+    async scrollTo(...args) { if(N.nodeType(this)!==1)throw new TypeError('Illegal invocation');const current=this===html()?scrollXY:N.scrollOffset(this); const o=scrollArguments(args,current);return scrollElement(this,o[0],o[1],o[2]); },
+    async scrollBy(...args) { if(N.nodeType(this)!==1)throw new TypeError('Illegal invocation');const current=this===html()?scrollXY:N.scrollOffset(this);const o=scrollArguments(args,[0,0]);return scrollElement(this,current[0]+o[0],current[1]+o[1],o[2]); },
+    async scroll(...args) { return Element.prototype.scrollTo.apply(this,args); },
     // <dialog>: shown (open), shown modally (`:modal`, over the page) and
     // closed, with its `close` event and return value (HTML §4.11.4).
     show() { if (N.nodeName(this) !== 'DIALOG' || N.attr(this, 'open') != null) return; this.setAttribute('open', ''); },
@@ -1620,11 +1623,16 @@
     }
     return 1;
   };
-  H.__olo_scrollPosition = scrollPosition;
-  const scrollWindow = (x,y) => {const p=N.scrollWindow(x,y);scrollPosition(p[0],p[1]);};
-  global.scroll = global.scrollTo = function(x,y) { if (arguments.length < 2) {const o=x??{};y=o.top===undefined?scrollXY[1]:o.top;x=o.left===undefined?scrollXY[0]:o.left;} scrollWindow(Number(x)||0,Number(y)||0); };
+  H.__olo_scrollPosition = (x,y) => {if(x!==scrollXY[0]||y!==scrollXY[1])cancelScroll(null);return scrollPosition(x,y);};
+  const scrollWindow = (x,y,behavior) => performScroll(null,x,y,behavior);
+  global.scroll = global.scrollTo = async function(...args) {const o=scrollArguments(args,scrollXY);return scrollWindow(o[0],o[1],o[2]);};
   const scrollNumber = v => { v=Number(v); return Number.isFinite(v)?v:0; };
-  global.scrollBy = function(x,y) { if (arguments.length < 2) {const o=x??{};y=o.top;x=o.left;} scrollWindow(scrollXY[0]+scrollNumber(x),scrollXY[1]+scrollNumber(y)); };
+  const scrollArguments = (args,initial) => {
+    if(args.length>=2)return [scrollNumber(args[0]),scrollNumber(args[1]),'auto'];
+    const o=args[0]??{},behavior=scrollBehavior(o.behavior),left=o.left,top=o.top;
+    return [left===undefined?initial[0]:scrollNumber(left),top===undefined?initial[1]:scrollNumber(top),behavior];
+  };
+  global.scrollBy = async function(...args) {const o=scrollArguments(args,[0,0]);return scrollWindow(scrollXY[0]+o[0],scrollXY[1]+o[1],o[2]);};
   global.alert = (m) => log('alert', [String(m)]); global.confirm = () => false; global.prompt = () => null; global.print = () => {}; global.open = () => null; global.close = () => {}; global.focus = () => {}; global.blur = () => {}; global.stop = () => {}; global.reportError = reportError; global.getSelection = () => ({ rangeCount: 0, type: 'None', toString: () => '', getRangeAt: () => new Range(), removeAllRanges() {}, addRange() {}, anchorNode: null, focusNode: null, isCollapsed: true, addEventListener() {} });
   // (A pseudo-element's, given its name with or without its colons, as
   // Chrome takes it: an unknown one has no values at all.)
@@ -1928,9 +1936,65 @@
   // it; its `scroll` event (which doesn't bubble) follows in a task, once
   // however many scrolls came before it.
   const scrollPending = new Set();
-  const scrollElement = (el, x, y) => { if (N.setScrollOffset(el, x, y)) queueScroll(el); };
+  // Only active smooth scrolls request frames. Geometry/ranges live in the
+  // native measurement snapshot; ordinary scroll events remain coalesced.
+  const smoothScrolls = new Map(), scrollEnds = new Set();
+  const endScroll = el => {
+    if (scrollEnds.has(el)) return;
+    scrollEnds.add(el);
+    setTimeout(() => { scrollEnds.delete(el); if (!smoothScrolls.has(el)) dispatch(el || documentNode, new Event('scrollend', {bubbles:el === null})); },0);
+  };
+  const cancelScroll = el => { const old=smoothScrolls.get(el);if(old){smoothScrolls.delete(el);old.resolve({interrupted:true});endScroll(el);} };
+  const writeScroll = (el,x,y) => {
+    if (el === null) { const p=N.scrollWindow(x,y); return !!scrollPosition(p[0],p[1]); }
+    const moved=N.setScrollOffset(el,x,y);if(moved)queueScroll(el);return moved;
+  };
+  const scrollBehavior = value => {
+    if (value === undefined) return 'auto';
+    value=String(value);if(!['auto','instant','smooth'].includes(value))throw new TypeError('Invalid scroll behavior');return value;
+  };
+  const performScroll = (el,x,y,behavior='auto',known) => {
+    if (el === html()) el=null;
+    const from=el===null?scrollXY.slice():N.scrollOffset(el),to=known?known.slice(3,5):N.scrollDestination(el,x,y);
+    const smooth=behavior==='smooth'||(behavior==='auto'&&(known?known[5]:N.computed(el||html(),'scroll-behavior')==='smooth'));
+    cancelScroll(el);
+    if(from[0]===to[0]&&from[1]===to[1])return Promise.resolve({interrupted:false});
+    if(!smooth){if(writeScroll(el,to[0],to[1]))endScroll(el);return Promise.resolve({interrupted:false});}
+    const distance=Math.max(Math.abs(to[0]-from[0]),Math.abs(to[1]-from[1]));
+    return new Promise(resolve=>smoothScrolls.set(el,{from,to,start:performanceNow(),duration:Math.min(700,Math.sqrt(distance)*1000/60),resolve}));
+  };
+  // CSSOM programmatic scrolling: the reference engine's distance-based
+  // duration and cubic-bezier(.42,0,.58,1), with no timer while at rest.
+  const scrollEase = t => {
+    let u=t;
+    for(let i=0;i<5;i++)u-=(u*(1.26+u*(-.78+.52*u))-t)/(1.26+u*(-1.56+1.56*u));
+    return u*u*(3-2*u);
+  };
+  const tickScrolls = () => {
+    for(const [el,s] of smoothScrolls){
+      if(el && !N.isConnected(el)){cancelScroll(el);continue;}
+      const t=Math.min(1,Math.max(0,(now-s.start)/s.duration)),ease=scrollEase(t);
+      writeScroll(el,s.from[0]+(s.to[0]-s.from[0])*ease,s.from[1]+(s.to[1]-s.from[1])*ease);
+      if(t===1){smoothScrolls.delete(el);endScroll(el);s.resolve({interrupted:false});}
+    }
+  };
+  const scrollIntoView = (el,arg) => {
+    if(!el || N.nodeType(el)!==1)throw new TypeError('Illegal invocation');
+    let behavior='auto',block='start',container='all',inline='nearest';
+    if(arg!==null && (typeof arg==='object'||typeof arg==='function')){
+      behavior=scrollBehavior(arg.behavior);
+      const blockValue=arg.block;if(blockValue!==undefined)block=String(blockValue);
+      if(!['start','center','end','nearest'].includes(block))throw new TypeError('Invalid block alignment');
+      const containerValue=arg.container;if(containerValue!==undefined)container=String(containerValue);
+      if(!['all','nearest'].includes(container))throw new TypeError('Invalid scroll container');
+      const inlineValue=arg.inline;if(inlineValue!==undefined)inline=String(inlineValue);
+      if(!['start','center','end','nearest'].includes(inline))throw new TypeError('Invalid inline alignment');
+    }else if(arg!==undefined && arg!==null && !arg)block='end';
+    return Promise.all((N.scrollIntoView(el,block,inline,container==='nearest')||[]).map(plan=>performScroll(plan[0],plan[3],plan[4],behavior,plan))).then(results=>({interrupted:results.some(r=>r.interrupted)}));
+  };
+  const scrollElement = (el,x,y,behavior='auto') => performScroll(el,x,y,behavior);
   const queueScroll = (el) => { if (scrollPending.has(el)) return; scrollPending.add(el); setTimeout(() => { scrollPending.delete(el); dispatch(el, new Event('scroll')); }, 0); };
-  H.__olo_scrolled = (el) => queueScroll(el);
+  H.__olo_scrolled = (el) => {cancelScroll(el);queueScroll(el);};
   // Queries without listeners are weakly held. Queries with change
   // listeners stay alive, as CSSOM View requires, until those are removed.
   const mediaQueries = new Set(), listeningMediaQueries = new Set(), mediaState = new WeakMap();
@@ -2093,7 +2157,7 @@
     if (was !== pageHidden) { try { dispatch(documentNode, new Event('visibilitychange', { bubbles: true })); } catch (e) { reportError(e); } try { dispatch(global, new Event(pageHidden ? 'pagehide' : 'pageshow')); } catch (e) {} }
     return 0;
   };
-  H.__olo_wants_frame = () => (environmentPending || rafs.length || (intersectionObservers.size && (intersectionsDue || scrollXY[1] !== intersectionScroll || layoutNow() !== intersectionLayout)) ? 1 : 0);
+  H.__olo_wants_frame = () => (environmentPending || smoothScrolls.size || rafs.length || (intersectionObservers.size && (intersectionsDue || scrollXY[1] !== intersectionScroll || layoutNow() !== intersectionLayout)) ? 1 : 0);
   H.__olo_tick = (clock, frame) => {
     frameDriven = frame === 0 || frame === 1;
     frameNow = frame === 1;
@@ -2115,9 +2179,10 @@
     // the observations, whose notifications follow), so a page that
     // schedules a frame and then observes sees the frame first.
     const intersectionsWanted = intersectionObservers.size && (intersectionsDue || scrollXY[1] !== intersectionScroll || layoutNow() !== intersectionLayout);
-    if ((environmentPending || rafs.length || intersectionsWanted) && (frameDriven ? frameNow : now >= lastFrame + 16)) {
+    if ((environmentPending || smoothScrolls.size || rafs.length || intersectionsWanted) && (frameDriven ? frameNow : now >= lastFrame + 16)) {
       lastFrame = now;
       if (environmentPending) reportEnvironment();
+      tickScrolls();
       const batch = rafs.splice(0, rafs.length);
       for (const r of batch) { try { r.fn.call(global, performanceNow()); } catch (e) { reportError(e); } }
       if (intersectionObservers.size && (intersectionsDue || scrollXY[1] !== intersectionScroll || layoutNow() !== intersectionLayout)) checkIntersections();
@@ -2127,7 +2192,7 @@
     let next = -1;
     for (const t of timers.values()) if (next < 0 || t.due < next) next = t.due;
     // Frames driven by the host come when it says: only timers set the next time.
-    if (!frameDriven && (environmentPending || rafs.length || (intersectionObservers.size && (intersectionsDue || scrollXY[1] !== intersectionScroll || layoutNow() !== intersectionLayout)))) { const frame = lastFrame + 16; if (next < 0 || frame < next) next = frame; }
+    if (!frameDriven && (environmentPending || smoothScrolls.size || rafs.length || (intersectionObservers.size && (intersectionsDue || scrollXY[1] !== intersectionScroll || layoutNow() !== intersectionLayout)))) { const frame = lastFrame + 16; if (next < 0 || frame < next) next = frame; }
     if (next >= 0 && next <= now) next = now + 1;
     return next;
   };
@@ -2364,7 +2429,7 @@
         pressTarget = null;
         break;
       }
-      case 'wheel': fire(WheelEvent, 'wheel', target, { deltaX: i.dx, deltaY: i.dy, deltaMode: 0 }); break;
+      case 'wheel': { const ev=fire(WheelEvent, 'wheel', target, { deltaX: i.dx, deltaY: i.dy, deltaMode: 0 }); if(!ev.defaultPrevented){cancelScroll(null);for(const el of ancestors(target))cancelScroll(el);} break; }
       case 'key': {
         const at = activeElement && N.isConnected(activeElement) ? activeElement : (document.body || documentNode);
         const init = { key: i.key, code: i.code, repeat: false, keyCode: i.key.length === 1 ? i.key.toUpperCase().charCodeAt(0) : ({ Enter: 13, Escape: 27, Tab: 9, Backspace: 8, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, ' ': 32 }[i.key] || 0) };
