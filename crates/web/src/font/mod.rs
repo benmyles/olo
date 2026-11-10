@@ -11,6 +11,7 @@ use crate::css::properties::{Family, GenericFamily};
 use crate::css::style::{FontMetrics, FontRequest, FontSlant};
 pub use catalog::{Builder, Catalog, Descriptor, Face, FaceId, LoadProgress};
 pub use matching::{Coordinate, MatchOptions, Selection, Slope, Synthesis};
+pub(crate) use metrics::device_metrics;
 pub use metrics::{Fallbacks, ResolvedMetrics};
 pub use scope::CacheStats;
 pub use scope::{FontSet, GenericPolicy, Scope};

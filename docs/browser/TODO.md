@@ -801,6 +801,13 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   rectangles; font pixels remain unverified after that fix. Shaped-face JSON and
   repeat-verified native Chrome captures are in
   `measurements/2026-11-09-font-diagnostics`; emulated DPR is separate.
+- [x] Default Linux installed-font baseline/content metrics above 1×, preserving
+  the downloaded-font policy and device-space normal-line-height sum. The new
+  three-family probe improves 354/600→600/600 baseline matches at five native
+  DPRs. Downloaded-font bounds survive ascending/descending scale changes.
+  `measurements/2026-11-10-text-baselines.json` retains all pixel nonpasses:
+  matching baselines does not establish matching glyph masks. Hinting/VDMX,
+  rendering preferences and text-rendering overrides remain incomplete.
 - [ ] Retained GPU painting, clipping, compositing, scrolling, images,
   SVG, canvas, fonts, video and audio; measure each on release builds.
 - [ ] Native browser shell, tabs/navigation/find/history/bookmarks/downloads.

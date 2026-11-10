@@ -53,6 +53,7 @@ pub struct Face {
     pub monospaced: bool,
     /// `unicode-range` of a web face: the code points it is used for.
     pub ranges: Option<Box<[(u32, u32)]>>,
+    pub(crate) web_font: bool,
     pub(super) source: usize,
     pub(super) collection_index: u32,
     pub(super) zero: Option<u16>,
@@ -149,6 +150,7 @@ impl Builder {
         face.width = descriptor.width;
         face.slopes = descriptor.slopes;
         face.ranges = descriptor.ranges;
+        face.web_font = true;
         self.faces.truncate(before + 1);
         Ok(())
     }
@@ -326,6 +328,7 @@ impl Builder {
                 units_per_em: parsed.units_per_em(),
                 monospaced: parsed.is_monospaced(),
                 ranges: None,
+                web_font: false,
                 source: self.sources.len(),
                 collection_index: index as u32,
                 zero: reference('0'),

@@ -1,0 +1,30 @@
+{
+  "binary_sha256": "61fba2e18c36f08482cab5f30212f0eb495a43664deefda9f43eb59d63ac9e16",
+  "rows": [
+    {
+      "scale": 1,
+      "json_identical": true,
+      "png_identical": true
+    },
+    {
+      "scale": 1.25,
+      "json_identical": true,
+      "png_identical": true
+    },
+    {
+      "scale": 1.5,
+      "json_identical": true,
+      "png_identical": true
+    },
+    {
+      "scale": 1.75,
+      "json_identical": true,
+      "png_identical": true
+    },
+    {
+      "scale": 2,
+      "json_identical": true,
+      "png_identical": true
+    }
+  ]
+}

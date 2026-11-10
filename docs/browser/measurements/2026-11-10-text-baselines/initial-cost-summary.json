@@ -1,0 +1,1486 @@
+[
+  {
+    "scale": 1.25,
+    "variant": "baseline",
+    "reload_cpu_ms": 39.285714285714285,
+    "ready_ms": 36.0,
+    "idle": [
+      {
+        "seconds": 2.0,
+        "total": {
+          "cpu": 0.0,
+          "unlisted": 0.0,
+          "wakeups": 0
+        },
+        "threads": [
+          {
+            "tid": 3565954,
+            "name": "browser-before",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3565974,
+            "name": "async-io",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3565981,
+            "name": "Timer",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3565986,
+            "name": "theme-watch",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3565987,
+            "name": "menus",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3565988,
+            "name": "upgrade-watch",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3565994,
+            "name": "browser:disk$0",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3566001,
+            "name": "browse:traceq0",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3566019,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3566023,
+            "name": "glyph-warm",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3566024,
+            "name": "browser-before",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3566028,
+            "name": "browser-net",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3566029,
+            "name": "browser-net",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3566036,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3566037,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3566038,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3566039,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          }
+        ],
+        "windows": [
+          {
+            "title": "Browser",
+            "frames": 0,
+            "per_second": 0.0,
+            "mean_us": 0,
+            "ui_us": 0,
+            "tessellate_us": 0,
+            "submit_us": 0,
+            "slowest_us": 0
+          }
+        ]
+      },
+      {
+        "seconds": 2.0,
+        "total": {
+          "cpu": 0.0,
+          "unlisted": 0.0,
+          "wakeups": 0
+        },
+        "threads": [
+          {
+            "tid": 3568735,
+            "name": "browser-before",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568740,
+            "name": "async-io",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568744,
+            "name": "Timer",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568746,
+            "name": "theme-watch",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568747,
+            "name": "menus",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568748,
+            "name": "upgrade-watch",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568749,
+            "name": "browser:disk$0",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568754,
+            "name": "browse:traceq0",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568770,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568772,
+            "name": "glyph-warm",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568773,
+            "name": "browser-net",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568774,
+            "name": "browser-net",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568775,
+            "name": "browser-before",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568778,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568779,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568780,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568781,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          }
+        ],
+        "windows": [
+          {
+            "title": "Browser",
+            "frames": 0,
+            "per_second": 0.0,
+            "mean_us": 0,
+            "ui_us": 0,
+            "tessellate_us": 0,
+            "submit_us": 0,
+            "slowest_us": 0
+          }
+        ]
+      }
+    ],
+    "compiler_overlap": true,
+    "scroll": {
+      "drag": {
+        "first_ms": 30.9,
+        "hitches": 13,
+        "slowest_ms": 22.2
+      },
+      "wheel": {
+        "first_ms": 9.9,
+        "hitches": 0,
+        "slowest_ms": 25.74
+      }
+    }
+  },
+  {
+    "scale": 1.25,
+    "variant": "candidate",
+    "reload_cpu_ms": 37.857142857142854,
+    "ready_ms": 40.0,
+    "idle": [
+      {
+        "seconds": 2.0,
+        "total": {
+          "cpu": 0.0,
+          "unlisted": 0.0,
+          "wakeups": 0
+        },
+        "threads": [
+          {
+            "tid": 3567121,
+            "name": "olo-browser",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3567129,
+            "name": "async-io",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3567131,
+            "name": "Timer",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3567133,
+            "name": "theme-watch",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3567134,
+            "name": "menus",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3567135,
+            "name": "upgrade-watch",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3567138,
+            "name": "olo-bro:disk$0",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3567144,
+            "name": "olo-br:traceq0",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3567161,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3567167,
+            "name": "browser-net",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3567168,
+            "name": "browser-net",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3567169,
+            "name": "glyph-warm",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3567170,
+            "name": "olo-browser",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3567178,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3567179,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3567180,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3567181,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          }
+        ],
+        "windows": [
+          {
+            "title": "Browser",
+            "frames": 0,
+            "per_second": 0.0,
+            "mean_us": 0,
+            "ui_us": 0,
+            "tessellate_us": 0,
+            "submit_us": 0,
+            "slowest_us": 0
+          }
+        ]
+      },
+      {
+        "seconds": 2.0,
+        "total": {
+          "cpu": 0.0,
+          "unlisted": 0.0,
+          "wakeups": 0
+        },
+        "threads": [
+          {
+            "tid": 3568184,
+            "name": "olo-browser",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568189,
+            "name": "async-io",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568190,
+            "name": "Timer",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568192,
+            "name": "theme-watch",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568194,
+            "name": "menus",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568195,
+            "name": "upgrade-watch",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568197,
+            "name": "olo-bro:disk$0",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568202,
+            "name": "olo-br:traceq0",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568216,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568219,
+            "name": "browser-net",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568220,
+            "name": "browser-net",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568221,
+            "name": "glyph-warm",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568222,
+            "name": "olo-browser",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568226,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568227,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568228,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3568229,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          }
+        ],
+        "windows": [
+          {
+            "title": "Browser",
+            "frames": 0,
+            "per_second": 0.0,
+            "mean_us": 0,
+            "ui_us": 0,
+            "tessellate_us": 0,
+            "submit_us": 0,
+            "slowest_us": 0
+          }
+        ]
+      }
+    ],
+    "compiler_overlap": true,
+    "scroll": {
+      "drag": {
+        "first_ms": 29.05,
+        "hitches": 22,
+        "slowest_ms": 18.26
+      },
+      "wheel": {
+        "first_ms": 10.1,
+        "hitches": 0,
+        "slowest_ms": 2.13
+      }
+    }
+  },
+  {
+    "scale": 2,
+    "variant": "baseline",
+    "reload_cpu_ms": 42.142857142857146,
+    "ready_ms": 29.0,
+    "idle": [
+      {
+        "seconds": 2.0,
+        "total": {
+          "cpu": 0.0,
+          "unlisted": 0.0,
+          "wakeups": 0
+        },
+        "threads": [
+          {
+            "tid": 3569294,
+            "name": "browser-before",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569299,
+            "name": "async-io",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569301,
+            "name": "Timer",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569303,
+            "name": "theme-watch",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569304,
+            "name": "menus",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569305,
+            "name": "upgrade-watch",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569307,
+            "name": "browser:disk$0",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569311,
+            "name": "browse:traceq0",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569326,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569328,
+            "name": "browser-net",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569329,
+            "name": "browser-net",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569331,
+            "name": "glyph-warm",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569335,
+            "name": "browser-before",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569346,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569347,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569348,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569349,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          }
+        ],
+        "windows": [
+          {
+            "title": "Browser",
+            "frames": 0,
+            "per_second": 0.0,
+            "mean_us": 0,
+            "ui_us": 0,
+            "tessellate_us": 0,
+            "submit_us": 0,
+            "slowest_us": 0
+          }
+        ]
+      },
+      {
+        "seconds": 2.0,
+        "total": {
+          "cpu": 0.0,
+          "unlisted": 0.0,
+          "wakeups": 0
+        },
+        "threads": [
+          {
+            "tid": 3571217,
+            "name": "browser-before",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3571222,
+            "name": "async-io",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3571224,
+            "name": "Timer",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3571226,
+            "name": "theme-watch",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3571227,
+            "name": "menus",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3571228,
+            "name": "upgrade-watch",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3571229,
+            "name": "browser:disk$0",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3571233,
+            "name": "browse:traceq0",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3571247,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3571249,
+            "name": "browser-net",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3571250,
+            "name": "browser-net",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3571251,
+            "name": "glyph-warm",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3571252,
+            "name": "browser-before",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3571253,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3571254,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3571255,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3571256,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          }
+        ],
+        "windows": [
+          {
+            "title": "Browser",
+            "frames": 0,
+            "per_second": 0.0,
+            "mean_us": 0,
+            "ui_us": 0,
+            "tessellate_us": 0,
+            "submit_us": 0,
+            "slowest_us": 0
+          }
+        ]
+      }
+    ],
+    "compiler_overlap": true,
+    "scroll": {
+      "drag": {
+        "first_ms": 30.65,
+        "hitches": 29,
+        "slowest_ms": 49.88
+      },
+      "wheel": {
+        "first_ms": 11.15,
+        "hitches": 0,
+        "slowest_ms": 9.85
+      }
+    }
+  },
+  {
+    "scale": 2,
+    "variant": "candidate",
+    "reload_cpu_ms": 44.285714285714285,
+    "ready_ms": 29.0,
+    "idle": [
+      {
+        "seconds": 2.0,
+        "total": {
+          "cpu": 0.0,
+          "unlisted": 0.0,
+          "wakeups": 0
+        },
+        "threads": [
+          {
+            "tid": 3569808,
+            "name": "olo-browser",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569813,
+            "name": "async-io",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569815,
+            "name": "Timer",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569817,
+            "name": "theme-watch",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569818,
+            "name": "menus",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569819,
+            "name": "upgrade-watch",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569821,
+            "name": "olo-bro:disk$0",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569826,
+            "name": "olo-br:traceq0",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569842,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569844,
+            "name": "glyph-warm",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569845,
+            "name": "olo-browser",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569847,
+            "name": "browser-net",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569848,
+            "name": "browser-net",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569853,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569854,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569855,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3569856,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          }
+        ],
+        "windows": [
+          {
+            "title": "Browser",
+            "frames": 0,
+            "per_second": 0.0,
+            "mean_us": 0,
+            "ui_us": 0,
+            "tessellate_us": 0,
+            "submit_us": 0,
+            "slowest_us": 0
+          }
+        ]
+      },
+      {
+        "seconds": 2.0,
+        "total": {
+          "cpu": 0.0,
+          "unlisted": 0.0,
+          "wakeups": 0
+        },
+        "threads": [
+          {
+            "tid": 3570875,
+            "name": "olo-browser",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3570880,
+            "name": "async-io",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3570881,
+            "name": "Timer",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3570884,
+            "name": "theme-watch",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3570885,
+            "name": "menus",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3570886,
+            "name": "upgrade-watch",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3570887,
+            "name": "olo-bro:disk$0",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3570891,
+            "name": "olo-br:traceq0",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3570905,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3570906,
+            "name": "glyph-warm",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3570907,
+            "name": "olo-browser",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3570908,
+            "name": "browser-net",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3570909,
+            "name": "browser-net",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3570917,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3570918,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3570919,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3570920,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          }
+        ],
+        "windows": [
+          {
+            "title": "Browser",
+            "frames": 0,
+            "per_second": 0.0,
+            "mean_us": 0,
+            "ui_us": 0,
+            "tessellate_us": 0,
+            "submit_us": 0,
+            "slowest_us": 0
+          }
+        ]
+      }
+    ],
+    "compiler_overlap": true,
+    "scroll": {
+      "drag": {
+        "first_ms": 28.8,
+        "hitches": 47,
+        "slowest_ms": 10.09
+      },
+      "wheel": {
+        "first_ms": 10.4,
+        "hitches": 0,
+        "slowest_ms": 3.71
+      }
+    }
+  }
+]

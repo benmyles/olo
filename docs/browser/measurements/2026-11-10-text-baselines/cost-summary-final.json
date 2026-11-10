@@ -1,0 +1,138 @@
+[
+  {
+    "scale": 1.25,
+    "variant": "baseline",
+    "reload_cpu_ms": 32.857142857142854,
+    "ready_ms": 26.0,
+    "rss_kib": 133608.0,
+    "compiler_overlap": true,
+    "idle": [
+      {
+        "cpu": 0.0,
+        "wakeups": 0,
+        "frames": 0
+      },
+      {
+        "cpu": 0.0,
+        "wakeups": 0,
+        "frames": 0
+      }
+    ],
+    "scroll": {
+      "drag": {
+        "first_ms": 28.450000000000003,
+        "hitches": 0,
+        "still": 0,
+        "slowest_ms": 1.44
+      },
+      "wheel": {
+        "first_ms": 9.4,
+        "hitches": 0,
+        "still": 0,
+        "slowest_ms": 2.03
+      }
+    }
+  },
+  {
+    "scale": 1.25,
+    "variant": "candidate",
+    "reload_cpu_ms": 33.57142857142857,
+    "ready_ms": 24.0,
+    "rss_kib": 134082.0,
+    "compiler_overlap": true,
+    "idle": [
+      {
+        "cpu": 0.0,
+        "wakeups": 0,
+        "frames": 0
+      },
+      {
+        "cpu": 0.0,
+        "wakeups": 0,
+        "frames": 0
+      }
+    ],
+    "scroll": {
+      "drag": {
+        "first_ms": 28.9,
+        "hitches": 0,
+        "still": 0,
+        "slowest_ms": 2.9
+      },
+      "wheel": {
+        "first_ms": 9.45,
+        "hitches": 0,
+        "still": 0,
+        "slowest_ms": 4.25
+      }
+    }
+  },
+  {
+    "scale": 2,
+    "variant": "baseline",
+    "reload_cpu_ms": 35.714285714285715,
+    "ready_ms": 24.0,
+    "rss_kib": 139072.0,
+    "compiler_overlap": false,
+    "idle": [
+      {
+        "cpu": 0.0,
+        "wakeups": 0,
+        "frames": 0
+      },
+      {
+        "cpu": 0.0,
+        "wakeups": 0,
+        "frames": 0
+      }
+    ],
+    "scroll": {
+      "drag": {
+        "first_ms": 28.65,
+        "hitches": 0,
+        "still": 0,
+        "slowest_ms": 0.77
+      },
+      "wheel": {
+        "first_ms": 9.05,
+        "hitches": 0,
+        "still": 0,
+        "slowest_ms": 3.5
+      }
+    }
+  },
+  {
+    "scale": 2,
+    "variant": "candidate",
+    "reload_cpu_ms": 37.857142857142854,
+    "ready_ms": 24.0,
+    "rss_kib": 139724.0,
+    "compiler_overlap": false,
+    "idle": [
+      {
+        "cpu": 0.0,
+        "wakeups": 0,
+        "frames": 0
+      },
+      {
+        "cpu": 0.0,
+        "wakeups": 0,
+        "frames": 0
+      }
+    ],
+    "scroll": {
+      "drag": {
+        "first_ms": 28.75,
+        "hitches": 1,
+        "still": 0,
+        "slowest_ms": 0.74
+      },
+      "wheel": {
+        "first_ms": 9.1,
+        "hitches": 0,
+        "still": 0,
+        "slowest_ms": 0.6
+      }
+    }
+  }
+]

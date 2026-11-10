@@ -3,6 +3,14 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-11-10
+
+### Browser: align text baselines with Chrome
+
+*01:08* — Native DPR 1, 1.25, 1.5, 1.75 and 2, left to right. Rows: Chrome, previous Browser, corrected Browser. Default installed-font metrics now preserve Chrome's descender allowance above 1x; downloaded fonts keep their distinct policy. All 600 installed-font baseline observations match. Glyph rasterization still differs; this is not a pixel-parity pass.
+
+![Browser: align text baselines with Chrome](2026-11-10/010828-browser-align-text-baselines-with-chrome.png)
+
 ## 2026-11-09
 
 ### Browser: live stylesheet completion

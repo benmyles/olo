@@ -4462,5 +4462,11 @@
   "title": "Browser: live stylesheet completion",
   "caption": "A live stylesheet update after compilation. Completed rules now stay with the waiting page through shared-cache eviction, and every waiting page is notified. The ordinary update screenshots are unchanged across 15 theme/scale pairs; deterministic tests reproduce and verify the cache race.",
   "image": "2026-11-09/235446-browser-live-stylesheet-completion.png"
+ },
+ {
+  "time": "2026-11-10T01:08:28",
+  "title": "Browser: align text baselines with Chrome",
+  "caption": "Native DPR 1, 1.25, 1.5, 1.75 and 2, left to right. Rows: Chrome, previous Browser, corrected Browser. Default installed-font metrics now preserve Chrome's descender allowance above 1x; downloaded fonts keep their distinct policy. All 600 installed-font baseline observations match. Glyph rasterization still differs; this is not a pixel-parity pass.",
+  "image": "2026-11-10/010828-browser-align-text-baselines-with-chrome.png"
  }
 ]

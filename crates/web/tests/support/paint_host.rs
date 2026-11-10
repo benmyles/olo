@@ -16,7 +16,7 @@ impl Host for Scaled {
         self.0.system_color(c, s)
     }
     fn font(&self, r: &FontRequest) -> style::Result<FontMetrics> {
-        self.0.font(r)
+        self.0.0.metrics(r, None).map(|m| m.style_at(self.1)).map_err(|_| style::Error::ContextUnavailable)
     }
     fn font_context(&self) -> u64 {
         self.0.font_context()

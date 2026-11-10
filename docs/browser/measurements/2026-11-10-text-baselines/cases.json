@@ -1,0 +1,962 @@
+[
+  {
+    "id": "case-0",
+    "family": "Arial",
+    "size": 9,
+    "height": 10,
+    "x": 20,
+    "y": 20
+  },
+  {
+    "id": "case-1",
+    "family": "Arial",
+    "size": 9,
+    "height": 14,
+    "x": 265,
+    "y": 20
+  },
+  {
+    "id": "case-2",
+    "family": "Arial",
+    "size": 9,
+    "height": 13.5,
+    "x": 510,
+    "y": 20
+  },
+  {
+    "id": "case-3",
+    "family": "Arial",
+    "size": 9,
+    "height": "normal",
+    "x": 755,
+    "y": 20
+  },
+  {
+    "id": "case-4",
+    "family": "Arial",
+    "size": 10,
+    "height": 11,
+    "x": 20,
+    "y": 80
+  },
+  {
+    "id": "case-5",
+    "family": "Arial",
+    "size": 10,
+    "height": 15,
+    "x": 265,
+    "y": 80
+  },
+  {
+    "id": "case-6",
+    "family": "Arial",
+    "size": 10,
+    "height": 15.0,
+    "x": 510,
+    "y": 80
+  },
+  {
+    "id": "case-7",
+    "family": "Arial",
+    "size": 10,
+    "height": "normal",
+    "x": 755,
+    "y": 80
+  },
+  {
+    "id": "case-8",
+    "family": "Arial",
+    "size": 11,
+    "height": 12,
+    "x": 20,
+    "y": 140
+  },
+  {
+    "id": "case-9",
+    "family": "Arial",
+    "size": 11,
+    "height": 16,
+    "x": 265,
+    "y": 140
+  },
+  {
+    "id": "case-10",
+    "family": "Arial",
+    "size": 11,
+    "height": 16.5,
+    "x": 510,
+    "y": 140
+  },
+  {
+    "id": "case-11",
+    "family": "Arial",
+    "size": 11,
+    "height": "normal",
+    "x": 755,
+    "y": 140
+  },
+  {
+    "id": "case-12",
+    "family": "Arial",
+    "size": 12,
+    "height": 13,
+    "x": 20,
+    "y": 200
+  },
+  {
+    "id": "case-13",
+    "family": "Arial",
+    "size": 12,
+    "height": 17,
+    "x": 265,
+    "y": 200
+  },
+  {
+    "id": "case-14",
+    "family": "Arial",
+    "size": 12,
+    "height": 18.0,
+    "x": 510,
+    "y": 200
+  },
+  {
+    "id": "case-15",
+    "family": "Arial",
+    "size": 12,
+    "height": "normal",
+    "x": 755,
+    "y": 200
+  },
+  {
+    "id": "case-16",
+    "family": "Arial",
+    "size": 13,
+    "height": 14,
+    "x": 20,
+    "y": 260
+  },
+  {
+    "id": "case-17",
+    "family": "Arial",
+    "size": 13,
+    "height": 18,
+    "x": 265,
+    "y": 260
+  },
+  {
+    "id": "case-18",
+    "family": "Arial",
+    "size": 13,
+    "height": 19.5,
+    "x": 510,
+    "y": 260
+  },
+  {
+    "id": "case-19",
+    "family": "Arial",
+    "size": 13,
+    "height": "normal",
+    "x": 755,
+    "y": 260
+  },
+  {
+    "id": "case-20",
+    "family": "Arial",
+    "size": 14,
+    "height": 15,
+    "x": 20,
+    "y": 320
+  },
+  {
+    "id": "case-21",
+    "family": "Arial",
+    "size": 14,
+    "height": 19,
+    "x": 265,
+    "y": 320
+  },
+  {
+    "id": "case-22",
+    "family": "Arial",
+    "size": 14,
+    "height": 21.0,
+    "x": 510,
+    "y": 320
+  },
+  {
+    "id": "case-23",
+    "family": "Arial",
+    "size": 14,
+    "height": "normal",
+    "x": 755,
+    "y": 320
+  },
+  {
+    "id": "case-24",
+    "family": "Arial",
+    "size": 16,
+    "height": 17,
+    "x": 20,
+    "y": 380
+  },
+  {
+    "id": "case-25",
+    "family": "Arial",
+    "size": 16,
+    "height": 21,
+    "x": 265,
+    "y": 380
+  },
+  {
+    "id": "case-26",
+    "family": "Arial",
+    "size": 16,
+    "height": 24.0,
+    "x": 510,
+    "y": 380
+  },
+  {
+    "id": "case-27",
+    "family": "Arial",
+    "size": 16,
+    "height": "normal",
+    "x": 755,
+    "y": 380
+  },
+  {
+    "id": "case-28",
+    "family": "Arial",
+    "size": 18,
+    "height": 19,
+    "x": 20,
+    "y": 440
+  },
+  {
+    "id": "case-29",
+    "family": "Arial",
+    "size": 18,
+    "height": 23,
+    "x": 265,
+    "y": 440
+  },
+  {
+    "id": "case-30",
+    "family": "Arial",
+    "size": 18,
+    "height": 27.0,
+    "x": 510,
+    "y": 440
+  },
+  {
+    "id": "case-31",
+    "family": "Arial",
+    "size": 18,
+    "height": "normal",
+    "x": 755,
+    "y": 440
+  },
+  {
+    "id": "case-32",
+    "family": "Arial",
+    "size": 20,
+    "height": 21,
+    "x": 20,
+    "y": 500
+  },
+  {
+    "id": "case-33",
+    "family": "Arial",
+    "size": 20,
+    "height": 25,
+    "x": 265,
+    "y": 500
+  },
+  {
+    "id": "case-34",
+    "family": "Arial",
+    "size": 20,
+    "height": 30.0,
+    "x": 510,
+    "y": 500
+  },
+  {
+    "id": "case-35",
+    "family": "Arial",
+    "size": 20,
+    "height": "normal",
+    "x": 755,
+    "y": 500
+  },
+  {
+    "id": "case-36",
+    "family": "Arial",
+    "size": 24,
+    "height": 25,
+    "x": 20,
+    "y": 560
+  },
+  {
+    "id": "case-37",
+    "family": "Arial",
+    "size": 24,
+    "height": 29,
+    "x": 265,
+    "y": 560
+  },
+  {
+    "id": "case-38",
+    "family": "Arial",
+    "size": 24,
+    "height": 36.0,
+    "x": 510,
+    "y": 560
+  },
+  {
+    "id": "case-39",
+    "family": "Arial",
+    "size": 24,
+    "height": "normal",
+    "x": 755,
+    "y": 560
+  },
+  {
+    "id": "case-40",
+    "family": "Times New Roman",
+    "size": 9,
+    "height": 10,
+    "x": 20,
+    "y": 620
+  },
+  {
+    "id": "case-41",
+    "family": "Times New Roman",
+    "size": 9,
+    "height": 14,
+    "x": 265,
+    "y": 620
+  },
+  {
+    "id": "case-42",
+    "family": "Times New Roman",
+    "size": 9,
+    "height": 13.5,
+    "x": 510,
+    "y": 620
+  },
+  {
+    "id": "case-43",
+    "family": "Times New Roman",
+    "size": 9,
+    "height": "normal",
+    "x": 755,
+    "y": 620
+  },
+  {
+    "id": "case-44",
+    "family": "Times New Roman",
+    "size": 10,
+    "height": 11,
+    "x": 20,
+    "y": 680
+  },
+  {
+    "id": "case-45",
+    "family": "Times New Roman",
+    "size": 10,
+    "height": 15,
+    "x": 265,
+    "y": 680
+  },
+  {
+    "id": "case-46",
+    "family": "Times New Roman",
+    "size": 10,
+    "height": 15.0,
+    "x": 510,
+    "y": 680
+  },
+  {
+    "id": "case-47",
+    "family": "Times New Roman",
+    "size": 10,
+    "height": "normal",
+    "x": 755,
+    "y": 680
+  },
+  {
+    "id": "case-48",
+    "family": "Times New Roman",
+    "size": 11,
+    "height": 12,
+    "x": 20,
+    "y": 740
+  },
+  {
+    "id": "case-49",
+    "family": "Times New Roman",
+    "size": 11,
+    "height": 16,
+    "x": 265,
+    "y": 740
+  },
+  {
+    "id": "case-50",
+    "family": "Times New Roman",
+    "size": 11,
+    "height": 16.5,
+    "x": 510,
+    "y": 740
+  },
+  {
+    "id": "case-51",
+    "family": "Times New Roman",
+    "size": 11,
+    "height": "normal",
+    "x": 755,
+    "y": 740
+  },
+  {
+    "id": "case-52",
+    "family": "Times New Roman",
+    "size": 12,
+    "height": 13,
+    "x": 20,
+    "y": 800
+  },
+  {
+    "id": "case-53",
+    "family": "Times New Roman",
+    "size": 12,
+    "height": 17,
+    "x": 265,
+    "y": 800
+  },
+  {
+    "id": "case-54",
+    "family": "Times New Roman",
+    "size": 12,
+    "height": 18.0,
+    "x": 510,
+    "y": 800
+  },
+  {
+    "id": "case-55",
+    "family": "Times New Roman",
+    "size": 12,
+    "height": "normal",
+    "x": 755,
+    "y": 800
+  },
+  {
+    "id": "case-56",
+    "family": "Times New Roman",
+    "size": 13,
+    "height": 14,
+    "x": 20,
+    "y": 860
+  },
+  {
+    "id": "case-57",
+    "family": "Times New Roman",
+    "size": 13,
+    "height": 18,
+    "x": 265,
+    "y": 860
+  },
+  {
+    "id": "case-58",
+    "family": "Times New Roman",
+    "size": 13,
+    "height": 19.5,
+    "x": 510,
+    "y": 860
+  },
+  {
+    "id": "case-59",
+    "family": "Times New Roman",
+    "size": 13,
+    "height": "normal",
+    "x": 755,
+    "y": 860
+  },
+  {
+    "id": "case-60",
+    "family": "Times New Roman",
+    "size": 14,
+    "height": 15,
+    "x": 20,
+    "y": 920
+  },
+  {
+    "id": "case-61",
+    "family": "Times New Roman",
+    "size": 14,
+    "height": 19,
+    "x": 265,
+    "y": 920
+  },
+  {
+    "id": "case-62",
+    "family": "Times New Roman",
+    "size": 14,
+    "height": 21.0,
+    "x": 510,
+    "y": 920
+  },
+  {
+    "id": "case-63",
+    "family": "Times New Roman",
+    "size": 14,
+    "height": "normal",
+    "x": 755,
+    "y": 920
+  },
+  {
+    "id": "case-64",
+    "family": "Times New Roman",
+    "size": 16,
+    "height": 17,
+    "x": 20,
+    "y": 980
+  },
+  {
+    "id": "case-65",
+    "family": "Times New Roman",
+    "size": 16,
+    "height": 21,
+    "x": 265,
+    "y": 980
+  },
+  {
+    "id": "case-66",
+    "family": "Times New Roman",
+    "size": 16,
+    "height": 24.0,
+    "x": 510,
+    "y": 980
+  },
+  {
+    "id": "case-67",
+    "family": "Times New Roman",
+    "size": 16,
+    "height": "normal",
+    "x": 755,
+    "y": 980
+  },
+  {
+    "id": "case-68",
+    "family": "Times New Roman",
+    "size": 18,
+    "height": 19,
+    "x": 20,
+    "y": 1040
+  },
+  {
+    "id": "case-69",
+    "family": "Times New Roman",
+    "size": 18,
+    "height": 23,
+    "x": 265,
+    "y": 1040
+  },
+  {
+    "id": "case-70",
+    "family": "Times New Roman",
+    "size": 18,
+    "height": 27.0,
+    "x": 510,
+    "y": 1040
+  },
+  {
+    "id": "case-71",
+    "family": "Times New Roman",
+    "size": 18,
+    "height": "normal",
+    "x": 755,
+    "y": 1040
+  },
+  {
+    "id": "case-72",
+    "family": "Times New Roman",
+    "size": 20,
+    "height": 21,
+    "x": 20,
+    "y": 1100
+  },
+  {
+    "id": "case-73",
+    "family": "Times New Roman",
+    "size": 20,
+    "height": 25,
+    "x": 265,
+    "y": 1100
+  },
+  {
+    "id": "case-74",
+    "family": "Times New Roman",
+    "size": 20,
+    "height": 30.0,
+    "x": 510,
+    "y": 1100
+  },
+  {
+    "id": "case-75",
+    "family": "Times New Roman",
+    "size": 20,
+    "height": "normal",
+    "x": 755,
+    "y": 1100
+  },
+  {
+    "id": "case-76",
+    "family": "Times New Roman",
+    "size": 24,
+    "height": 25,
+    "x": 20,
+    "y": 1160
+  },
+  {
+    "id": "case-77",
+    "family": "Times New Roman",
+    "size": 24,
+    "height": 29,
+    "x": 265,
+    "y": 1160
+  },
+  {
+    "id": "case-78",
+    "family": "Times New Roman",
+    "size": 24,
+    "height": 36.0,
+    "x": 510,
+    "y": 1160
+  },
+  {
+    "id": "case-79",
+    "family": "Times New Roman",
+    "size": 24,
+    "height": "normal",
+    "x": 755,
+    "y": 1160
+  },
+  {
+    "id": "case-80",
+    "family": "Courier New",
+    "size": 9,
+    "height": 10,
+    "x": 20,
+    "y": 1220
+  },
+  {
+    "id": "case-81",
+    "family": "Courier New",
+    "size": 9,
+    "height": 14,
+    "x": 265,
+    "y": 1220
+  },
+  {
+    "id": "case-82",
+    "family": "Courier New",
+    "size": 9,
+    "height": 13.5,
+    "x": 510,
+    "y": 1220
+  },
+  {
+    "id": "case-83",
+    "family": "Courier New",
+    "size": 9,
+    "height": "normal",
+    "x": 755,
+    "y": 1220
+  },
+  {
+    "id": "case-84",
+    "family": "Courier New",
+    "size": 10,
+    "height": 11,
+    "x": 20,
+    "y": 1280
+  },
+  {
+    "id": "case-85",
+    "family": "Courier New",
+    "size": 10,
+    "height": 15,
+    "x": 265,
+    "y": 1280
+  },
+  {
+    "id": "case-86",
+    "family": "Courier New",
+    "size": 10,
+    "height": 15.0,
+    "x": 510,
+    "y": 1280
+  },
+  {
+    "id": "case-87",
+    "family": "Courier New",
+    "size": 10,
+    "height": "normal",
+    "x": 755,
+    "y": 1280
+  },
+  {
+    "id": "case-88",
+    "family": "Courier New",
+    "size": 11,
+    "height": 12,
+    "x": 20,
+    "y": 1340
+  },
+  {
+    "id": "case-89",
+    "family": "Courier New",
+    "size": 11,
+    "height": 16,
+    "x": 265,
+    "y": 1340
+  },
+  {
+    "id": "case-90",
+    "family": "Courier New",
+    "size": 11,
+    "height": 16.5,
+    "x": 510,
+    "y": 1340
+  },
+  {
+    "id": "case-91",
+    "family": "Courier New",
+    "size": 11,
+    "height": "normal",
+    "x": 755,
+    "y": 1340
+  },
+  {
+    "id": "case-92",
+    "family": "Courier New",
+    "size": 12,
+    "height": 13,
+    "x": 20,
+    "y": 1400
+  },
+  {
+    "id": "case-93",
+    "family": "Courier New",
+    "size": 12,
+    "height": 17,
+    "x": 265,
+    "y": 1400
+  },
+  {
+    "id": "case-94",
+    "family": "Courier New",
+    "size": 12,
+    "height": 18.0,
+    "x": 510,
+    "y": 1400
+  },
+  {
+    "id": "case-95",
+    "family": "Courier New",
+    "size": 12,
+    "height": "normal",
+    "x": 755,
+    "y": 1400
+  },
+  {
+    "id": "case-96",
+    "family": "Courier New",
+    "size": 13,
+    "height": 14,
+    "x": 20,
+    "y": 1460
+  },
+  {
+    "id": "case-97",
+    "family": "Courier New",
+    "size": 13,
+    "height": 18,
+    "x": 265,
+    "y": 1460
+  },
+  {
+    "id": "case-98",
+    "family": "Courier New",
+    "size": 13,
+    "height": 19.5,
+    "x": 510,
+    "y": 1460
+  },
+  {
+    "id": "case-99",
+    "family": "Courier New",
+    "size": 13,
+    "height": "normal",
+    "x": 755,
+    "y": 1460
+  },
+  {
+    "id": "case-100",
+    "family": "Courier New",
+    "size": 14,
+    "height": 15,
+    "x": 20,
+    "y": 1520
+  },
+  {
+    "id": "case-101",
+    "family": "Courier New",
+    "size": 14,
+    "height": 19,
+    "x": 265,
+    "y": 1520
+  },
+  {
+    "id": "case-102",
+    "family": "Courier New",
+    "size": 14,
+    "height": 21.0,
+    "x": 510,
+    "y": 1520
+  },
+  {
+    "id": "case-103",
+    "family": "Courier New",
+    "size": 14,
+    "height": "normal",
+    "x": 755,
+    "y": 1520
+  },
+  {
+    "id": "case-104",
+    "family": "Courier New",
+    "size": 16,
+    "height": 17,
+    "x": 20,
+    "y": 1580
+  },
+  {
+    "id": "case-105",
+    "family": "Courier New",
+    "size": 16,
+    "height": 21,
+    "x": 265,
+    "y": 1580
+  },
+  {
+    "id": "case-106",
+    "family": "Courier New",
+    "size": 16,
+    "height": 24.0,
+    "x": 510,
+    "y": 1580
+  },
+  {
+    "id": "case-107",
+    "family": "Courier New",
+    "size": 16,
+    "height": "normal",
+    "x": 755,
+    "y": 1580
+  },
+  {
+    "id": "case-108",
+    "family": "Courier New",
+    "size": 18,
+    "height": 19,
+    "x": 20,
+    "y": 1640
+  },
+  {
+    "id": "case-109",
+    "family": "Courier New",
+    "size": 18,
+    "height": 23,
+    "x": 265,
+    "y": 1640
+  },
+  {
+    "id": "case-110",
+    "family": "Courier New",
+    "size": 18,
+    "height": 27.0,
+    "x": 510,
+    "y": 1640
+  },
+  {
+    "id": "case-111",
+    "family": "Courier New",
+    "size": 18,
+    "height": "normal",
+    "x": 755,
+    "y": 1640
+  },
+  {
+    "id": "case-112",
+    "family": "Courier New",
+    "size": 20,
+    "height": 21,
+    "x": 20,
+    "y": 1700
+  },
+  {
+    "id": "case-113",
+    "family": "Courier New",
+    "size": 20,
+    "height": 25,
+    "x": 265,
+    "y": 1700
+  },
+  {
+    "id": "case-114",
+    "family": "Courier New",
+    "size": 20,
+    "height": 30.0,
+    "x": 510,
+    "y": 1700
+  },
+  {
+    "id": "case-115",
+    "family": "Courier New",
+    "size": 20,
+    "height": "normal",
+    "x": 755,
+    "y": 1700
+  },
+  {
+    "id": "case-116",
+    "family": "Courier New",
+    "size": 24,
+    "height": 25,
+    "x": 20,
+    "y": 1760
+  },
+  {
+    "id": "case-117",
+    "family": "Courier New",
+    "size": 24,
+    "height": 29,
+    "x": 265,
+    "y": 1760
+  },
+  {
+    "id": "case-118",
+    "family": "Courier New",
+    "size": 24,
+    "height": 36.0,
+    "x": 510,
+    "y": 1760
+  },
+  {
+    "id": "case-119",
+    "family": "Courier New",
+    "size": 24,
+    "height": "normal",
+    "x": 755,
+    "y": 1760
+  }
+]

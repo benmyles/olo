@@ -1,0 +1,14 @@
+
+running 1 test
+
+thread 'text_baselines_and_content_bounds_match_native_chrome_after_scale_changes' (3614166) panicked at crates/web/tests/measure.rs:149:46:
+scale 1.75 case-40: 647.4285714285714 != 648
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test text_baselines_and_content_bounds_match_native_chrome_after_scale_changes ... FAILED
+
+failures:
+
+failures:
+    text_baselines_and_content_bounds_match_native_chrome_after_scale_changes
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 25 filtered out; finished in 0.01s

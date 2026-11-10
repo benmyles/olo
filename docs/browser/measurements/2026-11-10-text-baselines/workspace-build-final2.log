@@ -1,0 +1,509 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/ben/worktrees/olo/browser/smithay/smithay/Cargo.toml
+workspace: /home/ben/worktrees/olo/browser/Cargo.toml
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+  --> gpui/gpui/src/platform/linux/dispatcher.rs:51:18
+   |
+51 |                 .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+   |                  ^^^^^^^^^^^^
+   |
+   = note: `#[warn(deprecated)]` on by default
+help: replace the use of the deprecated method
+   |
+51 -                 .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+51 +                 .try_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+   |
+
+warning: method `holds_clipboard` is never used
+   --> gpui/gpui/src/platform.rs:269:8
+    |
+162 | pub(crate) trait Platform: 'static {
+    |                  -------- method in this trait
+...
+269 |     fn holds_clipboard(&self) -> bool {
+    |        ^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `selected_text_range` is never used
+    --> gpui/gpui/src/platform.rs:1279:8
+     |
+1274 | impl PlatformInputHandler {
+     | ------------------------- method in this implementation
+...
+1279 |     fn selected_text_range(&mut self, ignore_disabled_input: bool) -> Option<UTF16Selection> {
+     |        ^^^^^^^^^^^^^^^^^^^
+
+warning: method `holds_clipboard` is never used
+  --> gpui/gpui/src/platform/linux/platform.rs:80:8
+   |
+46 | pub trait LinuxClient {
+   |           ----------- method in this trait
+...
+80 |     fn holds_clipboard(&self) -> bool {
+   |        ^^^^^^^^^^^^^^^
+
+warning: field `italic` is never read
+  --> gpui/gpui/src/platform/linux/text_system.rs:38:5
+   |
+34 | struct Source {
+   |        ------ field in this struct
+...
+38 |     italic: bool,
+   |     ^^^^^^
+
+warning: methods `set_theme` and `set_size` are never used
+  --> gpui/gpui/src/platform/linux/wayland/cursor.rs:76:12
+   |
+33 | impl Cursor {
+   | ----------- methods in this implementation
+...
+76 |     pub fn set_theme(&mut self, theme_name: String) {
+   |            ^^^^^^^^^
+...
+89 |     pub fn set_size(&mut self, size: u32) {
+   |            ^^^^^^^^
+
+warning: method `set_appearance` is never used
+    --> gpui/gpui/src/platform/linux/wayland/window.rs:1937:12
+     |
+1002 | impl WaylandWindowStatePtr {
+     | -------------------------- method in this implementation
+...
+1937 |     pub fn set_appearance(&mut self, appearance: WindowAppearance) {
+     |            ^^^^^^^^^^^^^^
+
+warning: associated function `ahead` is never used
+  --> gpui/gpui/src/platform/blade/blade_context.rs:53:12
+   |
+49 | impl BladeContext {
+   | ----------------- associated function in this implementation
+...
+53 |     pub fn ahead() -> std::thread::JoinHandle<anyhow::Result<BladeContext>> {
+   |            ^^^^^
+
+warning: `gpui` (lib) generated 8 warnings (run `cargo fix --lib -p gpui` to apply 1 suggestion)
+warning: unused import: `crate::mp4box::*`
+ --> vendor/mp4/src/writer.rs:4:5
+  |
+4 | use crate::mp4box::*;
+  |     ^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: use of deprecated constant `std::u32::MAX`: replaced by the `MAX` associated constant on this type
+   --> vendor/mp4/src/mp4box/mp4a.rs:269:32
+    |
+269 |     if size as u64 > std::u32::MAX as u64 {
+    |                                ^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated constant `std::u32::MAX`: replaced by the `MAX` associated constant on this type
+   --> vendor/mp4/src/writer.rs:120:34
+    |
+120 |         if mdat_size > std::u32::MAX as u64 {
+    |                                  ^^^
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/types.rs:692:14
+    |
+692 |     fn title(&self) -> Option<Cow<str>>;
+    |              ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |              |
+    |              the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+    = note: `#[warn(mismatched_lifetime_syntaxes)]` on by default
+help: use `'_` for type paths
+    |
+692 |     fn title(&self) -> Option<Cow<'_, str>>;
+    |                                   +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/types.rs:698:16
+    |
+698 |     fn summary(&self) -> Option<Cow<str>>;
+    |                ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |                |
+    |                the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+698 |     fn summary(&self) -> Option<Cow<'_, str>>;
+    |                                     +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/types.rs:702:14
+    |
+702 |     fn title(&self) -> Option<Cow<str>> {
+    |              ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |              |
+    |              the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+702 |     fn title(&self) -> Option<Cow<'_, str>> {
+    |                                   +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/types.rs:714:16
+    |
+714 |     fn summary(&self) -> Option<Cow<str>> {
+    |                ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |                |
+    |                the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+714 |     fn summary(&self) -> Option<Cow<'_, str>> {
+    |                                     +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/types.rs:720:14
+    |
+720 |     fn title(&self) -> Option<Cow<str>> {
+    |              ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |              |
+    |              the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+720 |     fn title(&self) -> Option<Cow<'_, str>> {
+    |                                   +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/types.rs:732:16
+    |
+732 |     fn summary(&self) -> Option<Cow<str>> {
+    |                ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |                |
+    |                the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+732 |     fn summary(&self) -> Option<Cow<'_, str>> {
+    |                                     +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/mp4box/ilst.rs:169:14
+    |
+169 |     fn title(&self) -> Option<Cow<str>> {
+    |              ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |              |
+    |              the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+169 |     fn title(&self) -> Option<Cow<'_, str>> {
+    |                                   +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/mp4box/ilst.rs:181:16
+    |
+181 |     fn summary(&self) -> Option<Cow<str>> {
+    |                ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |                |
+    |                the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+181 |     fn summary(&self) -> Option<Cow<'_, str>> {
+    |                                     +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/mp4box/ilst.rs:190:22
+    |
+190 | fn item_to_str(item: &IlstItemBox) -> Cow<str> {
+    |                      ^^^^^^^^^^^^     ^^^^^^^^ the same lifetime is hidden here
+    |                      |
+    |                      the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+190 | fn item_to_str(item: &IlstItemBox) -> Cow<'_, str> {
+    |                                           +++
+
+warning: `mp4` (lib) generated 12 warnings (run `cargo fix --lib -p mp4` to apply 10 suggestions)
+   Compiling olo-web v0.1.0 (/home/ben/worktrees/olo/browser/crates/web)
+warning: hidden lifetime parameters in types are deprecated
+   --> crates/app_server/src/toolkits.rs:117:49
+    |
+117 |         let keys: Vec<(&str, olo_system::dconf::Setting)> = settings
+    |                              -------------------^^^^^^^
+    |                              |
+    |                              expected lifetime parameter
+    |
+note: the lint level is defined here
+   --> crates/app_server/src/lib.rs:1:9
+    |
+  1 | #![warn(rust_2018_idioms)]
+    |         ^^^^^^^^^^^^^^^^
+    = note: `#[warn(elided_lifetimes_in_paths)]` implied by `#[warn(rust_2018_idioms)]`
+help: indicate the anonymous lifetime
+    |
+117 |         let keys: Vec<(&str, olo_system::dconf::Setting<'_>)> = settings
+    |                                                        ++++
+
+warning: `app_server` (lib) generated 1 warning
+warning: field `from` is never read
+   --> apps/screenshot/src/library.rs:139:9
+    |
+138 |     Trashed {
+    |     ------- field in this variant
+139 |         from: PathBuf,
+    |         ^^^^
+    |
+    = note: `Change` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `olo-screenshot` (bin "olo-screenshot") generated 1 warning
+   Compiling olo-js v0.1.0 (/home/ben/worktrees/olo/browser/crates/js)
+warning: unused doc comment
+    --> crates/js/src/lib.rs:3322:1
+     |
+3322 | /// Every `__olo.*` function: `args.data()` names it.
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ rustdoc does not generate documentation for macro invocations
+     |
+     = help: to document an item produced by a macro, the macro must produce the documentation as part of its expansion
+     = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `Shader`
+ --> crates/js/src/canvas.rs:9:104
+  |
+9 | use tiny_skia::{BlendMode, FillRule, LineCap, LineJoin, Mask, Paint, Path, PathBuilder, Pixmap, Point, Shader, Stroke, Transform};
+  |                                                                                                        ^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `text` is never read
+    --> crates/js/src/lib.rs:2624:20
+     |
+2624 |     let mut text = String::new();
+     |                    ^^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2633 |         text = if name.is_empty() {
+     |         ---- `text` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: calls to `std::mem::drop` with a reference instead of an owned value does nothing
+    --> crates/js/src/lib.rs:2260:13
+     |
+2260 |             drop(s);
+     |             ^^^^^-^
+     |                  |
+     |                  argument has type `&mut State`
+     |
+     = note: `#[warn(dropping_references)]` on by default
+help: use `let _ = ...` to ignore the expression or result
+     |
+2260 -             drop(s);
+2260 +             let _ = s;
+     |
+
+warning: calls to `std::mem::drop` with a reference instead of an owned value does nothing
+    --> crates/js/src/lib.rs:4270:17
+     |
+4270 |                 drop(s);
+     |                 ^^^^^-^
+     |                      |
+     |                      argument has type `&mut State`
+     |
+help: use `let _ = ...` to ignore the expression or result
+     |
+4270 -                 drop(s);
+4270 +                 let _ = s;
+     |
+
+warning: unnecessary parentheses around closure body
+  --> crates/web/src/chunked.rs:55:143
+   |
+55 | ...e_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+   |                                                    ^                              ^
+   |
+   = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+   |
+55 -         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+55 +         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| i * CHUNK..i * CHUNK + c.len())
+   |
+
+warning: unused attribute `allow`
+  --> crates/web/src/paint/image.rs:44:1
+   |
+44 | #[allow(clippy::too_many_arguments)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: the built-in attribute `allow` will be ignored, since it's applied to the macro invocation `thread_local`
+  --> crates/web/src/paint/image.rs:45:1
+   |
+45 | thread_local! {
+   | ^^^^^^^^^^^^
+   = note: `#[warn(unused_attributes)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `size` is never read
+   --> crates/web/src/css/properties/font.rs:274:20
+    |
+274 |     let mut size = None;
+    |                    ^^^^ this value is reassigned later and never used
+...
+353 |     size = Some(super::parse::component(Property::FontSize.grammar(), c, limits, cancelled)?);
+    |     ---- `size` is overwritten here before the previous value is read
+    |
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `family` is never read
+   --> crates/web/src/css/properties/font.rs:276:22
+    |
+276 |     let mut family = None;
+    |                      ^^^^ this value is reassigned later and never used
+...
+363 |     family = Some(Families::parse(parts[i..].iter().copied(), cancelled)?);
+    |     ------ `family` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+   --> crates/web/src/css/style/job.rs:536:25
+    |
+536 |                     let mut walk = |root: NodeId, reach: &selectors::Reach, nodes: &mut crate::dom::NodeSet| {
+    |                         ----^^^^
+    |                         |
+    |                         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates/web/src/page/interaction.rs:38:13
+   |
+38 |         let mut differ = |a: Option<NodeId>, b: Option<NodeId>, state: State, out: &mut Vec<(NodeId, &'static str)>| {
+   |             ----^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: value assigned to `path` is never read
+   --> crates/web/src/page.rs:899:24
+    |
+899 |         let mut path = String::new();
+    |                        ^^^^^^^^^^^^^ this value is reassigned later and never used
+...
+909 |                             path = format!("patched in place, {} elements", nodes.len());
+    |                             ---- `path` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+    --> crates/web/src/page.rs:3943:13
+     |
+3943 |         let mut subject = |a: crate::dom::NodeId, reached: &mut Vec<crate::dom::NodeId>| {
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: value assigned to `skip` is never read
+    --> crates/web/src/svg/viewport.rs:949:24
+     |
+ 949 |         let mut skip = false;
+     |                        ^^^^^ this value is reassigned later and never used
+...
+1019 |             skip = true;
+     |             ----------- `skip` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+  --> crates/web/src/text/prepare.rs:79:23
+   |
+79 |         let single = |mut it: &mut dyn Iterator<Item = char>| {
+   |                       ----^^
+   |                       |
+   |                       help: remove this `mut`
+
+warning: method `get_mut` is never used
+  --> crates/web/src/chunked.rs:57:19
+   |
+22 | impl<T: Clone> Chunked<T> {
+   | ------------------------- method in this implementation
+...
+57 |     pub(crate) fn get_mut(&mut self, i: usize) -> Option<&mut T> {
+   |                   ^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated function `new` is never used
+  --> crates/web/src/paint/index.rs:16:12
+   |
+15 | impl Index {
+   | ---------- associated function in this implementation
+16 |     pub fn new(commands: &[Command], transforms: &[[f64; 6]], cancel: Option<&AtomicBool>) -> Result<Self> {
+   |            ^^^
+
+warning: variant `Quad` is never constructed
+   --> crates/web/src/svg/script.rs:258:5
+    |
+256 | enum Seg {
+    |      --- variant in this enum
+257 |     Line(F, F),
+258 |     Quad([F; 3]),
+    |     ^^^^
+    |
+    = note: `Seg` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: `olo-js` (lib) generated 5 warnings (run `cargo fix --lib -p olo-js` to apply 1 suggestion)
+warning: `olo-web` (lib) generated 13 warnings (run `cargo fix --lib -p olo-web` to apply 6 suggestions)
+   Compiling olo-browser v0.1.0 (/home/ben/worktrees/olo/browser/apps/browser)
+warning: unnecessary parentheses around type
+   --> apps/browser/src/worker.rs:758:28
+    |
+758 |     paint_identity: Option<(((usize, u64), u32, u32, u64))>,
+    |                            ^                             ^
+    |
+    = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+    |
+758 -     paint_identity: Option<(((usize, u64), u32, u32, u64))>,
+758 +     paint_identity: Option<((usize, u64), u32, u32, u64)>,
+    |
+
+warning: variable does not need to be mutable
+   --> apps/browser/src/frames.rs:369:21
+    |
+369 |                 let mut take = |m: Message, realm: &mut olo_js::Realm| match m {
+    |                     ----^^^^
+    |                     |
+    |                     help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `prefetch_scripts` is never used
+   --> apps/browser/src/network.rs:789:12
+    |
+470 | impl Loader {
+    | ----------- method in this implementation
+...
+789 |     pub fn prefetch_scripts(&self, document: &Resource, urls: Vec<Url>, cancel: &Cancel) {
+    |            ^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `0` is never read
+   --> apps/browser/src/worker.rs:399:16
+    |
+399 |     SelectMenu(u64, SelectMenu),
+    |     ---------- ^^^
+    |     |
+    |     field in this variant
+    |
+help: consider changing the field to be of unit type to suppress this warning while preserving the field numbering, or remove the field
+    |
+399 -     SelectMenu(u64, SelectMenu),
+399 +     SelectMenu((), SelectMenu),
+    |
+
+warning: `olo-browser` (bin "olo-browser") generated 4 warnings (run `cargo fix --bin "olo-browser" -p olo-browser` to apply 2 suggestions)
+    Finished `release` profile [optimized + debuginfo] target(s) in 29.13s
+warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`

@@ -1,0 +1,17 @@
+[
+  {
+    "url": "https://chromium.googlesource.com/chromium/src/+/a733b5afbb3ba618844ff8876b89ad1a774b2f18/third_party/blink/renderer/platform/fonts/font_metrics.cc",
+    "sha256": "6bd1064eb60f5ac81f15d8f454d0bc10fa68718bf4590bf788bfe2c8fc62435d",
+    "matches_inspected_main": false
+  },
+  {
+    "url": "https://chromium.googlesource.com/chromium/src/+/a733b5afbb3ba618844ff8876b89ad1a774b2f18/third_party/blink/renderer/platform/fonts/font_platform_data.cc",
+    "sha256": "0da9887c8721ddb66fdc64abe91633e2f14247a9de0a49ea02ad72064abfcb8e",
+    "matches_inspected_main": true
+  },
+  {
+    "url": "https://chromium.googlesource.com/chromium/src/+/a733b5afbb3ba618844ff8876b89ad1a774b2f18/ui/gfx/font_render_params_linux.cc",
+    "sha256": "748e78c8a79fc3275c45fe7576c29d722176dc1fa62b120dd865f2d1f245129d",
+    "matches_inspected_main": true
+  }
+]

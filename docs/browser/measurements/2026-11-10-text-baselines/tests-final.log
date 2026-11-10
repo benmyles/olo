@@ -1,0 +1,1437 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/ben/worktrees/olo/browser/smithay/smithay/Cargo.toml
+workspace: /home/ben/worktrees/olo/browser/Cargo.toml
+   Compiling olo-web v0.1.0 (/home/ben/worktrees/olo/browser/crates/web)
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+  --> gpui/gpui/src/platform/linux/dispatcher.rs:51:18
+   |
+51 |                 .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+   |                  ^^^^^^^^^^^^
+   |
+   = note: `#[warn(deprecated)]` on by default
+help: replace the use of the deprecated method
+   |
+51 -                 .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+51 +                 .try_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+   |
+
+warning: method `holds_clipboard` is never used
+   --> gpui/gpui/src/platform.rs:269:8
+    |
+162 | pub(crate) trait Platform: 'static {
+    |                  -------- method in this trait
+...
+269 |     fn holds_clipboard(&self) -> bool {
+    |        ^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `selected_text_range` is never used
+    --> gpui/gpui/src/platform.rs:1279:8
+     |
+1274 | impl PlatformInputHandler {
+     | ------------------------- method in this implementation
+...
+1279 |     fn selected_text_range(&mut self, ignore_disabled_input: bool) -> Option<UTF16Selection> {
+     |        ^^^^^^^^^^^^^^^^^^^
+
+warning: method `holds_clipboard` is never used
+  --> gpui/gpui/src/platform/linux/platform.rs:80:8
+   |
+46 | pub trait LinuxClient {
+   |           ----------- method in this trait
+...
+80 |     fn holds_clipboard(&self) -> bool {
+   |        ^^^^^^^^^^^^^^^
+
+warning: field `italic` is never read
+  --> gpui/gpui/src/platform/linux/text_system.rs:38:5
+   |
+34 | struct Source {
+   |        ------ field in this struct
+...
+38 |     italic: bool,
+   |     ^^^^^^
+
+warning: methods `set_theme` and `set_size` are never used
+  --> gpui/gpui/src/platform/linux/wayland/cursor.rs:76:12
+   |
+33 | impl Cursor {
+   | ----------- methods in this implementation
+...
+76 |     pub fn set_theme(&mut self, theme_name: String) {
+   |            ^^^^^^^^^
+...
+89 |     pub fn set_size(&mut self, size: u32) {
+   |            ^^^^^^^^
+
+warning: method `set_appearance` is never used
+    --> gpui/gpui/src/platform/linux/wayland/window.rs:1937:12
+     |
+1002 | impl WaylandWindowStatePtr {
+     | -------------------------- method in this implementation
+...
+1937 |     pub fn set_appearance(&mut self, appearance: WindowAppearance) {
+     |            ^^^^^^^^^^^^^^
+
+warning: associated function `ahead` is never used
+  --> gpui/gpui/src/platform/blade/blade_context.rs:53:12
+   |
+49 | impl BladeContext {
+   | ----------------- associated function in this implementation
+...
+53 |     pub fn ahead() -> std::thread::JoinHandle<anyhow::Result<BladeContext>> {
+   |            ^^^^^
+
+warning: `gpui` (lib) generated 8 warnings (run `cargo fix --lib -p gpui` to apply 1 suggestion)
+warning: unused import: `crate::mp4box::*`
+ --> vendor/mp4/src/writer.rs:4:5
+  |
+4 | use crate::mp4box::*;
+  |     ^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: use of deprecated constant `std::u32::MAX`: replaced by the `MAX` associated constant on this type
+   --> vendor/mp4/src/mp4box/mp4a.rs:269:32
+    |
+269 |     if size as u64 > std::u32::MAX as u64 {
+    |                                ^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated constant `std::u32::MAX`: replaced by the `MAX` associated constant on this type
+   --> vendor/mp4/src/writer.rs:120:34
+    |
+120 |         if mdat_size > std::u32::MAX as u64 {
+    |                                  ^^^
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/types.rs:692:14
+    |
+692 |     fn title(&self) -> Option<Cow<str>>;
+    |              ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |              |
+    |              the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+    = note: `#[warn(mismatched_lifetime_syntaxes)]` on by default
+help: use `'_` for type paths
+    |
+692 |     fn title(&self) -> Option<Cow<'_, str>>;
+    |                                   +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/types.rs:698:16
+    |
+698 |     fn summary(&self) -> Option<Cow<str>>;
+    |                ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |                |
+    |                the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+698 |     fn summary(&self) -> Option<Cow<'_, str>>;
+    |                                     +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/types.rs:702:14
+    |
+702 |     fn title(&self) -> Option<Cow<str>> {
+    |              ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |              |
+    |              the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+702 |     fn title(&self) -> Option<Cow<'_, str>> {
+    |                                   +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/types.rs:714:16
+    |
+714 |     fn summary(&self) -> Option<Cow<str>> {
+    |                ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |                |
+    |                the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+714 |     fn summary(&self) -> Option<Cow<'_, str>> {
+    |                                     +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/types.rs:720:14
+    |
+720 |     fn title(&self) -> Option<Cow<str>> {
+    |              ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |              |
+    |              the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+720 |     fn title(&self) -> Option<Cow<'_, str>> {
+    |                                   +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/types.rs:732:16
+    |
+732 |     fn summary(&self) -> Option<Cow<str>> {
+    |                ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |                |
+    |                the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+732 |     fn summary(&self) -> Option<Cow<'_, str>> {
+    |                                     +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/mp4box/ilst.rs:169:14
+    |
+169 |     fn title(&self) -> Option<Cow<str>> {
+    |              ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |              |
+    |              the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+169 |     fn title(&self) -> Option<Cow<'_, str>> {
+    |                                   +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/mp4box/ilst.rs:181:16
+    |
+181 |     fn summary(&self) -> Option<Cow<str>> {
+    |                ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |                |
+    |                the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+181 |     fn summary(&self) -> Option<Cow<'_, str>> {
+    |                                     +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/mp4box/ilst.rs:190:22
+    |
+190 | fn item_to_str(item: &IlstItemBox) -> Cow<str> {
+    |                      ^^^^^^^^^^^^     ^^^^^^^^ the same lifetime is hidden here
+    |                      |
+    |                      the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+190 | fn item_to_str(item: &IlstItemBox) -> Cow<'_, str> {
+    |                                           +++
+
+warning: `mp4` (lib) generated 12 warnings (run `cargo fix --lib -p mp4` to apply 10 suggestions)
+   Compiling olo-js v0.1.0 (/home/ben/worktrees/olo/browser/crates/js)
+warning: unnecessary parentheses around closure body
+  --> crates/web/src/chunked.rs:55:143
+   |
+55 | ...e_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+   |                                                    ^                              ^
+   |
+   = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+   |
+55 -         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+55 +         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| i * CHUNK..i * CHUNK + c.len())
+   |
+
+warning: unused attribute `allow`
+  --> crates/web/src/paint/image.rs:44:1
+   |
+44 | #[allow(clippy::too_many_arguments)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: the built-in attribute `allow` will be ignored, since it's applied to the macro invocation `thread_local`
+  --> crates/web/src/paint/image.rs:45:1
+   |
+45 | thread_local! {
+   | ^^^^^^^^^^^^
+   = note: `#[warn(unused_attributes)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `size` is never read
+   --> crates/web/src/css/properties/font.rs:274:20
+    |
+274 |     let mut size = None;
+    |                    ^^^^ this value is reassigned later and never used
+...
+353 |     size = Some(super::parse::component(Property::FontSize.grammar(), c, limits, cancelled)?);
+    |     ---- `size` is overwritten here before the previous value is read
+    |
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `family` is never read
+   --> crates/web/src/css/properties/font.rs:276:22
+    |
+276 |     let mut family = None;
+    |                      ^^^^ this value is reassigned later and never used
+...
+363 |     family = Some(Families::parse(parts[i..].iter().copied(), cancelled)?);
+    |     ------ `family` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+   --> crates/web/src/css/style/job.rs:536:25
+    |
+536 |                     let mut walk = |root: NodeId, reach: &selectors::Reach, nodes: &mut crate::dom::NodeSet| {
+    |                         ----^^^^
+    |                         |
+    |                         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates/web/src/page/interaction.rs:38:13
+   |
+38 |         let mut differ = |a: Option<NodeId>, b: Option<NodeId>, state: State, out: &mut Vec<(NodeId, &'static str)>| {
+   |             ----^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: value assigned to `path` is never read
+   --> crates/web/src/page.rs:899:24
+    |
+899 |         let mut path = String::new();
+    |                        ^^^^^^^^^^^^^ this value is reassigned later and never used
+...
+909 |                             path = format!("patched in place, {} elements", nodes.len());
+    |                             ---- `path` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+    --> crates/web/src/page.rs:3943:13
+     |
+3943 |         let mut subject = |a: crate::dom::NodeId, reached: &mut Vec<crate::dom::NodeId>| {
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: value assigned to `skip` is never read
+    --> crates/web/src/svg/viewport.rs:949:24
+     |
+ 949 |         let mut skip = false;
+     |                        ^^^^^ this value is reassigned later and never used
+...
+1019 |             skip = true;
+     |             ----------- `skip` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+  --> crates/web/src/text/prepare.rs:79:23
+   |
+79 |         let single = |mut it: &mut dyn Iterator<Item = char>| {
+   |                       ----^^
+   |                       |
+   |                       help: remove this `mut`
+
+warning: method `get_mut` is never used
+  --> crates/web/src/chunked.rs:57:19
+   |
+22 | impl<T: Clone> Chunked<T> {
+   | ------------------------- method in this implementation
+...
+57 |     pub(crate) fn get_mut(&mut self, i: usize) -> Option<&mut T> {
+   |                   ^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated function `new` is never used
+  --> crates/web/src/paint/index.rs:16:12
+   |
+15 | impl Index {
+   | ---------- associated function in this implementation
+16 |     pub fn new(commands: &[Command], transforms: &[[f64; 6]], cancel: Option<&AtomicBool>) -> Result<Self> {
+   |            ^^^
+
+warning: variant `Quad` is never constructed
+   --> crates/web/src/svg/script.rs:258:5
+    |
+256 | enum Seg {
+    |      --- variant in this enum
+257 |     Line(F, F),
+258 |     Quad([F; 3]),
+    |     ^^^^
+    |
+    = note: `Seg` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: calls to `std::mem::drop` with a value that implements `Copy` does nothing
+    --> crates/web/src/page.rs:4910:43
+     |
+4910 |         let wake: Wake = Arc::new(move || drop(tx.send(())));
+     |                                           ^^^^^-----------^
+     |                                                |
+     |                                                argument has type `std::result::Result<(), SendError<()>>`
+     |
+     = note: use `let _ = ...` to ignore the expression or result
+     = note: `#[warn(dropping_copy_types)]` on by default
+
+warning: calls to `std::mem::drop` with a value that implements `Copy` does nothing
+    --> crates/web/src/page.rs:4934:43
+     |
+4934 |         let good: Wake = Arc::new(move || drop(tx.send(())));
+     |                                           ^^^^^-----------^
+     |                                                |
+     |                                                argument has type `std::result::Result<(), SendError<()>>`
+     |
+     = note: use `let _ = ...` to ignore the expression or result
+
+warning: `olo-web` (lib test) generated 15 warnings (run `cargo fix --lib -p olo-web --tests` to apply 6 suggestions)
+warning: `olo-web` (lib) generated 13 warnings (13 duplicates)
+warning: unused doc comment
+    --> crates/js/src/lib.rs:3322:1
+     |
+3322 | /// Every `__olo.*` function: `args.data()` names it.
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ rustdoc does not generate documentation for macro invocations
+     |
+     = help: to document an item produced by a macro, the macro must produce the documentation as part of its expansion
+     = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `Shader`
+ --> crates/js/src/canvas.rs:9:104
+  |
+9 | use tiny_skia::{BlendMode, FillRule, LineCap, LineJoin, Mask, Paint, Path, PathBuilder, Pixmap, Point, Shader, Stroke, Transform};
+  |                                                                                                        ^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `text` is never read
+    --> crates/js/src/lib.rs:2624:20
+     |
+2624 |     let mut text = String::new();
+     |                    ^^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2633 |         text = if name.is_empty() {
+     |         ---- `text` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: calls to `std::mem::drop` with a reference instead of an owned value does nothing
+    --> crates/js/src/lib.rs:2260:13
+     |
+2260 |             drop(s);
+     |             ^^^^^-^
+     |                  |
+     |                  argument has type `&mut State`
+     |
+     = note: `#[warn(dropping_references)]` on by default
+help: use `let _ = ...` to ignore the expression or result
+     |
+2260 -             drop(s);
+2260 +             let _ = s;
+     |
+
+warning: calls to `std::mem::drop` with a reference instead of an owned value does nothing
+    --> crates/js/src/lib.rs:4270:17
+     |
+4270 |                 drop(s);
+     |                 ^^^^^-^
+     |                      |
+     |                      argument has type `&mut State`
+     |
+help: use `let _ = ...` to ignore the expression or result
+     |
+4270 -                 drop(s);
+4270 +                 let _ = s;
+     |
+
+warning: `olo-js` (lib) generated 5 warnings (run `cargo fix --lib -p olo-js` to apply 1 suggestion)
+   Compiling olo-browser v0.1.0 (/home/ben/worktrees/olo/browser/apps/browser)
+warning: calls to `std::mem::drop` with a value that implements `Copy` does nothing
+  --> crates/web/examples/refresh_bench.rs:45:49
+   |
+45 |         let wake: page::Wake = Arc::new(move || drop(tx.send(())));
+   |                                                 ^^^^^-----------^
+   |                                                      |
+   |                                                      argument has type `Result<(), SendError<()>>`
+   |
+   = note: use `let _ = ...` to ignore the expression or result
+   = note: `#[warn(dropping_copy_types)]` on by default
+
+warning: `olo-web` (example "refresh_bench") generated 1 warning
+warning: calls to `std::mem::drop` with a value that implements `Copy` does nothing
+  --> crates/web/examples/compile_queue_bench.rs:86:49
+   |
+86 |         let wake: page::Wake = Arc::new(move || drop(tx.send(i)));
+   |                                                 ^^^^^----------^
+   |                                                      |
+   |                                                      argument has type `Result<(), SendError<usize>>`
+   |
+   = note: use `let _ = ...` to ignore the expression or result
+   = note: `#[warn(dropping_copy_types)]` on by default
+
+warning: `olo-web` (example "compile_queue_bench") generated 1 warning
+warning: `olo-js` (lib test) generated 5 warnings (5 duplicates)
+warning: unnecessary parentheses around type
+   --> apps/browser/src/worker.rs:758:28
+    |
+758 |     paint_identity: Option<(((usize, u64), u32, u32, u64))>,
+    |                            ^                             ^
+    |
+    = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+    |
+758 -     paint_identity: Option<(((usize, u64), u32, u32, u64))>,
+758 +     paint_identity: Option<((usize, u64), u32, u32, u64)>,
+    |
+
+warning: variable does not need to be mutable
+   --> apps/browser/src/frames.rs:369:21
+    |
+369 |                 let mut take = |m: Message, realm: &mut olo_js::Realm| match m {
+    |                     ----^^^^
+    |                     |
+    |                     help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `0` is never read
+   --> apps/browser/src/worker.rs:399:16
+    |
+399 |     SelectMenu(u64, SelectMenu),
+    |     ---------- ^^^
+    |     |
+    |     field in this variant
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+help: consider changing the field to be of unit type to suppress this warning while preserving the field numbering, or remove the field
+    |
+399 -     SelectMenu(u64, SelectMenu),
+399 +     SelectMenu((), SelectMenu),
+    |
+
+warning: `olo-browser` (bin "olo-browser" test) generated 3 warnings (run `cargo fix --bin "olo-browser" -p olo-browser --tests` to apply 2 suggestions)
+warning: variable does not need to be mutable
+   --> crates/web/tests/measure.rs:490:10
+    |
+490 |     let (mut measurer, host, doc, viewport) = measurer_for(&format!("<!doctype html>{instance}{instance}{instance}"));
+    |          ----^^^^^^^^
+    |          |
+    |          help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> crates/web/tests/measure.rs:514:10
+    |
+514 |     let (mut measurer, host, doc, viewport) =
+    |          ----^^^^^^^^
+    |          |
+    |          help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/web/tests/measure.rs:528:10
+    |
+528 |     let (mut measurer, host, doc, viewport) = measurer_for(&format!("<!doctype html>{}", instance.repeat(9)));
+    |          ----^^^^^^^^
+    |          |
+    |          help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/web/tests/measure.rs:550:10
+    |
+550 |     let (mut measurer, host, doc, viewport) = measurer_for(
+    |          ----^^^^^^^^
+    |          |
+    |          help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/web/tests/measure.rs:567:10
+    |
+567 |     let (mut measurer, host, doc, viewport) =
+    |          ----^^^^^^^^
+    |          |
+    |          help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/web/tests/measure.rs:580:10
+    |
+580 |     let (mut measurer, host, doc, viewport) = measurer_for(
+    |          ----^^^^^^^^
+    |          |
+    |          help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/web/tests/measure.rs:597:10
+    |
+597 |     let (mut measurer, host, doc, viewport) = measurer_for(
+    |          ----^^^^^^^^
+    |          |
+    |          help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/web/tests/measure.rs:645:10
+    |
+645 |     let (mut measurer, host, doc, viewport) = measurer_for(
+    |          ----^^^^^^^^
+    |          |
+    |          help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/web/tests/measure.rs:664:10
+    |
+664 |     let (mut measurer, host, doc, viewport) = measurer_for(
+    |          ----^^^^^^^^
+    |          |
+    |          help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/web/tests/measure.rs:682:10
+    |
+682 |     let (mut measurer, host, doc, viewport) = measurer_for(
+    |          ----^^^^^^^^
+    |          |
+    |          help: remove this `mut`
+
+warning: `olo-web` (test "measure") generated 10 warnings (run `cargo fix --test "measure" -p olo-web` to apply 10 suggestions)
+warning: calls to `std::mem::drop` with a value that implements `Copy` does nothing
+    --> crates/web/tests/paint.rs:2069:54
+     |
+2069 |     let wake: olo_web::page::Wake = Arc::new(move || drop(tx.send(())));
+     |                                                      ^^^^^-----------^
+     |                                                           |
+     |                                                           argument has type `Result<(), SendError<()>>`
+     |
+     = note: use `let _ = ...` to ignore the expression or result
+     = note: `#[warn(dropping_copy_types)]` on by default
+
+warning: calls to `std::mem::drop` with a value that implements `Copy` does nothing
+    --> crates/web/tests/paint.rs:2101:57
+     |
+2101 |     let resumed: olo_web::page::Wake = Arc::new(move || drop(tx.send(())));
+     |                                                         ^^^^^-----------^
+     |                                                              |
+     |                                                              argument has type `Result<(), SendError<()>>`
+     |
+     = note: use `let _ = ...` to ignore the expression or result
+
+warning: `olo-web` (test "paint") generated 2 warnings
+    Finished `release` profile [optimized + debuginfo] target(s) in 3m 36s
+warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+     Running unittests src/main.rs (target/release/deps/olo_browser-7fe9e5da408698b8)
+
+running 20 tests
+test cookies::tests::cookie_dates_parse_as_browsers_read_them ... ok
+test cookies::tests::a_public_suffix_or_another_domain_is_refused ... ok
+test cookies::tests::samesite_holds_cross_site_requests ... ok
+test cookies::tests::cookies_go_back_by_domain_path_and_scheme ... ok
+test navigation::tests::navigation_index_cost ... ignored, Release component measurement, run explicitly with --ignored --nocapture
+test navigation::tests::fragments_follow_raw_then_decoded_id_and_name_precedence ... ok
+test links::tests::native_link_resolution_descendants_schemes_and_capabilities ... ok
+test network::tests::referrers_follow_strict_origin_when_cross_origin ... ok
+test worker::tests::extreme_document_scroll_still_leaves_room_for_viewport_and_tile ... ok
+test network::tests::schemes_mixed_content_credentials_and_decoded_limits ... ok
+test history::tests::branching_redirects_scroll_groups_and_restore ... ok
+test navigation::tests::keyboard_targets_include_offscreen_links_with_tabindex_and_inert_filtering ... ok
+test network::tests::image_data_and_http_use_bounded_worker_decode ... ok
+test network::tests::cancellation_wakes_a_pending_response ... ok
+test network::tests::wrong_css_mime_is_rejected ... ok
+test worker::tests::viewport_restyle_reuses_dom_and_compiled_external_sheets ... ok
+test network::tests::document_redirect_cannot_enter_the_local_filesystem ... ok
+test network::tests::redirect_final_url_charset_css_and_plain_text ... ok
+test network::tests::compressed_bodies_are_decoded_and_the_decoded_size_is_bounded ... ok
+test network::tests::resources_fetched_ahead_go_together_once_and_a_load_joins_them ... ok
+
+test result: ok. 19 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.21s
+
+     Running unittests src/lib.rs (target/release/deps/olo_js-cb7ba1daf94f90d3)
+
+running 5 tests
+test crypto::tests::digests_and_hmac_match_their_known_answers ... ok
+test modules::tests::a_later_map_adds_only_what_earlier_ones_left_unmapped ... ok
+test rtc::tests::a_binding_response_gives_its_mapped_address ... ok
+test modules::tests::bare_names_prefixes_and_scopes_resolve_as_html_says ... ok
+test rtc::tests::a_certificate_is_chromes_kind ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/dom.rs (target/release/deps/dom-08736b5c82c1b553)
+
+running 60 tests
+test an_elements_load_event_never_reaches_the_window ... ok
+test builtins_keep_their_own_string_tags ... ok
+test a_logged_error_s_stack_is_not_formatted ... ok
+test canvas_to_data_url_encodes_what_was_drawn ... ok
+test a_box_a_person_scrolls_tells_its_scripts ... ok
+test a_picture_a_script_makes_or_changes_loads_its_image ... ok
+test an_images_superseded_load_neither_shows_nor_fires ... ok
+test a_clicked_link_is_followed_unless_the_page_cancels_it ... ok
+test an_upgraded_elements_observed_attributes_reach_its_callback ... ok
+test cross_origin_requests_follow_cors ... ok
+test an_about_blank_iframe_is_a_window_of_its_own ... ok
+test current_script_is_the_running_classic_scripts_element ... ok
+test declarative_shadow_roots_are_their_hosts_shadow_roots ... ok
+test errors_are_reported_not_fatal ... ok
+test idle_callbacks_run_at_the_next_idle_moment ... ok
+test dialogs_open_close_and_summaries_toggle_their_details ... ok
+test a_peer_connection_offers_and_gathers_as_chrome_s ... ok
+test document_position_and_custom_elements_without_walking_everything ... ok
+test ids_and_names_follow_the_document ... ok
+test documents_have_element_children_and_iframes_a_sandbox_list ... ok
+test list_integer_reflection_matches_chrome ... ok
+test listeners_without_this_go_to_the_global_and_signals_remove_them ... ok
+test media_elements_play_through_the_browsers_player ... ok
+test match_media_answers_whole_queries_as_the_sheets_do ... ok
+test dom_page ... ok
+test frames_post_messages_through_the_browser ... ok
+test modules_import_bare_names_through_the_import_map ... ok
+test scripts_in_order_then_async ... ok
+test posted_tasks_keep_their_delay_signal_and_result ... ok
+test modules_and_deferred_scripts_run_after_the_parser_blocking_ones ... ok
+test observer_operations_are_enumerable_without_changing_ecmascript_builtins ... ok
+test page_images_fire_their_load_or_error_before_the_windows_load ... ok
+test pressing_a_select_asks_for_its_menu_and_a_choice_is_the_persons ... ok
+test page_functions_read_as_their_source ... ok
+test raw_text_elements_serialize_their_text_as_it_is ... ok
+test responses_stream_their_bodies_and_take_streams ... ok
+test response_headers_are_shown_as_fetch_filters_them ... ok
+test ranges_hold_cut_and_measure ... ok
+test style_answers_in_for_the_properties_the_engine_knows ... ok
+test text_and_comments_have_element_siblings ... ok
+test stacks_show_the_page_s_frames_only ... ok
+test slots_tell_when_what_they_are_handed_changes ... ok
+test svg_elements_take_their_geometry_methods ... ok
+test style_sheets_take_inserted_rules_and_write_them_back ... ok
+test streamed_text_decodes_across_chunks_and_through_pipes ... ok
+test the_battery_is_read ... ok
+test text_comments_and_fragments_are_constructed ... ok
+test the_console_runs_none_of_the_page_s_code ... ok
+test the_page_is_not_a_touch_device ... ok
+test the_parsers_stylesheet_links_fire_load ... ok
+test token_lists_take_a_string_as_their_value ... ok
+test the_dom_is_shaped_as_chrome_s ... ok
+test the_persons_input_is_trusted_and_uncaught_errors_reach_error_listeners ... ok
+test tree_walkers_step_in_document_order_skip_and_reject_and_define_reaches_shadow_trees ... ok
+test web_crypto_encrypts_and_derives_keys ... ok
+test typing_ticking_and_submitting_a_form ... ok
+test window_post_message_reaches_its_own_window ... ok
+test the_window_is_shaped_as_chrome_s ... ok
+test web_crypto_digests_and_signs_and_form_data_bodies_are_multipart ... ok
+test unhandled_rejections_are_reported_and_cancellable ... ok
+
+test result: ok. 60 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s
+
+     Running unittests src/lib.rs (target/release/deps/olo_web-2fe9e32ccb151c43)
+
+running 34 tests
+test css::animation::tests::progress_follows_delay_count_direction_and_fill ... ok
+test css::properties::animation::tests::easings_follow_their_curves ... ok
+test css::media::tests::supports_declarations ... ok
+test css::animation::tests::values_interpolate_by_their_tokens ... ok
+test css::media::tests::widths_types_and_logic ... ok
+test css::properties::animation::tests::the_shorthand_splits_by_kind_and_order ... ok
+test css::properties::animation::tests::the_transition_shorthand_splits_by_kind_and_order ... ok
+test css::properties::decoration::filter_tests::backdrop_filters_keep_blur_and_saturate_in_order ... ok
+test css::properties::decoration::filter_tests::colour_filters_make_one_matrix ... ok
+test css::properties::font::tests::a_generic_word_inside_an_unquoted_name_is_part_of_it ... ok
+test css::properties::inert_tests::inert_names_are_sorted ... ok
+test css::properties::transform::tests::matrices_compose_in_list_order ... ok
+test font::woff::tests::base128_and_255 ... ok
+test font::woff::tests::triplets_follow_the_specification_table ... ok
+test html::bytes::detection_tests::undeclared_utf8_is_utf8_and_other_bytes_windows_1252 ... ok
+test page::sheet_tests::a_failed_callback_does_not_strand_other_rule_waiters ... ok
+test page::sheet_tests::background_rules_share_failures_without_retrying_on_the_page ... ok
+test font::casefold::tests::every_normative_default_full_mapping ... ok
+test paint::mipmap::tests::budgets_eviction_weak_lifetimes_and_cancellation ... ok
+test page::sheet_tests::integrity_takes_the_strongest_digest_and_both_base64_forms ... ok
+test paint::decoration::bevel_tests::inset_and_outset_shade_as_chrome ... ok
+test paint::mipmap::tests::odd_axis_weights_are_explicit_and_checker_averages_floor ... ok
+test page::sheet_tests::background_rules_notify_each_live_request_once ... ok
+test page::sheet_tests::background_rules_discard_a_superseded_request ... ok
+test page::sheet_tests::background_rules_cancel_only_after_the_last_user_leaves ... ok
+test page::sheet_tests::background_rules_ready_before_subscription_are_taken_immediately ... ok
+test text::layout::spacing::tests::edges_belong_to_the_correct_side_of_a_line_break ... ok
+test srcset::tests::sources_densities_and_widths_pick_as_html_says ... ok
+test page::background::tests::bounds_work_removes_queued_inputs_and_keeps_survivors ... ok
+test font::metrics::tests::installed_font_content_metrics_match_native_chrome ... ok
+test paint::mipmap::tests::packed_reduction_matches_normalized_weighted_reference ... ok
+test paint::raster::tests::upscale_matches_bilinear_drawing ... ok
+test layout::used::layout_grid_survives_fractional_scale_round_trips ... ok
+test paint::raster::tests::blur_matches_the_direct_box_blurs ... ok
+
+test result: ok. 34 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/absolute_page.rs (target/release/deps/absolute_page-f2fc386307240936)
+
+running 24 tests
+test absolute_flex_child_does_not_participate_in_flex_distribution ... ok
+test an_svg_with_only_a_viewbox_fills_the_width_at_its_ratio ... ok
+test an_absolute_replaced_box_takes_its_elements_box_as_containing_block ... ok
+test an_item_spanning_minmax_zero_fr_tracks_does_not_grow_them ... ok
+test an_inline_level_absolute_box_takes_its_place_in_its_line ... ok
+test a_flex_containers_bare_text_follows_its_align_items ... ok
+test a_transparent_box_over_a_painted_one_takes_the_hit ... ok
+test cells_fill_their_row_and_align_their_content_in_it ... ok
+test atomic_inlines_align_to_the_line_box_top_bottom_and_middle ... ok
+test a_fixed_table_takes_its_first_rows_widths ... ok
+test clip_rect_hides_an_absolute_box_and_takes_its_hits_away ... ok
+test container_queries_ask_the_nearest_container_of_their_name ... ok
+test column_flex_auto_margins_follow_a_height_given_by_the_parent ... ok
+test fixed_boxes_take_the_viewport_unless_a_transform_holds_them ... ok
+test an_absolute_box_with_a_ratio_takes_its_width_from_its_height ... ok
+test computed_line_height_and_font_family_read_as_chrome_reports_them ... ok
+test positioned_paint_escapes_intermediate_static_overflow_clip ... ok
+test positioned_nested_descendants_and_auto_content_height ... ok
+test an_absolute_flex_child_sits_as_the_sole_item_would ... ok
+test text_box_trims_the_first_and_last_lines_to_their_edges ... ok
+test scroll_containers_move_what_they_hold_within_their_padding_box ... ok
+test what_takes_no_pointer_events_passes_the_point_to_the_box_it_is_in ... ok
+test positioned_blocks_wait_for_padding_containing_block_and_do_not_size_flow ... ok
+test independent_absolute_page_rectangles ... ok
+
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests/bytes.rs (target/release/deps/bytes-9c6da952d1929501)
+
+running 6 tests
+test decoded_source_keeps_its_buffer_and_reports_retained_capacity ... ok
+test resource_limits_cancellation_and_failure_are_terminal_and_do_not_leak_output ... ok
+test css_fixture_bytes_at_every_split_use_independent_expected_encoding ... ok
+test css_encoding_precedence_prefix_bound_and_exact_byte_pattern ... ok
+test utf8_exhaustive_short_sequences_and_malformed_boundaries_match_reference ... ok
+test all_standard_codecs_preserve_state_and_replacement_across_chunks ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running tests/canvas_text.rs (target/release/deps/canvas_text-4357e3e337d9750a)
+
+running 2 tests
+test a_canvas_font_string_is_the_css_font_shorthand ... ok
+test text_is_shaped_into_outlines_with_its_metrics ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cascade.rs (target/release/deps/cascade-9eeffea56387977c)
+
+running 12 tests
+test cancellation_candidate_sort_work_and_resolution_limits_are_explicit ... ok
+test actual_dom_matching_nested_layers_multiple_sheets_and_inline_style ... ok
+test a_sheet_compiled_again_keeps_its_blocks_and_answers_the_same ... ok
+test a_rejected_selector_leaves_the_next_rules_matching ... ok
+test defaulting_invalid_substitution_and_rollback_cycles ... ok
+test dynamic_custom_rollback_keeps_dependency_guards_and_shared_typed_results ... ok
+test all_resets_known_properties_preserves_direction_and_custom_and_chained_rules_descend ... ok
+test invalid_layer_names_are_atomic_and_namespaces_are_sheet_local ... ok
+test rollback_uses_origin_normal_layer_and_rule_boundaries ... ok
+test taint_policy_isolated_in_pending_cache_and_retained_budget_is_bounded ... ok
+test origin_importance_inline_layers_specificity_proximity_and_order ... ok
+test independent_pinned_cascade_ports ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/colors.rs (target/release/deps/colors-f07b6b5e76431fa8)
+
+running 11 tests
+test contextual_color_math_uses_live_host_dependencies_and_only_selected_branches ... ok
+test color_spaces_missing_components_clamps_and_computed_phase ... ok
+test conversions_preserve_gamut_and_are_finite_for_extremes ... ok
+test numeric_color_channels_fold_after_type_checking_and_keep_missing_information ... ok
+test syntax_source_is_not_retained_and_context_can_change ... ok
+test retained_precision_storage_and_all_byte_endpoints ... ok
+test math_color_quotas_cover_all_channels_and_conditional_nodes ... ok
+test hostile_values_limits_depth_cancellation_and_flat_drop ... ok
+test bounded_batch_matches_individual_conversions_and_resumes_after_cancel ... ok
+test deterministic_malformed_value_fuzz ... ok
+test independent_pinned_grammar_and_conversion_vectors ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/containers.rs (target/release/deps/containers-6dc1d07c20ed99e0)
+
+running 3 tests
+test early_contexts_and_inherited_pending_lengths_render_with_recorded_fallbacks ... ok
+test changed_containment_and_viewport_recompute_descendant_box_lengths ... ok
+test box_container_lengths_match_independent_chrome_at_five_native_scales ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/controls.rs (target/release/deps/controls-c98355fbe8473902)
+
+running 3 tests
+test control_state_bounds_cancellation_and_generation_validation ... ok
+test css_control_states_match_independent_chrome_across_tree_and_attribute_changes ... ok
+test page_css_uses_control_states_and_rebuilds_after_dom_changes ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/css.rs (target/release/deps/css-d8c1fffd2af925e5)
+
+running 6 tests
+test current_unicode_ranges_delimiters_and_declaration_rules ... ok
+test syntax_is_bounded_cancellable_and_source_backed ... ok
+test pinned_wpt_syntax_assertions_without_claiming_cssom_or_page_execution ... ok
+test deep_components_and_long_unicode_strings_drop_without_recursion_or_split_utf8 ... ok
+test independent_generic_css_fixtures ... ok
+test malformed_css_makes_bounded_progress ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/dom.rs (target/release/deps/dom-f8b599664acf6c8d)
+
+running 21 tests
+test cloning_preserves_order_and_source_text_and_does_not_alias_mutable_buffers ... ok
+test a_cancelled_clone_does_not_allocate_or_mutate_the_document ... ok
+test attributes_preserve_insertion_order_and_namespaces_and_skip_noops ... ok
+test debug_output_does_not_dump_page_source_or_character_data ... ok
+test document_type_is_unique_before_the_element_and_never_an_element_child ... ok
+test decoded_owned_text_moves_into_the_document_without_a_second_copy ... ok
+test failed_append_keeps_value_and_reserved_bytes_and_revision_unchanged ... ok
+test failed_doctype_allocation_reclaims_its_partially_stored_identifiers ... ok
+test limits_preflight_without_losing_the_previous_value_or_children ... ok
+test moves_fragments_and_rejected_mutations_preserve_order_and_ownership ... ok
+test signed_integer_attributes_follow_html_prefix_parsing ... ok
+test long_strings_are_held_once_however_many_values_are_them ... ok
+test scoped_generation_handles_reject_old_navigation_and_reused_slots ... ok
+test source_ranges_and_owned_strings_are_retained_and_reclaimed_separately ... ok
+test template_allocation_and_owned_depth_are_preflighted_and_failed_clones_release_content_roots ... ok
+test template_content_ownership_is_separate_from_children_and_clones_and_reclaims_both ... ok
+test adjacent_text_coalesces_source_ranges_then_grows_with_bounded_capacity ... ok
+test random_reparenting_matches_an_independent_parent_list_model ... ok
+test destroying_deep_and_wide_subtrees_is_iterative_and_reuses_storage ... ok
+test a_compacted_log_forgets_nodes_never_in_the_document ... ok
+test a_full_change_log_is_compacted_not_forgotten ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/environment.rs (target/release/deps/environment-8385263cfba6ddf8)
+
+running 3 tests
+test environment_publication_rejects_uncomputed_duplicate_and_excessive_payloads ... ok
+test environment_substitution_is_indexed_case_sensitive_lazy_and_bounded ... ok
+test real_style_pipeline_matches_chrome_safe_area_fallbacks_and_cycles_at_five_scales ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/flex.rs (target/release/deps/flex-ff19b277a1432937)
+
+running 3 tests
+test flex_work_is_bounded_cancellable_and_not_published_early ... ok
+test hostile_flex_inputs_fail_without_partial_geometry_or_unbounded_arithmetic ... ok
+test definite_flex_lines_match_original_chrome_at_five_native_scales ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/flow.rs (target/release/deps/flow-55d9d469ec3feea1)
+
+running 33 tests
+test empty_inlines_in_a_nowrap_container_lay_out ... ok
+test completed_inline_edges_do_not_create_a_line_for_trailing_collapsed_space ... ok
+test block_width_padding_border_auto_margins_and_percentages ... ok
+test closed_details_show_their_summary_alone ... ok
+test a_table_of_plain_children_and_a_caption_is_as_wide_as_they_are ... ok
+test fit_content_flex_items_inside_a_flex_row_size_from_their_content ... ok
+test a_newline_before_a_br_lays_out ... ok
+test column_flex_stacks_items_with_gaps_alignment_and_growth ... ok
+test flex_items_wrapping_inline_level_links_take_their_content_width ... ok
+test adjoining_positive_negative_and_empty_block_margins ... ok
+test an_inline_block_of_items_wraps_them_at_min_content_and_columns_share_by_max_content ... ok
+test identical_paragraphs_share_glyphs_with_distinct_dom_source_mappings ... ok
+test grid_tracks_place_items_and_size_rows_from_content ... ok
+test grid_areas_and_named_lines_place_items ... ok
+test inline_fragment_storage_is_bounded_even_across_block_interruptions ... ok
+test inline_sources_survive_wrap_block_splits_and_resize ... ok
+test reversed_list_lookahead_obeys_limits_and_cancellation ... ok
+test inline_edges_fit_wrap_and_preserve_actual_box_ends ... ok
+test stale_contexts_cancellation_quotas_and_poisoning ... ok
+test semantic_opportunities_cannot_reuse_literal_unicode_nowrap_cache_entries ... ok
+test fixed_and_sticky_boxes_are_laid_out_without_fallbacks ... ok
+test flex_reflow_keeps_intrinsics_and_rejects_unimplemented_contexts ... ok
+test text_rewritten_in_place_is_the_tree_built_anew ... ok
+test flex_intrinsic_work_obeys_global_quota_and_cancellation ... ok
+test used_zero_percentage_edges_restore_cross_span_shaping_without_mutating_cache ... ok
+test tables_size_columns_from_cells_and_place_rows ... ok
+test styled_spans_shape_in_their_own_fonts_and_raise_the_line ... ok
+test semantic_br_survives_collapsing_and_wbr_wraps_without_a_glyph ... ok
+test independent_chrome_inline_spacing ... ok
+test integrated_flex_pages_match_independent_chrome_at_five_native_scales ... ok
+test definite_flex_reference_runs_through_production_css_and_page_layout ... ok
+test independent_chrome_normal_flow_rectangles ... ok
+test independent_chrome_break_controls ... ok
+
+test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+     Running tests/font_native.rs (target/release/deps/font_native-3106cb485e15315d)
+
+running 16 tests
+test first_available_is_independent_of_reference_glyph_fallback_and_units ... ok
+test collections_share_one_source_scoped_ids_and_surviving_leases ... ok
+test bounded_outline_heuristics_and_css_estimates_have_provenance ... ok
+test language_range_policy_and_context_identity_are_explicit ... ok
+test localized_family_aliases_full_fold_without_normalization_or_fullname_matching ... ok
+test synthesis_policy_and_explicit_unsupported_new_slopes ... ok
+test composite_height_inference_skips_recursion_and_gvar_phantoms_keep_precision ... ok
+test malformed_limits_cancellation_and_atomic_loads ... ok
+test native_metric_cache_bounds_keys_clone_and_cancel ... ok
+test variable_registered_coordinates_clamp_and_reverse_opentype_slant_sign ... ok
+test writing_modes_choose_reference_advances_and_synthesize_missing_vertical_metrics ... ok
+test unavailable_complete_generics_default_before_next_family_but_incomplete_generics_skip ... ok
+test width_style_weight_priority_and_directional_search ... ok
+test style_jobs_rebind_language_metrics_and_reject_incoherent_root_or_publication ... ok
+test selected_chrome_loaded_font_metrics_bound_the_known_integer_rounding_difference ... ok
+test independent_raw_hvar_mvar_and_real_noto_variable_metrics ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/font_pool.rs (target/release/deps/font_pool-cc340ca011dca63b)
+
+running 9 tests
+test context_changes_during_a_pool_hit_are_rejected_before_publication ... ok
+test failed_misses_do_not_publish_and_successful_pools_do_not_outlive_the_tree ... ok
+test identical_requests_with_different_subject_contexts_never_share ... ok
+test cancellation_and_revision_changes_reject_cached_results_and_poison_the_job ... ok
+test every_numeric_slant_and_axis_dimension_is_part_of_the_key ... ok
+test nonadjacent_requests_and_separate_equal_family_sources_share_without_reselecting ... ok
+test zero_and_saturated_pools_preserve_values_and_bound_retention ... ok
+test huge_valid_family_lists_skip_optional_hashing_and_preserve_selection ... ok
+test pool_scratch_is_charged_to_the_job_budget ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/fonts.rs (target/release/deps/fonts-f1a8010716198470)
+
+running 3 tests
+test woff2_files_decode_to_parsable_fonts ... ok
+test font_face_rules_become_descriptors_with_sources_and_ranges ... ok
+test a_family_split_by_unicode_range_answers_each_character_from_its_face ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/html_bytes.rs (target/release/deps/html_bytes-16b636b985d74577)
+
+running 1 test
+test byte_encoding_priority_and_meta_prescan ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/images.rs (target/release/deps/images-6a59f5cc9e2275dc)
+
+running 10 tests
+test a_deferred_image_makes_its_pixels_once_and_only_when_asked ... ok
+test a_new_frame_of_the_same_size_replaces_its_picture_in_place ... ok
+test asset_premultiplication_and_shared_binding_budgets ... ok
+test dimensions_are_cascade_hints_and_one_to_one_pixels_composite_exactly ... ok
+test native_image_alpha_tiles_and_restyle_keep_the_same_asset ... ok
+test minified_alpha_tiles_are_seamless_cached_and_reclaimed ... ok
+test independent_native_chrome_image_pixels_and_explicit_nonpasses ... ok
+test images_past_the_page_binding_limit_are_left_out_not_the_page ... ok
+test independent_chrome_intrinsic_constraints_display_and_dimension_hints ... ok
+test full_pipeline_image_boxes_match_independent_chrome_objects ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running tests/inline.rs (target/release/deps/inline-de1b7bcc52dc2332)
+
+running 15 tests
+test cancellation_quotas_poisoning_and_invalid_options ... ok
+test inline_edge_boundaries_isolate_ligatures_and_later_reshape_context ... ok
+test intrinsic_jobs_bound_work_cancel_and_do_not_publish_partial_sizes ... ok
+test text_builder_validates_provenance_and_caps_before_publication ... ok
+test preserved_spaces_hang_conditionally_and_break_spaces_stay_measured ... ok
+test intrinsic_text_widths_follow_wrap_policy_and_hard_breaks ... ok
+test unsafe_ligature_cuts_nonmonotonic_widths_and_deleted_prefixes ... ok
+test wraps_real_glyphs_trims_edges_and_reuses_width_independent_text ... ok
+test intrinsic_contexts_fail_before_publishing_guessed_sizes ... ok
+test bidi_visual_slices_and_alignment_follow_each_line ... ok
+test preserved_lf_no_wrap_blank_lines_and_phantom_whitespace ... ok
+test letter_and_word_spacing_widen_shaped_advances ... ok
+test computed_styles_bind_scope_direction_whitespace_and_line_metrics ... ok
+test intrinsic_text_min_max_match_original_chrome_fonts_at_five_scales ... ok
+test independent_native_harfbuzz_line_oracle ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/linebreak.rs (target/release/deps/linebreak-b2754423fb315aaf)
+
+running 5 tests
+test prepared_source_breaks_share_storage_and_reverse_iteration ... ok
+test streaming_frontier_limits_cancellation_and_failure_poisoning ... ok
+test required_markers_utf8_offsets_and_constant_combining_state ... ok
+test unicode_18_all_default_line_break_boundaries ... ok
+test ascii_run_boundaries_preserve_quotation_numeric_and_combining_contexts ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running tests/logical.rs (target/release/deps/logical-179824ea16549230)
+
+running 7 tests
+test axes_defaulting_variables_upright_and_parent_direction_are_coherent ... ok
+test inheritance_retains_declared_source_and_all_prefers_physical_on_ties ... ok
+test paired_queries_obey_cancellation_depth_taint_and_memory_limits ... ok
+test pending_values_use_declared_longhand_and_share_shorthand_expansion ... ok
+test rollback_crosses_aliases_and_respects_origin_layer_rule_and_importance ... ok
+test all_ten_mode_direction_combinations_map_every_supported_group ... ok
+test independent_pinned_logical_ports ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+     Running tests/math.rs (target/release/deps/math-f761d46829b9c962)
+
+running 10 tests
+test computed_calculations_freeze_units_tree_counts_and_preserve_layout_percentages ... ok
+test container_lengths_can_wait_for_layout_while_font_context_is_frozen ... ok
+test computed_numeric_failures_are_bounded_and_do_not_change_specified_programs ... ok
+test progress_and_tree_counting_use_explicit_live_context ... ok
+test relative_units_are_deferred_and_dependency_bits_follow_the_expression ... ok
+test type_algebra_percentage_policy_and_absolute_unit_conversion ... ok
+test ieee_values_stay_inside_calculations_until_materialized ... ok
+test limits_cancellation_depth_flat_storage_and_private_debug ... ok
+test deterministic_hostile_numeric_grammar_fuzz ... ok
+test independent_pinned_numeric_ports ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/measure.rs (target/release/deps/measure-3db544b86df5760f)
+
+running 26 tests
+test a_length_margin_resolves_to_itself_not_the_room_left_over ... ok
+test an_empty_element_is_placed_where_it_sits ... ok
+test a_ratio_svg_with_a_percentage_height_contributes_its_ratio_width ... ok
+test a_column_flex_item_keeps_its_content_height_in_a_clamped_grid_item ... ok
+test a_pseudo_element_answers_its_own_computed_style ... ok
+test breaking_anywhere_shrinks_min_content_and_a_line_clamp_ends_the_box ... ok
+test a_picture_a_script_loaded_measures_its_image_after_the_document_changes ... ok
+test a_parent_turned_flex_blockifies_its_kept_children ... ok
+test a_child_added_to_a_host_is_styled_where_its_slot_is ... ok
+test a_shadow_trees_new_sheet_restyles_only_what_it_reaches ... ok
+test dir_in_a_shadow_tree_follows_the_host ... ok
+test content_sized_widths_are_not_stretched_across ... ok
+test a_font_patched_in_place_shapes_its_texts_again ... ok
+test instances_of_a_component_share_their_compiled_sheets ... ok
+test pseudo_elements_are_made_where_their_content_rules_match ... ok
+test css_counters_follow_pseudo_and_element_mutations ... ok
+test list_numbering_matches_chrome ... ok
+test outside_markers_reserve_room_and_align_to_the_first_content_baseline ... ok
+test css_counter_sequencing_matches_chrome ... ok
+test list_numbering_follows_mutations_and_reuse ... ok
+test marker_styles_survive_reuse_and_change_with_their_originating_item ... ok
+test text_baselines_and_content_bounds_match_native_chrome_after_scale_changes ... ok
+test css_counter_scope_storage_is_bounded ... ok
+test grid_track_distribution_matches_native_chrome ... ok
+test grid_track_distribution_updates_after_size_and_gap_changes ... ok
+test a_components_sheet_counts_once_in_the_css_budget ... ok
+
+test result: ok. 26 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+     Running tests/objects.rs (target/release/deps/objects-9e05da9f7de2b0f8)
+
+running 6 tests
+test object_metadata_and_metrics_are_mandatory_bounded_and_cancellable ... ok
+test literal_object_character_remains_font_text_and_semantic_objects_isolate_context ... ok
+test atomic_items_fit_without_glyphs_and_expand_only_their_own_line ... ok
+test objects_keep_bidi_order_nowrap_and_fractional_advances ... ok
+test independent_object_capture_provenance_is_complete ... ok
+test independent_chrome_atomic_object_positions_and_line_metrics ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running tests/paint.rs (target/release/deps/paint-013ecf3339896f76)
+
+running 66 tests
+test a_grid_items_min_width_is_its_minimum_contribution ... ok
+test a_repeated_layered_sheet_keeps_its_first_place_in_the_layer_order ... ok
+test a_declarative_shadow_root_renders_with_its_own_sheet ... ok
+test a_class_that_selectors_reach_from_restyles_what_they_reach ... ok
+test a_live_canvas_is_a_surface_cut_by_its_clip_and_rounded_by_its_own ... ok
+test a_patched_element_keeps_its_descendant_rules_and_pseudo_elements ... ok
+test a_shadow_tree_renders_in_its_hosts_place_with_its_slots ... ok
+test a_filter_blurs_and_recolours_its_box_past_its_edges ... ok
+test a_focus_set_by_the_page_matches_focus_within_on_a_rerender ... ok
+test a_patched_rerender_reports_the_whole_pages_fallbacks ... ok
+test a_blur_spreads_before_its_ancestors_clip_and_scales_with_its_transform ... ok
+test a_style_attribute_a_has_tests_restyles_what_has_it ... ok
+test a_z_index_inside_a_positioned_auto_box_rises_above_later_positioned_siblings ... ok
+test a_transition_patched_over_a_whole_restyle_keeps_its_new_geometry ... ok
+test an_iframe_with_frameborder_0_has_no_border ... ok
+test a_shadow_trees_sheets_style_its_tree_its_host_and_what_is_slotted ... ok
+test a_transitioned_property_eases_to_its_new_value_and_says_so ... ok
+test a_shared_ligature_can_be_read_without_an_internal_optional_break_marker ... ok
+test an_atomic_inline_takes_its_opacity_filter_and_transform ... ok
+test an_opacity_change_patches_its_group_and_paints_as_a_new_scene_would ... ok
+test attribute_changes_reach_through_states_and_not_through_any_element ... ok
+test checkboxes_radios_and_selects_draw_as_chrome_in_their_scheme ... ok
+test background_clip_text_paints_the_backgrounds_through_the_glyphs ... ok
+test column_flex_items_follow_order_too ... ok
+test complete_static_pipeline_paints_style_elements_and_reports_inert_scripts ... ok
+test drop_shadow_draws_the_alpha_moved_under_the_box_and_later_functions_colour_both ... ok
+test distant_tiles_keep_local_subpixel_precision ... ok
+test flex_items_lay_out_in_order_modified_document_order ... ok
+test document_input_restyles_link_states_and_keeps_equal_color_owners_separate ... ok
+test floats_shorten_lines_beside_them_and_clear_moves_below ... ok
+test cross_node_ligatures_and_clipped_ink_do_not_invent_click_targets ... ok
+test independent_chrome_native_pixels_not_yet_matching ... ignored, 36 native font-mask/corner/colour-precision observations still fail exactly. See paint-fixtures/README.md.
+test colors_visibility_clipping_and_positioned_paint_order ... ok
+test background_image_layers_tile_position_size_and_clip ... ok
+test glyph_color_reuse_tracks_real_spans_across_breaks_and_hidden_text ... ok
+test inline_backgrounds_round_their_ends_and_not_their_line_breaks ... ok
+test generated_content_paints_before_and_after_text_and_blocks ... ok
+test inline_elements_paint_at_their_opacity ... ok
+test inline_backgrounds_paint_and_an_empty_one_says_it_is_not ... ok
+test a_live_refresh_compiles_new_rules_in_the_background ... ok
+test inline_spacing_moves_glyphs_without_block_axis_padding_moving_the_line ... ok
+test inset_shadows_paint_inside_the_padding_box ... ok
+test gradient_layers_take_their_size_position_and_repeat ... ok
+test intrinsic_widths_and_column_flow_grids ... ok
+test linked_sheets_use_first_base_and_document_cascade_order ... ok
+test opacity_composites_a_box_and_its_content_as_one_layer ... ok
+test an_interaction_restyle_matches_only_what_the_states_reach_and_paints_as_a_whole_one ... ok
+test raster_cancellation_limits_and_cache_reuse ... ok
+test pictures_not_here_yet_show_when_they_land ... ok
+test text_decoration_underline_and_line_through_paint_under_the_text ... ok
+test paints_background_canvas_borders_and_native_glyph_positions ... ok
+test semantic_breaks_move_paint_and_never_expose_carriers_as_text_or_targets ... ok
+test structured_text_matches_linear_cluster_reference_and_preserves_literal_zwsp ... ok
+test rounded_corners_gradients_and_shadows_paint_from_style ... ok
+test pictures_styles_name_later_are_noted_where_the_styles_changed ... ok
+test text_edits_restyle_empty_only_when_text_comes_or_goes ... ok
+test tiled_output_equals_whole_surface_and_index_matches_brute_force ... ok
+test translucent_and_asymmetric_border_tiles_have_no_seams_or_double_alpha ... ok
+test the_container_shorthand_makes_a_query_container ... ok
+test text_overflow_ellipsis_cuts_a_clipped_line_with_its_mark ... ok
+test text_wrap_balance_evens_the_lines_without_adding_one ... ok
+test unstyled_fields_and_buttons_draw_a_thin_rounded_frame_not_their_bevel ... ok
+test native_pixel_capture_manifest_has_all_inputs_and_immutable_reference_bytes ... ok
+test transforms_move_rotate_and_scale_a_box_with_its_content ... ok
+test a_sheet_linked_again_counts_once_and_too_much_css_drops_sheets_not_the_page ... ok
+test independent_chrome_native_pixels_at_five_scales ... ok
+
+test result: ok. 65 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/positioned.rs (target/release/deps/positioned-66dbbb2c67e6185f)
+
+running 2 tests
+test static_side_and_numeric_limits_are_explicit ... ok
+test independent_absolute_axis_constraints ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/properties.rs (target/release/deps/properties-d1aed5d18edadc27)
+
+running 11 tests
+test clip_takes_rect_with_or_without_commas_and_auto_sides ... ok
+test display_box_types_aliases_and_order_independent_grammar ... ok
+test local_clip_urls_are_decoded_bounded_and_share_thin_storage ... ok
+test numeric_dimensions_ranges_zero_percentages_and_integer_rounding ... ok
+test inset_shapes_expand_quads_and_reject_invalid_round_syntax ... ok
+test pending_values_share_shorthand_and_invalid_results_become_unset ... ok
+test typed_colors_and_styles_do_not_retain_source ... ok
+test shorthands_expand_atomically_and_keep_logical_identity ... ok
+test registry_names_initial_values_and_inheritance_are_typed ... ok
+test cancellation_work_depth_and_input_quotas_are_checked ... ok
+test independent_pinned_property_grammar_expansion_and_numeric_ports ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/selectors.rs (target/release/deps/selectors-efd41bd3d9c291d4)
+
+running 13 tests
+test featureless_fragment_scope_requires_explicit_eligible_selectors ... ok
+test dom_adapter_queries_mutation_scope_templates_and_stale_handles ... ok
+test html_case_rules_quirks_attributes_and_utf8_boundaries ... ok
+test live_host_states_pseudo_targets_and_history_privacy ... ok
+test namespace_lookup_and_nested_index_reservations_obey_work_and_memory_limits ... ok
+test sibling_indices_are_filtered_typed_bounded_and_not_reused_after_mutation ... ok
+test oversized_unknown_pseudo_names_are_charged_before_case_conversion ... ok
+test specificity_forgiving_lists_and_namespace_subject_rules ... ok
+test insensitive_substring_matching_has_linear_adversarial_work ... ok
+test independent_an_plus_b_microsyntax ... ok
+test deep_chains_limits_cancellation_and_terminal_sink_errors ... ok
+test malformed_selectors_make_bounded_progress_and_drop_without_panics ... ok
+test independent_selector_queries ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests/shaping.rs (target/release/deps/shaping-7d71611d2fbade04)
+
+running 14 tests
+test bidi_line_order_is_byte_mapped_and_resets_whitespace_after_wrapping ... ok
+test finished_glyph_data_can_cross_the_worker_ui_boundary ... ok
+test unicode_18_extended_grapheme_conformance ... ok
+test run_bounds_cancellation_and_output_limits_recover_without_partial_results ... ok
+test prepared_css_text_shapes_and_maps_glyph_clusters_to_original_spans ... ok
+test empty_text_uses_no_shaping_cache_and_ascii_controls_match_the_general_algorithm ... ok
+test paragraph_jobs_report_progress_poison_on_failure_and_reject_unprepared_contexts ... ok
+test shaper_caches_are_bounded_and_font_leases_survive_clear_and_catalog_drop ... ok
+test whole_grapheme_and_variation_fallback_have_explicit_provenance ... ok
+test uniform_script_paragraphs_match_independent_font_runs ... ok
+test style_font_contexts_bind_to_the_same_native_scope ... ok
+test mixed_scripts_fallback_and_cache_controls_preserve_complete_runs ... ok
+test native_harfbuzz_glyphs_positions_flags_variations_features_and_utf8_clusters ... ok
+test unicode_18_bidi_character_conformance_through_l2 ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running tests/style.rs (target/release/deps/style-e0b2720050dd6da4)
+
+running 31 tests
+test an_incremental_restyle_styles_elements_added_inside_a_shadow_tree ... ok
+test adjacent_value_sharing_keeps_custom_bindings_separate ... ok
+test coupled_overflow_border_and_display_rules_are_computed ... ok
+test defaults_are_computed_once_and_sparse_overrides_own_no_parent ... ok
+test explicit_selector_state_snapshots_and_environment_revisions_guard_jobs ... ok
+test document_job_streams_parent_first_styles_and_skips_contents_for_box_context ... ok
+test custom_properties_every_element_declares_follow_what_each_inherits ... ok
+test borders_preserve_inheritance_and_snap_at_all_standard_scales ... ok
+test currentcolor_survives_inheritance_and_light_dark_selects_before_inheriting ... ok
+test carousel_flex_basis_retains_query_lengths_until_its_layout_context_exists ... ok
+test font_affecting_values_use_parent_metrics_and_root_units_use_initial_root_size ... ok
+test inherited_inset_storage_and_programs_are_shared_and_counted_once ... ok
+test inherited_local_clip_storage_is_counted_once ... ok
+test like_siblings_share_styles_only_where_their_matches_agree ... ok
+test orthogonal_box_context_skips_a_display_contents_inheritance_parent ... ok
+test owned_chrome_alignment_observations_use_computed_parent_direction ... ok
+test relative_weight_boundaries_follow_the_fonts_table ... ok
+test font_units_freeze_before_inheritance_but_percentages_wait_for_layout ... ok
+test style_generation_cancellation_and_resource_failures_do_not_publish ... ok
+test svg_paint_servers_are_explicitly_unsupported_and_attribute_work_is_bounded ... ok
+test text_spacing_normal_is_computed_zero_and_percentages_follow_the_child_font ... ok
+test unitless_line_height_inherits_as_a_multiplier_while_percentages_become_lengths ... ok
+test whitespace_inheritance_reset_substitution_and_preparation_binding ... ok
+test job_failures_poison_completion_and_inline_issues_remain_visible ... ok
+test independent_owned_chrome_probe_values_match_native_computation ... ok
+test logical_inheritance_uses_parent_axes_and_custom_tokens_do_not_rebind ... ok
+test local_clip_sources_match_owned_chrome_cascade ... ok
+test svg_presentation_cascade_matches_owned_chrome ... ok
+test inset_computed_values_match_independent_chrome_numeric_probes ... ok
+test flex_shorthand_matches_chrome_cases_and_preserves_the_size_function_gap ... ok
+test independent_pinned_computed_style_ports ... ok
+
+test result: ok. 31 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests/svg.rs (target/release/deps/svg-309704c889ca72e2)
+
+running 6 tests
+test arc_expansion_is_incremental_bounded_and_resets_smooth_controls ... ok
+test compact_relative_and_implicit_commands ... ok
+test arcs_degenerate_and_regular ... ok
+test smooth_controls_reflect_only_matching_previous_commands ... ok
+test quotas_cancellation_and_poisoning ... ok
+test syntax_errors_keep_complete_prefix_and_flag_diagnostic ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/svg_page.rs (target/release/deps/svg_page-4248d5590ea669fb)
+
+running 15 tests
+test svg_rectangle_layout_reuses_sources_but_recomputes_percentages ... ok
+test svg_geometry_hints_obey_css_and_clip_meet_slice_and_zero_viewboxes ... ok
+test svg_clip_budgets_cancellation_sharing_and_tile_origin ... ok
+test svg_worker_quota_cancellation_and_stale_document_are_explicit ... ok
+test svg_isolated_layers_bound_scratch_work_and_preserve_tile_origin ... ok
+test svg_definitions_remain_in_dom_without_direct_paint_or_path_compilation ... ok
+test svg_paths_reach_real_page_geometry_paint_and_document_identity ... ok
+test svg_gradients_paint_across_their_shapes ... ok
+test visible_svg_overflow_survives_spatial_query_and_tile_origin ... ok
+test svg_rectangle_limits_cancellation_and_overflow_tiles ... ok
+test independent_svg_overflow_geometry_and_pixels ... ok
+test independent_svg_page_geometry_and_pixels ... ok
+test independent_svg_opacity_geometry_and_pixel_nonpasses ... ok
+test independent_svg_rectangle_geometry_and_pixel_nonpasses ... ok
+test independent_svg_rectangular_clip_geometry_and_pixel_nonpasses ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running tests/svg_script.rs (target/release/deps/svg_script-3560e4447b6092f8)
+
+running 2 tests
+test boxes_and_matrices_are_chromes ... ok
+test lengths_and_points_are_chromes ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/tokenizer.rs (target/release/deps/tokenizer-498aea8fb8002a35)
+
+running 4 tests
+test limits_and_cancellation ... ok
+test unchanged_text_and_attributes_borrow_the_input ... ok
+test html5lib_tokens ... ok
+test malformed_unicode_input_always_makes_progress ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/tree.rs (target/release/deps/tree-337ad39ae1607e7a)
+
+running 12 tests
+test document_mode_preserves_current_doctype_rules ... ok
+test formatting_limits_include_markers_as_well_as_formatting_elements ... ok
+test fragment_context_and_parsing_obey_cancellation_and_limits_without_mutating_the_source ... ok
+test foreign_attributes_keep_expanded_identity_through_cloning_and_qualified_mutation ... ok
+test fragment_context_inherits_form_ancestry_quirks_and_namespaced_integration_attributes ... ok
+test fragment_raw_contexts_keep_literal_end_tags_and_context_select_ignores_nested_select_and_input ... ok
+test inert_fragment_parsing_keeps_declarative_shadow_markup_as_ordinary_template_content ... ok
+test parsing_obeys_cancellation_stack_and_source_limits ... ok
+test unclosed_templates_unwind_beyond_the_old_reprocessing_limit ... ok
+test table_text_uses_source_ranges_and_enforces_its_temporary_buffer_quota ... ok
+test wpt_static_tree_construction ... ok
+test malformed_markup_does_not_panic_or_reprocess_forever ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s
+
+     Running tests/variables.rs (target/release/deps/variables-69ae39aa27d7c65f)
+
+running 12 tests
+test cache_observes_revisions_and_rejects_mid_operation_changes ... ok
+test css_wide_keywords_apply_after_substitution_and_inheritance_is_already_computed ... ok
+test declaration_grammar_dynamic_names_wrappers_and_lazy_fallbacks ... ok
+test cycles_mark_all_participants_and_keep_unrelated_fallbacks_valid ... ok
+test taint_policy_cache_revisions_cancellation_and_resource_failures_are_explicit ... ok
+test variables_preserve_token_boundaries_and_typed_color_math_consumers ... ok
+test values_share_compact_batch_storage_release_sources_and_hide_data_in_debug ... ok
+test work_budget_counts_cached_whitespace_name_keyword_and_spelling_scans ... ok
+test assembled_spelling_round_trips_boundaries_escapes_and_eof_recovery ... ok
+test independent_pinned_variable_grammar_cycles_and_substituted_names ... ok
+test expansion_depth_cancellation_and_hostile_values_are_bounded ... ok
+test generated_static_reference_graphs_match_independent_cycle_reachability ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/whitespace.rs (target/release/deps/whitespace-53bc10b8123dcf43)
+
+running 10 tests
+test invalid_partitions_limits_cancellation_and_poisoned_outputs ... ok
+test collapsing_ignores_all_bidi_controls_but_preserves_them ... ok
+test modern_white_space_shorthand_expands_both_longhands_atomically ... ok
+test semantic_controls_preserve_breaks_without_reinterpreting_dom_characters ... ok
+test semantic_control_metadata_rejects_malformed_late_overlapping_and_over_quota_input ... ok
+test phase_one_modes_dom_carriage_returns_and_non_css_spaces ... ok
+test source_spans_are_transparent_to_collapsing_and_retain_removed_nodes ... ok
+test text_transform_keeps_byte_lengths_and_word_starts_as_chrome ... ok
+test bulk_scan_boundaries_preserve_all_utf8_and_edit_positions ... ok
+test independent_regex_phase_oracle_and_literal_wpt_acceptance_ports ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+   Doc-tests olo_js
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests olo_web
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+warning: unnecessary parentheses around closure body
+  --> crates/web/src/chunked.rs:55:143
+   |
+55 | ...e_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+   |                                                    ^                              ^
+   |
+   = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+   |
+55 -         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+55 +         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| i * CHUNK..i * CHUNK + c.len())
+   |
+
+warning: 1 warning emitted

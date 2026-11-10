@@ -1,0 +1,67 @@
+[
+  {
+    "scale": 1,
+    "before": {
+      "different_pixels": 68414,
+      "total_pixels": 1850000,
+      "max_channel_error": 238
+    },
+    "after": {
+      "different_pixels": 68414,
+      "total_pixels": 1850000,
+      "max_channel_error": 238
+    }
+  },
+  {
+    "scale": 1.25,
+    "before": {
+      "different_pixels": 102036,
+      "total_pixels": 2891250,
+      "max_channel_error": 238
+    },
+    "after": {
+      "different_pixels": 84129,
+      "total_pixels": 2891250,
+      "max_channel_error": 93
+    }
+  },
+  {
+    "scale": 1.5,
+    "before": {
+      "different_pixels": 124239,
+      "total_pixels": 4162500,
+      "max_channel_error": 238
+    },
+    "after": {
+      "different_pixels": 102957,
+      "total_pixels": 4162500,
+      "max_channel_error": 84
+    }
+  },
+  {
+    "scale": 1.75,
+    "before": {
+      "different_pixels": 144661,
+      "total_pixels": 5666500,
+      "max_channel_error": 238
+    },
+    "after": {
+      "different_pixels": 121100,
+      "total_pixels": 5666500,
+      "max_channel_error": 97
+    }
+  },
+  {
+    "scale": 2,
+    "before": {
+      "different_pixels": 168798,
+      "total_pixels": 7400000,
+      "max_channel_error": 238
+    },
+    "after": {
+      "different_pixels": 139396,
+      "total_pixels": 7400000,
+      "max_channel_error": 91
+    }
+  }
+]

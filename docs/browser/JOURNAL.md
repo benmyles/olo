@@ -8072,3 +8072,71 @@ after testing; the person's desktop was not installed into or reloaded.
 Raw artifacts are in `measurements/2026-11-10-compile-queue/`, with the summary
 in `measurements/2026-11-10-compile-queue.json`. Website acceptance stays
 **0/100**; this work does not establish Chrome parity.
+
+## 2026-11-10 — Native text baselines and descender allowance
+
+An independent zero-height inline-block marker isolated baseline placement
+from glyph ink. With Arial/Times New Roman/Courier New resolving to Liberation
+Sans/Serif/Mono, the old engine matched 354 of 600 baseline observations across
+native 1/1.25/1.5/1.75/2 DPR. Chrome's default Linux installed-font policy above
+1× borrows one device pixel from ascent when rounded descent would be too
+short. The corrected strut, styled run and content-area metrics match all 600
+observations, including wrapped text. Normal line height also sums rounded
+metrics in device space before division, avoiding half-leading underflow in
+two normal-line-height cases. A further 35px custom-font probe reproduced
+a 61-device-pixel round trip at 1.75x (647.428571 versus Chrome's 648 baseline).
+Choosing the adjacent CSS float only when needed preserves the device integer
+without a fixed epsilon. Nothing changed in glyph outlines or rasterization.
+
+A separate embedded original test font exposed the installed/downloaded
+distinction: downloaded faces do not query the installed-family render policy.
+Font catalogs now retain that origin. The 205 recorded custom-font observations
+pass baseline and inline-content comparisons in both scale directions while
+reusing one document (410 observations). Another test checks 580 single-line
+installed-font content metrics from independently read table values and Chrome
+DOM measurements, without requiring system fonts on the test machine. The
+test host now resolves normal metrics at its actual scale. All 550 release
+web/JS/Browser tests pass, with two existing ignored tests; workspace release
+build and Browser's 1280×800 and 1440×900 layout lints pass.
+
+The native Browser has 30 clean paired reviews plus 15 final larger-font
+reviews: light/dark/night, five live scales, odd x=49. The 1× page pixels are unchanged (the light screenshot's
+decorator background differs because the reference Chrome window was closed).
+Full installed-font page pixel differences against Chrome remain
+68,414/84,129/102,957/121,100/139,396 after, versus
+68,414/102,036/124,239/144,661/168,798 before. Above 1×, maximum channel error
+falls from 238 to 93/84/97/91. **Every exact pixel comparison still fails.**
+The screenshot journal shows native-resolution Chrome/before/after crops.
+
+Release ABBA against frozen `1ef4c777`, a 1,000-row 12px Arial page, seven
+reloads per process, two idle seconds and drag/wheel checks per run:
+
+| Scale | CPU/reload ms before→after | Worker-ready median ms | Drag first-move ms | Wheel first-move ms |
+|---|---:|---:|---:|---:|
+| 1.25× | 32.86→33.57 | 26→24 | 28.45→28.90 | 9.40→9.45 |
+| 2× | 35.71→37.86 | 24→24 | 28.65→28.75 | 9.05→9.10 |
+
+All eight final idle samples recorded zero CPU, wakeups and frames. Final
+1.25× drag/wheel checks counted no hitches; 2× had none in the baseline and
+one candidate drag hitch. Maximum drag draw was 1.44→2.90 ms at 1.25× and
+0.77→0.74 ms at 2×; wheel draw was 2.03→4.25 and 3.50→0.60 ms. Median loaded
+RSS was 133,608→134,082 KiB and 139,072→139,724 KiB. These results retain the
+slightly higher candidate CPU/RSS; there is **no speedup claim**. Some final
+1.25× runs overlapped compiler processes; final 2× runs recorded none. No
+pixel-analysis work overlapped these final runs.
+
+The earlier, heavily contended pass is retained as `initial-costs.json`,
+`initial-cost-summary.json` and `initial-measure.log`: drag hitches 13→22 at
+1.25× and 29→47 at 2×, including other builds throughout and pixel analysis
+during part of 1.25×. Final results are in `costs.json`,
+`cost-summary-final.json` and `measure-final.log`. Neither pass establishes
+general smooth scrolling, browser performance superiority or website acceptance.
+
+Raw fixtures, captures, reports, exact source-revision checks and measurements
+are in `measurements/2026-11-10-text-baselines/`, with the summary beside it.
+The font-policy references and recapture procedure are in
+`crates/web/tests/baseline-fixtures/README.md`. BeOS's ascent/descent/leading
+separation remains useful; web placement follows measured Chrome behavior.
+The person's session was not installed into or reloaded. Website acceptance
+remains **0/100**; arbitrary fonts, glyph masks, rendering preferences, VDMX,
+text-rendering overrides, color glyphs and general browser parity remain open.

@@ -222,12 +222,13 @@ impl Options {
             return Err(Error::Stale);
         }
         let text_align = align(style.value(P::TextAlign))?;
+        let (ascent, descent) = crate::font::device_metrics(metrics.ascent, -metrics.descent, scale, metrics.web_font);
         Ok(Self {
             break_width: None,
             width,
             line_height: style.line_height(),
-            baseline: ((metrics.ascent * scale).round() + ((style.line_height() * scale - (metrics.ascent * scale).round() - (-metrics.descent * scale).round()) / 2.).floor()) / scale,
-            content: [(metrics.ascent * scale).round() / scale, (-metrics.descent * scale).round() / scale],
+            baseline: (ascent + ((style.line_height() * scale - ascent - descent) / 2.).floor()) / scale,
+            content: [ascent / scale, descent / scale],
             align: text_align,
             rtl: style.axes().direction == crate::css::style::Direction::Rtl,
             last_align,
@@ -710,7 +711,10 @@ impl Layout {
     pub fn content_area(&self, fragment: &Fragment) -> (f64, f64) {
         let scale = self.scale;
         match self.run(fragment).and_then(|run| self.text.paragraph.styles.get(run.style as usize)) {
-            Some(s) => ((s.ascent * scale).round() / scale, (s.descent * scale).round() / scale),
+            Some(s) => {
+                let (ascent, descent) = crate::font::device_metrics(s.ascent, s.descent, scale, s.web_font);
+                (ascent / scale, descent / scale)
+            }
             None => (self.content[0], self.content[1]),
         }
     }
@@ -1333,8 +1337,7 @@ impl<'a> Job<'a> {
             let Some(run) = (if f.run & OWNED == 0 { self.text.paragraph.runs.get(f.run as usize) } else { self.owned.get((f.run & !OWNED) as usize).map(Arc::as_ref) }) else { continue };
             let Some(s) = self.text.paragraph.styles.get(run.style as usize) else { continue };
             let scale = self.options.pixel_scale.unwrap_or(1.);
-            let a = (s.ascent * scale).round();
-            let d = (s.descent * scale).round();
+            let (a, d) = crate::font::device_metrics(s.ascent, s.descent, scale, s.web_font);
             let half = ((s.line_height * scale - a - d) / 2.).floor();
             ascent = ascent.max((a + half) / scale + snap(s.shift));
             descent = descent.max(s.line_height - (a + half) / scale - snap(s.shift));

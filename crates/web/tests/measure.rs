@@ -106,6 +106,60 @@ fn measurer_for(source: &str) -> (page::Measurer, paint_host::Scaled, olo_web::d
     (measurer, host, prepared.into_document(), viewport)
 }
 #[test]
+fn text_baselines_and_content_bounds_match_native_chrome_after_scale_changes() {
+    use sha2::{Digest, Sha256};
+    let source = include_str!("baseline-fixtures/baselines.html");
+    let oracle: serde_json::Value = serde_json::from_str(include_str!("baseline-fixtures/chrome.json")).unwrap();
+    assert_eq!(format!("{:x}", Sha256::digest(source)), oracle["source_sha256"]);
+    let (_, base_host, _, mut viewport) = measurer_for("");
+    viewport.width = 1000.;
+    viewport.height = 650.;
+    let prepared = page::prepare(
+        Arc::from(source),
+        &base_host.0.0,
+        olo_web::css::media::Media::screen(viewport.width, viewport.height, viewport.scale, false),
+        true,
+        None,
+        |_, _| {},
+        |kind, _, url| {
+            Ok((kind == page::ResourceKind::Font && url.starts_with("data:font/ttf;base64,")).then(|| page::Resource::Font(Arc::from(include_bytes!("inline-fixtures/plain.ttf").as_slice()))))
+        },
+    )
+    .unwrap();
+    let host = paint_host::Scaled::new(prepared.scope().clone(), 1.);
+    let measurer = prepared.measurer();
+    let doc = prepared.into_document();
+    let mut shaper = shaping::Engine::default();
+    let mut previous = None;
+    let rows = oracle["scales"].as_array().unwrap();
+    // Reuse a live document in both directions to catch device-metric caches
+    // accidentally retained from the preceding scale.
+    for row in rows.iter().chain(rows.iter().rev()) {
+        viewport.scale = row["scale"].as_f64().unwrap();
+        let host = paint_host::Scaled::new(host.0.0.clone(), viewport.scale);
+        let measured = measurer.measure(&doc, &host, &mut shaper, viewport, previous, None).unwrap();
+        let layout = measured.layout();
+        for case in row["cases"].as_array().unwrap() {
+            let id = case["id"].as_str().unwrap();
+            let (b, text) =
+                layout.cache().tree().iter().find_map(|(b, item)| (doc.attribute(item.node, "id").ok().flatten() == Some(id)).then(|| layout.text_layout(b).map(|text| (b, text))).flatten()).unwrap();
+            assert_eq!(text.lines().len(), 1, "{id}");
+            let baseline = layout.bounds(b).unwrap().y + text.baseline(0).unwrap();
+            let expected = case["baseline"].as_f64().unwrap();
+            let near = |got: f64, want: f64| assert!((got - want).abs() < 0.0002, "scale {} {id}: {got} != {want}", viewport.scale);
+            near(baseline, expected);
+            let top = case["span"][1].as_f64().unwrap();
+            let height = case["span"][3].as_f64().unwrap();
+            for fragment in text.fragments() {
+                let (ascent, descent) = text.content_area(fragment);
+                near(baseline - ascent, top);
+                near(ascent + descent, height);
+            }
+        }
+        previous = Some(measured);
+    }
+}
+#[test]
 fn grid_track_distribution_matches_native_chrome() {
     use sha2::{Digest, Sha256};
     let oracle: serde_json::Value = serde_json::from_str(include_str!("grid-fixtures/chrome.json")).unwrap();

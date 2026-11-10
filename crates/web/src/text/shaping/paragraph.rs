@@ -148,6 +148,8 @@ pub struct StyleRun {
     pub ascent: f64,
     /// Positive, below the baseline.
     pub descent: f64,
+    /// The metric face came from a downloaded @font-face resource.
+    pub web_font: bool,
     /// Baseline shift, up positive (superscripts), in CSS px.
     pub shift: f64,
     /// `font-feature-settings`, passed to shaping.

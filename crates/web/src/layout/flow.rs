@@ -124,6 +124,7 @@ fn style_runs(
             line_height: s.line_height(),
             ascent: metrics.ascent.max(0.),
             descent: (-metrics.descent).max(0.),
+            web_font: metrics.web_font,
             shift,
             features,
         });

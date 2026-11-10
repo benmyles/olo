@@ -2706,3 +2706,16 @@ while emulated 1.5× can retain 1 CSS px. Preserve emulated observations as
 such; do not use them as native-scale acceptance references. The counter
 font investigation in `measurements/2026-11-09-font-diagnostics` records
 both modes and repeat-verified native screenshots.
+
+The default Linux installed-font metrics now mirror Chrome's descender
+allowance above 1×: when rounding would shorten descent, transfer one device
+pixel from ascent. Apply the same metrics to the paragraph strut, styled runs
+and inline content bounds. Downloaded faces retain their separate default
+render policy; their origin is preserved in the catalog and resolved metrics.
+Normal line height sums rounded device metrics before conversion to CSS pixels,
+advancing to the adjacent representable CSS value only when a round trip would
+fall below the device integer. This avoids flooring half-leading down a pixel.
+`tests/baseline-fixtures` records installed and downloaded font observations;
+`measurements/2026-11-10-text-baselines.json` records the live comparisons,
+costs and remaining pixel/scroll nonpasses. No rasterizer or glyph hinting policy
+changed in this correction.

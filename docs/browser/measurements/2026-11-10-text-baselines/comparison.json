@@ -1,0 +1,57 @@
+[
+  {
+    "scale": 1,
+    "before": {
+      "matches": 120,
+      "max_error": 0.0
+    },
+    "after": {
+      "matches": 120,
+      "max_error": 0.0
+    }
+  },
+  {
+    "scale": 1.25,
+    "before": {
+      "matches": 55,
+      "max_error": 0.800073242187409
+    },
+    "after": {
+      "matches": 120,
+      "max_error": 7.324218745452526e-05
+    }
+  },
+  {
+    "scale": 1.5,
+    "before": {
+      "matches": 55,
+      "max_error": 0.6666666666667425
+    },
+    "after": {
+      "matches": 120,
+      "max_error": 8.138020825754211e-05
+    }
+  },
+  {
+    "scale": 1.75,
+    "before": {
+      "matches": 60,
+      "max_error": 0.5714285714286689
+    },
+    "after": {
+      "matches": 120,
+      "max_error": 0.00013950892866887443
+    }
+  },
+  {
+    "scale": 2,
+    "before": {
+      "matches": 64,
+      "max_error": 0.5
+    },
+    "after": {
+      "matches": 120,
+      "max_error": 0.0
+    }
+  }
+]
