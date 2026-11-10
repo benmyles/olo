@@ -1,0 +1,266 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/ben/worktrees/olo/browser/smithay/smithay/Cargo.toml
+workspace: /home/ben/worktrees/olo/browser/Cargo.toml
+   Compiling olo-web v0.1.0 (/home/ben/worktrees/olo/browser/crates/web)
+warning: unnecessary parentheses around closure body
+  --> crates/web/src/chunked.rs:55:143
+   |
+55 | ...e_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+   |                                                    ^                              ^
+   |
+   = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+   |
+55 -         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+55 +         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| i * CHUNK..i * CHUNK + c.len())
+   |
+
+warning: unused attribute `allow`
+  --> crates/web/src/paint/image.rs:44:1
+   |
+44 | #[allow(clippy::too_many_arguments)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: the built-in attribute `allow` will be ignored, since it's applied to the macro invocation `thread_local`
+  --> crates/web/src/paint/image.rs:45:1
+   |
+45 | thread_local! {
+   | ^^^^^^^^^^^^
+   = note: `#[warn(unused_attributes)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `size` is never read
+   --> crates/web/src/css/properties/font.rs:274:20
+    |
+274 |     let mut size = None;
+    |                    ^^^^ this value is reassigned later and never used
+...
+353 |     size = Some(super::parse::component(Property::FontSize.grammar(), c, limits, cancelled)?);
+    |     ---- `size` is overwritten here before the previous value is read
+    |
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `family` is never read
+   --> crates/web/src/css/properties/font.rs:276:22
+    |
+276 |     let mut family = None;
+    |                      ^^^^ this value is reassigned later and never used
+...
+363 |     family = Some(Families::parse(parts[i..].iter().copied(), cancelled)?);
+    |     ------ `family` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+   --> crates/web/src/css/style/job.rs:536:25
+    |
+536 |                     let mut walk = |root: NodeId, reach: &selectors::Reach, nodes: &mut crate::dom::NodeSet| {
+    |                         ----^^^^
+    |                         |
+    |                         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates/web/src/page/interaction.rs:38:13
+   |
+38 |         let mut differ = |a: Option<NodeId>, b: Option<NodeId>, state: State, out: &mut Vec<(NodeId, &'static str)>| {
+   |             ----^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: value assigned to `path` is never read
+   --> crates/web/src/page.rs:970:24
+    |
+970 |         let mut path = String::new();
+    |                        ^^^^^^^^^^^^^ this value is reassigned later and never used
+...
+980 |                             path = format!("patched in place, {} elements", nodes.len());
+    |                             ---- `path` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+    --> crates/web/src/page.rs:3986:13
+     |
+3986 |         let mut subject = |a: crate::dom::NodeId, reached: &mut Vec<crate::dom::NodeId>| {
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: value assigned to `skip` is never read
+    --> crates/web/src/svg/viewport.rs:949:24
+     |
+ 949 |         let mut skip = false;
+     |                        ^^^^^ this value is reassigned later and never used
+...
+1019 |             skip = true;
+     |             ----------- `skip` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+  --> crates/web/src/text/prepare.rs:79:23
+   |
+79 |         let single = |mut it: &mut dyn Iterator<Item = char>| {
+   |                       ----^^
+   |                       |
+   |                       help: remove this `mut`
+
+warning: method `get_mut` is never used
+  --> crates/web/src/chunked.rs:57:19
+   |
+22 | impl<T: Clone> Chunked<T> {
+   | ------------------------- method in this implementation
+...
+57 |     pub(crate) fn get_mut(&mut self, i: usize) -> Option<&mut T> {
+   |                   ^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated function `new` is never used
+  --> crates/web/src/paint/index.rs:16:12
+   |
+15 | impl Index {
+   | ---------- associated function in this implementation
+16 |     pub fn new(commands: &[Command], transforms: &[[f64; 6]], cancel: Option<&AtomicBool>) -> Result<Self> {
+   |            ^^^
+
+warning: variant `Quad` is never constructed
+   --> crates/web/src/svg/script.rs:258:5
+    |
+256 | enum Seg {
+    |      --- variant in this enum
+257 |     Line(F, F),
+258 |     Quad([F; 3]),
+    |     ^^^^
+    |
+    = note: `Seg` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: `olo-web` (lib) generated 13 warnings (run `cargo fix --lib -p olo-web` to apply 6 suggestions)
+warning: variable does not need to be mutable
+   --> crates/web/tests/measure.rs:519:10
+    |
+519 |     let (mut measurer, host, doc, viewport) = measurer_for(&format!("<!doctype html>{instance}{instance}{instance}"));
+    |          ----^^^^^^^^
+    |          |
+    |          help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> crates/web/tests/measure.rs:543:10
+    |
+543 |     let (mut measurer, host, doc, viewport) =
+    |          ----^^^^^^^^
+    |          |
+    |          help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/web/tests/measure.rs:557:10
+    |
+557 |     let (mut measurer, host, doc, viewport) = measurer_for(&format!("<!doctype html>{}", instance.repeat(9)));
+    |          ----^^^^^^^^
+    |          |
+    |          help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/web/tests/measure.rs:579:10
+    |
+579 |     let (mut measurer, host, doc, viewport) = measurer_for(
+    |          ----^^^^^^^^
+    |          |
+    |          help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/web/tests/measure.rs:596:10
+    |
+596 |     let (mut measurer, host, doc, viewport) =
+    |          ----^^^^^^^^
+    |          |
+    |          help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/web/tests/measure.rs:609:10
+    |
+609 |     let (mut measurer, host, doc, viewport) = measurer_for(
+    |          ----^^^^^^^^
+    |          |
+    |          help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/web/tests/measure.rs:626:10
+    |
+626 |     let (mut measurer, host, doc, viewport) = measurer_for(
+    |          ----^^^^^^^^
+    |          |
+    |          help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/web/tests/measure.rs:674:10
+    |
+674 |     let (mut measurer, host, doc, viewport) = measurer_for(
+    |          ----^^^^^^^^
+    |          |
+    |          help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/web/tests/measure.rs:693:10
+    |
+693 |     let (mut measurer, host, doc, viewport) = measurer_for(
+    |          ----^^^^^^^^
+    |          |
+    |          help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/web/tests/measure.rs:711:10
+    |
+711 |     let (mut measurer, host, doc, viewport) = measurer_for(
+    |          ----^^^^^^^^
+    |          |
+    |          help: remove this `mut`
+
+warning: `olo-web` (test "measure") generated 10 warnings (run `cargo fix --test "measure" -p olo-web` to apply 10 suggestions)
+    Finished `release` profile [optimized + debuginfo] target(s) in 20.25s
+     Running tests/containers.rs (target/release/deps/containers-ddeed7630d4dc976)
+
+running 3 tests
+test early_contexts_and_inherited_pending_lengths_render_with_recorded_fallbacks ... ok
+test changed_containment_and_viewport_recompute_descendant_box_lengths ... ok
+test box_container_lengths_match_independent_chrome_at_five_native_scales ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/measure.rs (target/release/deps/measure-ec282bf042230f94)
+
+running 27 tests
+test a_column_flex_item_keeps_its_content_height_in_a_clamped_grid_item ... ok
+test an_empty_element_is_placed_where_it_sits ... ok
+test a_pseudo_element_answers_its_own_computed_style ... ok
+test a_length_margin_resolves_to_itself_not_the_room_left_over ... ok
+test content_sized_widths_are_not_stretched_across ... ok
+test dir_in_a_shadow_tree_follows_the_host ... ok
+test breaking_anywhere_shrinks_min_content_and_a_line_clamp_ends_the_box ... ok
+test a_child_added_to_a_host_is_styled_where_its_slot_is ... ok
+test a_parent_turned_flex_blockifies_its_kept_children ... ok
+test instances_of_a_component_share_their_compiled_sheets ... ok
+test a_ratio_svg_with_a_percentage_height_contributes_its_ratio_width ... ok
+test a_picture_a_script_loaded_measures_its_image_after_the_document_changes ... ok
+test live_media_changes_reselect_rules_without_reloading_sheets_or_unchanged_fonts ... ok
+test a_shadow_trees_new_sheet_restyles_only_what_it_reaches ... ok
+test pseudo_elements_are_made_where_their_content_rules_match ... ok
+test list_numbering_matches_chrome ... ok
+test outside_markers_reserve_room_and_align_to_the_first_content_baseline ... ok
+test a_font_patched_in_place_shapes_its_texts_again ... ok
+test marker_styles_survive_reuse_and_change_with_their_originating_item ... ok
+test list_numbering_follows_mutations_and_reuse ... ok
+test css_counters_follow_pseudo_and_element_mutations ... ok
+test css_counter_sequencing_matches_chrome ... ok
+test text_baselines_and_content_bounds_match_native_chrome_after_scale_changes ... ok
+test css_counter_scope_storage_is_bounded ... ok
+test grid_track_distribution_matches_native_chrome ... ok
+test grid_track_distribution_updates_after_size_and_gap_changes ... ok
+test a_components_sheet_counts_once_in_the_css_budget ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running tests/query_measure.rs (target/release/deps/query_measure-65a12e2f99383223)
+
+running 2 tests
+test nested_query_paint_layout_settles_beyond_three_rounds ... ok
+test container_queries_settle_before_script_geometry_is_returned ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s

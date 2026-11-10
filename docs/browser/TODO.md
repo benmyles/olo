@@ -36,10 +36,17 @@ geometry to the engine. Child letter/word spacing now follows its own style,
 survives line reshaping and participates in text-cache identity. Safe text-item
 boundaries preserve fractional advances without splitting ligatures. Stripe’s
 first inline heading is now593.23px rather than622.02px (Chrome593.22–593.23),
-checked across15 live theme/scale combinations. The matched diagnostic still
-has about420px main-content height difference; business-sizes is the first
-uniquely matched section with a height difference, about22px short. See
-[inline spacing and experiment evidence](measurements/2026-11-10-inline-spacing/README.md).
+checked across15 live theme/scale combinations. The previous diagnostic's ~22px short business section was traced to the
+script measurement path ignoring container queries; painting already wrapped
+the first feature card correctly. Script and paint paths now settle nested
+queries, and name/type changes invalidate descendants even at unchanged widths.
+Stripe card padding is32px in both engines across15 live settings; height is
+within0.047px. The business section still differs by25.36px at1.75× and up to
+0.42px elsewhere. **Next: isolate that fractional-scale section discrepancy**,
+then recheck full-page height with corrected script measurements. The earlier
+~420px main-content diagnostic remains unverified. See
+[query measurement evidence](measurements/2026-11-10-query-measurement/README.md)
+and [inline spacing and experiment evidence](measurements/2026-11-10-inline-spacing/README.md).
 Continue matched pixels, navigation, pricing and interactive journeys before
 accepting configurations. See [intrinsic image sizing](measurements/2026-11-10-replaced-intrinsics/README.md)
 and [native scrolling](measurements/2026-11-10-native-scroll/README.md).

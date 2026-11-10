@@ -904,19 +904,42 @@ impl Measurer {
     /// incremental job and its texts the preparation.
     pub fn measure(&self, doc: &Document, host: &impl Host, shaper: &mut shaping::Engine, viewport: layout::Viewport, previous: Option<Measured>, cancel: Option<&AtomicBool>) -> Result<Measured> {
         let host = viewport::ViewportHost::new(host, viewport, previous.as_ref().map(|p| p.layout.as_ref()));
-        let first = self.measure_once(doc, &host, shaper, viewport, previous, cancel)?;
-        if !host.update(first.layout()) {
-            return Ok(first);
+        let mut containers = self.rules.has_containers().then(|| previous.as_ref().map_or_else(|| Arc::new(Default::default()), |p| p.layout.container_sizes()));
+        let mut result = self.measure_once(doc, &host, shaper, viewport, previous, containers.as_deref(), &[], cancel)?;
+        for _ in 0..QUERY_PASSES {
+            let units_changed = host.update(result.layout());
+            let sizes = containers.as_ref().map(|_| result.layout.container_sizes());
+            if !units_changed && sizes == containers {
+                return Ok(result);
+            }
+            let resized = match (&containers, &sizes) {
+                (Some(before), Some(after)) => resized_containers(before, after),
+                _ => Vec::new(),
+            };
+            containers = sizes;
+            let phases = result.phases;
+            result = self.measure_once(doc, &host, shaper, viewport, Some(result), containers.as_deref(), &resized, cancel)?;
+            for (a, b) in result.phases.iter_mut().zip(phases) {
+                *a += b;
+            }
+            result.path.push_str(if resized.is_empty() { "; viewport units restyled" } else { "; container queries restyled" });
         }
-        let phases = first.phases;
-        let mut next = self.measure_once(doc, &host, shaper, viewport, Some(first), cancel)?;
-        for (a, b) in next.phases.iter_mut().zip(phases) {
-            *a += b;
-        }
-        next.path.push_str("; viewport units restyled");
-        Ok(next)
+        // Never publish a measurement whose query conditions are still based
+        // on a different layout. Cancellation is checked in every worker pass.
+        Err(layout::Error::Limit.into())
     }
-    fn measure_once(&self, doc: &Document, host: &impl Host, shaper: &mut shaping::Engine, viewport: layout::Viewport, previous: Option<Measured>, cancel: Option<&AtomicBool>) -> Result<Measured> {
+    #[allow(clippy::too_many_arguments)] // Worker context plus the query bases/invalidation for this pass.
+    fn measure_once(
+        &self,
+        doc: &Document,
+        host: &impl Host,
+        shaper: &mut shaping::Engine,
+        viewport: layout::Viewport,
+        previous: Option<Measured>,
+        containers: Option<&crate::dom::NodeMap<[f64; 2]>>,
+        resized: &[crate::dom::NodeId],
+        cancel: Option<&AtomicBool>,
+    ) -> Result<Measured> {
         if host.font_context() != self.scope.context() {
             return Err(style::Error::Stale.into());
         }
@@ -939,23 +962,15 @@ impl Measurer {
             None => Defaults::new(host, Default::default(), cancel)?,
         };
         let snapshot = interaction::Snapshot::new(doc, Interaction::default(), cancel);
-        let options = || style::JobOptions {
-            quirks: self.quirks,
-            states: Some(&snapshot),
-            previous: None,
-            generation: self.rules.generation(),
-            animated: None,
-            containers: None,
-            resized: &[],
-            changed_within: None,
-        };
+        let options =
+            || style::JobOptions { quirks: self.quirks, states: Some(&snapshot), previous: None, generation: self.rules.generation(), animated: None, containers, resized, changed_within: None };
         // A patch over the previous styles: in place when nothing else
         // holds them, else over a copy.
         let mut patched: Option<(style::Patched, Option<Arc<StyleTree>>)> = None;
         let mut path = String::new();
         // The patch said the text changed: laid out again whatever the styles say.
         let mut relayout = false;
-        if let Some(m) = previous.as_mut() {
+        if let Some(m) = previous.as_mut().filter(|_| resized.is_empty()) {
             match self.patchable(doc, m.layout.cache().tree().styles().document_revision()) {
                 Ok(Patchable { nodes, relayout: text_changed }) => {
                     relayout = text_changed;
@@ -4131,14 +4146,21 @@ fn patchable(doc: &Document, rules: &css::cascade::RuleSet, revision: u64) -> st
     }
     Ok(Patchable { nodes, relayout })
 }
+/// A bounded corrective cascade, shared by script measurements and painting.
+/// Nested containers can require more than three rounds; failure to converge
+/// is a resource-limit error rather than silently publishing stale geometry.
+const QUERY_PASSES: usize = 64;
+fn resized_containers(before: &crate::dom::NodeMap<[f64; 2]>, after: &crate::dom::NodeMap<[f64; 2]>) -> Vec<crate::dom::NodeId> {
+    after.iter().filter(|(n, size)| before.get(n) != Some(size)).map(|(n, _)| *n).chain(before.keys().filter(|n| !after.contains_key(n)).copied()).collect()
+}
 /// Query containers' content-box sizes in a layout (CSS px), by element.
 fn container_sizes(layout: &layout::Layout) -> crate::dom::NodeMap<[f64; 2]> {
     (*layout.container_sizes()).clone()
 }
 /// `render_once`, again when a query container's size came out other than
 /// the styles were matched with (`@container` rules then hold elsewhere):
-/// styled and laid out again with the sizes this layout gave. Up to three
-/// corrective passes also allow a forced viewport-unit basis to settle.
+/// styled and laid out again with the sizes this layout gave. Corrective
+/// passes also allow a forced viewport-unit basis to settle.
 #[allow(clippy::too_many_arguments)]
 fn render(
     doc: &Document,
@@ -4188,15 +4210,15 @@ fn render(
         changes,
         &mut progress,
     )?;
-    for _ in 0..3 {
+    for _ in 0..QUERY_PASSES {
         let units_changed = effective.update(result.0.layout());
         let sizes = if rules.has_containers() { container_sizes(result.0.layout()) } else { Default::default() };
         if !units_changed && sizes == *containers {
-            break;
+            return Ok(result);
         }
         // What the containers whose size changed hold is matched again; the
         // rest of this pass's styles and boxes are kept.
-        let resized: Vec<crate::dom::NodeId> = sizes.iter().filter(|(n, s)| containers.get(n) != Some(s)).map(|(n, _)| *n).collect();
+        let resized = resized_containers(containers, &sizes);
         if crate::env_on!("OLO_WEB_TIMING") {
             eprintln!("render: {} of {} query containers sized anew: what they hold styled again", resized.len(), sizes.len());
         }
@@ -4226,7 +4248,7 @@ fn render(
             &mut progress,
         )?;
     }
-    Ok(result)
+    Err(layout::Error::Limit.into())
 }
 #[allow(clippy::too_many_arguments)]
 fn render_once(

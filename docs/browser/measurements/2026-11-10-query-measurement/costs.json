@@ -1,0 +1,10071 @@
+[
+  {
+    "variant": "before",
+    "scale": 1.25,
+    "sha256": "721d9b46b5ee02e9568f9d8866d6e0fdaffe6ecd5ad716b78e35f46fc3adae64",
+    "bench_ms": {
+      "cached": [
+        7.609854999999925,
+        9.073068999999975,
+        5.900189000000012,
+        6.077599999999961,
+        5.76762599999995,
+        5.57342600000004,
+        5.431360000000041
+      ],
+      "changed": [
+        2.7181319999999687,
+        2.427910000000054,
+        2.267423000000065,
+        2.0824939999998833,
+        2.0462050000001,
+        1.972438000000011,
+        2.2732169999999314
+      ],
+      "sizes": [
+        [
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ]
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 750.0,
+      "rss_kib": 154536
+    },
+    "after": {
+      "cpu_ms": 790.0,
+      "rss_kib": 155368
+    },
+    "resize_ms": [
+      408.86559500359,
+      411.03935602586716,
+      410.57607100810856,
+      409.1720010037534,
+      410.98947898717597,
+      409.0575809823349,
+      409.7501229844056,
+      409.75335700204596
+    ],
+    "idle": {
+      "seconds": 3.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 2
+      },
+      "threads": [
+        {
+          "tid": 2343377,
+          "name": "script-watchdog",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 2,
+          "preempted": 0
+        },
+        {
+          "tid": 2343319,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343324,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343326,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343329,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343330,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343331,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343332,
+          "name": "browser:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343336,
+          "name": "browse:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343353,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343354,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343355,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343356,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343357,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343358,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343359,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343360,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343361,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343362,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343363,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343364,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343365,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343366,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343367,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343368,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343369,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343370,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343371,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343372,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343373,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343374,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343375,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343376,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.32,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 36.6,
+        "slowest_draw_ms": 0.61,
+        "distance": 686.4,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.964,
+          "sd": 0.016,
+          "min": 0.962,
+          "max": 1.068,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 49,
+        "moving_frames": 47,
+        "frame_ms": 8.34,
+        "hitches": 0,
+        "still": 1,
+        "first_move_ms": 17.3,
+        "slowest_draw_ms": 0.47,
+        "distance": 131.2,
+        "reached_end": false,
+        "notches": {
+          "count": 3,
+          "frames_each": [
+            14,
+            17,
+            16
+          ],
+          "jumps_up": 2,
+          "worst_jump": 1.667
+        }
+      }
+    ],
+    "compositor_before": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 1427,
+            "slowest_us": 1488,
+            "total_us": 217220
+          }
+        ],
+        "beats": 13418,
+        "latest_beat_us": 11989,
+        "slowest": [
+          "request set_settings",
+          319
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 1850,
+            "total_us": 43096,
+            "slowest_us": 263
+          },
+          {
+            "name": "commit",
+            "count": 413,
+            "total_us": 10547,
+            "slowest_us": 118
+          },
+          {
+            "name": "damage and draw",
+            "count": 1427,
+            "total_us": 66097,
+            "slowest_us": 337
+          },
+          {
+            "name": "gather (all)",
+            "count": 1427,
+            "total_us": 44964,
+            "slowest_us": 1083
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 14039,
+            "total_us": 28064,
+            "slowest_us": 153
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 14039,
+            "total_us": 117709,
+            "slowest_us": 101
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 14039,
+            "total_us": 77802,
+            "slowest_us": 60
+          },
+          {
+            "name": "gather: windows",
+            "count": 14039,
+            "total_us": 37048,
+            "slowest_us": 1055
+          },
+          {
+            "name": "look (whole)",
+            "count": 1427,
+            "total_us": 220836,
+            "slowest_us": 1489
+          },
+          {
+            "name": "post_repaint",
+            "count": 1427,
+            "total_us": 1913,
+            "slowest_us": 11
+          },
+          {
+            "name": "pre_repaint",
+            "count": 1427,
+            "total_us": 64961,
+            "slowest_us": 193
+          },
+          {
+            "name": "repoint",
+            "count": 81,
+            "total_us": 1368,
+            "slowest_us": 92
+          },
+          {
+            "name": "screenshot",
+            "count": 154,
+            "total_us": 40877,
+            "slowest_us": 637
+          },
+          {
+            "name": "screenshot read back",
+            "count": 154,
+            "total_us": 190623,
+            "slowest_us": 12182
+          },
+          {
+            "name": "space refresh",
+            "count": 24606,
+            "total_us": 133375,
+            "slowest_us": 173
+          },
+          {
+            "name": "tick",
+            "count": 24606,
+            "total_us": 266674,
+            "slowest_us": 237
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 6710,
+            "total_us": 78955,
+            "slowest_us": 226
+          },
+          {
+            "name": "tick: groups",
+            "count": 6710,
+            "total_us": 85319,
+            "slowest_us": 140
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 6710,
+            "total_us": 28975,
+            "slowest_us": 157
+          },
+          {
+            "name": "tick: window infos",
+            "count": 6710,
+            "total_us": 29344,
+            "slowest_us": 92
+          }
+        ]
+      }
+    },
+    "compositor_after": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 114,
+            "slowest_us": 631,
+            "total_us": 15059
+          }
+        ],
+        "beats": 813,
+        "latest_beat_us": 1135,
+        "slowest": [
+          "tick",
+          239
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 182,
+            "total_us": 4142,
+            "slowest_us": 155
+          },
+          {
+            "name": "commit",
+            "count": 28,
+            "total_us": 563,
+            "slowest_us": 68
+          },
+          {
+            "name": "damage and draw",
+            "count": 114,
+            "total_us": 3652,
+            "slowest_us": 169
+          },
+          {
+            "name": "gather (all)",
+            "count": 114,
+            "total_us": 3384,
+            "slowest_us": 312
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 1851,
+            "total_us": 1737,
+            "slowest_us": 46
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 1851,
+            "total_us": 9815,
+            "slowest_us": 72
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 1851,
+            "total_us": 7313,
+            "slowest_us": 92
+          },
+          {
+            "name": "gather: windows",
+            "count": 1851,
+            "total_us": 23753,
+            "slowest_us": 89
+          },
+          {
+            "name": "look (whole)",
+            "count": 114,
+            "total_us": 15290,
+            "slowest_us": 635
+          },
+          {
+            "name": "post_repaint",
+            "count": 114,
+            "total_us": 233,
+            "slowest_us": 6
+          },
+          {
+            "name": "pre_repaint",
+            "count": 114,
+            "total_us": 4961,
+            "slowest_us": 148
+          },
+          {
+            "name": "screenshot",
+            "count": 26,
+            "total_us": 6912,
+            "slowest_us": 371
+          },
+          {
+            "name": "screenshot read back",
+            "count": 26,
+            "total_us": 27997,
+            "slowest_us": 1790
+          },
+          {
+            "name": "space refresh",
+            "count": 1791,
+            "total_us": 21159,
+            "slowest_us": 178
+          },
+          {
+            "name": "tick",
+            "count": 1791,
+            "total_us": 27536,
+            "slowest_us": 192
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 405,
+            "total_us": 3593,
+            "slowest_us": 55
+          },
+          {
+            "name": "tick: groups",
+            "count": 405,
+            "total_us": 12917,
+            "slowest_us": 96
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 405,
+            "total_us": 2328,
+            "slowest_us": 35
+          },
+          {
+            "name": "tick: window infos",
+            "count": 405,
+            "total_us": 6360,
+            "slowest_us": 88
+          }
+        ]
+      }
+    }
+  },
+  {
+    "variant": "after",
+    "scale": 1.25,
+    "sha256": "a8e6534f120442ef06e05f5e82e11965bdabc3ee88d235c59c24f899ad2b2d44",
+    "bench_ms": {
+      "cached": [
+        8.537950999999964,
+        6.3575049999999464,
+        6.364618000000064,
+        6.414953999999966,
+        6.082619999999906,
+        6.021493000000078,
+        5.706907000000001
+      ],
+      "changed": [
+        13.063559000000055,
+        13.426529000000016,
+        13.303906999999981,
+        13.842637999999965,
+        13.152845999999954,
+        13.150218000000109,
+        13.326547000000005
+      ],
+      "sizes": [
+        [
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ]
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 850.0,
+      "rss_kib": 152624
+    },
+    "after": {
+      "cpu_ms": 890.0,
+      "rss_kib": 153504
+    },
+    "resize_ms": [
+      410.24560399819165,
+      409.1612940537743,
+      411.7388779995963,
+      410.8560979948379,
+      412.4834800022654,
+      409.22389598563313,
+      408.8421029737219,
+      409.4857730087824
+    ],
+    "idle": {
+      "seconds": 3.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 2
+      },
+      "threads": [
+        {
+          "tid": 2343995,
+          "name": "script-watchdog",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 2,
+          "preempted": 0
+        },
+        {
+          "tid": 2343937,
+          "name": "browser-after",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343942,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343944,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343946,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343947,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343948,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343949,
+          "name": "browser:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343953,
+          "name": "browse:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343970,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343971,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343972,
+          "name": "browser-after",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343973,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343974,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343975,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343976,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343977,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343978,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343979,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343980,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343981,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343982,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343983,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343984,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343985,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343986,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343987,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343988,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343989,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343990,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343991,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343992,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2343993,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.35,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 36.9,
+        "slowest_draw_ms": 0.55,
+        "distance": 689.6,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.965,
+          "sd": 0.038,
+          "min": 0.851,
+          "max": 1.171,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 50,
+        "moving_frames": 48,
+        "frame_ms": 8.34,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 17.5,
+        "slowest_draw_ms": 0.62,
+        "distance": 132.0,
+        "reached_end": false,
+        "notches": {
+          "count": 3,
+          "frames_each": [
+            15,
+            16,
+            17
+          ],
+          "jumps_up": 2,
+          "worst_jump": 1.0
+        }
+      }
+    ],
+    "compositor_before": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 506,
+            "slowest_us": 578,
+            "total_us": 79788
+          }
+        ],
+        "beats": 2216,
+        "latest_beat_us": 1689,
+        "slowest": [
+          "clients' requests",
+          261
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 1195,
+            "total_us": 24107,
+            "slowest_us": 261
+          },
+          {
+            "name": "commit",
+            "count": 212,
+            "total_us": 4298,
+            "slowest_us": 109
+          },
+          {
+            "name": "damage and draw",
+            "count": 506,
+            "total_us": 28751,
+            "slowest_us": 194
+          },
+          {
+            "name": "gather (all)",
+            "count": 506,
+            "total_us": 12569,
+            "slowest_us": 317
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 5093,
+            "total_us": 6251,
+            "slowest_us": 34
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 5093,
+            "total_us": 26053,
+            "slowest_us": 115
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 5093,
+            "total_us": 18229,
+            "slowest_us": 58
+          },
+          {
+            "name": "gather: windows",
+            "count": 5093,
+            "total_us": 67270,
+            "slowest_us": 1112
+          },
+          {
+            "name": "look (whole)",
+            "count": 506,
+            "total_us": 81023,
+            "slowest_us": 583
+          },
+          {
+            "name": "post_repaint",
+            "count": 506,
+            "total_us": 881,
+            "slowest_us": 6
+          },
+          {
+            "name": "pre_repaint",
+            "count": 506,
+            "total_us": 24470,
+            "slowest_us": 188
+          },
+          {
+            "name": "repoint",
+            "count": 78,
+            "total_us": 777,
+            "slowest_us": 68
+          },
+          {
+            "name": "screenshot",
+            "count": 58,
+            "total_us": 13531,
+            "slowest_us": 351
+          },
+          {
+            "name": "screenshot read back",
+            "count": 58,
+            "total_us": 66239,
+            "slowest_us": 1886
+          },
+          {
+            "name": "space refresh",
+            "count": 5591,
+            "total_us": 53731,
+            "slowest_us": 103
+          },
+          {
+            "name": "tick",
+            "count": 5591,
+            "total_us": 68447,
+            "slowest_us": 208
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 1108,
+            "total_us": 9394,
+            "slowest_us": 55
+          },
+          {
+            "name": "tick: groups",
+            "count": 1108,
+            "total_us": 31428,
+            "slowest_us": 167
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 1108,
+            "total_us": 5991,
+            "slowest_us": 109
+          },
+          {
+            "name": "tick: window infos",
+            "count": 1108,
+            "total_us": 15240,
+            "slowest_us": 85
+          }
+        ]
+      }
+    },
+    "compositor_after": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 108,
+            "slowest_us": 558,
+            "total_us": 13151
+          }
+        ],
+        "beats": 814,
+        "latest_beat_us": 399,
+        "slowest": [
+          "tick",
+          248
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 171,
+            "total_us": 3724,
+            "slowest_us": 166
+          },
+          {
+            "name": "commit",
+            "count": 26,
+            "total_us": 731,
+            "slowest_us": 78
+          },
+          {
+            "name": "damage and draw",
+            "count": 108,
+            "total_us": 3524,
+            "slowest_us": 156
+          },
+          {
+            "name": "gather (all)",
+            "count": 108,
+            "total_us": 2956,
+            "slowest_us": 310
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 1859,
+            "total_us": 1807,
+            "slowest_us": 40
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 1859,
+            "total_us": 10323,
+            "slowest_us": 155
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 1859,
+            "total_us": 5445,
+            "slowest_us": 53
+          },
+          {
+            "name": "gather: windows",
+            "count": 1859,
+            "total_us": 24516,
+            "slowest_us": 187
+          },
+          {
+            "name": "look (whole)",
+            "count": 108,
+            "total_us": 13361,
+            "slowest_us": 561
+          },
+          {
+            "name": "post_repaint",
+            "count": 108,
+            "total_us": 206,
+            "slowest_us": 15
+          },
+          {
+            "name": "pre_repaint",
+            "count": 108,
+            "total_us": 3924,
+            "slowest_us": 146
+          },
+          {
+            "name": "screenshot",
+            "count": 26,
+            "total_us": 6070,
+            "slowest_us": 476
+          },
+          {
+            "name": "screenshot read back",
+            "count": 26,
+            "total_us": 25056,
+            "slowest_us": 1304
+          },
+          {
+            "name": "space refresh",
+            "count": 1776,
+            "total_us": 22292,
+            "slowest_us": 93
+          },
+          {
+            "name": "tick",
+            "count": 1776,
+            "total_us": 25541,
+            "slowest_us": 192
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 407,
+            "total_us": 3530,
+            "slowest_us": 54
+          },
+          {
+            "name": "tick: groups",
+            "count": 407,
+            "total_us": 11912,
+            "slowest_us": 92
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 407,
+            "total_us": 2194,
+            "slowest_us": 43
+          },
+          {
+            "name": "tick: window infos",
+            "count": 407,
+            "total_us": 5694,
+            "slowest_us": 67
+          }
+        ]
+      }
+    }
+  },
+  {
+    "variant": "after",
+    "scale": 1.25,
+    "sha256": "a8e6534f120442ef06e05f5e82e11965bdabc3ee88d235c59c24f899ad2b2d44",
+    "bench_ms": {
+      "cached": [
+        8.797670999999951,
+        6.152314999999987,
+        5.94680900000003,
+        6.302228000000014,
+        5.801872000000003,
+        5.867529999999874,
+        5.4560129999999845
+      ],
+      "changed": [
+        13.238105000000019,
+        13.581917000000033,
+        13.327449000000058,
+        13.603134999999952,
+        13.13472400000012,
+        13.181782999999996,
+        13.255856999999878
+      ],
+      "sizes": [
+        [
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ]
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 850.0,
+      "rss_kib": 153356
+    },
+    "after": {
+      "cpu_ms": 890.0,
+      "rss_kib": 154228
+    },
+    "resize_ms": [
+      410.67152499454096,
+      409.34625203954056,
+      409.5610869699158,
+      411.7570779635571,
+      410.27527302503586,
+      408.85951498057693,
+      410.2280440274626,
+      410.09848297107965
+    ],
+    "idle": {
+      "seconds": 3.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 2
+      },
+      "threads": [
+        {
+          "tid": 2344742,
+          "name": "script-watchdog",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 2,
+          "preempted": 0
+        },
+        {
+          "tid": 2344686,
+          "name": "browser-after",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344691,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344693,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344695,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344696,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344697,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344698,
+          "name": "browser:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344702,
+          "name": "browse:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344718,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344719,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344720,
+          "name": "browser-after",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344721,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344722,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344723,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344724,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344725,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344726,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344727,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344728,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344729,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344730,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344731,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344732,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344733,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344734,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344735,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344736,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344737,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344738,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344739,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344740,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2344741,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.33,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 35.6,
+        "slowest_draw_ms": 0.53,
+        "distance": 690.4,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.966,
+          "sd": 0.033,
+          "min": 0.853,
+          "max": 1.173,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 48,
+        "moving_frames": 46,
+        "frame_ms": 8.34,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 17.4,
+        "slowest_draw_ms": 0.56,
+        "distance": 130.4,
+        "reached_end": false,
+        "notches": {
+          "count": 3,
+          "frames_each": [
+            14,
+            16,
+            16
+          ],
+          "jumps_up": 1,
+          "worst_jump": 0.444
+        }
+      }
+    ],
+    "compositor_before": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 493,
+            "slowest_us": 627,
+            "total_us": 81337
+          }
+        ],
+        "beats": 2291,
+        "latest_beat_us": 1891,
+        "slowest": [
+          "tick",
+          229
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 1218,
+            "total_us": 23042,
+            "slowest_us": 187
+          },
+          {
+            "name": "commit",
+            "count": 212,
+            "total_us": 4355,
+            "slowest_us": 100
+          },
+          {
+            "name": "damage and draw",
+            "count": 493,
+            "total_us": 28161,
+            "slowest_us": 232
+          },
+          {
+            "name": "gather (all)",
+            "count": 493,
+            "total_us": 13288,
+            "slowest_us": 308
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 5187,
+            "total_us": 4380,
+            "slowest_us": 45
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 5187,
+            "total_us": 24791,
+            "slowest_us": 54
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 5187,
+            "total_us": 13943,
+            "slowest_us": 84
+          },
+          {
+            "name": "gather: windows",
+            "count": 5187,
+            "total_us": 63248,
+            "slowest_us": 1460
+          },
+          {
+            "name": "look (whole)",
+            "count": 493,
+            "total_us": 82621,
+            "slowest_us": 631
+          },
+          {
+            "name": "post_repaint",
+            "count": 493,
+            "total_us": 892,
+            "slowest_us": 8
+          },
+          {
+            "name": "pre_repaint",
+            "count": 493,
+            "total_us": 25518,
+            "slowest_us": 194
+          },
+          {
+            "name": "repoint",
+            "count": 78,
+            "total_us": 771,
+            "slowest_us": 73
+          },
+          {
+            "name": "screenshot",
+            "count": 60,
+            "total_us": 13954,
+            "slowest_us": 351
+          },
+          {
+            "name": "screenshot read back",
+            "count": 60,
+            "total_us": 63264,
+            "slowest_us": 1898
+          },
+          {
+            "name": "space refresh",
+            "count": 5701,
+            "total_us": 55873,
+            "slowest_us": 111
+          },
+          {
+            "name": "tick",
+            "count": 5701,
+            "total_us": 71723,
+            "slowest_us": 199
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 1144,
+            "total_us": 9933,
+            "slowest_us": 62
+          },
+          {
+            "name": "tick: groups",
+            "count": 1144,
+            "total_us": 33474,
+            "slowest_us": 122
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 1144,
+            "total_us": 6036,
+            "slowest_us": 52
+          },
+          {
+            "name": "tick: window infos",
+            "count": 1144,
+            "total_us": 15620,
+            "slowest_us": 85
+          }
+        ]
+      }
+    },
+    "compositor_after": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 121,
+            "slowest_us": 688,
+            "total_us": 14212
+          }
+        ],
+        "beats": 813,
+        "latest_beat_us": 835,
+        "slowest": [
+          "clients' requests",
+          247
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 181,
+            "total_us": 4517,
+            "slowest_us": 247
+          },
+          {
+            "name": "commit",
+            "count": 29,
+            "total_us": 615,
+            "slowest_us": 75
+          },
+          {
+            "name": "damage and draw",
+            "count": 121,
+            "total_us": 3545,
+            "slowest_us": 202
+          },
+          {
+            "name": "gather (all)",
+            "count": 121,
+            "total_us": 2907,
+            "slowest_us": 403
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 1861,
+            "total_us": 3800,
+            "slowest_us": 39
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 1861,
+            "total_us": 9993,
+            "slowest_us": 81
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 1861,
+            "total_us": 6385,
+            "slowest_us": 48
+          },
+          {
+            "name": "gather: windows",
+            "count": 1861,
+            "total_us": 24711,
+            "slowest_us": 100
+          },
+          {
+            "name": "look (whole)",
+            "count": 121,
+            "total_us": 14457,
+            "slowest_us": 689
+          },
+          {
+            "name": "post_repaint",
+            "count": 121,
+            "total_us": 228,
+            "slowest_us": 7
+          },
+          {
+            "name": "pre_repaint",
+            "count": 121,
+            "total_us": 4543,
+            "slowest_us": 151
+          },
+          {
+            "name": "screenshot",
+            "count": 26,
+            "total_us": 6605,
+            "slowest_us": 520
+          },
+          {
+            "name": "screenshot read back",
+            "count": 26,
+            "total_us": 26647,
+            "slowest_us": 1880
+          },
+          {
+            "name": "space refresh",
+            "count": 1784,
+            "total_us": 21396,
+            "slowest_us": 177
+          },
+          {
+            "name": "tick",
+            "count": 1784,
+            "total_us": 26778,
+            "slowest_us": 219
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 405,
+            "total_us": 3668,
+            "slowest_us": 72
+          },
+          {
+            "name": "tick: groups",
+            "count": 405,
+            "total_us": 12031,
+            "slowest_us": 112
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 405,
+            "total_us": 2314,
+            "slowest_us": 19
+          },
+          {
+            "name": "tick: window infos",
+            "count": 405,
+            "total_us": 6412,
+            "slowest_us": 68
+          }
+        ]
+      }
+    }
+  },
+  {
+    "variant": "before",
+    "scale": 1.25,
+    "sha256": "721d9b46b5ee02e9568f9d8866d6e0fdaffe6ecd5ad716b78e35f46fc3adae64",
+    "bench_ms": {
+      "cached": [
+        7.748577999999895,
+        6.144713999999965,
+        5.784946999999988,
+        6.024175999999898,
+        5.77966600000002,
+        5.647633000000042,
+        5.415474999999901
+      ],
+      "changed": [
+        2.7430369999999584,
+        2.320256000000029,
+        2.1154619999999227,
+        2.071756999999934,
+        2.0735359999998764,
+        2.00883599999986,
+        2.226590999999985
+      ],
+      "sizes": [
+        [
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ]
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 810.0,
+      "rss_kib": 154112
+    },
+    "after": {
+      "cpu_ms": 860.0,
+      "rss_kib": 155180
+    },
+    "resize_ms": [
+      410.81390500767156,
+      410.62230902025476,
+      409.49417103547603,
+      411.0058860387653,
+      409.82645796611905,
+      407.6753350091167,
+      408.8664519949816,
+      408.7781839771196
+    ],
+    "idle": {
+      "seconds": 3.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 2
+      },
+      "threads": [
+        {
+          "tid": 2345066,
+          "name": "script-watchdog",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 2,
+          "preempted": 0
+        },
+        {
+          "tid": 2345008,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345013,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345015,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345017,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345018,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345019,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345020,
+          "name": "browser:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345024,
+          "name": "browse:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345042,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345043,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345044,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345045,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345046,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345047,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345048,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345049,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345050,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345051,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345052,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345053,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345054,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345055,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345056,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345057,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345058,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345059,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345060,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345061,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345062,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345063,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345064,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345065,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.33,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 36.7,
+        "slowest_draw_ms": 0.76,
+        "distance": 686.4,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.962,
+          "sd": 0.027,
+          "min": 0.853,
+          "max": 1.173,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 48,
+        "moving_frames": 46,
+        "frame_ms": 8.37,
+        "hitches": 0,
+        "still": 1,
+        "first_move_ms": 17.4,
+        "slowest_draw_ms": 0.43,
+        "distance": 128.8,
+        "reached_end": false,
+        "notches": {
+          "count": 3,
+          "frames_each": [
+            14,
+            16,
+            16
+          ],
+          "jumps_up": 1,
+          "worst_jump": 0.444
+        }
+      }
+    ],
+    "compositor_before": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 465,
+            "slowest_us": 675,
+            "total_us": 77982
+          }
+        ],
+        "beats": 2214,
+        "latest_beat_us": 1380,
+        "slowest": [
+          "tick",
+          238
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 1164,
+            "total_us": 23055,
+            "slowest_us": 197
+          },
+          {
+            "name": "commit",
+            "count": 203,
+            "total_us": 4653,
+            "slowest_us": 100
+          },
+          {
+            "name": "damage and draw",
+            "count": 465,
+            "total_us": 26615,
+            "slowest_us": 334
+          },
+          {
+            "name": "gather (all)",
+            "count": 465,
+            "total_us": 13277,
+            "slowest_us": 312
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 4969,
+            "total_us": 7872,
+            "slowest_us": 50
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 4969,
+            "total_us": 24720,
+            "slowest_us": 75
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 4969,
+            "total_us": 14838,
+            "slowest_us": 65
+          },
+          {
+            "name": "gather: windows",
+            "count": 4969,
+            "total_us": 63450,
+            "slowest_us": 1032
+          },
+          {
+            "name": "look (whole)",
+            "count": 465,
+            "total_us": 79282,
+            "slowest_us": 679
+          },
+          {
+            "name": "post_repaint",
+            "count": 465,
+            "total_us": 808,
+            "slowest_us": 13
+          },
+          {
+            "name": "pre_repaint",
+            "count": 465,
+            "total_us": 24843,
+            "slowest_us": 184
+          },
+          {
+            "name": "repoint",
+            "count": 78,
+            "total_us": 674,
+            "slowest_us": 73
+          },
+          {
+            "name": "screenshot",
+            "count": 58,
+            "total_us": 13076,
+            "slowest_us": 446
+          },
+          {
+            "name": "screenshot read back",
+            "count": 58,
+            "total_us": 62761,
+            "slowest_us": 1828
+          },
+          {
+            "name": "space refresh",
+            "count": 5519,
+            "total_us": 54601,
+            "slowest_us": 170
+          },
+          {
+            "name": "tick",
+            "count": 5519,
+            "total_us": 71047,
+            "slowest_us": 216
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 1106,
+            "total_us": 9738,
+            "slowest_us": 45
+          },
+          {
+            "name": "tick: groups",
+            "count": 1106,
+            "total_us": 33157,
+            "slowest_us": 159
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 1106,
+            "total_us": 5926,
+            "slowest_us": 40
+          },
+          {
+            "name": "tick: window infos",
+            "count": 1106,
+            "total_us": 15880,
+            "slowest_us": 109
+          }
+        ]
+      }
+    },
+    "compositor_after": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 117,
+            "slowest_us": 356,
+            "total_us": 15099
+          }
+        ],
+        "beats": 812,
+        "latest_beat_us": 1441,
+        "slowest": [
+          "clients' requests",
+          242
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 187,
+            "total_us": 4667,
+            "slowest_us": 242
+          },
+          {
+            "name": "commit",
+            "count": 30,
+            "total_us": 886,
+            "slowest_us": 83
+          },
+          {
+            "name": "damage and draw",
+            "count": 117,
+            "total_us": 3632,
+            "slowest_us": 146
+          },
+          {
+            "name": "gather (all)",
+            "count": 117,
+            "total_us": 2644,
+            "slowest_us": 80
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 1831,
+            "total_us": 3619,
+            "slowest_us": 42
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 1831,
+            "total_us": 9873,
+            "slowest_us": 63
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 1831,
+            "total_us": 6020,
+            "slowest_us": 51
+          },
+          {
+            "name": "gather: windows",
+            "count": 1831,
+            "total_us": 24356,
+            "slowest_us": 94
+          },
+          {
+            "name": "look (whole)",
+            "count": 117,
+            "total_us": 15362,
+            "slowest_us": 363
+          },
+          {
+            "name": "post_repaint",
+            "count": 117,
+            "total_us": 227,
+            "slowest_us": 3
+          },
+          {
+            "name": "pre_repaint",
+            "count": 117,
+            "total_us": 5381,
+            "slowest_us": 144
+          },
+          {
+            "name": "screenshot",
+            "count": 26,
+            "total_us": 5869,
+            "slowest_us": 343
+          },
+          {
+            "name": "screenshot read back",
+            "count": 26,
+            "total_us": 27746,
+            "slowest_us": 1982
+          },
+          {
+            "name": "space refresh",
+            "count": 1777,
+            "total_us": 20869,
+            "slowest_us": 88
+          },
+          {
+            "name": "tick",
+            "count": 1777,
+            "total_us": 24831,
+            "slowest_us": 192
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 405,
+            "total_us": 3383,
+            "slowest_us": 59
+          },
+          {
+            "name": "tick: groups",
+            "count": 405,
+            "total_us": 11637,
+            "slowest_us": 86
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 405,
+            "total_us": 2056,
+            "slowest_us": 36
+          },
+          {
+            "name": "tick: window infos",
+            "count": 405,
+            "total_us": 5531,
+            "slowest_us": 63
+          }
+        ]
+      }
+    }
+  },
+  {
+    "variant": "before",
+    "scale": 2,
+    "sha256": "721d9b46b5ee02e9568f9d8866d6e0fdaffe6ecd5ad716b78e35f46fc3adae64",
+    "bench_ms": {
+      "cached": [
+        7.591396000000032,
+        5.9162620000000175,
+        6.029422000000011,
+        6.281048000000055,
+        6.2047390000001315,
+        6.251593000000071,
+        5.563218000000006
+      ],
+      "changed": [
+        2.73973100000012,
+        2.616517999999985,
+        5.753825000000063,
+        2.3393749999999045,
+        2.2710409999999683,
+        2.4850380000000314,
+        2.406150999999909
+      ],
+      "sizes": [
+        [
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ]
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 770.0,
+      "rss_kib": 160632
+    },
+    "after": {
+      "cpu_ms": 840.0,
+      "rss_kib": 162140
+    },
+    "resize_ms": [
+      409.4855039729737,
+      409.6386580495164,
+      411.86462697805837,
+      410.33157403580844,
+      409.5612459932454,
+      410.5231930152513,
+      409.30661698803306,
+      408.8951380108483
+    ],
+    "idle": {
+      "seconds": 3.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 2
+      },
+      "threads": [
+        {
+          "tid": 2346015,
+          "name": "script-watchdog",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 2,
+          "preempted": 0
+        },
+        {
+          "tid": 2345950,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345955,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345957,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345959,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345960,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345961,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345962,
+          "name": "browser:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345968,
+          "name": "browse:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345991,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345992,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345993,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345994,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345995,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345996,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345997,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345998,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2345999,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346000,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346001,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346002,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346003,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346004,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346005,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346006,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346007,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346008,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346009,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346010,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346011,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346012,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346013,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346014,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.34,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 36.7,
+        "slowest_draw_ms": 0.75,
+        "distance": 713.0,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.999,
+          "sd": 0.007,
+          "min": 0.933,
+          "max": 1.0,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 57,
+        "moving_frames": 55,
+        "frame_ms": 8.34,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 12.8,
+        "slowest_draw_ms": 0.72,
+        "distance": 133.0,
+        "reached_end": false,
+        "notches": {
+          "count": 5,
+          "frames_each": [
+            1,
+            16,
+            19,
+            4,
+            15
+          ],
+          "jumps_up": 1,
+          "worst_jump": 0.556
+        }
+      }
+    ],
+    "compositor_before": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 570,
+            "slowest_us": 569,
+            "total_us": 93741
+          }
+        ],
+        "beats": 2219,
+        "latest_beat_us": 1720,
+        "slowest": [
+          "request set_settings",
+          330
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 1328,
+            "total_us": 27488,
+            "slowest_us": 199
+          },
+          {
+            "name": "commit",
+            "count": 237,
+            "total_us": 4648,
+            "slowest_us": 141
+          },
+          {
+            "name": "damage and draw",
+            "count": 570,
+            "total_us": 31796,
+            "slowest_us": 304
+          },
+          {
+            "name": "gather (all)",
+            "count": 570,
+            "total_us": 15609,
+            "slowest_us": 344
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 5209,
+            "total_us": 9300,
+            "slowest_us": 57
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 5209,
+            "total_us": 25085,
+            "slowest_us": 58
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 5209,
+            "total_us": 15418,
+            "slowest_us": 74
+          },
+          {
+            "name": "gather: windows",
+            "count": 5209,
+            "total_us": 66778,
+            "slowest_us": 2352
+          },
+          {
+            "name": "look (whole)",
+            "count": 570,
+            "total_us": 95285,
+            "slowest_us": 577
+          },
+          {
+            "name": "post_repaint",
+            "count": 570,
+            "total_us": 1012,
+            "slowest_us": 5
+          },
+          {
+            "name": "pre_repaint",
+            "count": 570,
+            "total_us": 29331,
+            "slowest_us": 223
+          },
+          {
+            "name": "repoint",
+            "count": 78,
+            "total_us": 760,
+            "slowest_us": 61
+          },
+          {
+            "name": "screenshot",
+            "count": 58,
+            "total_us": 12104,
+            "slowest_us": 341
+          },
+          {
+            "name": "screenshot read back",
+            "count": 58,
+            "total_us": 55057,
+            "slowest_us": 1652
+          },
+          {
+            "name": "space refresh",
+            "count": 5814,
+            "total_us": 54214,
+            "slowest_us": 168
+          },
+          {
+            "name": "tick",
+            "count": 5814,
+            "total_us": 68829,
+            "slowest_us": 215
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 1108,
+            "total_us": 9355,
+            "slowest_us": 69
+          },
+          {
+            "name": "tick: groups",
+            "count": 1108,
+            "total_us": 32788,
+            "slowest_us": 186
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 1108,
+            "total_us": 5615,
+            "slowest_us": 50
+          },
+          {
+            "name": "tick: window infos",
+            "count": 1108,
+            "total_us": 14872,
+            "slowest_us": 74
+          }
+        ]
+      }
+    },
+    "compositor_after": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 121,
+            "slowest_us": 387,
+            "total_us": 14853
+          }
+        ],
+        "beats": 813,
+        "latest_beat_us": 1360,
+        "slowest": [
+          "tick",
+          243
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 188,
+            "total_us": 5404,
+            "slowest_us": 208
+          },
+          {
+            "name": "commit",
+            "count": 29,
+            "total_us": 944,
+            "slowest_us": 85
+          },
+          {
+            "name": "damage and draw",
+            "count": 121,
+            "total_us": 3701,
+            "slowest_us": 148
+          },
+          {
+            "name": "gather (all)",
+            "count": 121,
+            "total_us": 2871,
+            "slowest_us": 125
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 1833,
+            "total_us": 3350,
+            "slowest_us": 118
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 1833,
+            "total_us": 9340,
+            "slowest_us": 48
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 1833,
+            "total_us": 5690,
+            "slowest_us": 60
+          },
+          {
+            "name": "gather: windows",
+            "count": 1833,
+            "total_us": 23740,
+            "slowest_us": 163
+          },
+          {
+            "name": "look (whole)",
+            "count": 121,
+            "total_us": 15102,
+            "slowest_us": 389
+          },
+          {
+            "name": "post_repaint",
+            "count": 121,
+            "total_us": 239,
+            "slowest_us": 4
+          },
+          {
+            "name": "pre_repaint",
+            "count": 121,
+            "total_us": 4991,
+            "slowest_us": 159
+          },
+          {
+            "name": "screenshot",
+            "count": 26,
+            "total_us": 6841,
+            "slowest_us": 373
+          },
+          {
+            "name": "screenshot read back",
+            "count": 26,
+            "total_us": 28357,
+            "slowest_us": 1819
+          },
+          {
+            "name": "space refresh",
+            "count": 1761,
+            "total_us": 21849,
+            "slowest_us": 211
+          },
+          {
+            "name": "tick",
+            "count": 1761,
+            "total_us": 28834,
+            "slowest_us": 214
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 405,
+            "total_us": 3897,
+            "slowest_us": 56
+          },
+          {
+            "name": "tick: groups",
+            "count": 405,
+            "total_us": 13269,
+            "slowest_us": 86
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 405,
+            "total_us": 2552,
+            "slowest_us": 46
+          },
+          {
+            "name": "tick: window infos",
+            "count": 405,
+            "total_us": 6678,
+            "slowest_us": 96
+          }
+        ]
+      }
+    }
+  },
+  {
+    "variant": "after",
+    "scale": 2,
+    "sha256": "a8e6534f120442ef06e05f5e82e11965bdabc3ee88d235c59c24f899ad2b2d44",
+    "bench_ms": {
+      "cached": [
+        8.645943999999986,
+        6.0345120000000065,
+        6.112264000000039,
+        6.726845000000026,
+        6.727648000000045,
+        6.091949,
+        5.69252999999992
+      ],
+      "changed": [
+        13.962311999999883,
+        14.183162999999979,
+        13.70130899999998,
+        14.459523000000104,
+        14.581005000000005,
+        13.729477999999972,
+        14.316629000000034
+      ],
+      "sizes": [
+        [
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ]
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 940.0,
+      "rss_kib": 160384
+    },
+    "after": {
+      "cpu_ms": 1020.0,
+      "rss_kib": 162176
+    },
+    "resize_ms": [
+      408.6101930006407,
+      409.48526898864657,
+      408.5284370230511,
+      408.82213797885925,
+      409.01619201758876,
+      409.1596610378474,
+      409.0303580160253,
+      409.15488899918273
+    ],
+    "idle": {
+      "seconds": 3.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 2
+      },
+      "threads": [
+        {
+          "tid": 2346979,
+          "name": "script-watchdog",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 2,
+          "preempted": 0
+        },
+        {
+          "tid": 2346922,
+          "name": "browser-after",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346927,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346929,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346931,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346932,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346933,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346934,
+          "name": "browser:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346938,
+          "name": "browse:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346954,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346955,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346956,
+          "name": "browser-after",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346957,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346958,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346960,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346961,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346962,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346963,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346964,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346965,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346966,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346967,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346968,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346969,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346970,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346971,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346972,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346973,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346974,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346975,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346976,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346977,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2346978,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.33,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 37.0,
+        "slowest_draw_ms": 1.67,
+        "distance": 713.5,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 1.001,
+          "sd": 0.039,
+          "min": 0.801,
+          "max": 1.201,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 57,
+        "moving_frames": 55,
+        "frame_ms": 8.34,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 17.6,
+        "slowest_draw_ms": 0.65,
+        "distance": 132.5,
+        "reached_end": false,
+        "notches": {
+          "count": 4,
+          "frames_each": [
+            17,
+            19,
+            4,
+            15
+          ],
+          "jumps_up": 2,
+          "worst_jump": 0.4
+        }
+      }
+    ],
+    "compositor_before": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 587,
+            "slowest_us": 444,
+            "total_us": 103121
+          }
+        ],
+        "beats": 2259,
+        "latest_beat_us": 5865,
+        "slowest": [
+          "tick",
+          295
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 1369,
+            "total_us": 29364,
+            "slowest_us": 216
+          },
+          {
+            "name": "commit",
+            "count": 256,
+            "total_us": 5657,
+            "slowest_us": 104
+          },
+          {
+            "name": "damage and draw",
+            "count": 587,
+            "total_us": 41993,
+            "slowest_us": 264
+          },
+          {
+            "name": "gather (all)",
+            "count": 587,
+            "total_us": 16733,
+            "slowest_us": 190
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 5467,
+            "total_us": 4587,
+            "slowest_us": 31
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 5467,
+            "total_us": 28463,
+            "slowest_us": 273
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 5467,
+            "total_us": 17469,
+            "slowest_us": 276
+          },
+          {
+            "name": "gather: windows",
+            "count": 5467,
+            "total_us": 71806,
+            "slowest_us": 2389
+          },
+          {
+            "name": "look (whole)",
+            "count": 587,
+            "total_us": 104453,
+            "slowest_us": 445
+          },
+          {
+            "name": "post_repaint",
+            "count": 587,
+            "total_us": 1245,
+            "slowest_us": 7
+          },
+          {
+            "name": "pre_repaint",
+            "count": 587,
+            "total_us": 25054,
+            "slowest_us": 179
+          },
+          {
+            "name": "repoint",
+            "count": 78,
+            "total_us": 748,
+            "slowest_us": 66
+          },
+          {
+            "name": "screenshot",
+            "count": 59,
+            "total_us": 14327,
+            "slowest_us": 351
+          },
+          {
+            "name": "screenshot read back",
+            "count": 59,
+            "total_us": 64804,
+            "slowest_us": 1809
+          },
+          {
+            "name": "space refresh",
+            "count": 5912,
+            "total_us": 57805,
+            "slowest_us": 294
+          },
+          {
+            "name": "tick",
+            "count": 5912,
+            "total_us": 65605,
+            "slowest_us": 197
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 1129,
+            "total_us": 9318,
+            "slowest_us": 50
+          },
+          {
+            "name": "tick: groups",
+            "count": 1129,
+            "total_us": 30864,
+            "slowest_us": 150
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 1129,
+            "total_us": 5283,
+            "slowest_us": 64
+          },
+          {
+            "name": "tick: window infos",
+            "count": 1129,
+            "total_us": 13878,
+            "slowest_us": 79
+          }
+        ]
+      }
+    },
+    "compositor_after": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 148,
+            "slowest_us": 343,
+            "total_us": 21582
+          }
+        ],
+        "beats": 811,
+        "latest_beat_us": 865,
+        "slowest": [
+          "tick",
+          218
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 234,
+            "total_us": 5476,
+            "slowest_us": 172
+          },
+          {
+            "name": "commit",
+            "count": 41,
+            "total_us": 931,
+            "slowest_us": 96
+          },
+          {
+            "name": "damage and draw",
+            "count": 148,
+            "total_us": 5710,
+            "slowest_us": 184
+          },
+          {
+            "name": "gather (all)",
+            "count": 148,
+            "total_us": 3777,
+            "slowest_us": 99
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 1886,
+            "total_us": 1480,
+            "slowest_us": 19
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 1886,
+            "total_us": 8787,
+            "slowest_us": 47
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 1886,
+            "total_us": 5310,
+            "slowest_us": 19
+          },
+          {
+            "name": "gather: windows",
+            "count": 1886,
+            "total_us": 20722,
+            "slowest_us": 312
+          },
+          {
+            "name": "look (whole)",
+            "count": 148,
+            "total_us": 21945,
+            "slowest_us": 350
+          },
+          {
+            "name": "post_repaint",
+            "count": 148,
+            "total_us": 369,
+            "slowest_us": 5
+          },
+          {
+            "name": "pre_repaint",
+            "count": 148,
+            "total_us": 7041,
+            "slowest_us": 145
+          },
+          {
+            "name": "screenshot",
+            "count": 26,
+            "total_us": 6250,
+            "slowest_us": 295
+          },
+          {
+            "name": "screenshot read back",
+            "count": 26,
+            "total_us": 25896,
+            "slowest_us": 1444
+          },
+          {
+            "name": "space refresh",
+            "count": 1822,
+            "total_us": 20074,
+            "slowest_us": 210
+          },
+          {
+            "name": "tick",
+            "count": 1822,
+            "total_us": 25127,
+            "slowest_us": 195
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 405,
+            "total_us": 3511,
+            "slowest_us": 51
+          },
+          {
+            "name": "tick: groups",
+            "count": 405,
+            "total_us": 12287,
+            "slowest_us": 125
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 405,
+            "total_us": 1948,
+            "slowest_us": 43
+          },
+          {
+            "name": "tick: window infos",
+            "count": 405,
+            "total_us": 5116,
+            "slowest_us": 82
+          }
+        ]
+      }
+    }
+  },
+  {
+    "variant": "after",
+    "scale": 2,
+    "sha256": "a8e6534f120442ef06e05f5e82e11965bdabc3ee88d235c59c24f899ad2b2d44",
+    "bench_ms": {
+      "cached": [
+        8.424664999999948,
+        6.0045579999999745,
+        6.197269999999946,
+        6.5484310000000505,
+        6.641774999999939,
+        6.0783250000000635,
+        5.679975000000013
+      ],
+      "changed": [
+        13.608592999999928,
+        14.492484999999988,
+        14.52919700000001,
+        14.825105000000008,
+        13.867707999999993,
+        14.3419090000001,
+        14.199079999999867
+      ],
+      "sizes": [
+        [
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            252,
+            37
+          ],
+          [
+            204,
+            10
+          ]
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 950.0,
+      "rss_kib": 160328
+    },
+    "after": {
+      "cpu_ms": 1030.0,
+      "rss_kib": 161924
+    },
+    "resize_ms": [
+      408.70864503085613,
+      409.09862401895225,
+      409.5265989890322,
+      409.1931799775921,
+      408.7383570149541,
+      410.25947500020266,
+      410.47210100805387,
+      409.1428659739904
+    ],
+    "idle": {
+      "seconds": 3.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 2
+      },
+      "threads": [
+        {
+          "tid": 2347551,
+          "name": "script-watchdog",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 2,
+          "preempted": 0
+        },
+        {
+          "tid": 2347497,
+          "name": "browser-after",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347502,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347504,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347506,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347507,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347508,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347509,
+          "name": "browser:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347513,
+          "name": "browse:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347527,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347528,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347529,
+          "name": "browser-after",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347530,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347531,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347532,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347533,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347534,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347535,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347536,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347537,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347538,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347539,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347540,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347541,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347542,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347543,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347544,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347545,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347546,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347547,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347548,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347549,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2347550,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.33,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 33.2,
+        "slowest_draw_ms": 1.0,
+        "distance": 716.5,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.999,
+          "sd": 0.016,
+          "min": 0.867,
+          "max": 1.067,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 57,
+        "moving_frames": 55,
+        "frame_ms": 8.34,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 17.6,
+        "slowest_draw_ms": 1.74,
+        "distance": 131.5,
+        "reached_end": false,
+        "notches": {
+          "count": 4,
+          "frames_each": [
+            17,
+            19,
+            4,
+            15
+          ],
+          "jumps_up": 2,
+          "worst_jump": 0.556
+        }
+      }
+    ],
+    "compositor_before": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 636,
+            "slowest_us": 1755,
+            "total_us": 118744
+          }
+        ],
+        "beats": 2209,
+        "latest_beat_us": 2777,
+        "slowest": [
+          "flushing to clients",
+          2067
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 1396,
+            "total_us": 31657,
+            "slowest_us": 957
+          },
+          {
+            "name": "commit",
+            "count": 270,
+            "total_us": 4938,
+            "slowest_us": 104
+          },
+          {
+            "name": "damage and draw",
+            "count": 636,
+            "total_us": 47406,
+            "slowest_us": 542
+          },
+          {
+            "name": "gather (all)",
+            "count": 636,
+            "total_us": 19387,
+            "slowest_us": 1305
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 5464,
+            "total_us": 4730,
+            "slowest_us": 22
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 5464,
+            "total_us": 27753,
+            "slowest_us": 58
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 5464,
+            "total_us": 17500,
+            "slowest_us": 58
+          },
+          {
+            "name": "gather: windows",
+            "count": 5464,
+            "total_us": 70138,
+            "slowest_us": 2305
+          },
+          {
+            "name": "look (whole)",
+            "count": 636,
+            "total_us": 120266,
+            "slowest_us": 1760
+          },
+          {
+            "name": "post_repaint",
+            "count": 636,
+            "total_us": 1523,
+            "slowest_us": 66
+          },
+          {
+            "name": "pre_repaint",
+            "count": 636,
+            "total_us": 29329,
+            "slowest_us": 160
+          },
+          {
+            "name": "repoint",
+            "count": 78,
+            "total_us": 982,
+            "slowest_us": 73
+          },
+          {
+            "name": "screenshot",
+            "count": 58,
+            "total_us": 13992,
+            "slowest_us": 338
+          },
+          {
+            "name": "screenshot read back",
+            "count": 58,
+            "total_us": 61250,
+            "slowest_us": 2449
+          },
+          {
+            "name": "space refresh",
+            "count": 5882,
+            "total_us": 58492,
+            "slowest_us": 279
+          },
+          {
+            "name": "tick",
+            "count": 5882,
+            "total_us": 62995,
+            "slowest_us": 207
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 1106,
+            "total_us": 9185,
+            "slowest_us": 48
+          },
+          {
+            "name": "tick: groups",
+            "count": 1106,
+            "total_us": 30163,
+            "slowest_us": 110
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 1106,
+            "total_us": 4849,
+            "slowest_us": 34
+          },
+          {
+            "name": "tick: window infos",
+            "count": 1106,
+            "total_us": 12740,
+            "slowest_us": 127
+          }
+        ]
+      }
+    },
+    "compositor_after": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 148,
+            "slowest_us": 524,
+            "total_us": 22226
+          }
+        ],
+        "beats": 809,
+        "latest_beat_us": 3166,
+        "slowest": [
+          "tick",
+          234
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 242,
+            "total_us": 5889,
+            "slowest_us": 225
+          },
+          {
+            "name": "commit",
+            "count": 43,
+            "total_us": 1080,
+            "slowest_us": 86
+          },
+          {
+            "name": "damage and draw",
+            "count": 148,
+            "total_us": 6042,
+            "slowest_us": 337
+          },
+          {
+            "name": "gather (all)",
+            "count": 148,
+            "total_us": 4331,
+            "slowest_us": 240
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 1839,
+            "total_us": 1519,
+            "slowest_us": 11
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 1839,
+            "total_us": 9539,
+            "slowest_us": 37
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 1839,
+            "total_us": 6190,
+            "slowest_us": 103
+          },
+          {
+            "name": "gather: windows",
+            "count": 1839,
+            "total_us": 21422,
+            "slowest_us": 82
+          },
+          {
+            "name": "look (whole)",
+            "count": 148,
+            "total_us": 22629,
+            "slowest_us": 528
+          },
+          {
+            "name": "post_repaint",
+            "count": 148,
+            "total_us": 345,
+            "slowest_us": 3
+          },
+          {
+            "name": "pre_repaint",
+            "count": 148,
+            "total_us": 6950,
+            "slowest_us": 156
+          },
+          {
+            "name": "screenshot",
+            "count": 26,
+            "total_us": 6796,
+            "slowest_us": 373
+          },
+          {
+            "name": "screenshot read back",
+            "count": 26,
+            "total_us": 28351,
+            "slowest_us": 1720
+          },
+          {
+            "name": "space refresh",
+            "count": 1822,
+            "total_us": 20291,
+            "slowest_us": 167
+          },
+          {
+            "name": "tick",
+            "count": 1822,
+            "total_us": 22512,
+            "slowest_us": 187
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 404,
+            "total_us": 3240,
+            "slowest_us": 44
+          },
+          {
+            "name": "tick: groups",
+            "count": 404,
+            "total_us": 10926,
+            "slowest_us": 108
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 404,
+            "total_us": 1720,
+            "slowest_us": 41
+          },
+          {
+            "name": "tick: window infos",
+            "count": 404,
+            "total_us": 4487,
+            "slowest_us": 78
+          }
+        ]
+      }
+    }
+  },
+  {
+    "variant": "before",
+    "scale": 2,
+    "sha256": "721d9b46b5ee02e9568f9d8866d6e0fdaffe6ecd5ad716b78e35f46fc3adae64",
+    "bench_ms": {
+      "cached": [
+        8.097584999999953,
+        5.787347000000011,
+        5.974673999999993,
+        6.287999000000013,
+        6.09948200000008,
+        5.801522999999975,
+        5.484820000000127
+      ],
+      "changed": [
+        2.8893829999999525,
+        2.4134129999999914,
+        5.701396999999986,
+        2.4749909999999318,
+        2.2282259999999496,
+        2.3302159999999503,
+        2.447532000000024
+      ],
+      "sizes": [
+        [
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ]
+        ],
+        [
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ],
+          [
+            268,
+            10
+          ],
+          [
+            204,
+            10
+          ]
+        ]
+      ]
+    },
+    "before": {
+      "cpu_ms": 790.0,
+      "rss_kib": 160412
+    },
+    "after": {
+      "cpu_ms": 860.0,
+      "rss_kib": 162032
+    },
+    "resize_ms": [
+      409.43340898957103,
+      409.3728629522957,
+      409.3666069675237,
+      409.3954060226679,
+      409.99981097411364,
+      408.8748579961248,
+      410.2913269889541,
+      410.4390469728969
+    ],
+    "idle": {
+      "seconds": 3.0,
+      "total": {
+        "cpu": 0.0,
+        "unlisted": 0.0,
+        "wakeups": 2
+      },
+      "threads": [
+        {
+          "tid": 2348161,
+          "name": "script-watchdog",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 2,
+          "preempted": 0
+        },
+        {
+          "tid": 2348104,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348109,
+          "name": "async-io",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348111,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348113,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348114,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348115,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348116,
+          "name": "browser:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348120,
+          "name": "browse:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348136,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348138,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348139,
+          "name": "browser-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348140,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348141,
+          "name": "browser-net",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348142,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348143,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348144,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348145,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348146,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348147,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348148,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348149,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348150,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348151,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348152,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348153,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348154,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348155,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348156,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348157,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348158,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348159,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 2348160,
+          "name": "V8 DefaultWorke",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "scrolling": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.34,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 36.7,
+        "slowest_draw_ms": 0.77,
+        "distance": 713.5,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.999,
+          "sd": 0.0,
+          "min": 0.999,
+          "max": 0.999,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      },
+      {
+        "kind": "wheel",
+        "frames": 58,
+        "moving_frames": 56,
+        "frame_ms": 8.33,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 17.8,
+        "slowest_draw_ms": 5.3,
+        "distance": 134.0,
+        "reached_end": false,
+        "notches": {
+          "count": 4,
+          "frames_each": [
+            17,
+            19,
+            3,
+            17
+          ],
+          "jumps_up": 3,
+          "worst_jump": 0.545
+        }
+      }
+    ],
+    "compositor_before": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 689,
+            "slowest_us": 2833,
+            "total_us": 126300
+          }
+        ],
+        "beats": 2257,
+        "latest_beat_us": 3099,
+        "slowest": [
+          "clients' requests",
+          628
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 1495,
+            "total_us": 35599,
+            "slowest_us": 628
+          },
+          {
+            "name": "commit",
+            "count": 286,
+            "total_us": 7386,
+            "slowest_us": 104
+          },
+          {
+            "name": "damage and draw",
+            "count": 689,
+            "total_us": 42499,
+            "slowest_us": 248
+          },
+          {
+            "name": "gather (all)",
+            "count": 689,
+            "total_us": 19399,
+            "slowest_us": 397
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 5718,
+            "total_us": 5057,
+            "slowest_us": 20
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 5718,
+            "total_us": 28629,
+            "slowest_us": 53
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 5718,
+            "total_us": 17076,
+            "slowest_us": 50
+          },
+          {
+            "name": "gather: windows",
+            "count": 5718,
+            "total_us": 71106,
+            "slowest_us": 2452
+          },
+          {
+            "name": "look (whole)",
+            "count": 689,
+            "total_us": 128642,
+            "slowest_us": 3127
+          },
+          {
+            "name": "post_repaint",
+            "count": 689,
+            "total_us": 1542,
+            "slowest_us": 9
+          },
+          {
+            "name": "pre_repaint",
+            "count": 689,
+            "total_us": 40334,
+            "slowest_us": 1617
+          },
+          {
+            "name": "repoint",
+            "count": 78,
+            "total_us": 834,
+            "slowest_us": 77
+          },
+          {
+            "name": "screenshot",
+            "count": 59,
+            "total_us": 12898,
+            "slowest_us": 296
+          },
+          {
+            "name": "screenshot read back",
+            "count": 59,
+            "total_us": 58154,
+            "slowest_us": 1512
+          },
+          {
+            "name": "space refresh",
+            "count": 6149,
+            "total_us": 61450,
+            "slowest_us": 102
+          },
+          {
+            "name": "tick",
+            "count": 6149,
+            "total_us": 69321,
+            "slowest_us": 215
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 1127,
+            "total_us": 9786,
+            "slowest_us": 58
+          },
+          {
+            "name": "tick: groups",
+            "count": 1127,
+            "total_us": 33900,
+            "slowest_us": 110
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 1127,
+            "total_us": 5364,
+            "slowest_us": 53
+          },
+          {
+            "name": "tick: window infos",
+            "count": 1127,
+            "total_us": 13932,
+            "slowest_us": 81
+          }
+        ]
+      }
+    },
+    "compositor_after": {
+      "type": "timings",
+      "timings": {
+        "outputs": [
+          {
+            "output": "HEADLESS-1",
+            "frames": 143,
+            "slowest_us": 381,
+            "total_us": 18672
+          }
+        ],
+        "beats": 812,
+        "latest_beat_us": 872,
+        "slowest": [
+          "tick",
+          331
+        ],
+        "phases": [
+          {
+            "name": "clients' requests",
+            "count": 237,
+            "total_us": 6120,
+            "slowest_us": 246
+          },
+          {
+            "name": "commit",
+            "count": 42,
+            "total_us": 996,
+            "slowest_us": 100
+          },
+          {
+            "name": "damage and draw",
+            "count": 143,
+            "total_us": 5342,
+            "slowest_us": 174
+          },
+          {
+            "name": "gather (all)",
+            "count": 143,
+            "total_us": 3364,
+            "slowest_us": 104
+          },
+          {
+            "name": "gather: lower layers",
+            "count": 1899,
+            "total_us": 1843,
+            "slowest_us": 12
+          },
+          {
+            "name": "gather: upper layers",
+            "count": 1899,
+            "total_us": 10045,
+            "slowest_us": 52
+          },
+          {
+            "name": "gather: wallpaper",
+            "count": 1899,
+            "total_us": 6084,
+            "slowest_us": 30
+          },
+          {
+            "name": "gather: windows",
+            "count": 1899,
+            "total_us": 24166,
+            "slowest_us": 83
+          },
+          {
+            "name": "look (whole)",
+            "count": 143,
+            "total_us": 18967,
+            "slowest_us": 389
+          },
+          {
+            "name": "post_repaint",
+            "count": 143,
+            "total_us": 302,
+            "slowest_us": 4
+          },
+          {
+            "name": "pre_repaint",
+            "count": 143,
+            "total_us": 5763,
+            "slowest_us": 163
+          },
+          {
+            "name": "screenshot",
+            "count": 26,
+            "total_us": 5958,
+            "slowest_us": 357
+          },
+          {
+            "name": "screenshot read back",
+            "count": 26,
+            "total_us": 24322,
+            "slowest_us": 1150
+          },
+          {
+            "name": "space refresh",
+            "count": 1833,
+            "total_us": 22637,
+            "slowest_us": 330
+          },
+          {
+            "name": "tick",
+            "count": 1833,
+            "total_us": 25747,
+            "slowest_us": 186
+          },
+          {
+            "name": "tick: auto-tiling",
+            "count": 406,
+            "total_us": 3544,
+            "slowest_us": 42
+          },
+          {
+            "name": "tick: groups",
+            "count": 406,
+            "total_us": 12336,
+            "slowest_us": 107
+          },
+          {
+            "name": "tick: sides, children, focus",
+            "count": 406,
+            "total_us": 2074,
+            "slowest_us": 51
+          },
+          {
+            "name": "tick: window infos",
+            "count": 406,
+            "total_us": 5430,
+            "slowest_us": 66
+          }
+        ]
+      }
+    }
+  }
+]

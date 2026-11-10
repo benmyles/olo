@@ -1,0 +1,16 @@
+{
+  "experiments": [
+    "wpp_curator_h2.treatment",
+    "wpp_curator_input_strength.treatment",
+    "wpp_footer_email_capture.treatment",
+    "wpp_react_homepage_aa.treatment"
+  ],
+  "viewport": [
+    1000,
+    578
+  ],
+  "client": [
+    985,
+    578
+  ]
+}

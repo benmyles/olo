@@ -1,0 +1,2312 @@
+[
+  {
+    "mode": "light",
+    "scale": 1,
+    "native": {
+      "dpr": 1,
+      "scroll": 7787,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4123.472902248068,
+            985,
+            4535.121385542168
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".platform-value__graphic-container",
+          "rect": [
+            33,
+            7258.894777248068,
+            919,
+            777
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            33,
+            7886.894777248068,
+            295.65625,
+            112
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            344.65625,
+            7886.894777248068,
+            295.671875,
+            89.6
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            656.328125,
+            7886.894777248068,
+            295.65625,
+            89.6
+          ],
+          "paddingRight": "32px"
+        }
+      ]
+    },
+    "chrome": {
+      "dpr": 1,
+      "scroll": 7787,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4123.375,
+            985,
+            4534.703125
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".platform-value__graphic-container",
+          "rect": [
+            33,
+            7258.5,
+            919,
+            776.953125
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            33,
+            7886.5,
+            295.65625,
+            111.953125
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            344.65625,
+            7886.5,
+            295.671875,
+            89.5625
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            656.328125,
+            7886.5,
+            295.65625,
+            89.5625
+          ],
+          "paddingRight": "32px"
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.0,
+        "dark": false,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 1.25,
+    "native": {
+      "dpr": 1.25,
+      "scroll": 7787.2,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4139.6086519809305,
+            984.8,
+            4533.693222891566
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".platform-value__graphic-container",
+          "rect": [
+            32.8,
+            7274.021151980931,
+            919.2,
+            776.8
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            32.8,
+            7902.021151980931,
+            295.725,
+            112
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            344.52500000000003,
+            7902.021151980931,
+            295.7375,
+            89.6
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            656.2624999999999,
+            7902.021151980931,
+            295.725,
+            89.6
+          ],
+          "paddingRight": "32px"
+        }
+      ]
+    },
+    "chrome": {
+      "dpr": 1.25,
+      "scroll": 7787.2001953125,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4124.112548828125,
+            984.7999877929688,
+            4533.5126953125
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".platform-value__graphic-container",
+          "rect": [
+            32.79999923706055,
+            7258.375183105469,
+            919.2000122070312,
+            776.7999877929688
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            32.79999923706055,
+            7886.375198364258,
+            295.7250061035156,
+            112
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            344.5249938964844,
+            7886.375198364258,
+            295.7375183105469,
+            89.5999984741211
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            656.2625122070312,
+            7886.375198364258,
+            295.7250061035156,
+            89.5999984741211
+          ],
+          "paddingRight": "32px"
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.25,
+        "dark": false,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 1.5,
+    "native": {
+      "dpr": 1.5,
+      "scroll": 7787.333333333333,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4122.824151802838,
+            984.6666666666666,
+            4532.695808232931
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".platform-value__graphic-container",
+          "rect": [
+            32.66666666666667,
+            7256.501235136171,
+            919.3333333333334,
+            776.6666666666666
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            32.66666666666667,
+            7884.501235136171,
+            295.7708333333333,
+            112
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            344.4375,
+            7884.501235136171,
+            295.78125,
+            89.6
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            656.21875,
+            7884.501235136171,
+            295.7708333333333,
+            89.6
+          ],
+          "paddingRight": "32px"
+        }
+      ]
+    },
+    "chrome": {
+      "dpr": 1.5,
+      "scroll": 7787.33349609375,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4122.80224609375,
+            984.6666870117188,
+            4532.5
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".platform-value__graphic-container",
+          "rect": [
+            32.66666793823242,
+            7256.33349609375,
+            919.3333740234375,
+            776.6458740234375
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            32.66666793823242,
+            7884.33349609375,
+            295.7708435058594,
+            111.97917175292969
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            344.4375,
+            7884.33349609375,
+            295.78125,
+            89.58333587646484
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            656.21875,
+            7884.33349609375,
+            295.7708435058594,
+            89.58333587646484
+          ],
+          "paddingRight": "32px"
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.5,
+        "dark": false,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 1.75,
+    "native": {
+      "dpr": 1.75,
+      "scroll": 7787.428571428572,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4138.971949284893,
+            985.1428571428571,
+            4557.382379518072
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".platform-value__graphic-container",
+          "rect": [
+            32.57142857142857,
+            7272.320163570606,
+            920,
+            776.5714285714286
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            32.57142857142857,
+            7900.320163570606,
+            296,
+            112
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            344.57142857142856,
+            7900.320163570606,
+            296,
+            89.6
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            656.5714285714286,
+            7900.320163570606,
+            296,
+            89.6
+          ],
+          "paddingRight": "32px"
+        }
+      ]
+    },
+    "chrome": {
+      "dpr": 1.75,
+      "scroll": 7787.4287109375,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4123.90185546875,
+            985.1428833007812,
+            4532.02685546875
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".platform-value__graphic-container",
+          "rect": [
+            32.57143020629883,
+            7257.160827636719,
+            920.0000610351562,
+            776.5357666015625
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            32.57143020629883,
+            7885.160858154297,
+            296,
+            111.96429443359375
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            344.5714416503906,
+            7885.160858154297,
+            296,
+            89.5714340209961
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            656.5714721679688,
+            7885.160858154297,
+            296,
+            89.5714340209961
+          ],
+          "paddingRight": "32px"
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.75,
+        "dark": false,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "scale": 2,
+    "native": {
+      "dpr": 2,
+      "scroll": 7787.5,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4123.980714748068,
+            985,
+            4530.139740210843
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".platform-value__graphic-container",
+          "rect": [
+            33,
+            7256.433839748068,
+            919,
+            776
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            33,
+            7884.433839748068,
+            295.6640625,
+            112
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            344.6640625,
+            7884.433839748068,
+            295.6640625,
+            89.6
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            656.328125,
+            7884.433839748068,
+            295.6640625,
+            89.6
+          ],
+          "paddingRight": "32px"
+        }
+      ]
+    },
+    "chrome": {
+      "dpr": 2,
+      "scroll": 7787.5,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4123.9609375,
+            985,
+            4529.96875
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".platform-value__graphic-container",
+          "rect": [
+            33,
+            7256.2734375,
+            919,
+            775.9921875
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            33,
+            7884.2734375,
+            295.6640625,
+            111.9921875
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            344.6640625,
+            7884.2734375,
+            295.6640625,
+            89.59375
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            656.328125,
+            7884.2734375,
+            295.6640625,
+            89.59375
+          ],
+          "paddingRight": "32px"
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 2.0,
+        "dark": false,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1,
+    "native": {
+      "dpr": 1,
+      "scroll": 7788,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4123.472902248068,
+            985,
+            4535.121385542168
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".platform-value__graphic-container",
+          "rect": [
+            33,
+            7258.894777248068,
+            919,
+            777
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            33,
+            7886.894777248068,
+            295.65625,
+            112
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            344.65625,
+            7886.894777248068,
+            295.671875,
+            89.6
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            656.328125,
+            7886.894777248068,
+            295.65625,
+            89.6
+          ],
+          "paddingRight": "32px"
+        }
+      ]
+    },
+    "chrome": {
+      "dpr": 1,
+      "scroll": 7788,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4123.375,
+            985,
+            4534.703125
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".platform-value__graphic-container",
+          "rect": [
+            33,
+            7258.5,
+            919,
+            776.953125
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            33,
+            7886.5,
+            295.65625,
+            111.953125
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            344.65625,
+            7886.5,
+            295.671875,
+            89.5625
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            656.328125,
+            7886.5,
+            295.65625,
+            89.5625
+          ],
+          "paddingRight": "32px"
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.0,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1.25,
+    "native": {
+      "dpr": 1.25,
+      "scroll": 7788,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4139.6086519809305,
+            984.8,
+            4533.693222891566
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".platform-value__graphic-container",
+          "rect": [
+            32.8,
+            7274.021151980931,
+            919.2,
+            776.8
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            32.8,
+            7902.021151980931,
+            295.725,
+            112
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            344.52500000000003,
+            7902.021151980931,
+            295.7375,
+            89.6
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            656.2624999999999,
+            7902.021151980931,
+            295.725,
+            89.6
+          ],
+          "paddingRight": "32px"
+        }
+      ]
+    },
+    "chrome": {
+      "dpr": 1.25,
+      "scroll": 7788,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4124.112548828125,
+            984.7999877929688,
+            4533.5126953125
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".platform-value__graphic-container",
+          "rect": [
+            32.79999923706055,
+            7258.375,
+            919.2000122070312,
+            776.7999877929688
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            32.79999923706055,
+            7886.375,
+            295.7250061035156,
+            112
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            344.5249938964844,
+            7886.375,
+            295.7375183105469,
+            89.5999984741211
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            656.2625122070312,
+            7886.375,
+            295.7250061035156,
+            89.5999984741211
+          ],
+          "paddingRight": "32px"
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.25,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1.5,
+    "native": {
+      "dpr": 1.5,
+      "scroll": 7788,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4122.824151802838,
+            984.6666666666666,
+            4532.695808232931
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".platform-value__graphic-container",
+          "rect": [
+            32.66666666666667,
+            7256.501235136171,
+            919.3333333333334,
+            776.6666666666666
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            32.66666666666667,
+            7884.501235136171,
+            295.7708333333333,
+            112
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            344.4375,
+            7884.501235136171,
+            295.78125,
+            89.6
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            656.21875,
+            7884.501235136171,
+            295.7708333333333,
+            89.6
+          ],
+          "paddingRight": "32px"
+        }
+      ]
+    },
+    "chrome": {
+      "dpr": 1.5,
+      "scroll": 7788,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4122.802001953125,
+            984.6666870117188,
+            4532.5
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".platform-value__graphic-container",
+          "rect": [
+            32.66666793823242,
+            7256.333312988281,
+            919.3333740234375,
+            776.6458740234375
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            32.66666793823242,
+            7884.333335876465,
+            295.7708435058594,
+            111.97917175292969
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            344.4375,
+            7884.333335876465,
+            295.78125,
+            89.58333587646484
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            656.21875,
+            7884.333335876465,
+            295.7708435058594,
+            89.58333587646484
+          ],
+          "paddingRight": "32px"
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.5,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 1.75,
+    "native": {
+      "dpr": 1.75,
+      "scroll": 7788,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4138.971949284893,
+            985.1428571428571,
+            4557.382379518072
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".platform-value__graphic-container",
+          "rect": [
+            32.57142857142857,
+            7272.320163570606,
+            920,
+            776.5714285714286
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            32.57142857142857,
+            7900.320163570606,
+            296,
+            112
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            344.57142857142856,
+            7900.320163570606,
+            296,
+            89.6
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            656.5714285714286,
+            7900.320163570606,
+            296,
+            89.6
+          ],
+          "paddingRight": "32px"
+        }
+      ]
+    },
+    "chrome": {
+      "dpr": 1.75,
+      "scroll": 7788,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4123.901611328125,
+            985.1428833007812,
+            4532.02685546875
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".platform-value__graphic-container",
+          "rect": [
+            32.57143020629883,
+            7257.160705566406,
+            920.0000610351562,
+            776.5357666015625
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            32.57143020629883,
+            7885.160720825195,
+            296,
+            111.96429443359375
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            344.5714416503906,
+            7885.160720825195,
+            296,
+            89.5714340209961
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            656.5714721679688,
+            7885.160720825195,
+            296,
+            89.5714340209961
+          ],
+          "paddingRight": "32px"
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.75,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "scale": 2,
+    "native": {
+      "dpr": 2,
+      "scroll": 7788,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4123.980714748068,
+            985,
+            4530.139740210843
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".platform-value__graphic-container",
+          "rect": [
+            33,
+            7256.433839748068,
+            919,
+            776
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            33,
+            7884.433839748068,
+            295.6640625,
+            112
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            344.6640625,
+            7884.433839748068,
+            295.6640625,
+            89.6
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            656.328125,
+            7884.433839748068,
+            295.6640625,
+            89.6
+          ],
+          "paddingRight": "32px"
+        }
+      ]
+    },
+    "chrome": {
+      "dpr": 2,
+      "scroll": 7788,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4123.9609375,
+            985,
+            4529.96875
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".platform-value__graphic-container",
+          "rect": [
+            33,
+            7256.2734375,
+            919,
+            775.9921875
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            33,
+            7884.2734375,
+            295.6640625,
+            111.9921875
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            344.6640625,
+            7884.2734375,
+            295.6640625,
+            89.59375
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            656.328125,
+            7884.2734375,
+            295.6640625,
+            89.59375
+          ],
+          "paddingRight": "32px"
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 2.0,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1,
+    "native": {
+      "dpr": 1,
+      "scroll": 7788,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4123.472902248068,
+            985,
+            4535.121385542168
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".platform-value__graphic-container",
+          "rect": [
+            33,
+            7258.894777248068,
+            919,
+            777
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            33,
+            7886.894777248068,
+            295.65625,
+            112
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            344.65625,
+            7886.894777248068,
+            295.671875,
+            89.6
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            656.328125,
+            7886.894777248068,
+            295.65625,
+            89.6
+          ],
+          "paddingRight": "32px"
+        }
+      ]
+    },
+    "chrome": {
+      "dpr": 1,
+      "scroll": 7788,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4123.375,
+            985,
+            4534.703125
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".platform-value__graphic-container",
+          "rect": [
+            33,
+            7258.5,
+            919,
+            776.953125
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            33,
+            7886.5,
+            295.65625,
+            111.953125
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            344.65625,
+            7886.5,
+            295.671875,
+            89.5625
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            656.328125,
+            7886.5,
+            295.65625,
+            89.5625
+          ],
+          "paddingRight": "32px"
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.0,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1.25,
+    "native": {
+      "dpr": 1.25,
+      "scroll": 7788,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4139.6086519809305,
+            984.8,
+            4533.693222891566
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".platform-value__graphic-container",
+          "rect": [
+            32.8,
+            7274.021151980931,
+            919.2,
+            776.8
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            32.8,
+            7902.021151980931,
+            295.725,
+            112
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            344.52500000000003,
+            7902.021151980931,
+            295.7375,
+            89.6
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            656.2624999999999,
+            7902.021151980931,
+            295.725,
+            89.6
+          ],
+          "paddingRight": "32px"
+        }
+      ]
+    },
+    "chrome": {
+      "dpr": 1.25,
+      "scroll": 7788,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4124.112548828125,
+            984.7999877929688,
+            4533.5126953125
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".platform-value__graphic-container",
+          "rect": [
+            32.79999923706055,
+            7258.375,
+            919.2000122070312,
+            776.7999877929688
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            32.79999923706055,
+            7886.375,
+            295.7250061035156,
+            112
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            344.5249938964844,
+            7886.375,
+            295.7375183105469,
+            89.5999984741211
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            656.2625122070312,
+            7886.375,
+            295.7250061035156,
+            89.5999984741211
+          ],
+          "paddingRight": "32px"
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.25,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1.5,
+    "native": {
+      "dpr": 1.5,
+      "scroll": 7788,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4122.824151802838,
+            984.6666666666666,
+            4532.695808232931
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".platform-value__graphic-container",
+          "rect": [
+            32.66666666666667,
+            7256.501235136171,
+            919.3333333333334,
+            776.6666666666666
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            32.66666666666667,
+            7884.501235136171,
+            295.7708333333333,
+            112
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            344.4375,
+            7884.501235136171,
+            295.78125,
+            89.6
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            656.21875,
+            7884.501235136171,
+            295.7708333333333,
+            89.6
+          ],
+          "paddingRight": "32px"
+        }
+      ]
+    },
+    "chrome": {
+      "dpr": 1.5,
+      "scroll": 7788,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4122.802001953125,
+            984.6666870117188,
+            4532.5
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".platform-value__graphic-container",
+          "rect": [
+            32.66666793823242,
+            7256.333312988281,
+            919.3333740234375,
+            776.6458740234375
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            32.66666793823242,
+            7884.333335876465,
+            295.7708435058594,
+            111.97917175292969
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            344.4375,
+            7884.333335876465,
+            295.78125,
+            89.58333587646484
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            656.21875,
+            7884.333335876465,
+            295.7708435058594,
+            89.58333587646484
+          ],
+          "paddingRight": "32px"
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.5,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 1.75,
+    "native": {
+      "dpr": 1.75,
+      "scroll": 7788,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4138.971949284893,
+            985.1428571428571,
+            4557.382379518072
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".platform-value__graphic-container",
+          "rect": [
+            32.57142857142857,
+            7272.320163570606,
+            920,
+            776.5714285714286
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            32.57142857142857,
+            7900.320163570606,
+            296,
+            112
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            344.57142857142856,
+            7900.320163570606,
+            296,
+            89.6
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            656.5714285714286,
+            7900.320163570606,
+            296,
+            89.6
+          ],
+          "paddingRight": "32px"
+        }
+      ]
+    },
+    "chrome": {
+      "dpr": 1.75,
+      "scroll": 7788,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4123.901611328125,
+            985.1428833007812,
+            4532.02685546875
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".platform-value__graphic-container",
+          "rect": [
+            32.57143020629883,
+            7257.160705566406,
+            920.0000610351562,
+            776.5357666015625
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            32.57143020629883,
+            7885.160720825195,
+            296,
+            111.96429443359375
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            344.5714416503906,
+            7885.160720825195,
+            296,
+            89.5714340209961
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            656.5714721679688,
+            7885.160720825195,
+            296,
+            89.5714340209961
+          ],
+          "paddingRight": "32px"
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 1.75,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  },
+  {
+    "mode": "night",
+    "scale": 2,
+    "native": {
+      "dpr": 2,
+      "scroll": 7788,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4123.980714748068,
+            985,
+            4530.139740210843
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".platform-value__graphic-container",
+          "rect": [
+            33,
+            7256.433839748068,
+            919,
+            776
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            33,
+            7884.433839748068,
+            295.6640625,
+            112
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            344.6640625,
+            7884.433839748068,
+            295.6640625,
+            89.6
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            656.328125,
+            7884.433839748068,
+            295.6640625,
+            89.6
+          ],
+          "paddingRight": "32px"
+        }
+      ]
+    },
+    "chrome": {
+      "dpr": 2,
+      "scroll": 7788,
+      "viewport": [
+        1000,
+        578
+      ],
+      "client": [
+        985,
+        578
+      ],
+      "experiments": [
+        "wpp_curator_h2.treatment",
+        "wpp_curator_input_strength.treatment",
+        "wpp_footer_email_capture.treatment",
+        "wpp_react_homepage_aa.treatment"
+      ],
+      "boxes": [
+        {
+          "selector": ".business-sizes-section",
+          "rect": [
+            0,
+            4123.9609375,
+            985,
+            4529.96875
+          ],
+          "paddingRight": "16px"
+        },
+        {
+          "selector": ".platform-value__graphic-container",
+          "rect": [
+            33,
+            7256.2734375,
+            919,
+            775.9921875
+          ],
+          "paddingRight": "0px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            33,
+            7884.2734375,
+            295.6640625,
+            111.9921875
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            344.6640625,
+            7884.2734375,
+            295.6640625,
+            89.59375
+          ],
+          "paddingRight": "32px"
+        },
+        {
+          "selector": ".platform-value__graphic-container .feature-detail__content",
+          "rect": [
+            656.328125,
+            7884.2734375,
+            295.6640625,
+            89.59375
+          ],
+          "paddingRight": "32px"
+        }
+      ]
+    },
+    "review": [
+      {
+        "title": "Browser",
+        "width": 1000,
+        "height": 700,
+        "scale": 2.0,
+        "dark": true,
+        "findings": []
+      }
+    ]
+  }
+]

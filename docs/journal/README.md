@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-10
 
+### Browser with settled container query measurements
+
+*08:37* — Script geometry now reports the Chrome-matching 32px padding; nested query cascades settle before measurement and paint return. All 15 native theme/scale reviews pass. Full Stripe pixels and journeys remain unaccepted.
+
+![Browser with settled container query measurements](2026-11-10/083718-browser-with-settled-container-query-measurement.png)
+
+### Browser before container query measurements
+
+*08:37* — Stripe feature cards at 1×. The old script measurement path ignores container queries and reports 16px padding; paint already wraps the first card over five lines. Live content is not a deterministic pixel oracle.
+
+![Browser before container query measurements](2026-11-10/083716-browser-before-container-query-measurements.png)
+
 ### Browser: inline spacing follows each span
 
 *08:15* — The heading now measures593.23px, within0.011px of Chrome across15 live theme/scale configurations. Spacing survives line reshaping; safe text-item boundaries retain fractional advances. Full page pixels and journeys remain open, corpus0/100.

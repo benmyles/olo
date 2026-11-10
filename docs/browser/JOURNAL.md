@@ -8540,3 +8540,35 @@ journeys/all30 configurations. Optional-ligature suppression with spacing,
 arbitrary Unicode spacing and HTMLMetaElement.content reflection remain open.
 No personal desktop install/reload or delegation. Evidence:
 `measurements/2026-11-10-inline-spacing/`.
+
+
+## 2026-11-10 — container-query measurements and nested correction
+
+Script layout had no query-container sizes, so all size-query conditions
+were false. Painting corrected sizes only three times. Both now settle query
+and viewport bases with a64-round resource bound and existing cancellation;
+removed containers invalidate descendants. Same-width name/type changes
+reject local patches and rematch the affected subtree. No idle work added.
+
+Independent Chrome:50 observations across five actual DPRs and ten mutation
+states, fourteen elements each. Fresh/reused script and paint geometry pass;
+baseline had705 script discrepancies and an unsettled six-level paint cascade.
+Intermediate tests caught ten rename-cache failures. Stripe now reports32px
+feature-card padding and112px first-card height (max Chrome delta0.047px) in
+all15 theme/scale combinations. Thirty before/after native reviews are clean;
+60 native/Chrome screenshots retained. The earlier22px short business section
+was a CSSOM discrepancy: its baseline paint already wrapped five lines.
+At1.75× the section still differs25.36px, next to isolate; full-page pixels,
+journeys and corrected full-height checks remain. Corpus0/100, Stripe0/30.
+
+Release workspace build,2,211 tests (0 failures,136 ignored), both layout
+lints pass. ABBA8-process release evidence: at1.25×/2×, cached9,000 reads
+5.782→6.052/6.002→6.102ms;20 forced layouts2.099→13.315/2.430→14.329ms
+(baseline incorrectly skips the nested queries). CPU/resize5.625→5.000/
+8.750→10.000ms;RSS155274→153866/162086→162050KiB. Drag-first36.65→36.25/
+36.70→35.10ms;wheel-first17.35→17.45/15.30→17.60ms. Idle0 CPU/page frames,
+watchdog wakes remain; no scroll hitches. No speed superiority claimed.
+
+Evidence: `measurements/2026-11-10-query-measurement/README.md`. The owned
+screen was stopped; the personal session was not installed into or reloaded.
+Main fetched and already contained,444 browser commits ahead before this one.

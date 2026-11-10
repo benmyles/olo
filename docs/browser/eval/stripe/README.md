@@ -14,6 +14,19 @@ without a dedicated eval environment; no personal account is part of this run.
 
 ## Latest checkpoint
 
+2026-11-10, container-query measurement: script layouts now evaluate size
+queries and settle nested corrections; painting no longer stops after three
+rounds. Same-width container renaming rematches descendant queries. Fifty
+independent Chrome component observations pass for fresh/reused measurements
+and paint. Stripe feature-card padding is32px at all15 live theme/scale settings,
+and first-card height differs by at most0.047 CSS px. Native reviews are clean.
+The old ~22px section difference was script geometry; baseline paint already
+wrapped the first card correctly. A25.36px business-section discrepancy at1.75×
+remains, and full-page height/pixels/journeys need further checks. No acceptance
+count changes. See [evidence](../../measurements/2026-11-10-query-measurement/README.md).
+
+The preceding checkpoint follows:
+
 2026-11-10, inline text spacing: spans now use their own letter/word spacing,
 including after line-boundary reshaping, and safe text-item boundaries retain
 fractional advances. Stripe’s first inline heading is593.23px rather than

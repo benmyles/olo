@@ -1,0 +1,8 @@
+{
+  "crates/web/src/page.rs": "5a1cb4ac58704ecedd1acd733fae41c61ffbabfa6e8987f694923471468eb7de",
+  "crates/web/src/css/style/job.rs": "e9659972083b275d64b6eff7317ff10056e8549f2f2f1b3c6307912dbedb98e5",
+  "crates/web/tests/query_measure.rs": "52b7cf468fbd928f76a330dabf7c74badc84d4e419cf379b4f18f00b137414f4",
+  "crates/web/tests/query-measure-fixtures/base.html": "b853d173f60d4dd4c23e9360f7f5741f3315a866e36b83f5bf0725b8e5d01504",
+  "crates/web/tests/query-measure-fixtures/cases.json": "a3d1d77c98458040985ca2a443d5de08cfbd92ac1bcba9a5375f63a4c7c904f3",
+  "crates/web/tests/query-measure-fixtures/chrome.json": "f714f2efbe487f573a0884dcb20fc99bfb8f07bda13ec1c7c03132215daa824e"
+}

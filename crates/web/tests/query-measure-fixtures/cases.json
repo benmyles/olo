@@ -1,0 +1,58 @@
+[
+  {
+    "id": "wide",
+    "styles": {}
+  },
+  {
+    "id": "narrow",
+    "styles": {
+      "grid": "width:480px",
+      "chain": "width:200px"
+    }
+  },
+  {
+    "id": "middle",
+    "styles": {
+      "grid": "width:520px"
+    }
+  },
+  {
+    "id": "renamed",
+    "styles": {
+      "a": "container-name:other"
+    }
+  },
+  {
+    "id": "removed",
+    "styles": {
+      "a": "container-type:normal",
+      "chain": "container-type:normal"
+    }
+  },
+  {
+    "id": "restored",
+    "styles": {}
+  },
+  {
+    "id": "border-box",
+    "styles": {
+      "a": "padding:20px;border:2px solid"
+    }
+  },
+  {
+    "id": "size-container",
+    "styles": {
+      "a": "container-type:size;height:100px"
+    }
+  },
+  {
+    "id": "hidden",
+    "styles": {
+      "a": "display:none"
+    }
+  },
+  {
+    "id": "restored-again",
+    "styles": {}
+  }
+]

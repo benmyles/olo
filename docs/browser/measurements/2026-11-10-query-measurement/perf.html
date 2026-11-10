@@ -1,0 +1,16 @@
+<!doctype html><style>
+html,body{margin:0}*{box-sizing:border-box}#grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:600px}.card{container:card / inline-size;display:flex;flex-direction:column}.content{padding:8px 16px}.leaf{height:20px}
+@container card (min-width:248px){.content{padding-right:24px}}
+@container card (min-width:264px){.content{padding-right:32px}}
+#chain{width:300px;container:c0 / inline-size}.nested{width:100px}
+#n1{container:c1 / inline-size}#n2{container:c2 / inline-size}#n3{container:c3 / inline-size}#n4{container:c4 / inline-size}#n5{container:c5 / inline-size}
+#end{height:10px}
+@container c0 (min-width:250px){#n1{width:300px}}
+@container c1 (min-width:250px){#n2{width:300px}}
+@container c2 (min-width:250px){#n3{width:300px}}
+@container c3 (min-width:250px){#n4{width:300px}}
+@container c4 (min-width:250px){#n5{width:300px}}
+@container c5 (min-width:250px){#end{height:37px}}
+</style><div id=grid><div id=a class=card><div id=ac class=content><div id=al class=leaf></div></div></div><div id=b class=card><div id=bc class=content><div id=bl class=leaf></div></div></div><div id=chain><div id=n1 class=nested><div id=n2 class=nested><div id=n3 class=nested><div id=n4 class=nested><div id=n5 class=nested><div id=end></div></div></div></div></div></div></div>
+<title>Container query performance</title><style>body{min-height:2400px;background:white;color:#142132}#grid{max-width:100%}h1{font:24px "Noto Sans"}</style><h1>Container query performance</h1><script>const results={cached:[],changed:[],sizes:[]};const grid=document.getElementById('grid'),chain=document.getElementById('chain'),leaf=document.getElementById('al'),end=document.getElementById('end');
+function round(){let sum=0,t=performance.now();for(let i=0;i<3000;i++)sum+=document.documentElement.scrollHeight+document.documentElement.clientWidth+visualViewport.width;results.cached.push(performance.now()-t);const sizes=[];t=performance.now();for(let i=0;i<20;i++){grid.style.width=i%2?'480px':'600px';chain.style.width=i%2?'200px':'300px';sizes.push([Math.round(leaf.getBoundingClientRect().width*1000)/1000,end.getBoundingClientRect().height])}results.changed.push(performance.now()-t);results.sizes.push(sizes);if(results.changed.length<7){setTimeout(round,100);return;}grid.style.width='600px';chain.style.width='300px';console.log('QUERY_BENCH '+JSON.stringify(results))}setTimeout(round,250)</script>

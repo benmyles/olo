@@ -2825,3 +2825,27 @@ min/max-content containers at five live scales. The fixture README documents
 Chrome/draft differences and limits. Native Stripe overflow and release costs
 are recorded in `measurements/2026-11-10-replaced-intrinsics/README.md`. Vertical
 page flow and complete replaced-element conformance remain open.
+
+
+## Container-query measurement and corrective cascades
+
+`Measurer` now supplies previous query-container sizes to style matching, then
+repeats worker style/layout passes until both query sizes and viewport-unit
+bases settle. It bypasses inline-style patching when resized containers require
+descendant rematching. Removed containers participate in invalidation too.
+The paint path uses the same 64-round resource bound instead of returning an
+unsettled result after three corrections. Exhaustion reports a layout limit;
+all passes retain existing cancellation checks. No new polling is introduced.
+
+A name/type change can alter query selection without changing dimensions.
+The shared style job rejects a local patch in that case and rematches the
+affected composed subtree during its incremental walk. This is not complete
+shadow-tree query support; ancestor selection and other container semantics
+still need their own conformance work. The rule follows the
+[CSS Conditional 5 query evaluation model](https://www.w3.org/TR/css-conditional-5/).
+
+`query_measure` checks fresh and reused script measurements plus incremental
+paint geometry against50 independent Chrome observations at five scales,
+including a six-level query cascade and same-width renaming. Live Stripe
+card padding now agrees with Chrome; section and pixel differences remain.
+See `measurements/2026-11-10-query-measurement/README.md` for evidence and costs.

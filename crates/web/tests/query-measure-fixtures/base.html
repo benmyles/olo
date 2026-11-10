@@ -1,0 +1,14 @@
+<!doctype html><style>
+html,body{margin:0}*{box-sizing:border-box}#grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:600px}.card{container:card / inline-size;display:flex;flex-direction:column}.content{padding:8px 16px}.leaf{height:20px}
+@container card (min-width:248px){.content{padding-right:24px}}
+@container card (min-width:264px){.content{padding-right:32px}}
+#chain{width:300px;container:c0 / inline-size}.nested{width:100px}
+#n1{container:c1 / inline-size}#n2{container:c2 / inline-size}#n3{container:c3 / inline-size}#n4{container:c4 / inline-size}#n5{container:c5 / inline-size}
+#end{height:10px}
+@container c0 (min-width:250px){#n1{width:300px}}
+@container c1 (min-width:250px){#n2{width:300px}}
+@container c2 (min-width:250px){#n3{width:300px}}
+@container c3 (min-width:250px){#n4{width:300px}}
+@container c4 (min-width:250px){#n5{width:300px}}
+@container c5 (min-width:250px){#end{height:37px}}
+</style><div id=grid><div id=a class=card><div id=ac class=content><div id=al class=leaf></div></div></div><div id=b class=card><div id=bc class=content><div id=bl class=leaf></div></div></div><div id=chain><div id=n1 class=nested><div id=n2 class=nested><div id=n3 class=nested><div id=n4 class=nested><div id=n5 class=nested><div id=end></div></div></div></div></div></div></div>

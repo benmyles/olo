@@ -1,0 +1,868 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/ben/worktrees/olo/browser/smithay/smithay/Cargo.toml
+workspace: /home/ben/worktrees/olo/browser/Cargo.toml
+warning: unnecessary parentheses around closure body
+  --> crates/web/src/chunked.rs:55:143
+   |
+55 | ...e_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+   |                                                    ^                              ^
+   |
+   = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+   |
+55 -         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+55 +         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| i * CHUNK..i * CHUNK + c.len())
+   |
+
+warning: unused attribute `allow`
+  --> crates/web/src/paint/image.rs:44:1
+   |
+44 | #[allow(clippy::too_many_arguments)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: the built-in attribute `allow` will be ignored, since it's applied to the macro invocation `thread_local`
+  --> crates/web/src/paint/image.rs:45:1
+   |
+45 | thread_local! {
+   | ^^^^^^^^^^^^
+   = note: `#[warn(unused_attributes)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `size` is never read
+   --> crates/web/src/css/properties/font.rs:274:20
+    |
+274 |     let mut size = None;
+    |                    ^^^^ this value is reassigned later and never used
+...
+353 |     size = Some(super::parse::component(Property::FontSize.grammar(), c, limits, cancelled)?);
+    |     ---- `size` is overwritten here before the previous value is read
+    |
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `family` is never read
+   --> crates/web/src/css/properties/font.rs:276:22
+    |
+276 |     let mut family = None;
+    |                      ^^^^ this value is reassigned later and never used
+...
+363 |     family = Some(Families::parse(parts[i..].iter().copied(), cancelled)?);
+    |     ------ `family` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+   --> crates/web/src/css/style/job.rs:536:25
+    |
+536 |                     let mut walk = |root: NodeId, reach: &selectors::Reach, nodes: &mut crate::dom::NodeSet| {
+    |                         ----^^^^
+    |                         |
+    |                         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates/web/src/page/interaction.rs:38:13
+   |
+38 |         let mut differ = |a: Option<NodeId>, b: Option<NodeId>, state: State, out: &mut Vec<(NodeId, &'static str)>| {
+   |             ----^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: value assigned to `path` is never read
+   --> crates/web/src/page.rs:955:24
+    |
+955 |         let mut path = String::new();
+    |                        ^^^^^^^^^^^^^ this value is reassigned later and never used
+...
+965 |                             path = format!("patched in place, {} elements", nodes.len());
+    |                             ---- `path` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+    --> crates/web/src/page.rs:3971:13
+     |
+3971 |         let mut subject = |a: crate::dom::NodeId, reached: &mut Vec<crate::dom::NodeId>| {
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: value assigned to `skip` is never read
+    --> crates/web/src/svg/viewport.rs:949:24
+     |
+ 949 |         let mut skip = false;
+     |                        ^^^^^ this value is reassigned later and never used
+...
+1019 |             skip = true;
+     |             ----------- `skip` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+  --> crates/web/src/text/prepare.rs:79:23
+   |
+79 |         let single = |mut it: &mut dyn Iterator<Item = char>| {
+   |                       ----^^
+   |                       |
+   |                       help: remove this `mut`
+
+warning: method `get_mut` is never used
+  --> crates/web/src/chunked.rs:57:19
+   |
+22 | impl<T: Clone> Chunked<T> {
+   | ------------------------- method in this implementation
+...
+57 |     pub(crate) fn get_mut(&mut self, i: usize) -> Option<&mut T> {
+   |                   ^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated function `new` is never used
+  --> crates/web/src/paint/index.rs:16:12
+   |
+15 | impl Index {
+   | ---------- associated function in this implementation
+16 |     pub fn new(commands: &[Command], transforms: &[[f64; 6]], cancel: Option<&AtomicBool>) -> Result<Self> {
+   |            ^^^
+
+warning: variant `Quad` is never constructed
+   --> crates/web/src/svg/script.rs:258:5
+    |
+256 | enum Seg {
+    |      --- variant in this enum
+257 |     Line(F, F),
+258 |     Quad([F; 3]),
+    |     ^^^^
+    |
+    = note: `Seg` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: `olo-web` (lib) generated 13 warnings (run `cargo fix --lib -p olo-web` to apply 6 suggestions)
+   Compiling olo-web v0.1.0 (/home/ben/worktrees/olo/browser/crates/web)
+    Finished `release` profile [optimized + debuginfo] target(s) in 2.92s
+     Running tests/query_measure.rs (target/release/deps/query_measure-65a12e2f99383223)
+
+running 2 tests
+test nested_query_paint_layout_settles_beyond_three_rounds ... FAILED
+test container_queries_settle_before_script_geometry_is_returned ... FAILED
+
+failures:
+
+---- nested_query_paint_layout_settles_beyond_three_rounds stdout ----
+
+thread 'nested_query_paint_layout_settles_beyond_three_rounds' (2224819) panicked at crates/web/tests/query_measure.rs:83:5:
+assertion `left == right` failed
+  left: 10.0
+ right: 37.0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- container_queries_settle_before_script_geometry_is_returned stdout ----
+
+thread 'container_queries_settle_before_script_geometry_is_returned' (2224818) panicked at crates/web/tests/query_measure.rs:68:5:
+705 differences:
+"wide" 1 ac padding-right 16px != "32px"
+"wide" 1 al[2]: reused 268, fresh 268, Chrome 252
+"wide" 1 bc padding-right 16px != "32px"
+"wide" 1 bl[2]: reused 260, fresh 260, Chrome 244
+"wide" 1 chain[3]: reused 10, fresh 10, Chrome 37
+"wide" 1 end[2]: reused 100, fresh 100, Chrome 300
+"wide" 1 end[3]: reused 10, fresh 10, Chrome 37
+"wide" 1 grid[3]: reused 54, fresh 54, Chrome 81
+"wide" 1 n1[2]: reused 100, fresh 100, Chrome 300
+"wide" 1 n1[3]: reused 10, fresh 10, Chrome 37
+"wide" 1 n2[2]: reused 100, fresh 100, Chrome 300
+"wide" 1 n2[3]: reused 10, fresh 10, Chrome 37
+"wide" 1 n3[2]: reused 100, fresh 100, Chrome 300
+"wide" 1 n3[3]: reused 10, fresh 10, Chrome 37
+"wide" 1 n4[2]: reused 100, fresh 100, Chrome 300
+"wide" 1 n4[3]: reused 10, fresh 10, Chrome 37
+"wide" 1 n5[2]: reused 100, fresh 100, Chrome 300
+"wide" 1 n5[3]: reused 10, fresh 10, Chrome 37
+"middle" 1 ac padding-right 16px != "32px"
+"middle" 1 al[2]: reused 268, fresh 268, Chrome 252
+"middle" 1 chain[3]: reused 10, fresh 10, Chrome 37
+"middle" 1 end[2]: reused 100, fresh 100, Chrome 300
+"middle" 1 end[3]: reused 10, fresh 10, Chrome 37
+"middle" 1 grid[3]: reused 54, fresh 54, Chrome 81
+"middle" 1 n1[2]: reused 100, fresh 100, Chrome 300
+"middle" 1 n1[3]: reused 10, fresh 10, Chrome 37
+"middle" 1 n2[2]: reused 100, fresh 100, Chrome 300
+"middle" 1 n2[3]: reused 10, fresh 10, Chrome 37
+"middle" 1 n3[2]: reused 100, fresh 100, Chrome 300
+"middle" 1 n3[3]: reused 10, fresh 10, Chrome 37
+"middle" 1 n4[2]: reused 100, fresh 100, Chrome 300
+"middle" 1 n4[3]: reused 10, fresh 10, Chrome 37
+"middle" 1 n5[2]: reused 100, fresh 100, Chrome 300
+"middle" 1 n5[3]: reused 10, fresh 10, Chrome 37
+"renamed" 1 bc padding-right 16px != "32px"
+"renamed" 1 bl[2]: reused 260, fresh 260, Chrome 244
+"renamed" 1 chain[3]: reused 10, fresh 10, Chrome 37
+"renamed" 1 end[2]: reused 100, fresh 100, Chrome 300
+"renamed" 1 end[3]: reused 10, fresh 10, Chrome 37
+"renamed" 1 grid[3]: reused 54, fresh 54, Chrome 81
+"renamed" 1 n1[2]: reused 100, fresh 100, Chrome 300
+"renamed" 1 n1[3]: reused 10, fresh 10, Chrome 37
+"renamed" 1 n2[2]: reused 100, fresh 100, Chrome 300
+"renamed" 1 n2[3]: reused 10, fresh 10, Chrome 37
+"renamed" 1 n3[2]: reused 100, fresh 100, Chrome 300
+"renamed" 1 n3[3]: reused 10, fresh 10, Chrome 37
+"renamed" 1 n4[2]: reused 100, fresh 100, Chrome 300
+"renamed" 1 n4[3]: reused 10, fresh 10, Chrome 37
+"renamed" 1 n5[2]: reused 100, fresh 100, Chrome 300
+"renamed" 1 n5[3]: reused 10, fresh 10, Chrome 37
+"removed" 1 bc padding-right 16px != "32px"
+"removed" 1 bl[2]: reused 260, fresh 260, Chrome 244
+"restored" 1 ac padding-right 16px != "32px"
+"restored" 1 al[2]: reused 268, fresh 268, Chrome 252
+"restored" 1 bc padding-right 16px != "32px"
+"restored" 1 bl[2]: reused 260, fresh 260, Chrome 244
+"restored" 1 chain[3]: reused 10, fresh 10, Chrome 37
+"restored" 1 end[2]: reused 100, fresh 100, Chrome 300
+"restored" 1 end[3]: reused 10, fresh 10, Chrome 37
+"restored" 1 grid[3]: reused 54, fresh 54, Chrome 81
+"restored" 1 n1[2]: reused 100, fresh 100, Chrome 300
+"restored" 1 n1[3]: reused 10, fresh 10, Chrome 37
+"restored" 1 n2[2]: reused 100, fresh 100, Chrome 300
+"restored" 1 n2[3]: reused 10, fresh 10, Chrome 37
+"restored" 1 n3[2]: reused 100, fresh 100, Chrome 300
+"restored" 1 n3[3]: reused 10, fresh 10, Chrome 37
+"restored" 1 n4[2]: reused 100, fresh 100, Chrome 300
+"restored" 1 n4[3]: reused 10, fresh 10, Chrome 37
+"restored" 1 n5[2]: reused 100, fresh 100, Chrome 300
+"restored" 1 n5[3]: reused 10, fresh 10, Chrome 37
+"border-box" 1 ac padding-right 16px != "24px"
+"border-box" 1 al[2]: reused 224, fresh 224, Chrome 216
+"border-box" 1 bc padding-right 16px != "32px"
+"border-box" 1 bl[2]: reused 260, fresh 260, Chrome 244
+"border-box" 1 chain[3]: reused 10, fresh 10, Chrome 37
+"border-box" 1 end[2]: reused 100, fresh 100, Chrome 300
+"border-box" 1 end[3]: reused 10, fresh 10, Chrome 37
+"border-box" 1 grid[3]: reused 98, fresh 98, Chrome 125
+"border-box" 1 n1[2]: reused 100, fresh 100, Chrome 300
+"border-box" 1 n1[3]: reused 10, fresh 10, Chrome 37
+"border-box" 1 n2[2]: reused 100, fresh 100, Chrome 300
+"border-box" 1 n2[3]: reused 10, fresh 10, Chrome 37
+"border-box" 1 n3[2]: reused 100, fresh 100, Chrome 300
+"border-box" 1 n3[3]: reused 10, fresh 10, Chrome 37
+"border-box" 1 n4[2]: reused 100, fresh 100, Chrome 300
+"border-box" 1 n4[3]: reused 10, fresh 10, Chrome 37
+"border-box" 1 n5[2]: reused 100, fresh 100, Chrome 300
+"border-box" 1 n5[3]: reused 10, fresh 10, Chrome 37
+"size-container" 1 ac padding-right 16px != "32px"
+"size-container" 1 al[2]: reused 268, fresh 268, Chrome 252
+"size-container" 1 bc padding-right 16px != "32px"
+"size-container" 1 bl[2]: reused 260, fresh 260, Chrome 244
+"size-container" 1 chain[3]: reused 10, fresh 10, Chrome 37
+"size-container" 1 end[2]: reused 100, fresh 100, Chrome 300
+"size-container" 1 end[3]: reused 10, fresh 10, Chrome 37
+"size-container" 1 grid[3]: reused 118, fresh 118, Chrome 145
+"size-container" 1 n1[2]: reused 100, fresh 100, Chrome 300
+"size-container" 1 n1[3]: reused 10, fresh 10, Chrome 37
+"size-container" 1 n2[2]: reused 100, fresh 100, Chrome 300
+"size-container" 1 n2[3]: reused 10, fresh 10, Chrome 37
+"size-container" 1 n3[2]: reused 100, fresh 100, Chrome 300
+"size-container" 1 n3[3]: reused 10, fresh 10, Chrome 37
+"size-container" 1 n4[2]: reused 100, fresh 100, Chrome 300
+"size-container" 1 n4[3]: reused 10, fresh 10, Chrome 37
+"size-container" 1 n5[2]: reused 100, fresh 100, Chrome 300
+"size-container" 1 n5[3]: reused 10, fresh 10, Chrome 37
+"hidden" 1 b[3]: reused 36, fresh 36, Chrome 37
+"hidden" 1 bc padding-right 16px != "32px"
+"hidden" 1 bl[2]: reused 260, fresh 260, Chrome 244
+"hidden" 1 chain[3]: reused 36, fresh 36, Chrome 37
+"hidden" 1 end[2]: reused 100, fresh 100, Chrome 300
+"hidden" 1 end[3]: reused 10, fresh 10, Chrome 37
+"hidden" 1 grid[3]: reused 36, fresh 36, Chrome 37
+"hidden" 1 n1[2]: reused 100, fresh 100, Chrome 300
+"hidden" 1 n1[3]: reused 10, fresh 10, Chrome 37
+"hidden" 1 n2[2]: reused 100, fresh 100, Chrome 300
+"hidden" 1 n2[3]: reused 10, fresh 10, Chrome 37
+"hidden" 1 n3[2]: reused 100, fresh 100, Chrome 300
+"hidden" 1 n3[3]: reused 10, fresh 10, Chrome 37
+"hidden" 1 n4[2]: reused 100, fresh 100, Chrome 300
+"hidden" 1 n4[3]: reused 10, fresh 10, Chrome 37
+"hidden" 1 n5[2]: reused 100, fresh 100, Chrome 300
+"hidden" 1 n5[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 1 ac padding-right 16px != "32px"
+"restored-again" 1 al[2]: reused 268, fresh 268, Chrome 252
+"restored-again" 1 bc padding-right 16px != "32px"
+"restored-again" 1 bl[2]: reused 260, fresh 260, Chrome 244
+"restored-again" 1 chain[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 1 end[2]: reused 100, fresh 100, Chrome 300
+"restored-again" 1 end[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 1 grid[3]: reused 54, fresh 54, Chrome 81
+"restored-again" 1 n1[2]: reused 100, fresh 100, Chrome 300
+"restored-again" 1 n1[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 1 n2[2]: reused 100, fresh 100, Chrome 300
+"restored-again" 1 n2[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 1 n3[2]: reused 100, fresh 100, Chrome 300
+"restored-again" 1 n3[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 1 n4[2]: reused 100, fresh 100, Chrome 300
+"restored-again" 1 n4[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 1 n5[2]: reused 100, fresh 100, Chrome 300
+"restored-again" 1 n5[3]: reused 10, fresh 10, Chrome 37
+"wide" 1.25 ac padding-right 16px != "32px"
+"wide" 1.25 al[2]: reused 268, fresh 268, Chrome 252
+"wide" 1.25 bc padding-right 16px != "32px"
+"wide" 1.25 bl[2]: reused 260, fresh 260, Chrome 244
+"wide" 1.25 chain[3]: reused 10, fresh 10, Chrome 37
+"wide" 1.25 end[2]: reused 100, fresh 100, Chrome 300
+"wide" 1.25 end[3]: reused 10, fresh 10, Chrome 37
+"wide" 1.25 grid[3]: reused 54, fresh 54, Chrome 81
+"wide" 1.25 n1[2]: reused 100, fresh 100, Chrome 300
+"wide" 1.25 n1[3]: reused 10, fresh 10, Chrome 37
+"wide" 1.25 n2[2]: reused 100, fresh 100, Chrome 300
+"wide" 1.25 n2[3]: reused 10, fresh 10, Chrome 37
+"wide" 1.25 n3[2]: reused 100, fresh 100, Chrome 300
+"wide" 1.25 n3[3]: reused 10, fresh 10, Chrome 37
+"wide" 1.25 n4[2]: reused 100, fresh 100, Chrome 300
+"wide" 1.25 n4[3]: reused 10, fresh 10, Chrome 37
+"wide" 1.25 n5[2]: reused 100, fresh 100, Chrome 300
+"wide" 1.25 n5[3]: reused 10, fresh 10, Chrome 37
+"middle" 1.25 ac padding-right 16px != "32px"
+"middle" 1.25 al[2]: reused 268, fresh 268, Chrome 252
+"middle" 1.25 chain[3]: reused 10, fresh 10, Chrome 37
+"middle" 1.25 end[2]: reused 100, fresh 100, Chrome 300
+"middle" 1.25 end[3]: reused 10, fresh 10, Chrome 37
+"middle" 1.25 grid[3]: reused 54, fresh 54, Chrome 81
+"middle" 1.25 n1[2]: reused 100, fresh 100, Chrome 300
+"middle" 1.25 n1[3]: reused 10, fresh 10, Chrome 37
+"middle" 1.25 n2[2]: reused 100, fresh 100, Chrome 300
+"middle" 1.25 n2[3]: reused 10, fresh 10, Chrome 37
+"middle" 1.25 n3[2]: reused 100, fresh 100, Chrome 300
+"middle" 1.25 n3[3]: reused 10, fresh 10, Chrome 37
+"middle" 1.25 n4[2]: reused 100, fresh 100, Chrome 300
+"middle" 1.25 n4[3]: reused 10, fresh 10, Chrome 37
+"middle" 1.25 n5[2]: reused 100, fresh 100, Chrome 300
+"middle" 1.25 n5[3]: reused 10, fresh 10, Chrome 37
+"renamed" 1.25 bc padding-right 16px != "32px"
+"renamed" 1.25 bl[2]: reused 260, fresh 260, Chrome 244
+"renamed" 1.25 chain[3]: reused 10, fresh 10, Chrome 37
+"renamed" 1.25 end[2]: reused 100, fresh 100, Chrome 300
+"renamed" 1.25 end[3]: reused 10, fresh 10, Chrome 37
+"renamed" 1.25 grid[3]: reused 54, fresh 54, Chrome 81
+"renamed" 1.25 n1[2]: reused 100, fresh 100, Chrome 300
+"renamed" 1.25 n1[3]: reused 10, fresh 10, Chrome 37
+"renamed" 1.25 n2[2]: reused 100, fresh 100, Chrome 300
+"renamed" 1.25 n2[3]: reused 10, fresh 10, Chrome 37
+"renamed" 1.25 n3[2]: reused 100, fresh 100, Chrome 300
+"renamed" 1.25 n3[3]: reused 10, fresh 10, Chrome 37
+"renamed" 1.25 n4[2]: reused 100, fresh 100, Chrome 300
+"renamed" 1.25 n4[3]: reused 10, fresh 10, Chrome 37
+"renamed" 1.25 n5[2]: reused 100, fresh 100, Chrome 300
+"renamed" 1.25 n5[3]: reused 10, fresh 10, Chrome 37
+"removed" 1.25 bc padding-right 16px != "32px"
+"removed" 1.25 bl[2]: reused 260, fresh 260, Chrome 244
+"restored" 1.25 ac padding-right 16px != "32px"
+"restored" 1.25 al[2]: reused 268, fresh 268, Chrome 252
+"restored" 1.25 bc padding-right 16px != "32px"
+"restored" 1.25 bl[2]: reused 260, fresh 260, Chrome 244
+"restored" 1.25 chain[3]: reused 10, fresh 10, Chrome 37
+"restored" 1.25 end[2]: reused 100, fresh 100, Chrome 300
+"restored" 1.25 end[3]: reused 10, fresh 10, Chrome 37
+"restored" 1.25 grid[3]: reused 54, fresh 54, Chrome 81
+"restored" 1.25 n1[2]: reused 100, fresh 100, Chrome 300
+"restored" 1.25 n1[3]: reused 10, fresh 10, Chrome 37
+"restored" 1.25 n2[2]: reused 100, fresh 100, Chrome 300
+"restored" 1.25 n2[3]: reused 10, fresh 10, Chrome 37
+"restored" 1.25 n3[2]: reused 100, fresh 100, Chrome 300
+"restored" 1.25 n3[3]: reused 10, fresh 10, Chrome 37
+"restored" 1.25 n4[2]: reused 100, fresh 100, Chrome 300
+"restored" 1.25 n4[3]: reused 10, fresh 10, Chrome 37
+"restored" 1.25 n5[2]: reused 100, fresh 100, Chrome 300
+"restored" 1.25 n5[3]: reused 10, fresh 10, Chrome 37
+"border-box" 1.25 ac padding-right 16px != "24px"
+"border-box" 1.25 al[2]: reused 224.8, fresh 224.8, Chrome 216.8000030517578
+"border-box" 1.25 bc padding-right 16px != "32px"
+"border-box" 1.25 bl[2]: reused 260, fresh 260, Chrome 244
+"border-box" 1.25 chain[3]: reused 10, fresh 10, Chrome 37
+"border-box" 1.25 end[2]: reused 100, fresh 100, Chrome 300
+"border-box" 1.25 end[3]: reused 10, fresh 10, Chrome 37
+"border-box" 1.25 grid[3]: reused 97.2, fresh 97.2, Chrome 124.20000457763672
+"border-box" 1.25 n1[2]: reused 100, fresh 100, Chrome 300
+"border-box" 1.25 n1[3]: reused 10, fresh 10, Chrome 37
+"border-box" 1.25 n2[2]: reused 100, fresh 100, Chrome 300
+"border-box" 1.25 n2[3]: reused 10, fresh 10, Chrome 37
+"border-box" 1.25 n3[2]: reused 100, fresh 100, Chrome 300
+"border-box" 1.25 n3[3]: reused 10, fresh 10, Chrome 37
+"border-box" 1.25 n4[2]: reused 100, fresh 100, Chrome 300
+"border-box" 1.25 n4[3]: reused 10, fresh 10, Chrome 37
+"border-box" 1.25 n5[2]: reused 100, fresh 100, Chrome 300
+"border-box" 1.25 n5[3]: reused 10, fresh 10, Chrome 37
+"size-container" 1.25 ac padding-right 16px != "32px"
+"size-container" 1.25 al[2]: reused 268, fresh 268, Chrome 252
+"size-container" 1.25 bc padding-right 16px != "32px"
+"size-container" 1.25 bl[2]: reused 260, fresh 260, Chrome 244
+"size-container" 1.25 chain[3]: reused 10, fresh 10, Chrome 37
+"size-container" 1.25 end[2]: reused 100, fresh 100, Chrome 300
+"size-container" 1.25 end[3]: reused 10, fresh 10, Chrome 37
+"size-container" 1.25 grid[3]: reused 118, fresh 118, Chrome 145
+"size-container" 1.25 n1[2]: reused 100, fresh 100, Chrome 300
+"size-container" 1.25 n1[3]: reused 10, fresh 10, Chrome 37
+"size-container" 1.25 n2[2]: reused 100, fresh 100, Chrome 300
+"size-container" 1.25 n2[3]: reused 10, fresh 10, Chrome 37
+"size-container" 1.25 n3[2]: reused 100, fresh 100, Chrome 300
+"size-container" 1.25 n3[3]: reused 10, fresh 10, Chrome 37
+"size-container" 1.25 n4[2]: reused 100, fresh 100, Chrome 300
+"size-container" 1.25 n4[3]: reused 10, fresh 10, Chrome 37
+"size-container" 1.25 n5[2]: reused 100, fresh 100, Chrome 300
+"size-container" 1.25 n5[3]: reused 10, fresh 10, Chrome 37
+"hidden" 1.25 b[3]: reused 36, fresh 36, Chrome 37
+"hidden" 1.25 bc padding-right 16px != "32px"
+"hidden" 1.25 bl[2]: reused 260, fresh 260, Chrome 244
+"hidden" 1.25 chain[3]: reused 36, fresh 36, Chrome 37
+"hidden" 1.25 end[2]: reused 100, fresh 100, Chrome 300
+"hidden" 1.25 end[3]: reused 10, fresh 10, Chrome 37
+"hidden" 1.25 grid[3]: reused 36, fresh 36, Chrome 37
+"hidden" 1.25 n1[2]: reused 100, fresh 100, Chrome 300
+"hidden" 1.25 n1[3]: reused 10, fresh 10, Chrome 37
+"hidden" 1.25 n2[2]: reused 100, fresh 100, Chrome 300
+"hidden" 1.25 n2[3]: reused 10, fresh 10, Chrome 37
+"hidden" 1.25 n3[2]: reused 100, fresh 100, Chrome 300
+"hidden" 1.25 n3[3]: reused 10, fresh 10, Chrome 37
+"hidden" 1.25 n4[2]: reused 100, fresh 100, Chrome 300
+"hidden" 1.25 n4[3]: reused 10, fresh 10, Chrome 37
+"hidden" 1.25 n5[2]: reused 100, fresh 100, Chrome 300
+"hidden" 1.25 n5[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 1.25 ac padding-right 16px != "32px"
+"restored-again" 1.25 al[2]: reused 268, fresh 268, Chrome 252
+"restored-again" 1.25 bc padding-right 16px != "32px"
+"restored-again" 1.25 bl[2]: reused 260, fresh 260, Chrome 244
+"restored-again" 1.25 chain[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 1.25 end[2]: reused 100, fresh 100, Chrome 300
+"restored-again" 1.25 end[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 1.25 grid[3]: reused 54, fresh 54, Chrome 81
+"restored-again" 1.25 n1[2]: reused 100, fresh 100, Chrome 300
+"restored-again" 1.25 n1[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 1.25 n2[2]: reused 100, fresh 100, Chrome 300
+"restored-again" 1.25 n2[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 1.25 n3[2]: reused 100, fresh 100, Chrome 300
+"restored-again" 1.25 n3[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 1.25 n4[2]: reused 100, fresh 100, Chrome 300
+"restored-again" 1.25 n4[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 1.25 n5[2]: reused 100, fresh 100, Chrome 300
+"restored-again" 1.25 n5[3]: reused 10, fresh 10, Chrome 37
+"wide" 1.5 ac padding-right 16px != "32px"
+"wide" 1.5 al[2]: reused 268, fresh 268, Chrome 252
+"wide" 1.5 bc padding-right 16px != "32px"
+"wide" 1.5 bl[2]: reused 260, fresh 260, Chrome 244
+"wide" 1.5 chain[3]: reused 10, fresh 10, Chrome 37
+"wide" 1.5 end[2]: reused 100, fresh 100, Chrome 300
+"wide" 1.5 end[3]: reused 10, fresh 10, Chrome 37
+"wide" 1.5 grid[3]: reused 54, fresh 54, Chrome 81
+"wide" 1.5 n1[2]: reused 100, fresh 100, Chrome 300
+"wide" 1.5 n1[3]: reused 10, fresh 10, Chrome 37
+"wide" 1.5 n2[2]: reused 100, fresh 100, Chrome 300
+"wide" 1.5 n2[3]: reused 10, fresh 10, Chrome 37
+"wide" 1.5 n3[2]: reused 100, fresh 100, Chrome 300
+"wide" 1.5 n3[3]: reused 10, fresh 10, Chrome 37
+"wide" 1.5 n4[2]: reused 100, fresh 100, Chrome 300
+"wide" 1.5 n4[3]: reused 10, fresh 10, Chrome 37
+"wide" 1.5 n5[2]: reused 100, fresh 100, Chrome 300
+"wide" 1.5 n5[3]: reused 10, fresh 10, Chrome 37
+"middle" 1.5 ac padding-right 16px != "32px"
+"middle" 1.5 al[2]: reused 268, fresh 268, Chrome 252
+"middle" 1.5 chain[3]: reused 10, fresh 10, Chrome 37
+"middle" 1.5 end[2]: reused 100, fresh 100, Chrome 300
+"middle" 1.5 end[3]: reused 10, fresh 10, Chrome 37
+"middle" 1.5 grid[3]: reused 54, fresh 54, Chrome 81
+"middle" 1.5 n1[2]: reused 100, fresh 100, Chrome 300
+"middle" 1.5 n1[3]: reused 10, fresh 10, Chrome 37
+"middle" 1.5 n2[2]: reused 100, fresh 100, Chrome 300
+"middle" 1.5 n2[3]: reused 10, fresh 10, Chrome 37
+"middle" 1.5 n3[2]: reused 100, fresh 100, Chrome 300
+"middle" 1.5 n3[3]: reused 10, fresh 10, Chrome 37
+"middle" 1.5 n4[2]: reused 100, fresh 100, Chrome 300
+"middle" 1.5 n4[3]: reused 10, fresh 10, Chrome 37
+"middle" 1.5 n5[2]: reused 100, fresh 100, Chrome 300
+"middle" 1.5 n5[3]: reused 10, fresh 10, Chrome 37
+"renamed" 1.5 bc padding-right 16px != "32px"
+"renamed" 1.5 bl[2]: reused 260, fresh 260, Chrome 244
+"renamed" 1.5 chain[3]: reused 10, fresh 10, Chrome 37
+"renamed" 1.5 end[2]: reused 100, fresh 100, Chrome 300
+"renamed" 1.5 end[3]: reused 10, fresh 10, Chrome 37
+"renamed" 1.5 grid[3]: reused 54, fresh 54, Chrome 81
+"renamed" 1.5 n1[2]: reused 100, fresh 100, Chrome 300
+"renamed" 1.5 n1[3]: reused 10, fresh 10, Chrome 37
+"renamed" 1.5 n2[2]: reused 100, fresh 100, Chrome 300
+"renamed" 1.5 n2[3]: reused 10, fresh 10, Chrome 37
+"renamed" 1.5 n3[2]: reused 100, fresh 100, Chrome 300
+"renamed" 1.5 n3[3]: reused 10, fresh 10, Chrome 37
+"renamed" 1.5 n4[2]: reused 100, fresh 100, Chrome 300
+"renamed" 1.5 n4[3]: reused 10, fresh 10, Chrome 37
+"renamed" 1.5 n5[2]: reused 100, fresh 100, Chrome 300
+"renamed" 1.5 n5[3]: reused 10, fresh 10, Chrome 37
+"removed" 1.5 bc padding-right 16px != "32px"
+"removed" 1.5 bl[2]: reused 260, fresh 260, Chrome 244
+"restored" 1.5 ac padding-right 16px != "32px"
+"restored" 1.5 al[2]: reused 268, fresh 268, Chrome 252
+"restored" 1.5 bc padding-right 16px != "32px"
+"restored" 1.5 bl[2]: reused 260, fresh 260, Chrome 244
+"restored" 1.5 chain[3]: reused 10, fresh 10, Chrome 37
+"restored" 1.5 end[2]: reused 100, fresh 100, Chrome 300
+"restored" 1.5 end[3]: reused 10, fresh 10, Chrome 37
+"restored" 1.5 grid[3]: reused 54, fresh 54, Chrome 81
+"restored" 1.5 n1[2]: reused 100, fresh 100, Chrome 300
+"restored" 1.5 n1[3]: reused 10, fresh 10, Chrome 37
+"restored" 1.5 n2[2]: reused 100, fresh 100, Chrome 300
+"restored" 1.5 n2[3]: reused 10, fresh 10, Chrome 37
+"restored" 1.5 n3[2]: reused 100, fresh 100, Chrome 300
+"restored" 1.5 n3[3]: reused 10, fresh 10, Chrome 37
+"restored" 1.5 n4[2]: reused 100, fresh 100, Chrome 300
+"restored" 1.5 n4[3]: reused 10, fresh 10, Chrome 37
+"restored" 1.5 n5[2]: reused 100, fresh 100, Chrome 300
+"restored" 1.5 n5[3]: reused 10, fresh 10, Chrome 37
+"border-box" 1.5 ac padding-right 16px != "24px"
+"border-box" 1.5 al[2]: reused 224, fresh 224, Chrome 216
+"border-box" 1.5 bc padding-right 16px != "32px"
+"border-box" 1.5 bl[2]: reused 260, fresh 260, Chrome 244
+"border-box" 1.5 chain[3]: reused 10, fresh 10, Chrome 37
+"border-box" 1.5 end[2]: reused 100, fresh 100, Chrome 300
+"border-box" 1.5 end[3]: reused 10, fresh 10, Chrome 37
+"border-box" 1.5 grid[3]: reused 98, fresh 98, Chrome 125
+"border-box" 1.5 n1[2]: reused 100, fresh 100, Chrome 300
+"border-box" 1.5 n1[3]: reused 10, fresh 10, Chrome 37
+"border-box" 1.5 n2[2]: reused 100, fresh 100, Chrome 300
+"border-box" 1.5 n2[3]: reused 10, fresh 10, Chrome 37
+"border-box" 1.5 n3[2]: reused 100, fresh 100, Chrome 300
+"border-box" 1.5 n3[3]: reused 10, fresh 10, Chrome 37
+"border-box" 1.5 n4[2]: reused 100, fresh 100, Chrome 300
+"border-box" 1.5 n4[3]: reused 10, fresh 10, Chrome 37
+"border-box" 1.5 n5[2]: reused 100, fresh 100, Chrome 300
+"border-box" 1.5 n5[3]: reused 10, fresh 10, Chrome 37
+"size-container" 1.5 ac padding-right 16px != "32px"
+"size-container" 1.5 al[2]: reused 268, fresh 268, Chrome 252
+"size-container" 1.5 bc padding-right 16px != "32px"
+"size-container" 1.5 bl[2]: reused 260, fresh 260, Chrome 244
+"size-container" 1.5 chain[3]: reused 10, fresh 10, Chrome 37
+"size-container" 1.5 end[2]: reused 100, fresh 100, Chrome 300
+"size-container" 1.5 end[3]: reused 10, fresh 10, Chrome 37
+"size-container" 1.5 grid[3]: reused 118, fresh 118, Chrome 145
+"size-container" 1.5 n1[2]: reused 100, fresh 100, Chrome 300
+"size-container" 1.5 n1[3]: reused 10, fresh 10, Chrome 37
+"size-container" 1.5 n2[2]: reused 100, fresh 100, Chrome 300
+"size-container" 1.5 n2[3]: reused 10, fresh 10, Chrome 37
+"size-container" 1.5 n3[2]: reused 100, fresh 100, Chrome 300
+"size-container" 1.5 n3[3]: reused 10, fresh 10, Chrome 37
+"size-container" 1.5 n4[2]: reused 100, fresh 100, Chrome 300
+"size-container" 1.5 n4[3]: reused 10, fresh 10, Chrome 37
+"size-container" 1.5 n5[2]: reused 100, fresh 100, Chrome 300
+"size-container" 1.5 n5[3]: reused 10, fresh 10, Chrome 37
+"hidden" 1.5 b[3]: reused 36, fresh 36, Chrome 37
+"hidden" 1.5 bc padding-right 16px != "32px"
+"hidden" 1.5 bl[2]: reused 260, fresh 260, Chrome 244
+"hidden" 1.5 chain[3]: reused 36, fresh 36, Chrome 37
+"hidden" 1.5 end[2]: reused 100, fresh 100, Chrome 300
+"hidden" 1.5 end[3]: reused 10, fresh 10, Chrome 37
+"hidden" 1.5 grid[3]: reused 36, fresh 36, Chrome 37
+"hidden" 1.5 n1[2]: reused 100, fresh 100, Chrome 300
+"hidden" 1.5 n1[3]: reused 10, fresh 10, Chrome 37
+"hidden" 1.5 n2[2]: reused 100, fresh 100, Chrome 300
+"hidden" 1.5 n2[3]: reused 10, fresh 10, Chrome 37
+"hidden" 1.5 n3[2]: reused 100, fresh 100, Chrome 300
+"hidden" 1.5 n3[3]: reused 10, fresh 10, Chrome 37
+"hidden" 1.5 n4[2]: reused 100, fresh 100, Chrome 300
+"hidden" 1.5 n4[3]: reused 10, fresh 10, Chrome 37
+"hidden" 1.5 n5[2]: reused 100, fresh 100, Chrome 300
+"hidden" 1.5 n5[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 1.5 ac padding-right 16px != "32px"
+"restored-again" 1.5 al[2]: reused 268, fresh 268, Chrome 252
+"restored-again" 1.5 bc padding-right 16px != "32px"
+"restored-again" 1.5 bl[2]: reused 260, fresh 260, Chrome 244
+"restored-again" 1.5 chain[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 1.5 end[2]: reused 100, fresh 100, Chrome 300
+"restored-again" 1.5 end[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 1.5 grid[3]: reused 54, fresh 54, Chrome 81
+"restored-again" 1.5 n1[2]: reused 100, fresh 100, Chrome 300
+"restored-again" 1.5 n1[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 1.5 n2[2]: reused 100, fresh 100, Chrome 300
+"restored-again" 1.5 n2[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 1.5 n3[2]: reused 100, fresh 100, Chrome 300
+"restored-again" 1.5 n3[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 1.5 n4[2]: reused 100, fresh 100, Chrome 300
+"restored-again" 1.5 n4[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 1.5 n5[2]: reused 100, fresh 100, Chrome 300
+"restored-again" 1.5 n5[3]: reused 10, fresh 10, Chrome 37
+"wide" 1.75 ac padding-right 16px != "32px"
+"wide" 1.75 al[2]: reused 268, fresh 268, Chrome 252.00001525878903
+"wide" 1.75 bc padding-right 16px != "32px"
+"wide" 1.75 bl[2]: reused 260, fresh 260, Chrome 244.00001525878903
+"wide" 1.75 chain[3]: reused 10, fresh 10, Chrome 37
+"wide" 1.75 end[2]: reused 100, fresh 100, Chrome 300
+"wide" 1.75 end[3]: reused 10, fresh 10, Chrome 37
+"wide" 1.75 grid[3]: reused 54, fresh 54, Chrome 81
+"wide" 1.75 n1[2]: reused 100, fresh 100, Chrome 300
+"wide" 1.75 n1[3]: reused 10, fresh 10, Chrome 37
+"wide" 1.75 n2[2]: reused 100, fresh 100, Chrome 300
+"wide" 1.75 n2[3]: reused 10, fresh 10, Chrome 37
+"wide" 1.75 n3[2]: reused 100, fresh 100, Chrome 300
+"wide" 1.75 n3[3]: reused 10, fresh 10, Chrome 37
+"wide" 1.75 n4[2]: reused 100, fresh 100, Chrome 300
+"wide" 1.75 n4[3]: reused 10, fresh 10, Chrome 37
+"wide" 1.75 n5[2]: reused 100, fresh 100, Chrome 300
+"wide" 1.75 n5[3]: reused 10, fresh 10, Chrome 37
+"middle" 1.75 ac padding-right 16px != "32px"
+"middle" 1.75 al[2]: reused 268, fresh 268, Chrome 252.00001525878903
+"middle" 1.75 chain[3]: reused 10, fresh 10, Chrome 37
+"middle" 1.75 end[2]: reused 100, fresh 100, Chrome 300
+"middle" 1.75 end[3]: reused 10, fresh 10, Chrome 37
+"middle" 1.75 grid[3]: reused 54, fresh 54, Chrome 81
+"middle" 1.75 n1[2]: reused 100, fresh 100, Chrome 300
+"middle" 1.75 n1[3]: reused 10, fresh 10, Chrome 37
+"middle" 1.75 n2[2]: reused 100, fresh 100, Chrome 300
+"middle" 1.75 n2[3]: reused 10, fresh 10, Chrome 37
+"middle" 1.75 n3[2]: reused 100, fresh 100, Chrome 300
+"middle" 1.75 n3[3]: reused 10, fresh 10, Chrome 37
+"middle" 1.75 n4[2]: reused 100, fresh 100, Chrome 300
+"middle" 1.75 n4[3]: reused 10, fresh 10, Chrome 37
+"middle" 1.75 n5[2]: reused 100, fresh 100, Chrome 300
+"middle" 1.75 n5[3]: reused 10, fresh 10, Chrome 37
+"renamed" 1.75 bc padding-right 16px != "32px"
+"renamed" 1.75 bl[2]: reused 260, fresh 260, Chrome 244.00001525878903
+"renamed" 1.75 chain[3]: reused 10, fresh 10, Chrome 37
+"renamed" 1.75 end[2]: reused 100, fresh 100, Chrome 300
+"renamed" 1.75 end[3]: reused 10, fresh 10, Chrome 37
+"renamed" 1.75 grid[3]: reused 54, fresh 54, Chrome 81
+"renamed" 1.75 n1[2]: reused 100, fresh 100, Chrome 300
+"renamed" 1.75 n1[3]: reused 10, fresh 10, Chrome 37
+"renamed" 1.75 n2[2]: reused 100, fresh 100, Chrome 300
+"renamed" 1.75 n2[3]: reused 10, fresh 10, Chrome 37
+"renamed" 1.75 n3[2]: reused 100, fresh 100, Chrome 300
+"renamed" 1.75 n3[3]: reused 10, fresh 10, Chrome 37
+"renamed" 1.75 n4[2]: reused 100, fresh 100, Chrome 300
+"renamed" 1.75 n4[3]: reused 10, fresh 10, Chrome 37
+"renamed" 1.75 n5[2]: reused 100, fresh 100, Chrome 300
+"renamed" 1.75 n5[3]: reused 10, fresh 10, Chrome 37
+"removed" 1.75 bc padding-right 16px != "32px"
+"removed" 1.75 bl[2]: reused 260, fresh 260, Chrome 244.00001525878903
+"restored" 1.75 ac padding-right 16px != "32px"
+"restored" 1.75 al[2]: reused 268, fresh 268, Chrome 252.00001525878903
+"restored" 1.75 bc padding-right 16px != "32px"
+"restored" 1.75 bl[2]: reused 260, fresh 260, Chrome 244.00001525878903
+"restored" 1.75 chain[3]: reused 10, fresh 10, Chrome 37
+"restored" 1.75 end[2]: reused 100, fresh 100, Chrome 300
+"restored" 1.75 end[3]: reused 10, fresh 10, Chrome 37
+"restored" 1.75 grid[3]: reused 54, fresh 54, Chrome 81
+"restored" 1.75 n1[2]: reused 100, fresh 100, Chrome 300
+"restored" 1.75 n1[3]: reused 10, fresh 10, Chrome 37
+"restored" 1.75 n2[2]: reused 100, fresh 100, Chrome 300
+"restored" 1.75 n2[3]: reused 10, fresh 10, Chrome 37
+"restored" 1.75 n3[2]: reused 100, fresh 100, Chrome 300
+"restored" 1.75 n3[3]: reused 10, fresh 10, Chrome 37
+"restored" 1.75 n4[2]: reused 100, fresh 100, Chrome 300
+"restored" 1.75 n4[3]: reused 10, fresh 10, Chrome 37
+"restored" 1.75 n5[2]: reused 100, fresh 100, Chrome 300
+"restored" 1.75 n5[3]: reused 10, fresh 10, Chrome 37
+"border-box" 1.75 ac padding-right 16px != "24px"
+"border-box" 1.75 al[2]: reused 224.57142857142858, fresh 224.57142857142858, Chrome 216.57144165039065
+"border-box" 1.75 bc padding-right 16px != "32px"
+"border-box" 1.75 bl[2]: reused 260, fresh 260, Chrome 244.00001525878903
+"border-box" 1.75 chain[3]: reused 10, fresh 10, Chrome 37
+"border-box" 1.75 end[2]: reused 100, fresh 100, Chrome 300
+"border-box" 1.75 end[3]: reused 10, fresh 10, Chrome 37
+"border-box" 1.75 grid[3]: reused 97.42857142857143, fresh 97.42857142857143, Chrome 124.42857360839844
+"border-box" 1.75 n1[2]: reused 100, fresh 100, Chrome 300
+"border-box" 1.75 n1[3]: reused 10, fresh 10, Chrome 37
+"border-box" 1.75 n2[2]: reused 100, fresh 100, Chrome 300
+"border-box" 1.75 n2[3]: reused 10, fresh 10, Chrome 37
+"border-box" 1.75 n3[2]: reused 100, fresh 100, Chrome 300
+"border-box" 1.75 n3[3]: reused 10, fresh 10, Chrome 37
+"border-box" 1.75 n4[2]: reused 100, fresh 100, Chrome 300
+"border-box" 1.75 n4[3]: reused 10, fresh 10, Chrome 37
+"border-box" 1.75 n5[2]: reused 100, fresh 100, Chrome 300
+"border-box" 1.75 n5[3]: reused 10, fresh 10, Chrome 37
+"size-container" 1.75 ac padding-right 16px != "32px"
+"size-container" 1.75 al[2]: reused 268, fresh 268, Chrome 252.00001525878903
+"size-container" 1.75 bc padding-right 16px != "32px"
+"size-container" 1.75 bl[2]: reused 260, fresh 260, Chrome 244.00001525878903
+"size-container" 1.75 chain[3]: reused 10, fresh 10, Chrome 37
+"size-container" 1.75 end[2]: reused 100, fresh 100, Chrome 300
+"size-container" 1.75 end[3]: reused 10, fresh 10, Chrome 37
+"size-container" 1.75 grid[3]: reused 118, fresh 118, Chrome 145
+"size-container" 1.75 n1[2]: reused 100, fresh 100, Chrome 300
+"size-container" 1.75 n1[3]: reused 10, fresh 10, Chrome 37
+"size-container" 1.75 n2[2]: reused 100, fresh 100, Chrome 300
+"size-container" 1.75 n2[3]: reused 10, fresh 10, Chrome 37
+"size-container" 1.75 n3[2]: reused 100, fresh 100, Chrome 300
+"size-container" 1.75 n3[3]: reused 10, fresh 10, Chrome 37
+"size-container" 1.75 n4[2]: reused 100, fresh 100, Chrome 300
+"size-container" 1.75 n4[3]: reused 10, fresh 10, Chrome 37
+"size-container" 1.75 n5[2]: reused 100, fresh 100, Chrome 300
+"size-container" 1.75 n5[3]: reused 10, fresh 10, Chrome 37
+"hidden" 1.75 b[3]: reused 36, fresh 36, Chrome 37
+"hidden" 1.75 bc padding-right 16px != "32px"
+"hidden" 1.75 bl[2]: reused 260, fresh 260, Chrome 244.00001525878903
+"hidden" 1.75 chain[3]: reused 36, fresh 36, Chrome 37
+"hidden" 1.75 end[2]: reused 100, fresh 100, Chrome 300
+"hidden" 1.75 end[3]: reused 10, fresh 10, Chrome 37
+"hidden" 1.75 grid[3]: reused 36, fresh 36, Chrome 37
+"hidden" 1.75 n1[2]: reused 100, fresh 100, Chrome 300
+"hidden" 1.75 n1[3]: reused 10, fresh 10, Chrome 37
+"hidden" 1.75 n2[2]: reused 100, fresh 100, Chrome 300
+"hidden" 1.75 n2[3]: reused 10, fresh 10, Chrome 37
+"hidden" 1.75 n3[2]: reused 100, fresh 100, Chrome 300
+"hidden" 1.75 n3[3]: reused 10, fresh 10, Chrome 37
+"hidden" 1.75 n4[2]: reused 100, fresh 100, Chrome 300
+"hidden" 1.75 n4[3]: reused 10, fresh 10, Chrome 37
+"hidden" 1.75 n5[2]: reused 100, fresh 100, Chrome 300
+"hidden" 1.75 n5[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 1.75 ac padding-right 16px != "32px"
+"restored-again" 1.75 al[2]: reused 268, fresh 268, Chrome 252.00001525878903
+"restored-again" 1.75 bc padding-right 16px != "32px"
+"restored-again" 1.75 bl[2]: reused 260, fresh 260, Chrome 244.00001525878903
+"restored-again" 1.75 chain[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 1.75 end[2]: reused 100, fresh 100, Chrome 300
+"restored-again" 1.75 end[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 1.75 grid[3]: reused 54, fresh 54, Chrome 81
+"restored-again" 1.75 n1[2]: reused 100, fresh 100, Chrome 300
+"restored-again" 1.75 n1[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 1.75 n2[2]: reused 100, fresh 100, Chrome 300
+"restored-again" 1.75 n2[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 1.75 n3[2]: reused 100, fresh 100, Chrome 300
+"restored-again" 1.75 n3[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 1.75 n4[2]: reused 100, fresh 100, Chrome 300
+"restored-again" 1.75 n4[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 1.75 n5[2]: reused 100, fresh 100, Chrome 300
+"restored-again" 1.75 n5[3]: reused 10, fresh 10, Chrome 37
+"wide" 2 ac padding-right 16px != "32px"
+"wide" 2 al[2]: reused 268, fresh 268, Chrome 252
+"wide" 2 bc padding-right 16px != "32px"
+"wide" 2 bl[2]: reused 260, fresh 260, Chrome 244
+"wide" 2 chain[3]: reused 10, fresh 10, Chrome 37
+"wide" 2 end[2]: reused 100, fresh 100, Chrome 300
+"wide" 2 end[3]: reused 10, fresh 10, Chrome 37
+"wide" 2 grid[3]: reused 54, fresh 54, Chrome 81
+"wide" 2 n1[2]: reused 100, fresh 100, Chrome 300
+"wide" 2 n1[3]: reused 10, fresh 10, Chrome 37
+"wide" 2 n2[2]: reused 100, fresh 100, Chrome 300
+"wide" 2 n2[3]: reused 10, fresh 10, Chrome 37
+"wide" 2 n3[2]: reused 100, fresh 100, Chrome 300
+"wide" 2 n3[3]: reused 10, fresh 10, Chrome 37
+"wide" 2 n4[2]: reused 100, fresh 100, Chrome 300
+"wide" 2 n4[3]: reused 10, fresh 10, Chrome 37
+"wide" 2 n5[2]: reused 100, fresh 100, Chrome 300
+"wide" 2 n5[3]: reused 10, fresh 10, Chrome 37
+"middle" 2 ac padding-right 16px != "32px"
+"middle" 2 al[2]: reused 268, fresh 268, Chrome 252
+"middle" 2 chain[3]: reused 10, fresh 10, Chrome 37
+"middle" 2 end[2]: reused 100, fresh 100, Chrome 300
+"middle" 2 end[3]: reused 10, fresh 10, Chrome 37
+"middle" 2 grid[3]: reused 54, fresh 54, Chrome 81
+"middle" 2 n1[2]: reused 100, fresh 100, Chrome 300
+"middle" 2 n1[3]: reused 10, fresh 10, Chrome 37
+"middle" 2 n2[2]: reused 100, fresh 100, Chrome 300
+"middle" 2 n2[3]: reused 10, fresh 10, Chrome 37
+"middle" 2 n3[2]: reused 100, fresh 100, Chrome 300
+"middle" 2 n3[3]: reused 10, fresh 10, Chrome 37
+"middle" 2 n4[2]: reused 100, fresh 100, Chrome 300
+"middle" 2 n4[3]: reused 10, fresh 10, Chrome 37
+"middle" 2 n5[2]: reused 100, fresh 100, Chrome 300
+"middle" 2 n5[3]: reused 10, fresh 10, Chrome 37
+"renamed" 2 bc padding-right 16px != "32px"
+"renamed" 2 bl[2]: reused 260, fresh 260, Chrome 244
+"renamed" 2 chain[3]: reused 10, fresh 10, Chrome 37
+"renamed" 2 end[2]: reused 100, fresh 100, Chrome 300
+"renamed" 2 end[3]: reused 10, fresh 10, Chrome 37
+"renamed" 2 grid[3]: reused 54, fresh 54, Chrome 81
+"renamed" 2 n1[2]: reused 100, fresh 100, Chrome 300
+"renamed" 2 n1[3]: reused 10, fresh 10, Chrome 37
+"renamed" 2 n2[2]: reused 100, fresh 100, Chrome 300
+"renamed" 2 n2[3]: reused 10, fresh 10, Chrome 37
+"renamed" 2 n3[2]: reused 100, fresh 100, Chrome 300
+"renamed" 2 n3[3]: reused 10, fresh 10, Chrome 37
+"renamed" 2 n4[2]: reused 100, fresh 100, Chrome 300
+"renamed" 2 n4[3]: reused 10, fresh 10, Chrome 37
+"renamed" 2 n5[2]: reused 100, fresh 100, Chrome 300
+"renamed" 2 n5[3]: reused 10, fresh 10, Chrome 37
+"removed" 2 bc padding-right 16px != "32px"
+"removed" 2 bl[2]: reused 260, fresh 260, Chrome 244
+"restored" 2 ac padding-right 16px != "32px"
+"restored" 2 al[2]: reused 268, fresh 268, Chrome 252
+"restored" 2 bc padding-right 16px != "32px"
+"restored" 2 bl[2]: reused 260, fresh 260, Chrome 244
+"restored" 2 chain[3]: reused 10, fresh 10, Chrome 37
+"restored" 2 end[2]: reused 100, fresh 100, Chrome 300
+"restored" 2 end[3]: reused 10, fresh 10, Chrome 37
+"restored" 2 grid[3]: reused 54, fresh 54, Chrome 81
+"restored" 2 n1[2]: reused 100, fresh 100, Chrome 300
+"restored" 2 n1[3]: reused 10, fresh 10, Chrome 37
+"restored" 2 n2[2]: reused 100, fresh 100, Chrome 300
+"restored" 2 n2[3]: reused 10, fresh 10, Chrome 37
+"restored" 2 n3[2]: reused 100, fresh 100, Chrome 300
+"restored" 2 n3[3]: reused 10, fresh 10, Chrome 37
+"restored" 2 n4[2]: reused 100, fresh 100, Chrome 300
+"restored" 2 n4[3]: reused 10, fresh 10, Chrome 37
+"restored" 2 n5[2]: reused 100, fresh 100, Chrome 300
+"restored" 2 n5[3]: reused 10, fresh 10, Chrome 37
+"border-box" 2 ac padding-right 16px != "24px"
+"border-box" 2 al[2]: reused 224, fresh 224, Chrome 216
+"border-box" 2 bc padding-right 16px != "32px"
+"border-box" 2 bl[2]: reused 260, fresh 260, Chrome 244
+"border-box" 2 chain[3]: reused 10, fresh 10, Chrome 37
+"border-box" 2 end[2]: reused 100, fresh 100, Chrome 300
+"border-box" 2 end[3]: reused 10, fresh 10, Chrome 37
+"border-box" 2 grid[3]: reused 98, fresh 98, Chrome 125
+"border-box" 2 n1[2]: reused 100, fresh 100, Chrome 300
+"border-box" 2 n1[3]: reused 10, fresh 10, Chrome 37
+"border-box" 2 n2[2]: reused 100, fresh 100, Chrome 300
+"border-box" 2 n2[3]: reused 10, fresh 10, Chrome 37
+"border-box" 2 n3[2]: reused 100, fresh 100, Chrome 300
+"border-box" 2 n3[3]: reused 10, fresh 10, Chrome 37
+"border-box" 2 n4[2]: reused 100, fresh 100, Chrome 300
+"border-box" 2 n4[3]: reused 10, fresh 10, Chrome 37
+"border-box" 2 n5[2]: reused 100, fresh 100, Chrome 300
+"border-box" 2 n5[3]: reused 10, fresh 10, Chrome 37
+"size-container" 2 ac padding-right 16px != "32px"
+"size-container" 2 al[2]: reused 268, fresh 268, Chrome 252
+"size-container" 2 bc padding-right 16px != "32px"
+"size-container" 2 bl[2]: reused 260, fresh 260, Chrome 244
+"size-container" 2 chain[3]: reused 10, fresh 10, Chrome 37
+"size-container" 2 end[2]: reused 100, fresh 100, Chrome 300
+"size-container" 2 end[3]: reused 10, fresh 10, Chrome 37
+"size-container" 2 grid[3]: reused 118, fresh 118, Chrome 145
+"size-container" 2 n1[2]: reused 100, fresh 100, Chrome 300
+"size-container" 2 n1[3]: reused 10, fresh 10, Chrome 37
+"size-container" 2 n2[2]: reused 100, fresh 100, Chrome 300
+"size-container" 2 n2[3]: reused 10, fresh 10, Chrome 37
+"size-container" 2 n3[2]: reused 100, fresh 100, Chrome 300
+"size-container" 2 n3[3]: reused 10, fresh 10, Chrome 37
+"size-container" 2 n4[2]: reused 100, fresh 100, Chrome 300
+"size-container" 2 n4[3]: reused 10, fresh 10, Chrome 37
+"size-container" 2 n5[2]: reused 100, fresh 100, Chrome 300
+"size-container" 2 n5[3]: reused 10, fresh 10, Chrome 37
+"hidden" 2 b[3]: reused 36, fresh 36, Chrome 37
+"hidden" 2 bc padding-right 16px != "32px"
+"hidden" 2 bl[2]: reused 260, fresh 260, Chrome 244
+"hidden" 2 chain[3]: reused 36, fresh 36, Chrome 37
+"hidden" 2 end[2]: reused 100, fresh 100, Chrome 300
+"hidden" 2 end[3]: reused 10, fresh 10, Chrome 37
+"hidden" 2 grid[3]: reused 36, fresh 36, Chrome 37
+"hidden" 2 n1[2]: reused 100, fresh 100, Chrome 300
+"hidden" 2 n1[3]: reused 10, fresh 10, Chrome 37
+"hidden" 2 n2[2]: reused 100, fresh 100, Chrome 300
+"hidden" 2 n2[3]: reused 10, fresh 10, Chrome 37
+"hidden" 2 n3[2]: reused 100, fresh 100, Chrome 300
+"hidden" 2 n3[3]: reused 10, fresh 10, Chrome 37
+"hidden" 2 n4[2]: reused 100, fresh 100, Chrome 300
+"hidden" 2 n4[3]: reused 10, fresh 10, Chrome 37
+"hidden" 2 n5[2]: reused 100, fresh 100, Chrome 300
+"hidden" 2 n5[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 2 ac padding-right 16px != "32px"
+"restored-again" 2 al[2]: reused 268, fresh 268, Chrome 252
+"restored-again" 2 bc padding-right 16px != "32px"
+"restored-again" 2 bl[2]: reused 260, fresh 260, Chrome 244
+"restored-again" 2 chain[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 2 end[2]: reused 100, fresh 100, Chrome 300
+"restored-again" 2 end[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 2 grid[3]: reused 54, fresh 54, Chrome 81
+"restored-again" 2 n1[2]: reused 100, fresh 100, Chrome 300
+"restored-again" 2 n1[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 2 n2[2]: reused 100, fresh 100, Chrome 300
+"restored-again" 2 n2[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 2 n3[2]: reused 100, fresh 100, Chrome 300
+"restored-again" 2 n3[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 2 n4[2]: reused 100, fresh 100, Chrome 300
+"restored-again" 2 n4[3]: reused 10, fresh 10, Chrome 37
+"restored-again" 2 n5[2]: reused 100, fresh 100, Chrome 300
+"restored-again" 2 n5[3]: reused 10, fresh 10, Chrome 37
+
+
+failures:
+    container_queries_settle_before_script_geometry_is_returned
+    nested_query_paint_layout_settles_beyond_three_rounds
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+error: test failed, to rerun pass `-p olo-web --test query_measure`

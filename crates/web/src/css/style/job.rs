@@ -1276,6 +1276,17 @@ impl<'a> Job<'a> {
         // difference beyond paint means geometry may have changed.
         let mut style = style;
         let same = self.previous.as_ref().and_then(|inc| inc.tree.index(node)).is_some_and(|i| self.previous.as_ref().unwrap().tree.styles[i].style.same_as(&style));
+        // Query selection depends on ancestors' names and containment, even
+        // when their dimensions and inherited properties have not changed.
+        // Rematch the whole affected subtree, including nested containers
+        // that can still query this ancestor by name.
+        if self.rules.has_containers()
+            && let Some(inc) = self.previous.as_mut()
+            && let Some(i) = inc.tree.index(node)
+            && [Property::ContainerName, Property::ContainerType].iter().any(|&p| !inc.tree.styles[i].style.value(p).same(style.value(p)))
+        {
+            composed_subtree(self.document, node, &mut inc.nodes);
+        }
         if let Some(inc) = self.previous.as_ref()
             && let Some(i) = inc.tree.index(node)
         {
@@ -1521,6 +1532,11 @@ impl<'a> Job<'a> {
             self.fill_ancestors(node)?;
             let (mut style, matched) = self.compute_element(node, parent, parent_box, &h, previous_matched)?;
             let old = &self.tree.styles[i].style;
+            if self.rules.has_containers() && [Property::ContainerName, Property::ContainerType].iter().any(|&p| !old.value(p).same(style.value(p))) {
+                // Recorded matches below this element are no longer valid;
+                // the incremental walk will rematch its composed subtree.
+                return Ok(Err(format!("<{}>'s query container changed", name(self, node))));
+            }
             let same = old.same_as(&style);
             if same && !rematch {
                 continue;
