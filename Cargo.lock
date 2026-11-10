@@ -7605,6 +7605,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-app"
+version = "0.1.0"
+dependencies = [
+ "async-task",
+ "olo-sync",
+ "tracing",
+]
+
+[[package]]
 name = "olo-appimage"
 version = "0.1.0"
 dependencies = [

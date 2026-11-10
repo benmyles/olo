@@ -13,7 +13,42 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-(Nothing: the next is the first not started.)
+- **From GPUI to Olo's own kits: retained, message passing, a looper a
+  window** (Ben, 2026-11-10: "scrapping gpui in olo and replacing with
+  our own beos inspired retained mode, smp first, message passing
+  architecture … messages typed instead of dynamic … incredibly fast
+  retained mode GUI … GPU rendering and SIMD everywhere it makes sense,
+  avoiding CPU copies"; then "implement this change now, end to end, in
+  full", with all documentation and an Olo Book, a guide for agents
+  working on it, as the Be Book was). Measured first (release, the
+  bench, 3456×2234 at 2×): GPUI's frames are 0.4–0.9 ms of CPU, a third
+  of it laying out and painting what didn't change, and 1.1–2.5 ms of
+  GPU, because every frame draws the whole window and says the whole
+  surface changed (a caret's blink, a full-screen pass). What the new
+  kits are for: work that follows what changed (a view tree, its layout
+  and what each view drew all kept; only what changed drawn, and only
+  that told to app_server), a window's looper never holding another's
+  up, a display thread that scrolls and animates while a looper is
+  busy, state changed only by typed messages on its own thread (no
+  entity read while it's updated: there are none), and a tree agents
+  read that is the view tree itself. GPUI's lower half, which is Olo's
+  own work by now (the Wayland client, text, the renderer, the atlas),
+  is kept. In stages, each leaving every app working:
+  1. **The Application Kit** (`crates/app`, olo-app): loopers, handlers,
+     typed messengers, timers, tasks, the worker pool, answers. *Done.*
+  2. **The Interface Kit's core** (`crates/interface`, olo-interface):
+     GPUI's lower half taken over; the display thread (the Wayland
+     connection and the render stage: each window's display lists,
+     scroll layers and damage); a looper a window; the retained view
+     tree, layout and painting; input, focus, keys, text input; popups,
+     layers, drags, the clipboard; the agent tree, frame marks, the
+     layout review.
+  3. **The kit's widgets** on it (everything in olo-ui today).
+  4. **Every app**, one at a time, each compared pixel for pixel and
+     benched against its GPUI build before it moves.
+  5. **Tools, HACKING and the Olo Book**; GPUI and olo-ui leave the
+     workspace (the `browser` and `olo-coder` branches build on them:
+     they stay until those have moved).
 
 ## Not started (highest priority first)
 
