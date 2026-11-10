@@ -88,8 +88,41 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-(Nothing: the leftovers the 2026-11-08 audit found in finished entries
-are all done, and are in Done, newest first.)
+- **A display that left with its dock is still "plugged in"** (Ben,
+  2026-11-10: "there are no externals just my builtin display now why
+  does it think there's still an external"; then "manually fix it and
+  then add a todo in the repo to fix properly later"). What happened,
+  on the ThinkPad (xe, kernel 7.2.15): the Thunderbolt dock came out at
+  13:24:06 with a Studio Display (DP-2) and a Dell S2425HS (DP-3) on
+  it. Two udev changes came within 0.3 s; `device_changed`'s scan
+  (which force-probes, as the DRM master: `get_connector(conn, true)`
+  in smithay-drm-extras' `connector_scanner.rs`) found DP-2 gone and
+  DP-3 still there. At 13:24:17 the kernel logged "[CONNECTOR:549:DP-3]
+  … [DPRX] Failed to enable link training" and sent no hotplug event
+  after it, so nothing looked again. For five minutes DP-3 stayed
+  `connected` in sysfs with the Dell's EDID, and an output of Olo's
+  (enabled, DPMS on: a desktop nobody could see); logind, which counts
+  connected connectors, said `Docked`, so closing the lid would not
+  have suspended (`HandleLidSwitchDocked=ignore`; Olo leaves the lid to
+  logind). Cleared by hand: `echo detect >
+  /sys/class/drm/card0-DP-3/status` as root, on which the kernel said
+  disconnected and sent the event, Olo let the output go two seconds
+  later and `Docked` went false. *To do,* so that it heals by itself (no step for a
+  person) and without a timer that runs while idle: app_server scans a
+  card again when it has reason to doubt what it was told. (1) After a scan in which a connector left,
+  one more scan of that card a second or two later (and again if that
+  one found another gone): a dock's displays don't all leave in the
+  one event. (2) When a frame can't be put on an output (a commit or
+  flip that fails, a connector's `link-status` gone Bad), a scan of its
+  card then. (3) Find out on the dock whether (1) and (2) are enough
+  against a kernel that says nothing, or whether the lid closing
+  should scan too, that being when a ghost costs most. Not checked:
+  whether a forced probe at 13:24:07 would already have said
+  disconnected (how long the kernel takes), and whether the pointer
+  could go onto the ghost. Needs Ben's dock to try.
+
+(Otherwise nothing: the leftovers the 2026-11-08 audit found in
+finished entries are all done, and are in Done, newest first.)
 
 ## Done, waiting for Ben to try or confirm
 
