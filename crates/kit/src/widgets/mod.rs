@@ -15,5 +15,5 @@ pub use list::{Cell, Column, ColumnListView, HEADER_HEIGHT, ListModel};
 pub use menu_field::MenuField;
 pub use scroll::{SCROLL_BAR, ScrollBar, ScrollView};
 pub use text_control::TextControl;
-pub use text_field::{TextField, TextFieldEvent, text_field};
+pub use text_field::{FieldMessage, TextField, TextFieldEvent, text_field};
 pub use views::{BBox, EmptyState, Separator, StringView, heading, separator};

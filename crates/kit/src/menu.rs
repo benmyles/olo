@@ -1206,12 +1206,26 @@ pub fn shortcut_command(cx: &mut WindowCx, k: &olo_interface::Keystroke) -> Opti
     bar_shortcut(cx, k).map(|(command, _)| command)
 }
 
-/// The menus of the window's bar (for the command palette) and where its
-/// commands go.
-pub(crate) fn bar_menus(cx: &mut WindowCx) -> Option<(Vec<Menu>, OnChoose)> {
-    let bar = cx.window_state::<Bar>();
-    (!bar.menus.is_empty()).then(|| (bar.menus.clone(), bar.on_command.clone()))
+/// The window's menus, for the command palette and agents: its bar's,
+/// else what it offers without one ([`set_menus`]).
+pub(crate) fn window_menus(cx: &mut WindowCx) -> Vec<Menu> {
+    let bar = cx.window_state::<Bar>().menus.clone();
+    if !bar.is_empty() {
+        return bar;
+    }
+    cx.window_state::<Offered>().0.clone()
 }
+
+/// The menus a window with no menu bar offers the command palette and
+/// agents (a calculator's context menu): said as its view says what it
+/// shows. Their commands go to the window's own view (`View::command`).
+pub fn set_menus(cx: &mut WindowCx, menus: Vec<Menu>) {
+    cx.window_state::<Offered>().0 = menus;
+}
+
+/// What a window offers without a bar ([`set_menus`]).
+#[derive(Default)]
+struct Offered(Vec<Menu>);
 
 /// Opens bar menu `i` under its title `title` (in the window), by a
 /// press on it or sliding onto it.

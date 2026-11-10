@@ -141,6 +141,9 @@ pub(crate) struct WindowCore {
     pub(crate) pending_focus: Option<ViewId>,
     /// An element (by its focus handle) to be given it once it is.
     pub(crate) pending_focus_handle: Option<u64>,
+    /// An element to be given it once it's shown, if nothing has it
+    /// then.
+    pub(crate) fallback_focus: Option<u64>,
     /// Nodes that hear the pointer anywhere in the window.
     pub(crate) window_listeners: Vec<NodeId>,
     /// The window has the keyboard.
@@ -398,6 +401,7 @@ impl WindowCore {
             focus: None,
             pending_focus: None,
             pending_focus_handle: None,
+            fallback_focus: None,
             window_listeners: Vec::new(),
             active: false,
             closed: false,
@@ -1028,6 +1032,15 @@ impl<'a> WindowCx<'a> {
             {
                 self.focus_node(Some(node));
             }
+            // (Nothing has the keyboard: what takes it then does.)
+            if self.core.focus.is_none()
+                && self.core.pending_focus.is_none()
+                && let Some(handle) = self.core.fallback_focus
+                && let Some(node) =
+                    self.core.nodes.iter().find(|(id, n)| n.inter.as_ref().is_some_and(|i| i.focus_handle == Some(handle) && !i.disabled) && self.core.is_attached(*id)).map(|(id, _)| id)
+            {
+                self.focus_node(Some(node));
+            }
             bodies_done += bodies.elapsed();
             let core = &mut *self.core;
             // Where everything goes.
@@ -1248,6 +1261,13 @@ impl<'a> WindowCx<'a> {
                 self.core.needs_commit = true;
             }
         }
+    }
+
+    /// The element a focus handle names gets the keyboard once it's
+    /// shown, if nothing has it then.
+    pub(crate) fn focus_handle_if_none(&mut self, handle: u64) {
+        self.core.fallback_focus = Some(handle);
+        self.core.needs_commit = true;
     }
 
     /// Whether the keyboard is with the element a focus handle names

@@ -176,8 +176,13 @@ fn answer(query: Query) {
             let found = olo_interface::ask_windows(WAIT, move |cx| (cx.surface_id() == Some(surface)).then(|| cx.window_state::<Shown>().path.clone())).into_iter().next().flatten();
             let _ = reply.send(found);
         }
-        Query::Menus(reply) | Query::MenusIn(_, reply) => {
-            let _ = reply.send(Menus { app_id: olo_interface::app_id().to_owned(), entries: Vec::new() });
+        // The menus of the window with the keyboard (else the first that
+        // has any), or of the one app_server names.
+        Query::Menus(reply) => {
+            let _ = reply.send(menus(None));
+        }
+        Query::MenusIn(surface, reply) => {
+            let _ = reply.send(menus(Some(surface)));
         }
         Query::Invoke(command, reply) => {
             // The window with the keyboard takes it, else the first that
@@ -205,6 +210,23 @@ fn answer(query: Query) {
             drop(reply);
         }
     }
+}
+
+/// A window's menus, flattened for the command palette: the window
+/// app_server names by its surface, else the one with the keyboard, else
+/// the first that has any.
+fn menus(surface: Option<u32>) -> Menus {
+    let app_id = olo_interface::app_id().to_owned();
+    let mut found = olo_interface::ask_windows(WAIT, move |cx| {
+        if surface.is_some_and(|s| cx.surface_id() != Some(s)) {
+            return None;
+        }
+        let menus = crate::menu::window_menus(cx);
+        (!menus.is_empty()).then(|| (cx.is_window_active(), menus))
+    });
+    found.sort_by_key(|(active, _)| !*active);
+    let entries = found.into_iter().next().map(|(_, menus)| menus.iter().flat_map(|menu| menu.entries(&app_id).entries).collect()).unwrap_or_default();
+    Menus { app_id, entries }
 }
 
 /// Gives `command` to the window in front among those that answered.

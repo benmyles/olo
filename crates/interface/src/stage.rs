@@ -727,12 +727,14 @@ impl Stage {
                 FrameRegion::All => None,
                 FrameRegion::Part(part) => Some(part),
             };
+            let begun = started.elapsed();
             let scene = &mut showing.scene;
             scene.clear();
             assemble(commit, &showing.scrollers, scene, part);
             scene.finish();
             let assembled = started.elapsed();
             window.draw(scene);
+            let drawn = started.elapsed();
             window.completed_frame();
             if crate::stats::frame_phases() {
                 let ms = |d: Duration| d.as_secs_f64() * 1000.0;
@@ -741,10 +743,12 @@ impl Stage {
                     None => "all".to_owned(),
                 };
                 eprintln!(
-                    "frame {:.3} ms: assemble {:.3}, draw {:.3}; {part}; {} of {} items, {} sprites, {} quads; looper {:.3} ms",
+                    "frame {:.3} ms: begin {:.3}, assemble {:.3}, draw {:.3}, complete {:.3}; {part}; {} of {} items, {} sprites, {} quads; looper {:.3} ms",
                     ms(started.elapsed()),
-                    ms(assembled),
-                    ms(started.elapsed() - assembled),
+                    ms(begun),
+                    ms(assembled - begun),
+                    ms(drawn - assembled),
+                    ms(started.elapsed() - drawn),
                     scene.len(),
                     commit.items.len(),
                     scene.monochrome_sprites.len() + scene.polychrome_sprites.len(),

@@ -2,25 +2,20 @@
 //! that grows with the window: R5's basic keys, Haiku's scientific rows
 //! above them, or no keypad at all (compact). Type or click; Enter or =
 //! works it out (expr.rs); ↑ and ↓ step through earlier expressions. The
-//! keypad's context menu holds the options, as in Haiku. On Olo's GPUI
-//! kit (olo-ui).
+//! keypad's context menu holds the options, as in Haiku. On Olo's kit
+//! (olo-kit): each key is an element of its own, so the pointer coming
+//! over one draws that key again and nothing else.
 
 mod expr;
 
-use std::{
-    cell::RefCell,
-    rc::Rc,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 use expr::Angle;
-use olo_ui::{
-    Menu, WindowOptions, agent,
-    gpui::{
-        self, App, AppContext as _, Bounds, Context, Entity, Focusable, FontWeight, InteractiveElement as _, IntoElement, KeyBinding, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-        ParentElement as _, Pixels, Render, StatefulInteractiveElement as _, Styled as _, Subscription, Window, actions, canvas, div, point, px, size,
-    },
+use olo_kit::{
+    Bounds, Child, ClipboardItem, Cx, Element, FontWeight, InteractiveElement as _, KeyDownEvent, Menu, MouseButton, MouseDownEvent, Painter, ParentElement as _, Pixels, Styled as _, View, WindowCx,
+    WindowOptions, agent, canvas, clipboard, control_canvas, div,
     instance::{self, Launch},
+    px, size,
     style::{self, Align},
     theme,
     widgets::{TextField, TextFieldEvent, text_field},
@@ -42,8 +37,8 @@ const SCIENTIFIC: [[&str; 5]; 4] = [["ln", "sin", "cos", "tan", "π"], ["log", "
 
 const WIDTH: f32 = 266.0;
 // (The kit's rhythm: the window's inset round it all, keys `TIGHT` apart.)
-const INSET: f32 = olo_ui::metrics::WINDOW_INSET;
-const GAP: f32 = olo_ui::metrics::TIGHT;
+const INSET: f32 = olo_kit::metrics::WINDOW_INSET;
+const GAP: f32 = olo_kit::metrics::TIGHT;
 const DISPLAY_H: f32 = 36.0;
 const KEY_H: f32 = 34.0;
 /// How long a key stays down when its character is typed.
@@ -82,20 +77,15 @@ impl Default for Settings {
 }
 
 fn settings_path() -> std::path::PathBuf {
-    olo_ui::config_dir().join("deskcalc.json")
+    olo_kit::config_dir().join("deskcalc.json")
 }
 
 /// How many earlier expressions ↑ remembers.
 const HISTORY: usize = 50;
 
-actions!(deskcalc, [Evaluate, Back, Forward, Clear]);
-
-/// Where each key was drawn, for the pointer.
-type Keys = Rc<RefCell<Vec<(Bounds<Pixels>, &'static str)>>>;
-
 struct DeskCalc {
     settings: Settings,
-    field: Entity<TextField>,
+    field: Child<TextField>,
     /// Why the last = failed, until the next edit.
     error: Option<String>,
     /// The display shows a result: a digit starts afresh, an operator
@@ -105,46 +95,50 @@ struct DeskCalc {
     recall: Option<usize>,
     /// A key drawn down for a moment because its character was typed.
     flash: Option<(&'static str, Instant)>,
-    /// The key the pointer is on, and the one it went down on.
-    hovered: Option<&'static str>,
-    pressed: Option<&'static str>,
-    keys: Keys,
-    /// The field changes as the expression does.
-    _field_events: Subscription,
+}
+
+#[derive(Clone)]
+enum Msg {
+    /// A keypad key clicked.
+    Key(&'static str),
+    /// A flashed key's moment is up.
+    Flashed,
+    /// A command chosen from the context menu.
+    Command(String),
 }
 
 impl DeskCalc {
-    fn new(window: &mut Window, cx: &mut Context<Self>) -> DeskCalc {
-        let settings: Settings = olo_ui::store::load(&settings_path()).unwrap_or_default();
+    fn new(cx: &mut Cx<Self>) -> DeskCalc {
+        let settings: Settings = olo_kit::store::load(&settings_path()).unwrap_or_default();
         let size = (DISPLAY_H * 0.5).round();
-        let field = text_field(cx, |f| f.font_size(size).align(olo_ui::widgets::text_field::Align::Right).name("Expression"));
-        field.update(cx, |f, cx| f.set_text(settings.expression.clone(), cx));
-        let events = cx.subscribe_in(&field, window, Self::field_event);
+        let field = text_field(cx, |f| f.font_size(size).align(olo_kit::widgets::text_field::Align::Right).name("Expression").with_text(settings.expression.clone()));
+        // (The field changes as the expression does.)
+        cx.subscribe(&field, Self::field_event);
         // The display always has the keyboard.
-        window.focus(&field.focus_handle(cx));
+        field.focus(cx);
         // What was left showing last time counts as a result.
         let shows_result = !settings.expression.is_empty();
-        DeskCalc { settings, field, error: None, shows_result, recall: None, flash: None, hovered: None, pressed: None, keys: Rc::default(), _field_events: events }
+        DeskCalc { settings, field, error: None, shows_result, recall: None, flash: None }
     }
 
     fn store(&self) {
-        olo_ui::store::save(settings_path(), &self.settings);
+        olo_kit::store::save(settings_path(), &self.settings);
     }
 
     /// Shows `text` in the display, the caret at its end.
-    fn show(&mut self, text: String, cx: &mut Context<Self>) {
+    fn show(&mut self, text: String, cx: &mut Cx<Self>) {
         self.settings.expression = text.clone();
         self.field.update(cx, |f, cx| f.set_text(text, cx));
     }
 
     /// The line made `text` as a step Undo takes back (a key pressed,
     /// Clear, a result), as typing in it is.
-    fn put(&mut self, text: String, cx: &mut Context<Self>) {
+    fn put(&mut self, text: String, cx: &mut Cx<Self>) {
         self.settings.expression = text.clone();
         self.field.update(cx, |f, cx| f.replace_all(&text, cx));
     }
 
-    fn field_event(&mut self, field: &Entity<TextField>, event: &TextFieldEvent, _: &mut Window, cx: &mut Context<Self>) {
+    fn field_event(&mut self, event: &TextFieldEvent, cx: &mut Cx<Self>) {
         match event {
             TextFieldEvent::Typed(typed) => {
                 if let Some(ch) = typed.chars().last()
@@ -161,7 +155,7 @@ impl DeskCalc {
                 self.error = None;
             }
             TextFieldEvent::Changed => {
-                self.settings.expression = field.read(cx).text().to_owned();
+                self.settings.expression = self.field.read(cx).text().to_owned();
                 self.recall = None;
             }
             // (Return in the field: as = .)
@@ -170,25 +164,16 @@ impl DeskCalc {
                 self.flash_key("=", cx);
             }
         }
-        cx.notify();
+        cx.invalidate();
     }
 
-    fn flash_key(&mut self, key: &'static str, cx: &mut Context<Self>) {
+    fn flash_key(&mut self, key: &'static str, cx: &mut Cx<Self>) {
         self.flash = Some((key, Instant::now()));
-        cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(FLASH).await;
-            let _ = this.update(cx, |calc, cx| {
-                if calc.flash.is_some_and(|(_, at)| at.elapsed() >= FLASH) {
-                    calc.flash = None;
-                    cx.notify();
-                }
-            });
-        })
-        .detach();
-        cx.notify();
+        cx.after(FLASH, Msg::Flashed);
+        cx.invalidate();
     }
 
-    fn evaluate(&mut self, cx: &mut Context<Self>) {
+    fn evaluate(&mut self, cx: &mut Cx<Self>) {
         let text = self.settings.expression.trim().to_owned();
         if text.is_empty() {
             return;
@@ -207,11 +192,11 @@ impl DeskCalc {
         }
         self.recall = None;
         self.store();
-        cx.notify();
+        cx.invalidate();
     }
 
     /// A keypad key.
-    fn press(&mut self, key: &str, cx: &mut Context<Self>) {
+    fn press(&mut self, key: &str, cx: &mut Cx<Self>) {
         let mut e = self.settings.expression.clone();
         let starts_number = key.chars().next().is_some_and(|ch| ch.is_ascii_digit() || ch == '.' || ch == 'π' || ch == '(')
             || matches!(key, "ln" | "log" | "exp" | "sin" | "cos" | "tan" | "asin" | "acos" | "atan" | "sinh" | "cosh" | "tanh" | "sqrt" | "cbrt" | "ceil" | "floor");
@@ -235,11 +220,11 @@ impl DeskCalc {
         }
         self.recall = None;
         self.put(e, cx);
-        cx.notify();
+        cx.invalidate();
     }
 
     /// ↑ / ↓ through the history.
-    fn step_history(&mut self, back: bool, cx: &mut Context<Self>) {
+    fn step_history(&mut self, back: bool, cx: &mut Cx<Self>) {
         let h = &self.settings.history;
         if h.is_empty() {
             return;
@@ -257,12 +242,12 @@ impl DeskCalc {
         self.recall = next;
         self.shows_result = false;
         self.error = None;
-        cx.notify();
+        cx.invalidate();
     }
 
     /// The keypad's context menu, as in Haiku (Undo and Redo first: the
     /// line's, keys and results too).
-    fn menu(&self, cx: &gpui::App) -> Menu {
+    fn menu(&self, cx: &WindowCx) -> Menu {
         let s = &self.settings;
         let f = self.field.read(cx);
         Menu::new("DeskCalc")
@@ -286,75 +271,6 @@ impl DeskCalc {
             .item("Degrees", "degrees")
             .checked(s.angle == Angle::Degrees)
     }
-
-    /// The menu commands (for the command palette and agents).
-    fn command(&mut self, command: &str, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        let keypad = match command {
-            "undo" | "redo" => {
-                self.field.update(cx, |f, cx| if command == "undo" { f.undo_step(window, cx) } else { f.redo_step(window, cx) });
-                self.shows_result = false;
-                return true;
-            }
-            "copy" => {
-                cx.write_to_clipboard(gpui::ClipboardItem::new_string(self.settings.expression.clone()));
-                return true;
-            }
-            "paste" => {
-                // (Read off the UI thread: `paste_item`.)
-                let (read, field) = (cx.paste_item(), self.field.clone());
-                cx.spawn(async move |_, cx| {
-                    if let Some(text) = read.await.and_then(|i| i.text()) {
-                        let _ = field.update(cx, |f, cx| f.insert(&text, cx));
-                    }
-                })
-                .detach();
-                return true;
-            }
-            "keypad-basic" => Keypad::Basic,
-            "keypad-scientific" => Keypad::Scientific,
-            "keypad-compact" => Keypad::Compact,
-            "radians" | "degrees" => {
-                self.settings.angle = if command == "radians" { Angle::Radians } else { Angle::Degrees };
-                self.store();
-                return true;
-            }
-            _ => return false,
-        };
-        if keypad != self.settings.keypad {
-            self.settings.keypad = keypad;
-            let (_, h) = keypad.size();
-            let width = window.viewport_size().width;
-            window.resize(size(width, px(h)));
-            self.store();
-            cx.notify();
-        }
-        true
-    }
-
-    fn key_at(&self, p: gpui::Point<Pixels>) -> Option<&'static str> {
-        self.keys.borrow().iter().find(|(b, _)| b.contains(&p)).map(|(_, k)| *k)
-    }
-
-    fn mouse_down(&mut self, e: &MouseDownEvent, _: &mut Window, cx: &mut Context<Self>) {
-        self.pressed = self.key_at(e.position);
-        cx.notify();
-    }
-
-    fn mouse_up(&mut self, e: &MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
-        let pressed = self.pressed.take();
-        if let Some(k) = pressed.filter(|k| self.key_at(e.position) == Some(*k)) {
-            self.press(k, cx);
-        }
-        cx.notify();
-    }
-
-    fn mouse_move(&mut self, e: &MouseMoveEvent, _: &mut Window, cx: &mut Context<Self>) {
-        let over = self.key_at(e.position);
-        if over != self.hovered {
-            self.hovered = over;
-            cx.notify();
-        }
-    }
 }
 
 /// The key a typed character stands for, to flash it.
@@ -371,27 +287,92 @@ fn key_for(ch: char) -> Option<&'static str> {
     Some(s)
 }
 
-impl Render for DeskCalc {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let p = theme::palette(cx);
+impl View for DeskCalc {
+    type Message = Msg;
+
+    fn message(&mut self, message: Msg, cx: &mut Cx<Self>) {
+        match message {
+            Msg::Key(key) => self.press(key, cx),
+            Msg::Flashed => {
+                if self.flash.is_some_and(|(_, at)| at.elapsed() >= FLASH) {
+                    self.flash = None;
+                    cx.invalidate();
+                }
+            }
+            Msg::Command(command) => {
+                self.command(&command, cx);
+            }
+        }
+    }
+
+    /// The menu commands (the context menu's; the command palette's and
+    /// agents').
+    fn command(&mut self, command: &str, cx: &mut Cx<Self>) -> bool {
+        let keypad = match command {
+            "undo" | "redo" => {
+                self.field.update(cx, |f, cx| if command == "undo" { f.undo_step(cx) } else { f.redo_step(cx) });
+                self.shows_result = false;
+                return true;
+            }
+            "copy" => {
+                clipboard::write(ClipboardItem::new_string(self.settings.expression.clone()));
+                return true;
+            }
+            "paste" => {
+                self.field.update(cx, |f, cx| f.paste_from_clipboard(cx));
+                return true;
+            }
+            "keypad-basic" => Keypad::Basic,
+            "keypad-scientific" => Keypad::Scientific,
+            "keypad-compact" => Keypad::Compact,
+            "radians" | "degrees" => {
+                self.settings.angle = if command == "radians" { Angle::Radians } else { Angle::Degrees };
+                self.store();
+                cx.invalidate();
+                return true;
+            }
+            _ => return false,
+        };
+        if keypad != self.settings.keypad {
+            self.settings.keypad = keypad;
+            let (_, h) = keypad.size();
+            let width = cx.viewport_size().width;
+            cx.resize_window(size(width, px(h)));
+            self.store();
+            cx.invalidate();
+        }
+        true
+    }
+
+    /// Everything worth keeping is in the settings: stored before
+    /// becoming the new version.
+    fn save_state(&mut self, _: &mut Cx<Self>) -> Option<String> {
+        let text = serde_json::to_string_pretty(&self.settings).unwrap_or_default();
+        let _ = std::fs::write(settings_path(), text);
+        None
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        // (The command palette's and agents' way to the menu's commands.)
+        let menu = self.menu(cx);
+        olo_kit::menu::set_menus(cx, vec![menu]);
         let rows = self.settings.keypad.rows();
         let flashing = self.flash.filter(|(_, t)| t.elapsed() < FLASH).map(|(k, _)| k);
-        let (hovered, pressed) = (self.hovered, self.pressed);
-        let error = self.error.clone();
-        let keys = self.keys.clone();
-        let palette = p.clone();
         // The display: a sunken well, the expression right-aligned in it.
-        let well = canvas(
-            |_, _, _| {},
-            move |b, _, window, cx| {
-                style::fill_rect(window, b, style::c(palette.document_background));
-                style::sunken(window, b, &palette, false);
+        let error = self.error.clone();
+        let well = canvas({
+            let error = error.clone();
+            move |g, b| {
+                let p = theme::palette();
+                style::fill_rect(g, b, style::c(p.document_background));
+                style::sunken(g, b, &p, false);
                 if let Some(e) = &error {
-                    let r = style::label(window, cx, b.origin.x + px(6.0), b.origin.y + px(9.0), Align::Left, e.clone(), 10.0, style::ui_font(FontWeight::NORMAL), style::c(palette.failure));
-                    agent::record(window, cx, agent::Node::label(e.clone(), r));
+                    let r = style::label(g, b.origin.x + px(6.0), b.origin.y + px(9.0), Align::Left, e.clone(), 10.0, style::ui_font(FontWeight::NORMAL), style::c(p.failure));
+                    g.agent(agent::Node::label(e.clone(), r));
                 }
-            },
-        )
+            }
+        })
+        .paint_key(style::key(&error))
         .absolute()
         .inset_0();
         let display = div()
@@ -401,88 +382,65 @@ impl Render for DeskCalc {
             .right(px(INSET))
             .h(px(DISPLAY_H))
             .child(well)
-            .child(div().absolute().left(px(6.0)).right(px(6.0)).top(px(0.0)).bottom(px(0.0)).child(self.field.clone()));
+            .child(div().absolute().left(px(6.0)).right(px(6.0)).top(px(0.0)).bottom(px(0.0)).child(&self.field));
 
-        // The keypad fills the rest.
-        let palette = p.clone();
-        let keypad = canvas(
-            |_, _, _| {},
-            move |pad, _, window, cx| {
-                let mut placed = keys.borrow_mut();
-                placed.clear();
-                if rows.is_empty() {
-                    return;
-                }
-                let n = rows.len() as f32;
-                let (pw, ph) = (f32::from(pad.size.width), f32::from(pad.size.height));
-                let kw = (pw - 4.0 * GAP) / 5.0;
-                let kh = (ph - (n - 1.0) * GAP) / n;
-                let font_size = (kh * 0.42).clamp(10.0, 28.0).round();
-                for (r, row) in rows.iter().enumerate() {
-                    for (col, &label) in row.iter().enumerate() {
-                        let b = Bounds { origin: point(pad.origin.x + px(col as f32 * (kw + GAP)), pad.origin.y + px(r as f32 * (kh + GAP))), size: size(px(kw), px(kh)) };
-                        let b = style::snap(window, b);
-                        let down = pressed == Some(label) && hovered == Some(label) || flashing == Some(label);
-                        key(window, cx, &palette, b, label, font_size, down, hovered == Some(label));
-                        // For agents: a button named by its key.
-                        agent::record(window, cx, agent::Node::button(label, b));
-                        placed.push((b, label));
-                    }
-                }
-            },
-        )
-        .absolute()
-        .left(px(INSET))
-        .right(px(INSET))
-        .top(px(INSET + DISPLAY_H + INSET))
-        .bottom(px(INSET));
+        // The keypad fills the rest: rows of keys, each as wide and as
+        // tall as the others, `GAP` apart.
+        let n = rows.len();
+        let keypad = div().absolute().left(px(INSET)).right(px(INSET)).top(px(INSET + DISPLAY_H + INSET)).bottom(px(INSET)).flex().flex_col().gap(px(GAP)).children(rows.into_iter().map(|row| {
+            div().flex_1().min_h_0().flex().gap(px(GAP)).children(row.into_iter().map(|label| {
+                let flashed = flashing == Some(label);
+                control_canvas(move |g, b, state| {
+                    // (As big as the keys' height allows: all the same.)
+                    let font_size = (f32::from(b.size.height) * 0.42).clamp(10.0, 28.0).round();
+                    key(g, b, label, font_size, state.pressed || flashed, state.hovered);
+                })
+                .paint_key(style::key((label, flashed, n)))
+                .id(label)
+                .flex_1()
+                .min_w_0()
+                .h_full()
+                // For agents: a button named by its key.
+                .agent("Button", label)
+                .on_click(cx.msg(Msg::Key(label)))
+            }))
+        }));
 
         div()
             .size_full()
             .relative()
-            // (The field keeps the keyboard; these keys reach this
-            // from it.)
-            .key_context("DeskCalc")
-            .on_action(cx.listener(|this, _: &Evaluate, _, cx| {
-                this.evaluate(cx);
-                this.flash_key("=", cx);
+            // (The field keeps the keyboard; these keys reach this from
+            // it.)
+            .on_key_down(cx.listener(|this: &mut Self, e: &KeyDownEvent, cx| {
+                if e.keystroke.modifiers.modified() {
+                    return;
+                }
+                match e.keystroke.key.as_str() {
+                    "up" => this.step_history(true, cx),
+                    "down" => this.step_history(false, cx),
+                    "escape" => this.press("C", cx),
+                    _ => return,
+                }
+                cx.stop_propagation();
             }))
-            .on_action(cx.listener(|this, _: &Back, _, cx| this.step_history(true, cx)))
-            .on_action(cx.listener(|this, _: &Forward, _, cx| this.step_history(false, cx)))
-            .on_action(cx.listener(|this, _: &Clear, _, cx| this.press("C", cx)))
-            .on_mouse_down(MouseButton::Left, cx.listener(Self::mouse_down))
             // The context menu, anywhere in the window.
             .on_mouse_down(
                 MouseButton::Right,
-                cx.listener(|this, e: &MouseDownEvent, window, cx| {
-                    let view = cx.entity();
+                cx.listener(|this: &mut Self, e: &MouseDownEvent, cx| {
                     let menu = this.menu(cx);
-                    olo_ui::menu::context_menu(window, cx, menu, e.position, move |command, window, cx| {
-                        view.update(cx, |calc, cx| {
-                            calc.command(command, window, cx);
-                        });
-                    });
+                    let chosen = cx.msg_with(|command: &str| Msg::Command(command.to_string()));
+                    olo_kit::menu::context_menu(cx, menu, e.position, chosen);
                 }),
             )
-            .on_mouse_up(MouseButton::Left, cx.listener(Self::mouse_up))
-            .on_mouse_up_out(MouseButton::Left, cx.listener(Self::mouse_up))
-            .on_mouse_move(cx.listener(Self::mouse_move))
-            // (Its moves come only while the pointer is over it: gone, no
-            // key is under it, or the last stayed lit.)
-            .id("calculator")
-            .on_hover(cx.listener(|calc, inside: &bool, _, cx| {
-                if !*inside && calc.hovered.take().is_some() {
-                    cx.notify();
-                }
-            }))
             .child(keypad)
             .child(display)
     }
 }
 
 /// One key: R5's raised bevel, pushed in while held.
-#[allow(clippy::too_many_arguments)]
-fn key(window: &mut Window, cx: &mut App, p: &olo_ui::palette::Palette, r: Bounds<Pixels>, label: &'static str, font_size: f32, down: bool, hovered: bool) {
+fn key(g: &mut Painter, r: Bounds<Pixels>, label: &'static str, font_size: f32, down: bool, hovered: bool) {
+    let p = theme::palette();
+    let p = &*p;
     let base = p.control_background;
     let (top, bottom) = if down {
         (style::shade(p, base, 1.2), style::shade(p, base, 1.12))
@@ -491,17 +449,17 @@ fn key(window: &mut Window, cx: &mut App, p: &olo_ui::palette::Palette, r: Bound
     } else {
         (style::tint(base, 0.85), style::shade(p, base, 1.06))
     };
-    let inner = style::inset(window, r, 1.0);
-    style::vgradient(window, inner, top, bottom);
-    style::frame_rect(window, r, style::shade(p, p.panel_background, 1.6));
+    let inner = style::inset(g, r, 1.0);
+    style::vgradient(g, inner, top, bottom);
+    style::frame_rect(g, r, style::shade(p, p.panel_background, 1.6));
     if down {
-        style::bevel(window, inner, style::shade(p, base, 1.35), style::shade(p, base, 1.1));
+        style::bevel(g, inner, style::shade(p, base, 1.35), style::shade(p, base, 1.1));
     } else {
-        style::bevel(window, inner, style::c(p.shine), style::shade(p, base, 1.2));
+        style::bevel(g, inner, style::c(p.shine), style::shade(p, base, 1.2));
     }
     let off = if down { px(1.0) } else { px(0.0) };
     let c = r.center();
-    style::label(window, cx, c.x + off, c.y + off, Align::Center, label, font_size, style::ui_font(FontWeight::NORMAL), style::c(p.control_text));
+    style::label(g, c.x + off, c.y + off, Align::Center, label, font_size, style::ui_font(FontWeight::NORMAL), style::c(p.control_text));
 }
 
 fn main() {
@@ -512,53 +470,18 @@ fn main() {
     if instance::forward(APP_ID, &args) {
         return;
     }
-    olo_ui::run(APP_ID, |cx| {
-        cx.bind_keys([
-            KeyBinding::new("enter", Evaluate, Some("DeskCalc")),
-            KeyBinding::new("up", Back, Some("DeskCalc")),
-            KeyBinding::new("down", Forward, Some("DeskCalc")),
-            KeyBinding::new("escape", Clear, Some("DeskCalc")),
-        ]);
-        let settings: Settings = olo_ui::store::load(&settings_path()).unwrap_or_default();
+    olo_kit::run(APP_ID, |app| {
+        let settings: Settings = olo_kit::store::load(&settings_path()).unwrap_or_default();
         let (w, h) = settings.keypad.size();
         let (min_w, min_h) = Keypad::Compact.size();
-        let calc: Rc<RefCell<Option<Entity<DeskCalc>>>> = Rc::default();
-        let made = calc.clone();
-        let handle = olo_ui::open_window(cx, WindowOptions::new("DeskCalc", w, h).min_size(min_w - 50.0, min_h).floating(), move |window, cx| {
-            let view = cx.new(|cx| DeskCalc::new(window, cx));
-            *made.borrow_mut() = Some(view.clone());
-            view
-        });
-        instance::listen(APP_ID, olo_ui::proxy(cx));
-        // Everything worth keeping is in the settings: stored before
-        // becoming the new version.
-        let calc_for_upgrade = calc.clone();
-        olo_ui::on_upgrade(cx, move |cx| {
-            if let Some(view) = calc_for_upgrade.borrow().as_ref() {
-                let calc = view.read(cx);
-                let text = serde_json::to_string_pretty(&calc.settings).unwrap_or_default();
-                let _ = std::fs::write(settings_path(), text);
-            }
-            Some(String::new())
-        });
-        olo_ui::message_handler(cx, move |message, cx| {
-            if message.is::<Launch>()
-                && let Some(handle) = handle
-            {
-                olo_ui::raise(Some(handle), cx);
+        let window = olo_kit::open_window(WindowOptions::new("DeskCalc", w, h).min_size(min_w - 50.0, min_h).floating(), DeskCalc::new);
+        instance::listen(APP_ID, olo_kit::proxy());
+        // (Launched again: the one there comes forward.)
+        olo_kit::message_handler(app, move |message, _| {
+            if message.is::<Launch>() {
+                olo_kit::raise(Some(&window));
             }
         });
-        // The palette's and agents' way to the menu's commands.
-        let calc_for_menus = calc.clone();
-        agent::set_menus(
-            cx,
-            move |cx| calc_for_menus.borrow().as_ref().map(|c| c.read(cx).menu(cx).entries(APP_ID)).unwrap_or_default(),
-            move |command, cx| {
-                let Some(view) = calc.borrow().clone() else { return false };
-                let Some(handle) = handle else { return false };
-                handle.update(cx, |_, window, cx| view.update(cx, |calc, cx| calc.command(command, window, cx))).unwrap_or(false)
-            },
-        );
     });
 }
 

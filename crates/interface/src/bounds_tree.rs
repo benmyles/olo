@@ -78,6 +78,14 @@ where
 
     /// `new_bounds`' order: one more than the highest of what it overlaps.
     pub fn insert(&mut self, new_bounds: Bounds<U>) -> u32 {
+        self.insert_run(new_bounds, 1)
+    }
+
+    /// A run of `depth` orders for something in `new_bounds` that's
+    /// ordered within itself (a kept drawing): the first of them, one
+    /// more than the highest of what it overlaps. What comes over it
+    /// goes above them all.
+    pub fn insert_run(&mut self, new_bounds: Bounds<U>, depth: u32) -> u32 {
         let (x0, x1, y0, y1) = Self::span(&new_bounds);
         let mut max = 0;
         for y in y0..=y1 {
@@ -96,7 +104,8 @@ where
                 }
             }
         }
-        let order = max + 1;
+        let first = max + 1;
+        let order = max + depth.max(1);
         let index = self.things.len() as u32;
         self.things.push((new_bounds, order));
         for y in y0..=y1 {
@@ -106,7 +115,7 @@ where
                 cell.max = cell.max.max(order);
             }
         }
-        order
+        first
     }
 }
 

@@ -54,6 +54,13 @@ impl FocusHandle {
         cx.focus_handle(self.0);
     }
 
+    /// Gives its element the keyboard if nothing in the window has it
+    /// (nor has asked for it) by the time it's shown: where the keys go
+    /// until something takes them.
+    pub fn focus_if_none(&self, cx: &mut WindowCx) {
+        cx.focus_handle_if_none(self.0);
+    }
+
     /// Whether its element has the keyboard.
     pub fn is_focused(&self, cx: &WindowCx) -> bool {
         cx.handle_has_focus(self.0, false)

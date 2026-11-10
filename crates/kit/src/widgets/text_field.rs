@@ -624,6 +624,12 @@ impl TextField {
 
     /// The clipboard's text put in, once it's read (on a worker:
     /// `clipboard::paste_item`, which sends it back).
+    /// Puts what's on the clipboard in, in place of the selection (the
+    /// app's own Paste: a menu's, an agent's).
+    pub fn paste_from_clipboard(&mut self, cx: &mut Cx<Self>) {
+        self.paste_text(cx);
+    }
+
     fn paste_text(&mut self, cx: &mut Cx<Self>) {
         let me = cx.messenger();
         clipboard::paste_item(move |item| {

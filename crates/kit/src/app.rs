@@ -723,7 +723,7 @@ pub fn open_window<V: View>(mut options: WindowOptions, build: impl FnOnce(&mut 
         cx.set_main_view(&content);
         let focus = FocusHandle::new();
         // (The keyboard is the frame's until something in it takes it.)
-        focus.focus(cx);
+        focus.focus_if_none(cx);
         Frame {
             content: content.into(),
             panel,

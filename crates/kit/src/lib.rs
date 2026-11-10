@@ -27,7 +27,10 @@ pub use app::{
 pub use menu::{Menu, MenuBar, MenuItem};
 pub use olo_app as app_kit;
 pub use olo_interface::*;
-pub use olo_kit_base::{Proxy, clipboard, clock, commands, files, instance, metrics, moving, notify, places, restore, settings, store, tracker, watch};
+// (`clipboard` is the Interface Kit's: what a program with windows copies and
+// pastes through. One with none holds the clipboard itself: `held_clipboard`.)
+pub use olo_kit_base::clipboard as held_clipboard;
+pub use olo_kit_base::{Proxy, clock, commands, files, instance, metrics, moving, notify, places, restore, settings, store, tracker, watch};
 pub use olo_theme as palette;
 pub use olo_xdg::{config_dir, state_dir};
 pub use upgrade::{on_upgrade, on_upgrade_due, restored_state, upgrade_waits_while};

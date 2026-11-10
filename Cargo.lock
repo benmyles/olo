@@ -7571,8 +7571,8 @@ name = "olo-deskcalc"
 version = "0.1.0"
 dependencies = [
  "olo-crash",
+ "olo-kit",
  "olo-theme",
- "olo-ui",
  "olo-xdg",
  "serde",
  "serde_json",
