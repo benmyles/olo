@@ -246,8 +246,9 @@ pub(crate) struct Tab {
     repo: Option<git::Repo>,
     /// The group it's in (into its window's `groups`).
     group: Option<usize>,
-    /// The person took it out of a group: it doesn't join its
-    /// repository's group on its own again (repos.rs).
+    /// The person grouped it (Add to Group, dragged into a group, a New
+    /// Group of it, ⌘T in a group) or took it out of one: where it is is
+    /// theirs, and repositories don't move it (repos.rs).
     own_grouping: bool,
     /// Left out of Tile All Tabs (its menu's Hide When Tiled), its tab
     /// faded in the strip.
@@ -1042,6 +1043,9 @@ impl Terminal {
             Some(g) => (t.members(g).last().map_or(t.tabs.len(), |&i| i + 1), Some(g)),
             None => (t.active + 1, t.tab().group),
         };
+        // Made in a group by the person (⌘T there): theirs; one put in its
+        // repository's group (`into`) joined it on its own.
+        tab.own_grouping = into.is_none() && group.is_some();
         tab.group = group;
         t.tabs.insert(at, tab);
         t.select(at);
@@ -1628,6 +1632,7 @@ impl Terminal {
                 let Some((shell, g)) = arg.split_once(':').and_then(|(a, b)| Some((number(a)?, number(b)? as usize))) else { return true };
                 if let Some(i) = t.position(shell).filter(|_| g < t.groups.len()) {
                     t.tabs[i].group = Some(g);
+                    t.tabs[i].own_grouping = true;
                     t.tidy();
                     cx.redraw(win);
                 }
@@ -2114,6 +2119,7 @@ impl Terminal {
                 let repo = t.tabs[i].repo.as_ref().map(|r| r.main.clone());
                 t.groups.push(Group { name, color, repo, auto: false });
                 t.tabs[i].group = Some(t.groups.len() - 1);
+                t.tabs[i].own_grouping = true;
                 t.tidy();
             }
         }

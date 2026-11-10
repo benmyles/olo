@@ -10134,8 +10134,14 @@ the next frame. A tab in a git repository is in that repository's group
 on its own (repos.rs `auto_group`): the group beside it, else one made
 for it in the colour that repository's group has in another window;
 never one elsewhere in the window (a tab doesn't jump on `cd`), nor
-once the person took it out of a group (`Tab::own_grouping`); one that
-leaves the repository leaves a group it joined on its own. The window's
+one the person grouped or took out of a group (`Tab::own_grouping`: Add
+to Group, dragged into or out of a group, New Group of it, ⌘T in a
+group). One leaves a group it joined on its own only as its own
+repository leaves that group's (`leaves_group`, at its own report), never
+because another tab's report came (Ben, 2026-11-09: ⌘T in his "bugs"
+group took a tab he'd put in another group, of a third repository, into
+"bugs", the group of its repository beside it; every report re-judged
+every tab, and on a restart did the same). The window's
 title follows at once (`auto_group` retitles: a new window's shell has
 printed its prompt by the time its repository is known). A shell not
 yet attached (Terminal started again, an upgrade, takes them back from

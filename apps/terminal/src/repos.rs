@@ -101,6 +101,16 @@ pub fn pr_badge(pr: &git::Pr) -> olo_ui::widgets::strip::PaintFn {
     })
 }
 
+/// Whether a tab in `group` leaves it as its repository goes from `was`
+/// to `now`: only from a group it joined on its own (`auto`, not
+/// `own_grouping`), and only out of that group's repository. A tab the
+/// person put there (theirs), one whose repository wasn't known yet (an
+/// upgrade, a restart), or one that wasn't in the group's repository to
+/// begin with (put there by hand before `own_grouping` said so) stays.
+pub(crate) fn leaves_group(group: &Group, own_grouping: bool, was: Option<&std::path::Path>, now: Option<&std::path::Path>) -> bool {
+    group.auto && !own_grouping && was.is_some() && group.repo.as_deref() == was && now != was
+}
+
 impl Terminal {
     /// What git.rs's watcher saw.
     pub(crate) fn git_report(&mut self, cx: &mut Cx, report: git::Report) {
@@ -108,7 +118,22 @@ impl Terminal {
             git::Report::Repo(shell, repo) => {
                 let Some((win, i)) = self.find_shell(shell) else { return };
                 let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return };
+                let was = t.tabs[i].repo.as_ref().map(|r| r.main.clone());
+                let now = repo.as_ref().map(|r| r.main.clone());
                 t.tabs[i].repo = repo;
+                // Gone out of the repository of the group it joined on its
+                // own: out of that group. Only this tab, and only as its
+                // own repository changes (Ben, 2026-11-09: a new tab's
+                // report took another group's tab, one put there by hand,
+                // into the group of its repository beside it).
+                if let Some(g) = t.tabs[i].group
+                    && leaves_group(&t.groups[g], t.tabs[i].own_grouping, was.as_deref(), now.as_deref())
+                {
+                    tracing::info!(shell, group = t.groups[g].name, "terminal groups: a tab left its repository, so its repository's group");
+                    t.tabs[i].group = None;
+                    t.tidy();
+                    crate::retitle(cx, win, t);
+                }
                 cx.redraw(win);
                 self.auto_group(cx, win);
             }
@@ -133,13 +158,15 @@ impl Terminal {
         }
     }
 
-    /// Each tab of `win` in a repository is in that repository's group,
-    /// as a browser's tabs of a site: the group beside it, else one made
-    /// for it, in the colour that repository's group has in another window
-    /// (if one has). Not a tab the person took out of a group, nor one
-    /// whose repository's group is elsewhere in the window (a tab doesn't
-    /// jump there on its own). A tab no longer in the repository of the
-    /// group it joined on its own leaves it; a group left empty goes.
+    /// Each tab of `win` in a repository and in no group joins that
+    /// repository's group, as a browser's tabs of a site: the group beside
+    /// it, else one made for it, in the colour that repository's group has
+    /// in another window (if one has). Not a tab the person grouped or
+    /// took out of a group (`Tab::own_grouping`), nor one whose
+    /// repository's group is elsewhere in the window (a tab doesn't jump
+    /// there on its own). A tab already in a group stays in it: one leaves
+    /// the group it joined on its own only as its own repository changes
+    /// (`git_report`), never because another tab's did.
     pub(crate) fn auto_group(&mut self, cx: &mut Cx, win: WindowId) {
         let colors: Vec<(PathBuf, usize)> = self
             .windows
@@ -150,16 +177,6 @@ impl Terminal {
             .collect();
         let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return };
         let mut changed = false;
-        for i in 0..t.tabs.len() {
-            let main = t.tabs[i].repo.as_ref().map(|r| r.main.clone());
-            if let Some(g) = t.tabs[i].group
-                && t.groups[g].auto
-                && t.groups[g].repo != main
-            {
-                t.tabs[i].group = None;
-                changed = true;
-            }
-        }
         for i in 0..t.tabs.len() {
             if t.tabs[i].group.is_some() || t.tabs[i].own_grouping {
                 continue;
@@ -177,6 +194,7 @@ impl Terminal {
                     t.groups.len() - 1
                 }
             };
+            tracing::info!(shell = t.tabs[i].session.id, group = t.groups[g].name, "terminal groups: a tab joined its repository's group");
             t.tabs[i].group = Some(g);
             changed = true;
         }
@@ -595,5 +613,40 @@ fn tilde(p: &std::path::Path) -> String {
         Some(rest) if rest.as_os_str().is_empty() => "~".into(),
         Some(rest) => format!("~/{}", rest.display()),
         None => p.display().to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::*;
+
+    /// Ben, 2026-11-09: in a window with a group Terminal made for one
+    /// repository (holding, by hand, a tab of another) and his "bugs"
+    /// (a renamed group, its repository that other one), ⌘T took the
+    /// hand-placed tab out into "bugs": every report re-judged every tab.
+    /// Now a tab leaves only the group it joined on its own, only as its
+    /// own repository leaves that group's.
+    #[test]
+    fn a_tab_leaves_its_group_only_when_its_own_repository_does() {
+        let (a, b) = (Path::new("/src/shiftup-v2"), Path::new("/src/pyshiftup"));
+        let auto = Group { name: "shiftup-v2".into(), color: 0, repo: Some(a.into()), auto: true };
+        // Joined on its own, then cd'd out of the repository: leaves.
+        assert!(leaves_group(&auto, false, Some(a), Some(b)));
+        assert!(leaves_group(&auto, false, Some(a), None));
+        // Its branch changed, the repository not: stays.
+        assert!(!leaves_group(&auto, false, Some(a), Some(a)));
+        // Put there by the person: theirs.
+        assert!(!leaves_group(&auto, true, Some(a), Some(b)));
+        // Its repository not known yet (Terminal restarting): stays.
+        assert!(!leaves_group(&auto, false, None, Some(b)));
+        // Another repository's tab put there by hand before that was kept
+        // (Ben's "film" tab): stays as its repository is seen.
+        assert!(!leaves_group(&auto, false, Some(b), Some(b)));
+        assert!(!leaves_group(&auto, false, Some(b), None));
+        // A group the person named: never left on its own.
+        let named = Group { name: "bugs".into(), color: 1, repo: Some(b.into()), auto: false };
+        assert!(!leaves_group(&named, false, Some(b), Some(a)));
     }
 }

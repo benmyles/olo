@@ -1473,8 +1473,8 @@ impl Terminal {
             StripAction::Move { from, to, group } => {
                 let shown = t.tab().session.id;
                 let mut tab = t.tabs.remove(from);
-                if tab.group.is_some() && group.is_none() {
-                    // Dragged out of its group by the person.
+                if tab.group != group {
+                    // Dragged out of its group, or into one, by the person.
                     tab.own_grouping = true;
                 }
                 tab.group = group;
