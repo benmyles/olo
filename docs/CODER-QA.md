@@ -180,3 +180,75 @@ After the temporary reconnect-status change, the final build recorded 335 frames
 and zero failing steps; its slowest non-transition draw was 6.68 ms (hover).
 All four benchmark runs, including the initial failures, are retained in the
 machine-readable report.
+
+## Reliability audit follow-up — 2026-11-10
+
+The next audit reproduced and fixed three failures with regression tests:
+pre-cancelled process execution could still spawn (and sometimes report success),
+MCP tool discovery did not observe cancellation until its 30-second timeout,
+and the blocking event client treated premature EOF or a replay-gap notice as
+successful completion. MCP discovery cancellation now measured 5–7 ms in the
+fixture, and already-cancelled process work creates neither a process nor an
+output artifact. Configured MCP tools can also be invoked manually through the
+same approval/audit path, without starting inference or enumerating unrelated
+servers.
+
+Additional fixes cover parent/child restart intent, shutdown admission, queued
+frontend prompts and script completion. Stop now clears descendant restart
+requests while keeping the active reservation, retains completed children's
+status, and closes shutdown's start/cancel race. The GUI and TUI send Stop on a
+separate, short-lived worker: no extra thread or timer exists while idle.
+Unsubmitted prompts carry their original session and cancellation generation;
+a stop or attachment change restores them to the appropriate draft. `--exec`
+waits for its own message's admission before accepting an idle event, reports
+stops and lost streams as failures, and rejects malformed event cursors.
+
+Live release GUI test: a peer deliberately withheld its reply for one second
+while a local process was running. Stop completed after **1,025 ms before**,
+versus **17 ms after**, with two subsequent runs at **21 ms and 11 ms**. The
+cancelled process had no remaining in-flight action; the older unsent prompt
+was restored to the composer rather than admitted into the session. Three-second
+idle samples before/after measured **0% CPU, zero wakeups and zero frames**.
+A separate CLI fixture verified a normal zero exit, nonzero exit on service
+loss, interrupted-state recovery after restart, and invalid cursor rejection
+before starting a service.
+
+The scale sweep found a Send button outside the window when the compositor
+forced it below its requested minimum width on a small display. Below 500 points,
+delivery choices now occupy a separate row. **90 final visual cases passed with
+zero findings**: all six panels, light/dark/night, scales 1/1.25/1.5/1.75/2,
+changing scale while running, including a 454×369-point window. Cancellation,
+retry, compaction and approval status now use readable, separated transcript
+blocks; the original event data remains available through history/action details.
+
+The final focused release suite passed **58 tests** (50 core, eight app), with
+four opt-in live tests ignored. The release workspace build passed. A fresh live
+Claude reasoning/compaction attempt still returned HTTP 429; live Claude
+verification remains blocked by the pool's available quota. This is not a claim
+of zero remaining defects or a weeks-long live soak.
+
+The complete release workspace suite subsequently passed **1,661 tests across
+204 suites, zero failures**, with 138 ignored cases. The same 120 Hz release
+benchmark at 1×/1.5×/2× recorded 336 frames and zero failed steps before the
+change (slowest draw 5.87 ms). The first after run, overlapping the full workspace
+tests, recorded 335 frames and two failing steps: a 23 ms compositor-loop stall
+and an 8.53 ms resize frame. Typing medians before were 1.18/1.16/0.88 ms;
+after, 0.90/0.78/0.78 ms. All runs are retained in
+[coder-reliability-qa.json](coder-reliability-qa.json); shared-host measurements
+are not hard latency guarantees.
+
+With this task's full workspace test workload stopped, the benchmark repeat
+recorded **333 frames, zero failing steps**, with a **1.33 ms** slowest draw.
+The earlier missed frames are retained rather than discarded. The final two
+storage-failure regressions additionally verify that failed checkpoint writes
+cannot cause a hot restart loop or prevent Stop from cancelling active work;
+uncheckpointed effects remain explicitly unknown. Child admission rechecks the
+parent's cancellation while holding the supervisor reservation, closing the
+creation/Stop race. These final guards do not change the layout measured above.
+
+After the storage and child-admission guards, the full release workspace suite
+passed again: **1,664 tests, zero failures**, across 204 suites (138 ignored).
+The final focused suite passed 58 tests and the workspace release build passed.
+[Detailed audit evidence](coder-reliability-qa.json) includes the failing baseline
+regressions, live Stop measurements, CLI recovery, visual cases and every
+benchmark run.

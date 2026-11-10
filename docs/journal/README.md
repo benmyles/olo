@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-10
 
+### Coder: cancellation stays in control
+
+*03:11* — Stop takes a separate control connection even while another request waits on a peer, and older unsubmitted text returns to the composer. Cancellation has readable status blocks and linked action details. On a forced 454-point-wide window at 2×, delivery choices move above the buttons so Send remains reachable. Ninety panel/theme/scale checks passed.
+
+![Coder: cancellation stays in control](2026-11-10/031158-coder-cancellation-stays-in-control.png)
+
 ### Coder: independent terminal tiles
 
 *02:42* — Ratatui views share the durable session service, with independent transcripts, syntax colors, drafts, delivery modes and a searchable session picker. Reconnection is a temporary status, not repeated transcript noise; terminal upgrades restore every tile.

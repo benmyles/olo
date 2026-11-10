@@ -178,10 +178,11 @@ pub fn follow(dir: &Path, session: &str, after: i64, mut event: impl FnMut(Value
     let mut stream = std::os::unix::net::UnixStream::connect(socket(dir))?;
     writeln!(stream, "{}", json!({"subscribe":true,"session":session,"after":after}))?;
     for line in std::io::BufReader::new(stream).lines() {
-        let value = serde_json::from_str(&line?)?;
+        let value: Value = serde_json::from_str(&line?)?;
+        ensure!(value["reconnect"] != true, "event subscription needs reconnect; resume from sequence {}", value["after"]);
         if !event(value) {
-            break;
+            return Ok(());
         }
     }
-    Ok(())
+    anyhow::bail!("event stream disconnected before completion; the session may still be running")
 }

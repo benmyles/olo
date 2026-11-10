@@ -127,6 +127,7 @@ impl Engine {
         let _ = self.events.send(Event { seq: 0, session: id.into(), time: now(), kind: kind.into(), data });
     }
     pub async fn command(self: &Arc<Self>, cmd: Command) -> Result<Value> {
+        ensure!(!self.shutdown.is_cancelled(), "service is shutting down");
         if self.upgrading.load(std::sync::atomic::Ordering::Acquire) {
             ensure!(
                 !matches!(
@@ -171,9 +172,10 @@ impl Engine {
                 }
             }
             Command::Tool { session, name, arguments } => {
-                ensure!(tools::definitions().iter().any(|d| d.name == name), "unknown native tool");
                 let idle = self.idle_guard(&session)?;
                 self.change(&session, "manual_tool", |s| {
+                    let configured_mcp = name.strip_prefix("mcp__").and_then(|n| n.split_once("__")).is_some_and(|(server, tool)| !tool.is_empty() && s.config.mcp.iter().any(|m| m.name == server));
+                    ensure!(configured_mcp || tools::definitions().iter().any(|d| d.name == name), "unknown native tool or unconfigured MCP server");
                     ensure!(s.calls.is_empty() && s.in_flight.is_none(), "resume interrupted work before starting another operation");
                     s.manual = true;
                     s.continue_requested = false;
@@ -230,13 +232,8 @@ impl Engine {
                 Ok(json!({"resumed":true}))
             }
             Command::Stop { session } => {
-                self.cancel_tree(&session);
-                self.change(&session, "stop", |s| {
-                    s.status = Status::Paused;
-                    s.interrupt_requested = false;
-                    s.continue_requested = false;
-                    Ok(json!({"stopped":true}))
-                })
+                self.cancel_tree(&session)?;
+                Ok(json!({"stopped":true}))
             }
             Command::Configure { session, config } => {
                 config.validate()?;
@@ -372,10 +369,11 @@ impl Engine {
                 Ok(serde_json::to_value(self.defaults.lock().unwrap().clone())?)
             }
             Command::Shutdown => {
-                for c in self.active.lock().unwrap().values() {
+                let active = self.active.lock().unwrap();
+                self.shutdown.cancel();
+                for c in active.values() {
                     c.cancel();
                 }
-                self.shutdown.cancel();
                 Ok(json!({"shutdown":true}))
             }
         }
@@ -385,21 +383,64 @@ impl Engine {
         ensure!(!active.contains_key(id), "stop the running turn before this operation");
         Ok(active)
     }
-    fn cancel_tree(&self, id: &str) {
-        if let Some(c) = self.active.lock().unwrap().get(id) {
-            c.cancel();
+    fn cancel_tree(&self, id: &str) -> Result<()> {
+        // Clear restart intent while holding the supervisor reservation. A
+        // child with an interrupt pending must not restart after its parent
+        // was stopped. Build the hierarchy once, not once per descendant.
+        let active = self.active.lock().unwrap();
+        if let Some(cancel) = active.get(id) {
+            cancel.cancel();
         }
-        let rows = self.store.lock().unwrap().list().unwrap_or_default();
+        let rows = self.store.lock().unwrap().list()?;
+        let mut children: HashMap<String, Vec<String>> = HashMap::new();
         for row in rows {
-            if row["parent"] == id {
-                if let Some(child) = row["id"].as_str() {
-                    self.cancel_tree(child);
-                }
+            if let (Some(parent), Some(child)) = (row["parent"].as_str(), row["id"].as_str()) {
+                children.entry(parent.into()).or_default().push(child.into());
             }
+        }
+        let mut pending = vec![id.to_owned()];
+        let mut seen = std::collections::HashSet::new();
+        let mut targets = Vec::new();
+        while let Some(target) = pending.pop() {
+            if !seen.insert(target.clone()) {
+                continue;
+            }
+            if let Some(cancel) = active.get(&target) {
+                cancel.cancel();
+            }
+            pending.extend(children.remove(&target).unwrap_or_default());
+            targets.push(target);
+        }
+        let mut failure = None;
+        for target in targets {
+            let saved = (|| -> Result<()> {
+                let s = self.get(&target)?;
+                if target == id || active.contains_key(&target) || s.interrupt_requested || s.continue_requested || matches!(s.status, Status::Running | Status::Approval) {
+                    self.change(&target, "stop", |s| {
+                        s.status = Status::Paused;
+                        s.interrupt_requested = false;
+                        s.continue_requested = false;
+                        Ok(json!({"stopped":true}))
+                    })?;
+                }
+                Ok(())
+            })();
+            if let Err(error) = saved {
+                failure.get_or_insert(error);
+            }
+        }
+        match failure {
+            Some(error) => Err(error).context("work was cancelled, but its stopped state could not be saved"),
+            None => Ok(()),
         }
     }
     pub(crate) fn start(self: &Arc<Self>, id: String, compact: bool) -> Result<()> {
+        self.start_guarded(id, compact, None)
+    }
+    fn start_guarded(self: &Arc<Self>, id: String, compact: bool, caller: Option<&CancellationToken>) -> Result<()> {
         let mut active = self.active.lock().unwrap();
+        ensure!(caller.is_none_or(|cancel| !cancel.is_cancelled()), "calling turn was cancelled before starting child work");
+        ensure!(!self.shutdown.is_cancelled() && !self.upgrading.load(std::sync::atomic::Ordering::Acquire), "service is shutting down or upgrading");
         if active.contains_key(&id) {
             return Ok(());
         }
@@ -416,20 +457,29 @@ impl Engine {
             loop {
                 let manual = e.get(&id).is_ok_and(|s| s.manual);
                 let result = e.run(&id, &cancel, compact).await;
+                let mut checkpointed = true;
                 if let Err(error) = result {
                     let message = error.to_string();
-                    let _ = e.change(&id, if cancel.is_cancelled() { "paused" } else { "error" }, |s| {
+                    if let Err(storage) = e.change(&id, if cancel.is_cancelled() { "paused" } else { "error" }, |s| {
                         s.status = if cancel.is_cancelled() { Status::Paused } else { Status::Failed };
                         s.error = Some(message.clone());
                         s.pending = None;
                         Ok(json!({"message":message}))
-                    });
+                    }) {
+                        checkpointed = false;
+                        e.transient(
+                            &id,
+                            "error",
+                            json!({"message":format!("Work stopped because its checkpoint could not be saved: {storage}. Resolve the storage error before resuming. Original error: {message}")}),
+                        );
+                    }
                 }
                 e.approvals.lock().unwrap().retain(|(s, _), _| s != &id);
                 // Keep the active reservation across an interrupt/restart. A
                 // sender and quiesce can never observe a false idle gap.
                 let mut active = e.active.lock().unwrap();
-                let restart = !e.shutdown.is_cancelled()
+                let restart = checkpointed
+                    && !e.shutdown.is_cancelled()
                     && !e.upgrading.load(std::sync::atomic::Ordering::Acquire)
                     && e.get(&id).is_ok_and(|s| {
                         s.interrupt_requested
@@ -456,6 +506,7 @@ impl Engine {
         Ok(())
     }
     async fn run(self: &Arc<Self>, id: &str, cancel: &CancellationToken, compact_only: bool) -> Result<()> {
+        ensure!(!cancel.is_cancelled(), "cancelled");
         self.deliver_messages(id, crate::coordination::Boundary::Start)?;
         self.change(id, "running", |s| {
             s.status = Status::Running;
@@ -486,7 +537,11 @@ impl Engine {
         for server in &first.config.mcp {
             ensure!(!server.name.contains("__"), "MCP server names cannot contain __");
             let mut c = tokio::select! {_=cancel.cancelled()=>bail!("cancelled"),r=tokio::time::timeout(std::time::Duration::from_secs(30),mcp::Connection::start(server,&first.workspace))=>r.context("MCP initialization timed out")??};
-            defs.extend(tokio::time::timeout(std::time::Duration::from_secs(30), c.tools(&server.name)).await??);
+            defs.extend(tokio::select! {
+                biased;
+                _=cancel.cancelled()=>bail!("cancelled"),
+                result=tokio::time::timeout(std::time::Duration::from_secs(30), c.tools(&server.name))=>result.context("MCP tool discovery timed out")??,
+            });
             mcps.insert(server.name.clone(), c);
         }
         let mut root_instructions = tools::instructions(&first.workspace, &first.workspace.join("AGENTS.md"))?;
@@ -639,6 +694,7 @@ impl Engine {
         result
     }
     async fn perform(self: &Arc<Self>, id: &str, call: ToolCall, cancel: &CancellationToken, client: &provider::Client, mcps: &mut HashMap<String, mcp::Connection>) -> Result<()> {
+        ensure!(!cancel.is_cancelled(), "cancelled");
         let s = self.get(id)?;
         if !self.allowed(&s, &call, cancel, client).await? {
             self.change(id, "tool_denied", |s| {
@@ -652,6 +708,7 @@ impl Engine {
             return Ok(());
         }
         self.change(id, "tool_started", |s| {
+            ensure!(!cancel.is_cancelled(), "cancelled");
             ensure!(
                 !(s.spec_mode || s.config.read_only) || tools::readonly(&call.name) || tools::internal(&call.name) || matches!(call.name.as_str(), "fetch_url" | "github_read" | "send_message"),
                 "session became read-only before execution"
@@ -711,6 +768,7 @@ impl Engine {
         event: Arc<dyn Fn(&str, Value) + Send + Sync>,
         mcps: &mut HashMap<String, mcp::Connection>,
     ) -> Result<Value> {
+        ensure!(!cancel.is_cancelled(), "cancelled");
         let a = &call.arguments;
         let sid = &s.id;
         match call.name.as_str() {
@@ -824,7 +882,7 @@ impl Engine {
                 child.goal = Some(Goal { objective: task.into(), status: "active".into(), evidence: String::new() });
                 child.memory = s.memory.clone();
                 self.save(&mut child, "created", json!({"parent":s.id}))?;
-                self.start(child.id.clone(), false)?;
+                self.start_guarded(child.id.clone(), false, Some(cancel))?;
                 Ok(json!({"session":child.id}))
             }
             "wait_agent" => {
@@ -866,11 +924,11 @@ impl Engine {
                             s.queued.push(text.into());
                             Ok(json!({"text":text}))
                         })?;
-                        self.start(child.into(), false)?;
+                        self.start_guarded(child.into(), false, Some(cancel))?;
                         Ok(json!({"sent":true}))
                     }
                     _ => {
-                        self.cancel_tree(child);
+                        self.cancel_tree(child)?;
                         Ok(json!({"stopped":true}))
                     }
                 }
@@ -890,6 +948,15 @@ impl Engine {
             name if name.starts_with("mcp__") => {
                 let rest = &name[5..];
                 let (server, tool) = rest.split_once("__").context("invalid MCP tool name")?;
+                if !mcps.contains_key(server) {
+                    let config = s.config.mcp.iter().find(|m| m.name == server).context("MCP server not configured")?;
+                    let connection = tokio::select! {
+                        biased;
+                        _=cancel.cancelled()=>bail!("cancelled"),
+                        result=tokio::time::timeout(std::time::Duration::from_secs(30),mcp::Connection::start(config,&s.workspace))=>result.context("MCP initialization timed out")??,
+                    };
+                    mcps.insert(server.into(), connection);
+                }
                 mcps.get_mut(server).context("MCP server not configured")?.invoke(tool, a.clone(), cancel, s.config.command_timeout_secs).await
             }
             _ => {
@@ -921,4 +988,25 @@ fn system(s: &Session, instructions: &str) -> String {
         s.config.instructions,
         instructions
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn cancelled_parent_cannot_admit_a_child_after_stop() {
+        let directory = std::path::PathBuf::from("/var/tmp").join(format!("olo-coder-child-admission-{}", id()));
+        let engine = Engine::open(directory.clone()).unwrap();
+        let mut child = Session::new(directory.clone(), Config::default());
+        engine.save(&mut child, "created", json!({})).unwrap();
+        let parent = CancellationToken::new();
+        parent.cancel();
+        // This is the admission point after a child's durable creation and
+        // before its task is scheduled, when Stop may have won the race.
+        assert!(engine.start_guarded(child.id.clone(), false, Some(&parent)).is_err());
+        assert!(engine.active.lock().unwrap().is_empty());
+        assert_eq!(engine.get(&child.id).unwrap().status, Status::Idle);
+        drop(engine);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
 }

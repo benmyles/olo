@@ -55,7 +55,7 @@ Both composers accept these commands:
 | `/checkpoints`, `/undo EDIT_ID` | List recoverable edits/deletions; restore only when newer work will not be overwritten |
 | `/event SEQUENCE` | Inspect the complete durable action behind a transcript detail link |
 | `/git OP [JSON]`, `/github OP JSON` | Native repository and GitHub operations |
-| `/tool NAME JSON` | Manually run a native tool through the same approval and audit path |
+| `/tool NAME JSON` | Manually run a native or configured `mcp__SERVER__TOOL` tool through the same approval and audit path |
 | `/config [JSON]`, `/set dotted.key JSON_VALUE` | Inspect or change session configuration |
 | `/defaults [JSON]` | Inspect or persist defaults for subsequently created sessions |
 | `/api JSON` | Run any command in the machine-readable API |
@@ -90,6 +90,13 @@ is more than one. Each tile has its own transcript, scroll position and drafts.
 all of them without stopping work. `NO_COLOR` is respected; the active tile and
 selected row still have text markers. Ctrl+A/E move to the beginning/end of the
 composer; Ctrl+U/K remove text before/after its cursor.
+
+Stop uses a separate control connection, so a slow peer or another pending
+frontend request cannot hold it up. Prompts still waiting in the frontend are
+returned to their session's draft when stopped, or if the attachment changes
+before submission. Already accepted messages remain in the durable Inbox.
+Stopping a parent clears pending restart intent throughout its child tree;
+completed children retain their completion state.
 
 | Delivery | Running session | Idle session |
 | --- | --- | --- |
@@ -415,10 +422,14 @@ Subscriptions register before replaying history, then stream live events:
 Omitted/negative `after` replays recent history; zero replays all events.
 
 `olo-coder --exec PROMPT` is a streaming JSON client suitable for scripts. It stops
-printing when the run becomes idle, fails, pauses or needs approval; an approval
+printing when its own message has been admitted and the run becomes idle, or
+when work fails, pauses, stops or needs approval; an approval
 is never implicitly granted. Failure, pause, and pending approval return a nonzero
-exit status. Resolve it through the API and attach again.
-`olo-coder --events ID --after N` follows events. To deliberately stop the service
+exit status. A disconnected stream or replay-gap notification also returns a
+nonzero status; neither implies completion. Resolve it through the API and
+attach again, using the last durable sequence to resume an event stream.
+`olo-coder --events ID --after N` follows events; `N` must be nonnegative.
+To deliberately stop the service
 and checkpoint cancellation, use `--rpc '{"op":"shutdown"}'`.
 
 ## Validation

@@ -14640,3 +14640,10 @@ See [CODER.md](CODER.md) for the API and [CODER-QA.md](CODER-QA.md) for validati
 first-line baseline alignment follows the field's multiline behavior, even when
 only one line is visible. Additional lines remain editable and scroll with the
 caret; the control's height still comes from the shared font metrics.
+
+Coder's Stop action uses a short-lived control worker, independent of the main
+client request queue. Queued prompts carry their attachment and cancellation
+generation, so stopping or switching sessions returns unsubmitted text to the
+right draft. No extra worker or timer runs while idle. Below a forced 500-point
+window width, the composer places delivery choices above the action buttons;
+scale changes on small outputs must leave Send reachable.

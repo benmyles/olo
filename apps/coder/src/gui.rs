@@ -769,6 +769,11 @@ impl Render for Coder {
                 cx.notify();
             })
         });
+        // A scale change can force a window below its requested minimum on a
+        // small output. Keep the action buttons reachable without truncating
+        // the delivery choices or imposing another horizontal scroll area.
+        let mode = div().pl(well_inset).child(mode);
+        let (mode_above, mode_inline) = if _window.viewport_size().width < px(500.0) { (Some(mode), None) } else { (None, Some(mode)) };
         let composer = div()
             .flex()
             .flex_col()
@@ -782,12 +787,13 @@ impl Render for Coder {
             } else {
                 3
             }))
+            .children(mode_above)
             .child(
                 div()
                     .flex()
                     .items_center()
                     .gap(px(m::SPACING))
-                    .child(div().pl(well_inset).child(mode))
+                    .children(mode_inline)
                     .child(div().flex_1())
                     .child(Button::new("Deny").enabled(pending).on_click(move |_, _| {
                         let _ = deny.tx.send(Action::Approve(false));

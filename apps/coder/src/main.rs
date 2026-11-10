@@ -20,6 +20,7 @@ fn run() -> Result<()> {
     let mut session = None;
     let mut mode = if std::io::IsTerminal::is_terminal(&std::io::stdin()) { "tui" } else { "gui" };
     let mut payload = None;
+    let mut after = None;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -52,7 +53,11 @@ fn run() -> Result<()> {
                         mode = "exec";
                         payload = Some(value.clone());
                     }
-                    "--after" => payload = Some(value.clone()),
+                    "--after" => {
+                        let sequence: i64 = value.parse().context("--after requires a nonnegative event sequence")?;
+                        anyhow::ensure!(sequence >= 0, "--after requires a nonnegative event sequence");
+                        after = Some(sequence);
+                    }
                     _ => {}
                 }
             }
@@ -60,6 +65,7 @@ fn run() -> Result<()> {
         };
         i += 1;
     }
+    anyhow::ensure!(after.is_none() || mode == "events", "--after is only valid with --events");
     if mode == "service" {
         let (upgrade, signal) = tokio::sync::oneshot::channel();
         olo_kit_base::restore::on_upgrade(move || {
@@ -83,7 +89,7 @@ fn run() -> Result<()> {
             let command: Command = serde_json::from_str(payload.as_deref().context("missing command")?)?;
             println!("{}", serde_json::to_string_pretty(&rpc::call(&dir, &command)?)?);
         }
-        "events" => rpc::follow(&dir, &session.context("missing session")?, payload.and_then(|s| s.parse().ok()).unwrap_or(0), |v| {
+        "events" => rpc::follow(&dir, &session.context("missing session")?, after.unwrap_or(0), |v| {
             println!("{v}");
             true
         })?,
@@ -93,27 +99,61 @@ fn run() -> Result<()> {
                 None => rpc::call(&dir, &Command::Create { workspace: cwd, config: None })?["id"].as_str().context("no session id")?.into(),
             };
             let cursor = rpc::call(&dir, &Command::Cursor { session: session.clone() })?["after"].as_i64().unwrap_or(0);
-            rpc::call(&dir, &Command::Send { session: session.clone(), text: payload.context("missing prompt")? })?;
-            let mut stopped = None;
+            let receipt = rpc::call(&dir, &Command::Send { session: session.clone(), text: payload.context("missing prompt")? })?;
+            let mut watch = ExecutionWatch { message: receipt["message"]["id"].as_str().context("missing message receipt")?.into(), admitted: false, stopped: None };
             rpc::follow(&dir, &session, cursor, |v| {
                 println!("{v}");
                 let _ = std::io::stdout().flush();
-                match v["kind"].as_str() {
-                    Some("idle") => false,
-                    Some(kind @ ("error" | "paused" | "approval")) => {
-                        stopped = Some(format!("session {session}: {kind}: {}", v["data"]));
-                        false
-                    }
-                    _ => true,
-                }
+                watch.observe(&v)
             })?;
-            if let Some(reason) = stopped {
-                anyhow::bail!("{reason}");
+            if let Some(reason) = watch.stopped {
+                anyhow::bail!("session {session}: {reason}");
             }
         }
         _ => {}
     }
     Ok(())
+}
+struct ExecutionWatch {
+    message: String,
+    admitted: bool,
+    stopped: Option<String>,
+}
+impl ExecutionWatch {
+    fn observe(&mut self, event: &serde_json::Value) -> bool {
+        match event["kind"].as_str() {
+            Some("messages_delivered") => {
+                self.admitted |= event["data"]["ids"].as_array().is_some_and(|ids| ids.iter().any(|id| id.as_str() == Some(&self.message)));
+                true
+            }
+            Some("idle") => !self.admitted,
+            Some(kind @ ("error" | "paused" | "approval" | "stop")) => {
+                self.stopped = Some(format!("{kind}: {}", event["data"]));
+                false
+            }
+            _ => true,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn execution_waits_for_its_own_message_and_reports_stops() {
+        let mut watch = ExecutionWatch { message: "ours".into(), admitted: false, stopped: None };
+        assert!(watch.observe(&json!({"kind":"idle"})), "a preceding turn may finish before our message is admitted");
+        assert!(watch.observe(&json!({"kind":"messages_delivered","data":{"ids":["another"]}})));
+        assert!(watch.observe(&json!({"kind":"idle"})));
+        assert!(watch.observe(&json!({"kind":"messages_delivered","data":{"ids":["ours"]}})));
+        assert!(!watch.observe(&json!({"kind":"idle"})));
+        assert!(watch.stopped.is_none());
+        for kind in ["error", "paused", "approval", "stop"] {
+            assert!(!watch.observe(&json!({"kind":kind,"data":{}})));
+            assert!(watch.stopped.as_ref().unwrap().starts_with(kind));
+        }
+    }
 }
 fn ensure_service(dir: &std::path::Path) -> Result<()> {
     if std::os::unix::net::UnixStream::connect(rpc::socket(dir)).is_ok() {

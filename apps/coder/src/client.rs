@@ -28,6 +28,7 @@ pub enum Update {
 pub enum Action {
     Submit(String),
     Steer(String, Delivery),
+    Prompt { text: String, delivery: Option<Delivery>, session: String, generation: u64 },
     Browse(SessionFilter),
     Refresh,
     Repository,
@@ -38,7 +39,93 @@ pub enum Action {
 }
 #[derive(Clone)]
 pub struct Handle {
-    pub tx: mpsc::Sender<Action>,
+    pub tx: ActionSender,
+}
+#[derive(Clone)]
+pub struct ActionSender {
+    queue: mpsc::Sender<Action>,
+    control: Option<Arc<StopControl>>,
+}
+struct StopControl {
+    dir: PathBuf,
+    session: Arc<olo_sync::Mutex<String>>,
+    pending: olo_sync::Mutex<std::collections::HashSet<String>>,
+    callback: Arc<dyn Fn(Update) + Send + Sync>,
+    generation: std::sync::atomic::AtomicU64,
+}
+impl ActionSender {
+    pub fn send(&self, action: Action) -> Result<(), mpsc::SendError<Action>> {
+        let stop = matches!(&action, Action::Stop) || matches!(&action, Action::Submit(text) | Action::Steer(text, _) if text.trim() == "/stop");
+        if stop {
+            if let Some(control) = &self.control {
+                let session = control.session.lock().unwrap().clone();
+                if !session.is_empty() {
+                    control.generation.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    if !control.pending.lock().unwrap().insert(session.clone()) {
+                        return Ok(());
+                    }
+                    let control = control.clone();
+                    let submitted = match &action {
+                        Action::Submit(text) | Action::Steer(text, _) => Some(text.clone()),
+                        _ => None,
+                    };
+                    let worker = control.clone();
+                    let target = session.clone();
+                    let spawned = std::thread::Builder::new().name("coder-stop".into()).spawn(move || {
+                        let result = rpc::call(&worker.dir, &Command::Stop { session: target.clone() });
+                        if let Some(text) = submitted {
+                            (worker.callback)(Update::InputResult { session: target.clone(), text, error: result.as_ref().err().map(|e| format!("{e:#}")) });
+                        }
+                        if let Err(error) = result {
+                            (worker.callback)(Update::Notice(format!("Stop request needs attention for session {target}: {error:#}")));
+                        }
+                        worker.pending.lock().unwrap().remove(&target);
+                    });
+                    if let Err(error) = spawned {
+                        control.pending.lock().unwrap().remove(&session);
+                        (control.callback)(Update::Notice(format!("Could not start cancellation worker: {error}")));
+                        return Err(mpsc::SendError(action));
+                    }
+                    return Ok(());
+                }
+            }
+        }
+        let action = match (action, &self.control) {
+            (Action::Submit(text), Some(control)) if prompt_input(&text) => control.prompt(text, None),
+            (Action::Steer(text, delivery), Some(control)) if prompt_input(&text) => control.prompt(text, Some(delivery)),
+            (action, _) => action,
+        };
+        self.queue.send(action)
+    }
+}
+fn prompt_input(text: &str) -> bool {
+    !text.starts_with('/') || ["/queue ", "/after-tool ", "/interrupt "].iter().any(|prefix| text.starts_with(prefix))
+}
+impl StopControl {
+    fn prompt(&self, text: String, delivery: Option<Delivery>) -> Action {
+        Action::Prompt { text, delivery, session: self.session.lock().unwrap().clone(), generation: self.generation.load(std::sync::atomic::Ordering::SeqCst) }
+    }
+    fn admit(&self, action: Action, current: &str) -> Option<Action> {
+        match action {
+            Action::Prompt { text, delivery, session, generation } => {
+                if generation != self.generation.load(std::sync::atomic::Ordering::SeqCst) || (!session.is_empty() && session != current) {
+                    (self.callback)(Update::InputResult { session, text, error: Some("Message was held before submission because work was stopped or the attached session changed.".into()) });
+                    None
+                } else {
+                    Some(match delivery {
+                        Some(delivery) => Action::Steer(text, delivery),
+                        None => Action::Submit(text),
+                    })
+                }
+            }
+            action => Some(action),
+        }
+    }
+}
+impl From<mpsc::Sender<Action>> for ActionSender {
+    fn from(queue: mpsc::Sender<Action>) -> Self {
+        Self { queue, control: None }
+    }
 }
 impl Handle {
     pub fn submit(&self, text: impl Into<String>) {
@@ -171,7 +258,7 @@ fn follow(dir: &std::path::Path, session: &str, filter: SessionFilter, callback:
 }
 pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback: impl Fn(Update) + Send + Sync + 'static) -> Handle {
     let (tx, rx) = mpsc::channel();
-    let handle = Handle { tx: tx.clone() };
+    let current = Arc::new(olo_sync::Mutex::new(session.clone().unwrap_or_default()));
     let mut inspecting = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let (presentation, updates) = mpsc::channel::<Update>();
     std::thread::Builder::new()
@@ -194,9 +281,15 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
             }
         })
         .expect("start presentation worker");
+    let attachment = current.clone();
     let callback: Arc<dyn Fn(Update) + Send + Sync> = Arc::new(move |u| {
+        if let Update::Opened(session) = &u {
+            *attachment.lock().unwrap() = session.clone();
+        }
         let _ = presentation.send(u);
     });
+    let control = Arc::new(StopControl { dir: dir.clone(), session: current, pending: Default::default(), callback: callback.clone(), generation: Default::default() });
+    let handle = Handle { tx: ActionSender { queue: tx.clone(), control: Some(control.clone()) } };
     std::thread::Builder::new()
         .name("coder-client".into())
         .spawn(move || {
@@ -228,6 +321,9 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
                             attempt = attempt.saturating_add(1);
                             match rx.recv_timeout(std::time::Duration::from_secs(1u64 << attempt.min(3))) {
                                 Ok(Action::Quit) | Err(mpsc::RecvTimeoutError::Disconnected) => return Ok(()),
+                                Ok(Action::Prompt { text, session, .. }) => {
+                                    callback(Update::InputResult { session, text, error: Some(error) });
+                                }
                                 Ok(Action::Submit(text) | Action::Steer(text, _)) => {
                                     if let Some(id) = text.trim().strip_prefix("/open ") {
                                         wanted = Some(id.trim().into());
@@ -259,12 +355,14 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
                 let mut following = follow(&dir, &s.id, Default::default(), callback.clone(), tx.clone())?;
                 let mut catalog = follow(&dir, "", Default::default(), callback.clone(), tx.clone())?;
                 while let Ok(action) = rx.recv() {
+                    let Some(action) = control.admit(action, &s.id) else { continue };
                     let mut submitted = match &action {
                         Action::Submit(text) | Action::Steer(text, _) => Some((s.id.clone(), text.clone())),
                         _ => None,
                     };
                     let result = (|| -> Result<()> {
                         let input = match action {
+                            Action::Prompt { .. } => unreachable!("prompt admission unwraps queued input"),
                             Action::Quit => return Err(anyhow::anyhow!("__quit")),
                             Action::Models => {
                                 let dir = dir.clone();
@@ -518,7 +616,14 @@ impl View {
                         }
                         let name = e.data["name"].as_str().unwrap_or("");
                         if e.data["error"] == true {
-                            self.push(&format!("\n> **Action failed** — {}\n", output["error"].as_str().unwrap_or("See action details.")));
+                            let reason = output["error"].as_str().unwrap_or("See action details.");
+                            if reason.starts_with("cancelled") {
+                                let details =
+                                    if reason.contains("partial output artifact ") { "Partial output is available in the action details." } else { "See action details for the recorded outcome." };
+                                self.push(&format!("\n> **Action stopped** — Review any changes before retrying. {details}\n"));
+                            } else {
+                                self.push(&format!("\n> **Action failed** — {reason}\n"));
+                            }
                         } else if name == "set_todos" {
                             self.push(&todo_component("Plan", &output["todos"]));
                         } else if name == "complete_goal" {
@@ -571,7 +676,27 @@ impl View {
                         }
                     }
                     "approval" => self.push(&format!("\n> **Approval needed** — {}\n> {}\n", e.data["call"]["name"].as_str().unwrap_or("Action"), e.data["reason"].as_str().unwrap_or(""))),
-                    "error" | "paused" | "retry" | "compacted" | "auto_review" | "interrupted" => self.push(&format!("{} · {}", e.kind, e.data)),
+                    "error" | "paused" | "interrupted" => {
+                        self.live.clear();
+                        let reason = e.data["message"].as_str().or(e.data["reason"].as_str()).unwrap_or("See session history for details.");
+                        let label = match e.kind.as_str() {
+                            "paused" => "Paused",
+                            "interrupted" => "Session interrupted",
+                            _ => "Session needs attention",
+                        };
+                        let reason = if reason == "cancelled" { "Work has stopped. Pending messages stay available for Resume." } else { reason };
+                        self.push(&format!("\n\n> **{label}** — {reason}\n\n"));
+                    }
+                    "retry" => {
+                        let delay = e.data["seconds"].as_u64().map(|n| format!(" in {n} seconds")).unwrap_or_default();
+                        let reason = e.data["reason"].as_str().map(|s| format!(" · {s}")).unwrap_or_default();
+                        self.push(&format!("\n\n> **Reconnecting to the model**{delay} · attempt {}{reason}\n\n", e.data["attempt"]));
+                    }
+                    "compacted" => self.push("\n\n> **Context compacted** — Provider context was saved. The full session history remains available.\n\n"),
+                    "auto_review" => {
+                        let decision = if e.data["allow"] == true { "Action approved" } else { "Approval needed" };
+                        self.push(&format!("\n\n> **{decision}** — {}\n\n", e.data["reason"].as_str().unwrap_or("Automatic review finished.")));
+                    }
                     _ => {}
                 }
             }
@@ -713,6 +838,76 @@ fn todo_component(title: &str, todos: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn stopped_actions_and_session_status_are_readable_separate_blocks() {
+        let mut view = View { id: "session".into(), ..Default::default() };
+        for (seq, kind, data) in [
+            (1, "tool_result", json!({"name":"execute","error":true,"output":{"error":"cancelled; process group terminated; partial output artifact opaque-id"}})),
+            (2, "paused", json!({"message":"cancelled"})),
+            (3, "paused", json!({"message":"Need the missing fixture"})),
+            (4, "compacted", json!({"compactions":2})),
+        ] {
+            view.apply(Update::Event(Event { seq, session: "session".into(), time: 0, kind: kind.into(), data }));
+        }
+        let source = view.markdown();
+        assert!(source.contains("**Action stopped**"));
+        assert!(source.contains("olo-coder:event/1)\n\n\n> **Paused**"));
+        assert!(source.contains("Need the missing fixture"));
+        assert!(source.contains("**Context compacted**"));
+        assert!(!source.contains("opaque-id") && !source.contains("{\"message\""));
+    }
+    #[test]
+    fn stop_bypasses_busy_requests_and_holds_older_prompts() {
+        use std::time::{Duration, Instant};
+        let dir = std::path::PathBuf::from("/var/tmp").join(format!("olo-coder-control-{}", olo_coder_core::id()));
+        std::fs::create_dir(&dir).unwrap();
+        let listener = std::os::unix::net::UnixListener::bind(rpc::socket(&dir)).unwrap();
+        let (accepted, acceptance) = mpsc::channel();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut line = String::new();
+            std::io::BufReader::new(socket.try_clone().unwrap()).read_line(&mut line).unwrap();
+            let value: Value = serde_json::from_str(&line).unwrap();
+            assert_eq!(value["command"], json!({"op":"stop","session":"original"}));
+            writeln!(socket, "{}", json!({"result":{"stopped":true}})).unwrap();
+            accepted.send(()).unwrap();
+        });
+        let (updates, observed) = mpsc::channel();
+        let control = Arc::new(StopControl {
+            dir: dir.clone(),
+            session: Arc::new(olo_sync::Mutex::new("original".into())),
+            pending: Default::default(),
+            generation: Default::default(),
+            callback: Arc::new(move |u| {
+                let _ = updates.send(u);
+            }),
+        });
+        // No consumer on the normal queue: it represents a request waiting on
+        // an unresponsive peer. Stop must take another connection immediately.
+        let (queue, waiting) = mpsc::channel();
+        let sender = ActionSender { queue, control: Some(control.clone()) };
+        assert!(sender.send(Action::Steer("Older unsent prompt".into(), Delivery::Queue)).is_ok());
+        let began = Instant::now();
+        assert!(sender.send(Action::Submit("/stop".into())).is_ok());
+        acceptance.recv_timeout(Duration::from_secs(1)).unwrap();
+        println!("Stop bypassed stalled request in {:?}", began.elapsed());
+        assert!(control.admit(waiting.recv().unwrap(), "original").is_none());
+        let mut held = false;
+        for _ in 0..2 {
+            if let Update::InputResult { text, session, error: Some(_) } = observed.recv_timeout(Duration::from_secs(1)).unwrap() {
+                assert_eq!(text, "Older unsent prompt");
+                assert_eq!(session, "original");
+                held = true;
+            }
+        }
+        assert!(held);
+        assert!(sender.send(Action::Steer("New explicit prompt".into(), Delivery::AfterTool)).is_ok());
+        assert!(matches!(control.admit(waiting.recv().unwrap(), "original"), Some(Action::Steer(_, _))));
+        assert!(sender.send(Action::Submit("Stay with original session".into())).is_ok());
+        assert!(control.admit(waiting.recv().unwrap(), "another").is_none());
+        server.join().unwrap();
+        std::fs::remove_dir_all(dir).unwrap();
+    }
     #[test]
     fn reconnect_status_is_transient_and_preserves_transcript() {
         let mut view = View::default();

@@ -3904,5 +3904,11 @@
   "title": "Coder: independent terminal tiles",
   "caption": "Ratatui views share the durable session service, with independent transcripts, syntax colors, drafts, delivery modes and a searchable session picker. Reconnection is a temporary status, not repeated transcript noise; terminal upgrades restore every tile.",
   "image": "2026-11-10/024244-coder-independent-terminal-tiles.png"
+ },
+ {
+  "time": "2026-11-10T03:11:58",
+  "title": "Coder: cancellation stays in control",
+  "caption": "Stop takes a separate control connection even while another request waits on a peer, and older unsubmitted text returns to the composer. Cancellation has readable status blocks and linked action details. On a forced 454-point-wide window at 2\u00d7, delivery choices move above the buttons so Send remains reachable. Ninety panel/theme/scale checks passed.",
+  "image": "2026-11-10/031158-coder-cancellation-stays-in-control.png"
  }
 ]

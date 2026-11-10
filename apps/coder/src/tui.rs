@@ -689,7 +689,7 @@ mod session_tests {
         let (tx, _) = mpsc::channel();
         let mut pane = Pane {
             key: 0,
-            client: client::Handle { tx },
+            client: client::Handle { tx: tx.into() },
             view: View::default(),
             draft: String::new(),
             drafts: Default::default(),

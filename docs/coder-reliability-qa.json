@@ -1,0 +1,3978 @@
+{
+  "date": "2026-11-10",
+  "baseline_commit": "c2fa06f0",
+  "baseline_sha256": "dfdeef074f72c10afb107f523a5547d22e9dad16987fb54a840797fa0e2dcd07",
+  "performance_build_sha256": "b7cbfad4bb5207e57c5789682a6145eeb70a6eae89824ea2338c86ac0d5b5332",
+  "final_release_sha256": "cadb97cb8ebeba97f263092706bf13051ff9dac29d7229d44ae7572023368b23",
+  "tests": {
+    "baseline_regressions": {
+      "suites": 2,
+      "passed": 0,
+      "failed": 3,
+      "ignored": 0
+    },
+    "final_focused": {
+      "suites": 5,
+      "passed": 58,
+      "failed": 0,
+      "ignored": 4
+    },
+    "full_workspace": {
+      "suites": 204,
+      "passed": 1664,
+      "failed": 0,
+      "ignored": 138
+    },
+    "release_workspace_build": "passed",
+    "claude_live": "HTTP 429; reasoning/compaction still unverified live"
+  },
+  "stop_latency": {
+    "before": {
+      "stop_ms": 1024.971310980618,
+      "status": "paused",
+      "in_flight": null,
+      "draft": "",
+      "pending_messages": 1
+    },
+    "after": {
+      "stop_ms": 16.878469032235444,
+      "status": "paused",
+      "in_flight": null,
+      "draft": "Older unsent prompt",
+      "pending_messages": 0
+    },
+    "after-final": {
+      "stop_ms": 21.386027976404876,
+      "status": "paused",
+      "in_flight": null,
+      "draft": "Older unsent prompt",
+      "pending_messages": 0
+    },
+    "after-approved": {
+      "stop_ms": 10.615868028253317,
+      "status": "paused",
+      "in_flight": null,
+      "draft": "Older unsent prompt",
+      "pending_messages": 0
+    }
+  },
+  "idle": {
+    "before": {
+      "seconds": 3.0,
+      "total": {
+        "cpu": 0.0,
+        "wakeups": 0
+      },
+      "threads": [
+        {
+          "tid": 4142406,
+          "name": "coder-before",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4142409,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4142412,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4142414,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4142415,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4142416,
+          "name": "coder-rich-text",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4142417,
+          "name": "coder-client",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4142418,
+          "name": "coder-events",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4142419,
+          "name": "coder-events",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4142422,
+          "name": "coder-b:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4142427,
+          "name": "coder-:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4142450,
+          "name": "olo-icons",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4142451,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Older unsent prompt \u2014 Olo Coder",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    },
+    "after-approved": {
+      "seconds": 3.0,
+      "total": {
+        "cpu": 0.0,
+        "wakeups": 0
+      },
+      "threads": [
+        {
+          "tid": 4159545,
+          "name": "olo-coder",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4159548,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4159554,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4159555,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4159556,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4159557,
+          "name": "coder-rich-text",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4159558,
+          "name": "coder-client",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4159560,
+          "name": "coder-events",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4159561,
+          "name": "coder-events",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4159569,
+          "name": "olo-cod:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4159579,
+          "name": "olo-co:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4159596,
+          "name": "olo-icons",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4159597,
+          "name": "glyph-warm",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "New session \u2014 Olo Coder",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    }
+  },
+  "cli": {
+    "normal": {
+      "exit": 0,
+      "error": "",
+      "events": [
+        "message_queued",
+        "messages_delivered",
+        "running",
+        "boundary",
+        "ready",
+        "assistant",
+        "idle"
+      ]
+    },
+    "disconnect": {
+      "exit": 1,
+      "error": "olo-coder: event stream disconnected before completion; the session may still be running",
+      "events": [
+        "message_queued",
+        "messages_delivered",
+        "running",
+        "ready",
+        "boundary"
+      ],
+      "recovered_status": "interrupted"
+    },
+    "--events unused --after bad": {
+      "exit": 1,
+      "error": "olo-coder: --after requires a nonnegative event sequence: invalid digit found in string"
+    },
+    "--events unused --after -1": {
+      "exit": 1,
+      "error": "olo-coder: --after requires a nonnegative event sequence"
+    },
+    "--exec unused --after 1": {
+      "exit": 1,
+      "error": "olo-coder: --after is only valid with --events"
+    }
+  },
+  "visual": {
+    "initial_cases": [
+      {
+        "scale": 1,
+        "theme": "light",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "dark",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "night",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "light",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 838,
+            "height": 608,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "dark",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 838,
+            "height": 608,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "night",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 838,
+            "height": 608,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "light",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 667,
+            "height": 502,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "dark",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 667,
+            "height": 502,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "night",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 667,
+            "height": 502,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "light",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 545,
+            "height": 426,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "dark",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 545,
+            "height": 426,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "night",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 545,
+            "height": 426,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "light",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 454,
+            "height": 369,
+            "scale": 2.0,
+            "dark": false,
+            "findings": [
+              {
+                "level": "error",
+                "kind": "outside",
+                "text": "Button \"Send\" (80\u00d724) runs past the window: give it room",
+                "x": 393.0,
+                "y": 309.0,
+                "width": 80.0,
+                "height": 24.0
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "dark",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 454,
+            "height": 369,
+            "scale": 2.0,
+            "dark": true,
+            "findings": [
+              {
+                "level": "error",
+                "kind": "outside",
+                "text": "Button \"Send\" (80\u00d724) runs past the window: give it room",
+                "x": 393.0,
+                "y": 309.0,
+                "width": 80.0,
+                "height": 24.0
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "night",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 454,
+            "height": 369,
+            "scale": 2.0,
+            "dark": true,
+            "findings": [
+              {
+                "level": "error",
+                "kind": "outside",
+                "text": "Button \"Send\" (80\u00d724) runs past the window: give it room",
+                "x": 393.0,
+                "y": 309.0,
+                "width": 80.0,
+                "height": 24.0
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "final_cases": [
+      {
+        "scale": 1,
+        "theme": "light",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "light",
+        "panel": "work",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "light",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "light",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "light",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "light",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "dark",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "dark",
+        "panel": "work",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "dark",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "dark",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "dark",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "dark",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "night",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "night",
+        "panel": "work",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "night",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "night",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "night",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1,
+        "theme": "night",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 1040,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "light",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 838,
+            "height": 608,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "light",
+        "panel": "work",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 838,
+            "height": 608,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "light",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 838,
+            "height": 608,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "light",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 838,
+            "height": 608,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "light",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 838,
+            "height": 608,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "light",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 838,
+            "height": 608,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "dark",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 838,
+            "height": 608,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "dark",
+        "panel": "work",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 838,
+            "height": 608,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "dark",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 838,
+            "height": 608,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "dark",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 838,
+            "height": 608,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "dark",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 838,
+            "height": 608,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "dark",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 838,
+            "height": 608,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "night",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 838,
+            "height": 608,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "night",
+        "panel": "work",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 838,
+            "height": 608,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "night",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 838,
+            "height": 608,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "night",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 838,
+            "height": 608,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "night",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 838,
+            "height": 608,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.25,
+        "theme": "night",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 838,
+            "height": 608,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "light",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 667,
+            "height": 502,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "light",
+        "panel": "work",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 667,
+            "height": 502,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "light",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 667,
+            "height": 502,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "light",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 667,
+            "height": 502,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "light",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 667,
+            "height": 502,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "light",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 667,
+            "height": 502,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "dark",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 667,
+            "height": 502,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "dark",
+        "panel": "work",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 667,
+            "height": 502,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "dark",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 667,
+            "height": 502,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "dark",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 667,
+            "height": 502,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "dark",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 667,
+            "height": 502,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "dark",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 667,
+            "height": 502,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "night",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 667,
+            "height": 502,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "night",
+        "panel": "work",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 667,
+            "height": 502,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "night",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 667,
+            "height": 502,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "night",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 667,
+            "height": 502,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "night",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 667,
+            "height": 502,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.5,
+        "theme": "night",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 667,
+            "height": 502,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "light",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 545,
+            "height": 426,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "light",
+        "panel": "work",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 545,
+            "height": 426,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "light",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 545,
+            "height": 426,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "light",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 545,
+            "height": 426,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "light",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 545,
+            "height": 426,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "light",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 545,
+            "height": 426,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "dark",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 545,
+            "height": 426,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "dark",
+        "panel": "work",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 545,
+            "height": 426,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "dark",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 545,
+            "height": 426,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "dark",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 545,
+            "height": 426,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "dark",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 545,
+            "height": 426,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "dark",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 545,
+            "height": 426,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "night",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 545,
+            "height": 426,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "night",
+        "panel": "work",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 545,
+            "height": 426,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "night",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 545,
+            "height": 426,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "night",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 545,
+            "height": 426,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "night",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 545,
+            "height": 426,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 1.75,
+        "theme": "night",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 545,
+            "height": 426,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "light",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 454,
+            "height": 369,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "light",
+        "panel": "work",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 454,
+            "height": 369,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "light",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 454,
+            "height": 369,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "light",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 454,
+            "height": 369,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "light",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 454,
+            "height": 369,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "light",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 454,
+            "height": 369,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "dark",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 454,
+            "height": 369,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "dark",
+        "panel": "work",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 454,
+            "height": 369,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "dark",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 454,
+            "height": 369,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "dark",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 454,
+            "height": 369,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "dark",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 454,
+            "height": 369,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "dark",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 454,
+            "height": 369,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "night",
+        "panel": "conversation",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 454,
+            "height": 369,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "night",
+        "panel": "work",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 454,
+            "height": 369,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "night",
+        "panel": "changes",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 454,
+            "height": 369,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "night",
+        "panel": "settings",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 454,
+            "height": 369,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "night",
+        "panel": "sessions",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 454,
+            "height": 369,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "scale": 2,
+        "theme": "night",
+        "panel": "inbox",
+        "review": [
+          {
+            "title": "New session \u2014 Olo Coder",
+            "width": 454,
+            "height": 369,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      }
+    ],
+    "final_findings": 0,
+    "minimum_observed_content_points": [
+      454,
+      369
+    ]
+  },
+  "benchmarks": {
+    "bench-before": [
+      {
+        "app": "session",
+        "step": "scale to 1",
+        "transition": true,
+        "frames": 3,
+        "p50_ms": 0.61,
+        "p99_ms": 1.88,
+        "max_ms": 1.88,
+        "ui_max_ms": 1.58,
+        "server": {
+          "frame_max_ms": 2.67,
+          "loop_late_ms": 5.8,
+          "slowest": [
+            "flushing to clients",
+            1252
+          ],
+          "frames": 15
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "launch and load",
+        "transition": true,
+        "frames": 10,
+        "p50_ms": 1.3,
+        "p99_ms": 5.35,
+        "max_ms": 5.35,
+        "ui_max_ms": 1.69,
+        "server": {
+          "frame_max_ms": 10.85,
+          "loop_late_ms": 8.8,
+          "slowest": [
+            "tick",
+            4298
+          ],
+          "frames": 51
+        },
+        "notes": [],
+        "failures": [],
+        "launch_ms": 165
+      },
+      {
+        "app": "coder",
+        "step": "idle 1 s",
+        "transition": false,
+        "frames": 2,
+        "p50_ms": 0.84,
+        "p99_ms": 0.84,
+        "max_ms": 0.84,
+        "ui_max_ms": 0.64,
+        "server": {
+          "frame_max_ms": 1.15,
+          "loop_late_ms": 2.4,
+          "slowest": [
+            "tick",
+            277
+          ],
+          "frames": 14
+        },
+        "notes": [],
+        "failures": [],
+        "idle_fps": 2
+      },
+      {
+        "app": "coder",
+        "step": "pointer over it",
+        "transition": false,
+        "frames": 20,
+        "p50_ms": 1.18,
+        "p99_ms": 2.12,
+        "max_ms": 2.12,
+        "ui_max_ms": 1.01,
+        "server": {
+          "frame_max_ms": 3.85,
+          "loop_late_ms": 3.7,
+          "slowest": [
+            "request synthetic",
+            3009
+          ],
+          "frames": 179
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 1",
+        "transition": false,
+        "frames": 4,
+        "p50_ms": 1.99,
+        "p99_ms": 2.82,
+        "max_ms": 2.82,
+        "ui_max_ms": 0.96,
+        "server": {
+          "frame_max_ms": 1.35,
+          "loop_late_ms": 4.3,
+          "slowest": [
+            "flushing to clients",
+            1763
+          ],
+          "frames": 433
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 2",
+        "transition": false,
+        "frames": 0,
+        "p50_ms": 0.0,
+        "p99_ms": 0.0,
+        "max_ms": 0,
+        "ui_max_ms": 0.0,
+        "server": {
+          "frame_max_ms": 2.18,
+          "loop_late_ms": 11.0,
+          "slowest": [
+            "flushing to clients",
+            4806
+          ],
+          "frames": 424
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "5 menus",
+        "transition": false,
+        "frames": 15,
+        "p50_ms": 1.18,
+        "p99_ms": 3.11,
+        "max_ms": 3.11,
+        "ui_max_ms": 1.59,
+        "server": {
+          "frame_max_ms": 6.51,
+          "loop_late_ms": 9.1,
+          "slowest": [
+            "tick",
+            2315
+          ],
+          "frames": 509
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "typing",
+        "transition": false,
+        "frames": 13,
+        "p50_ms": 1.18,
+        "p99_ms": 2.96,
+        "max_ms": 2.96,
+        "ui_max_ms": 2.63,
+        "server": {
+          "frame_max_ms": 0.53,
+          "loop_late_ms": 2.2,
+          "slowest": [
+            "flushing to clients",
+            1378
+          ],
+          "frames": 66
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "live resize",
+        "transition": false,
+        "frames": 37,
+        "p50_ms": 1.26,
+        "p99_ms": 1.86,
+        "max_ms": 1.86,
+        "ui_max_ms": 1.17,
+        "server": {
+          "frame_max_ms": 2.38,
+          "loop_late_ms": 13.4,
+          "slowest": [
+            "flushing to clients",
+            1503
+          ],
+          "frames": 120
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "theme light, dark",
+        "transition": true,
+        "frames": 5,
+        "p50_ms": 0.89,
+        "p99_ms": 2.0,
+        "max_ms": 2.0,
+        "ui_max_ms": 1.58,
+        "server": {
+          "frame_max_ms": 4.49,
+          "loop_late_ms": 2.6,
+          "slowest": [
+            "flushing to clients",
+            1765
+          ],
+          "frames": 34
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "session",
+        "step": "scale to 1.5",
+        "transition": true,
+        "frames": 2,
+        "p50_ms": 3.11,
+        "p99_ms": 3.11,
+        "max_ms": 3.11,
+        "ui_max_ms": 2.39,
+        "server": {
+          "frame_max_ms": 0.54,
+          "loop_late_ms": 2.5,
+          "slowest": [
+            "request set_settings",
+            2171
+          ],
+          "frames": 12
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "launch and load",
+        "transition": true,
+        "frames": 9,
+        "p50_ms": 1.22,
+        "p99_ms": 9.24,
+        "max_ms": 9.24,
+        "ui_max_ms": 1.57,
+        "server": {
+          "frame_max_ms": 5.06,
+          "loop_late_ms": 4.3,
+          "slowest": [
+            "tick",
+            698
+          ],
+          "frames": 46
+        },
+        "notes": [
+          "slowest 9.2 ms: setup 0.0, ui 0.6, tessellate 0.0, acquire 0.0, submit 8.7"
+        ],
+        "failures": [],
+        "launch_ms": 123
+      },
+      {
+        "app": "coder",
+        "step": "idle 1 s",
+        "transition": false,
+        "frames": 2,
+        "p50_ms": 1.16,
+        "p99_ms": 1.16,
+        "max_ms": 1.16,
+        "ui_max_ms": 0.9,
+        "server": {
+          "frame_max_ms": 0.51,
+          "loop_late_ms": 13.5,
+          "slowest": [
+            "tick",
+            726
+          ],
+          "frames": 10
+        },
+        "notes": [],
+        "failures": [],
+        "idle_fps": 2
+      },
+      {
+        "app": "coder",
+        "step": "pointer over it",
+        "transition": false,
+        "frames": 21,
+        "p50_ms": 1.19,
+        "p99_ms": 3.01,
+        "max_ms": 3.01,
+        "ui_max_ms": 1.5,
+        "server": {
+          "frame_max_ms": 1.23,
+          "loop_late_ms": 2.6,
+          "slowest": [
+            "flushing to clients",
+            1316
+          ],
+          "frames": 192
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 1",
+        "transition": false,
+        "frames": 4,
+        "p50_ms": 1.18,
+        "p99_ms": 1.24,
+        "max_ms": 1.24,
+        "ui_max_ms": 0.93,
+        "server": {
+          "frame_max_ms": 1.35,
+          "loop_late_ms": 2.9,
+          "slowest": [
+            "flushing to clients",
+            3001
+          ],
+          "frames": 435
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 2",
+        "transition": false,
+        "frames": 0,
+        "p50_ms": 0.0,
+        "p99_ms": 0.0,
+        "max_ms": 0,
+        "ui_max_ms": 0.0,
+        "server": {
+          "frame_max_ms": 2.47,
+          "loop_late_ms": 2.4,
+          "slowest": [
+            "flushing to clients",
+            1612
+          ],
+          "frames": 425
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "5 menus",
+        "transition": false,
+        "frames": 15,
+        "p50_ms": 1.16,
+        "p99_ms": 2.74,
+        "max_ms": 2.74,
+        "ui_max_ms": 1.11,
+        "server": {
+          "frame_max_ms": 3.38,
+          "loop_late_ms": 2.7,
+          "slowest": [
+            "tick",
+            3613
+          ],
+          "frames": 508
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "typing",
+        "transition": false,
+        "frames": 13,
+        "p50_ms": 1.16,
+        "p99_ms": 4.28,
+        "max_ms": 4.28,
+        "ui_max_ms": 1.61,
+        "server": {
+          "frame_max_ms": 0.79,
+          "loop_late_ms": 2.6,
+          "slowest": [
+            "flushing to clients",
+            1279
+          ],
+          "frames": 66
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "live resize",
+        "transition": false,
+        "frames": 38,
+        "p50_ms": 1.19,
+        "p99_ms": 5.87,
+        "max_ms": 5.87,
+        "ui_max_ms": 1.69,
+        "server": {
+          "frame_max_ms": 0.96,
+          "loop_late_ms": 2.3,
+          "slowest": [
+            "flushing to clients",
+            1325
+          ],
+          "frames": 116
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "theme light, dark",
+        "transition": true,
+        "frames": 5,
+        "p50_ms": 1.85,
+        "p99_ms": 3.81,
+        "max_ms": 3.81,
+        "ui_max_ms": 1.04,
+        "server": {
+          "frame_max_ms": 3.24,
+          "loop_late_ms": 2.8,
+          "slowest": [
+            "request set_settings",
+            1809
+          ],
+          "frames": 36
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "session",
+        "step": "scale to 2",
+        "transition": true,
+        "frames": 3,
+        "p50_ms": 0.6,
+        "p99_ms": 0.64,
+        "max_ms": 0.64,
+        "ui_max_ms": 0.4,
+        "server": {
+          "frame_max_ms": 0.42,
+          "loop_late_ms": 5.8,
+          "slowest": [
+            "tick",
+            558
+          ],
+          "frames": 9
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "launch and load",
+        "transition": true,
+        "frames": 9,
+        "p50_ms": 1.39,
+        "p99_ms": 4.08,
+        "max_ms": 4.08,
+        "ui_max_ms": 1.78,
+        "server": {
+          "frame_max_ms": 0.84,
+          "loop_late_ms": 14.6,
+          "slowest": [
+            "flushing to clients",
+            577
+          ],
+          "frames": 46
+        },
+        "notes": [],
+        "failures": [],
+        "launch_ms": 112
+      },
+      {
+        "app": "coder",
+        "step": "idle 1 s",
+        "transition": false,
+        "frames": 2,
+        "p50_ms": 1.82,
+        "p99_ms": 1.82,
+        "max_ms": 1.82,
+        "ui_max_ms": 0.88,
+        "server": {
+          "frame_max_ms": 0.61,
+          "loop_late_ms": 1.6,
+          "slowest": [
+            "tick",
+            196
+          ],
+          "frames": 9
+        },
+        "notes": [],
+        "failures": [],
+        "idle_fps": 2
+      },
+      {
+        "app": "coder",
+        "step": "pointer over it",
+        "transition": false,
+        "frames": 28,
+        "p50_ms": 1.11,
+        "p99_ms": 2.67,
+        "max_ms": 2.67,
+        "ui_max_ms": 1.6,
+        "server": {
+          "frame_max_ms": 1.91,
+          "loop_late_ms": 7.7,
+          "slowest": [
+            "tick",
+            1661
+          ],
+          "frames": 207
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 1",
+        "transition": false,
+        "frames": 4,
+        "p50_ms": 1.49,
+        "p99_ms": 2.31,
+        "max_ms": 2.31,
+        "ui_max_ms": 1.17,
+        "server": {
+          "frame_max_ms": 1.42,
+          "loop_late_ms": 3.0,
+          "slowest": [
+            "flushing to clients",
+            3206
+          ],
+          "frames": 434
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 2",
+        "transition": false,
+        "frames": 0,
+        "p50_ms": 0.0,
+        "p99_ms": 0.0,
+        "max_ms": 0,
+        "ui_max_ms": 0.0,
+        "server": {
+          "frame_max_ms": 0.92,
+          "loop_late_ms": 8.1,
+          "slowest": [
+            "tick",
+            1451
+          ],
+          "frames": 432
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "5 menus",
+        "transition": false,
+        "frames": 15,
+        "p50_ms": 1.08,
+        "p99_ms": 2.77,
+        "max_ms": 2.77,
+        "ui_max_ms": 2.16,
+        "server": {
+          "frame_max_ms": 1.29,
+          "loop_late_ms": 3.4,
+          "slowest": [
+            "flushing to clients",
+            1626
+          ],
+          "frames": 508
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "typing",
+        "transition": false,
+        "frames": 13,
+        "p50_ms": 0.88,
+        "p99_ms": 1.54,
+        "max_ms": 1.54,
+        "ui_max_ms": 0.94,
+        "server": {
+          "frame_max_ms": 0.46,
+          "loop_late_ms": 2.2,
+          "slowest": [
+            "flushing to clients",
+            1202
+          ],
+          "frames": 65
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "live resize",
+        "transition": false,
+        "frames": 39,
+        "p50_ms": 0.95,
+        "p99_ms": 4.0,
+        "max_ms": 4.0,
+        "ui_max_ms": 2.45,
+        "server": {
+          "frame_max_ms": 0.72,
+          "loop_late_ms": 2.8,
+          "slowest": [
+            "flushing to clients",
+            1372
+          ],
+          "frames": 115
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "theme light, dark",
+        "transition": true,
+        "frames": 5,
+        "p50_ms": 1.31,
+        "p99_ms": 2.61,
+        "max_ms": 2.61,
+        "ui_max_ms": 1.02,
+        "server": {
+          "frame_max_ms": 4.41,
+          "loop_late_ms": 4.4,
+          "slowest": [
+            "request set_settings",
+            1153
+          ],
+          "frames": 41
+        },
+        "notes": [],
+        "failures": []
+      }
+    ],
+    "bench-after": [
+      {
+        "app": "session",
+        "step": "scale to 1",
+        "transition": true,
+        "frames": 3,
+        "p50_ms": 0.65,
+        "p99_ms": 2.57,
+        "max_ms": 2.57,
+        "ui_max_ms": 2.23,
+        "server": {
+          "frame_max_ms": 0.92,
+          "loop_late_ms": 2.5,
+          "slowest": [
+            "clients' requests",
+            957
+          ],
+          "frames": 14
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "launch and load",
+        "transition": true,
+        "frames": 9,
+        "p50_ms": 1.04,
+        "p99_ms": 2.42,
+        "max_ms": 2.42,
+        "ui_max_ms": 1.68,
+        "server": {
+          "frame_max_ms": 7.11,
+          "loop_late_ms": 4.8,
+          "slowest": [
+            "tick",
+            970
+          ],
+          "frames": 42
+        },
+        "notes": [],
+        "failures": [],
+        "launch_ms": 137
+      },
+      {
+        "app": "coder",
+        "step": "idle 1 s",
+        "transition": false,
+        "frames": 2,
+        "p50_ms": 0.89,
+        "p99_ms": 0.89,
+        "max_ms": 0.89,
+        "ui_max_ms": 0.67,
+        "server": {
+          "frame_max_ms": 1.38,
+          "loop_late_ms": 1.4,
+          "slowest": [
+            "tick",
+            551
+          ],
+          "frames": 13
+        },
+        "notes": [],
+        "failures": [],
+        "idle_fps": 2
+      },
+      {
+        "app": "coder",
+        "step": "pointer over it",
+        "transition": false,
+        "frames": 20,
+        "p50_ms": 1.14,
+        "p99_ms": 1.92,
+        "max_ms": 1.92,
+        "ui_max_ms": 1.32,
+        "server": {
+          "frame_max_ms": 1.11,
+          "loop_late_ms": 14.1,
+          "slowest": [
+            "flushing to clients",
+            2487
+          ],
+          "frames": 177
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 1",
+        "transition": false,
+        "frames": 4,
+        "p50_ms": 1.14,
+        "p99_ms": 1.2,
+        "max_ms": 1.2,
+        "ui_max_ms": 0.9,
+        "server": {
+          "frame_max_ms": 1.26,
+          "loop_late_ms": 5.2,
+          "slowest": [
+            "tick",
+            2465
+          ],
+          "frames": 429
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 2",
+        "transition": false,
+        "frames": 0,
+        "p50_ms": 0.0,
+        "p99_ms": 0.0,
+        "max_ms": 0,
+        "ui_max_ms": 0.0,
+        "server": {
+          "frame_max_ms": 2.21,
+          "loop_late_ms": 22.8,
+          "slowest": [
+            "tick",
+            3666
+          ],
+          "frames": 426
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": [
+          "app_server's loop stalled 23 ms (['tick', 3666])"
+        ]
+      },
+      {
+        "app": "coder",
+        "step": "5 menus",
+        "transition": false,
+        "frames": 15,
+        "p50_ms": 0.81,
+        "p99_ms": 4.05,
+        "max_ms": 4.05,
+        "ui_max_ms": 3.02,
+        "server": {
+          "frame_max_ms": 1.41,
+          "loop_late_ms": 4.1,
+          "slowest": [
+            "flushing to clients",
+            1755
+          ],
+          "frames": 504
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "typing",
+        "transition": false,
+        "frames": 13,
+        "p50_ms": 0.9,
+        "p99_ms": 1.1,
+        "max_ms": 1.1,
+        "ui_max_ms": 0.93,
+        "server": {
+          "frame_max_ms": 0.44,
+          "loop_late_ms": 1.2,
+          "slowest": [
+            "tick",
+            281
+          ],
+          "frames": 66
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "live resize",
+        "transition": false,
+        "frames": 38,
+        "p50_ms": 0.82,
+        "p99_ms": 1.11,
+        "max_ms": 1.11,
+        "ui_max_ms": 0.9,
+        "server": {
+          "frame_max_ms": 0.63,
+          "loop_late_ms": 0.4,
+          "slowest": [
+            "tick",
+            215
+          ],
+          "frames": 112
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "theme light, dark",
+        "transition": true,
+        "frames": 5,
+        "p50_ms": 0.82,
+        "p99_ms": 0.89,
+        "max_ms": 0.89,
+        "ui_max_ms": 0.75,
+        "server": {
+          "frame_max_ms": 2.15,
+          "loop_late_ms": 1.1,
+          "slowest": [
+            "request set_settings",
+            459
+          ],
+          "frames": 35
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "session",
+        "step": "scale to 1.5",
+        "transition": true,
+        "frames": 3,
+        "p50_ms": 0.47,
+        "p99_ms": 1.76,
+        "max_ms": 1.76,
+        "ui_max_ms": 1.55,
+        "server": {
+          "frame_max_ms": 0.43,
+          "loop_late_ms": 0.2,
+          "slowest": [
+            "request set_settings",
+            461
+          ],
+          "frames": 8
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "launch and load",
+        "transition": true,
+        "frames": 9,
+        "p50_ms": 0.86,
+        "p99_ms": 2.19,
+        "max_ms": 2.19,
+        "ui_max_ms": 0.89,
+        "server": {
+          "frame_max_ms": 2.16,
+          "loop_late_ms": 0.4,
+          "slowest": [
+            "tick",
+            273
+          ],
+          "frames": 38
+        },
+        "notes": [],
+        "failures": [],
+        "launch_ms": 75
+      },
+      {
+        "app": "coder",
+        "step": "idle 1 s",
+        "transition": false,
+        "frames": 2,
+        "p50_ms": 0.83,
+        "p99_ms": 0.83,
+        "max_ms": 0.83,
+        "ui_max_ms": 0.71,
+        "server": {
+          "frame_max_ms": 0.35,
+          "loop_late_ms": 0.3,
+          "slowest": [
+            "tick",
+            209
+          ],
+          "frames": 13
+        },
+        "notes": [],
+        "failures": [],
+        "idle_fps": 2
+      },
+      {
+        "app": "coder",
+        "step": "pointer over it",
+        "transition": false,
+        "frames": 21,
+        "p50_ms": 0.79,
+        "p99_ms": 1.49,
+        "max_ms": 1.49,
+        "ui_max_ms": 1.16,
+        "server": {
+          "frame_max_ms": 1.56,
+          "loop_late_ms": 0.8,
+          "slowest": [
+            "tick",
+            204
+          ],
+          "frames": 195
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 1",
+        "transition": false,
+        "frames": 4,
+        "p50_ms": 0.98,
+        "p99_ms": 1.02,
+        "max_ms": 1.02,
+        "ui_max_ms": 0.89,
+        "server": {
+          "frame_max_ms": 0.56,
+          "loop_late_ms": 2.7,
+          "slowest": [
+            "tick",
+            303
+          ],
+          "frames": 434
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 2",
+        "transition": false,
+        "frames": 0,
+        "p50_ms": 0.0,
+        "p99_ms": 0.0,
+        "max_ms": 0,
+        "ui_max_ms": 0.0,
+        "server": {
+          "frame_max_ms": 0.5,
+          "loop_late_ms": 0.5,
+          "slowest": [
+            "tick",
+            240
+          ],
+          "frames": 421
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "5 menus",
+        "transition": false,
+        "frames": 15,
+        "p50_ms": 0.74,
+        "p99_ms": 1.05,
+        "max_ms": 1.05,
+        "ui_max_ms": 0.85,
+        "server": {
+          "frame_max_ms": 0.55,
+          "loop_late_ms": 0.6,
+          "slowest": [
+            "tick",
+            294
+          ],
+          "frames": 506
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "typing",
+        "transition": false,
+        "frames": 13,
+        "p50_ms": 0.78,
+        "p99_ms": 0.93,
+        "max_ms": 0.93,
+        "ui_max_ms": 0.74,
+        "server": {
+          "frame_max_ms": 0.51,
+          "loop_late_ms": 0.3,
+          "slowest": [
+            "tick",
+            218
+          ],
+          "frames": 66
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "live resize",
+        "transition": false,
+        "frames": 38,
+        "p50_ms": 0.83,
+        "p99_ms": 1.07,
+        "max_ms": 1.07,
+        "ui_max_ms": 0.85,
+        "server": {
+          "frame_max_ms": 0.57,
+          "loop_late_ms": 0.4,
+          "slowest": [
+            "tick",
+            245
+          ],
+          "frames": 111
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "theme light, dark",
+        "transition": true,
+        "frames": 5,
+        "p50_ms": 0.81,
+        "p99_ms": 1.17,
+        "max_ms": 1.17,
+        "ui_max_ms": 0.96,
+        "server": {
+          "frame_max_ms": 2.48,
+          "loop_late_ms": 0.7,
+          "slowest": [
+            "request set_settings",
+            387
+          ],
+          "frames": 35
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "session",
+        "step": "scale to 2",
+        "transition": true,
+        "frames": 1,
+        "p50_ms": 0.43,
+        "p99_ms": 0.43,
+        "max_ms": 0.43,
+        "ui_max_ms": 0.3,
+        "server": {
+          "frame_max_ms": 0.56,
+          "loop_late_ms": 0.6,
+          "slowest": [
+            "request set_settings",
+            469
+          ],
+          "frames": 8
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "launch and load",
+        "transition": true,
+        "frames": 9,
+        "p50_ms": 0.83,
+        "p99_ms": 2.26,
+        "max_ms": 2.26,
+        "ui_max_ms": 0.77,
+        "server": {
+          "frame_max_ms": 2.66,
+          "loop_late_ms": 0.8,
+          "slowest": [
+            "tick",
+            277
+          ],
+          "frames": 35
+        },
+        "notes": [],
+        "failures": [],
+        "launch_ms": 97
+      },
+      {
+        "app": "coder",
+        "step": "idle 1 s",
+        "transition": false,
+        "frames": 2,
+        "p50_ms": 0.79,
+        "p99_ms": 0.79,
+        "max_ms": 0.79,
+        "ui_max_ms": 0.62,
+        "server": {
+          "frame_max_ms": 0.42,
+          "loop_late_ms": 0.3,
+          "slowest": [
+            "tick",
+            204
+          ],
+          "frames": 9
+        },
+        "notes": [],
+        "failures": [],
+        "idle_fps": 2
+      },
+      {
+        "app": "coder",
+        "step": "pointer over it",
+        "transition": false,
+        "frames": 28,
+        "p50_ms": 0.79,
+        "p99_ms": 0.94,
+        "max_ms": 0.94,
+        "ui_max_ms": 0.76,
+        "server": {
+          "frame_max_ms": 0.48,
+          "loop_late_ms": 1.4,
+          "slowest": [
+            "clients' requests",
+            1033
+          ],
+          "frames": 211
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 1",
+        "transition": false,
+        "frames": 4,
+        "p50_ms": 0.87,
+        "p99_ms": 1.11,
+        "max_ms": 1.11,
+        "ui_max_ms": 0.9,
+        "server": {
+          "frame_max_ms": 0.75,
+          "loop_late_ms": 0.3,
+          "slowest": [
+            "tick",
+            323
+          ],
+          "frames": 426
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 2",
+        "transition": false,
+        "frames": 0,
+        "p50_ms": 0.0,
+        "p99_ms": 0.0,
+        "max_ms": 0,
+        "ui_max_ms": 0.0,
+        "server": {
+          "frame_max_ms": 0.83,
+          "loop_late_ms": 0.7,
+          "slowest": [
+            "tick",
+            948
+          ],
+          "frames": 421
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "5 menus",
+        "transition": false,
+        "frames": 15,
+        "p50_ms": 0.74,
+        "p99_ms": 1.17,
+        "max_ms": 1.17,
+        "ui_max_ms": 0.93,
+        "server": {
+          "frame_max_ms": 0.68,
+          "loop_late_ms": 0.7,
+          "slowest": [
+            "flushing to clients",
+            601
+          ],
+          "frames": 500
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "typing",
+        "transition": false,
+        "frames": 13,
+        "p50_ms": 0.78,
+        "p99_ms": 1.06,
+        "max_ms": 1.06,
+        "ui_max_ms": 0.87,
+        "server": {
+          "frame_max_ms": 0.57,
+          "loop_late_ms": 0.5,
+          "slowest": [
+            "tick",
+            198
+          ],
+          "frames": 66
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "live resize",
+        "transition": false,
+        "frames": 39,
+        "p50_ms": 0.75,
+        "p99_ms": 8.53,
+        "max_ms": 8.53,
+        "ui_max_ms": 8.4,
+        "server": {
+          "frame_max_ms": 0.46,
+          "loop_late_ms": 2.3,
+          "slowest": [
+            "clients' requests",
+            693
+          ],
+          "frames": 111
+        },
+        "notes": [],
+        "failures": [
+          "1 of 39 frames over 8.3 ms (slowest 8.5 ms: setup 0.0, ui 8.4, tessellate 0.0, acquire 0.0, submit 0.1)"
+        ]
+      },
+      {
+        "app": "coder",
+        "step": "theme light, dark",
+        "transition": true,
+        "frames": 5,
+        "p50_ms": 0.9,
+        "p99_ms": 1.12,
+        "max_ms": 1.12,
+        "ui_max_ms": 0.89,
+        "server": {
+          "frame_max_ms": 1.51,
+          "loop_late_ms": 0.7,
+          "slowest": [
+            "tick",
+            1542
+          ],
+          "frames": 34
+        },
+        "notes": [],
+        "failures": []
+      }
+    ],
+    "bench-repeat": [
+      {
+        "app": "session",
+        "step": "scale to 1",
+        "transition": true,
+        "frames": 2,
+        "p50_ms": 1.83,
+        "p99_ms": 1.83,
+        "max_ms": 1.83,
+        "ui_max_ms": 1.65,
+        "server": {
+          "frame_max_ms": 0.36,
+          "loop_late_ms": 0.2,
+          "slowest": [
+            "request set_settings",
+            848
+          ],
+          "frames": 9
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "launch and load",
+        "transition": true,
+        "frames": 9,
+        "p50_ms": 1.04,
+        "p99_ms": 2.13,
+        "max_ms": 2.13,
+        "ui_max_ms": 0.96,
+        "server": {
+          "frame_max_ms": 4.67,
+          "loop_late_ms": 3.0,
+          "slowest": [
+            "tick",
+            227
+          ],
+          "frames": 40
+        },
+        "notes": [],
+        "failures": [],
+        "launch_ms": 75
+      },
+      {
+        "app": "coder",
+        "step": "idle 1 s",
+        "transition": false,
+        "frames": 2,
+        "p50_ms": 0.79,
+        "p99_ms": 0.79,
+        "max_ms": 0.79,
+        "ui_max_ms": 0.63,
+        "server": {
+          "frame_max_ms": 0.52,
+          "loop_late_ms": 0.2,
+          "slowest": [
+            "tick",
+            268
+          ],
+          "frames": 13
+        },
+        "notes": [],
+        "failures": [],
+        "idle_fps": 2
+      },
+      {
+        "app": "coder",
+        "step": "pointer over it",
+        "transition": false,
+        "frames": 20,
+        "p50_ms": 0.75,
+        "p99_ms": 1.04,
+        "max_ms": 1.04,
+        "ui_max_ms": 0.83,
+        "server": {
+          "frame_max_ms": 0.45,
+          "loop_late_ms": 0.2,
+          "slowest": [
+            "tick",
+            186
+          ],
+          "frames": 182
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 1",
+        "transition": false,
+        "frames": 4,
+        "p50_ms": 1.05,
+        "p99_ms": 1.11,
+        "max_ms": 1.11,
+        "ui_max_ms": 0.89,
+        "server": {
+          "frame_max_ms": 0.52,
+          "loop_late_ms": 0.8,
+          "slowest": [
+            "tick",
+            316
+          ],
+          "frames": 429
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 2",
+        "transition": false,
+        "frames": 0,
+        "p50_ms": 0.0,
+        "p99_ms": 0.0,
+        "max_ms": 0,
+        "ui_max_ms": 0.0,
+        "server": {
+          "frame_max_ms": 0.52,
+          "loop_late_ms": 0.9,
+          "slowest": [
+            "tick",
+            306
+          ],
+          "frames": 421
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "5 menus",
+        "transition": false,
+        "frames": 15,
+        "p50_ms": 0.81,
+        "p99_ms": 1.1,
+        "max_ms": 1.1,
+        "ui_max_ms": 0.87,
+        "server": {
+          "frame_max_ms": 0.61,
+          "loop_late_ms": 0.6,
+          "slowest": [
+            "tick",
+            616
+          ],
+          "frames": 500
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "typing",
+        "transition": false,
+        "frames": 13,
+        "p50_ms": 0.83,
+        "p99_ms": 1.08,
+        "max_ms": 1.08,
+        "ui_max_ms": 0.87,
+        "server": {
+          "frame_max_ms": 0.44,
+          "loop_late_ms": 0.7,
+          "slowest": [
+            "clients' requests",
+            199
+          ],
+          "frames": 65
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "live resize",
+        "transition": false,
+        "frames": 38,
+        "p50_ms": 0.76,
+        "p99_ms": 1.24,
+        "max_ms": 1.24,
+        "ui_max_ms": 1.05,
+        "server": {
+          "frame_max_ms": 0.55,
+          "loop_late_ms": 0.4,
+          "slowest": [
+            "clients' requests",
+            353
+          ],
+          "frames": 116
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "theme light, dark",
+        "transition": true,
+        "frames": 5,
+        "p50_ms": 0.79,
+        "p99_ms": 1.17,
+        "max_ms": 1.17,
+        "ui_max_ms": 0.93,
+        "server": {
+          "frame_max_ms": 2.32,
+          "loop_late_ms": 2.3,
+          "slowest": [
+            "request set_settings",
+            461
+          ],
+          "frames": 36
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "session",
+        "step": "scale to 1.5",
+        "transition": true,
+        "frames": 2,
+        "p50_ms": 1.91,
+        "p99_ms": 1.91,
+        "max_ms": 1.91,
+        "ui_max_ms": 1.74,
+        "server": {
+          "frame_max_ms": 0.34,
+          "loop_late_ms": 0.4,
+          "slowest": [
+            "request set_settings",
+            409
+          ],
+          "frames": 9
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "launch and load",
+        "transition": true,
+        "frames": 9,
+        "p50_ms": 0.97,
+        "p99_ms": 2.46,
+        "max_ms": 2.46,
+        "ui_max_ms": 0.9,
+        "server": {
+          "frame_max_ms": 1.87,
+          "loop_late_ms": 0.8,
+          "slowest": [
+            "tick",
+            444
+          ],
+          "frames": 37
+        },
+        "notes": [],
+        "failures": [],
+        "launch_ms": 75
+      },
+      {
+        "app": "coder",
+        "step": "idle 1 s",
+        "transition": false,
+        "frames": 2,
+        "p50_ms": 1.3,
+        "p99_ms": 1.3,
+        "max_ms": 1.3,
+        "ui_max_ms": 1.03,
+        "server": {
+          "frame_max_ms": 0.64,
+          "loop_late_ms": 0.3,
+          "slowest": [
+            "tick",
+            211
+          ],
+          "frames": 10
+        },
+        "notes": [],
+        "failures": [],
+        "idle_fps": 2
+      },
+      {
+        "app": "coder",
+        "step": "pointer over it",
+        "transition": false,
+        "frames": 21,
+        "p50_ms": 0.8,
+        "p99_ms": 1.15,
+        "max_ms": 1.15,
+        "ui_max_ms": 0.94,
+        "server": {
+          "frame_max_ms": 0.48,
+          "loop_late_ms": 0.4,
+          "slowest": [
+            "clients' requests",
+            434
+          ],
+          "frames": 194
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 1",
+        "transition": false,
+        "frames": 4,
+        "p50_ms": 0.87,
+        "p99_ms": 1.08,
+        "max_ms": 1.08,
+        "ui_max_ms": 0.84,
+        "server": {
+          "frame_max_ms": 0.85,
+          "loop_late_ms": 0.3,
+          "slowest": [
+            "tick",
+            291
+          ],
+          "frames": 439
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 2",
+        "transition": false,
+        "frames": 0,
+        "p50_ms": 0.0,
+        "p99_ms": 0.0,
+        "max_ms": 0,
+        "ui_max_ms": 0.0,
+        "server": {
+          "frame_max_ms": 0.52,
+          "loop_late_ms": 0.8,
+          "slowest": [
+            "tick",
+            316
+          ],
+          "frames": 421
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "5 menus",
+        "transition": false,
+        "frames": 15,
+        "p50_ms": 0.82,
+        "p99_ms": 1.03,
+        "max_ms": 1.03,
+        "ui_max_ms": 0.82,
+        "server": {
+          "frame_max_ms": 0.57,
+          "loop_late_ms": 0.5,
+          "slowest": [
+            "clients' requests",
+            255
+          ],
+          "frames": 501
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "typing",
+        "transition": false,
+        "frames": 13,
+        "p50_ms": 1.01,
+        "p99_ms": 1.25,
+        "max_ms": 1.25,
+        "ui_max_ms": 1.08,
+        "server": {
+          "frame_max_ms": 0.48,
+          "loop_late_ms": 0.1,
+          "slowest": [
+            "tick",
+            178
+          ],
+          "frames": 66
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "live resize",
+        "transition": false,
+        "frames": 38,
+        "p50_ms": 0.77,
+        "p99_ms": 1.11,
+        "max_ms": 1.11,
+        "ui_max_ms": 0.96,
+        "server": {
+          "frame_max_ms": 0.53,
+          "loop_late_ms": 0.6,
+          "slowest": [
+            "tick",
+            275
+          ],
+          "frames": 110
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "theme light, dark",
+        "transition": true,
+        "frames": 5,
+        "p50_ms": 1.05,
+        "p99_ms": 1.11,
+        "max_ms": 1.11,
+        "ui_max_ms": 0.94,
+        "server": {
+          "frame_max_ms": 1.26,
+          "loop_late_ms": 0.3,
+          "slowest": [
+            "request set_settings",
+            431
+          ],
+          "frames": 37
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "session",
+        "step": "scale to 2",
+        "transition": true,
+        "frames": 2,
+        "p50_ms": 0.46,
+        "p99_ms": 0.46,
+        "max_ms": 0.46,
+        "ui_max_ms": 0.35,
+        "server": {
+          "frame_max_ms": 0.54,
+          "loop_late_ms": 0.5,
+          "slowest": [
+            "request set_settings",
+            451
+          ],
+          "frames": 8
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "launch and load",
+        "transition": true,
+        "frames": 8,
+        "p50_ms": 0.99,
+        "p99_ms": 1.25,
+        "max_ms": 1.25,
+        "ui_max_ms": 0.95,
+        "server": {
+          "frame_max_ms": 2.91,
+          "loop_late_ms": 1.8,
+          "slowest": [
+            "tick",
+            401
+          ],
+          "frames": 36
+        },
+        "notes": [],
+        "failures": [],
+        "launch_ms": 95
+      },
+      {
+        "app": "coder",
+        "step": "idle 1 s",
+        "transition": false,
+        "frames": 2,
+        "p50_ms": 1.1,
+        "p99_ms": 1.1,
+        "max_ms": 1.1,
+        "ui_max_ms": 0.89,
+        "server": {
+          "frame_max_ms": 0.56,
+          "loop_late_ms": 0.7,
+          "slowest": [
+            "tick",
+            209
+          ],
+          "frames": 9
+        },
+        "notes": [],
+        "failures": [],
+        "idle_fps": 2
+      },
+      {
+        "app": "coder",
+        "step": "pointer over it",
+        "transition": false,
+        "frames": 28,
+        "p50_ms": 0.79,
+        "p99_ms": 1.11,
+        "max_ms": 1.11,
+        "ui_max_ms": 0.89,
+        "server": {
+          "frame_max_ms": 0.41,
+          "loop_late_ms": 0.3,
+          "slowest": [
+            "tick",
+            185
+          ],
+          "frames": 211
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 1",
+        "transition": false,
+        "frames": 4,
+        "p50_ms": 1.1,
+        "p99_ms": 1.1,
+        "max_ms": 1.1,
+        "ui_max_ms": 0.9,
+        "server": {
+          "frame_max_ms": 0.66,
+          "loop_late_ms": 0.6,
+          "slowest": [
+            "tick",
+            246
+          ],
+          "frames": 423
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "scroll 2",
+        "transition": false,
+        "frames": 0,
+        "p50_ms": 0.0,
+        "p99_ms": 0.0,
+        "max_ms": 0,
+        "ui_max_ms": 0.0,
+        "server": {
+          "frame_max_ms": 0.62,
+          "loop_late_ms": 0.6,
+          "slowest": [
+            "tick",
+            332
+          ],
+          "frames": 426
+        },
+        "notes": [
+          "drag: didn't scroll",
+          "flick: didn't scroll",
+          "wheel: didn't scroll"
+        ],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "5 menus",
+        "transition": false,
+        "frames": 15,
+        "p50_ms": 0.83,
+        "p99_ms": 1.14,
+        "max_ms": 1.14,
+        "ui_max_ms": 0.93,
+        "server": {
+          "frame_max_ms": 0.57,
+          "loop_late_ms": 0.5,
+          "slowest": [
+            "tick",
+            244
+          ],
+          "frames": 501
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "typing",
+        "transition": false,
+        "frames": 13,
+        "p50_ms": 0.94,
+        "p99_ms": 1.09,
+        "max_ms": 1.09,
+        "ui_max_ms": 0.89,
+        "server": {
+          "frame_max_ms": 0.44,
+          "loop_late_ms": 0.4,
+          "slowest": [
+            "tick",
+            263
+          ],
+          "frames": 65
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "live resize",
+        "transition": false,
+        "frames": 39,
+        "p50_ms": 0.63,
+        "p99_ms": 1.33,
+        "max_ms": 1.33,
+        "ui_max_ms": 0.94,
+        "server": {
+          "frame_max_ms": 0.69,
+          "loop_late_ms": 0.3,
+          "slowest": [
+            "clients' requests",
+            314
+          ],
+          "frames": 111
+        },
+        "notes": [],
+        "failures": []
+      },
+      {
+        "app": "coder",
+        "step": "theme light, dark",
+        "transition": true,
+        "frames": 5,
+        "p50_ms": 0.83,
+        "p99_ms": 0.83,
+        "max_ms": 0.83,
+        "ui_max_ms": 0.71,
+        "server": {
+          "frame_max_ms": 2.69,
+          "loop_late_ms": 2.4,
+          "slowest": [
+            "request set_settings",
+            430
+          ],
+          "frames": 34
+        },
+        "notes": [],
+        "failures": []
+      }
+    ]
+  },
+  "notes": [
+    "First after benchmark overlapped the workspace suite; repeat followed its completion.",
+    "Performance build includes all drawing and priority-stop changes; later storage-failure guards were verified by targeted and full workspace tests.",
+    "One GUI fixture retry waited for caret blinking to become idle and timed out; the fixture now waits for the actual Idle/Running session state.",
+    "Measurements are shared-host samples, not worst-case latency guarantees.",
+    "No claim of zero defects or a weeks-long live soak."
+  ]
+}

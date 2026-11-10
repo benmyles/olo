@@ -1242,3 +1242,157 @@ fn pre_coordination_stores_upgrade_without_losing_provider_context() {
     assert!(upgraded.config.accept_messages);
     assert!(!upgraded.config.wake_on_message);
 }
+
+#[tokio::test]
+async fn audit_cancelled_process_never_starts_or_creates_an_artifact() {
+    let dir = Scratch::new();
+    let s = Session::new(dir.0.clone(), Config::default());
+    let cancel = CancellationToken::new();
+    cancel.cancel();
+    let result = tools::execute(&s, &call("execute", json!({"program":"/usr/bin/true"})), &dir.0, &cancel, Arc::new(|_, _| {})).await;
+    assert!(result.is_err());
+    assert_eq!(std::fs::read_dir(&dir.0).unwrap().count(), 0, "cancelled work must not spawn or allocate output artifacts");
+}
+
+#[test]
+fn audit_event_stream_disconnect_is_not_success() {
+    use std::io::{BufRead, Write};
+    for frame in [json!({"ready":true,"after":0}), json!({"reconnect":true,"after":4})] {
+        let dir = Scratch::new();
+        let listener = std::os::unix::net::UnixListener::bind(rpc::socket(&dir.0)).unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = String::new();
+            std::io::BufReader::new(stream.try_clone().unwrap()).read_line(&mut request).unwrap();
+            writeln!(stream, "{frame}").unwrap();
+        });
+        let result = rpc::follow(&dir.0, "session", 0, |_| true);
+        server.join().unwrap();
+        assert!(result.is_err(), "a lost subscription cannot imply task completion");
+    }
+}
+
+#[tokio::test]
+async fn audit_mcp_discovery_cancels_and_manual_tools_have_parity() {
+    use axum::{extract::State, response::IntoResponse};
+    let listing = Arc::new(tokio::sync::Notify::new());
+    let observed = listing.clone();
+    let app = axum::Router::new()
+        .fallback(axum::routing::post(|State(listing): State<Arc<tokio::sync::Notify>>, axum::Json(v): axum::Json<Value>| async move {
+            let result = match v["method"].as_str().unwrap() {
+                "initialize" => json!({"protocolVersion":"2025-11-25","capabilities":{"tools":{}}}),
+                "tools/list" => {
+                    listing.notify_one();
+                    std::future::pending::<()>().await;
+                    unreachable!()
+                }
+                "tools/call" => json!({"content":[{"type":"text","text":"manual echo"}]}),
+                _ => return axum::http::StatusCode::ACCEPTED.into_response(),
+            };
+            axum::Json(json!({"jsonrpc":"2.0","id":v["id"],"result":result})).into_response()
+        }))
+        .with_state(listing);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let dir = Scratch::new();
+    let e = Engine::open_at(dir.0.join("state"), Some("http://127.0.0.1:1".into())).unwrap();
+    let config = Config { approval: ApprovalMode::Allow, mcp: vec![serde_json::from_value(json!({"name":"fixture","url":url})).unwrap()], ..Default::default() };
+    let sid = e.command(Command::Create { workspace: dir.0.clone(), config: Some(config) }).await.unwrap()["id"].as_str().unwrap().to_owned();
+    e.command(Command::Send { session: sid.clone(), text: "Start discovery".into() }).await.unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(2), observed.notified()).await.unwrap();
+    let began = std::time::Instant::now();
+    e.command(Command::Stop { session: sid.clone() }).await.unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(1), e.quiesce()).await.expect("Stop must cancel MCP discovery immediately");
+    println!("MCP discovery cancellation: {:?}", began.elapsed());
+    assert_eq!(e.get(&sid).unwrap().status, Status::Paused);
+    // Direct manual calls need only initialization; they do not enumerate all
+    // configured servers or start a model turn.
+    e.command(Command::Tool { session: sid.clone(), name: "mcp__fixture__echo".into(), arguments: json!({}) }).await.unwrap();
+    finish(&e).await;
+    let events = e.store.lock().unwrap().events(&sid, 0, 100).unwrap();
+    let result = events.iter().rev().find(|e| e.kind == "tool_result").unwrap();
+    assert_eq!(result.data["error"], false, "{}", result.data);
+    assert_eq!(result.data["output"]["content"][0]["text"], "manual echo");
+    assert_eq!(e.get(&sid).unwrap().usage.input, 0);
+    assert!(e.command(Command::Tool { session: sid, name: "mcp__absent__echo".into(), arguments: json!({}) }).await.is_err());
+    server.abort();
+}
+
+#[tokio::test]
+async fn audit_parent_stop_clears_descendant_restart_intent_and_shutdown_rejects_work() {
+    let dir = Scratch::new();
+    let e = Engine::open_at(dir.0.join("state"), Some("http://127.0.0.1:1".into())).unwrap();
+    let root = e.command(Command::Create { workspace: dir.0.clone(), config: None }).await.unwrap()["id"].as_str().unwrap().to_owned();
+    let mut child = Session::new(dir.0.clone(), Config::default());
+    child.parent = Some(root.clone());
+    child.interrupt_requested = true;
+    child.continue_requested = true;
+    let mut grandchild = child.clone();
+    grandchild.id = id();
+    grandchild.parent = Some(child.id.clone());
+    let mut completed = Session::new(dir.0.clone(), Config::default());
+    completed.parent = Some(root.clone());
+    completed.status = Status::Complete;
+    for s in [&mut child, &mut grandchild, &mut completed] {
+        e.store.lock().unwrap().save(s, "created", json!({})).unwrap();
+    }
+    e.command(Command::Stop { session: root.clone() }).await.unwrap();
+    for id in [&root, &child.id, &grandchild.id] {
+        let s = e.get(id).unwrap();
+        assert_eq!(s.status, Status::Paused);
+        assert!(!s.interrupt_requested && !s.continue_requested);
+    }
+    assert_eq!(e.get(&completed.id).unwrap().status, Status::Complete);
+    e.command(Command::Shutdown).await.unwrap();
+    assert!(e.command(Command::Send { session: root.clone(), text: "Must not start".into() }).await.is_err());
+    assert!(e.get(&root).unwrap().inbox.is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn audit_failed_checkpoints_do_not_spin_or_execute_pending_work() {
+    let dir = Scratch::new();
+    let e = Engine::open_at(dir.0.join("state"), Some("http://127.0.0.1:1".into())).unwrap();
+    let sid = e.command(Command::Create { workspace: dir.0.clone(), config: None }).await.unwrap()["id"].as_str().unwrap().to_owned();
+    let db = rusqlite::Connection::open(dir.0.join("state/sessions.sqlite3")).unwrap();
+    db.execute_batch("CREATE TRIGGER fail_checkpoints BEFORE INSERT ON events WHEN NEW.kind != 'message_queued' BEGIN SELECT RAISE(ABORT,'injected storage failure'); END;").unwrap();
+    let mut events = e.events.subscribe();
+    e.command(Command::Steer { session: sid.clone(), text: "Do not lose this input".into(), delivery: Delivery::Interrupt, message_id: None }).await.unwrap();
+    let stopped = tokio::time::timeout(std::time::Duration::from_secs(1), e.quiesce()).await;
+    // Ensure a broken supervisor can still be shut down by the fixture before
+    // asserting, instead of leaving an unyielding task behind on test failure.
+    e.shutdown.cancel();
+    tokio::time::timeout(std::time::Duration::from_secs(1), e.quiesce()).await.unwrap();
+    assert!(stopped.is_ok(), "failed checkpoint writes must not cause an interrupt/restart loop");
+    let session = e.get(&sid).unwrap();
+    assert_eq!(session.inbox.len(), 1);
+    assert!(session.context.is_empty());
+    assert_eq!(session.turns, 0);
+    let mut reported = false;
+    while let Ok(event) = events.try_recv() {
+        if event.kind == "error" && event.seq == 0 {
+            reported = event.data["message"].as_str().unwrap().contains("checkpoint could not be saved");
+        }
+    }
+    assert!(reported, "storage failures must be visible even if the journal cannot be written");
+}
+
+#[tokio::test]
+async fn audit_stop_still_cancels_active_process_when_checkpoint_writes_fail() {
+    let dir = Scratch::new();
+    let e = Engine::open_at(dir.0.join("state"), Some("http://127.0.0.1:1".into())).unwrap();
+    let sid = e.command(Command::Create { workspace: dir.0.clone(), config: Some(Config { approval: ApprovalMode::Allow, ..Default::default() }) }).await.unwrap()["id"].as_str().unwrap().to_owned();
+    let mut events = e.events.subscribe();
+    e.command(Command::Tool { session: sid.clone(), name: "execute".into(), arguments: json!({"program":"/usr/bin/sleep","args":["30"]}) }).await.unwrap();
+    loop {
+        if tokio::time::timeout(std::time::Duration::from_secs(2), events.recv()).await.unwrap().unwrap().kind == "tool_started" {
+            break;
+        }
+    }
+    let db = rusqlite::Connection::open(dir.0.join("state/sessions.sqlite3")).unwrap();
+    db.execute_batch("CREATE TRIGGER fail_stops BEFORE INSERT ON events BEGIN SELECT RAISE(ABORT,'injected storage failure'); END;").unwrap();
+    let stopped = e.command(Command::Stop { session: sid.clone() }).await;
+    assert!(stopped.is_err());
+    tokio::time::timeout(std::time::Duration::from_secs(1), e.quiesce()).await.expect("cancellation must not depend on journal writes succeeding");
+    assert!(e.get(&sid).unwrap().in_flight.is_some(), "a failed result checkpoint must remain an explicitly unknown outcome");
+}

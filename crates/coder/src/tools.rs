@@ -399,6 +399,7 @@ impl Drop for ProcessGroup {
     }
 }
 pub async fn execute(s: &Session, call: &ToolCall, artifacts: &Path, cancel: &CancellationToken, event: Arc<dyn Fn(&str, Value) + Send + Sync>) -> Result<Value> {
+    ensure!(!cancel.is_cancelled(), "cancelled before process start");
     let a = &call.arguments;
     let cwd = path(&s.workspace, a["cwd"].as_str().unwrap_or("."), false)?;
     let program = string(a, "program")?;
@@ -417,6 +418,7 @@ pub async fn execute(s: &Session, call: &ToolCall, artifacts: &Path, cancel: &Ca
             cmd.pre_exec(move || sandbox.enforce());
         }
     }
+    ensure!(!cancel.is_cancelled(), "cancelled before process start");
     let mut child = cmd.spawn().with_context(|| format!("start {program}"))?;
     let _group = ProcessGroup(child.id().context("missing pid")? as i32);
     let artifact = id();
