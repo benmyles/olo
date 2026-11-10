@@ -5,6 +5,7 @@
 pub const OUR_APPS: &[(&str, &str, &str)] = &[
     ("olo-tracker", "Tracker", "tracker"),
     ("olo-terminal", "Terminal", "terminal"),
+    ("olo-coder", "Olo Coder", "coder"),
     ("olo-chrome", "Google Chrome", "google-chrome"),
     ("olo-styled-edit", "StyledEdit", "styled-edit"),
     ("olo-passwords", "Passwords", "passwords"),

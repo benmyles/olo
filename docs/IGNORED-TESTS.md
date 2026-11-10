@@ -131,3 +131,15 @@ Of the 115 tests: 111 pass as run above, 4 haven't run (the cameras;
 the Mac's palm captures). The Viewer's sample tests ran on clips made as
 each test's comment says, which count (Ben, 2026-11-08: the originals
 were the Mac's scratch).
+
+## Olo Coder
+
+`crates/coder/tests/live.rs`: `pool_agent_writes_and_verifies_rust` creates a
+scratch workspace under `/var/tmp`, asks the real token pool to write and test a
+Rust function, and removes that workspace on success.
+`pool_codex_reasoning_compaction_and_replay` and
+`pool_claude_reasoning_compaction_and_replay` check encrypted reasoning and signed
+compaction through each provider. `pool_automatic_review_approves_a_scoped_edit`
+checks a real reviewer against explicit approval guidance. Run with a scratch `TMPDIR`:
+`cargo test -p olo-coder-core --test live -- --ignored --nocapture`.
+These spend subscription quota; none changes the person's source tree.

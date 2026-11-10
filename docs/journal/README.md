@@ -3,6 +3,38 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-11-10
+
+### Coder: native repository forms
+
+*01:05* — Commit, branch, worktree, approval guidance and draft pull-request forms use native controls. Mixed single-line and multiline rows align at 1.75×; unfinished form text survives an upgrade.
+
+![Coder: native repository forms](2026-11-10/010552-coder-native-repository-forms.png)
+
+### Coder: Rust syntax in Ratatui
+
+*01:05* — The terminal presents the same durable session, with syntax colors, wrapped tables, a link chooser and shared commands. Rendering and line wrapping happen off the input loop.
+
+![Coder: Rust syntax in Ratatui](2026-11-10/010551-coder-rust-syntax-in-ratatui.png)
+
+### Coder: a persistent coding workspace
+
+*01:05* — The native GUI shares its service, tools, configuration and durable history with the Ratatui terminal and JSON API. This isolated real-pool session wrote and tested a Rust library; three unit tests passed.
+
+![Coder: a persistent coding workspace](2026-11-10/010550-coder-a-persistent-coding-workspace.png)
+
+### Coder: rich conversation and aligned composer
+
+*01:05* — Native Markdown, highlighted code, structured tables, action details and tracked work. The shared multiline TextControl aligns its first row and label at fractional scales; light, dark and night reviewed at 1×, 1.25×, 1.5×, 1.75× and 2×.
+
+![Coder: rich conversation and aligned composer](2026-11-10/010548-coder-rich-conversation-and-aligned-composer.png)
+
+### Coder: multiline field before alignment
+
+*01:05* — Before: the multiline composer label and first text baseline diverged at fractional scale. Isolated Agent Screen, dark at 1.25×.
+
+![Coder: multiline field before alignment](2026-11-10/010547-coder-multiline-field-before-alignment.png)
+
 ## 2026-11-09
 
 ### Terminal: each agent's own Keep It Going message

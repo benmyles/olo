@@ -137,3 +137,4 @@ page-view|two sheets of white paper with faint grey lines of text side by side o
 ruler|a straight wooden ruler lying on the desk, tan with black tick marks and small numerals along its edge
 wrap-lines|a small square white paper card lying on the desk with three charcoal lines of text and a chunky Be-blue arrow curving from the right end of the top line back to the start of the next line
 deskbar|a slim upright panel of light grey metal standing on the desk like a tall narrow plaque, a short row of tiny coloured status lights near its top and a small green rising line graph glowing on its face
+coder|a compact blue code workbench: a chunky cobalt-blue open laptop with a dark charcoal screen bearing a simple yellow branching-path glyph, with a small silver precision wrench resting at the lower right

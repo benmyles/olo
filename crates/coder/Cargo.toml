@@ -1,0 +1,32 @@
+[package]
+name = "olo-coder-core"
+description = "Durable, provider-native coding agent service shared by Olo Coder's interfaces"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+schemars = "1"
+olo-sync.workspace = true
+olo-net.workspace = true
+olo-xdg.workspace = true
+olo-system.workspace = true
+gix = { version = "0.90", default-features = false, features = ["parallel", "sha1", "sha256", "status", "worktree-mutation", "revision", "serde", "blocking-http-transport-reqwest-rust-tls"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time", "macros", "process", "io-util", "fs"] }
+tokio-util = "0.7"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+futures-util = "0.3"
+rusqlite = { version = "0.38", features = ["bundled"] }
+uuid = { version = "1", features = ["v4"] }
+regex = "1"
+sha2 = "0.10"
+base64 = "0.22"
+ignore = "0.4"
+similar = "2"
+libc = "0.2"
+
+[dev-dependencies]
+axum = "0.8"

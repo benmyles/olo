@@ -1,0 +1,21 @@
+[package]
+name = "olo-coder"
+description = "Olo Coder: persistent coding sessions, in a terminal or native window"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+olo-coder-core = { path = "../../crates/coder" }
+olo-ui.workspace = true
+olo-kit-base.workspace = true
+olo-crash.workspace = true
+olo-sync.workspace = true
+olo-xdg.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+ratatui = "0.30"
+crossterm = "0.29"
+libc = "0.2"

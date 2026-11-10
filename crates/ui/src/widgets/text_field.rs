@@ -263,6 +263,18 @@ impl TextField {
         px((font_size * style::LINE_HEIGHT * s).round() / s)
     }
 
+    pub(crate) fn line_height(&self, window: &Window) -> Pixels {
+        Self::line_height_for(window, self.font_size)
+    }
+
+    /// First multiline baseline relative to the field's top, using exactly
+    /// the shaped ascent/descent and line height used by paint_multiline.
+    pub(crate) fn first_line_baseline(&self, window: &mut Window) -> Pixels {
+        let run = TextRun { len: 1, font: self.face(), color: Hsla::default(), background_color: None, underline: None, strikethrough: None, size: None };
+        let line = window.text_system().shape_line(" ".into(), px(self.font_size), &[run], None);
+        (self.line_height(window) - line.ascent - line.descent) / 2.0 + line.ascent
+    }
+
     /// How many lines its text takes wrapped to `width` (a multi-line
     /// field's owner sizes it by this).
     pub fn rows_at(&self, window: &mut Window, width: Pixels) -> usize {

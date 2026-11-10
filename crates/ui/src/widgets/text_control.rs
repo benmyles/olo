@@ -15,11 +15,12 @@ pub struct TextControl {
     label: Option<SharedString>,
     divider: Option<f32>,
     width: Option<f32>,
+    rows: usize,
 }
 
 impl TextControl {
     pub fn new(field: Entity<TextField>) -> TextControl {
-        TextControl { field, label: None, divider: None, width: None }
+        TextControl { field, label: None, divider: None, width: None, rows: 1 }
     }
 
     pub fn label(mut self, label: impl Into<SharedString>) -> Self {
@@ -30,6 +31,13 @@ impl TextControl {
     /// Where the well begins, from the control's left edge.
     pub fn divider(mut self, x: f32) -> Self {
         self.divider = Some(x);
+        self
+    }
+
+    /// Visible rows for a multiline TextField. Extra text scrolls within the well.
+    /// One row keeps the standard control height.
+    pub fn rows(mut self, rows: usize) -> Self {
+        self.rows = rows.max(1);
         self
     }
 
@@ -48,7 +56,17 @@ impl RenderOnce for TextControl {
         // its label and well faded.
         let enabled = self.field.read(cx).enabled();
         let label = self.label.clone();
-        let mut row = div().relative().h(px(m::CONTROL_HEIGHT)).flex_shrink_0();
+        let multiline = self.rows > 1;
+        let first_baseline = multiline.then(|| self.field.read(cx).first_line_baseline(window));
+        let line_height = self.field.read(cx).line_height(window);
+        // Match a standard control's first baseline, including in mixed forms.
+        // Centring the entire font metrics in a row differs from cap-height
+        // centring by more than a device pixel at some fractional scales.
+        let first_row_baseline = px(m::CONTROL_HEIGHT / 2.0 + style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
+        let inset_top = if let Some(baseline) = first_baseline { (first_row_baseline - baseline).max(px(0.0)) } else { px(0.0) };
+        let inset_bottom = if multiline { (px(m::CONTROL_HEIGHT) - line_height - inset_top).max(px(0.0)) } else { px(0.0) };
+        let height = if multiline { line_height * self.rows as f32 + inset_top + inset_bottom } else { px(m::CONTROL_HEIGHT) };
+        let mut row = div().relative().h(height).flex_shrink_0();
         row = match self.width {
             Some(w) => row.w(px(w)),
             None => row.w_full(),
@@ -73,14 +91,38 @@ impl RenderOnce for TextControl {
                 if let Some(l) = &label {
                     let p = theme::palette(cx);
                     let ink = if enabled { style::c(p.panel_text) } else { style::disabled_text(&p) };
-                    style::label(window, cx, b.left(), b.center().y, style::Align::Left, l.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), ink);
+                    if let Some(baseline) = first_baseline {
+                        style::label_on_baseline(
+                            window,
+                            cx,
+                            b.left() - style::snap_coord(window, px(well_left)) - style::snap_coord(window, px(m::TEXT_INSET)),
+                            b.top() + baseline,
+                            style::Align::Left,
+                            l.clone(),
+                            style::PLAIN_SIZE,
+                            style::ui_font(FontWeight::NORMAL),
+                            ink,
+                        );
+                    } else {
+                        style::label(
+                            window,
+                            cx,
+                            b.left() - style::snap_coord(window, px(well_left)) - style::snap_coord(window, px(m::TEXT_INSET)),
+                            b.center().y,
+                            style::Align::Left,
+                            l.clone(),
+                            style::PLAIN_SIZE,
+                            style::ui_font(FontWeight::NORMAL),
+                            ink,
+                        );
+                    }
                 }
             },
         )
         .absolute()
         .inset_0();
         let field = self.field.clone();
-        row.child(labels).child(
+        row.child(
             div()
                 .absolute()
                 .left(px(well_left))
@@ -94,7 +136,18 @@ impl RenderOnce for TextControl {
                     }
                 })
                 .child(well)
-                .child(div().absolute().left(px(m::TEXT_INSET)).right(px(m::TEXT_INSET)).top(px(0.0)).bottom(px(0.0)).child(self.field)),
+                .child(
+                    div()
+                        .absolute()
+                        .left(px(m::TEXT_INSET))
+                        .right(px(m::TEXT_INSET))
+                        .top(inset_top)
+                        .bottom(inset_bottom)
+                        // The label shares the inner field bounds. Separate parent
+                        // bounds can round differently at fractional scales.
+                        .child(labels)
+                        .child(self.field),
+                ),
         )
     }
 }

@@ -17,6 +17,7 @@ olo-kit-base.workspace = true
 olo-protocol.workspace = true
 olo-theme.workspace = true
 olo-syntax.workspace = true
+pulldown-cmark = "0.13"
 olo-xdg.workspace = true
 serde.workspace = true
 serde_json.workspace = true

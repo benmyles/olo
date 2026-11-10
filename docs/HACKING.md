@@ -1819,8 +1819,8 @@ event reaches it.
   name for agents and the settings index with no label shown, a field in
   a grid named by its row and column; its menu opens with the current
   choice over the field: `menu::popup_over`),
-  `TextControl` (label, divider,
-  the sunken well around a `TextField`), `StringView` (`dim`, `bold`),
+  `TextControl` (label, divider, `rows(N)` for a multiline field: height from
+  its font and scale, extra text scrolls inside; the sunken well around a `TextField`), `StringView` (`dim`, `bold`),
   `BBox` (etched frame, bold label in its top line, `content_width`,
   `action` for a `LinkButton` at the top line's end; agents read it as
   a `Group` named by its label, round what's in it), `LinkButton` (only
@@ -14567,3 +14567,62 @@ modes, which it chose at 64 kb/s or for a tone at 32, came out at −1
 to −3 dB where libopus had 6 to 17. Its speech comes 328 samples late,
 not libopus's 312, so that's the pre-skip (the test checks the decoded
 sound lines up).
+
+## Olo Coder (apps/coder, crates/coder)
+
+Olo's own coding harness, Rust throughout: a durable service (`olo-coder-core`),
+Ratatui terminal and native kit window (`olo-coder --tui`, `--gui`). The clients
+share `commands` and a presentation worker; the typed `Command` API owns all
+session operations. See [CODER.md](CODER.md) for commands, configuration,
+protocol references, approvals and recovery guarantees. No Codex/Claude CLI is
+wrapped. Both providers go through the Token Pool's loopback gateway.
+
+* `model` is serializable session/configuration/command state. `store` uses SQLite
+  WAL, FULL synchronization, indexed events and conflict-checked edit checkpoints.
+  `engine` owns cancellable turns, native tool loops, approvals, goals, todos,
+  versioned specifications and optional child sessions. An effect's intent is
+  committed before execution; a crash leaves an explicit unknown outcome rather
+  than silently replaying it. Model replies enter context only when complete.
+* `provider` preserves native Responses reasoning/compaction and Claude signed
+  thinking/redacted content byte-for-byte as JSON values. Codex compaction uses
+  a final `compaction_trigger` on Responses; Claude uses signed on-demand
+  compaction. Context replacement is transactional and history remains searchable.
+* `tools` implements files, search, checked edits, undo artifacts and cancellable
+  argv processes. `sandbox` prepares Landlock write confinement before fork and
+  applies it using syscalls only in `pre_exec`. `mcp` speaks stdio and Streamable HTTP JSON-RPC; its
+  tool effects follow the same approval path. Configured hooks and skills are
+  explicit user extensions. Host reads and networking are available in the
+  workspace sandbox: do not describe it as a container or secret boundary.
+* `rpc` is the owner-only Unix socket, schema discovery, commands and replayable
+  subscriptions. A slow consumer reconnects by sequence. `get` omits native
+  provider context; `export` includes it. The GUI's worker does all socket work;
+  its transcript uses the kit's virtual `editor::view` in read-only mode, with
+  paragraph layout cached and wrapped at the current scale and width. The TUI
+  sleeps on events, drawing only when input or state changes. GUI upgrade state
+  keeps session ID, composer draft, pane, follow setting and unfinished forms;
+  the independent service keeps working and drains active work before its upgrade.
+* Defaults live in the service store's `defaults.json`; session configuration is
+  snapshotted in its database. `--data` / `OLO_CODER_HOME` isolate the whole store,
+  including its service socket and artifacts. Test with a directory in `/var/tmp`,
+  never a person's live Coder store. Neither mode installs into the session.
+
+Checks: `cargo test -p olo-coder-core`; opt-in live tests in `tests/live.rs`
+(use real pool quota and a scratch workspace), `tools/dev/ui-lint coder`,
+`tools/dev/bench --apps coder`, and `tsession review` through light/dark/night at 1×,
+1.5× and 2×. The app has its own generated Coder icon in every icon theme.
+
+### Shared rich text and Olo Coder
+
+`olo_ui::rich_text::Renderer` converts Markdown into a semantic `Text` document
+on a worker thread, with cached `olo-syntax` code captures. `Text` contains no
+GPUI fonts or theme colours and can be shared with terminal clients. The
+`rich_text::Document` adapter implements the shared editor document using the
+current palette and typography; only visible paragraphs need layout. See
+`apps/coder/src/transcript.rs` for a selectable, read-only document host and
+`apps/coder/src/client.rs` for the worker presentation pipeline. Markdown links
+are explicit host actions; HTML and terminal escape controls are not executed.
+
+Olo Coder's Ratatui and native kit clients share `crates/coder` and one durable
+Unix-socket service. Its commands, provider-native reasoning and compaction,
+approvals, Git/GitHub, extensions and recovery are documented in
+[CODER.md](CODER.md). The service owns work independently of attached windows.

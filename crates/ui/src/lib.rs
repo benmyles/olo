@@ -30,6 +30,7 @@ pub mod open_with;
 pub mod part;
 pub mod pictures;
 pub mod review;
+pub mod rich_text;
 pub mod search;
 pub mod spell;
 pub mod spotlight;

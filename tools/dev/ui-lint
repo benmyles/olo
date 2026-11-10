@@ -48,6 +48,7 @@ def apps(home):
     out = [
         ("Activity", ["olo-activity"], {"OLO_ACTIVITY_HELPER": "off"}, False),
         ("DeskCalc", ["olo-deskcalc"], {}, False),
+        ("Coder", ["olo-coder", "--gui", "--workspace", home], {"OLO_CODER_HOME": os.path.join(home, ".coder")}, False),
         ("Disk Usage", ["olo-disk-usage", home], {}, False),
         # (Its settings, state and socket in the made-up home, not the person's.)
         ("DiskBackup", ["olo-diskbackup"], {"OLO_DISKBACKUP_DIR": os.path.join(home, ".diskbackup")}, False),

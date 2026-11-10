@@ -1,0 +1,2805 @@
+{
+  "date": "2026-11-10",
+  "baseline": "Earlier plain-text Olo Coder prototype from this worktree; not a pre-existing released app",
+  "baseline_sha256": "2ad401f72e5cbd249cfab79e029c284295b784694c08cc8499c8244a4238c939",
+  "release_sha256": "fcda37e168bb86ff28868eba23c97918dab9be747b97edda6af525d392724d50",
+  "visual": {
+    "cases": 120,
+    "findings": 0,
+    "themes": [
+      "light",
+      "dark",
+      "night"
+    ],
+    "scales": [
+      1,
+      1.25,
+      1.5,
+      1.75,
+      2
+    ],
+    "views": [
+      "Work",
+      "Changes",
+      "Settings",
+      "commit",
+      "branch",
+      "worktree",
+      "guidance",
+      "draft PR"
+    ]
+  },
+  "benchmark_before": [
+    {
+      "app": "session",
+      "step": "scale to 1",
+      "transition": true,
+      "frames": 2,
+      "p50_ms": 6.33,
+      "p99_ms": 6.33,
+      "max_ms": 6.33,
+      "ui_max_ms": 3.94,
+      "server": {
+        "frame_max_ms": 0.57,
+        "loop_late_ms": 15.3,
+        "slowest": [
+          "request set_settings",
+          1058
+        ],
+        "frames": 15
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "launch and load",
+      "transition": true,
+      "frames": 8,
+      "p50_ms": 1.23,
+      "p99_ms": 4.78,
+      "max_ms": 4.78,
+      "ui_max_ms": 1.04,
+      "server": {
+        "frame_max_ms": 13.21,
+        "loop_late_ms": 11.0,
+        "slowest": [
+          "tick",
+          1269
+        ],
+        "frames": 44
+      },
+      "notes": [],
+      "failures": [],
+      "launch_ms": 247
+    },
+    {
+      "app": "coder",
+      "step": "idle 1 s",
+      "transition": false,
+      "frames": 2,
+      "p50_ms": 1.05,
+      "p99_ms": 1.05,
+      "max_ms": 1.05,
+      "ui_max_ms": 0.77,
+      "server": {
+        "frame_max_ms": 0.78,
+        "loop_late_ms": 24.7,
+        "slowest": [
+          "tick",
+          1658
+        ],
+        "frames": 18
+      },
+      "notes": [],
+      "failures": [
+        "app_server's loop stalled 25 ms (['tick', 1658])"
+      ],
+      "idle_fps": 2
+    },
+    {
+      "app": "coder",
+      "step": "pointer over it",
+      "transition": false,
+      "frames": 14,
+      "p50_ms": 1.31,
+      "p99_ms": 2.67,
+      "max_ms": 2.67,
+      "ui_max_ms": 1.77,
+      "server": {
+        "frame_max_ms": 1.68,
+        "loop_late_ms": 19.9,
+        "slowest": [
+          "request synthetic",
+          3100
+        ],
+        "frames": 177
+      },
+      "notes": [],
+      "failures": [
+        "app_server's loop stalled 20 ms (['request synthetic', 3100])"
+      ]
+    },
+    {
+      "app": "coder",
+      "step": "scroll 1",
+      "transition": false,
+      "frames": 4,
+      "p50_ms": 1.21,
+      "p99_ms": 1.37,
+      "max_ms": 1.37,
+      "ui_max_ms": 0.99,
+      "server": {
+        "frame_max_ms": 0.76,
+        "loop_late_ms": 7.8,
+        "slowest": [
+          "tick",
+          339
+        ],
+        "frames": 428
+      },
+      "notes": [
+        "drag: didn't scroll",
+        "flick: didn't scroll",
+        "wheel: didn't scroll"
+      ],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "scroll 2",
+      "transition": false,
+      "frames": 0,
+      "p50_ms": 0.0,
+      "p99_ms": 0.0,
+      "max_ms": 0,
+      "ui_max_ms": 0.0,
+      "server": {
+        "frame_max_ms": 4.17,
+        "loop_late_ms": 7.2,
+        "slowest": [
+          "flushing to clients",
+          5603
+        ],
+        "frames": 417
+      },
+      "notes": [
+        "drag: didn't scroll",
+        "flick: didn't scroll",
+        "wheel: didn't scroll"
+      ],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "3 tabs",
+      "transition": false,
+      "frames": 8,
+      "p50_ms": 1.27,
+      "p99_ms": 2.06,
+      "max_ms": 2.06,
+      "ui_max_ms": 1.71,
+      "server": {
+        "frame_max_ms": 0.79,
+        "loop_late_ms": 3.3,
+        "slowest": [
+          "flushing to clients",
+          264
+        ],
+        "frames": 49
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "4 menus",
+      "transition": false,
+      "frames": 12,
+      "p50_ms": 1.12,
+      "p99_ms": 1.54,
+      "max_ms": 1.54,
+      "ui_max_ms": 1.28,
+      "server": {
+        "frame_max_ms": 1.45,
+        "loop_late_ms": 2.8,
+        "slowest": [
+          "flushing to clients",
+          1257
+        ],
+        "frames": 410
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "typing",
+      "transition": false,
+      "frames": 13,
+      "p50_ms": 1.94,
+      "p99_ms": 6.49,
+      "max_ms": 6.49,
+      "ui_max_ms": 2.22,
+      "server": {
+        "frame_max_ms": 1.51,
+        "loop_late_ms": 4.4,
+        "slowest": [
+          "flushing to clients",
+          1797
+        ],
+        "frames": 67
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "live resize",
+      "transition": false,
+      "frames": 38,
+      "p50_ms": 1.56,
+      "p99_ms": 4.33,
+      "max_ms": 4.33,
+      "ui_max_ms": 3.36,
+      "server": {
+        "frame_max_ms": 1.62,
+        "loop_late_ms": 3.2,
+        "slowest": [
+          "clients' requests",
+          3205
+        ],
+        "frames": 115
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "theme light, dark",
+      "transition": true,
+      "frames": 6,
+      "p50_ms": 1.44,
+      "p99_ms": 3.05,
+      "max_ms": 3.05,
+      "ui_max_ms": 2.58,
+      "server": {
+        "frame_max_ms": 9.9,
+        "loop_late_ms": 8.8,
+        "slowest": [
+          "request set_settings",
+          1186
+        ],
+        "frames": 43
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "session",
+      "step": "scale to 1.5",
+      "transition": true,
+      "frames": 3,
+      "p50_ms": 0.82,
+      "p99_ms": 2.21,
+      "max_ms": 2.21,
+      "ui_max_ms": 1.93,
+      "server": {
+        "frame_max_ms": 0.65,
+        "loop_late_ms": 4.3,
+        "slowest": [
+          "flushing to clients",
+          2309
+        ],
+        "frames": 15
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "launch and load",
+      "transition": true,
+      "frames": 8,
+      "p50_ms": 1.06,
+      "p99_ms": 4.21,
+      "max_ms": 4.21,
+      "ui_max_ms": 1.01,
+      "server": {
+        "frame_max_ms": 6.07,
+        "loop_late_ms": 5.6,
+        "slowest": [
+          "tick",
+          953
+        ],
+        "frames": 35
+      },
+      "notes": [],
+      "failures": [],
+      "launch_ms": 126
+    },
+    {
+      "app": "coder",
+      "step": "idle 1 s",
+      "transition": false,
+      "frames": 2,
+      "p50_ms": 1.11,
+      "p99_ms": 1.11,
+      "max_ms": 1.11,
+      "ui_max_ms": 0.94,
+      "server": {
+        "frame_max_ms": 0.46,
+        "loop_late_ms": 0.4,
+        "slowest": [
+          "tick",
+          390
+        ],
+        "frames": 9
+      },
+      "notes": [],
+      "failures": [],
+      "idle_fps": 2
+    },
+    {
+      "app": "coder",
+      "step": "pointer over it",
+      "transition": false,
+      "frames": 20,
+      "p50_ms": 0.92,
+      "p99_ms": 1.2,
+      "max_ms": 1.2,
+      "ui_max_ms": 0.9,
+      "server": {
+        "frame_max_ms": 0.84,
+        "loop_late_ms": 5.2,
+        "slowest": [
+          "request synthetic",
+          2123
+        ],
+        "frames": 192
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "scroll 1",
+      "transition": false,
+      "frames": 4,
+      "p50_ms": 0.89,
+      "p99_ms": 0.98,
+      "max_ms": 0.98,
+      "ui_max_ms": 0.73,
+      "server": {
+        "frame_max_ms": 0.68,
+        "loop_late_ms": 2.1,
+        "slowest": [
+          "tick",
+          831
+        ],
+        "frames": 433
+      },
+      "notes": [
+        "drag: didn't scroll",
+        "flick: didn't scroll",
+        "wheel: didn't scroll"
+      ],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "scroll 2",
+      "transition": false,
+      "frames": 0,
+      "p50_ms": 0.0,
+      "p99_ms": 0.0,
+      "max_ms": 0,
+      "ui_max_ms": 0.0,
+      "server": {
+        "frame_max_ms": 0.88,
+        "loop_late_ms": 9.2,
+        "slowest": [
+          "flushing to clients",
+          3145
+        ],
+        "frames": 417
+      },
+      "notes": [
+        "drag: didn't scroll",
+        "flick: didn't scroll",
+        "wheel: didn't scroll"
+      ],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "3 tabs",
+      "transition": false,
+      "frames": 8,
+      "p50_ms": 1.88,
+      "p99_ms": 4.62,
+      "max_ms": 4.62,
+      "ui_max_ms": 4.14,
+      "server": {
+        "frame_max_ms": 1.03,
+        "loop_late_ms": 2.0,
+        "slowest": [
+          "flushing to clients",
+          1409
+        ],
+        "frames": 47
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "4 menus",
+      "transition": false,
+      "frames": 12,
+      "p50_ms": 1.54,
+      "p99_ms": 5.25,
+      "max_ms": 5.25,
+      "ui_max_ms": 2.95,
+      "server": {
+        "frame_max_ms": 3.23,
+        "loop_late_ms": 13.6,
+        "slowest": [
+          "flushing to clients",
+          2062
+        ],
+        "frames": 420
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "typing",
+      "transition": false,
+      "frames": 13,
+      "p50_ms": 1.67,
+      "p99_ms": 3.75,
+      "max_ms": 3.75,
+      "ui_max_ms": 2.86,
+      "server": {
+        "frame_max_ms": 0.97,
+        "loop_late_ms": 4.8,
+        "slowest": [
+          "tick",
+          3079
+        ],
+        "frames": 68
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "live resize",
+      "transition": false,
+      "frames": 38,
+      "p50_ms": 1.46,
+      "p99_ms": 13.88,
+      "max_ms": 13.88,
+      "ui_max_ms": 8.1,
+      "server": {
+        "frame_max_ms": 6.29,
+        "loop_late_ms": 3.8,
+        "slowest": [
+          "flushing to clients",
+          2871
+        ],
+        "frames": 121
+      },
+      "notes": [],
+      "failures": [
+        "1 of 38 frames over 8.3 ms (slowest 13.9 ms: setup 0.0, ui 8.1, tessellate 0.0, acquire 0.0, submit 5.8)"
+      ]
+    },
+    {
+      "app": "coder",
+      "step": "theme light, dark",
+      "transition": true,
+      "frames": 6,
+      "p50_ms": 1.38,
+      "p99_ms": 1.63,
+      "max_ms": 1.63,
+      "ui_max_ms": 1.18,
+      "server": {
+        "frame_max_ms": 13.31,
+        "loop_late_ms": 9.7,
+        "slowest": [
+          "request set_settings",
+          2450
+        ],
+        "frames": 42
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "session",
+      "step": "scale to 2",
+      "transition": true,
+      "frames": 3,
+      "p50_ms": 0.95,
+      "p99_ms": 1.66,
+      "max_ms": 1.66,
+      "ui_max_ms": 1.31,
+      "server": {
+        "frame_max_ms": 0.99,
+        "loop_late_ms": 2.9,
+        "slowest": [
+          "request set_settings",
+          706
+        ],
+        "frames": 15
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "launch and load",
+      "transition": true,
+      "frames": 8,
+      "p50_ms": 1.48,
+      "p99_ms": 5.41,
+      "max_ms": 5.41,
+      "ui_max_ms": 1.3,
+      "server": {
+        "frame_max_ms": 10.44,
+        "loop_late_ms": 10.6,
+        "slowest": [
+          "flushing to clients",
+          2836
+        ],
+        "frames": 34
+      },
+      "notes": [],
+      "failures": [],
+      "launch_ms": 178
+    },
+    {
+      "app": "coder",
+      "step": "idle 1 s",
+      "transition": false,
+      "frames": 2,
+      "p50_ms": 1.1,
+      "p99_ms": 1.1,
+      "max_ms": 1.1,
+      "ui_max_ms": 0.78,
+      "server": {
+        "frame_max_ms": 0.69,
+        "loop_late_ms": 2.8,
+        "slowest": [
+          "tick",
+          2172
+        ],
+        "frames": 14
+      },
+      "notes": [],
+      "failures": [],
+      "idle_fps": 2
+    },
+    {
+      "app": "coder",
+      "step": "pointer over it",
+      "transition": false,
+      "frames": 30,
+      "p50_ms": 1.29,
+      "p99_ms": 4.9,
+      "max_ms": 4.9,
+      "ui_max_ms": 1.7,
+      "server": {
+        "frame_max_ms": 1.24,
+        "loop_late_ms": 3.1,
+        "slowest": [
+          "flushing to clients",
+          3200
+        ],
+        "frames": 210
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "scroll 1",
+      "transition": false,
+      "frames": 4,
+      "p50_ms": 1.1,
+      "p99_ms": 1.13,
+      "max_ms": 1.13,
+      "ui_max_ms": 0.83,
+      "server": {
+        "frame_max_ms": 2.94,
+        "loop_late_ms": 5.1,
+        "slowest": [
+          "flushing to clients",
+          2929
+        ],
+        "frames": 420
+      },
+      "notes": [
+        "drag: didn't scroll",
+        "flick: didn't scroll",
+        "wheel: didn't scroll"
+      ],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "scroll 2",
+      "transition": false,
+      "frames": 0,
+      "p50_ms": 0.0,
+      "p99_ms": 0.0,
+      "max_ms": 0,
+      "ui_max_ms": 0.0,
+      "server": {
+        "frame_max_ms": 2.74,
+        "loop_late_ms": 3.0,
+        "slowest": [
+          "tick",
+          4494
+        ],
+        "frames": 417
+      },
+      "notes": [
+        "drag: didn't scroll",
+        "flick: didn't scroll",
+        "wheel: didn't scroll"
+      ],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "3 tabs",
+      "transition": false,
+      "frames": 8,
+      "p50_ms": 5.91,
+      "p99_ms": 13.74,
+      "max_ms": 13.74,
+      "ui_max_ms": 3.63,
+      "server": {
+        "frame_max_ms": 1.04,
+        "loop_late_ms": 6.1,
+        "slowest": [
+          "tick",
+          2368
+        ],
+        "frames": 56
+      },
+      "notes": [],
+      "failures": [
+        "2 of 8 frames over 8.3 ms (slowest 13.7 ms: setup 0.0, ui 1.5, tessellate 0.0, acquire 0.0, submit 12.2)"
+      ]
+    },
+    {
+      "app": "coder",
+      "step": "4 menus",
+      "transition": false,
+      "frames": 12,
+      "p50_ms": 1.39,
+      "p99_ms": 9.45,
+      "max_ms": 9.45,
+      "ui_max_ms": 8.96,
+      "server": {
+        "frame_max_ms": 3.52,
+        "loop_late_ms": 5.3,
+        "slowest": [
+          "flushing to clients",
+          1563
+        ],
+        "frames": 407
+      },
+      "notes": [],
+      "failures": [
+        "1 of 12 frames over 8.3 ms (slowest 9.5 ms: setup 0.0, ui 9.0, tessellate 0.0, acquire 0.0, submit 0.5)"
+      ]
+    },
+    {
+      "app": "coder",
+      "step": "typing",
+      "transition": false,
+      "frames": 13,
+      "p50_ms": 1.19,
+      "p99_ms": 6.36,
+      "max_ms": 6.36,
+      "ui_max_ms": 4.11,
+      "server": {
+        "frame_max_ms": 0.89,
+        "loop_late_ms": 2.4,
+        "slowest": [
+          "flushing to clients",
+          1284
+        ],
+        "frames": 66
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "live resize",
+      "transition": false,
+      "frames": 30,
+      "p50_ms": 1.29,
+      "p99_ms": 3.08,
+      "max_ms": 3.08,
+      "ui_max_ms": 1.6,
+      "server": {
+        "frame_max_ms": 1.45,
+        "loop_late_ms": 9.4,
+        "slowest": [
+          "flushing to clients",
+          11154
+        ],
+        "frames": 121
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "theme light, dark",
+      "transition": true,
+      "frames": 6,
+      "p50_ms": 1.19,
+      "p99_ms": 3.88,
+      "max_ms": 3.88,
+      "ui_max_ms": 0.91,
+      "server": {
+        "frame_max_ms": 7.84,
+        "loop_late_ms": 8.0,
+        "slowest": [
+          "request set_settings",
+          1973
+        ],
+        "frames": 45
+      },
+      "notes": [],
+      "failures": []
+    }
+  ],
+  "benchmark_after": [
+    {
+      "app": "session",
+      "step": "scale to 1",
+      "transition": true,
+      "frames": 2,
+      "p50_ms": 2.13,
+      "p99_ms": 2.13,
+      "max_ms": 2.13,
+      "ui_max_ms": 1.84,
+      "server": {
+        "frame_max_ms": 0.86,
+        "loop_late_ms": 6.0,
+        "slowest": [
+          "request set_settings",
+          1448
+        ],
+        "frames": 9
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "launch and load",
+      "transition": true,
+      "frames": 8,
+      "p50_ms": 1.34,
+      "p99_ms": 10.84,
+      "max_ms": 10.84,
+      "ui_max_ms": 2.13,
+      "server": {
+        "frame_max_ms": 8.02,
+        "loop_late_ms": 18.7,
+        "slowest": [
+          "tick",
+          2324
+        ],
+        "frames": 48
+      },
+      "notes": [
+        "slowest 10.8 ms: setup 0.0, ui 2.1, tessellate 0.0, acquire 0.0, submit 8.7"
+      ],
+      "failures": [],
+      "launch_ms": 198
+    },
+    {
+      "app": "coder",
+      "step": "idle 1 s",
+      "transition": false,
+      "frames": 2,
+      "p50_ms": 2.63,
+      "p99_ms": 2.63,
+      "max_ms": 2.63,
+      "ui_max_ms": 1.38,
+      "server": {
+        "frame_max_ms": 0.85,
+        "loop_late_ms": 3.6,
+        "slowest": [
+          "flushing to clients",
+          5512
+        ],
+        "frames": 18
+      },
+      "notes": [],
+      "failures": [],
+      "idle_fps": 2
+    },
+    {
+      "app": "coder",
+      "step": "pointer over it",
+      "transition": false,
+      "frames": 14,
+      "p50_ms": 2.36,
+      "p99_ms": 9.84,
+      "max_ms": 9.84,
+      "ui_max_ms": 7.36,
+      "server": {
+        "frame_max_ms": 2.5,
+        "loop_late_ms": 11.3,
+        "slowest": [
+          "flushing to clients",
+          3915
+        ],
+        "frames": 178
+      },
+      "notes": [],
+      "failures": [
+        "1 of 14 frames over 8.3 ms (slowest 9.8 ms: setup 0.0, ui 7.4, tessellate 0.0, acquire 0.0, submit 2.5)"
+      ]
+    },
+    {
+      "app": "coder",
+      "step": "scroll 1",
+      "transition": false,
+      "frames": 4,
+      "p50_ms": 2.69,
+      "p99_ms": 3.81,
+      "max_ms": 3.81,
+      "ui_max_ms": 1.88,
+      "server": {
+        "frame_max_ms": 4.09,
+        "loop_late_ms": 12.1,
+        "slowest": [
+          "request ping",
+          9442
+        ],
+        "frames": 430
+      },
+      "notes": [
+        "drag: didn't scroll",
+        "flick: didn't scroll",
+        "wheel: didn't scroll"
+      ],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "scroll 2",
+      "transition": false,
+      "frames": 0,
+      "p50_ms": 0.0,
+      "p99_ms": 0.0,
+      "max_ms": 0,
+      "ui_max_ms": 0.0,
+      "server": {
+        "frame_max_ms": 7.48,
+        "loop_late_ms": 18.0,
+        "slowest": [
+          "flushing to clients",
+          4412
+        ],
+        "frames": 418
+      },
+      "notes": [
+        "drag: didn't scroll",
+        "flick: didn't scroll",
+        "wheel: didn't scroll"
+      ],
+      "failures": [
+        "app_server's loop stalled 18 ms (['flushing to clients', 4412])"
+      ]
+    },
+    {
+      "app": "coder",
+      "step": "3 tabs",
+      "transition": false,
+      "frames": 9,
+      "p50_ms": 1.5,
+      "p99_ms": 4.54,
+      "max_ms": 4.54,
+      "ui_max_ms": 1.34,
+      "server": {
+        "frame_max_ms": 1.25,
+        "loop_late_ms": 2.9,
+        "slowest": [
+          "flushing to clients",
+          1675
+        ],
+        "frames": 57
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "5 menus",
+      "transition": false,
+      "frames": 15,
+      "p50_ms": 1.73,
+      "p99_ms": 15.14,
+      "max_ms": 15.14,
+      "ui_max_ms": 11.87,
+      "server": {
+        "frame_max_ms": 4.59,
+        "loop_late_ms": 19.1,
+        "slowest": [
+          "flushing to clients",
+          4588
+        ],
+        "frames": 506
+      },
+      "notes": [],
+      "failures": [
+        "1 of 15 frames over 8.3 ms (slowest 15.1 ms: setup 0.0, ui 11.9, tessellate 0.0, acquire 0.0, submit 3.3)",
+        "app_server's loop stalled 19 ms (['flushing to clients', 4588])"
+      ]
+    },
+    {
+      "app": "coder",
+      "step": "typing",
+      "transition": false,
+      "frames": 13,
+      "p50_ms": 1.17,
+      "p99_ms": 3.37,
+      "max_ms": 3.37,
+      "ui_max_ms": 1.15,
+      "server": {
+        "frame_max_ms": 0.93,
+        "loop_late_ms": 9.2,
+        "slowest": [
+          "flushing to clients",
+          1646
+        ],
+        "frames": 67
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "live resize",
+      "transition": false,
+      "frames": 38,
+      "p50_ms": 1.29,
+      "p99_ms": 3.15,
+      "max_ms": 3.15,
+      "ui_max_ms": 2.89,
+      "server": {
+        "frame_max_ms": 1.36,
+        "loop_late_ms": 9.6,
+        "slowest": [
+          "tick",
+          2063
+        ],
+        "frames": 124
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "theme light, dark",
+      "transition": true,
+      "frames": 6,
+      "p50_ms": 0.97,
+      "p99_ms": 1.05,
+      "max_ms": 1.05,
+      "ui_max_ms": 0.84,
+      "server": {
+        "frame_max_ms": 28.86,
+        "loop_late_ms": 27.1,
+        "slowest": [
+          "request set_settings",
+          3945
+        ],
+        "frames": 52
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "session",
+      "step": "scale to 1.5",
+      "transition": true,
+      "frames": 3,
+      "p50_ms": 0.75,
+      "p99_ms": 2.07,
+      "max_ms": 2.07,
+      "ui_max_ms": 1.82,
+      "server": {
+        "frame_max_ms": 0.59,
+        "loop_late_ms": 9.2,
+        "slowest": [
+          "request set_settings",
+          557
+        ],
+        "frames": 14
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "launch and load",
+      "transition": true,
+      "frames": 9,
+      "p50_ms": 1.64,
+      "p99_ms": 40.65,
+      "max_ms": 40.65,
+      "ui_max_ms": 1.5,
+      "server": {
+        "frame_max_ms": 4.27,
+        "loop_late_ms": 10.0,
+        "slowest": [
+          "tick",
+          1453
+        ],
+        "frames": 49
+      },
+      "notes": [
+        "slowest 40.6 ms: setup 0.0, ui 1.1, tessellate 0.0, acquire 0.0, submit 39.5"
+      ],
+      "failures": [],
+      "launch_ms": 257
+    },
+    {
+      "app": "coder",
+      "step": "idle 1 s",
+      "transition": false,
+      "frames": 3,
+      "p50_ms": 1.05,
+      "p99_ms": 1.32,
+      "max_ms": 1.32,
+      "ui_max_ms": 0.93,
+      "server": {
+        "frame_max_ms": 0.63,
+        "loop_late_ms": 7.0,
+        "slowest": [
+          "tick",
+          271
+        ],
+        "frames": 13
+      },
+      "notes": [],
+      "failures": [],
+      "idle_fps": 3
+    },
+    {
+      "app": "coder",
+      "step": "pointer over it",
+      "transition": false,
+      "frames": 21,
+      "p50_ms": 1.7,
+      "p99_ms": 20.57,
+      "max_ms": 20.57,
+      "ui_max_ms": 19.57,
+      "server": {
+        "frame_max_ms": 1.44,
+        "loop_late_ms": 10.7,
+        "slowest": [
+          "flushing to clients",
+          3780
+        ],
+        "frames": 186
+      },
+      "notes": [],
+      "failures": [
+        "2 of 21 frames over 8.3 ms (slowest 20.6 ms: setup 0.0, ui 19.6, tessellate 0.0, acquire 0.0, submit 1.0)"
+      ]
+    },
+    {
+      "app": "coder",
+      "step": "scroll 1",
+      "transition": false,
+      "frames": 4,
+      "p50_ms": 1.99,
+      "p99_ms": 4.27,
+      "max_ms": 4.27,
+      "ui_max_ms": 1.69,
+      "server": {
+        "frame_max_ms": 9.29,
+        "loop_late_ms": 19.5,
+        "slowest": [
+          "tick",
+          4611
+        ],
+        "frames": 429
+      },
+      "notes": [
+        "drag: didn't scroll",
+        "flick: didn't scroll",
+        "wheel: didn't scroll"
+      ],
+      "failures": [
+        "app_server took 9.3 ms for a frame",
+        "app_server's loop stalled 19 ms (['tick', 4611])"
+      ]
+    },
+    {
+      "app": "coder",
+      "step": "scroll 2",
+      "transition": false,
+      "frames": 0,
+      "p50_ms": 0.0,
+      "p99_ms": 0.0,
+      "max_ms": 0,
+      "ui_max_ms": 0.0,
+      "server": {
+        "frame_max_ms": 8.28,
+        "loop_late_ms": 23.7,
+        "slowest": [
+          "tick",
+          2685
+        ],
+        "frames": 412
+      },
+      "notes": [
+        "drag: didn't scroll",
+        "flick: didn't scroll",
+        "wheel: didn't scroll"
+      ],
+      "failures": [
+        "app_server's loop stalled 24 ms (['tick', 2685])"
+      ]
+    },
+    {
+      "app": "coder",
+      "step": "3 tabs",
+      "transition": false,
+      "frames": 9,
+      "p50_ms": 1.41,
+      "p99_ms": 5.9,
+      "max_ms": 5.9,
+      "ui_max_ms": 2.0,
+      "server": {
+        "frame_max_ms": 2.63,
+        "loop_late_ms": 2.6,
+        "slowest": [
+          "tick",
+          2727
+        ],
+        "frames": 59
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "5 menus",
+      "transition": false,
+      "frames": 15,
+      "p50_ms": 1.47,
+      "p99_ms": 6.08,
+      "max_ms": 6.08,
+      "ui_max_ms": 2.23,
+      "server": {
+        "frame_max_ms": 3.1,
+        "loop_late_ms": 10.9,
+        "slowest": [
+          "request synthetic",
+          7677
+        ],
+        "frames": 540
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "typing",
+      "transition": false,
+      "frames": 13,
+      "p50_ms": 1.42,
+      "p99_ms": 2.91,
+      "max_ms": 2.91,
+      "ui_max_ms": 1.51,
+      "server": {
+        "frame_max_ms": 0.79,
+        "loop_late_ms": 2.2,
+        "slowest": [
+          "clients' requests",
+          1990
+        ],
+        "frames": 66
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "live resize",
+      "transition": false,
+      "frames": 37,
+      "p50_ms": 1.36,
+      "p99_ms": 4.7,
+      "max_ms": 4.7,
+      "ui_max_ms": 4.25,
+      "server": {
+        "frame_max_ms": 2.42,
+        "loop_late_ms": 6.8,
+        "slowest": [
+          "flushing to clients",
+          1382
+        ],
+        "frames": 119
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "theme light, dark",
+      "transition": true,
+      "frames": 5,
+      "p50_ms": 1.29,
+      "p99_ms": 3.56,
+      "max_ms": 3.56,
+      "ui_max_ms": 1.3,
+      "server": {
+        "frame_max_ms": 3.21,
+        "loop_late_ms": 3.3,
+        "slowest": [
+          "tick",
+          1291
+        ],
+        "frames": 35
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "session",
+      "step": "scale to 2",
+      "transition": true,
+      "frames": 2,
+      "p50_ms": 0.7,
+      "p99_ms": 0.7,
+      "max_ms": 0.7,
+      "ui_max_ms": 0.46,
+      "server": {
+        "frame_max_ms": 0.57,
+        "loop_late_ms": 2.6,
+        "slowest": [
+          "request set_settings",
+          2956
+        ],
+        "frames": 8
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "launch and load",
+      "transition": true,
+      "frames": 9,
+      "p50_ms": 1.1,
+      "p99_ms": 3.96,
+      "max_ms": 3.96,
+      "ui_max_ms": 1.65,
+      "server": {
+        "frame_max_ms": 4.15,
+        "loop_late_ms": 4.3,
+        "slowest": [
+          "tick",
+          473
+        ],
+        "frames": 38
+      },
+      "notes": [],
+      "failures": [],
+      "launch_ms": 130
+    },
+    {
+      "app": "coder",
+      "step": "idle 1 s",
+      "transition": false,
+      "frames": 2,
+      "p50_ms": 1.28,
+      "p99_ms": 1.28,
+      "max_ms": 1.28,
+      "ui_max_ms": 0.98,
+      "server": {
+        "frame_max_ms": 0.71,
+        "loop_late_ms": 2.6,
+        "slowest": [
+          "tick",
+          180
+        ],
+        "frames": 10
+      },
+      "notes": [],
+      "failures": [],
+      "idle_fps": 2
+    },
+    {
+      "app": "coder",
+      "step": "pointer over it",
+      "transition": false,
+      "frames": 29,
+      "p50_ms": 1.45,
+      "p99_ms": 4.77,
+      "max_ms": 4.77,
+      "ui_max_ms": 2.55,
+      "server": {
+        "frame_max_ms": 2.32,
+        "loop_late_ms": 3.6,
+        "slowest": [
+          "flushing to clients",
+          1592
+        ],
+        "frames": 210
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "scroll 1",
+      "transition": false,
+      "frames": 4,
+      "p50_ms": 2.25,
+      "p99_ms": 6.3,
+      "max_ms": 6.3,
+      "ui_max_ms": 5.21,
+      "server": {
+        "frame_max_ms": 1.17,
+        "loop_late_ms": 3.4,
+        "slowest": [
+          "flushing to clients",
+          2948
+        ],
+        "frames": 422
+      },
+      "notes": [
+        "drag: didn't scroll",
+        "flick: didn't scroll",
+        "wheel: didn't scroll"
+      ],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "scroll 2",
+      "transition": false,
+      "frames": 0,
+      "p50_ms": 0.0,
+      "p99_ms": 0.0,
+      "max_ms": 0,
+      "ui_max_ms": 0.0,
+      "server": {
+        "frame_max_ms": 3.07,
+        "loop_late_ms": 2.6,
+        "slowest": [
+          "flushing to clients",
+          2879
+        ],
+        "frames": 416
+      },
+      "notes": [
+        "drag: didn't scroll",
+        "flick: didn't scroll",
+        "wheel: didn't scroll"
+      ],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "3 tabs",
+      "transition": false,
+      "frames": 9,
+      "p50_ms": 1.17,
+      "p99_ms": 3.45,
+      "max_ms": 3.45,
+      "ui_max_ms": 2.25,
+      "server": {
+        "frame_max_ms": 0.57,
+        "loop_late_ms": 2.5,
+        "slowest": [
+          "tick",
+          2095
+        ],
+        "frames": 58
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "5 menus",
+      "transition": false,
+      "frames": 15,
+      "p50_ms": 0.89,
+      "p99_ms": 2.44,
+      "max_ms": 2.44,
+      "ui_max_ms": 2.05,
+      "server": {
+        "frame_max_ms": 2.51,
+        "loop_late_ms": 2.7,
+        "slowest": [
+          "flushing to clients",
+          1130
+        ],
+        "frames": 510
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "typing",
+      "transition": false,
+      "frames": 13,
+      "p50_ms": 1.04,
+      "p99_ms": 1.7,
+      "max_ms": 1.7,
+      "ui_max_ms": 0.82,
+      "server": {
+        "frame_max_ms": 0.8,
+        "loop_late_ms": 2.5,
+        "slowest": [
+          "flushing to clients",
+          1002
+        ],
+        "frames": 65
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "live resize",
+      "transition": false,
+      "frames": 18,
+      "p50_ms": 1.08,
+      "p99_ms": 3.95,
+      "max_ms": 3.95,
+      "ui_max_ms": 3.76,
+      "server": {
+        "frame_max_ms": 0.87,
+        "loop_late_ms": 2.7,
+        "slowest": [
+          "flushing to clients",
+          1241
+        ],
+        "frames": 118
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "theme light, dark",
+      "transition": true,
+      "frames": 5,
+      "p50_ms": 1.03,
+      "p99_ms": 1.09,
+      "max_ms": 1.09,
+      "ui_max_ms": 0.84,
+      "server": {
+        "frame_max_ms": 3.89,
+        "loop_late_ms": 15.4,
+        "slowest": [
+          "request set_settings",
+          18011
+        ],
+        "frames": 41
+      },
+      "notes": [],
+      "failures": []
+    }
+  ],
+  "benchmark_repeat": [
+    {
+      "app": "session",
+      "step": "scale to 1",
+      "transition": true,
+      "frames": 2,
+      "p50_ms": 1.69,
+      "p99_ms": 1.69,
+      "max_ms": 1.69,
+      "ui_max_ms": 1.47,
+      "server": {
+        "frame_max_ms": 0.37,
+        "loop_late_ms": 0.5,
+        "slowest": [
+          "request set_settings",
+          427
+        ],
+        "frames": 9
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "launch and load",
+      "transition": true,
+      "frames": 9,
+      "p50_ms": 0.84,
+      "p99_ms": 3.62,
+      "max_ms": 3.62,
+      "ui_max_ms": 0.71,
+      "server": {
+        "frame_max_ms": 6.39,
+        "loop_late_ms": 4.8,
+        "slowest": [
+          "tick",
+          298
+        ],
+        "frames": 41
+      },
+      "notes": [],
+      "failures": [],
+      "launch_ms": 77
+    },
+    {
+      "app": "coder",
+      "step": "idle 1 s",
+      "transition": false,
+      "frames": 2,
+      "p50_ms": 1.15,
+      "p99_ms": 1.15,
+      "max_ms": 1.15,
+      "ui_max_ms": 0.89,
+      "server": {
+        "frame_max_ms": 0.46,
+        "loop_late_ms": 0.2,
+        "slowest": [
+          "tick",
+          276
+        ],
+        "frames": 13
+      },
+      "notes": [],
+      "failures": [],
+      "idle_fps": 2
+    },
+    {
+      "app": "coder",
+      "step": "pointer over it",
+      "transition": false,
+      "frames": 14,
+      "p50_ms": 0.78,
+      "p99_ms": 1.21,
+      "max_ms": 1.21,
+      "ui_max_ms": 0.99,
+      "server": {
+        "frame_max_ms": 0.61,
+        "loop_late_ms": 0.3,
+        "slowest": [
+          "tick",
+          213
+        ],
+        "frames": 181
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "scroll 1",
+      "transition": false,
+      "frames": 4,
+      "p50_ms": 0.93,
+      "p99_ms": 1.18,
+      "max_ms": 1.18,
+      "ui_max_ms": 0.95,
+      "server": {
+        "frame_max_ms": 0.51,
+        "loop_late_ms": 0.8,
+        "slowest": [
+          "request synthetic",
+          549
+        ],
+        "frames": 434
+      },
+      "notes": [
+        "drag: didn't scroll",
+        "flick: didn't scroll",
+        "wheel: didn't scroll"
+      ],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "scroll 2",
+      "transition": false,
+      "frames": 0,
+      "p50_ms": 0.0,
+      "p99_ms": 0.0,
+      "max_ms": 0,
+      "ui_max_ms": 0.0,
+      "server": {
+        "frame_max_ms": 0.71,
+        "loop_late_ms": 0.4,
+        "slowest": [
+          "tick",
+          233
+        ],
+        "frames": 420
+      },
+      "notes": [
+        "drag: didn't scroll",
+        "flick: didn't scroll",
+        "wheel: didn't scroll"
+      ],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "3 tabs",
+      "transition": false,
+      "frames": 9,
+      "p50_ms": 0.77,
+      "p99_ms": 9.59,
+      "max_ms": 9.59,
+      "ui_max_ms": 9.41,
+      "server": {
+        "frame_max_ms": 0.5,
+        "loop_late_ms": 0.4,
+        "slowest": [
+          "tick",
+          313
+        ],
+        "frames": 48
+      },
+      "notes": [],
+      "failures": [
+        "1 of 9 frames over 8.3 ms (slowest 9.6 ms: setup 0.0, ui 9.4, tessellate 0.0, acquire 0.0, submit 0.2)"
+      ]
+    },
+    {
+      "app": "coder",
+      "step": "5 menus",
+      "transition": false,
+      "frames": 15,
+      "p50_ms": 0.76,
+      "p99_ms": 1.05,
+      "max_ms": 1.05,
+      "ui_max_ms": 0.83,
+      "server": {
+        "frame_max_ms": 2.28,
+        "loop_late_ms": 1.2,
+        "slowest": [
+          "tick",
+          553
+        ],
+        "frames": 501
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "typing",
+      "transition": false,
+      "frames": 13,
+      "p50_ms": 0.96,
+      "p99_ms": 1.06,
+      "max_ms": 1.06,
+      "ui_max_ms": 0.79,
+      "server": {
+        "frame_max_ms": 0.46,
+        "loop_late_ms": 0.2,
+        "slowest": [
+          "tick",
+          265
+        ],
+        "frames": 65
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "live resize",
+      "transition": false,
+      "frames": 38,
+      "p50_ms": 0.81,
+      "p99_ms": 6.54,
+      "max_ms": 6.54,
+      "ui_max_ms": 6.38,
+      "server": {
+        "frame_max_ms": 0.66,
+        "loop_late_ms": 0.5,
+        "slowest": [
+          "tick",
+          270
+        ],
+        "frames": 112
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "theme light, dark",
+      "transition": true,
+      "frames": 5,
+      "p50_ms": 0.77,
+      "p99_ms": 1.02,
+      "max_ms": 1.02,
+      "ui_max_ms": 0.83,
+      "server": {
+        "frame_max_ms": 6.05,
+        "loop_late_ms": 4.2,
+        "slowest": [
+          "request set_settings",
+          375
+        ],
+        "frames": 38
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "session",
+      "step": "scale to 1.5",
+      "transition": true,
+      "frames": 2,
+      "p50_ms": 1.79,
+      "p99_ms": 1.79,
+      "max_ms": 1.79,
+      "ui_max_ms": 1.59,
+      "server": {
+        "frame_max_ms": 0.35,
+        "loop_late_ms": 0.3,
+        "slowest": [
+          "request set_settings",
+          423
+        ],
+        "frames": 9
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "launch and load",
+      "transition": true,
+      "frames": 8,
+      "p50_ms": 0.8,
+      "p99_ms": 1.08,
+      "max_ms": 1.08,
+      "ui_max_ms": 0.8,
+      "server": {
+        "frame_max_ms": 2.56,
+        "loop_late_ms": 1.5,
+        "slowest": [
+          "tick",
+          218
+        ],
+        "frames": 36
+      },
+      "notes": [],
+      "failures": [],
+      "launch_ms": 96
+    },
+    {
+      "app": "coder",
+      "step": "idle 1 s",
+      "transition": false,
+      "frames": 2,
+      "p50_ms": 0.85,
+      "p99_ms": 0.85,
+      "max_ms": 0.85,
+      "ui_max_ms": 0.68,
+      "server": {
+        "frame_max_ms": 0.44,
+        "loop_late_ms": 0.2,
+        "slowest": [
+          "tick",
+          259
+        ],
+        "frames": 9
+      },
+      "notes": [],
+      "failures": [],
+      "idle_fps": 2
+    },
+    {
+      "app": "coder",
+      "step": "pointer over it",
+      "transition": false,
+      "frames": 22,
+      "p50_ms": 0.8,
+      "p99_ms": 1.12,
+      "max_ms": 1.12,
+      "ui_max_ms": 0.91,
+      "server": {
+        "frame_max_ms": 0.43,
+        "loop_late_ms": 0.3,
+        "slowest": [
+          "tick",
+          235
+        ],
+        "frames": 195
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "scroll 1",
+      "transition": false,
+      "frames": 4,
+      "p50_ms": 0.87,
+      "p99_ms": 0.99,
+      "max_ms": 0.99,
+      "ui_max_ms": 0.81,
+      "server": {
+        "frame_max_ms": 0.84,
+        "loop_late_ms": 0.4,
+        "slowest": [
+          "tick",
+          960
+        ],
+        "frames": 427
+      },
+      "notes": [
+        "drag: didn't scroll",
+        "flick: didn't scroll",
+        "wheel: didn't scroll"
+      ],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "scroll 2",
+      "transition": false,
+      "frames": 0,
+      "p50_ms": 0.0,
+      "p99_ms": 0.0,
+      "max_ms": 0,
+      "ui_max_ms": 0.0,
+      "server": {
+        "frame_max_ms": 1.12,
+        "loop_late_ms": 0.6,
+        "slowest": [
+          "tick",
+          801
+        ],
+        "frames": 424
+      },
+      "notes": [
+        "drag: didn't scroll",
+        "flick: didn't scroll",
+        "wheel: didn't scroll"
+      ],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "3 tabs",
+      "transition": false,
+      "frames": 9,
+      "p50_ms": 0.9,
+      "p99_ms": 1.36,
+      "max_ms": 1.36,
+      "ui_max_ms": 1.11,
+      "server": {
+        "frame_max_ms": 0.38,
+        "loop_late_ms": 0.2,
+        "slowest": [
+          "tick",
+          217
+        ],
+        "frames": 49
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "5 menus",
+      "transition": false,
+      "frames": 15,
+      "p50_ms": 0.71,
+      "p99_ms": 1.11,
+      "max_ms": 1.11,
+      "ui_max_ms": 0.92,
+      "server": {
+        "frame_max_ms": 0.76,
+        "loop_late_ms": 1.4,
+        "slowest": [
+          "tick",
+          518
+        ],
+        "frames": 501
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "typing",
+      "transition": false,
+      "frames": 13,
+      "p50_ms": 0.76,
+      "p99_ms": 0.82,
+      "max_ms": 0.82,
+      "ui_max_ms": 0.63,
+      "server": {
+        "frame_max_ms": 4.13,
+        "loop_late_ms": 3.0,
+        "slowest": [
+          "tick",
+          805
+        ],
+        "frames": 66
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "live resize",
+      "transition": false,
+      "frames": 38,
+      "p50_ms": 0.81,
+      "p99_ms": 1.55,
+      "max_ms": 1.55,
+      "ui_max_ms": 1.08,
+      "server": {
+        "frame_max_ms": 0.58,
+        "loop_late_ms": 0.5,
+        "slowest": [
+          "tick",
+          281
+        ],
+        "frames": 111
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "theme light, dark",
+      "transition": true,
+      "frames": 5,
+      "p50_ms": 0.8,
+      "p99_ms": 0.87,
+      "max_ms": 0.87,
+      "ui_max_ms": 0.73,
+      "server": {
+        "frame_max_ms": 10.7,
+        "loop_late_ms": 7.1,
+        "slowest": [
+          "request set_settings",
+          561
+        ],
+        "frames": 42
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "session",
+      "step": "scale to 2",
+      "transition": true,
+      "frames": 3,
+      "p50_ms": 0.63,
+      "p99_ms": 0.68,
+      "max_ms": 0.68,
+      "ui_max_ms": 0.47,
+      "server": {
+        "frame_max_ms": 0.43,
+        "loop_late_ms": 0.5,
+        "slowest": [
+          "request set_settings",
+          516
+        ],
+        "frames": 12
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "launch and load",
+      "transition": true,
+      "frames": 9,
+      "p50_ms": 0.82,
+      "p99_ms": 3.71,
+      "max_ms": 3.71,
+      "ui_max_ms": 0.82,
+      "server": {
+        "frame_max_ms": 3.49,
+        "loop_late_ms": 1.7,
+        "slowest": [
+          "tick",
+          219
+        ],
+        "frames": 38
+      },
+      "notes": [],
+      "failures": [],
+      "launch_ms": 79
+    },
+    {
+      "app": "coder",
+      "step": "idle 1 s",
+      "transition": false,
+      "frames": 2,
+      "p50_ms": 0.77,
+      "p99_ms": 0.77,
+      "max_ms": 0.77,
+      "ui_max_ms": 0.61,
+      "server": {
+        "frame_max_ms": 0.42,
+        "loop_late_ms": 0.2,
+        "slowest": [
+          "tick",
+          193
+        ],
+        "frames": 9
+      },
+      "notes": [],
+      "failures": [],
+      "idle_fps": 2
+    },
+    {
+      "app": "coder",
+      "step": "pointer over it",
+      "transition": false,
+      "frames": 29,
+      "p50_ms": 0.82,
+      "p99_ms": 0.97,
+      "max_ms": 0.97,
+      "ui_max_ms": 0.76,
+      "server": {
+        "frame_max_ms": 0.48,
+        "loop_late_ms": 0.4,
+        "slowest": [
+          "tick",
+          238
+        ],
+        "frames": 211
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "scroll 1",
+      "transition": false,
+      "frames": 4,
+      "p50_ms": 0.85,
+      "p99_ms": 0.92,
+      "max_ms": 0.92,
+      "ui_max_ms": 0.75,
+      "server": {
+        "frame_max_ms": 2.51,
+        "loop_late_ms": 2.1,
+        "slowest": [
+          "tick",
+          267
+        ],
+        "frames": 425
+      },
+      "notes": [
+        "drag: didn't scroll",
+        "flick: didn't scroll",
+        "wheel: didn't scroll"
+      ],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "scroll 2",
+      "transition": false,
+      "frames": 0,
+      "p50_ms": 0.0,
+      "p99_ms": 0.0,
+      "max_ms": 0,
+      "ui_max_ms": 0.0,
+      "server": {
+        "frame_max_ms": 0.59,
+        "loop_late_ms": 0.7,
+        "slowest": [
+          "tick",
+          277
+        ],
+        "frames": 419
+      },
+      "notes": [
+        "drag: didn't scroll",
+        "flick: didn't scroll",
+        "wheel: didn't scroll"
+      ],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "3 tabs",
+      "transition": false,
+      "frames": 9,
+      "p50_ms": 0.86,
+      "p99_ms": 1.82,
+      "max_ms": 1.82,
+      "ui_max_ms": 1.47,
+      "server": {
+        "frame_max_ms": 0.38,
+        "loop_late_ms": 0.3,
+        "slowest": [
+          "tick",
+          271
+        ],
+        "frames": 49
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "5 menus",
+      "transition": false,
+      "frames": 15,
+      "p50_ms": 0.71,
+      "p99_ms": 0.88,
+      "max_ms": 0.88,
+      "ui_max_ms": 0.67,
+      "server": {
+        "frame_max_ms": 0.73,
+        "loop_late_ms": 0.5,
+        "slowest": [
+          "clients' requests",
+          290
+        ],
+        "frames": 502
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "typing",
+      "transition": false,
+      "frames": 13,
+      "p50_ms": 0.74,
+      "p99_ms": 0.95,
+      "max_ms": 0.95,
+      "ui_max_ms": 0.73,
+      "server": {
+        "frame_max_ms": 0.42,
+        "loop_late_ms": 0.4,
+        "slowest": [
+          "tick",
+          214
+        ],
+        "frames": 66
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "live resize",
+      "transition": false,
+      "frames": 18,
+      "p50_ms": 0.81,
+      "p99_ms": 1.21,
+      "max_ms": 1.21,
+      "ui_max_ms": 1.0,
+      "server": {
+        "frame_max_ms": 0.57,
+        "loop_late_ms": 0.6,
+        "slowest": [
+          "tick",
+          302
+        ],
+        "frames": 111
+      },
+      "notes": [],
+      "failures": []
+    },
+    {
+      "app": "coder",
+      "step": "theme light, dark",
+      "transition": true,
+      "frames": 5,
+      "p50_ms": 0.82,
+      "p99_ms": 1.03,
+      "max_ms": 1.03,
+      "ui_max_ms": 0.84,
+      "server": {
+        "frame_max_ms": 5.46,
+        "loop_late_ms": 1.7,
+        "slowest": [
+          "request set_settings",
+          435
+        ],
+        "frames": 36
+      },
+      "notes": [],
+      "failures": []
+    }
+  ],
+  "scroll": [
+    {
+      "build": "before",
+      "scale": 1,
+      "kind": "drag",
+      "result": {
+        "kind": "drag",
+        "frames": 97,
+        "moving_frames": 96,
+        "frame_ms": 8.34,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 28.4,
+        "slowest_draw_ms": 2.67,
+        "distance": 713.5,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.999,
+          "sd": 0.029,
+          "min": 0.833,
+          "max": 1.159,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      }
+    },
+    {
+      "build": "before",
+      "scale": 1,
+      "kind": "flick",
+      "result": {
+        "kind": "flick",
+        "frames": 18,
+        "moving_frames": 17,
+        "frame_ms": 8.29,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 28.5,
+        "slowest_draw_ms": 0.96,
+        "distance": 329.5,
+        "reached_end": false
+      }
+    },
+    {
+      "build": "before",
+      "scale": 1,
+      "kind": "wheel",
+      "result": {
+        "kind": "wheel",
+        "frames": 72,
+        "moving_frames": 71,
+        "frame_ms": 8.35,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 9.0,
+        "slowest_draw_ms": 1.23,
+        "distance": -135.6,
+        "reached_end": false,
+        "notches": {
+          "count": 3,
+          "frames_each": [
+            23,
+            24,
+            24
+          ],
+          "jumps_up": 3,
+          "worst_jump": 3.878
+        }
+      }
+    },
+    {
+      "build": "before",
+      "scale": 1,
+      "kind": "idle",
+      "result": {
+        "seconds": 3.0,
+        "total": {
+          "cpu": 0.0,
+          "wakeups": 0
+        },
+        "windows": [
+          {
+            "title": "Olo Coder",
+            "frames": 0,
+            "per_second": 0.0,
+            "mean_us": 0,
+            "ui_us": 0,
+            "tessellate_us": 0,
+            "submit_us": 0,
+            "slowest_us": 0
+          }
+        ]
+      }
+    },
+    {
+      "build": "after",
+      "scale": 1,
+      "kind": "drag",
+      "result": {
+        "kind": "drag",
+        "frames": 97,
+        "moving_frames": 96,
+        "frame_ms": 8.34,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 24.6,
+        "slowest_draw_ms": 3.23,
+        "distance": 716.9,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 1.001,
+          "sd": 0.032,
+          "min": 0.845,
+          "max": 1.197,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      }
+    },
+    {
+      "build": "after",
+      "scale": 1,
+      "kind": "flick",
+      "result": {
+        "kind": "flick",
+        "frames": 19,
+        "moving_frames": 18,
+        "frame_ms": 8.35,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 23.4,
+        "slowest_draw_ms": 1.16,
+        "distance": 341.9,
+        "reached_end": false
+      }
+    },
+    {
+      "build": "after",
+      "scale": 1,
+      "kind": "wheel",
+      "result": {
+        "kind": "wheel",
+        "frames": 72,
+        "moving_frames": 71,
+        "frame_ms": 8.35,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 9.1,
+        "slowest_draw_ms": 1.12,
+        "distance": -135.6,
+        "reached_end": false,
+        "notches": {
+          "count": 3,
+          "frames_each": [
+            23,
+            24,
+            24
+          ],
+          "jumps_up": 4,
+          "worst_jump": 3.887
+        }
+      }
+    },
+    {
+      "build": "after",
+      "scale": 1,
+      "kind": "idle",
+      "result": {
+        "seconds": 3.0,
+        "total": {
+          "cpu": 0.0,
+          "wakeups": 0
+        },
+        "windows": [
+          {
+            "title": "Olo Coder",
+            "frames": 0,
+            "per_second": 0.0,
+            "mean_us": 0,
+            "ui_us": 0,
+            "tessellate_us": 0,
+            "submit_us": 0,
+            "slowest_us": 0
+          }
+        ]
+      }
+    },
+    {
+      "build": "before",
+      "scale": 1.5,
+      "kind": "drag",
+      "result": {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.34,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 28.4,
+        "slowest_draw_ms": 1.33,
+        "distance": 713.4,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.999,
+          "sd": 0.003,
+          "min": 0.991,
+          "max": 1.006,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      }
+    },
+    {
+      "build": "before",
+      "scale": 1.5,
+      "kind": "flick",
+      "result": {
+        "kind": "flick",
+        "frames": 24,
+        "moving_frames": 17,
+        "frame_ms": 8.36,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 28.8,
+        "slowest_draw_ms": 1.08,
+        "distance": 328.9,
+        "reached_end": false
+      }
+    },
+    {
+      "build": "before",
+      "scale": 1.5,
+      "kind": "wheel",
+      "result": {
+        "kind": "wheel",
+        "frames": 78,
+        "moving_frames": 77,
+        "frame_ms": 8.33,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 8.9,
+        "slowest_draw_ms": 1.53,
+        "distance": -135.6,
+        "reached_end": false,
+        "notches": {
+          "count": 3,
+          "frames_each": [
+            25,
+            26,
+            26
+          ],
+          "jumps_up": 3,
+          "worst_jump": 3.766
+        }
+      }
+    },
+    {
+      "build": "before",
+      "scale": 1.5,
+      "kind": "idle",
+      "result": {
+        "seconds": 3.0,
+        "total": {
+          "cpu": 0.0,
+          "wakeups": 0
+        },
+        "windows": [
+          {
+            "title": "Olo Coder",
+            "frames": 0,
+            "per_second": 0.0,
+            "mean_us": 0,
+            "ui_us": 0,
+            "tessellate_us": 0,
+            "submit_us": 0,
+            "slowest_us": 0
+          }
+        ]
+      }
+    },
+    {
+      "build": "after",
+      "scale": 1.5,
+      "kind": "drag",
+      "result": {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.32,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 28.6,
+        "slowest_draw_ms": 1.19,
+        "distance": 713.4,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 1.001,
+          "sd": 0.006,
+          "min": 0.987,
+          "max": 1.013,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      }
+    },
+    {
+      "build": "after",
+      "scale": 1.5,
+      "kind": "flick",
+      "result": {
+        "kind": "flick",
+        "frames": 25,
+        "moving_frames": 18,
+        "frame_ms": 8.39,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 21.3,
+        "slowest_draw_ms": 1.12,
+        "distance": 346.4,
+        "reached_end": false
+      }
+    },
+    {
+      "build": "after",
+      "scale": 1.5,
+      "kind": "wheel",
+      "result": {
+        "kind": "wheel",
+        "frames": 77,
+        "moving_frames": 76,
+        "frame_ms": 8.36,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 9.1,
+        "slowest_draw_ms": 1.12,
+        "distance": -135.6,
+        "reached_end": false,
+        "notches": {
+          "count": 3,
+          "frames_each": [
+            25,
+            25,
+            26
+          ],
+          "jumps_up": 4,
+          "worst_jump": 3.803
+        }
+      }
+    },
+    {
+      "build": "after",
+      "scale": 1.5,
+      "kind": "idle",
+      "result": {
+        "seconds": 3.0,
+        "total": {
+          "cpu": 0.0,
+          "wakeups": 0
+        },
+        "windows": [
+          {
+            "title": "Olo Coder",
+            "frames": 0,
+            "per_second": 0.0,
+            "mean_us": 0,
+            "ui_us": 0,
+            "tessellate_us": 0,
+            "submit_us": 0,
+            "slowest_us": 0
+          }
+        ]
+      }
+    },
+    {
+      "build": "before",
+      "scale": 2,
+      "kind": "drag",
+      "result": {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.32,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 22.4,
+        "slowest_draw_ms": 1.13,
+        "distance": 718.9,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 1.002,
+          "sd": 0.005,
+          "min": 0.986,
+          "max": 1.016,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      }
+    },
+    {
+      "build": "before",
+      "scale": 2,
+      "kind": "flick",
+      "result": {
+        "kind": "flick",
+        "frames": 24,
+        "moving_frames": 17,
+        "frame_ms": 8.33,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 25.0,
+        "slowest_draw_ms": 1.04,
+        "distance": 338.9,
+        "reached_end": false
+      }
+    },
+    {
+      "build": "before",
+      "scale": 2,
+      "kind": "wheel",
+      "result": {
+        "kind": "wheel",
+        "frames": 84,
+        "moving_frames": 83,
+        "frame_ms": 8.35,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 7.9,
+        "slowest_draw_ms": 4.15,
+        "distance": -135.6,
+        "reached_end": false,
+        "notches": {
+          "count": 3,
+          "frames_each": [
+            27,
+            28,
+            28
+          ],
+          "jumps_up": 5,
+          "worst_jump": 3.899
+        }
+      }
+    },
+    {
+      "build": "before",
+      "scale": 2,
+      "kind": "idle",
+      "result": {
+        "seconds": 3.0,
+        "total": {
+          "cpu": 0.0,
+          "wakeups": 0
+        },
+        "windows": [
+          {
+            "title": "Olo Coder",
+            "frames": 0,
+            "per_second": 0.0,
+            "mean_us": 0,
+            "ui_us": 0,
+            "tessellate_us": 0,
+            "submit_us": 0,
+            "slowest_us": 0
+          }
+        ]
+      }
+    },
+    {
+      "build": "after",
+      "scale": 2,
+      "kind": "drag",
+      "result": {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.34,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 28.5,
+        "slowest_draw_ms": 1.27,
+        "distance": 713.4,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.999,
+          "sd": 0.01,
+          "min": 0.95,
+          "max": 1.049,
+          "off_25pct": 0,
+          "frames": 92
+        }
+      }
+    },
+    {
+      "build": "after",
+      "scale": 2,
+      "kind": "flick",
+      "result": {
+        "kind": "flick",
+        "frames": 24,
+        "moving_frames": 17,
+        "frame_ms": 8.41,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 29.2,
+        "slowest_draw_ms": 2.1,
+        "distance": 328.1,
+        "reached_end": false
+      }
+    },
+    {
+      "build": "after",
+      "scale": 2,
+      "kind": "wheel",
+      "result": {
+        "kind": "wheel",
+        "frames": 84,
+        "moving_frames": 83,
+        "frame_ms": 8.33,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 10.3,
+        "slowest_draw_ms": 5.97,
+        "distance": -135.6,
+        "reached_end": false,
+        "notches": {
+          "count": 3,
+          "frames_each": [
+            27,
+            28,
+            28
+          ],
+          "jumps_up": 4,
+          "worst_jump": 3.79
+        }
+      }
+    },
+    {
+      "build": "after",
+      "scale": 2,
+      "kind": "idle",
+      "result": {
+        "seconds": 3.0,
+        "total": {
+          "cpu": 0.0,
+          "wakeups": 0
+        },
+        "windows": [
+          {
+            "title": "Olo Coder",
+            "frames": 0,
+            "per_second": 0.0,
+            "mean_us": 0,
+            "ui_us": 0,
+            "tessellate_us": 0,
+            "submit_us": 0,
+            "slowest_us": 0
+          }
+        ]
+      }
+    }
+  ],
+  "idle_tui": {
+    "cpu": 0.0,
+    "wakeups": 0
+  },
+  "idle_service": {
+    "cpu": 0.0,
+    "wakeups": 0
+  }
+}

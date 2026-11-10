@@ -124,6 +124,7 @@ APPS = [
     App("deskcalc", ["olo-deskcalc"], type_text="12345+678="),
     App("disk-usage", ["olo-disk-usage", HOME], settle=3.0),
     App("logs", ["olo-logs"], settle=3.0),
+    App("coder", ["olo-coder", "--gui", "--workspace", HOME], env=[f"OLO_CODER_HOME={SCRATCH}/coder"], type_text="/help", settle=3.0),
     App("preferences", ["olo-preferences"], look_only=True, rows=True),
     App("passwords", ["olo-passwords"], env=[f"OLO_1PASSWORD_SOCKET={SCRATCH}/no-such-1p.sock"]),
     App("screenshot", ["olo-screenshot"]),
@@ -901,7 +902,10 @@ def main():
     scales = [float(x) for x in opt("--scales", "1,1.5,2").split(",")]
     only = opt("--apps")
     only = set(only.split(",")) if only else None
-    for exe in ("olo-app-server", "olo-session", "olo-deskbar", os.path.join("examples", "gallery")):
+    required = ["olo-app-server", "olo-session", "olo-deskbar"]
+    if not only or only.intersection({"gallery", "overview"}):
+        required.append(os.path.join("examples", "gallery"))
+    for exe in required:
         if not os.path.exists(os.path.join(RELEASE, exe)):
             sys.exit(f"no target/release/{exe}: cargo build --release --workspace, then cargo build --release -p olo-ui --examples")
     stale = stale_builds()
