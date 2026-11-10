@@ -245,6 +245,8 @@ pub(crate) struct Interactivity {
     pub(crate) scroll: Option<crate::ScrollHandle>,
     /// It hears where it's scrolled to, when that changes.
     pub(crate) scroll_listeners: SmallVec<[Listener<Point<Pixels>>; 1]>,
+    /// It hears where layout put it, when that changes.
+    pub(crate) bounds_listeners: SmallVec<[Listener<Bounds<Pixels>>; 1]>,
     /// Scrollers it draws by (a scroll bar): it's drawn again when one
     /// moves or its ends do.
     pub(crate) watches: SmallVec<[(u64, u8); 1]>,
@@ -637,6 +639,15 @@ pub trait InteractiveElement: Sized {
     /// whoever moved it.
     fn on_scroll(mut self, listener: impl Fn(&Point<Pixels>, &mut WindowCx) + 'static) -> Self {
         self.interactivity().scroll_listeners.push(Rc::new(listener));
+        self
+    }
+
+    /// Hears where it is (in the window) and how big, whenever layout
+    /// changes either: for what follows the size of what it holds (a
+    /// window that fits its content). Told once layout is done, before
+    /// anything is drawn; what it changes is laid out in the same turn.
+    fn on_bounds_changed(mut self, listener: impl Fn(&Bounds<Pixels>, &mut WindowCx) + 'static) -> Self {
+        self.interactivity().bounds_listeners.push(Rc::new(listener));
         self
     }
 

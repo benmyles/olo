@@ -7887,6 +7887,7 @@ dependencies = [
  "pathfinder_geometry",
  "pretty_assertions",
  "profiling",
+ "rand 0.9.5",
  "raw-window-handle",
  "resvg",
  "schemars 1.2.3",

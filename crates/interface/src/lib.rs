@@ -31,6 +31,7 @@ mod scroll;
 mod shared_string;
 mod shared_uri;
 mod stage;
+pub use stage::WindowState;
 mod stats;
 mod style;
 mod styled;

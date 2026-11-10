@@ -946,15 +946,10 @@ pub fn pull_request_mark(g: &mut Painter, r: Bounds<Pixels>, shape: PullRequestS
 
 /// A label `text` painted at `bounds`: noted (its whole shown in a tip,
 /// and read by agents) if what it's painted in cuts it at a side (a row
-/// scrolled half out of view, top or bottom, isn't).
+/// scrolled half out of view, top or bottom, isn't): now, or as what
+/// holds it is laid out later.
 pub(crate) fn note_if_clipped(g: &mut Painter, text: &str, bounds: Bounds<Pixels>) {
-    let clip = g.clip();
-    // (A pixel's grace: a label flush against its clip isn't cut.)
-    let cut = bounds.left() < clip.left() - px(1.0) || bounds.right() > clip.right() + px(1.0);
-    let seen = bounds.top() < clip.bottom() && bounds.bottom() > clip.top();
-    if cut && seen {
-        g.note_cut(SharedString::from(text.to_owned()), bounds);
-    }
+    g.note_if_cut(SharedString::from(text.to_owned()), bounds);
 }
 
 /// BeOS's check mark: a stroke down and up, 1.6 points wide.

@@ -92,8 +92,10 @@ pub(crate) struct Notes {
     pub(crate) agent: Vec<crate::agent::Node>,
     pub(crate) cursors: Vec<(Bounds<Pixels>, crate::CursorStyle)>,
     /// Texts that don't show in full (cut short to fit, or cut by what
-    /// they're in): each whole, and where what shows of it is.
-    pub(crate) cuts: Vec<(Bounds<Pixels>, SharedString)>,
+    /// they're in): each whole, and where what shows of it is; or
+    /// (true) that are cut only if what holds the drawing cuts them at a
+    /// side, where they are.
+    pub(crate) cuts: Vec<(Bounds<Pixels>, SharedString, bool)>,
 }
 
 impl Notes {
@@ -246,17 +248,41 @@ impl<'a> Painter<'a> {
     /// stands for something: a key of a drawn keypad, a row of a drawn
     /// list). Kept with the drawing.
     pub fn agent(&mut self, mut node: crate::agent::Node) {
-        node.clip.get_or_insert(self.clip());
+        // (Its own clip, if the drawing has one: what the window clips
+        // of it is worked out when it's asked for, from where things
+        // are then.)
+        if node.clip.is_none() {
+            node.clip = self.content_mask_stack.last().map(|mask| mask.bounds);
+        }
         self.notes.agent.push(node);
     }
 
     /// `full` was drawn cut short in `bounds`: its whole is what agents
     /// read, and what a tip shows when the pointer rests on it.
     pub fn note_cut(&mut self, full: SharedString, bounds: Bounds<Pixels>) {
-        let shown = bounds.intersect(&self.clip());
+        let shown = bounds.intersect(&self.content_mask().bounds);
         if shown.size.width > px(0.0) && shown.size.height > px(0.0) && !full.trim().is_empty() {
-            self.notes.cuts.push((shown, full));
+            self.notes.cuts.push((shown, full, false));
         }
+    }
+
+    /// `full` was drawn whole in `bounds`: if what holds the drawing
+    /// cuts it at a side (now, or as things are laid out later), its
+    /// whole is what a tip shows and agents read. (A row scrolled half
+    /// out of view, top or bottom, isn't cut.)
+    pub fn note_if_cut(&mut self, full: SharedString, bounds: Bounds<Pixels>) {
+        if full.trim().is_empty() {
+            return;
+        }
+        // Cut by the drawing's own clip: so whatever holds it.
+        let mask = self.content_mask().bounds;
+        if bounds.left() < mask.left() - px(1.0) || bounds.right() > mask.right() + px(1.0) {
+            if bounds.top() < mask.bottom() && bounds.bottom() > mask.top() {
+                self.note_cut(full, bounds);
+            }
+            return;
+        }
+        self.notes.cuts.push((bounds, full, true));
     }
 
     /// What clips what's being painted now: what can be seen of the

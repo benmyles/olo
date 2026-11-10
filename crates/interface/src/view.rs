@@ -69,6 +69,10 @@ pub trait View: Sized + 'static {
     /// thing it's told.
     fn window_closing(&mut self, _cx: &mut Cx<Self>) {}
 
+    /// A display came, went or changed (for the window's first view and
+    /// its own): `displays()` lists them now.
+    fn displays_changed(&mut self, _cx: &mut Cx<Self>) {}
+
     /// What to keep of it across an upgrade in place or the display
     /// thread starting again (for the window's own view): handed back to
     /// the program as it starts again.
@@ -103,6 +107,7 @@ pub(crate) trait AnyView: 'static {
     fn close_requested(&mut self, id: ViewId, cx: &mut WindowCx) -> bool;
     fn window_activated(&mut self, id: ViewId, active: bool, cx: &mut WindowCx);
     fn window_closing(&mut self, id: ViewId, cx: &mut WindowCx);
+    fn displays_changed(&mut self, id: ViewId, cx: &mut WindowCx);
     fn save_state(&mut self, id: ViewId, cx: &mut WindowCx) -> Option<String>;
     fn type_name(&self) -> &'static str;
 }
@@ -134,6 +139,10 @@ impl<V: View> AnyView for V {
 
     fn save_state(&mut self, id: ViewId, cx: &mut WindowCx) -> Option<String> {
         View::save_state(self, &mut Cx::new(cx, id))
+    }
+
+    fn displays_changed(&mut self, id: ViewId, cx: &mut WindowCx) {
+        View::displays_changed(self, &mut Cx::new(cx, id))
     }
 
     fn window_closing(&mut self, id: ViewId, cx: &mut WindowCx) {

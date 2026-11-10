@@ -157,6 +157,27 @@ pub(crate) enum WindowEvent {
     /// Where what scrolls is now (the wheel or the touchpad moved it,
     /// or an end let go of it).
     Scrolled(Vec<ScrollReport>),
+    /// How app_server holds the window changed.
+    State(WindowState),
+}
+
+/// How app_server holds a window: its size isn't the program's to set
+/// while any of these is so.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct WindowState {
+    pub maximized: bool,
+    pub fullscreen: bool,
+    /// The sides of it that are against a tile's.
+    pub tiling: crate::Tiling,
+}
+
+impl WindowState {
+    /// Whether app_server holds its size (a side of it in a tile,
+    /// maximized, full screen).
+    pub fn held(&self) -> bool {
+        let t = self.tiling;
+        self.maximized || self.fullscreen || t.top || t.bottom || t.left || t.right
+    }
 }
 
 /// How the display thread reaches a window's looper.
@@ -255,6 +276,8 @@ pub(crate) struct Stage {
     motion: RefCell<Latest<PlatformInput>>,
     /// Where the scrollers are, not yet taken by the looper.
     scrolled: Latest<Vec<ScrollReport>>,
+    /// How app_server held the window, as the looper was last told.
+    state: Cell<WindowState>,
     closed: Cell<bool>,
 }
 
@@ -291,6 +314,7 @@ impl Stage {
             waker: RefCell::new(waker),
             motion: RefCell::new(Latest::new()),
             scrolled: Latest::new(),
+            state: Cell::new(WindowState::default()),
             closed: Cell::new(false),
         });
         let weak = Rc::downgrade(&stage);
@@ -350,6 +374,7 @@ impl Stage {
             }
         }));
         window.on_moved(on(|stage| {
+            stage.tell_state();
             stage.link.send(WindowEvent::Moved);
             let display = stage.window.borrow().as_ref().map(|w| w.display().map(|d| d.bounds()));
             if let Some(display) = display {
@@ -377,6 +402,7 @@ impl Stage {
             }
         }));
         window.on_appearance_changed(on(|stage| {
+            stage.tell_state();
             let rendering = stage.window.borrow().as_ref().map(|w| w.text_rendering());
             if let Some(rendering) = rendering {
                 stage.link.send(WindowEvent::TextRendering(rendering));
@@ -532,7 +558,21 @@ impl Stage {
         self.scrolled.put(&self.link.looper, report, move |looper, report| crate::window::deliver(looper, id, WindowEvent::Scrolled(report)));
     }
 
+    /// Tells the looper how app_server holds the window, if that
+    /// changed. (Before a new size: what's laid out for it knows.)
+    fn tell_state(&self) {
+        // (Not while something has the window: told with what comes
+        // next.)
+        let Ok(window) = self.window.try_borrow() else { return };
+        let Some(window) = window.as_ref() else { return };
+        let state = WindowState { maximized: window.is_maximized(), fullscreen: window.is_fullscreen(), tiling: window.tiling() };
+        if self.state.replace(state) != state {
+            self.link.send(WindowEvent::State(state));
+        }
+    }
+
     fn resized(&self, size: Size<Pixels>, scale: f32) {
+        self.tell_state();
         {
             let mut showing = self.showing.borrow_mut();
             if showing.size == size && showing.scale == scale {

@@ -590,7 +590,9 @@ impl WindowCore {
             now.push(child);
         }
         for (i, child) in old.iter().enumerate() {
-            if !used[i] {
+            // (Not one that went elsewhere as the new ones were made: a
+            // view now placed deeper in what replaced it.)
+            if !used[i] && self.nodes.get(*child).is_some_and(|n| n.parent == Some(id)) {
                 self.destroy(*child);
             }
         }

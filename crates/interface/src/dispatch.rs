@@ -134,6 +134,20 @@ impl WindowCore {
         }
     }
 
+    /// Where keys go while nothing has the keyboard: the window's root
+    /// and the element its first view shows (which takes the window's
+    /// own keys: its menus').
+    fn unfocused_path(&self) -> SmallVec<[NodeId; 16]> {
+        let mut path: SmallVec<[NodeId; 16]> = SmallVec::new();
+        if let Some(root) = self.root {
+            path.push(root);
+            if let Some(first) = self.nodes.get(root).and_then(|n| n.children.first().copied()) {
+                path.push(first);
+            }
+        }
+        path
+    }
+
     /// The path from the window's root down to a node.
     fn path_to(&self, id: NodeId) -> SmallVec<[NodeId; 16]> {
         let mut path: SmallVec<[NodeId; 16]> = SmallVec::new();
@@ -378,7 +392,7 @@ impl WindowCx<'_> {
 
     fn key_down(&mut self, event: KeyDownEvent) {
         self.core.modifiers = event.keystroke.modifiers;
-        let path = self.core.focus.map(|f| self.core.path_to(f)).unwrap_or_else(|| self.core.root.into_iter().collect());
+        let path = self.core.focus.map(|f| self.core.path_to(f)).unwrap_or_else(|| self.core.unfocused_path());
         // Down to what has the keyboard, for those that take keys first.
         for id in &path {
             let listeners: SmallVec<[Listener<KeyDownEvent>; 1]> = self.core.nodes.get(*id).and_then(|n| n.inter.as_ref()).map(|i| i.capture_key_down.clone()).unwrap_or_default();
@@ -506,7 +520,7 @@ impl WindowCx<'_> {
     /// Hands something up from what has the keyboard through what holds
     /// it.
     fn to_focus_path<E>(&mut self, pick: impl Fn(&Interactivity) -> SmallVec<[Listener<E>; 2]>, event: &E) {
-        let path = self.core.focus.map(|f| self.core.path_to(f)).unwrap_or_else(|| self.core.root.into_iter().collect());
+        let path = self.core.focus.map(|f| self.core.path_to(f)).unwrap_or_else(|| self.core.unfocused_path());
         for id in path.iter().rev() {
             let listeners = self.core.nodes.get(*id).and_then(|n| n.inter.as_ref()).map(|i| pick(i)).unwrap_or_default();
             self.core.current = Some(*id);

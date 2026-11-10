@@ -39,6 +39,37 @@ struct Shared {
 
 static SHARED: OnceLock<Shared> = OnceLock::new();
 
+type Hook = std::sync::Arc<dyn Fn() + Send + Sync>;
+
+/// What the program does when app_server's connection is lost, and
+/// when a display comes or goes.
+static LOST: Mutex<Option<Hook>> = Mutex::new(None);
+static DISPLAYS_CHANGED: Mutex<Vec<Hook>> = Mutex::new(Vec::new());
+
+/// What the program does when its connection to app_server is gone (it
+/// restarted in place, or the GPU device was lost): `f` runs on the
+/// app's looper. Without it, the program ends.
+pub fn on_compositor_lost(f: impl Fn() + Send + Sync + 'static) {
+    *LOST.lock().unwrap_or_else(|e| e.into_inner()) = Some(std::sync::Arc::new(f));
+}
+
+/// Has `f` run (on the app's looper) whenever a display comes, goes or
+/// changes: [`displays`] lists them then.
+pub fn on_displays_changed(f: impl Fn() + Send + Sync + 'static) {
+    DISPLAYS_CHANGED.lock().unwrap_or_else(|e| e.into_inner()).push(std::sync::Arc::new(f));
+}
+
+/// Every display's bounds, in points, as app_server last said. (None
+/// yet for a moment as the program starts.)
+pub fn displays() -> Vec<Bounds<Pixels>> {
+    crate::display::display().displays()
+}
+
+/// Whether the program is ending.
+pub fn is_quitting() -> bool {
+    shared().is_some_and(|s| s.quitting.load(Ordering::Acquire))
+}
+
 fn shared() -> Option<&'static Shared> {
     SHARED.get()
 }
@@ -318,6 +349,13 @@ pub struct AppCx<'a> {
     pub(crate) looper: &'a mut Looper,
 }
 
+impl<'a> AppCx<'a> {
+    /// The program, on its own looper (from a message taken there).
+    pub fn on(looper: &'a mut Looper) -> AppCx<'a> {
+        AppCx { looper }
+    }
+}
+
 impl AppCx<'_> {
     /// Opens a window on a looper of its own, around the view `build`
     /// makes there. Returns at once: the window is opened by its looper.
@@ -379,13 +417,26 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut AppCx)) {
     let handle = looper.handle();
     display.set_events(Some(Messenger::new(handle, |_looper, event: DisplayEvent| match event {
         DisplayEvent::CompositorLost => {
-            tracing::warn!("the display is gone");
-            quit();
+            let lost = LOST.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            match lost {
+                Some(lost) => lost(),
+                None => {
+                    tracing::warn!("the display is gone");
+                    quit();
+                }
+            }
         }
         // What may be pasted changed: every window's own view says what
         // it shows again (its menus' Paste).
         DisplayEvent::ClipboardChanged => all_windows(|cx| cx.invalidate_main_view()),
-        DisplayEvent::DisplaysChanged | DisplayEvent::KeyboardLayoutChanged => {}
+        DisplayEvent::DisplaysChanged => {
+            let hooks: Vec<Hook> = DISPLAYS_CHANGED.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            for hook in hooks {
+                hook();
+            }
+            all_windows(|cx| cx.displays_changed());
+        }
+        DisplayEvent::KeyboardLayoutChanged => {}
     })));
     build(&mut AppCx { looper: &mut looper });
     looper.run();

@@ -131,6 +131,8 @@ pub(crate) struct Display {
     pub(crate) headless: bool,
     next_window: AtomicU64,
     events: Mutex<Option<Messenger<DisplayEvent>>>,
+    /// Every display's bounds, as last heard.
+    displays: Mutex<Vec<crate::Bounds<crate::Pixels>>>,
     gone: AtomicBool,
 }
 
@@ -172,7 +174,13 @@ impl Display {
                 }
                 let text_system = Arc::new(TextSystem::new(client.with_common(|common| common.text_system.clone())));
                 client.with_common(|common| {
-                    common.callbacks.displays_changed = Some(Box::new(|| display().tell(DisplayEvent::DisplaysChanged)));
+                    common.callbacks.displays_changed = Some(Box::new(|| {
+                        // (Looked at once this turn is over: told of inside a Wayland roundtrip.)
+                        display().post(|on| {
+                            display().note_displays(on);
+                            display().tell(DisplayEvent::DisplaysChanged);
+                        });
+                    }));
                     common.callbacks.compositor_lost = Some(Box::new(|| display().tell(DisplayEvent::CompositorLost)));
                     common.callbacks.clipboard_changed = Some(Box::new(|| {
                         // (Looked at once this turn is over: what told us may be in the middle of it.)
@@ -201,7 +209,20 @@ impl Display {
             })
             .expect("no thread for the display");
         let (commands, text_system, headless) = ready_rx.recv().expect("the display thread ended as it began");
-        Display { commands, text_system, headless, next_window: AtomicU64::new(1), events: Mutex::new(None), gone: AtomicBool::new(false) }
+        let display = Display { commands, text_system, headless, next_window: AtomicU64::new(1), events: Mutex::new(None), displays: Mutex::new(Vec::new()), gone: AtomicBool::new(false) };
+        display.post(|on| self::display().note_displays(on));
+        display
+    }
+
+    /// Every display's bounds, in points, as last heard.
+    pub(crate) fn displays(&self) -> Vec<crate::Bounds<crate::Pixels>> {
+        self.displays.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    /// Keeps what displays there are now (on the display thread).
+    fn note_displays(&self, on: &OnDisplay) {
+        let now: Vec<crate::Bounds<crate::Pixels>> = on.client.displays().iter().map(|d| d.bounds()).collect();
+        *self.displays.lock().unwrap_or_else(|e| e.into_inner()) = now;
     }
 
     /// Has the display thread run `f`, after what it was already given.

@@ -27,7 +27,7 @@ use crate::{
     layout::Layout,
     painter::Gfx,
     point, px, size,
-    stage::{Commit, Item, Layer, Opened, ScrollReport, WheelKind, WheelRegion, WindowEvent, WindowLink},
+    stage::{Commit, Item, Layer, Opened, ScrollReport, WheelKind, WheelRegion, WindowEvent, WindowLink, WindowState},
     tree::{Node, NodeId, NodeKind, ViewId},
     view::{AnyView, Child, Cx, View, ViewSlot},
 };
@@ -117,6 +117,12 @@ pub(crate) struct WindowCore {
     pub(crate) by_visible: Vec<NodeId>,
     /// Nodes that hold rows made as they come near what shows.
     pub(crate) row_nodes: Vec<NodeId>,
+    /// Nodes layout moved or sized, whose listeners haven't heard.
+    pub(crate) bounds_changed: Vec<NodeId>,
+    /// Nothing is shown until then (`WindowCx::hold_commit`).
+    pub(crate) commit_held: Option<Instant>,
+    /// How app_server holds the window.
+    pub(crate) state: WindowState,
     /// Layout is to be worked out again though nothing in the tree says
     /// so (the window's size changed).
     pub(crate) relayout: bool,
@@ -269,6 +275,16 @@ pub(crate) fn deliver_to_view<V: View>(looper: &mut Looper, window: WindowId, vi
     });
 }
 
+/// [`deliver_to_view`], for a view that may not be a `V` (nothing,
+/// then).
+pub(crate) fn deliver_to_view_if<V: View>(looper: &mut Looper, window: WindowId, view: ViewId, f: impl FnOnce(&mut V, &mut Cx<V>)) {
+    with_window(looper, window, |cx| {
+        if cx.read_view::<V>(view).is_some() {
+            cx.update_view(view, f);
+        }
+    });
+}
+
 /// Opens a window on this looper, around the view `build` makes.
 pub(crate) fn open<V: View>(looper: &mut Looper, id: WindowId, params: WindowParams, title: SharedString, build: impl FnOnce(&mut Cx<V>) -> V) -> anyhow::Result<WindowId> {
     let display = display();
@@ -369,6 +385,9 @@ impl WindowCore {
             hover_stale: false,
             by_visible: Vec::new(),
             row_nodes: Vec::new(),
+            bounds_changed: Vec::new(),
+            commit_held: None,
+            state: WindowState::default(),
             relayout: true,
             everything: true,
             started: Some(Instant::now()),
@@ -471,6 +490,9 @@ impl WindowCore {
             // (And the pointer may be over something else now.)
             self.reshaped();
             self.hover_stale = true;
+            if self.nodes[id].inter.as_ref().is_some_and(|i| !i.bounds_listeners.is_empty()) {
+                self.bounds_changed.push(id);
+            }
         }
         if repaint {
             self.mark_paint(id);
@@ -720,21 +742,40 @@ impl WindowCore {
         }
     }
 
-    fn cut_texts(&self, id: NodeId, shift: Point<Pixels>, out: &mut Vec<(Bounds<Pixels>, SharedString)>) {
+    /// The texts that don't show in full under a node, where what
+    /// shows of each is in the window: `clip` is what can be seen there.
+    fn cut_texts(&self, id: NodeId, clip: Bounds<Pixels>, shift: Point<Pixels>, out: &mut Vec<(Bounds<Pixels>, SharedString)>) {
         let Some(node) = self.nodes.get(id) else { return };
         if node.style.visibility == crate::Visibility::Hidden {
             return;
         }
         if let Some(notes) = &node.notes {
             let moved = point(node.bounds.origin.x - node.painted_at.x, node.bounds.origin.y - node.painted_at.y) + shift;
-            out.extend(notes.cuts.iter().map(|(b, full)| (Bounds { origin: b.origin + moved, size: b.size }, full.clone())));
+            for (b, full, if_cut) in &notes.cuts {
+                let b = Bounds { origin: b.origin + moved, size: b.size };
+                let seen = b.intersect(&clip);
+                if seen.size.width <= px(0.) || seen.size.height <= px(0.) {
+                    continue;
+                }
+                // (A pixel's grace: a label flush against its clip
+                // isn't cut.)
+                if *if_cut && !(b.left() < clip.left() - px(1.0) || b.right() > clip.right() + px(1.0)) {
+                    continue;
+                }
+                out.push((seen, full.clone()));
+            }
         }
+        let shown = |b: Bounds<Pixels>| Bounds { origin: b.origin + shift, size: b.size };
+        let inner = match node.style.overflow_mask(node.bounds, self.gfx.rem_size) {
+            Some(mask) => clip.intersect(&shown(mask.bounds)),
+            None => clip,
+        };
         let shift = match &node.scroll {
             Some(handle) => shift + handle.0.shown.get(),
             None => shift,
         };
         for child in &node.children {
-            self.cut_texts(*child, shift, out);
+            self.cut_texts(*child, inner, shift, out);
         }
     }
 
@@ -802,6 +843,28 @@ impl<'a> WindowCx<'a> {
                 }
             }
             WindowEvent::Scrolled(report) => self.scrolled(report),
+            WindowEvent::State(state) => {
+                if self.core.state != state {
+                    self.core.state = state;
+                    // (The window's first view lays out by it.)
+                    if let Some(view) = self.core.root_view {
+                        self.core.invalidate_view(view);
+                    }
+                }
+            }
+        }
+    }
+
+    /// What hears where layout put it hears.
+    fn tell_bounds(&mut self) {
+        for id in std::mem::take(&mut self.core.bounds_changed) {
+            let Some(listeners) = self.core.nodes.get(id).and_then(|n| n.inter.as_ref()).map(|i| i.bounds_listeners.clone()) else { continue };
+            let bounds = self.core.window_bounds(id);
+            self.core.current = Some(id);
+            for listener in listeners {
+                listener(&bounds, self);
+            }
+            self.core.current = None;
         }
     }
 
@@ -983,6 +1046,13 @@ impl<'a> WindowCx<'a> {
                     }
                 }
             }
+            // What hears where layout put it hears (and may have more
+            // to say: round again).
+            let told = !core.bounds_changed.is_empty();
+            if told {
+                self.tell_bounds();
+            }
+            let core = &mut *self.core;
             // What was asked to scroll somewhere once it was laid out.
             for handle in std::mem::take(&mut core.scroll_asks) {
                 let ways = handle.settle();
@@ -995,7 +1065,8 @@ impl<'a> WindowCx<'a> {
             let rows = core.update_rows();
             // (Scrolling that something heard of may have changed what a
             // view shows: round again, until it's all said.)
-            if (core.scroll_changed.is_empty() && core.dirty_views.is_empty() && !core.hover_stale && !rows) || rounds >= 8 {
+            let layout_stale = core.relayout || core.root.is_some_and(|root| core.layout.is_dirty(core.nodes[root].layout));
+            if (core.scroll_changed.is_empty() && core.dirty_views.is_empty() && !core.hover_stale && !rows && !(told && layout_stale)) || rounds >= 8 {
                 break;
             }
         }
@@ -1029,6 +1100,15 @@ impl<'a> WindowCx<'a> {
         if !core.needs_commit {
             core.started = None;
             return;
+        }
+        // Held back (a window being sized to fit what it shows isn't
+        // shown at the size it's leaving): committed when it's let go,
+        // or the wait is over.
+        if let Some(until) = core.commit_held {
+            if Instant::now() < until {
+                return;
+            }
+            core.commit_held = None;
         }
         core.needs_commit = false;
         if !core.items_stale {
@@ -1236,6 +1316,75 @@ impl<'a> WindowCx<'a> {
         }
     }
 
+    /// Nothing more of the window is shown for `wait` at most, or until
+    /// [`Self::release_commit`]: what it's becoming (another size, with
+    /// what it asked for as it opened) is shown whole, not on its way.
+    pub fn hold_commit(&mut self, wait: Duration) {
+        let until = Instant::now() + wait;
+        if self.core.commit_held.is_none_or(|held| held < until) {
+            self.core.commit_held = Some(until);
+        }
+        // (Shown when the wait is over, whatever came.)
+        let id = self.core.id;
+        self.looper.after(wait + Duration::from_millis(1), move |looper| {
+            with_window(looper, id, |cx| {
+                if cx.core.commit_held.is_some_and(|held| held <= Instant::now()) {
+                    cx.release_commit();
+                }
+            });
+        });
+    }
+
+    /// What was held back is shown ([`Self::hold_commit`]).
+    pub fn release_commit(&mut self) {
+        if self.core.commit_held.take().is_some() {
+            self.core.needs_commit = true;
+        }
+    }
+
+    /// How app_server holds the window (maximized, full screen, in a
+    /// tile).
+    pub fn held_state(&self) -> WindowState {
+        self.core.state
+    }
+
+    /// Brings the window forward and gives it the keyboard.
+    pub fn activate_window(&mut self) {
+        self.on_display(|window| window.activate());
+    }
+
+    /// Moves the window with the pointer, as if dragged by its tab,
+    /// while a button is held.
+    pub fn start_window_move(&mut self) {
+        self.on_display(|window| window.start_window_move());
+    }
+
+    /// Sends the window's first view (the one it was opened round: a
+    /// kit's frame) a message, taken once what's running now is done.
+    /// Nothing, if it isn't a `V`.
+    pub fn send_root<V: View>(&mut self, message: V::Message) {
+        let Some(view) = self.core.root_view else { return };
+        let id = self.core.id;
+        self.looper.defer(move |looper| deliver_to_view_if::<V>(looper, id, view, |v, cx| v.message(message, cx)));
+    }
+
+    /// The displays changed: the window's first view and its own hear.
+    pub(crate) fn displays_changed(&mut self) {
+        let views: Vec<ViewId> = [self.core.root_view, self.core.main_view].into_iter().flatten().collect();
+        for (i, view) in views.iter().enumerate() {
+            if i == 0 || views[0] != *view {
+                self.with_any_view(*view, |v, id, cx| v.displays_changed(id, cx));
+            }
+        }
+    }
+
+    /// What the window's own view keeps across an upgrade in place
+    /// (`View::save_state`).
+    pub fn save_state(&mut self) -> Option<String> {
+        let view = self.core.main_view.or(self.core.root_view)?;
+        self.with_any_view(view, |v, id, cx| v.save_state(id, cx)).flatten()
+    }
+
     /// Asks for the window to be this size (app_server may give
     /// another: a window in a tile keeps its tile's).
     pub fn resize_window(&mut self, size: Size<Pixels>) {
@@ -1308,7 +1457,8 @@ impl<'a> WindowCx<'a> {
     pub fn cut_texts(&self) -> Vec<(Bounds<Pixels>, SharedString)> {
         let mut out = Vec::new();
         if let Some(root) = self.core.root {
-            self.core.cut_texts(root, Point::default(), &mut out);
+            let window = Bounds { origin: Point::default(), size: self.core.size };
+            self.core.cut_texts(root, window, Point::default(), &mut out);
         }
         out
     }
