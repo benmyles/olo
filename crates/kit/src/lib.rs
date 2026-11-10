@@ -21,8 +21,8 @@ mod upgrade;
 pub mod widgets;
 
 pub use app::{
-    FIRST_SHOW_WAIT, FirstShowHold, Frame, WindowOptions, app_id, begin_move, hold_first_show, message_handler, on_displays_changed, open_or_raise, open_window, proxy, raise, run, screen_room,
-    set_content_height, stay_resident, tab_step,
+    FIRST_SHOW_WAIT, FirstShowHold, Frame, WindowOptions, app_id, begin_move, hold_first_show, message_handler, on_displays_changed, open_or_raise, open_window, open_window_here, proxy, raise, run,
+    screen_room, set_content_height, stay_resident, tab_step,
 };
 pub use menu::{Menu, MenuBar, MenuItem};
 pub use olo_app as app_kit;

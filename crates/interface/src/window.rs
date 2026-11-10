@@ -207,6 +207,13 @@ impl<V: View> LocalWindow<V> {
         self.id
     }
 
+    /// The same window, its own view taken to be a `T` (what
+    /// `WindowCx::set_main_view` named: a window whose first view is a
+    /// frame round the view its opener knows it by).
+    pub fn retyped<T: View>(self) -> LocalWindow<T> {
+        LocalWindow { id: self.id, _view: std::marker::PhantomData }
+    }
+
     /// The window `cx` is, whose own view is a `V`: for it to hand to a
     /// window it opens (a submenu, which closes its menu with it).
     pub fn of(cx: &WindowCx) -> LocalWindow<V> {

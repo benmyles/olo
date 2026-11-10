@@ -684,11 +684,27 @@ pub fn open_or_raise<V: View>(kept: &mut Option<WindowHandle<V>>, options: Windo
 
 /// Opens a window on a looper of its own, showing the view `build`
 /// makes there (the view the window's handle reaches).
-pub fn open_window<V: View>(mut options: WindowOptions, build: impl FnOnce(&mut Cx<V>) -> V + Send + 'static) -> WindowHandle<V> {
+pub fn open_window<V: View>(options: WindowOptions, build: impl FnOnce(&mut Cx<V>) -> V + Send + 'static) -> WindowHandle<V> {
+    let (spec, frame) = framed(options, build);
+    olo_interface::open_window(spec, frame).retyped()
+}
+
+/// Opens a window on this window's own looper, showing the view `build`
+/// makes: one that belongs to this window and is told things by it at
+/// once, and tells it (an alert, a panel of its own), where a window of
+/// its own work gets a looper of its own ([`open_window`]). It closes
+/// with this window.
+pub fn open_window_here<V: View>(cx: &mut WindowCx, options: WindowOptions, build: impl FnOnce(&mut Cx<V>) -> V + 'static) -> Option<olo_interface::LocalWindow<V>> {
+    let (spec, frame) = framed(options, build);
+    cx.open_window_here(spec, frame).map(|window| window.retyped())
+}
+
+/// What a window is opened with: what the display thread is asked for,
+/// and its frame round the view `build` makes.
+fn framed<V: View, B: FnOnce(&mut Cx<V>) -> V>(mut options: WindowOptions, build: B) -> (WindowSpec, impl FnOnce(&mut Cx<Frame>) -> Frame + use<V, B>) {
     // The size it was last left at, held to what it may be now.
     if let Some(size) = options.keep_size.as_ref().and_then(|name| crate::kept::size(name)) {
-        options.size.0 = size.0;
-        options.size.1 = size.1;
+        options.size = size;
     }
     let designed_height = options.size.1;
     // (Not a layer's, a lock screen's or a full screen one's: the screen
@@ -702,7 +718,7 @@ pub fn open_window<V: View>(mut options: WindowOptions, build: impl FnOnce(&mut 
     let design = (spec.size.0, designed_height);
     let (panel, fixed, keep, content_height) = (options.panel, options.fixed, options.keep_size.clone(), options.content_height);
     let namespace = options.layer.as_ref().map(|l| l.namespace.clone());
-    olo_interface::open_window(spec, move |cx: &mut Cx<Frame>| {
+    let frame = move |cx: &mut Cx<Frame>| {
         if let Some(namespace) = &namespace {
             crate::agent::set_layer(cx, namespace);
         }
@@ -722,7 +738,8 @@ pub fn open_window<V: View>(mut options: WindowOptions, build: impl FnOnce(&mut 
         let content = cx.new_view(build);
         cx.set_main_view(&content);
         let focus = FocusHandle::new();
-        // (The keyboard is the frame's until something in it takes it.)
+        // (The keyboard is the frame's until something in it takes it,
+        // and again whenever nothing has it.)
         focus.focus_if_none(cx);
         Frame {
             content: content.into(),
@@ -733,8 +750,8 @@ pub fn open_window<V: View>(mut options: WindowOptions, build: impl FnOnce(&mut 
             scroll: ScrollHandle::new(),
             fit: fit_content.then(|| Fit { design, fixed, need: None, asked: None, resizing: None, scrolls: false, first }),
         }
-    })
-    .retyped()
+    };
+    (spec, frame)
 }
 
 /// What the app does with messages from other threads ([`proxy`]).

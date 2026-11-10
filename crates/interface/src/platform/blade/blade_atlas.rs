@@ -54,7 +54,17 @@ impl BladeAtlas {
 
     pub fn after_frame(&self, sync_point: &gpu::SyncPoint) {
         let mut lock = self.0.lock();
-        lock.upload_belt.flush(sync_point);
+        // Olo: a window's looper puts glyphs in the atlas while the
+        // display thread draws. What it put in since this frame took its
+        // uploads (`before_frame`) is still to be copied, from the very
+        // buffers this would hand back for reuse once the frame is done:
+        // the next glyph in would be written over pixels not yet in
+        // their texture (text in an alert that opened as its window's
+        // scale changed came out as stripes). They're kept until the
+        // frame that copies them.
+        if lock.uploads.is_empty() {
+            lock.upload_belt.flush(sync_point);
+        }
     }
 
     pub fn get_texture_info(&self, id: AtlasTextureId) -> BladeTextureInfo {
