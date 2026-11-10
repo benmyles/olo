@@ -6,11 +6,17 @@ use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
 pub async fn run(call: &ToolCall, cancel: &CancellationToken) -> Result<Value> {
-    let credentials = tokio::task::spawn_blocking(olo_system::github::token).await?;
+    ensure!(!cancel.is_cancelled(), "cancelled before GitHub credential lookup");
+    let credentials = tokio::select! {
+        biased;
+        _=cancel.cancelled()=>bail!("cancelled before GitHub request dispatch"),
+        credentials=tokio::task::spawn_blocking(olo_system::github::token)=>credentials?,
+    };
     request("https://api.github.com", credentials.as_ref().map(|c| c.0.as_str()), call, cancel).await
 }
 #[doc(hidden)]
 pub async fn request(base: &str, token: Option<&str>, call: &ToolCall, cancel: &CancellationToken) -> Result<Value> {
+    ensure!(!cancel.is_cancelled(), "cancelled before GitHub request dispatch");
     let a = &call.arguments;
     let repository = tools::string(a, "repository")?;
     let parts: Vec<_> = repository.split('/').collect();
@@ -79,5 +85,5 @@ pub async fn request(base: &str, token: Option<&str>, call: &ToolCall, cancel: &
         ensure!(status.is_success(), "GitHub HTTP {}: {}", status.as_u16(), data["message"].as_str().unwrap_or("request failed"));
         Ok(json!({"repository":repository,"operation":op,"data":data,"has_next_page":next,"rate_limit_remaining":remaining}))
     };
-    tokio::select! { r=future=>r, _=cancel.cancelled()=>bail!("cancelled; if this was a publishing operation, inspect GitHub before retrying") }
+    tokio::select! { biased; _=cancel.cancelled()=>bail!("cancelled; if this was a publishing operation, inspect GitHub before retrying"), r=future=>r }
 }

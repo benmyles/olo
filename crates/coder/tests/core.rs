@@ -594,12 +594,16 @@ async fn http_mcp_negotiates_sessions_streams_and_cancels_without_replay() {
         routing::any,
     };
     let seen = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let cancelled = Arc::new(tokio::sync::Notify::new());
     let app = Router::new()
-        .fallback(any(|State(seen): State<Arc<Mutex<Vec<Value>>>>, method: Method, headers: HeaderMap, body: String| async move {
+        .fallback(any(|State((seen, cancelled)): State<(Arc<Mutex<Vec<Value>>>, Arc<tokio::sync::Notify>)>, method: Method, headers: HeaderMap, body: String| async move {
             if method == Method::DELETE {
                 return axum::http::StatusCode::NO_CONTENT.into_response();
             }
             let v: Value = serde_json::from_str(&body).unwrap();
+            if v["method"] == "notifications/cancelled" {
+                cancelled.notify_one();
+            }
             seen.lock()
                 .unwrap()
                 .push(json!({"request":v,"session":headers.get("mcp-session-id").and_then(|v|v.to_str().ok()),"version":headers.get("mcp-protocol-version").and_then(|v|v.to_str().ok())}));
@@ -617,7 +621,7 @@ async fn http_mcp_negotiates_sessions_streams_and_cancels_without_replay() {
             };
             ([("Mcp-Session-Id", "fixture-session")], axum::Json(json!({"jsonrpc":"2.0","id":v["id"],"result":result}))).into_response()
         }))
-        .with_state(seen.clone());
+        .with_state((seen.clone(), cancelled.clone()));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}/mcp", listener.local_addr().unwrap());
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -634,6 +638,7 @@ async fn http_mcp_negotiates_sessions_streams_and_cancels_without_replay() {
         stop.cancel();
     });
     assert!(connection.invoke("echo", json!({"slow":true}), &cancel, 10).await.is_err());
+    tokio::time::timeout(std::time::Duration::from_secs(1), cancelled.notified()).await.unwrap();
     let requests = seen.lock().unwrap();
     assert!(requests.iter().skip(1).all(|r| r["session"] == "fixture-session" && r["version"] == "2025-11-25"));
     assert_eq!(requests.iter().filter(|r| r["request"]["method"] == "tools/call").count(), 2);
@@ -1718,4 +1723,193 @@ async fn automatic_review_preserves_the_main_context_usage() {
 #[tokio::test]
 async fn malformed_review_still_counts_toward_the_session_budget() {
     review_accounting_case(true).await;
+}
+
+#[derive(Clone, Default)]
+struct McpAudit {
+    seen: Arc<Mutex<Vec<Value>>>,
+    started: Arc<tokio::sync::Notify>,
+    cancelled: Arc<tokio::sync::Notify>,
+    deleted: Arc<tokio::sync::Notify>,
+    release: CancellationToken,
+}
+async fn mcp_audit_server() -> (McpAudit, McpServer, tokio::task::JoinHandle<()>) {
+    use axum::{
+        extract::State,
+        http::{Method, StatusCode},
+        response::IntoResponse,
+    };
+    let state = McpAudit::default();
+    let app = axum::Router::new()
+        .fallback(axum::routing::any(|State(s): State<McpAudit>, method: Method, body: String| async move {
+            if method == Method::DELETE {
+                s.seen.lock().unwrap().push(json!({"deleted":true}));
+                s.deleted.notify_one();
+                return StatusCode::NO_CONTENT.into_response();
+            }
+            let v: Value = serde_json::from_str(&body).unwrap();
+            s.seen.lock().unwrap().push(v.clone());
+            match v["method"].as_str().unwrap() {
+                "initialize" => {
+                    ([("Mcp-Session-Id", "audit-session")], axum::Json(json!({"jsonrpc":"2.0","id":v["id"],"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}}}}))).into_response()
+                }
+                "tools/call" => {
+                    let mode = v["params"]["arguments"]["mode"].as_str().unwrap_or("ok");
+                    if mode == "slow" {
+                        s.started.notify_one();
+                        s.release.cancelled().await;
+                    }
+                    let mut reply = json!({"jsonrpc":"2.0","id":v["id"],"result":{"content":[{"type":"text","text":"received"}]}});
+                    match mode {
+                        "error" => reply = json!({"jsonrpc":"2.0","id":v["id"],"error":{"code":-32602,"message":"invalid arguments"}}),
+                        "both" => reply["error"] = json!({"code":-32602,"message":"ambiguous"}),
+                        "version" => reply["jsonrpc"] = json!("1.0"),
+                        "missing" => {
+                            reply.as_object_mut().unwrap().remove("result");
+                        }
+                        "primed" => return ([("content-type", "text/event-stream")], format!("id: prime\ndata:\n\ndata: {reply}\n\n")).into_response(),
+                        _ => {}
+                    }
+                    axum::Json(reply).into_response()
+                }
+                "notifications/cancelled" => {
+                    s.cancelled.notify_one();
+                    tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+                    s.seen.lock().unwrap().push(json!({"cancel_reply":true}));
+                    StatusCode::ACCEPTED.into_response()
+                }
+                _ => StatusCode::ACCEPTED.into_response(),
+            }
+        }))
+        .with_state(state.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let config = serde_json::from_value(json!({"name":"audit","url":format!("http://{}", listener.local_addr().unwrap())})).unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    (state, config, server)
+}
+
+#[tokio::test]
+async fn mcp_stop_does_not_wait_for_a_slow_cancellation_acknowledgement() {
+    let (state, config, server) = mcp_audit_server().await;
+    let dir = Scratch::new();
+    let e = Engine::open_at(dir.0.join("state"), Some("http://127.0.0.1:1".into())).unwrap();
+    let sid = e.command(Command::Create { workspace: dir.0.clone(), config: Some(Config { approval: ApprovalMode::Allow, mcp: vec![config], ..Default::default() }) }).await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    e.command(Command::Tool { session: sid.clone(), name: "mcp__audit__echo".into(), arguments: json!({"mode":"slow"}) }).await.unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(2), state.started.notified()).await.unwrap();
+    let began = std::time::Instant::now();
+    e.command(Command::Stop { session: sid.clone() }).await.unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(8), e.quiesce()).await.unwrap();
+    let elapsed = began.elapsed();
+    println!("MCP Stop with 1200 ms cancellation acknowledgement: {:.3} ms", elapsed.as_secs_f64() * 1000.0);
+    assert_eq!(e.get(&sid).unwrap().status, Status::Paused);
+    tokio::time::timeout(std::time::Duration::from_secs(2), state.cancelled.notified()).await.unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(3), state.deleted.notified()).await.unwrap();
+    let seen = state.seen.lock().unwrap().clone();
+    let request = seen.iter().find(|v| v["method"] == "tools/call").unwrap();
+    let notification = seen.iter().find(|v| v["method"] == "notifications/cancelled").unwrap();
+    assert_eq!(notification["params"]["requestId"], request["id"]);
+    assert_eq!(seen.iter().filter(|v| v["method"] == "tools/call").count(), 1, "an interrupted external effect cannot be replayed");
+    assert!(seen.iter().position(|v| v["cancel_reply"] == true).unwrap() < seen.iter().position(|v| v["deleted"] == true).unwrap(), "session deletion must follow cancellation cleanup");
+    state.release.cancel();
+    server.abort();
+    assert!(elapsed < std::time::Duration::from_millis(500), "local Stop must not wait for remote cancellation acknowledgement");
+}
+
+#[tokio::test]
+async fn mcp_does_not_cancel_unissued_or_completed_requests() {
+    let (state, config, server) = mcp_audit_server().await;
+    let mut c = mcp::Connection::start(&config, std::path::Path::new("/var/tmp")).await.unwrap();
+    let cancel = CancellationToken::new();
+    cancel.cancel();
+    assert!(c.invoke("echo", json!({}), &cancel, 10).await.is_err());
+    assert!(c.invoke("echo", json!({"mode":"error"}), &CancellationToken::new(), 10).await.is_err());
+    assert!(c.invoke("echo", json!({}), &CancellationToken::new(), 10).await.is_ok(), "a completed remote error must leave the connection reusable");
+    drop(c);
+    tokio::time::timeout(std::time::Duration::from_secs(3), state.deleted.notified()).await.unwrap();
+    let seen = state.seen.lock().unwrap().clone();
+    server.abort();
+    assert_eq!(seen.iter().filter(|v| v["method"] == "tools/call").count(), 2);
+    assert!(!seen.iter().any(|v| v["method"] == "notifications/cancelled"), "only an issued, unfinished request can be cancelled");
+}
+
+#[tokio::test]
+async fn mcp_accepts_empty_sse_priming_events() {
+    let (_, config, server) = mcp_audit_server().await;
+    let mut c = mcp::Connection::start(&config, std::path::Path::new("/var/tmp")).await.unwrap();
+    let result = c.invoke("echo", json!({"mode":"primed"}), &CancellationToken::new(), 10).await;
+    server.abort();
+    assert_eq!(result.unwrap()["content"][0]["text"], "received");
+}
+
+#[tokio::test]
+async fn mcp_rejects_ambiguous_or_wrong_version_responses() {
+    let (_, config, server) = mcp_audit_server().await;
+    let mut c = mcp::Connection::start(&config, std::path::Path::new("/var/tmp")).await.unwrap();
+    for mode in ["version", "both", "missing"] {
+        assert!(c.invoke("echo", json!({"mode":mode}), &CancellationToken::new(), 10).await.is_err(), "{mode} must not be recorded as a successful effect");
+    }
+    server.abort();
+}
+
+#[tokio::test]
+async fn mcp_timeout_cancels_once_without_extending_the_local_deadline() {
+    let (state, config, server) = mcp_audit_server().await;
+    let mut c = mcp::Connection::start(&config, std::path::Path::new("/var/tmp")).await.unwrap();
+    let began = std::time::Instant::now();
+    let error = c.invoke("echo", json!({"mode":"slow"}), &CancellationToken::new(), 1).await.unwrap_err();
+    let elapsed = began.elapsed();
+    assert!(error.to_string().contains("timed out; inspect external state"));
+    tokio::time::timeout(std::time::Duration::from_secs(2), state.cancelled.notified()).await.unwrap();
+    drop(c);
+    tokio::time::timeout(std::time::Duration::from_secs(3), state.deleted.notified()).await.unwrap();
+    let seen = state.seen.lock().unwrap();
+    assert_eq!(seen.iter().filter(|v| v["method"] == "tools/call").count(), 1);
+    assert_eq!(seen.iter().filter(|v| v["method"] == "notifications/cancelled").count(), 1);
+    state.release.cancel();
+    server.abort();
+    println!("MCP 1000 ms timeout with 1200 ms cancellation acknowledgement: {:.3} ms", elapsed.as_secs_f64() * 1000.0);
+    assert!(elapsed < std::time::Duration::from_millis(1500), "remote cleanup cannot extend the local request deadline");
+}
+
+#[tokio::test]
+async fn cancelled_network_tools_do_not_dispatch_or_replay_writes() {
+    use axum::{extract::State, response::IntoResponse};
+    let seen = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let started = Arc::new(tokio::sync::Notify::new());
+    let release = CancellationToken::new();
+    let app = axum::Router::new()
+        .fallback(axum::routing::any(|State((seen, started, release)): State<(Arc<std::sync::atomic::AtomicUsize>, Arc<tokio::sync::Notify>, CancellationToken)>| async move {
+            seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            started.notify_one();
+            release.cancelled().await;
+            axum::Json(json!({"accepted":true})).into_response()
+        }))
+        .with_state((seen.clone(), started.clone(), release.clone()));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let cancel = CancellationToken::new();
+    cancel.cancel();
+    let write = call("github_write", json!({"repository":"a/b","operation":"comment","number":1,"body":{"body":"fixture"}}));
+    assert!(github::run(&write, &cancel).await.unwrap_err().to_string().contains("before GitHub credential lookup"));
+    assert!(github::request(&base, Some("fixture-token"), &write, &cancel).await.is_err());
+    assert!(tools::fetch_url(&call("fetch_url", json!({"url":base})), 1024, &cancel).await.is_err());
+    let s = Session::new("/var/tmp".into(), Config::default());
+    assert!(provider::Client::at(&base).unwrap().turn(&s, "test", &[], &cancel, |_, _| {}).await.is_err());
+    assert_eq!(seen.load(std::sync::atomic::Ordering::SeqCst), 0);
+    let cancel = CancellationToken::new();
+    let stop = cancel.clone();
+    let request = tokio::spawn(async move { github::request(&base, Some("fixture-token"), &write, &cancel).await });
+    tokio::time::timeout(std::time::Duration::from_secs(2), started.notified()).await.unwrap();
+    let began = std::time::Instant::now();
+    stop.cancel();
+    let error = tokio::time::timeout(std::time::Duration::from_millis(500), request).await.unwrap().unwrap().unwrap_err();
+    assert!(error.to_string().contains("inspect GitHub before retrying"));
+    assert_eq!(seen.load(std::sync::atomic::Ordering::SeqCst), 1, "publishing is never retried after uncertain cancellation");
+    println!("GitHub cancellation while awaiting a response: {:.3} ms", began.elapsed().as_secs_f64() * 1000.0);
+    release.cancel();
+    server.abort();
 }

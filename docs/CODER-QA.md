@@ -332,3 +332,39 @@ weeks-long live soak. [Detailed recovery evidence](coder-recovery-qa.json).
 The final full release suite passed **1,674 tests across 204 suites, zero
 failures**, with 140 explicitly ignored cases. The corrected namespace fixture
 also passed ten consecutive isolated runs. Formatting and diff checks passed.
+
+## Tool transport cancellation audit — 2026-11-10
+
+Four new regression tests failed against `7437ff08`. MCP Stop waited for the
+server's cancellation acknowledgement; pre-cancelled calls and completed server
+errors sent spurious cancellation notices; valid empty SSE priming frames failed
+JSON parsing; and an incorrect JSON-RPC version could be accepted as a successful
+tool result. Both transports now share response validation, including mutually
+exclusive result/error envelopes. Completed server errors leave the connection
+reusable. Pre-cancelled work never dispatches a tool request or a cancellation
+notice for one that was not issued.
+
+HTTP cancellation runs independently of the local turn, bounded to five seconds;
+session deletion waits for that cleanup, then has its own five-second bound.
+The fixture verifies the matching request ID, one tool dispatch, no replay, and
+cleanup before DELETE. An external effect may already have completed or may
+continue; stopping locally is not confirmation of external rollback.
+
+Release measurements against a local server delaying cancellation replies by
+1,200 ms: Stop took **1,207.507 ms before**, and **4.845 / 5.363 / 3.521 ms after**.
+A one-second tool deadline returned after **1,001.627 ms**, with one cancellation
+notice and no replay. A GitHub write whose fixture withheld its response cancelled
+locally in **0.029 ms**, reported its uncertain outcome, and was issued only once.
+These are shared-host fixture measurements, not production-network or worst-case
+latency guarantees. Cleanup adds no idle polling or permanent worker.
+
+Provider, fetch and GitHub requests now prioritize cancellation before dispatch;
+GitHub also stops waiting for credential lookup. The already-cancelled fixture
+performs no credential lookup and sends no HTTP requests. The focused release
+suite passed **66 tests**, with six opt-in performance/live cases ignored. The
+release workspace build and formatting checks passed. No layout changed; live
+Claude verification after the prior HTTP 429 responses and a weeks-long live
+soak remain outstanding. [Detailed transport evidence](coder-transport-qa.json).
+
+The full release workspace suite passed **1,680 tests across 204 suites, zero
+failures**, with 140 explicitly ignored cases.

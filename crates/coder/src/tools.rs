@@ -481,6 +481,7 @@ pub async fn execute(s: &Session, call: &ToolCall, artifacts: &Path, cancel: &Ca
 
 /// Bounded, cancellable native HTTP for documentation and source material.
 pub async fn fetch_url(call: &ToolCall, limit: usize, cancel: &CancellationToken) -> Result<Value> {
+    ensure!(!cancel.is_cancelled(), "cancelled before HTTP request dispatch");
     use futures_util::StreamExt;
     let url = reqwest::Url::parse(string(&call.arguments, "url")?)?;
     ensure!(matches!(url.scheme(), "http" | "https"), "only HTTP(S) resources are supported");
@@ -505,7 +506,7 @@ pub async fn fetch_url(call: &ToolCall, limit: usize, cancel: &CancellationToken
         }
         Ok(json!({"url":url,"status":status,"content_type":content_type,"text":String::from_utf8_lossy(&bytes),"truncated":truncated}))
     };
-    tokio::select! { _=cancel.cancelled()=>bail!("cancelled"), r=work=>r }
+    tokio::select! { biased; _=cancel.cancelled()=>bail!("cancelled"), r=work=>r }
 }
 
 fn skill_roots(s: &Session) -> Vec<PathBuf> {

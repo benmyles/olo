@@ -111,6 +111,7 @@ impl Client {
         }
     }
     async fn request(&self, s: &Session, body: &Value, path: &str, cancel: &CancellationToken, event: &mut impl FnMut(&str, Value)) -> Result<Value> {
+        ensure!(!cancel.is_cancelled(), "cancelled before provider request dispatch");
         let request = async {
             for attempt in 0..=s.config.retries {
                 let response =
@@ -234,6 +235,7 @@ impl Client {
             bail!("retry limit reached")
         };
         tokio::select! {
+            biased;
             _=cancel.cancelled()=>bail!("cancelled"),
             result=tokio::time::timeout(Duration::from_secs(s.config.request_timeout_secs),request)=>result.context("provider request timed out")?,
         }

@@ -214,6 +214,9 @@ display variables; graphical work should launch an Agent Screen deliberately.
 Timeout, Stop and cancellation kill the process group, including descendants.
 `fetch_url` reads HTTP(S) documentation natively with a 30-second timeout, bounded
 response size and cancellation. It uses action approval, including in spec mode.
+Provider, fetch and GitHub requests check cancellation before dispatch. Stopping
+a GitHub operation also stops waiting for credential lookup; a lookup already
+running on its worker may finish, but cannot dispatch the cancelled request.
 Returned source is untrusted text; it does not execute scripts or forward credentials.
 
 User-configured MCP servers are trusted host programs: starting one is authorized
@@ -275,6 +278,19 @@ are not advertised and are explicitly rejected. For Streamable HTTP, use an HTTP
 Header values come from the service environment, never the model context. HTTP
 connections negotiate the protocol version, preserve session IDs, accept JSON or
 SSE replies, and cancel without replaying POST effects. Redirects are disabled.
+Empty SSE priming events are accepted. Responses require JSON-RPC 2.0 and exactly
+one result or error; malformed replies cannot be recorded as successful tools.
+A completed server error leaves the connection reusable and does not send a
+cancellation notice. A pre-cancelled call is never dispatched.
+
+Stop and tool deadlines stop waiting locally without waiting for a cancellation
+acknowledgement. HTTP cancellation notices run as bounded best-effort cleanup
+(five seconds); session deletion follows that cleanup, with its own five-second
+bound. This does not guarantee that an external effect stopped: inspect external
+state before retrying an interrupted call. No request is automatically replayed.
+This follows the [MCP cancellation lifecycle](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/cancellation)
+and [Streamable HTTP transport](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports).
+
 Interactive OAuth setup, server sampling, elicitation, and resumable GET streams
 are not advertised. Configure a supported credential header for protected servers.
 

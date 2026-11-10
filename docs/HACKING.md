@@ -14601,7 +14601,11 @@ wrapped. Both providers go through the Token Pool's loopback gateway.
   argv processes. `sandbox` prepares Landlock write confinement before fork and
   applies it using syscalls only in `pre_exec`. `mcp` speaks stdio and Streamable HTTP JSON-RPC; its
   tool effects follow the same approval path. Configured hooks and skills are
-  explicit user extensions. Host reads and networking are available in the
+  explicit user extensions. MCP HTTP cancellation cleanup is bounded and runs
+  independently of local Stop; DELETE waits for pending cancellation notices.
+  Both transports share response-envelope validation; completed remote errors
+  are distinct from interrupted requests, and never trigger cancellation.
+  Host reads and networking are available in the
   workspace sandbox: do not describe it as a container or secret boundary.
 * `rpc` is the owner-only Unix socket, schema discovery, commands and replayable
   subscriptions. A slow consumer reconnects by sequence. `get` omits native

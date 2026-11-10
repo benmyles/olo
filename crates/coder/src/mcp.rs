@@ -58,10 +58,7 @@ impl Stdio {
             }
             let v: Value = serde_json::from_slice(&line)?;
             if v["id"] == id && v.get("method").is_none() {
-                if let Some(e) = v.get("error") {
-                    bail!("MCP: {e}");
-                }
-                return Ok(v["result"].clone());
+                return result(v);
             }
             // No sampling or elicitation capability advertised. Explicitly reject server requests.
             if v.get("method").is_some() && v.get("id").is_some() {
@@ -87,6 +84,7 @@ struct Http {
     session: Option<String>,
     version: String,
     next: u64,
+    cleanup: Vec<tokio::task::JoinHandle<()>>,
 }
 impl Http {
     fn request(&self, method: reqwest::Method) -> reqwest::RequestBuilder {
@@ -121,6 +119,11 @@ impl Http {
             ensure!(count <= 8 * 1024 * 1024, "MCP response exceeds 8 MB");
             if streaming {
                 for frame in sse.push(&chunk)? {
+                    // Streamable HTTP may prime a stream with an event ID and
+                    // empty data before sending its JSON-RPC response.
+                    if frame.is_empty() {
+                        continue;
+                    }
                     let v: Value = serde_json::from_str(&frame)?;
                     if v.get("method").is_none() && v["id"] == id {
                         return result(v);
@@ -138,10 +141,30 @@ impl Http {
         ensure!(v["id"] == id && v.get("method").is_none(), "MCP response id mismatch");
         result(v)
     }
+    fn cancel(&mut self, id: u64) {
+        self.cleanup.retain(|task| !task.is_finished());
+        let request = self.request(reqwest::Method::POST).json(&json!({"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":id,"reason":"client stopped waiting"}}));
+        // Remote cleanup is best effort and bounded; it must never delay the
+        // local turn's cancellation or its durable outcome checkpoint.
+        self.cleanup.push(tokio::spawn(async move {
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(5), request.send()).await;
+        }));
+    }
 }
+#[derive(Debug)]
+struct RemoteError(Value);
+impl std::fmt::Display for RemoteError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "MCP: {}", self.0)
+    }
+}
+impl std::error::Error for RemoteError {}
 fn result(v: Value) -> Result<Value> {
+    ensure!(v["jsonrpc"] == "2.0", "MCP response requires JSON-RPC 2.0");
+    ensure!(v.get("result").is_some() != v.get("error").is_some(), "MCP response requires exactly one result or error");
     if let Some(e) = v.get("error") {
-        bail!("MCP: {e}");
+        ensure!(e["code"].as_i64().is_some() && e["message"].as_str().is_some(), "invalid MCP error response");
+        return Err(RemoteError(e.clone()).into());
     }
     v.get("result").cloned().context("MCP response has no result")
 }
@@ -150,7 +173,13 @@ impl Drop for Http {
         if self.session.is_some() {
             if let Ok(runtime) = tokio::runtime::Handle::try_current() {
                 let request = self.request(reqwest::Method::DELETE);
+                let cleanup = std::mem::take(&mut self.cleanup);
                 runtime.spawn(async move {
+                    // Cancellation notifications belong to this session and
+                    // must finish (or time out) before it is deleted.
+                    for task in cleanup {
+                        let _ = task.await;
+                    }
                     let _ = tokio::time::timeout(std::time::Duration::from_secs(5), request.send()).await;
                 });
             }
@@ -179,7 +208,7 @@ impl Connection {
                 headers.insert(reqwest::header::HeaderName::from_bytes(header.as_bytes())?, value);
             }
             let client = reqwest::Client::builder().no_proxy().redirect(reqwest::redirect::Policy::none()).connect_timeout(std::time::Duration::from_secs(10)).user_agent("olo-coder").build()?;
-            let mut h = Http { client, url: url.clone(), headers, session: None, version: String::new(), next: 0 };
+            let mut h = Http { client, url: url.clone(), headers, session: None, version: String::new(), next: 0, cleanup: Vec::new() };
             let init = h.call("initialize", json!({"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"olo-coder","version":env!("CARGO_PKG_VERSION")}})).await?;
             h.version = init["protocolVersion"].as_str().context("MCP omitted protocol version")?.into();
             ensure!(matches!(h.version.as_str(), "2025-11-25" | "2025-06-18" | "2025-03-26"), "unsupported MCP protocol version");
@@ -216,15 +245,21 @@ impl Connection {
     }
 
     pub async fn invoke(&mut self, name: &str, args: Value, cancel: &CancellationToken, timeout: u64) -> Result<Value> {
+        ensure!(!cancel.is_cancelled(), "MCP cancelled before request dispatch");
         let request_id = match &self.transport {
             Transport::Stdio(s) => s.next + 1,
             Transport::Http(h) => h.next + 1,
         };
         let result = tokio::select! {
+            biased;
             _=cancel.cancelled()=>Err(anyhow::anyhow!("MCP cancelled; inspect external state before retrying")),
             r=tokio::time::timeout(std::time::Duration::from_secs(timeout),self.call("tools/call",json!({"name":name,"arguments":args})))=>r.context("MCP timed out; inspect external state before retrying").and_then(|v|v),
         };
-        if result.is_err() {
+        let issued = match &self.transport {
+            Transport::Stdio(s) => s.next == request_id,
+            Transport::Http(h) => h.next == request_id,
+        };
+        if issued && result.as_ref().is_err_and(|error| !error.is::<RemoteError>()) {
             match &mut self.transport {
                 Transport::Stdio(s) => {
                     if let Some(pid) = s.child.id() {
@@ -233,13 +268,7 @@ impl Connection {
                         }
                     }
                 }
-                Transport::Http(h) => {
-                    let _ = tokio::time::timeout(
-                        std::time::Duration::from_secs(5),
-                        h.write(json!({"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":request_id,"reason":"client stopped waiting"}})),
-                    )
-                    .await;
-                }
+                Transport::Http(h) => h.cancel(request_id),
             }
         }
         result

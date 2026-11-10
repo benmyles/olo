@@ -1,0 +1,69 @@
+{
+  "date": "2026-11-10",
+  "baseline_commit": "7437ff08",
+  "scope": "Cancellable MCP/GitHub/provider/fetch transports, MCP response validation and cancellation cleanup.",
+  "baseline_regressions": {
+    "passed": 2,
+    "failed": 4,
+    "tests": [
+      "mcp_stop_does_not_wait_for_a_slow_cancellation_acknowledgement",
+      "mcp_does_not_cancel_unissued_or_completed_requests",
+      "mcp_accepts_empty_sse_priming_events",
+      "mcp_rejects_ambiguous_or_wrong_version_responses"
+    ]
+  },
+  "release_latency": {
+    "mcp_stop_before_ms": [
+      1207.507
+    ],
+    "mcp_stop_after_ms": [
+      4.845,
+      5.363,
+      3.521
+    ],
+    "mcp_1000ms_deadline_ms": [
+      1001.627
+    ],
+    "github_inflight_cancel_ms": [
+      0.029
+    ],
+    "scope": "Release binaries against local HTTP fixtures. MCP cancellation endpoint deliberately delays its reply by 1200 ms. Stop includes journal checkpoint and quiescence; GitHub measures local cancellation while a fixture holds its response. Shared host; not production-network or worst-case latency guarantees."
+  },
+  "focused_tests": {
+    "unit_passed": 1,
+    "integration_passed": 65,
+    "failed": 0,
+    "ignored": 6,
+    "command": "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER=/usr/bin/env cargo test --release -p olo-coder-core -- --nocapture"
+  },
+  "release_build": {
+    "command": "cargo build --release --workspace",
+    "exit_code": 0
+  },
+  "checks": [
+    "Local Stop finishes before the remote cancellation acknowledgement; DELETE follows cancellation cleanup.",
+    "A timed-out external request is issued once, receives one cancellation notice and is never replayed.",
+    "Pre-cancelled calls issue neither tools/call nor a fictitious cancellation; completed remote errors leave connections reusable.",
+    "Empty SSE priming frames precede a valid JSON-RPC tool response without failure.",
+    "Wrong JSON-RPC versions, missing results and ambiguous result/error envelopes are rejected.",
+    "Pre-cancelled GitHub/fetch/provider operations do not dispatch; cancelled GitHub writes report uncertain outcome and do not replay."
+  ],
+  "protocol_references": [
+    "https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/cancellation",
+    "https://modelcontextprotocol.io/specification/2025-11-25/basic/transports"
+  ],
+  "limits": [
+    "HTTP cleanup is best effort, bounded to five seconds for cancellation and five seconds for subsequent session deletion; remote effects may have completed or may continue.",
+    "No layout changes: preceding visual sweep remains recorded in coder-reliability-qa.json.",
+    "Live Claude reasoning/compaction remains unverified after prior HTTP 429 responses; no additional live quota used this audit.",
+    "No weeks-long live soak or zero-defect claim."
+  ],
+  "workspace_release_tests": {
+    "command": "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER=/usr/bin/env cargo test --release --workspace",
+    "exit_code": 0,
+    "passed": 1680,
+    "failed": 0,
+    "ignored": 140,
+    "suites": 204
+  }
+}
