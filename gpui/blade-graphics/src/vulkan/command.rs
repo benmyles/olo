@@ -1089,3 +1089,78 @@ impl crate::traits::RenderPipelineEncoder for super::PipelineEncoder<'_, '_> {
         }
     }
 }
+
+impl super::CommandEncoder {
+    /// Olo: readies a swapchain image that was presented before, keeping
+    /// what it holds (`init_texture` readies one whose contents don't
+    /// matter): for a frame that draws only what changed.
+    pub fn init_texture_kept(&mut self, texture: super::Texture) {
+        let barrier = vk::ImageMemoryBarrier {
+            old_layout: vk::ImageLayout::PRESENT_SRC_KHR,
+            new_layout: vk::ImageLayout::GENERAL,
+            image: texture.raw,
+            subresource_range: vk::ImageSubresourceRange {
+                aspect_mask: super::map_aspects(texture.format.aspects()),
+                base_mip_level: 0,
+                level_count: vk::REMAINING_MIP_LEVELS,
+                base_array_layer: 0,
+                layer_count: vk::REMAINING_ARRAY_LAYERS,
+            },
+            dst_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
+            ..Default::default()
+        };
+        unsafe {
+            self.device.core.cmd_pipeline_barrier(
+                self.buffers[0].raw,
+                vk::PipelineStageFlags::TOP_OF_PIPE,
+                vk::PipelineStageFlags::ALL_COMMANDS,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                &[barrier],
+            );
+        }
+    }
+
+    /// Olo: what changed in the frame about to be presented, as
+    /// rectangles (x, y, width, height) in its pixels: the compositor
+    /// is told only those (where the driver can say:
+    /// VK_KHR_incremental_present). None given, all of it.
+    pub fn set_present_damage(&mut self, rects: &[[i32; 4]]) {
+        self.present_damage.clear();
+        self.present_damage
+            .extend(rects.iter().map(|r| vk::RectLayerKHR {
+                offset: vk::Offset2D { x: r[0], y: r[1] },
+                extent: vk::Extent2D {
+                    width: r[2].max(0) as u32,
+                    height: r[3].max(0) as u32,
+                },
+                layer: 0,
+            }));
+    }
+}
+
+impl super::RenderCommandEncoder<'_> {
+    /// Olo: clears a rectangle of the pass's colour target to
+    /// transparent black: a frame that draws only what changed starts
+    /// that part afresh, as a whole frame's clear would.
+    pub fn clear_rect(&mut self, rect: &crate::ScissorRect) {
+        let attachment = vk::ClearAttachment {
+            aspect_mask: vk::ImageAspectFlags::COLOR,
+            color_attachment: 0,
+            clear_value: vk::ClearValue {
+                color: vk::ClearColorValue { float32: [0.0; 4] },
+            },
+        };
+        let rect = vk::ClearRect {
+            rect: rect.to_vk(),
+            base_array_layer: 0,
+            layer_count: 1,
+        };
+        unsafe {
+            self.device
+                .core
+                .cmd_clear_attachments(self.cmd_buf.raw, &[attachment], &[rect])
+        };
+    }
+}

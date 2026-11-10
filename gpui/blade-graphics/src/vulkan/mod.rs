@@ -59,6 +59,8 @@ struct Device {
     buffer_marker: Option<ash::amd::buffer_marker::Device>,
     shader_info: Option<ash::amd::shader_info::Device>,
     full_screen_exclusive: Option<ash::ext::full_screen_exclusive::Device>,
+    /// Olo: a present can say which rectangles changed.
+    incremental_present: bool,
     #[cfg(target_os = "windows")]
     external_memory: Option<ash::khr::external_memory_win32::Device>,
     #[cfg(not(target_os = "windows"))]
@@ -149,6 +151,14 @@ impl Frame {
     /// couldn't be made): the frame is skipped.
     pub fn is_lost(&self) -> bool {
         self.internal.image == vk::Image::null()
+    }
+
+    /// Olo: which of the swapchain's images this is (None: none was
+    /// acquired). An image keeps what was last drawn into it, so a
+    /// frame that keeps count of what each holds draws only what that
+    /// one lacks (`CommandEncoder::init_texture_kept`).
+    pub fn image_index(&self) -> Option<u32> {
+        self.image_index
     }
 }
 
@@ -307,6 +317,9 @@ pub struct CommandEncoder {
     device: Device,
     update_data: Vec<u8>,
     present: Option<Presentation>,
+    /// Olo: what changed in the frame to be presented
+    /// (`present_damaged`), for the compositor: empty, all of it.
+    present_damage: Vec<vk::RectLayerKHR>,
     crash_handler: Option<CrashHandler>,
     temp_label: Vec<u8>,
     timings: crate::Timings,
@@ -456,6 +469,7 @@ impl crate::traits::CommandDevice for Context {
             device: self.device.clone(),
             update_data: Vec::new(),
             present: None,
+            present_damage: Vec::new(),
             crash_handler,
             temp_label: Vec::new(),
             timings: Default::default(),
@@ -530,10 +544,17 @@ impl crate::traits::CommandDevice for Context {
             let swapchains = [presentation.swapchain];
             let image_indices = [presentation.image_index];
             let wait_semaphores = [presentation.present_semaphore];
-            let present_info = vk::PresentInfoKHR::default()
+            let mut present_info = vk::PresentInfoKHR::default()
                 .swapchains(&swapchains)
                 .image_indices(&image_indices)
                 .wait_semaphores(&wait_semaphores);
+            // Olo: only what changed is the compositor's to show again.
+            let damage = std::mem::take(&mut encoder.present_damage);
+            let regions = [vk::PresentRegionKHR::default().rectangles(&damage)];
+            let mut present_regions = vk::PresentRegionsKHR::default().regions(&regions);
+            if !damage.is_empty() && self.device.incremental_present {
+                present_info = present_info.push_next(&mut present_regions);
+            }
             let ret = unsafe { khr_swapchain.queue_present(queue.raw, &present_info) };
             let _ = encoder.check_gpu_crash(ret);
         }
