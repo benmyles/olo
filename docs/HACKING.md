@@ -10102,7 +10102,12 @@ person's alone (0700, 0600); a shell that exits forgets its file, Start
 Over forgets them all, and unclaimed ones go after 30 days. As the
 session ends olo-termd tells each Terminal (`ENDING`) before hanging
 up, so it doesn't remember the tabs closing or start a new olo-termd;
-Start Over says it isn't that (`Link::starting_over`).
+Start Over says it isn't that (`Link::starting_over`). Nor once it has
+said goodbye itself (Quit, its last window closed: `Link::bye`, then
+`Link::leaving`): a Terminal that stays on after Quit, holding what
+was copied for the clipboard, wrote its windows again as they closed,
+none, and the next one opened each shell in a window of its own, its
+groups and each tab's Keep It Going and Auto Approve gone.
 
 **Tabs.** A window holds one or more shells (`TermWin::tabs`, each a
 `Tab` with its own `Session`); its strip (the kit's `TabStrip`) always
@@ -10432,8 +10437,15 @@ user change it to whatever they want, as well as revert back to the
 default") to the agent once it has stopped: after
 two minutes (`KEEP_GOING_QUIET`) with nothing at all changing on its
 screen and nothing typed, its turn over (`State::Idle`: not while it
-works, nor on a question, whose answer is the person's), at most once
-an hour (`KEEP_GOING_EVERY`). Activity is the agent watcher's: when it
+works, nor on a question, whose answer is the person's) and its own
+prompt showing, read just then (`agent::at_prompt`: Claude Code's "❯"
+in the box under its rule, or its older "│ >" box; Codex's "›" on a
+line that isn't an answer, "› 1. Yes"; not a chooser, which would take
+the Return as a choice: Claude Code's "Make auto mode your default
+permission mode?" reads as idle, its "❯" on an unnumbered answer, and
+"Please continue" with a Return would have answered yes for the
+person), at most once an hour (`KEEP_GOING_EVERY`). Activity is the
+agent watcher's: when it
 reads a tab after output (at most every 600 ms, as for the agent's
 state), a change of the screen's `agent::fingerprint` is reported
 (`agent::Activity`), with the clocks that count by themselves taken out
@@ -10452,6 +10464,34 @@ started again. And with the message set in Preferences ("Keep at it,
 thanks") a stand-in got that, the tab's name saying it too; Use
 Default put "Please continue" back, in the field and the setting.
 
+Each tab can say its own (Ben, 2026-11-09: "in the right click context
+menu for an agent terminal the keep it going has a sub menu too, and in
+that i can choose to set a custom message just for that agent"): Keep
+It Going is a submenu in the tab's menu and in Tabs (`Terminal::
+keep_going_menu`): On (`tab-keep-going:SHELL`), Default Message
+("Please continue", or Preferences' own; `tab-keep-going-default:
+SHELL` takes the tab's own away), the tab's own message when it has
+one (checked, the first 40 characters, cut at a word), and Custom
+Message… (`tab-keep-going-message:SHELL`). That opens the Keep It
+Going window (`Win::KeepGoingMessage`, an alert's frame, as tall as its
+words: `ui::WindowOptions::dialog`): what Terminal types to the agent
+in that tab, its own message (or Preferences') in a field, selected;
+left empty or as Preferences has it, the tab has none of its own; its
+default button, Keep It Going, keeps the message and turns Keep It
+Going on (`Tab::keep_going_own`, over `keep_going_says`; the tab's
+name says it). Kept with the window (`SavedWindow::keep_going_own`),
+whether Keep It Going is on or not, and with a tab moved to an agent
+screen. Tried headless with the real Claude Code 2.1.322 and Codex
+0.167, each in a sandbox HOME against a stand-in model server on
+loopback (Anthropic's Messages API and OpenAI's Responses API,
+streamed): each got its own message ("Carry on with the plan, thanks",
+"Codex, keep going please") 8 s after it was set
+(`OLO_TERMINAL_KEEP_GOING_SECS=8`), as a message sent, not left as
+pasted text, and answered; both came back with Terminal (quit and
+started again); on Claude Code's auto-mode chooser Keep It Going held
+off ("not at its prompt"), the question unanswered. The submenu and
+the window: the layout review clean at 1×, 1.5× and 2×, light and dark.
+
 **Auto Approve** (Ben, 2026-11-09: "like the keep going option add one
 that is "Auto Approve" and when a "Do you want to proceed?" question
 like this comes up have it auto approve / select yes after 30s";
@@ -10463,12 +10503,21 @@ line "Do you want to …?" or "Would you like to …?", its first answer
 dialogs, Codex's "Would you like to run the following command?") is
 answered with Return `AUTO_APPROVE_AFTER` (30 s) after it shows. Not a
 plan waiting to be approved ("No, keep planning"), not when another
-answer is chosen, not another question's answers under words that ask.
+answer is chosen, not another question's answers under words that ask
+(but for Codex's "Reason: Do you want to …?" between its question and
+its answers: Codex tells its model to give its reason for a command as
+a question, so Auto Approve had never answered Codex).
 The agent watcher reads it only while the agent asks (`State::Blocked`)
 and tells of a new one, or none, once read the same twice
 (`agent::Asking`; a screen read as it's drawn isn't a change); its key
-is the dialog's text with its digits aside, as Claude Code counts down
-"will automatically block this request in 1:50" under it. When it's
+is the words of the dialog and the dozen lines above it: digits aside
+(Claude Code counts down "will automatically block this request in
+1:50" under it), and every mark that isn't a letter or digit too
+(Claude Code blinks the "●" before the tool call it asks about, so the
+question never read the same twice and was answered only once the
+blinking stopped, 10 to 30 s late; `RUST_LOG=olo_terminal::agent=debug`
+logs each look's key). Output held back for a synchronized update and
+shown when it times out pokes the watcher too, as any output does. When it's
 due the screen is read again (a coding agent in the foreground, the same
 question, Yes chosen; a few looks 200 ms apart) before the Return goes.
 Typing in the tab, or Stop in the countdown at the pane's bottom right
@@ -10491,7 +10540,14 @@ not answered, the next one answered; Stop; on through the socket asked,
 Return cancelling, Turn On turning it on; back on after Terminal
 restarted, a stopped question still the person's. Cost: with a question
 waiting, 2 frames a second where its clock drew 1 (0.6 ms each, 0.2% of
-a core); with none, nothing (0 wakeups, 0 frames).
+a core); with none, nothing (0 wakeups, 0 frames). Then with the real
+Claude Code 2.1.322 and Codex 0.167 (the stand-in model asking each to
+run `touch`; Codex with `approval_policy = "on-request"`, its model
+asking to run it outside the sandbox): each question seen 1.4 s (Claude
+Code) and 1.9 s (Codex) after it was asked (the model's answer, then a
+second look 600 ms on), answered Yes 5 s later
+(`OLO_TERMINAL_AUTO_APPROVE_SECS=5`), the command run; one already
+showing as Auto Approve came on answered 5 s on.
 
 **Repositories** (`src/git.rs`, `src/repos.rs`), in process through
 libgit2 (git2, vendored; no `git` or `gh`). A thread (`git::Watcher`)

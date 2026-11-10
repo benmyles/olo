@@ -256,6 +256,10 @@ pub(crate) struct Tab {
     /// Keep It Going (its menu): its agent told "please continue" when it
     /// has stopped.
     keep_going: Option<KeepGoing>,
+    /// What Keep It Going says to this tab's agent, the person's own (its
+    /// menu's Keep It Going ▸ Custom Message…), over Preferences' for
+    /// every tab; None: Preferences'. Kept whether Keep It Going is on.
+    keep_going_own: Option<String>,
     /// Auto Approve (its menu): its agent's "Do you want to proceed?"
     /// answered Yes after a while.
     pub(crate) auto_approve: Option<AutoApprove>,
@@ -339,6 +343,17 @@ const KEEP_GOING_EVERY: std::time::Duration = std::time::Duration::from_secs(360
 /// (followed live; kept on Terminal's state, `keep_going_says`).
 struct KeepGoingSays(String);
 
+/// Under the Keep It Going window's field: what it says left empty
+/// (`default`, Preferences').
+pub(crate) fn keep_going_note(default: &str) -> String {
+    format!("Left empty, it says what Preferences \u{25b8} Terminal has for every tab: \u{201c}{default}\u{201d}.")
+}
+
+/// How much of a message its menu shows (then "…").
+const KEEP_GOING_SHOWN: usize = 40;
+/// The Keep It Going window's width.
+const KEEP_GOING_W: u32 = 420;
+
 /// The quiet it waits for: `KEEP_GOING_QUIET`, or in a test
 /// `OLO_TERMINAL_KEEP_GOING_SECS` (seconds).
 fn keep_going_quiet() -> std::time::Duration {
@@ -367,13 +382,21 @@ impl Tab {
             own_grouping: false,
             hidden_tiled: false,
             keep_going: None,
+            keep_going_own: None,
             auto_approve: None,
         }
     }
 
+    /// What Keep It Going says to its agent: its own message, else
+    /// `default` (Preferences').
+    pub(crate) fn keep_going_says<'a>(&'a self, default: &'a str) -> &'a str {
+        self.keep_going_own.as_deref().unwrap_or(default)
+    }
+
     /// What it's doing, for its tab's name to screen readers and agents
-    /// (`says`: what Keep It Going says).
+    /// (`says`: what Keep It Going says, unless it has its own).
     fn status(&self, says: &str) -> Option<String> {
+        let says = self.keep_going_says(says);
         let keep = self.keep_going.as_ref().map(|_| format!("kept going (\u{201c}{says}\u{201d} after two quiet minutes, at most hourly)"));
         let approve = self.auto_approve.as_ref().map(|a| match &a.pending {
             Some(p) if !p.stopped => format!("auto approving: Yes to \u{201c}{}\u{201d} in {} s", p.question, p.due.saturating_duration_since(Instant::now()).as_secs_f32().ceil()),
@@ -693,6 +716,13 @@ pub(crate) enum Win {
         shell: u64,
         message: String,
     },
+    /// Keep It Going ▸ Custom Message…: what Keep It Going says to `shell`'s
+    /// agent (`Tab::keep_going_own`), `about` saying whose.
+    KeepGoingMessage {
+        shell: u64,
+        about: String,
+        field: Entity<TextField>,
+    },
     /// Name (or rename) a group of a window's (`group`), or make one of
     /// its tab `tab`, and choose its colour.
     NameGroup {
@@ -894,6 +924,9 @@ struct SavedWindow {
     /// (`Tab::keep_going`: Some(0) on, never said).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     keep_going: Vec<Option<u64>>,
+    /// Each tab's own Keep It Going message (`Tab::keep_going_own`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    keep_going_own: Vec<Option<String>>,
     /// Which tabs answer their agent's questions (`Tab::auto_approve`:
     /// Some(0) on; Some(key) on, with that question the person's, stopped).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -1171,6 +1204,14 @@ impl Terminal {
             for (shell, said) in keep {
                 self.set_keep_going(cx, shell, Some(said));
             }
+            // Each tab's own message, on or off.
+            if let Some(Win::Term(t)) = self.windows.get_mut(&id) {
+                for tab in &mut t.tabs {
+                    if let Some(i) = ids.iter().position(|&s| s == tab.session.id) {
+                        tab.keep_going_own = w.keep_going_own.get(i).cloned().flatten();
+                    }
+                }
+            }
             // Auto Approve too (the person turned it on before), a question
             // they'd stopped still theirs.
             let approve: Vec<(u64, u64)> = match self.windows.get(&id) {
@@ -1359,6 +1400,7 @@ impl Terminal {
                 | Win::Daemon(_)
                 | Win::ConfirmStartOver { .. }
                 | Win::ConfirmAutoApprove { .. }
+                | Win::KeepGoingMessage { .. }
                 | Win::NameGroup { .. }
                 | Win::ConfirmRemove { .. }
                 | Win::Failed { .. },
@@ -1660,6 +1702,20 @@ impl Terminal {
                     self.remember_soon(cx);
                 }
             }
+            "tab-keep-going-default" => {
+                if let Some(i) = number(arg).and_then(|shell| t.position(shell))
+                    && t.tabs[i].keep_going_own.take().is_some()
+                {
+                    tracing::info!(shell = t.tabs[i].session.id, "keep it going: Preferences' message");
+                    cx.redraw(win);
+                    self.remember_soon(cx);
+                }
+            }
+            "tab-keep-going-message" => {
+                if let Some(shell) = number(arg).filter(|&shell| t.position(shell).is_some()) {
+                    self.ask_keep_going_message(cx, shell);
+                }
+            }
             "tab-auto-approve" => {
                 if let Some(shell) = number(arg)
                     && let Some(i) = t.position(shell)
@@ -1786,6 +1842,86 @@ impl Terminal {
         cx.redraw(win);
     }
 
+    /// Keep It Going's menu for `tab` (its own message, if it has one,
+    /// over Preferences'): on or off, and what it says.
+    pub(crate) fn keep_going_menu(&self, tab: &Tab) -> Menu {
+        let shell = tab.session.id;
+        let short = |s: &str| match s.char_indices().nth(KEEP_GOING_SHOWN) {
+            Some((at, _)) => {
+                // (At a word's end, if one isn't far back.)
+                let cut = &s[..at];
+                let cut = match cut.rfind(char::is_whitespace) {
+                    Some(w) if !s[at..].starts_with(char::is_whitespace) && cut[..w].chars().count() > KEEP_GOING_SHOWN / 2 => &cut[..w],
+                    _ => cut,
+                };
+                format!("\u{201c}{}\u{2026}\u{201d}", cut.trim_end_matches(|c: char| c.is_whitespace() || c == ','))
+            }
+            None => format!("\u{201c}{s}\u{201d}"),
+        };
+        let menu = Menu::new("Keep It Going")
+            .item("On", format!("tab-keep-going:{shell}"))
+            .checked(tab.keep_going.is_some())
+            .enabled(tab.agent.is_some() || tab.keep_going.is_some())
+            .separator()
+            .item(format!("Default Message ({})", short(&self.keep_going_says)), format!("tab-keep-going-default:{shell}"))
+            .checked(tab.keep_going_own.is_none());
+        let menu = match &tab.keep_going_own {
+            Some(own) => menu.item(short(own), format!("tab-keep-going-message:{shell}")).checked(true),
+            None => menu,
+        };
+        menu.item("Custom Message\u{2026}", format!("tab-keep-going-message:{shell}"))
+    }
+
+    /// Keep It Going ▸ Custom Message… for `shell`'s tab: the window asking
+    /// what it says, its own message (or Preferences') in it, selected.
+    fn ask_keep_going_message(&mut self, cx: &mut Cx, shell: u64) {
+        let Some((win, i)) = self.find_shell(shell) else { return };
+        let Some(Win::Term(t)) = self.windows.get(&win) else { return };
+        let tab = &t.tabs[i];
+        let agent = tab.agent.map_or("the coding agent", |(a, _)| a.name());
+        let about = format!("What Terminal types to {agent} in \u{201c}{}\u{201d} once it has stopped:", tab.title);
+        let says = tab.keep_going_says(&self.keep_going_says).to_owned();
+        if let Some((&id, _)) = self.windows.iter().find(|(_, w)| matches!(w, Win::KeepGoingMessage { shell: s, .. } if *s == shell)) {
+            cx.activate(id);
+            return;
+        }
+        let field = Terminal::field(cx, &says, |f| f.hint(self.keep_going_says.clone()).name("Keep It Going says"));
+        // (As tall as what it says: its frame lays its column out over
+        // the window, as an alert's.)
+        let text_w = KEEP_GOING_W as f32 - widgets::ALERT_TEXT_X - m::WINDOW_INSET;
+        let words = widgets::paragraph_height(cx, &about, text_w) + widgets::paragraph_height(cx, &keep_going_note(&self.keep_going_says), text_w);
+        let h = 2.0 * m::WINDOW_INSET + m::LABEL_ROW + 2.0 * m::TIGHT + 2.0 * m::SPACING + 2.0 * m::CONTROL_HEIGHT + words;
+        let id = cx.open_window(WindowOptions::dialog("Keep It Going", KEEP_GOING_W, h.ceil() as u32));
+        ui::submit_on_enter(cx, &field, id, |t, cx, id| t.keep_going_message_done(cx, id, true));
+        field.update(cx, |f, cx| f.select_all_text(cx));
+        let f = field.clone();
+        cx.with_window(id, move |_, window, cx| f.read(cx).focus(window));
+        self.windows.insert(id, Win::KeepGoingMessage { shell, about, field });
+    }
+
+    /// The Keep It Going window answered: the tab's own message (none, if
+    /// left empty or as Preferences has it), Keep It Going on; or not.
+    pub(crate) fn keep_going_message_done(&mut self, cx: &mut Cx, window: WindowId, ok: bool) {
+        let Some(Win::KeepGoingMessage { shell, field, .. }) = self.windows.remove(&window) else { return };
+        cx.close_window(window);
+        if !ok {
+            return;
+        }
+        let says = field.read(cx).text().trim().to_owned();
+        let own = (!says.is_empty() && says != self.keep_going_says).then_some(says);
+        let Some((win, i)) = self.find_shell(shell) else { return };
+        let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return };
+        let tab = &mut t.tabs[i];
+        tracing::info!(shell, own = own.is_some(), "keep it going: its own message");
+        tab.keep_going_own = own;
+        let off = tab.keep_going.is_none();
+        cx.redraw(win);
+        if off {
+            self.set_keep_going(cx, shell, Some(None));
+        }
+        self.remember_soon(cx);
+    }
+
     /// Something happened in `shell`'s tab: its quiet starts again.
     fn keep_going_activity(&mut self, shell: u64) {
         let Some((win, i)) = self.find_shell(shell) else { return };
@@ -1801,10 +1937,10 @@ impl Terminal {
     /// hasn't said so within the hour. How long till it looks again
     /// (None: off, or the tab gone).
     fn keep_going_turn(&mut self, cx: &mut Cx, shell: u64) -> Option<std::time::Duration> {
-        let says = self.keep_going_says.clone();
         let (win, i) = self.find_shell(shell)?;
         let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return None };
         let tab = &mut t.tabs[i];
+        let says = tab.keep_going_says(&self.keep_going_says).to_owned();
         let idle = matches!(tab.agent, Some((_, State::Idle)));
         let k = tab.keep_going.as_mut()?;
         let (quiet, enough) = (k.since.elapsed(), keep_going_quiet());
@@ -1818,10 +1954,19 @@ impl Terminal {
             return Some(std::time::Duration::from_secs(KEEP_GOING_EVERY.as_secs() - now.saturating_sub(said)));
         }
         // Working, asking a question (its answer is the person's), or no
-        // agent at all: not now.
-        if !idle {
+        // agent at all: not now. Nor anything but its own prompt showing
+        // (read now): a chooser would take the Return as a choice.
+        let at_prompt = match tab.agent {
+            Some((agent, State::Idle)) => agent::at_prompt(agent, &agent::screen_text(&tab.session.term.lock())),
+            _ => false,
+        };
+        if !at_prompt {
+            if idle {
+                tracing::info!(shell, "keep it going: not at its prompt (a chooser?); not now");
+            }
             return Some(enough);
         }
+        let k = tab.keep_going.as_mut()?;
         k.said = Some(now);
         k.since = Instant::now();
         tab.session.write(says.as_bytes().to_vec());
@@ -2461,9 +2606,7 @@ impl Terminal {
             .checked(t.tiled && several)
             .item(if t.tab().hidden_tiled { "Show Tab When Tiled" } else { "Hide Tab When Tiled" }, format!("tab-tile-hide:{shell}"))
             .enabled(several)
-            .item("Keep It Going", format!("tab-keep-going:{shell}"))
-            .checked(t.tab().keep_going.is_some())
-            .enabled(t.tab().agent.is_some() || t.tab().keep_going.is_some())
+            .submenu(self.keep_going_menu(t.tab()))
             .item("Auto Approve", format!("tab-auto-approve:{shell}"))
             .checked(t.tab().auto_approve.is_some())
             .enabled(t.tab().agent.is_some() || t.tab().auto_approve.is_some())
@@ -2899,6 +3042,7 @@ impl Terminal {
             agent_titles: w.agent_titles.get(i).cloned().map(|t| vec![t]).unwrap_or_default(),
             hidden_tiled: Vec::new(),
             keep_going: w.keep_going.get(i).cloned().map(|k| vec![k]).unwrap_or_default(),
+            keep_going_own: w.keep_going_own.get(i).cloned().map(|k| vec![k]).unwrap_or_default(),
             auto_approve: w.auto_approve.get(i).copied().map(|a| vec![a]).unwrap_or_default(),
         };
         let state = serde_json::to_string(&Saved { windows: vec![one], moved: true }).ok();
@@ -2964,6 +3108,7 @@ impl Terminal {
                         agent_titles: if live.iter().any(|x| x.agent_title.is_some()) { live.iter().map(|x| x.agent_title.clone()).collect() } else { Vec::new() },
                         hidden_tiled: if live.iter().any(|x| x.hidden_tiled) { live.iter().map(|x| x.hidden_tiled).collect() } else { Vec::new() },
                         keep_going: if live.iter().any(|x| x.keep_going.is_some()) { live.iter().map(|x| x.keep_going.as_ref().map(|k| k.said.unwrap_or(0))).collect() } else { Vec::new() },
+                        keep_going_own: if live.iter().any(|x| x.keep_going_own.is_some()) { live.iter().map(|x| x.keep_going_own.clone()).collect() } else { Vec::new() },
                         auto_approve: if live.iter().any(|x| x.auto_approve.is_some()) { live.iter().map(|x| x.auto_approve.as_ref().map(AutoApprove::saved)).collect() } else { Vec::new() },
                     })
                 }
@@ -3122,7 +3267,11 @@ impl Terminal {
     }
 
     fn remember(&mut self, cx: &App, now: bool) {
-        if self.link.ended() {
+        // (Nor once it has quit: kept as it was then. A Terminal that
+        // stays on after Quit, holding what was copied for the clipboard,
+        // wrote its windows again as they closed, none: all of them, their
+        // groups and each tab's Keep It Going and Auto Approve forgotten.)
+        if self.link.ended() || self.link.leaving() {
             return;
         }
         let Ok(text) = serde_json::to_string(&self.layout(cx)) else { return };

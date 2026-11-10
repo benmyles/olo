@@ -217,6 +217,12 @@ impl Link {
         self.0.ended.load(Ordering::Acquire)
     }
 
+    /// Terminal has said goodbye (`bye`: quitting), or given up on
+    /// olo-termd: what it kept of its windows just before stays as it is.
+    pub fn leaving(&self) -> bool {
+        self.0.leaving.load(Ordering::Acquire)
+    }
+
     /// Ending olo-termd to start it afresh: that isn't the session ending.
     pub fn starting_over(&self) {
         self.0.starting_over.store(true, Ordering::Release);

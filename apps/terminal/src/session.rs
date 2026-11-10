@@ -408,6 +408,9 @@ fn spawn_feeder(
                         Ok(c) => c,
                         Err(mpsc::RecvTimeoutError::Timeout) => {
                             feeder.flush(&mut *term.lock());
+                            // (What was held is on the screen only now:
+                            // what reads it looks again.)
+                            printed();
                             wake();
                             continue;
                         }

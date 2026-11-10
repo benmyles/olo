@@ -94,6 +94,29 @@ pub fn classify(screen: &str) -> State {
     }
 }
 
+/// `agent`'s own prompt is on `screen`, waiting for a message: what Keep
+/// It Going types into, and nothing else (a chooser takes its words as
+/// keys and its Return as a choice). Claude Code's "❯" in the box under
+/// its rule (or its older "│ >" box), Codex's "›" on a line that isn't an
+/// answer ("› 1. Yes"). Not Claude Code's "Make auto mode your default
+/// permission mode?", whose "❯" is on an answer with no number: Return
+/// there would have said yes for the person.
+pub fn at_prompt(agent: Agent, screen: &str) -> bool {
+    let lines: Vec<&str> = screen.lines().collect();
+    let rule = |l: &str| {
+        let t = l.trim();
+        t.contains("────") && (t.starts_with('─') || t.ends_with('─'))
+    };
+    let numbered = |s: &str| s.split_once('.').is_some_and(|(n, rest)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()) && rest.starts_with(' '));
+    lines.iter().enumerate().any(|(i, l)| {
+        let t = l.trim_start();
+        match agent {
+            Agent::Claude => (t.starts_with('❯') && lines[..i].iter().rev().find(|l| !l.trim().is_empty()).is_some_and(|l| rule(l))) || t.starts_with("│ >") || t.starts_with("│ ❯"),
+            Agent::Codex => t.strip_prefix('›').is_some_and(|rest| !numbered(rest.trim_start())),
+        }
+    })
+}
+
 /// A question its agent asks that Auto Approve may answer Yes to: one
 /// asking leave to go on ("Do you want to proceed?", "Do you want to make
 /// this edit to …?", Codex's "Would you like to run the following
@@ -122,8 +145,10 @@ pub fn approvable(screen: &str) -> Option<Ask> {
     let rest = &lines[q + 1..];
     // Its first answer (Codex shows the command between): "1. …", chosen.
     let at = rest.iter().position(|l| l.trim().trim_start_matches(['❯', '›']).trim_start().starts_with("1. "))?;
-    // (Its own: no other question between.)
-    if rest[..at].iter().any(|l| l.trim_end().ends_with('?')) {
+    // (Its own: no other question between; but for the reason Codex gives
+    // for a command, which it's told to put as a question, "Reason: Do you
+    // want to …?": Auto Approve never answered Codex.)
+    if rest[..at].iter().map(|l| l.trim()).any(|l| l.ends_with('?') && !l.starts_with("Reason:")) {
         return None;
     }
     let first = rest[at].trim();
@@ -134,7 +159,12 @@ pub fn approvable(screen: &str) -> Option<Ask> {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     for l in &lines[q.saturating_sub(12)..] {
-        l.chars().map(|c| if c.is_ascii_digit() { '#' } else { c }).collect::<String>().hash(&mut h);
+        // Only its words, the digits of a clock counting down aside: not
+        // the marks a program animates as it waits (Claude Code's "●"
+        // before the tool call it asks about blinks, so the question
+        // never read the same twice: Auto Approve answered only once it
+        // stopped, half a minute on).
+        l.chars().filter(|c| c.is_alphanumeric()).map(|c| if c.is_ascii_digit() { '#' } else { c }).collect::<String>().hash(&mut h);
     }
     Some(Ask { key: h.finish(), question: lines[q].trim().to_owned() })
 }
@@ -247,6 +277,9 @@ impl Watcher {
                         (agent, state)
                     });
                     let key = ask.as_ref().map(|a| a.key);
+                    // (What each look found, for `RUST_LOG=olo_terminal::agent=debug`:
+                    // a question that never settles shows as its key changing.)
+                    tracing::debug!(shell = w.shell, ?now, ?key, "agents: looked");
                     if key == w.asked {
                         w.ask_seen = None;
                     } else {
@@ -338,6 +371,21 @@ mod tests {
         let a = approvable(&claude("1:50")).expect("Claude Code's");
         assert_eq!(a.question, "Do you want to proceed?");
         assert_eq!(approvable(&claude("1:49")).map(|b| b.key), Some(a.key));
+        // Claude Code 2.1.322's, as Terminal read it (the fake model's
+        // command): the "●" before the tool call blinks while it asks, the
+        // same question either way.
+        let real = |bullet: &str| {
+            format!(
+                "❯ approve-test\n\n{bullet} Mark the test approved\n  ⎿  $ touch /var/tmp/kig/work/claude-approved\n\n────────────────────────────────\n Bash command\n Tip: auto mode handles these prompts for you — choose \"switch to auto mode\" below\n Mark the test approved\n╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n touch /var/tmp/kig/work/claude-approved\n╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and always allow access to /var/tmp/kig/work from this project\n   3. Yes, and switch to auto mode · auto mode handles these prompts for you\n   4. No\n\n Esc to cancel · Tab to amend\n"
+            )
+        };
+        let on = approvable(&real("●")).expect("Claude Code 2.1.322's");
+        assert_eq!(approvable(&real(" ")).map(|b| b.key), Some(on.key));
+        // Codex 0.167's, as Terminal read it: its reason for the command
+        // put as a question, as Codex tells its model to.
+        let codex = "• Running touch /var/tmp/kig/work/codex-approved\n\n\n  Would you like to run the following command?\n\n  Environment: local\n\n  Reason: Do you want to mark the test approved?\n\n  $ touch /var/tmp/kig/work/codex-approved\n\n\n› 1. Yes, proceed (y)\n  2. Yes, and don't ask again for commands that start with `touch /var/tmp/kig/\n     work/codex-approved` (p)\n  3. No, and tell Codex what to do differently (esc)\n\n  Press enter to confirm or esc to cancel\n";
+        assert_eq!(approvable(codex).map(|a| a.question), Some("Would you like to run the following command?".into()));
+        assert_eq!(classify(codex), State::Blocked);
         assert!(approvable(" Edit file\n src/main.rs\n Do you want to make this edit to main.rs?\n ❯ 1. Yes\n   2. Yes, allow all edits during this session (shift+tab)\n   3. No\n").is_some());
         assert!(approvable("Would you like to run the following command?\n  $ cargo test\n› 1. Yes, proceed (y)\n  2. No (esc)\n").is_some());
         assert_ne!(approvable(&claude("1:50").replace("tail -15", "tail -16x")).map(|b| b.key), Some(a.key));
@@ -351,6 +399,21 @@ mod tests {
         assert!(approvable(" Which database?\n ❯ 1. Postgres\n   2. SQLite\n").is_none());
         // Another question's answers under words that ask.
         assert!(approvable("Do you want to keep the old API?\n\n Which one should go?\n ❯ 1. Yes, the old\n   2. The new\n").is_none());
+    }
+
+    /// Keep It Going types only at the agent's own prompt (Claude Code
+    /// 2.1.322's and Codex 0.167's as Terminal read them): not into a
+    /// chooser, whose Return would choose.
+    #[test]
+    fn at_its_prompt() {
+        let claude = "● Ran it.\n\n✻ Cogitated for 0s · done 7:59 PM\n                     ◐ medium · /effort\n────────────────────────────────\n❯\u{a0}\n────────────────────────────────\n  ⏸ manual mode on · ? for shortcuts\n";
+        assert!(at_prompt(Agent::Claude, claude));
+        assert!(at_prompt(Agent::Claude, "● Done: the tests pass.\n\n╭────────╮\n│ >      │\n╰────────╯\n  ? for shortcuts\n"));
+        let auto_mode = "────────────────────────────────\n Make auto mode your default permission mode?\n\n   Auto mode lets Claude handle permission prompts automatically.\n\n   ❯ Yes, set auto mode as my default permission mode\n     No, keep manual mode\n";
+        assert!(!at_prompt(Agent::Claude, auto_mode));
+        let codex = "• Ran it.\n\n  Worked for 7s • 8:09 PM\n\n\n› Ask Codex to do anything\n\n  gpt-test default · /var/tmp/kig/work\n  ← for agents · ? for shortcuts\n";
+        assert!(at_prompt(Agent::Codex, codex));
+        assert!(!at_prompt(Agent::Codex, "  Would you like to run the following command?\n\n  $ touch x\n\n› 1. Yes, proceed (y)\n  2. No, and tell Codex what to do differently (esc)\n"));
     }
 
     #[test]

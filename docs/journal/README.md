@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-09
 
+### Terminal: each agent's own Keep It Going message
+
+*20:21* — Keep It Going is a submenu in a tab's menu: on or off, the default message, or one of the tab's own (Custom Message…), kept with the tab. Keep It Going and Auto Approve now work with the real Claude Code and Codex: Codex's reasoned questions are answered, Claude Code's blinking marker no longer delays the answer, and nothing is typed into a chooser.
+
+![Terminal: each agent's own Keep It Going message](2026-11-09/202116-terminal-each-agent-s-own-keep-it-going-message.png)
+
 ### Videos and sounds play at 0.25× to 2×
 
 *19:29* — Quick Look and the Viewer have a speed button at the transport's right end: it says the speed and opens the speeds over itself, 0.25× to 2×; > and < step faster and slower, and the Viewer's View menu has them too. The sound keeps its pitch (time-stretched, as SoundTouch does it) and the picture follows it.
