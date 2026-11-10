@@ -4,7 +4,7 @@
 //!
 //!     cargo run --release -p olo-interface --example cards -- [COUNT]
 
-use olo_interface::{Bounds, ControlState, Cx, Element, InteractiveElement as _, IntoElement as _, ParentElement as _, Pixels, Styled as _, View, WindowOptions, control_canvas, div, fill, px, rgb};
+use olo_interface::{Bounds, ControlState, Cx, Element, InteractiveElement as _, IntoElement as _, ParentElement as _, Pixels, Styled as _, View, WindowSpec, control_canvas, div, fill, px, rgb};
 
 struct Cards {
     count: usize,
@@ -77,6 +77,6 @@ fn main() {
     let _ = tracing_subscriber::fmt().with_writer(std::io::stderr).try_init();
     let count = std::env::args().nth(1).and_then(|n| n.parse().ok()).unwrap_or(60);
     olo_interface::run("olo.cards", |app| {
-        app.open_window(WindowOptions::new("Cards", 1200., 800.), move |_| Cards { count, pressed: vec![0; count] });
+        app.open_window(WindowSpec::new("Cards", 1200., 800.), move |_| Cards { count, pressed: vec![0; count] });
     });
 }

@@ -8208,6 +8208,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-kit"
+version = "0.1.0"
+dependencies = [
+ "fast_image_resize",
+ "image",
+ "libc",
+ "olo-app",
+ "olo-crash",
+ "olo-images",
+ "olo-interface",
+ "olo-kit-base",
+ "olo-protocol",
+ "olo-sync",
+ "olo-syntax",
+ "olo-theme",
+ "olo-xdg",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "tracing",
+ "tracing-subscriber",
+ "unicode-segmentation",
+]
+
+[[package]]
 name = "olo-kit-base"
 version = "0.1.0"
 dependencies = [

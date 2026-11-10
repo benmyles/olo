@@ -32,6 +32,19 @@ use crate::{
     view::{AnyView, Child, Cx, View, ViewSlot},
 };
 
+thread_local! {
+    static TEXT: std::cell::RefCell<Option<Arc<WindowTextSystem>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// The calling thread's text system: the program's fonts and glyphs
+/// with this thread's own cache of shaped lines (every window on a
+/// looper shares it, and so does text measured before anything is
+/// drawn: a button sized for its label finds the label shaped already
+/// when it draws it).
+pub fn thread_text_system() -> Arc<WindowTextSystem> {
+    TEXT.with(|t| t.borrow_mut().get_or_insert_with(|| Arc::new(WindowTextSystem::new(display().text_system.clone()))).clone())
+}
+
 /// The windows on a looper (most loopers have one; a window's menus and
 /// tips are windows on its looper too).
 #[derive(Default)]
@@ -50,11 +63,21 @@ pub(crate) struct WindowCore {
     pub(crate) layout: Layout<NodeId>,
     pub(crate) root: Option<NodeId>,
     pub(crate) root_view: Option<ViewId>,
+    /// The view the program knows the window by, if it isn't its first
+    /// (a frame round it): what the window's handle reaches, and what
+    /// is asked whether the window may close.
+    pub(crate) main_view: Option<ViewId>,
+    /// How many times it has committed (told the stage what it shows).
+    pub(crate) commits: u64,
+    /// The window it belongs to (a menu's, a tip's): it closes with it.
+    pub(crate) owner: Option<WindowId>,
     pub(crate) gfx: Gfx,
     /// The window's content, in points.
     pub(crate) size: Size<Pixels>,
     pub(crate) title: SharedString,
     pub(crate) surface_id: Option<u32>,
+    /// The display it's on, in points, if that's known.
+    pub(crate) display: Option<Bounds<Pixels>>,
     pub(crate) dirty_views: Vec<ViewId>,
     pub(crate) paint_queue: Vec<NodeId>,
     /// Texts measured anew in the layout under way: drawn again.
@@ -80,6 +103,8 @@ pub(crate) struct WindowCore {
     /// What a button went down on, until it's let go.
     pub(crate) pressed: Vec<(NodeId, MouseDownEvent)>,
     pub(crate) focus: Option<NodeId>,
+    /// A view to be given the keyboard once it's in the tree.
+    pub(crate) pending_focus: Option<ViewId>,
     /// Nodes that hear the pointer anywhere in the window.
     pub(crate) window_listeners: Vec<NodeId>,
     /// The window has the keyboard.
@@ -89,11 +114,15 @@ pub(crate) struct WindowCore {
     /// take it, and what would happen by default may.
     pub(crate) propagate: bool,
     pub(crate) default_prevented: bool,
+    /// The node whose handler is running now.
+    pub(crate) current: Option<NodeId>,
     pub(crate) next_frame: Vec<NextFrame>,
     /// The pointer's shape, as last asked for.
     pub(crate) cursor: crate::CursorStyle,
     /// Scenes let go of, to record into again.
     pub(crate) recycled: Vec<crate::Scene>,
+    /// What the kit keeps with the window, one of each type.
+    pub(crate) kept: HashMap<std::any::TypeId, Box<dyn std::any::Any>>,
 }
 
 /// A window, as whatever is running on its looper is handed it: the
@@ -103,6 +132,60 @@ pub struct WindowCx<'a> {
     pub(crate) looper: &'a mut Looper,
 }
 
+/// An element in a window's tree, by name: something to draw again
+/// (`WindowCx::repaint_node`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NodeRef(pub(crate) NodeId);
+
+/// A window on the calling looper, as another window there knows it
+/// (the owner of a menu or a tip): reached at once, not by a message.
+pub struct LocalWindow<V> {
+    id: WindowId,
+    _view: std::marker::PhantomData<fn() -> V>,
+}
+
+impl<V> Clone for LocalWindow<V> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<V> Copy for LocalWindow<V> {}
+
+impl<V: View> LocalWindow<V> {
+    pub fn id(&self) -> WindowId {
+        self.id
+    }
+
+    /// The window `cx` is, whose own view is a `V`: for it to hand to a
+    /// window it opens (a submenu, which closes its menu with it).
+    pub fn of(cx: &WindowCx) -> LocalWindow<V> {
+        LocalWindow { id: cx.core.id, _view: std::marker::PhantomData }
+    }
+
+    /// Does something with the window. None if it has closed.
+    pub fn with<R>(&self, cx: &mut WindowCx, f: impl FnOnce(&mut WindowCx) -> R) -> Option<R> {
+        with_window(cx.looper, self.id, f)
+    }
+
+    /// Reaches into the window's own view. None if it has closed.
+    pub fn update<R>(&self, cx: &mut WindowCx, f: impl FnOnce(&mut V, &mut Cx<V>) -> R) -> Option<R> {
+        with_window(cx.looper, self.id, |window| {
+            let view = window.core.main_view.or(window.core.root_view)?;
+            window.update_view(view, f)
+        })
+        .flatten()
+    }
+
+    pub fn close(&self, cx: &mut WindowCx) {
+        self.with(cx, |window| window.close_window());
+    }
+
+    /// Whether it's still open.
+    pub fn is_open(&self, cx: &WindowCx) -> bool {
+        cx.looper.state::<Windows>().is_some_and(|w| w.map.contains_key(&self.id))
+    }
+}
+
 /// Does something with a window on this looper (not from inside
 /// itself: a window that's taking something is out, and None comes
 /// back).
@@ -110,11 +193,24 @@ pub(crate) fn with_window<R>(looper: &mut Looper, id: WindowId, f: impl FnOnce(&
     let mut core = looper.state_mut::<Windows>()?.map.remove(&id)?;
     let result = f(&mut WindowCx { core: &mut core, looper });
     if core.closed {
+        // Its own view hears it's going, while there's still a window
+        // to hear it in.
+        let mut cx = WindowCx { core: &mut core, looper };
+        for view in [cx.core.root_view, cx.core.main_view].into_iter().flatten() {
+            cx.with_any_view(view, |v, id, cx| v.window_closing(id, cx));
+        }
         core.end(looper);
     } else if let Some(windows) = looper.state_mut::<Windows>() {
         windows.map.insert(id, core);
     }
     Some(result)
+}
+
+/// Does something with a window on a looper, by its number (from a
+/// timer or a deferred turn, which have only the looper). None if it
+/// has closed, or is the one that's running now.
+pub fn with_window_on<R>(looper: &mut Looper, id: WindowId, f: impl FnOnce(&mut WindowCx) -> R) -> Option<R> {
+    with_window(looper, id, f)
 }
 
 /// Hands a window what the display thread sent it.
@@ -158,6 +254,14 @@ pub(crate) fn open<V: View>(looper: &mut Looper, id: WindowId, params: WindowPar
     Ok(id)
 }
 
+/// Does something with every window on a looper.
+pub(crate) fn each(looper: &mut Looper, mut f: impl FnMut(&mut WindowCx)) {
+    let ids: Vec<WindowId> = looper.state::<Windows>().map(|w| w.map.keys().copied().collect()).unwrap_or_default();
+    for id in ids {
+        with_window(looper, id, &mut f);
+    }
+}
+
 /// How many windows are on a looper.
 pub(crate) fn count(looper: &Looper) -> usize {
     looper.state::<Windows>().map_or(0, |w| w.map.len())
@@ -178,7 +282,7 @@ fn flush_all(looper: &mut Looper) {
 
 impl WindowCore {
     fn new(id: WindowId, opened: Opened, title: SharedString) -> WindowCore {
-        let text_system = Arc::new(WindowTextSystem::new(display().text_system.clone()));
+        let text_system = thread_text_system();
         let gfx = Gfx {
             scale_factor: opened.scale,
             rem_size: px(16.),
@@ -189,6 +293,7 @@ impl WindowCore {
             glyph_memo: FxHashMap::default(),
             outlines: Default::default(),
             text_style: TextStyle::default(),
+            ext: None,
         };
         WindowCore {
             id,
@@ -197,10 +302,14 @@ impl WindowCore {
             layout: Layout::new(),
             root: None,
             root_view: None,
+            main_view: None,
+            commits: 0,
+            owner: None,
             gfx,
             size: opened.size,
             title,
             surface_id: opened.surface_id,
+            display: opened.display,
             dirty_views: Vec::new(),
             paint_queue: Vec::new(),
             remeasured: Vec::new(),
@@ -215,14 +324,17 @@ impl WindowCore {
             hovered: Vec::new(),
             pressed: Vec::new(),
             focus: None,
+            pending_focus: None,
             window_listeners: Vec::new(),
             active: false,
             closed: false,
             propagate: true,
             default_prevented: false,
+            current: None,
             next_frame: Vec::new(),
             cursor: crate::CursorStyle::Arrow,
             recycled: Vec::new(),
+            kept: HashMap::new(),
         }
     }
 
@@ -258,9 +370,18 @@ impl WindowCore {
         drop(slot);
     }
 
+    /// The first node under `id` (or it) that can have the keyboard.
+    fn first_focusable(&self, id: NodeId) -> Option<NodeId> {
+        let node = self.nodes.get(id)?;
+        if node.inter.as_ref().is_some_and(|i| i.focusable && !i.disabled) {
+            return Some(id);
+        }
+        node.children.iter().find_map(|child| self.first_focusable(*child))
+    }
+
     /// Whether a node is in what the window shows (not in a view that
     /// isn't placed anywhere now).
-    fn attached(&self, id: NodeId) -> bool {
+    pub(crate) fn is_attached(&self, id: NodeId) -> bool {
         let mut at = Some(id);
         while let Some(id) = at {
             if Some(id) == self.root {
@@ -384,9 +505,71 @@ impl WindowCore {
         true
     }
 
+    fn agent_nodes(&self, id: NodeId, clip: Bounds<Pixels>, out: &mut Vec<crate::agent::Node>) {
+        let Some(node) = self.nodes.get(id) else { return };
+        if node.style.visibility == crate::Visibility::Hidden {
+            return;
+        }
+        // What it is itself, if it says.
+        if let Some(inter) = &node.inter
+            && let Some(agent) = &inter.agent
+        {
+            out.push(crate::agent::Node {
+                role: agent.role,
+                name: agent.name.clone(),
+                value: agent.value.clone(),
+                bounds: node.bounds,
+                enabled: !inter.disabled,
+                clickable: !inter.disabled && agent.clickable.unwrap_or(!inter.click.is_empty() || !inter.mouse_down.is_empty()),
+                focused: node.focused,
+                checked: agent.checked,
+                selected: agent.selected,
+                minimized: false,
+                clip: Some(clip),
+            });
+        }
+        // What its drawing said it holds, moved as the drawing is.
+        if let Some(notes) = &node.notes {
+            let moved = point(node.bounds.origin.x - node.painted_at.x, node.bounds.origin.y - node.painted_at.y);
+            for noted in &notes.agent {
+                let mut noted = noted.clone();
+                noted.bounds.origin = noted.bounds.origin + moved;
+                noted.clip = Some(noted.clip.map_or(clip, |c| Bounds { origin: c.origin + moved, size: c.size }.intersect(&clip)));
+                out.push(noted);
+            }
+        }
+        let inner = match node.style.overflow_mask(node.bounds, self.gfx.rem_size) {
+            Some(mask) => clip.intersect(&mask.bounds),
+            None => clip,
+        };
+        for child in &node.children {
+            self.agent_nodes(*child, inner, out);
+        }
+    }
+
+    fn cut_texts(&self, id: NodeId, out: &mut Vec<(Bounds<Pixels>, SharedString)>) {
+        let Some(node) = self.nodes.get(id) else { return };
+        if node.style.visibility == crate::Visibility::Hidden {
+            return;
+        }
+        if let Some(notes) = &node.notes {
+            let moved = point(node.bounds.origin.x - node.painted_at.x, node.bounds.origin.y - node.painted_at.y);
+            out.extend(notes.cuts.iter().map(|(b, full)| (Bounds { origin: b.origin + moved, size: b.size }, full.clone())));
+        }
+        for child in &node.children {
+            self.cut_texts(*child, out);
+        }
+    }
+
     /// The window is gone: what it held goes, and the program hears.
-    fn end(mut self: Box<Self>, _looper: &mut Looper) {
+    fn end(mut self: Box<Self>, looper: &mut Looper) {
         let id = self.id;
+        // What belonged to it (its menus, its tips) goes with it.
+        if let Some(windows) = looper.state_mut::<Windows>() {
+            for core in windows.map.values_mut().filter(|core| core.owner == Some(id)) {
+                core.closed = true;
+            }
+        }
         display().post(move |on| {
             if let Some(stage) = on.stages.remove(&id) {
                 stage.close();
@@ -409,7 +592,7 @@ impl<'a> WindowCx<'a> {
             WindowEvent::Resized { size, scale } => self.resized(size, scale),
             WindowEvent::Active(active) => {
                 self.core.active = active;
-                if let Some(view) = self.core.root_view {
+                if let Some(view) = self.core.main_view.or(self.core.root_view) {
                     self.with_any_view(view, |view, id, cx| view.window_activated(id, active, cx));
                 }
             }
@@ -419,8 +602,9 @@ impl<'a> WindowCx<'a> {
                 }
             }
             WindowEvent::Moved => {}
+            WindowEvent::Display(display) => self.core.display = display,
             WindowEvent::CloseRequested => {
-                let may = match self.core.root_view {
+                let may = match self.core.main_view.or(self.core.root_view) {
                     Some(view) => self.with_any_view(view, |v, id, cx| v.close_requested(id, cx)).unwrap_or(true),
                     None => true,
                 };
@@ -468,6 +652,16 @@ impl<'a> WindowCx<'a> {
         }
     }
 
+    /// What was drawn while something it shows was still coming (a
+    /// picture being decoded: `Painter::paint_unfinished`) is drawn
+    /// again: it has come.
+    pub fn repaint_unfinished(&mut self) {
+        let waiting: Vec<NodeId> = self.core.nodes.iter().filter(|(_, n)| n.notes.as_ref().is_some_and(|notes| notes.unfinished)).map(|(id, _)| id).collect();
+        for id in waiting {
+            self.core.mark_paint(id);
+        }
+    }
+
     /// Everything is drawn again (the look changed: the theme, the
     /// scale, how text is drawn). Not for one thing changing: that's
     /// its view's [`Cx::invalidate`].
@@ -504,7 +698,7 @@ impl<'a> WindowCx<'a> {
             let Some(slot) = self.core.views.get_mut(view) else { continue };
             slot.dirty = false;
             let Some(root) = slot.root else { continue };
-            if !self.core.attached(root) {
+            if !self.core.is_attached(root) {
                 // (Not shown now: it says what it shows when it's placed
                 // again, `place_view`.)
                 continue;
@@ -523,6 +717,10 @@ impl<'a> WindowCx<'a> {
             if self.core.nodes.contains_key(root) {
                 self.core.reconcile(root, element, view);
             }
+        }
+        // The keyboard to a view that asked for it before it was shown.
+        if let Some(view) = self.core.pending_focus.take() {
+            self.focus_view(view);
         }
         let core = &mut *self.core;
         let bodies_done = flushing.elapsed();
@@ -549,7 +747,7 @@ impl<'a> WindowCx<'a> {
         while !core.paint_queue.is_empty() {
             for id in std::mem::take(&mut core.paint_queue) {
                 if core.nodes.get(id).is_some_and(|n| n.paint_dirty) {
-                    if core.attached(id) {
+                    if core.is_attached(id) {
                         core.record(id);
                         recorded.push(id);
                         drew += 1;
@@ -610,6 +808,7 @@ impl<'a> WindowCx<'a> {
             range: Size::default(),
             offset: None,
         }];
+        core.commits += 1;
         let started = core.started.take().unwrap_or(flushing);
         let commit = Commit { size: core.size, scale, items, layers, started, work: started.elapsed(), everything: std::mem::take(&mut core.everything), animating: !core.next_frame.is_empty() };
         let id = core.id;
@@ -658,13 +857,97 @@ impl<'a> WindowCx<'a> {
         self.core.views.get(id)?.view.as_ref()?.as_any().downcast_ref()
     }
 
+    /// The window's own view says what it shows again (something
+    /// outside the window it shows changed: what may be pasted).
+    pub fn invalidate_main_view(&mut self) {
+        if let Some(view) = self.core.main_view.or(self.core.root_view) {
+            self.core.invalidate_view(view);
+        }
+    }
+
+    /// Names the view the program knows the window by (see
+    /// `main_view`): what its `WindowHandle` reaches.
+    pub fn set_main_view<V: View>(&mut self, view: &Child<V>) {
+        self.core.main_view = Some(view.id());
+    }
+
     /// Gives the window's own view a command by name (a menu's, the
     /// palette's, an agent's). Whether it was taken.
     pub fn command(&mut self, command: &str) -> bool {
-        match self.core.root_view {
+        match self.core.main_view.or(self.core.root_view) {
             Some(view) => self.with_any_view(view, |v, id, cx| v.command(id, command, cx)).unwrap_or(false),
             None => false,
         }
+    }
+
+    // ---- The keyboard ----
+
+    /// Gives the keyboard to the first thing in a view that takes it
+    /// (once it's shown, if it isn't yet).
+    pub(crate) fn focus_view(&mut self, view: ViewId) {
+        let found = self.core.views.get(view).and_then(|v| v.root).and_then(|root| self.core.first_focusable(root));
+        match found {
+            Some(node) => self.focus_node(Some(node)),
+            None => {
+                self.core.pending_focus = Some(view);
+                self.core.invalidate_view(view);
+            }
+        }
+    }
+
+    /// Whether the keyboard is with a view or something in it.
+    pub(crate) fn view_has_focus(&self, view: ViewId) -> bool {
+        let Some(root) = self.core.views.get(view).and_then(|v| v.root) else { return false };
+        let mut at = self.core.focus;
+        while let Some(id) = at {
+            if id == root {
+                return true;
+            }
+            at = self.core.nodes.get(id).and_then(|n| n.parent);
+        }
+        false
+    }
+
+    /// Whether the window has a default button now (Return, when what
+    /// has the keyboard lets it go on, clicks it).
+    pub fn has_default_button(&self) -> bool {
+        self.core.window_listeners.iter().any(|id| self.core.nodes.get(*id).and_then(|n| n.inter.as_ref()).is_some_and(|i| i.default_key && !i.disabled) && self.core.is_attached(*id))
+    }
+
+    /// Tells the input method where the text being typed is (its caret,
+    /// in the window): its window opens beside it.
+    pub fn set_ime_position(&mut self, bounds: Bounds<Pixels>) {
+        self.on_display(move |window| window.update_ime_position(bounds));
+    }
+
+    // ---- Windows on this looper ----
+
+    /// Opens a window on this window's own looper, around the view
+    /// `build` makes: what belongs to this window and is told things by
+    /// it at once (a menu, a tip, an alert), where a window of its own
+    /// work gets a looper of its own (`open_window`).
+    pub fn open_window_here<V: View>(&mut self, spec: crate::WindowSpec, build: impl FnOnce(&mut Cx<V>) -> V) -> Option<LocalWindow<V>> {
+        let id = display().next_window_id();
+        let title = spec.title.clone();
+        match open(self.looper, id, spec.params(), title, build) {
+            Ok(id) => {
+                let owner = self.core.id;
+                if let Some(core) = self.looper.state_mut::<Windows>().and_then(|w| w.map.get_mut(&id)) {
+                    core.owner = Some(owner);
+                }
+                Some(LocalWindow { id, _view: std::marker::PhantomData })
+            }
+            Err(e) => {
+                tracing::warn!("a window couldn't be opened: {e:#}");
+                None
+            }
+        }
+    }
+
+    /// Asks for the window to be this size (app_server may give
+    /// another: a window in a tile keeps its tile's).
+    pub fn resize_window(&mut self, size: Size<Pixels>) {
+        self.on_display(move |window| window.resize(size));
     }
 
     // ---- The window ----
@@ -704,6 +987,52 @@ impl<'a> WindowCx<'a> {
         }
     }
 
+    /// Something kept with the window, one of each type (made the first
+    /// time it's asked for): a kit's own state for the window.
+    pub fn window_state<T: Default + 'static>(&mut self) -> &mut T {
+        self.core.kept.entry(std::any::TypeId::of::<T>()).or_insert_with(|| Box::new(T::default())).downcast_mut().expect("kept by its type")
+    }
+
+    /// What the window shows, for agents: everything that says what it
+    /// is, in painting order, where it is now and what shows of it.
+    /// This is the window's tree itself, kept: nothing is drawn for it.
+    pub fn agent_nodes(&self) -> Vec<crate::agent::Node> {
+        let mut out = Vec::new();
+        if let Some(root) = self.core.root {
+            let window = Bounds { origin: Point::default(), size: self.core.size };
+            self.core.agent_nodes(root, window, &mut out);
+        }
+        out
+    }
+
+    /// How many times the window has shown something new (for what
+    /// keeps something worked out from what shows, to know it's stale).
+    pub fn commit_count(&self) -> u64 {
+        self.core.commits
+    }
+
+    /// Every text that doesn't show in full: where what shows of it is,
+    /// and the whole of it.
+    pub fn cut_texts(&self) -> Vec<(Bounds<Pixels>, SharedString)> {
+        let mut out = Vec::new();
+        if let Some(root) = self.core.root {
+            self.core.cut_texts(root, &mut out);
+        }
+        out
+    }
+
+    /// Puts something with the window for drawings to fill in
+    /// (`Painter::ext`): what a layout review collects.
+    pub fn set_paint_ext(&mut self, ext: Option<Box<dyn std::any::Any>>) -> Option<Box<dyn std::any::Any>> {
+        std::mem::replace(&mut self.core.gfx.ext, ext)
+    }
+
+    /// Shows what changed now, not when the looper's queue is next dry
+    /// (for what must read the window as it will be: a review).
+    pub fn flush_now(&mut self) {
+        self.flush();
+    }
+
     /// Whether the window has the keyboard.
     pub fn is_window_active(&self) -> bool {
         self.core.active
@@ -716,6 +1045,11 @@ impl<'a> WindowCx<'a> {
 
     pub fn modifiers(&self) -> Modifiers {
         self.core.modifiers
+    }
+
+    /// The display the window is on, in points (None until it's known).
+    pub fn display_bounds(&self) -> Option<Bounds<Pixels>> {
+        self.core.display
     }
 
     /// The window's `wl_surface` id, which app_server names it by.
@@ -749,6 +1083,32 @@ impl<'a> WindowCx<'a> {
     /// Closes the window.
     pub fn close_window(&mut self) {
         self.core.closed = true;
+    }
+
+    /// Asks to close the window as its tab's close box does: its own
+    /// view is asked first (`View::close_requested`).
+    pub fn request_close(&mut self) {
+        let id = self.core.id;
+        self.looper.defer(move |looper| deliver(looper, id, WindowEvent::CloseRequested));
+    }
+
+    /// Where the element whose handler is running now is, in the window.
+    pub fn listener_bounds(&self) -> Bounds<Pixels> {
+        self.core.current.and_then(|id| self.core.nodes.get(id)).map(|n| n.bounds).unwrap_or_default()
+    }
+
+    /// The element whose handler is running now, to draw it again later
+    /// ([`Self::repaint_node`]) when something it shows from outside the
+    /// tree changes (a menu bar's open title, once its menu has gone).
+    pub fn listener_node(&self) -> Option<NodeRef> {
+        self.core.current.map(NodeRef)
+    }
+
+    /// Draws an element again (if it's still there).
+    pub fn repaint_node(&mut self, node: NodeRef) {
+        if self.core.nodes.contains_key(node.0) {
+            self.core.mark_paint(node.0);
+        }
     }
 
     /// What's being handed round stops here: nothing else gets it.

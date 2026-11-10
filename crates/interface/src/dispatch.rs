@@ -43,7 +43,11 @@ impl WindowCore {
         if node.style.visibility == crate::Visibility::Hidden || !node.reach.contains(&at) {
             return;
         }
-        if node.bounds.contains(&at) && clip.contains(&at) && node.inter.as_ref().is_some_and(|i| i.takes_pointer() && !i.disabled) {
+        if node.bounds.contains(&at)
+            && clip.contains(&at)
+            && (node.style.mouse_cursor.is_some() || node.inter.as_ref().is_some_and(|i| i.takes_pointer()))
+            && !node.inter.as_ref().is_some_and(|i| i.disabled)
+        {
             found.push(id);
         }
         if node.children.is_empty() {
@@ -107,6 +111,20 @@ impl WindowCore {
         }
     }
 
+    /// Everything Tab reaches under a node, in the order it's drawn.
+    pub(crate) fn tab_stops(&self, id: NodeId, stops: &mut Vec<NodeId>) {
+        let Some(node) = self.nodes.get(id) else { return };
+        if node.style.visibility == crate::Visibility::Hidden {
+            return;
+        }
+        if node.inter.as_ref().is_some_and(|i| i.tab_stop && !i.disabled) {
+            stops.push(id);
+        }
+        for child in &node.children {
+            self.tab_stops(*child, stops);
+        }
+    }
+
     /// The path from the window's root down to a node.
     fn path_to(&self, id: NodeId) -> SmallVec<[NodeId; 16]> {
         let mut path: SmallVec<[NodeId; 16]> = SmallVec::new();
@@ -154,7 +172,34 @@ impl WindowCx<'_> {
         }
     }
 
-    pub(crate) fn dispatch_ime(&mut self, _ime: ImeInput) {}
+    /// What an input method did goes to what takes typing where the
+    /// keyboard is.
+    pub(crate) fn dispatch_ime(&mut self, ime: ImeInput) {
+        let event = match ime {
+            ImeInput::InsertText(text) => crate::TextInputEvent::Insert(text),
+            ImeInput::SetMarkedText(text) => crate::TextInputEvent::Mark(text),
+            ImeInput::UnmarkText => crate::TextInputEvent::Unmark,
+            ImeInput::DeleteText => crate::TextInputEvent::DeleteMarked,
+        };
+        self.to_text_input(&event);
+    }
+
+    /// Hands typing to the nearest thing that takes it, from what has
+    /// the keyboard up. Whether anything did.
+    fn to_text_input(&mut self, event: &crate::TextInputEvent) -> bool {
+        let Some(focus) = self.core.focus else { return false };
+        let path = self.core.path_to(focus);
+        for id in path.iter().rev() {
+            let handler = self.core.nodes.get(*id).and_then(|n| n.inter.as_ref()).filter(|i| !i.disabled).and_then(|i| i.text_input.clone());
+            if let Some(handler) = handler {
+                self.core.current = Some(*id);
+                handler(event, self);
+                self.core.current = None;
+                return true;
+            }
+        }
+        false
+    }
 
     /// Works out what the pointer is over now, and tells what it came
     /// over or left.
@@ -170,7 +215,7 @@ impl WindowCx<'_> {
         for id in now.iter().filter(|id| !before.contains(id)) {
             self.set_hovered(*id, true);
         }
-        let cursor = now.iter().find_map(|id| self.core.nodes.get(*id).and_then(|n| n.inter.as_ref()).and_then(|i| i.cursor)).unwrap_or(crate::CursorStyle::Arrow);
+        let cursor = now.iter().find_map(|id| self.core.nodes.get(*id).and_then(|n| n.style.mouse_cursor)).unwrap_or(crate::CursorStyle::Arrow);
         self.set_cursor(cursor);
     }
 
@@ -276,9 +321,11 @@ impl WindowCx<'_> {
             }
             let listeners: SmallVec<[Listener<ClickEvent>; 1]> = self.core.nodes.get(id).and_then(|n| n.inter.as_ref()).map(|i| i.click.clone()).unwrap_or_default();
             let click = ClickEvent::Mouse(MouseClickEvent { down, up: event.clone() });
+            self.core.current = Some(id);
             for listener in listeners {
                 listener(&click, self);
             }
+            self.core.current = None;
         }
     }
 
@@ -298,26 +345,46 @@ impl WindowCx<'_> {
         // Then up from it.
         for id in path.iter().rev() {
             let listeners: SmallVec<[Listener<KeyDownEvent>; 1]> = self.core.nodes.get(*id).and_then(|n| n.inter.as_ref()).map(|i| i.key_down.clone()).unwrap_or_default();
+            self.core.current = Some(*id);
             for listener in listeners {
                 listener(&event, self);
                 if !self.core.propagate {
+                    self.core.current = None;
                     return;
                 }
             }
+            self.core.current = None;
             // Space clicks what has the keyboard, if it takes clicks.
-            if Some(*id) == self.core.focus && event.keystroke.key == "space" && !event.keystroke.modifiers.modified() {
-                let (clicks, bounds): (SmallVec<[Listener<ClickEvent>; 1]>, _) = match self.core.nodes.get(*id) {
-                    Some(node) => (node.inter.as_ref().map(|i| i.click.clone()).unwrap_or_default(), node.bounds),
-                    None => continue,
-                };
-                if !clicks.is_empty() {
-                    let click = ClickEvent::Keyboard(KeyboardClickEvent { button: KeyboardButton::Space, bounds });
-                    for listener in clicks {
-                        listener(&click, self);
-                    }
-                    return;
-                }
+            if Some(*id) == self.core.focus && event.keystroke.key == "space" && !event.keystroke.modifiers.modified() && self.keyboard_click(*id, KeyboardButton::Space) {
+                return;
             }
+        }
+        // Tab moves the keyboard on; Return clicks the window's default
+        // button.
+        let key = event.keystroke.key.as_str();
+        let plain = !event.keystroke.modifiers.control && !event.keystroke.modifiers.alt && !event.keystroke.modifiers.platform;
+        if key == "tab" && plain {
+            self.focus_next(event.keystroke.modifiers.shift);
+            return;
+        } else if key == "enter" && !event.keystroke.modifiers.modified() {
+            let default = self
+                .core
+                .window_listeners
+                .iter()
+                .copied()
+                .find(|id| self.core.nodes.get(*id).and_then(|n| n.inter.as_ref()).is_some_and(|i| i.default_key && !i.disabled) && self.core.is_attached(*id));
+            if let Some(default) = default {
+                self.keyboard_click(default, KeyboardButton::Enter);
+                return;
+            }
+        }
+        // Nothing took it as a key: what it types goes into the text
+        // where the keyboard is.
+        if event.keystroke.modifiers.is_subset_of(&crate::Modifiers::shift())
+            && let Some(typed) = event.keystroke.key_char.clone()
+            && self.to_text_input(&crate::TextInputEvent::Insert(typed))
+        {
+            return;
         }
     }
 
@@ -327,6 +394,7 @@ impl WindowCx<'_> {
         let hovered = self.core.hovered.clone();
         for id in hovered {
             let listeners = self.core.nodes.get(id).and_then(|n| n.inter.as_ref()).map(|i| pick(i)).unwrap_or_default();
+            self.core.current = Some(id);
             for listener in listeners {
                 listener(event, self);
             }
@@ -334,15 +402,58 @@ impl WindowCx<'_> {
                 break;
             }
         }
+        self.core.current = None;
+    }
+
+    /// Clicks a node as the keyboard does (Space on what has it, Return
+    /// on the window's default button). Whether it took the click.
+    fn keyboard_click(&mut self, id: NodeId, button: KeyboardButton) -> bool {
+        let (clicks, bounds): (SmallVec<[Listener<ClickEvent>; 1]>, _) = match self.core.nodes.get(id) {
+            Some(node) if !node.inter.as_ref().is_some_and(|i| i.disabled) => (node.inter.as_ref().map(|i| i.click.clone()).unwrap_or_default(), node.bounds),
+            _ => return false,
+        };
+        if clicks.is_empty() {
+            return false;
+        }
+        let click = ClickEvent::Keyboard(KeyboardClickEvent { button, bounds });
+        self.core.current = Some(id);
+        for listener in clicks {
+            listener(&click, self);
+        }
+        self.core.current = None;
+        true
+    }
+
+    /// Moves the keyboard to the next thing Tab reaches (the one before
+    /// with `back`), round and round, in the order things are drawn.
+    pub fn focus_next(&mut self, back: bool) {
+        let mut stops = Vec::new();
+        if let Some(root) = self.core.root {
+            self.core.tab_stops(root, &mut stops);
+        }
+        if stops.is_empty() {
+            return;
+        }
+        let at = self.core.focus.and_then(|f| stops.iter().position(|s| *s == f));
+        let next = match (at, back) {
+            (Some(i), false) => (i + 1) % stops.len(),
+            (Some(i), true) => (i + stops.len() - 1) % stops.len(),
+            (None, false) => 0,
+            (None, true) => stops.len() - 1,
+        };
+        self.focus_node(Some(stops[next]));
     }
 
     /// Hands something to every node that hears the pointer wherever it
     /// is in the window.
     fn to_window_listeners<E>(&mut self, pick: impl Fn(&Interactivity) -> &SmallVec<[Listener<E>; 1]>, event: &E) {
-        let listeners: Vec<Listener<E>> = self.core.window_listeners.iter().filter_map(|id| self.core.nodes.get(*id).and_then(|n| n.inter.as_ref())).flat_map(|i| pick(i).iter().cloned()).collect();
-        for listener in listeners {
+        let listeners: Vec<(NodeId, Listener<E>)> =
+            self.core.window_listeners.iter().filter_map(|id| Some((*id, self.core.nodes.get(*id)?.inter.as_ref()?))).flat_map(|(id, i)| pick(i).iter().cloned().map(move |l| (id, l))).collect();
+        for (id, listener) in listeners {
+            self.core.current = Some(id);
             listener(event, self);
         }
+        self.core.current = None;
     }
 
     /// Hands something up from what has the keyboard through what holds
@@ -351,6 +462,7 @@ impl WindowCx<'_> {
         let path = self.core.focus.map(|f| self.core.path_to(f)).unwrap_or_else(|| self.core.root.into_iter().collect());
         for id in path.iter().rev() {
             let listeners = self.core.nodes.get(*id).and_then(|n| n.inter.as_ref()).map(|i| pick(i)).unwrap_or_default();
+            self.core.current = Some(*id);
             for listener in listeners {
                 listener(event, self);
             }
@@ -358,6 +470,7 @@ impl WindowCx<'_> {
                 break;
             }
         }
+        self.core.current = None;
     }
 
     /// Gives the keyboard to a node (or to none).
@@ -375,6 +488,21 @@ impl WindowCx<'_> {
             self.core.state_changed(id);
             for listener in listeners {
                 listener(&focused, self);
+            }
+        }
+        // What holds them and counts the keyboard as its own while it's
+        // inside (`focus_within`).
+        let old = from.map(|f| self.core.path_to(f)).unwrap_or_default();
+        let new = self.core.focus.map(|f| self.core.path_to(f)).unwrap_or_default();
+        for id in old.iter().chain(new.iter()) {
+            let Some(node) = self.core.nodes.get_mut(*id) else { continue };
+            if !node.inter.as_ref().is_some_and(|i| i.focus_within) {
+                continue;
+            }
+            let within = new.contains(id);
+            if node.focused != within {
+                node.focused = within;
+                self.core.state_changed(*id);
             }
         }
     }

@@ -65,12 +65,33 @@ pub trait View: Sized + 'static {
     /// The window got the keyboard, or lost it.
     fn window_activated(&mut self, _active: bool, _cx: &mut Cx<Self>) {}
 
+    /// The window is closing (for the window's own view): the last
+    /// thing it's told.
+    fn window_closing(&mut self, _cx: &mut Cx<Self>) {}
+
     /// What to keep of it across an upgrade in place or the display
     /// thread starting again (for the window's own view): handed back to
     /// the program as it starts again.
     fn save_state(&mut self, _cx: &mut Cx<Self>) -> Option<String> {
         None
     }
+}
+
+/// A view that takes typing: BeOS's `BTextView`, as far as the keyboard
+/// goes. Its element says so with `Cx::text_input`.
+pub trait TextInput: View {
+    /// Puts `text` in, in place of the selection (or of what an input
+    /// method was composing).
+    fn insert_text(&mut self, text: &str, cx: &mut Cx<Self>);
+
+    /// Shows `text` as what an input method is composing so far.
+    fn set_marked_text(&mut self, text: &str, cx: &mut Cx<Self>);
+
+    /// What was being composed stays as it is.
+    fn unmark_text(&mut self, cx: &mut Cx<Self>);
+
+    /// What was being composed goes.
+    fn delete_marked_text(&mut self, cx: &mut Cx<Self>);
 }
 
 /// A view of any type, as the window keeps it.
@@ -81,6 +102,7 @@ pub(crate) trait AnyView: 'static {
     fn command(&mut self, id: ViewId, command: &str, cx: &mut WindowCx) -> bool;
     fn close_requested(&mut self, id: ViewId, cx: &mut WindowCx) -> bool;
     fn window_activated(&mut self, id: ViewId, active: bool, cx: &mut WindowCx);
+    fn window_closing(&mut self, id: ViewId, cx: &mut WindowCx);
     fn save_state(&mut self, id: ViewId, cx: &mut WindowCx) -> Option<String>;
     fn type_name(&self) -> &'static str;
 }
@@ -112,6 +134,10 @@ impl<V: View> AnyView for V {
 
     fn save_state(&mut self, id: ViewId, cx: &mut WindowCx) -> Option<String> {
         View::save_state(self, &mut Cx::new(cx, id))
+    }
+
+    fn window_closing(&mut self, id: ViewId, cx: &mut WindowCx) {
+        View::window_closing(self, &mut Cx::new(cx, id))
     }
 
     fn type_name(&self) -> &'static str {
@@ -180,6 +206,16 @@ impl<V: View> Child<V> {
         self.downgrade().send(cx, message)
     }
 
+    /// Gives it the keyboard (the first thing in it that takes it).
+    pub fn focus(&self, cx: &mut WindowCx) {
+        cx.focus_view(self.id);
+    }
+
+    /// Whether it, or something in it, has the keyboard.
+    pub fn is_focused(&self, cx: &WindowCx) -> bool {
+        cx.view_has_focus(self.id)
+    }
+
     /// A handle that doesn't own it: to send it messages with.
     pub fn downgrade(&self) -> ViewRef<V> {
         ViewRef { id: self.id, window: self.window, _view: PhantomData }
@@ -187,6 +223,42 @@ impl<V: View> Child<V> {
 
     pub(crate) fn id(&self) -> ViewId {
         self.id
+    }
+}
+
+/// A [`Child`] of whatever type: owned the same way, placed the same
+/// way, for an owner that needn't know what it holds (a window's frame
+/// round the program's view).
+pub struct AnyChild {
+    id: ViewId,
+    window: WindowId,
+}
+
+impl AnyChild {
+    /// Where it goes in its owner's `body`.
+    pub fn element(&self) -> Element {
+        Element::new(Kind::View(self.id))
+    }
+}
+
+impl<V: View> From<Child<V>> for AnyChild {
+    fn from(child: Child<V>) -> AnyChild {
+        let any = AnyChild { id: child.id, window: child.window };
+        // (The view goes on, under its new handle.)
+        std::mem::forget(child);
+        any
+    }
+}
+
+impl Drop for AnyChild {
+    fn drop(&mut self) {
+        let _ = DROPPED.try_with(|d| d.borrow_mut().push((self.window, self.id)));
+    }
+}
+
+impl crate::IntoElement for &AnyChild {
+    fn into_element(self) -> Element {
+        self.element()
     }
 }
 
@@ -237,6 +309,16 @@ impl<V: View> ViewRef<V> {
     pub fn update(&self, cx: &mut WindowCx, f: impl FnOnce(&mut V, &mut Cx<V>) + 'static) {
         let (window, view) = (self.window, self.id);
         cx.looper.defer(move |looper| deliver_to_view::<V>(looper, window, view, f));
+    }
+
+    /// Gives it the keyboard (the first thing in it that takes it).
+    pub fn focus(&self, cx: &mut WindowCx) {
+        cx.focus_view(self.id);
+    }
+
+    /// Whether it, or something in it, has the keyboard.
+    pub fn is_focused(&self, cx: &WindowCx) -> bool {
+        cx.view_has_focus(self.id)
     }
 
     /// A messenger to the view, for other threads (a worker's results).
@@ -318,7 +400,7 @@ impl<'a, 'b, V: View> Cx<'a, 'b, V> {
     }
 
     /// A handler that hands what happened to this view.
-    pub fn listener<E: 'static>(&self, f: impl Fn(&mut V, &E, &mut Cx<V>) + 'static) -> impl Fn(&E, &mut WindowCx) + 'static {
+    pub fn listener<E: ?Sized + 'static>(&self, f: impl Fn(&mut V, &E, &mut Cx<V>) + 'static) -> impl Fn(&E, &mut WindowCx) + 'static {
         let view = self.view;
         move |event, cx| {
             cx.update_view::<V, _>(view, |this, cx| f(this, event, cx));
@@ -327,7 +409,7 @@ impl<'a, 'b, V: View> Cx<'a, 'b, V> {
 
     /// A handler that sends this view `message` whatever happened: a
     /// button's `on_click(cx.msg(Msg::Save))`.
-    pub fn msg<E: 'static>(&self, message: V::Message) -> impl Fn(&E, &mut WindowCx) + 'static
+    pub fn msg<E: ?Sized + 'static>(&self, message: V::Message) -> impl Fn(&E, &mut WindowCx) + 'static
     where
         V::Message: Clone,
     {
@@ -340,12 +422,41 @@ impl<'a, 'b, V: View> Cx<'a, 'b, V> {
 
     /// A handler that sends this view the message `f` makes of what
     /// happened.
-    pub fn msg_with<E: 'static>(&self, f: impl Fn(&E) -> V::Message + 'static) -> impl Fn(&E, &mut WindowCx) + 'static {
+    pub fn msg_with<E: ?Sized + 'static>(&self, f: impl Fn(&E) -> V::Message + 'static) -> impl Fn(&E, &mut WindowCx) + 'static {
         let view = self.view;
         move |event, cx| {
             let message = f(event);
             cx.update_view::<V, _>(view, |this, cx| this.message(message, cx));
         }
+    }
+
+    /// A handler for an element that takes typing for this view
+    /// (`InteractiveElement::on_text_input`).
+    pub fn text_input(&self) -> impl Fn(&crate::TextInputEvent, &mut WindowCx) + 'static
+    where
+        V: TextInput,
+    {
+        let view = self.view;
+        move |event, cx| {
+            cx.update_view::<V, _>(view, |this, cx| match event {
+                crate::TextInputEvent::Insert(text) => this.insert_text(text, cx),
+                crate::TextInputEvent::Mark(text) => this.set_marked_text(text, cx),
+                crate::TextInputEvent::Unmark => this.unmark_text(cx),
+                crate::TextInputEvent::DeleteMarked => this.delete_marked_text(cx),
+            });
+        }
+    }
+
+    /// Gives this view the keyboard: the first thing in it that takes
+    /// it. (A view not shown yet takes it when it is.)
+    pub fn focus(&mut self) {
+        let view = self.view;
+        self.window.focus_view(view);
+    }
+
+    /// Whether this view, or something in it, has the keyboard.
+    pub fn is_focused(&self) -> bool {
+        self.window.view_has_focus(self.view)
     }
 
     /// A drawing of this view's (an element for its `body`): `paint` is

@@ -174,7 +174,13 @@ impl Display {
                 client.with_common(|common| {
                     common.callbacks.displays_changed = Some(Box::new(|| display().tell(DisplayEvent::DisplaysChanged)));
                     common.callbacks.compositor_lost = Some(Box::new(|| display().tell(DisplayEvent::CompositorLost)));
-                    common.callbacks.clipboard_changed = Some(Box::new(|| display().tell(DisplayEvent::ClipboardChanged)));
+                    common.callbacks.clipboard_changed = Some(Box::new(|| {
+                        // (Looked at once this turn is over: what told us may be in the middle of it.)
+                        display().post(|on| {
+                            crate::clipboard::refresh(on);
+                            display().tell(DisplayEvent::ClipboardChanged);
+                        });
+                    }));
                     common.callbacks.keyboard_layout_change = Some(Box::new(|| display().tell(DisplayEvent::KeyboardLayoutChanged)));
                 });
                 let _ = ready_tx.send((commands, text_system, headless));
