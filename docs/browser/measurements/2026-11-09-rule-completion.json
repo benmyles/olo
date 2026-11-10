@@ -1,0 +1,149 @@
+{
+  "baseline_commit": "8fcbcd40",
+  "scope": "Background rule result ownership and waiter notification; no website acceptance or Chrome performance claim.",
+  "tests": {
+    "release_web_passed": 460,
+    "release_browser_js_passed": 84,
+    "failed": 0,
+    "existing_ignored": 2,
+    "parallel": true
+  },
+  "workspace_release_build": "passed",
+  "probe": [
+    {
+      "other_pages": 0,
+      "baseline": {
+        "samples": 400,
+        "median_us": {
+          "request_us": 717.0755,
+          "ready_us": 2830.171,
+          "apply_us": 2888.861
+        },
+        "retries": 0,
+        "process_cpu_ms_per_round": 5.767326732673268,
+        "max_rss_kib": [
+          15340,
+          15664
+        ]
+      },
+      "candidate": {
+        "samples": 400,
+        "median_us": {
+          "request_us": 714.1465000000001,
+          "ready_us": 2867.4505,
+          "apply_us": 2877.7605000000003
+        },
+        "retries": 0,
+        "process_cpu_ms_per_round": 5.742574257425742,
+        "max_rss_kib": [
+          15344,
+          15232
+        ]
+      }
+    },
+    {
+      "other_pages": 8,
+      "baseline": {
+        "samples": 400,
+        "median_us": {
+          "request_us": 622.303,
+          "ready_us": 2410.035,
+          "apply_us": 4935.300499999999
+        },
+        "retries": 400,
+        "process_cpu_ms_per_round": 9.925742574257425,
+        "max_rss_kib": [
+          12384,
+          12288
+        ]
+      },
+      "candidate": {
+        "samples": 400,
+        "median_us": {
+          "request_us": 595.2204999999999,
+          "ready_us": 2361.0425,
+          "apply_us": 2170.307
+        },
+        "retries": 0,
+        "process_cpu_ms_per_round": 6.584158415841584,
+        "max_rss_kib": [
+          12496,
+          12468
+        ]
+      }
+    }
+  ],
+  "ordinary_control": {
+    "baseline": {
+      "cpu_ms_per_reload": 34.285714285714285,
+      "ready_ms": 25.5,
+      "idle_cpu": [
+        0.0,
+        0.0
+      ],
+      "idle_wakeups": [
+        0,
+        0
+      ],
+      "idle_frames": [
+        0,
+        0
+      ],
+      "scroll_first_move_ms": {
+        "drag": 28.45,
+        "wheel": 9.05
+      },
+      "slowest_draw_ms": 1.3,
+      "hitches": 4,
+      "compilers_at_boundaries": true
+    },
+    "candidate": {
+      "cpu_ms_per_reload": 31.428571428571427,
+      "ready_ms": 24.5,
+      "idle_cpu": [
+        0.0,
+        0.0
+      ],
+      "idle_wakeups": [
+        0,
+        0
+      ],
+      "idle_frames": [
+        0,
+        0
+      ],
+      "scroll_first_move_ms": {
+        "drag": 28.5,
+        "wheel": 8.95
+      },
+      "slowest_draw_ms": 2.04,
+      "hitches": 0,
+      "compilers_at_boundaries": false
+    }
+  },
+  "visuals": {
+    "paired_images": 15,
+    "reviews": 30,
+    "findings": 0,
+    "different_pixels": 0,
+    "modes": [
+      "light",
+      "dark",
+      "night"
+    ],
+    "scales": [
+      1,
+      1.25,
+      1.5,
+      1.75,
+      2
+    ],
+    "window_x": 49
+  },
+  "limitations": [
+    "Initial probe overlapped screenshot pixel comparison; retained separately. Final probe ran after it, with no compiler observed at boundaries.",
+    "Other builds appeared during baseline ordinary-control samples; its timing differences are not causal speedup evidence.",
+    "Wake latency is CPU worker completion, not presentation latency.",
+    "Background job cancellation and concurrency limits remain outstanding."
+  ]
+}

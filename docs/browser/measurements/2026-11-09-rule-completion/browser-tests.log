@@ -1,0 +1,578 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/ben/worktrees/olo/browser/smithay/smithay/Cargo.toml
+workspace: /home/ben/worktrees/olo/browser/Cargo.toml
+    Blocking waiting for file lock on build directory
+   Compiling olo-web v0.1.0 (/home/ben/worktrees/olo/browser/crates/web)
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+  --> gpui/gpui/src/platform/linux/dispatcher.rs:51:18
+   |
+51 |                 .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+   |                  ^^^^^^^^^^^^
+   |
+   = note: `#[warn(deprecated)]` on by default
+help: replace the use of the deprecated method
+   |
+51 -                 .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+51 +                 .try_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+   |
+
+warning: method `holds_clipboard` is never used
+   --> gpui/gpui/src/platform.rs:269:8
+    |
+162 | pub(crate) trait Platform: 'static {
+    |                  -------- method in this trait
+...
+269 |     fn holds_clipboard(&self) -> bool {
+    |        ^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `selected_text_range` is never used
+    --> gpui/gpui/src/platform.rs:1279:8
+     |
+1274 | impl PlatformInputHandler {
+     | ------------------------- method in this implementation
+...
+1279 |     fn selected_text_range(&mut self, ignore_disabled_input: bool) -> Option<UTF16Selection> {
+     |        ^^^^^^^^^^^^^^^^^^^
+
+warning: method `holds_clipboard` is never used
+  --> gpui/gpui/src/platform/linux/platform.rs:80:8
+   |
+46 | pub trait LinuxClient {
+   |           ----------- method in this trait
+...
+80 |     fn holds_clipboard(&self) -> bool {
+   |        ^^^^^^^^^^^^^^^
+
+warning: field `italic` is never read
+  --> gpui/gpui/src/platform/linux/text_system.rs:38:5
+   |
+34 | struct Source {
+   |        ------ field in this struct
+...
+38 |     italic: bool,
+   |     ^^^^^^
+
+warning: methods `set_theme` and `set_size` are never used
+  --> gpui/gpui/src/platform/linux/wayland/cursor.rs:76:12
+   |
+33 | impl Cursor {
+   | ----------- methods in this implementation
+...
+76 |     pub fn set_theme(&mut self, theme_name: String) {
+   |            ^^^^^^^^^
+...
+89 |     pub fn set_size(&mut self, size: u32) {
+   |            ^^^^^^^^
+
+warning: method `set_appearance` is never used
+    --> gpui/gpui/src/platform/linux/wayland/window.rs:1937:12
+     |
+1002 | impl WaylandWindowStatePtr {
+     | -------------------------- method in this implementation
+...
+1937 |     pub fn set_appearance(&mut self, appearance: WindowAppearance) {
+     |            ^^^^^^^^^^^^^^
+
+warning: associated function `ahead` is never used
+  --> gpui/gpui/src/platform/blade/blade_context.rs:53:12
+   |
+49 | impl BladeContext {
+   | ----------------- associated function in this implementation
+...
+53 |     pub fn ahead() -> std::thread::JoinHandle<anyhow::Result<BladeContext>> {
+   |            ^^^^^
+
+warning: `gpui` (lib) generated 8 warnings (run `cargo fix --lib -p gpui` to apply 1 suggestion)
+warning: unused import: `crate::mp4box::*`
+ --> vendor/mp4/src/writer.rs:4:5
+  |
+4 | use crate::mp4box::*;
+  |     ^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: use of deprecated constant `std::u32::MAX`: replaced by the `MAX` associated constant on this type
+   --> vendor/mp4/src/mp4box/mp4a.rs:269:32
+    |
+269 |     if size as u64 > std::u32::MAX as u64 {
+    |                                ^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated constant `std::u32::MAX`: replaced by the `MAX` associated constant on this type
+   --> vendor/mp4/src/writer.rs:120:34
+    |
+120 |         if mdat_size > std::u32::MAX as u64 {
+    |                                  ^^^
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/types.rs:692:14
+    |
+692 |     fn title(&self) -> Option<Cow<str>>;
+    |              ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |              |
+    |              the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+    = note: `#[warn(mismatched_lifetime_syntaxes)]` on by default
+help: use `'_` for type paths
+    |
+692 |     fn title(&self) -> Option<Cow<'_, str>>;
+    |                                   +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/types.rs:698:16
+    |
+698 |     fn summary(&self) -> Option<Cow<str>>;
+    |                ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |                |
+    |                the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+698 |     fn summary(&self) -> Option<Cow<'_, str>>;
+    |                                     +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/types.rs:702:14
+    |
+702 |     fn title(&self) -> Option<Cow<str>> {
+    |              ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |              |
+    |              the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+702 |     fn title(&self) -> Option<Cow<'_, str>> {
+    |                                   +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/types.rs:714:16
+    |
+714 |     fn summary(&self) -> Option<Cow<str>> {
+    |                ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |                |
+    |                the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+714 |     fn summary(&self) -> Option<Cow<'_, str>> {
+    |                                     +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/types.rs:720:14
+    |
+720 |     fn title(&self) -> Option<Cow<str>> {
+    |              ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |              |
+    |              the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+720 |     fn title(&self) -> Option<Cow<'_, str>> {
+    |                                   +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/types.rs:732:16
+    |
+732 |     fn summary(&self) -> Option<Cow<str>> {
+    |                ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |                |
+    |                the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+732 |     fn summary(&self) -> Option<Cow<'_, str>> {
+    |                                     +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/mp4box/ilst.rs:169:14
+    |
+169 |     fn title(&self) -> Option<Cow<str>> {
+    |              ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |              |
+    |              the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+169 |     fn title(&self) -> Option<Cow<'_, str>> {
+    |                                   +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/mp4box/ilst.rs:181:16
+    |
+181 |     fn summary(&self) -> Option<Cow<str>> {
+    |                ^^^^^            ^^^^^^^^ the same lifetime is hidden here
+    |                |
+    |                the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+181 |     fn summary(&self) -> Option<Cow<'_, str>> {
+    |                                     +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> vendor/mp4/src/mp4box/ilst.rs:190:22
+    |
+190 | fn item_to_str(item: &IlstItemBox) -> Cow<str> {
+    |                      ^^^^^^^^^^^^     ^^^^^^^^ the same lifetime is hidden here
+    |                      |
+    |                      the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+190 | fn item_to_str(item: &IlstItemBox) -> Cow<'_, str> {
+    |                                           +++
+
+warning: `mp4` (lib) generated 12 warnings (run `cargo fix --lib -p mp4` to apply 10 suggestions)
+   Compiling olo-js v0.1.0 (/home/ben/worktrees/olo/browser/crates/js)
+warning: unnecessary parentheses around closure body
+  --> crates/web/src/chunked.rs:55:143
+   |
+55 | ...e_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+   |                                                    ^                              ^
+   |
+   = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+   |
+55 -         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+55 +         self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| i * CHUNK..i * CHUNK + c.len())
+   |
+
+warning: unused attribute `allow`
+  --> crates/web/src/paint/image.rs:44:1
+   |
+44 | #[allow(clippy::too_many_arguments)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: the built-in attribute `allow` will be ignored, since it's applied to the macro invocation `thread_local`
+  --> crates/web/src/paint/image.rs:45:1
+   |
+45 | thread_local! {
+   | ^^^^^^^^^^^^
+   = note: `#[warn(unused_attributes)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `size` is never read
+   --> crates/web/src/css/properties/font.rs:274:20
+    |
+274 |     let mut size = None;
+    |                    ^^^^ this value is reassigned later and never used
+...
+353 |     size = Some(super::parse::component(Property::FontSize.grammar(), c, limits, cancelled)?);
+    |     ---- `size` is overwritten here before the previous value is read
+    |
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `family` is never read
+   --> crates/web/src/css/properties/font.rs:276:22
+    |
+276 |     let mut family = None;
+    |                      ^^^^ this value is reassigned later and never used
+...
+363 |     family = Some(Families::parse(parts[i..].iter().copied(), cancelled)?);
+    |     ------ `family` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+   --> crates/web/src/css/style/job.rs:536:25
+    |
+536 |                     let mut walk = |root: NodeId, reach: &selectors::Reach, nodes: &mut crate::dom::NodeSet| {
+    |                         ----^^^^
+    |                         |
+    |                         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates/web/src/page/interaction.rs:38:13
+   |
+38 |         let mut differ = |a: Option<NodeId>, b: Option<NodeId>, state: State, out: &mut Vec<(NodeId, &'static str)>| {
+   |             ----^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: value assigned to `path` is never read
+   --> crates/web/src/page.rs:837:24
+    |
+837 |         let mut path = String::new();
+    |                        ^^^^^^^^^^^^^ this value is reassigned later and never used
+...
+847 |                             path = format!("patched in place, {} elements", nodes.len());
+    |                             ---- `path` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+    --> crates/web/src/page.rs:3867:13
+     |
+3867 |         let mut subject = |a: crate::dom::NodeId, reached: &mut Vec<crate::dom::NodeId>| {
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: value assigned to `skip` is never read
+    --> crates/web/src/svg/viewport.rs:949:24
+     |
+ 949 |         let mut skip = false;
+     |                        ^^^^^ this value is reassigned later and never used
+...
+1019 |             skip = true;
+     |             ----------- `skip` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+  --> crates/web/src/text/prepare.rs:79:23
+   |
+79 |         let single = |mut it: &mut dyn Iterator<Item = char>| {
+   |                       ----^^
+   |                       |
+   |                       help: remove this `mut`
+
+warning: method `get_mut` is never used
+  --> crates/web/src/chunked.rs:57:19
+   |
+22 | impl<T: Clone> Chunked<T> {
+   | ------------------------- method in this implementation
+...
+57 |     pub(crate) fn get_mut(&mut self, i: usize) -> Option<&mut T> {
+   |                   ^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated function `new` is never used
+  --> crates/web/src/paint/index.rs:16:12
+   |
+15 | impl Index {
+   | ---------- associated function in this implementation
+16 |     pub fn new(commands: &[Command], transforms: &[[f64; 6]], cancel: Option<&AtomicBool>) -> Result<Self> {
+   |            ^^^
+
+warning: variant `Quad` is never constructed
+   --> crates/web/src/svg/script.rs:258:5
+    |
+256 | enum Seg {
+    |      --- variant in this enum
+257 |     Line(F, F),
+258 |     Quad([F; 3]),
+    |     ^^^^
+    |
+    = note: `Seg` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: unused doc comment
+    --> crates/js/src/lib.rs:3322:1
+     |
+3322 | /// Every `__olo.*` function: `args.data()` names it.
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ rustdoc does not generate documentation for macro invocations
+     |
+     = help: to document an item produced by a macro, the macro must produce the documentation as part of its expansion
+     = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `Shader`
+ --> crates/js/src/canvas.rs:9:104
+  |
+9 | use tiny_skia::{BlendMode, FillRule, LineCap, LineJoin, Mask, Paint, Path, PathBuilder, Pixmap, Point, Shader, Stroke, Transform};
+  |                                                                                                        ^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `text` is never read
+    --> crates/js/src/lib.rs:2624:20
+     |
+2624 |     let mut text = String::new();
+     |                    ^^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2633 |         text = if name.is_empty() {
+     |         ---- `text` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: calls to `std::mem::drop` with a reference instead of an owned value does nothing
+    --> crates/js/src/lib.rs:2260:13
+     |
+2260 |             drop(s);
+     |             ^^^^^-^
+     |                  |
+     |                  argument has type `&mut State`
+     |
+     = note: `#[warn(dropping_references)]` on by default
+help: use `let _ = ...` to ignore the expression or result
+     |
+2260 -             drop(s);
+2260 +             let _ = s;
+     |
+
+warning: calls to `std::mem::drop` with a reference instead of an owned value does nothing
+    --> crates/js/src/lib.rs:4270:17
+     |
+4270 |                 drop(s);
+     |                 ^^^^^-^
+     |                      |
+     |                      argument has type `&mut State`
+     |
+help: use `let _ = ...` to ignore the expression or result
+     |
+4270 -                 drop(s);
+4270 +                 let _ = s;
+     |
+
+warning: `olo-web` (lib) generated 13 warnings (run `cargo fix --lib -p olo-web` to apply 6 suggestions)
+warning: `olo-js` (lib) generated 5 warnings (run `cargo fix --lib -p olo-js` to apply 1 suggestion)
+   Compiling olo-browser v0.1.0 (/home/ben/worktrees/olo/browser/apps/browser)
+warning: `olo-js` (lib test) generated 5 warnings (5 duplicates)
+warning: unnecessary parentheses around type
+   --> apps/browser/src/worker.rs:755:28
+    |
+755 |     paint_identity: Option<(((usize, u64), u32, u32, u64))>,
+    |                            ^                             ^
+    |
+    = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+    |
+755 -     paint_identity: Option<(((usize, u64), u32, u32, u64))>,
+755 +     paint_identity: Option<((usize, u64), u32, u32, u64)>,
+    |
+
+warning: variable does not need to be mutable
+   --> apps/browser/src/frames.rs:369:21
+    |
+369 |                 let mut take = |m: Message, realm: &mut olo_js::Realm| match m {
+    |                     ----^^^^
+    |                     |
+    |                     help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `0` is never read
+   --> apps/browser/src/worker.rs:396:16
+    |
+396 |     SelectMenu(u64, SelectMenu),
+    |     ---------- ^^^
+    |     |
+    |     field in this variant
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+help: consider changing the field to be of unit type to suppress this warning while preserving the field numbering, or remove the field
+    |
+396 -     SelectMenu(u64, SelectMenu),
+396 +     SelectMenu((), SelectMenu),
+    |
+
+warning: `olo-browser` (bin "olo-browser" test) generated 3 warnings (run `cargo fix --bin "olo-browser" -p olo-browser --tests` to apply 2 suggestions)
+    Finished `release` profile [optimized + debuginfo] target(s) in 1m 38s
+warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+     Running unittests src/main.rs (target/release/deps/olo_browser-7fe9e5da408698b8)
+
+running 20 tests
+test cookies::tests::a_public_suffix_or_another_domain_is_refused ... ok
+test cookies::tests::cookies_go_back_by_domain_path_and_scheme ... ok
+test navigation::tests::navigation_index_cost ... ignored, Release component measurement, run explicitly with --ignored --nocapture
+test cookies::tests::cookie_dates_parse_as_browsers_read_them ... ok
+test links::tests::native_link_resolution_descendants_schemes_and_capabilities ... ok
+test navigation::tests::fragments_follow_raw_then_decoded_id_and_name_precedence ... ok
+test cookies::tests::samesite_holds_cross_site_requests ... ok
+test network::tests::referrers_follow_strict_origin_when_cross_origin ... ok
+test worker::tests::extreme_document_scroll_still_leaves_room_for_viewport_and_tile ... ok
+test history::tests::branching_redirects_scroll_groups_and_restore ... ok
+test network::tests::schemes_mixed_content_credentials_and_decoded_limits ... ok
+test navigation::tests::keyboard_targets_include_offscreen_links_with_tabindex_and_inert_filtering ... ok
+test worker::tests::viewport_restyle_reuses_dom_and_compiled_external_sheets ... ok
+test network::tests::document_redirect_cannot_enter_the_local_filesystem ... ok
+test network::tests::cancellation_wakes_a_pending_response ... ok
+test network::tests::image_data_and_http_use_bounded_worker_decode ... ok
+test network::tests::wrong_css_mime_is_rejected ... ok
+test network::tests::redirect_final_url_charset_css_and_plain_text ... ok
+test network::tests::compressed_bodies_are_decoded_and_the_decoded_size_is_bounded ... ok
+test network::tests::resources_fetched_ahead_go_together_once_and_a_load_joins_them ... ok
+
+test result: ok. 19 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.22s
+
+     Running unittests src/lib.rs (target/release/deps/olo_js-cb7ba1daf94f90d3)
+
+running 5 tests
+test crypto::tests::digests_and_hmac_match_their_known_answers ... ok
+test rtc::tests::a_binding_response_gives_its_mapped_address ... ok
+test modules::tests::a_later_map_adds_only_what_earlier_ones_left_unmapped ... ok
+test modules::tests::bare_names_prefixes_and_scopes_resolve_as_html_says ... ok
+test rtc::tests::a_certificate_is_chromes_kind ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/dom.rs (target/release/deps/dom-08736b5c82c1b553)
+
+running 60 tests
+test an_elements_load_event_never_reaches_the_window ... ok
+test a_logged_error_s_stack_is_not_formatted ... ok
+test builtins_keep_their_own_string_tags ... ok
+test an_images_superseded_load_neither_shows_nor_fires ... ok
+test canvas_to_data_url_encodes_what_was_drawn ... ok
+test a_box_a_person_scrolls_tells_its_scripts ... ok
+test an_upgraded_elements_observed_attributes_reach_its_callback ... ok
+test a_picture_a_script_makes_or_changes_loads_its_image ... ok
+test cross_origin_requests_follow_cors ... ok
+test a_peer_connection_offers_and_gathers_as_chrome_s ... ok
+test a_clicked_link_is_followed_unless_the_page_cancels_it ... ok
+test current_script_is_the_running_classic_scripts_element ... ok
+test dialogs_open_close_and_summaries_toggle_their_details ... ok
+test an_about_blank_iframe_is_a_window_of_its_own ... ok
+test declarative_shadow_roots_are_their_hosts_shadow_roots ... ok
+test document_position_and_custom_elements_without_walking_everything ... ok
+test errors_are_reported_not_fatal ... ok
+test documents_have_element_children_and_iframes_a_sandbox_list ... ok
+test idle_callbacks_run_at_the_next_idle_moment ... ok
+test ids_and_names_follow_the_document ... ok
+test list_integer_reflection_matches_chrome ... ok
+test match_media_answers_whole_queries_as_the_sheets_do ... ok
+test listeners_without_this_go_to_the_global_and_signals_remove_them ... ok
+test modules_and_deferred_scripts_run_after_the_parser_blocking_ones ... ok
+test modules_import_bare_names_through_the_import_map ... ok
+test media_elements_play_through_the_browsers_player ... ok
+test scripts_in_order_then_async ... ok
+test observer_operations_are_enumerable_without_changing_ecmascript_builtins ... ok
+test dom_page ... ok
+test page_images_fire_their_load_or_error_before_the_windows_load ... ok
+test posted_tasks_keep_their_delay_signal_and_result ... ok
+test frames_post_messages_through_the_browser ... ok
+test page_functions_read_as_their_source ... ok
+test pressing_a_select_asks_for_its_menu_and_a_choice_is_the_persons ... ok
+test responses_stream_their_bodies_and_take_streams ... ok
+test stacks_show_the_page_s_frames_only ... ok
+test ranges_hold_cut_and_measure ... ok
+test raw_text_elements_serialize_their_text_as_it_is ... ok
+test slots_tell_when_what_they_are_handed_changes ... ok
+test response_headers_are_shown_as_fetch_filters_them ... ok
+test svg_elements_take_their_geometry_methods ... ok
+test style_answers_in_for_the_properties_the_engine_knows ... ok
+test streamed_text_decodes_across_chunks_and_through_pipes ... ok
+test text_and_comments_have_element_siblings ... ok
+test style_sheets_take_inserted_rules_and_write_them_back ... ok
+test text_comments_and_fragments_are_constructed ... ok
+test the_page_is_not_a_touch_device ... ok
+test the_console_runs_none_of_the_page_s_code ... ok
+test the_parsers_stylesheet_links_fire_load ... ok
+test token_lists_take_a_string_as_their_value ... ok
+test the_persons_input_is_trusted_and_uncaught_errors_reach_error_listeners ... ok
+test the_battery_is_read ... ok
+test tree_walkers_step_in_document_order_skip_and_reject_and_define_reaches_shadow_trees ... ok
+test the_dom_is_shaped_as_chrome_s ... ok
+test web_crypto_digests_and_signs_and_form_data_bodies_are_multipart ... ok
+test typing_ticking_and_submitting_a_form ... ok
+test window_post_message_reaches_its_own_window ... ok
+test the_window_is_shaped_as_chrome_s ... ok
+test web_crypto_encrypts_and_derives_keys ... ok
+test unhandled_rejections_are_reported_and_cancellable ... ok
+
+test result: ok. 60 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s
+
+   Doc-tests olo_js
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

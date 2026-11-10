@@ -1,0 +1,92 @@
+[
+  {
+    "name": "dark-1.25.png",
+    "before": "19301fd7b005191451cc0c62e945f9d37f3a5aa3e6380f21de1c8f6277027d52",
+    "after": "19301fd7b005191451cc0c62e945f9d37f3a5aa3e6380f21de1c8f6277027d52",
+    "different_pixels": 0
+  },
+  {
+    "name": "dark-1.5.png",
+    "before": "d8f21b400df29beb21788c7a653192ffdfb8135f77d958578e2c5bcc23d05959",
+    "after": "d8f21b400df29beb21788c7a653192ffdfb8135f77d958578e2c5bcc23d05959",
+    "different_pixels": 0
+  },
+  {
+    "name": "dark-1.75.png",
+    "before": "cc446be499340bf8dbeb9377a97809386e08639eb91052a59c4b2cf25dc570b4",
+    "after": "cc446be499340bf8dbeb9377a97809386e08639eb91052a59c4b2cf25dc570b4",
+    "different_pixels": 0
+  },
+  {
+    "name": "dark-1.png",
+    "before": "9ab05f713391dbbda4acea6f978f995ff9bf29c2eb3a9738349bb2c7e758c993",
+    "after": "9ab05f713391dbbda4acea6f978f995ff9bf29c2eb3a9738349bb2c7e758c993",
+    "different_pixels": 0
+  },
+  {
+    "name": "dark-2.png",
+    "before": "9716987c1f26fb27efa51ae9b9fb8457293813eca95e0497e04f5f68f83e14db",
+    "after": "9716987c1f26fb27efa51ae9b9fb8457293813eca95e0497e04f5f68f83e14db",
+    "different_pixels": 0
+  },
+  {
+    "name": "light-1.25.png",
+    "before": "df3b531b35d9897cebd53fce0a8bdc41219be2e31b1c6c7ac9f55d890b42a8de",
+    "after": "df3b531b35d9897cebd53fce0a8bdc41219be2e31b1c6c7ac9f55d890b42a8de",
+    "different_pixels": 0
+  },
+  {
+    "name": "light-1.5.png",
+    "before": "cef73555a6c2ce210c7b1301ee45f9dd3e452c7d5450a507e858e2b9eeafd01b",
+    "after": "cef73555a6c2ce210c7b1301ee45f9dd3e452c7d5450a507e858e2b9eeafd01b",
+    "different_pixels": 0
+  },
+  {
+    "name": "light-1.75.png",
+    "before": "163510904670ca56053dfccdb0b1ef38b68a6b7c7b697dd2452628bd326c2cbf",
+    "after": "163510904670ca56053dfccdb0b1ef38b68a6b7c7b697dd2452628bd326c2cbf",
+    "different_pixels": 0
+  },
+  {
+    "name": "light-1.png",
+    "before": "98a04e91e0e4d4bd8968136c2fadcaed23714675f0ad343d3acf4928588d442e",
+    "after": "98a04e91e0e4d4bd8968136c2fadcaed23714675f0ad343d3acf4928588d442e",
+    "different_pixels": 0
+  },
+  {
+    "name": "light-2.png",
+    "before": "4549a1874687c8d10fa0d551513b84353adca9253ffefd461dac06a3fe37c9e4",
+    "after": "4549a1874687c8d10fa0d551513b84353adca9253ffefd461dac06a3fe37c9e4",
+    "different_pixels": 0
+  },
+  {
+    "name": "night-1.25.png",
+    "before": "19301fd7b005191451cc0c62e945f9d37f3a5aa3e6380f21de1c8f6277027d52",
+    "after": "19301fd7b005191451cc0c62e945f9d37f3a5aa3e6380f21de1c8f6277027d52",
+    "different_pixels": 0
+  },
+  {
+    "name": "night-1.5.png",
+    "before": "d8f21b400df29beb21788c7a653192ffdfb8135f77d958578e2c5bcc23d05959",
+    "after": "d8f21b400df29beb21788c7a653192ffdfb8135f77d958578e2c5bcc23d05959",
+    "different_pixels": 0
+  },
+  {
+    "name": "night-1.75.png",
+    "before": "cc446be499340bf8dbeb9377a97809386e08639eb91052a59c4b2cf25dc570b4",
+    "after": "cc446be499340bf8dbeb9377a97809386e08639eb91052a59c4b2cf25dc570b4",
+    "different_pixels": 0
+  },
+  {
+    "name": "night-1.png",
+    "before": "9ab05f713391dbbda4acea6f978f995ff9bf29c2eb3a9738349bb2c7e758c993",
+    "after": "9ab05f713391dbbda4acea6f978f995ff9bf29c2eb3a9738349bb2c7e758c993",
+    "different_pixels": 0
+  },
+  {
+    "name": "night-2.png",
+    "before": "9716987c1f26fb27efa51ae9b9fb8457293813eca95e0497e04f5f68f83e14db",
+    "after": "9716987c1f26fb27efa51ae9b9fb8457293813eca95e0497e04f5f68f83e14db",
+    "different_pixels": 0
+  }
+]

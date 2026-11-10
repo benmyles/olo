@@ -7899,3 +7899,73 @@ measured higher CPU on flex (49.29→55.71 ms) and ordinary (34.29→40 ms), and
 included draw-budget failures. Do not discard it or attribute the difference
 between sweeps solely to the cheaper arithmetic. No Chrome performance claim
 or website acceptance is made.
+
+## 2026-11-09 — background stylesheet completion survives cache eviction
+
+A live page could receive its compilation notification, then answer `Rules
+still compiling` again: the completed job had been removed, and other pages
+had evicted its rules from the six-entry shared cache. A second page joining
+an existing compile also received no notification. The parallel paint-suite
+failure from the grid work prompted this investigation; an extended public
+`Page::refresh` regression now reproduces the eviction failure deterministically
+on `8fcbcd40` by loading eight other pages after notification.
+
+Each page now holds its pending job until its refresh consumes the rules.
+Compilation publishes its result and collects subscribers under one lock;
+callbacks run after all locks are released. Every live waiter is notified
+once. Repeated refreshes replace their callback without adding subscriptions;
+dropped or superseded requests leave weak subscribers. Finished jobs leave the
+registry, including failed jobs; the requesting page still retries a failed
+compile synchronously to obtain its error. Thread-start failure also publishes
+to any callers already waiting. This does not yet limit concurrent jobs or
+cancel abandoned compilation work; those remain explicit tasks.
+
+The release web suite passed with ordinary parallel test execution: 460
+passed, one existing ignored. Browser and JavaScript added 84 passed, one
+existing ignored: **544 passed, zero failed, two ignored** in total. New
+checks exercise shared subscribers, callback replacement, dropped/superseded
+requests, reentrant access to completed state and completion before
+subscription. `cargo build --release --workspace`, formatting and diff checks
+passed. No native window layout changed; no new layout-lint claim is made.
+
+`refresh_bench` uses the browser worker's public Page API, a local test font,
+1,000 CSS rules, 200 measured revisions per process and two warm-up revisions.
+Release ABBA runs produced 400 samples per variant in each condition. CPU is
+whole-process user plus system time divided by 202, including font setup and,
+in the eviction condition, loading eight other small pages per revision.
+Request time is the initial refresh; ready time ends at the worker's wake;
+apply time starts after optional eviction and includes any redundant compile.
+These are not presentation latencies. Final medians and CPU means:
+
+| Condition / measurement | Before | After |
+|---|---:|---:|
+| No eviction: request / ready / apply | 0.717 / 2.830 / 2.889 ms | 0.714 / 2.867 / 2.878 ms |
+| No eviction: process CPU per revision | 5.767 ms | 5.743 ms |
+| Eviction: request / ready / apply | 0.622 / 2.410 / 4.935 ms | 0.595 / 2.361 / 2.170 ms |
+| Eviction: process CPU per revision | 9.926 ms | 6.584 ms |
+| Eviction: extra compiles after notification | 400 of 400 | 0 of 400 |
+
+No compiler processes were observed at final probe boundaries. The initial
+probe overlapped screenshot pixel comparison and is retained separately;
+the final probe ran after that work. These measurements establish the avoided
+work in this fixture, not Chrome performance superiority or a website pass.
+
+An ordinary 1,000-row page was also measured on the owned Agent Screen:
+release ABBA, seven reloads per run, two idle seconds, drag and wheel checks,
+1×, odd window x=49, 1,000×700 content. CPU per reload was 34.29→31.43 ms;
+worker-ready median 25.5→24.5 ms. Drag/wheel first movement was
+28.45/9.05→28.50/8.95 ms; slowest draws 1.30→2.04 ms, below 8.33 ms. There
+were four baseline scroll hitches and none in the candidate. All idle samples
+had zero CPU, wakeups and frames. Other builds appeared during baseline
+control runs; timing differences here are not causal speedup evidence.
+
+A button-driven live stylesheet update was exercised before and after on the
+owned screen, then checked while changing scales live: light/dark/night ×
+1/1.25/1.5/1.75/2. All 30 reviews were clean; the 15 paired screenshots are
+pixel-identical. They show the ordinary update path, not a visual reproduction
+of the cache race. The regression test supplies that evidence. The screen was
+stopped afterward; the person's session was not installed into or reloaded.
+
+Raw measurements, harnesses, failure/pass logs and all screenshots are in
+`measurements/2026-11-09-rule-completion/`; the summary is
+`measurements/2026-11-09-rule-completion.json`. Acceptance remains **0/100**.

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-09
 
+### Browser: live stylesheet completion
+
+*23:54* — A live stylesheet update after compilation. Completed rules now stay with the waiting page through shared-cache eviction, and every waiting page is notified. The ordinary update screenshots are unchanged across 15 theme/scale pairs; deterministic tests reproduce and verify the cache race.
+
+![Browser: live stylesheet completion](2026-11-09/235446-browser-live-stylesheet-completion.png)
+
 ### Browser: fractional grid tracks after
 
 *23:20* — Carry fractional flexible/auto shares and preserve already-quantized values across fractional-scale arithmetic. 1,440 independent Chrome rectangles match at five native scales; 30 native reviews are clean. This fixture changes 108 pixels at 1x; full font and website parity remain open.

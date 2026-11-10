@@ -233,12 +233,17 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
 - [ ] Selectors are compiled again with every compile of a page's sheets
   (11 ms of GitHub's 17): keep each sheet's compiled selectors with it,
   as its declarations are, relocated into the rule set's arenas.
-- [ ] Make background rule completion robust to shared-cache eviction and
-  multiple subscribers. The parallel paint suite intermittently wakes then
-  sees `Rules still compiling`; serial runs pass. `compile_in_background`
-  removes successful jobs before consumers take them and only keeps the
-  starting caller's waker. Add deterministic eviction/subscriber coverage;
-  preserve the observed failure in `measurements/2026-11-09-grid/tests-final.log`.
+- [x] Make background rule completion robust to shared-cache eviction and
+  multiple subscribers. A pending request now retains its result on the page;
+  each live waiter is notified once, outside locks. Repeated refreshes replace
+  their callback, and dropped/superseded requests release it. The eviction
+  regression fails deterministically before the change and passes afterward;
+  the full web/browser/JS release suites pass with normal parallelism (544
+  passed, two existing ignored). See `measurements/2026-11-09-rule-completion.json`.
+  The original intermittent failure remains in `measurements/2026-11-09-grid/tests-final.log`.
+- [ ] Bound background rule compilation concurrency and cancel work no page
+  still needs. Completion ownership is fixed, but each distinct job still
+  starts a thread and compilation receives no cancellation flag.
 - [x] A page's tiles were painted one after another on its thread: up to
   16 at a time are painted side by side on the CPU pool now (each pool
   thread a painter of its own), shown in order.

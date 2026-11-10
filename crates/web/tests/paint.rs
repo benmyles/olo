@@ -2070,6 +2070,22 @@ fn a_live_refresh_compiles_new_rules_in_the_background() {
     let first = page.refresh(&doc, None, &mut |_, _, _| Ok(None), Some(&wake));
     assert_eq!(first.err().map(|e| e.to_string()).as_deref(), Some(olo_web::page::COMPILING_RULES));
     rx.recv_timeout(std::time::Duration::from_secs(10)).expect("told when the rules are ready");
+    // Other pages can evict every entry in the shared six-entry cache
+    // before this page's event loop handles its notification. Its result
+    // must still be ready, without another compile or another wake.
+    for i in 0..8 {
+        olo_web::page::load(
+            Arc::from(format!("<!doctype html><style>body{{height:{}px}}/* background eviction */</style>", 100 + i)),
+            &host,
+            &scope,
+            &mut shaper,
+            &mut painter,
+            viewport,
+            None,
+            |_, _| {},
+        )
+        .unwrap();
+    }
     assert!(page.refresh(&doc, None, &mut |_, _, _| Ok(None), Some(&wake)).unwrap(), "the rules taken");
     page.rerender(doc, Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
     let l = page.scene.layout();
