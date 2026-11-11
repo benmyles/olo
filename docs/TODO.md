@@ -267,19 +267,24 @@ something nobody here has is in "Blocked", with what it waits for.
      a test), the GPU decoders' choice.
      *Next, smallest first:*
      styled-edit, tracker, passwords, terminal, preferences.
-     StyledEdit first needs olo-ui's `editor` (4,000 lines: a GPUI
-     element that lays out and draws as it paints, with key bindings
-     in a key context and an input handler), `widgets::ruler` and
-     `spell` on the kit. *How:* the app's view still owns the
-     `Editor` and its `Document` (`EditorHost`); `editor::view` lays
-     out what shows as the host's `body` runs (for the bounds
-     `on_bounds_changed` says: `Editor::prepare`, the spelling's
-     results taken in there), and its drawing looks only (the
-     paragraphs placed, kept in `Shown`; what it finds, the tables'
-     rules to take hold of, in a `RefCell`); keys are matched to
-     `Cmd`s in `on_key_down` (the bindings' table as a function),
-     typing and composing come as `TextInputEvent`s; the caret's
-     blink and a selection's scroll past an edge are timers.
+     StyledEdit's kit pieces are in (2026-11-11, compiled and
+     unit-tested, not run yet): `olo_kit::editor` (laid out as the
+     host's `body` runs, its drawing looking only), `widgets::ruler`,
+     `spell`, `code::Code`, a scroll view whose content scrolls
+     itself. *To do, the app:* as the Viewer: each document its
+     window's own view (`DocView`, the `EditorHost`) on its own
+     looper, with what `StyledEdit` did for a document moved into it
+     (load, save, export, print, find and replace, the save question,
+     its file panels answering as messages, Find, Replace and Header &
+     Footer as windows of its own); the app's looper a hub of the
+     windows open, their files followed on disk, new and imported
+     documents; `Common` (the search, spelling, the fonts) and the
+     pictures shared across loopers behind locks, not `Rc`;
+     `markdown::parse` through a `Doer` as `code::parse`; the
+     pictures' loader telling the window, not the proxy. Then run old
+     against new on text, styled, Markdown, source and tables, on
+     pages, with the ruler, typing through an input method, and the
+     Print panel.
   5. **Tools, HACKING and the Olo Book**; GPUI and olo-ui leave the
      workspace (the `browser` and `olo-coder` branches build on them:
      they stay until those have moved). `tools/dev/bench`, `ui-lint`,
