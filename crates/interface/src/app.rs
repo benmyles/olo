@@ -76,6 +76,15 @@ pub fn display_names() -> Vec<Option<String>> {
     crate::display::display().display_names()
 }
 
+/// The modifiers the compositor takes dmabufs of format `fourcc` with
+/// (empty: another program's pictures can't be shown from the GPU,
+/// `WindowCx::set_external_buffer`). Asked of the display thread once,
+/// as a view that shows such pictures starts.
+pub fn external_modifiers(fourcc: u32) -> Vec<u64> {
+    use crate::platform::LinuxClient as _;
+    crate::display::display().ask(move |on| on.client.wayland().map(|c| c.external_modifiers(fourcc)).unwrap_or_default()).unwrap_or_default()
+}
+
 /// Who hears of the session lock, on the app's looper.
 struct LockHandler(std::rc::Rc<std::cell::RefCell<dyn FnMut(crate::SessionLockEvent, &mut AppCx)>>);
 

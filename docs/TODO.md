@@ -194,9 +194,32 @@ something nobody here has is in "Blocked", with what it waits for.
      forwarding, a notification answered, the real account, dark
      mode, an upgrade in place; its 6 MB more of memory isn't
      explained; glyphs aren't drawn ahead as the GPUI build's were.
+     **Agent Screens** (2026-11-11; the window only: `olo-screen`'s
+     commands are as they were). Run old against new in a test
+     session watching a screen of the test's own (`kit-test`, its
+     history kept in scratch; the person's screens listed beside it
+     and left alone): Live shown from the GPU, Take Control (the
+     pointer, typing and Tab reach the screen; ⌘K lets go), History
+     (search, a row chosen, played, stepped), Stats, a name's field,
+     a row's menu, Archive, Delete (to the test home's Trash), Export
+     Video, Stop and Start, and an app_server restarted in place
+     under it (the window back, Live going on). The same to the
+     pixel but for the times and the live picture, at 1×, 1.5× and
+     2×, light and dark. Watching a busy screen 0.4% of a core
+     against 0.6%; its history playing 1.8% against 2.5%; following
+     0.2% against 0.3%; 104 MB against 102. For it the kit got
+     `olo_kit::external_modifiers`. The layout review's one error at
+     1.5× (the action under the picture cut by its row, the GPUI
+     build's too) is fixed; its "near-level" notes on History set a
+     list's row against the text beside the list, as before. Not
+     tried: the Passwords tab with Passwords answering (only "isn't
+     open": a test never asks the person's own; to run against a
+     made-up vault when Passwords is ported), Passwords for Every
+     Screen's window, Move Windows To, New Screen (Start Screen, the
+     same way in, was), a rename kept, several screens chosen at
+     once, an upgrade in place.
      *Next, smallest first:*
-     viewer, styled-edit, screen, tracker, passwords, terminal,
-     preferences.
+     viewer, styled-edit, tracker, passwords, terminal, preferences.
   5. **Tools, HACKING and the Olo Book**; GPUI and olo-ui leave the
      workspace (the `browser` and `olo-coder` branches build on them:
      they stay until those have moved). `tools/dev/bench`, `ui-lint`,

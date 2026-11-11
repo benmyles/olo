@@ -12181,9 +12181,10 @@ them, never copied (`viewer::stream_live`, `olo_capture::live`):
 - The screen's app_server captures each frame on the GPU into one of
   three dmabufs in turn. Frames come only when the screen changed, at
   its refresh (agent screens start at 120 Hz, `screens::fastest`).
-- The viewer hands each buffer to its window (`Window::set_external_buffer`,
-  `ExternalBuffer`), and the person's app_server shows it in the well's
-  place as a subsurface (`Window::place_external`, `picture.rs`).
+- The viewer hands each buffer to its window (olo-kit's
+  `WindowCx::set_external_buffer`, `ExternalBuffer`), and the person's
+  app_server shows it in the well's place as a subsurface
+  (`Painter::place_external`, `picture.rs`).
 - A buffer is captured into again once the person's app_server lets it
   go (`wl_buffer.release` → `Waker::released`).
 
@@ -12193,13 +12194,14 @@ a window on the screen for 5 s: the viewer used 0.6% of a core for
 8 a second and missed pointer-only changes.
 
 The picture's corners sit at whole points (subsurfaces can't be placed
-finer). `Window::external_bounds` gives the device pixels the compositor
+finer). `Painter::external_bounds` gives the device pixels the compositor
 rounds them to, so the frame line drawn round it is flush at every
 scale; measured at 1, 1.25, 1.5, 1.75 and 2×, resized to odd sizes.
 
-Where the two app_servers share no dmabuf layout (`App::external_modifiers`
-empty, or `OLO_SCREEN_PICTURES` set to compare), it takes pictures as
-before:
+Where the two app_servers share no dmabuf layout
+(`olo_kit::external_modifiers(fourcc)` empty, asked of the display thread
+once as the viewer starts; or `OLO_SCREEN_PICTURES` set to compare), it
+takes pictures as before:
 - one worker follows the screen's `EventKind::Painted`; another asks for
   a `format: "rgba"` picture then, at most eight a second, and reads it
   back (an app_server from before `Painted`: eight a second);

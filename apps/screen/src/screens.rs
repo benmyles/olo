@@ -316,8 +316,8 @@ impl Screen {
     /// unless the screen has sound.
     pub fn env(&self) -> Vec<(String, String)> {
         // (The kit's, which moves to a screen use too.)
-        let mut env = olo_ui::moving::screen_env(&self.name, &self.wayland_display, &self.olo_socket, self.pid, self.sound);
-        env.extend(olo_ui::moving::bus_env(self.bus.as_deref(), self.a11y.as_deref()));
+        let mut env = olo_kit::moving::screen_env(&self.name, &self.wayland_display, &self.olo_socket, self.pid, self.sound);
+        env.extend(olo_kit::moving::bus_env(self.bus.as_deref(), self.a11y.as_deref()));
         env
     }
 

@@ -8,10 +8,8 @@ use std::collections::VecDeque;
 
 use std::rc::Rc;
 
-use olo_ui::{
-    agent,
-    gpui::{AnyElement, App, Bounds, Entity, FontWeight, IntoElement, ParentElement as _, ScrollHandle, SharedString, Styled as _, canvas, div, point, px},
-    metrics as m,
+use olo_kit::{
+    Bounds, Child, Element, FontWeight, IntoElement, ParentElement as _, ScrollHandle, SharedString, Styled as _, WindowCx, agent, canvas, div, metrics as m, point, px,
     style::{self, c},
     theme,
     widgets::{
@@ -63,7 +61,7 @@ pub fn ago(ms: u64, now: u64) -> String {
 
 /// The Stats tab for `replay`'s screen: its cards, two abreast when
 /// `width` has room, scrolled with `scroll`.
-pub fn view(replay: &Entity<Replay>, running: bool, width: f32, scroll: &ScrollHandle, cx: &mut App) -> AnyElement {
+pub fn view(replay: &Child<Replay>, running: bool, width: f32, scroll: &ScrollHandle, cx: &mut WindowCx) -> Element {
     let (name, st, (series, busiest), end, empty) = replay.update(cx, |r, _| {
         let st = r.stats(running).clone();
         let now = history::now_ms();
@@ -71,9 +69,9 @@ pub fn view(replay: &Entity<Replay>, running: bool, width: f32, scroll: &ScrollH
         (r.name.clone(), st, per_minute(r.actions(), end), end, r.actions().is_empty())
     });
     if empty {
-        return div().size_full().child(EmptyState::new("Nothing has been done on this screen yet.").icon("agent-screens")).into_any_element();
+        return div().size_full().child(EmptyState::new("Nothing has been done on this screen yet.").icon("agent-screens"));
     }
-    let p = theme::palette(cx);
+    let p = theme::palette();
     let now = history::now_ms();
     let inner = width - 2.0 * GAP;
     let columns = if inner >= 2.0 * MIN_CARD + GAP { 2 } else { 1 };
@@ -119,7 +117,7 @@ pub fn view(replay: &Entity<Replay>, running: bool, width: f32, scroll: &ScrollH
         programs_card.child(Facts::new(programs))
     };
 
-    let cards = vec![use_card.into_any_element(), actions_card.into_any_element(), activity_card.into_any_element(), programs_card.into_any_element()];
+    let cards = vec![use_card, actions_card, activity_card, programs_card];
     let mut grid = div().flex().flex_col().gap(px(GAP)).p(px(GAP));
     let mut cards = cards.into_iter().peekable();
     while cards.peek().is_some() {
@@ -129,34 +127,31 @@ pub fn view(replay: &Entity<Replay>, running: bool, width: f32, scroll: &ScrollH
         }
         grid = grid.child(row);
     }
-    ScrollView::new(SharedString::from(format!("screen-stats-{name}")), scroll).border(false).auto_hide(true).background(dashboard::gutter(&p)).child(grid).into_any_element()
+    ScrollView::new(scroll).border(false).auto_hide(true).background(dashboard::gutter(&p)).child(grid).into_any_element()
 }
 
 /// Each kind of action: its name, a bar as long as its share of the
 /// most, and how many.
 fn kind_bars(kinds: Vec<(&'static str, usize)>) -> impl IntoElement {
     let h = kinds.len().max(1) as f32 * FACT_ROW;
-    canvas(
-        |_, _, _| {},
-        move |r, _, window, cx| {
-            let p = theme::palette(cx);
-            let ink = style::card_ink(&p);
-            let font = style::ui_font(FontWeight::NORMAL);
-            let most = kinds.iter().map(|(_, n)| *n).max().unwrap_or(1).max(1);
-            let label_w = kinds.iter().map(|(l, _)| style::text_width_app(cx, l, style::PLAIN_SIZE, &font)).fold(0.0, f32::max).ceil() + m::SPACING;
-            let count_w = kinds.iter().map(|(_, n)| style::text_width_app(cx, &n.to_string(), style::PLAIN_SIZE, &font)).fold(0.0, f32::max).ceil() + m::SPACING;
-            for (i, (label, n)) in kinds.iter().enumerate() {
-                let mid = r.top() + px(i as f32 * FACT_ROW + FACT_ROW / 2.0);
-                let l = style::label(window, cx, r.left(), mid, style::Align::Left, *label, style::PLAIN_SIZE, font.clone(), ink.dim);
-                let v = style::label(window, cx, r.right(), mid, style::Align::Right, n.to_string(), style::PLAIN_SIZE, font.clone(), ink.text);
-                agent::record(window, cx, agent::Node { value: Some(n.to_string().into()), ..agent::Node::label(*label, l.union(&v)) });
-                let bar = Bounds::from_corners(point(r.left() + px(label_w), mid - px(4.0)), point(r.right() - px(count_w), mid + px(4.0)));
-                if bar.size.width > px(8.0) {
-                    widgets::level_bar(window, style::snap(window, bar), *n as f32 / most as f32, Some(c(p.keyboard_navigation)), &p);
-                }
+    canvas(move |g, r| {
+        let p = theme::palette();
+        let ink = style::card_ink(&p);
+        let font = style::ui_font(FontWeight::NORMAL);
+        let most = kinds.iter().map(|(_, n)| *n).max().unwrap_or(1).max(1);
+        let label_w = kinds.iter().map(|(l, _)| style::text_width_app(l, style::PLAIN_SIZE, &font)).fold(0.0, f32::max).ceil() + m::SPACING;
+        let count_w = kinds.iter().map(|(_, n)| style::text_width_app(&n.to_string(), style::PLAIN_SIZE, &font)).fold(0.0, f32::max).ceil() + m::SPACING;
+        for (i, (label, n)) in kinds.iter().enumerate() {
+            let mid = r.top() + px(i as f32 * FACT_ROW + FACT_ROW / 2.0);
+            let l = style::label(g, r.left(), mid, style::Align::Left, *label, style::PLAIN_SIZE, font.clone(), ink.dim);
+            let v = style::label(g, r.right(), mid, style::Align::Right, n.to_string(), style::PLAIN_SIZE, font.clone(), ink.text);
+            agent::record(g, agent::Node { value: Some(n.to_string().into()), ..agent::Node::label(*label, l.union(&v)) });
+            let bar = Bounds::from_corners(point(r.left() + px(label_w), mid - px(4.0)), point(r.right() - px(count_w), mid + px(4.0)));
+            if bar.size.width > px(8.0) {
+                widgets::level_bar(g, style::snap(g, bar), *n as f32 / most as f32, Some(c(p.keyboard_navigation)), &p);
             }
-        },
-    )
+        }
+    })
     .w_full()
     .h(px(h))
     .flex_shrink_0()
