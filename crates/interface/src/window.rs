@@ -189,6 +189,9 @@ struct Listing {
     wheel: Vec<WheelRegion>,
     scrollers: FxHashMap<u64, NodeId>,
     watchers: Vec<(u64, u8, NodeId)>,
+    /// What's raised (`InteractiveElement::raised`), found on the way and
+    /// listed after everything else; None while they're being listed.
+    raised: Option<Vec<(NodeId, u32)>>,
 }
 
 /// No clip at all, in device pixels.
@@ -700,6 +703,7 @@ impl WindowCore {
             wheel: std::mem::take(&mut self.wheel),
             scrollers: std::mem::take(&mut self.scrollers),
             watchers: std::mem::take(&mut self.watchers),
+            raised: Some(Vec::new()),
         };
         listing.items.clear();
         listing.layers.clear();
@@ -709,8 +713,12 @@ impl WindowCore {
         listing.layers.push(Layer { id: 0, parent: 0, viewport: window, max: Size::default(), view: self.size, axes: (false, false), set: None });
         if let Some(root) = self.root {
             self.collect(root, window, 0, &mut listing);
+            // What's raised, over the rest, cut by the window alone.
+            for (id, layer) in listing.raised.take().unwrap_or_default() {
+                self.collect(id, window, layer, &mut listing);
+            }
         }
-        let Listing { items, layers, wheel, scrollers, watchers } = listing;
+        let Listing { items, layers, wheel, scrollers, watchers, .. } = listing;
         (self.items, self.layers, self.wheel, self.scrollers, self.watchers) = (items, layers, wheel, scrollers, watchers);
         self.items_stale = false;
     }
@@ -721,6 +729,12 @@ impl WindowCore {
         let Some(node) = self.nodes.get_mut(id) else { return };
         node.slots = [u32::MAX; 2];
         if node.style.visibility == crate::Visibility::Hidden {
+            return;
+        }
+        if node.inter.as_ref().is_some_and(|i| i.raised)
+            && let Some(raised) = out.raised.as_mut()
+        {
+            raised.push((id, layer));
             return;
         }
         if let Some(inter) = &node.inter {

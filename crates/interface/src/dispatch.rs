@@ -28,7 +28,12 @@ impl WindowCore {
         let mut found = Vec::new();
         if let Some(root) = self.root {
             let window = Bounds { origin: Point::default(), size: self.size };
-            self.gather(root, at, window, &mut found);
+            // (What's raised is over the rest: gathered after it.)
+            let mut raised = Vec::new();
+            self.gather(root, at, window, &mut found, Some(&mut raised));
+            for (id, at) in raised {
+                self.gather(id, at, window, &mut found, None);
+            }
         }
         // (Gathered in painting order: what's painted last is on top.)
         found.reverse();
@@ -38,9 +43,15 @@ impl WindowCore {
         found
     }
 
-    fn gather(&self, id: NodeId, at: Point<Pixels>, clip: Bounds<Pixels>, found: &mut Vec<NodeId>) {
+    fn gather(&self, id: NodeId, at: Point<Pixels>, clip: Bounds<Pixels>, found: &mut Vec<NodeId>, mut raised: Option<&mut Vec<(NodeId, Point<Pixels>)>>) {
         let Some(node) = self.nodes.get(id) else { return };
         if node.style.visibility == crate::Visibility::Hidden || !node.reach.contains(&at) {
+            return;
+        }
+        if node.inter.as_ref().is_some_and(|i| i.raised)
+            && let Some(raised) = raised.as_deref_mut()
+        {
+            raised.push((id, at));
             return;
         }
         if node.bounds.contains(&at)
@@ -71,7 +82,7 @@ impl WindowCore {
             None => (at, inner),
         };
         for child in &node.children {
-            self.gather(*child, at, inner, found);
+            self.gather(*child, at, inner, found, raised.as_deref_mut());
         }
     }
 

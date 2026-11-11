@@ -18,6 +18,7 @@ pub mod menu;
 pub mod open_with;
 pub mod pictures;
 pub mod review;
+pub mod search;
 pub mod style;
 pub mod theme;
 pub mod tip;

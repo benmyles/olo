@@ -236,6 +236,9 @@ pub(crate) struct Interactivity {
     pub(crate) focus_style: Option<Box<StyleRefinement>>,
     /// What's under it gets nothing of the pointer.
     pub(crate) occlude: bool,
+    /// Drawn over everything else in the window, and first under the
+    /// pointer ([`InteractiveElement::raised`]).
+    pub(crate) raised: bool,
     /// It can have the keyboard.
     pub(crate) focusable: bool,
     /// A click on it gives it the keyboard.
@@ -622,6 +625,16 @@ pub trait InteractiveElement: Sized {
     /// window's content).
     fn occlude(mut self) -> Self {
         self.interactivity().occlude = true;
+        self
+    }
+
+    /// Drawn over everything else in the window, wherever it is in the
+    /// tree, cut by nothing but the window, and first under the pointer:
+    /// a list that drops from a field over what's below it (a search's
+    /// suggestions). Laid out where it is as anything else. With
+    /// [`Self::occlude`] nothing under it gets the pointer.
+    fn raised(mut self) -> Self {
+        self.interactivity().raised = true;
         self
     }
 
