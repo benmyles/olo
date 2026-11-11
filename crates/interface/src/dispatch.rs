@@ -218,7 +218,13 @@ impl WindowCx<'_> {
                 self.to_focus_path(|i| i.modifiers_changed.iter().cloned().collect(), &event);
             }
             PlatformInput::FileDrop(event) => self.file_drop(event),
-            PlatformInput::Pinch(_) => {}
+            PlatformInput::Pinch(event) => {
+                self.core.mouse = event.position;
+                self.core.modifiers = event.modifiers;
+                self.core.pointer_in = true;
+                self.update_hover();
+                self.to_hovered(|i| i.pinch.iter().cloned().collect(), &event);
+            }
         }
     }
 

@@ -213,6 +213,8 @@ pub(crate) struct Interactivity {
     pub(crate) mouse_up_out: SmallVec<[(Option<MouseButton>, Listener<MouseUpEvent>); 1]>,
     pub(crate) mouse_move: SmallVec<[Listener<MouseMoveEvent>; 1]>,
     pub(crate) scroll_wheel: SmallVec<[Listener<ScrollWheelEvent>; 1]>,
+    /// Two fingers pinching over it.
+    pub(crate) pinch: SmallVec<[Listener<crate::PinchEvent>; 1]>,
     /// Files dropped on it, dragged from somewhere else.
     pub(crate) file_drop: SmallVec<[Listener<crate::ExternalPaths>; 1]>,
     pub(crate) click: SmallVec<[Listener<ClickEvent>; 1]>,
@@ -286,7 +288,8 @@ impl Interactivity {
                 && self.scroll_wheel.is_empty()
                 && self.click.is_empty()
                 && self.hover.is_empty()
-                && self.file_drop.is_empty())
+                && self.file_drop.is_empty()
+                && self.pinch.is_empty())
     }
 
     pub(crate) fn hears_window(&self) -> bool {
@@ -531,6 +534,13 @@ pub trait InteractiveElement: Sized {
 
     fn on_scroll_wheel(mut self, listener: impl Fn(&ScrollWheelEvent, &mut WindowCx) + 'static) -> Self {
         self.interactivity().scroll_wheel.push(Rc::new(listener));
+        self
+    }
+
+    /// Two fingers pinching over it (a touchpad's, a touch screen's):
+    /// how far apart against how they began, and since the last event.
+    fn on_pinch(mut self, listener: impl Fn(&crate::PinchEvent, &mut WindowCx) + 'static) -> Self {
+        self.interactivity().pinch.push(Rc::new(listener));
         self
     }
 

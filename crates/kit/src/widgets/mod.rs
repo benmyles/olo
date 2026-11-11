@@ -8,6 +8,7 @@ pub mod color;
 pub mod control;
 pub mod dashboard;
 pub mod find_bar;
+pub mod image_view;
 pub mod key_hint;
 pub mod list;
 pub mod menu_field;
@@ -35,6 +36,7 @@ pub use charts::{CellGrid, Graph, GridCell, LegendItem, SPECTRUM_LABELS, Series,
 pub use color::{ColorControl, ColorWell, color_control_height};
 pub use control::{Control, ControlState, DISABLED_OPACITY, control};
 pub use find_bar::{find_bar, find_said};
+pub use image_view::{ImageView, image_view};
 pub use key_hint::KeyHint;
 pub use list::{Cell, Column, ColumnListView, HEADER_HEIGHT, ListModel};
 pub use menu_field::MenuField;
