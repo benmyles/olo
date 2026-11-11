@@ -18,7 +18,7 @@ use std::{
     sync::{Arc, mpsc},
 };
 
-use olo_ui::gpui::RenderImage;
+use olo_kit::RenderImage;
 use zbus::{
     blocking::Connection,
     message::Header,
@@ -732,12 +732,12 @@ pub fn picture(item: &Item, px: u32) -> Option<std::sync::Arc<RenderImage>> {
 }
 
 /// An item's menu as an Olo menu: each entry's command is `sni:ID`.
-pub fn menu(title: &str, entries: &[Entry]) -> olo_ui::Menu {
-    let mut m = olo_ui::Menu::new(title);
+pub fn menu(title: &str, entries: &[Entry]) -> olo_kit::Menu {
+    let mut m = olo_kit::Menu::new(title);
     for e in entries {
         if e.separator {
             // Not first, last or twice in a row.
-            if !m.items.is_empty() && !matches!(m.items.last(), Some(olo_ui::MenuItem::Separator)) {
+            if !m.items.is_empty() && !matches!(m.items.last(), Some(olo_kit::MenuItem::Separator)) {
                 m = m.separator();
             }
         } else if !e.children.is_empty() {
@@ -749,7 +749,7 @@ pub fn menu(title: &str, entries: &[Entry]) -> olo_ui::Menu {
             }
         }
     }
-    while matches!(m.items.last(), Some(olo_ui::MenuItem::Separator)) {
+    while matches!(m.items.last(), Some(olo_kit::MenuItem::Separator)) {
         m.items.pop();
     }
     m
@@ -820,9 +820,9 @@ mod tests {
         ];
         let m = menu("Slack", &entries);
         assert_eq!(m.items.len(), 4);
-        assert!(matches!(&m.items[0], olo_ui::MenuItem::Action(a) if a.command == "sni:1"));
-        assert!(matches!(&m.items[1], olo_ui::MenuItem::Separator));
-        assert!(matches!(&m.items[2], olo_ui::MenuItem::Action(a) if a.checked));
-        assert!(matches!(&m.items[3], olo_ui::MenuItem::Submenu(s) if s.title == "Status"));
+        assert!(matches!(&m.items[0], olo_kit::MenuItem::Action(a) if a.command == "sni:1"));
+        assert!(matches!(&m.items[1], olo_kit::MenuItem::Separator));
+        assert!(matches!(&m.items[2], olo_kit::MenuItem::Action(a) if a.checked));
+        assert!(matches!(&m.items[3], olo_kit::MenuItem::Submenu(s) if s.title == "Status"));
     }
 }

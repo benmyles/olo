@@ -176,6 +176,16 @@ impl WindowCx<'_> {
     pub(crate) fn dispatch_input(&mut self, input: PlatformInput) {
         self.core.propagate = true;
         self.core.default_prevented = false;
+        // Whether the pointer is over the window: what's laid out under
+        // where it last was (or under the corner, before it ever came:
+        // a new Deskbar's Olo tile was lit until the pointer first
+        // moved over it) isn't under the pointer.
+        match &input {
+            PlatformInput::MouseMove(_) | PlatformInput::MouseDown(_) | PlatformInput::MouseUp(_) | PlatformInput::ScrollWheel(_) => self.core.pointer_in = true,
+            PlatformInput::FileDrop(crate::FileDropEvent::Entered { .. } | crate::FileDropEvent::Pending { .. } | crate::FileDropEvent::Submit { .. }) => self.core.pointer_in = true,
+            PlatformInput::MouseExited(_) | PlatformInput::FileDrop(crate::FileDropEvent::Exited) => self.core.pointer_in = false,
+            _ => {}
+        }
         match input {
             PlatformInput::MouseMove(event) => {
                 self.core.mouse = event.position;
@@ -305,7 +315,7 @@ impl WindowCx<'_> {
     /// Works out what the pointer is over now, and tells what it came
     /// over or left.
     pub(crate) fn update_hover(&mut self) {
-        let now = self.core.nodes_at(self.core.mouse);
+        let now = if self.core.pointer_in { self.core.nodes_at(self.core.mouse) } else { Vec::new() };
         if now != self.core.hovered {
             let before = std::mem::replace(&mut self.core.hovered, now.clone());
             for id in before.iter().filter(|id| !now.contains(id)) {

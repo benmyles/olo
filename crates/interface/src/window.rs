@@ -150,6 +150,10 @@ pub(crate) struct WindowCore {
     /// When what's being worked on now was first taken.
     pub(crate) started: Option<Instant>,
     pub(crate) mouse: Point<Pixels>,
+    /// The pointer is over the window (or files dragged from elsewhere
+    /// are): until it has come, and once it has left, nothing in the
+    /// window is under it, wherever it last was.
+    pub(crate) pointer_in: bool,
     pub(crate) modifiers: Modifiers,
     /// What the pointer is over, topmost first.
     pub(crate) hovered: Vec<NodeId>,
@@ -474,6 +478,7 @@ impl WindowCore {
             everything: true,
             started: Some(Instant::now()),
             mouse: Point::default(),
+            pointer_in: false,
             modifiers: Modifiers::default(),
             hovered: Vec::new(),
             dropping: None,
@@ -1633,6 +1638,13 @@ impl<'a> WindowCx<'a> {
             window.headless_input(crate::PlatformInput::MouseDown(crate::MouseDownEvent { button, position: at, modifiers, click_count: 1, first_mouse: false }));
             window.headless_input(crate::PlatformInput::MouseUp(crate::MouseUpEvent { button, position: at, modifiers, click_count: 1 }));
         });
+    }
+
+    /// Whether files are being dragged over the window from somewhere
+    /// else (what would take them, `on_drop`, can show it: it's hovered
+    /// as under the pointer meanwhile).
+    pub fn files_dragged_over(&self) -> bool {
+        self.core.dropping.is_some()
     }
 
     /// Brings the window forward and gives it the keyboard.

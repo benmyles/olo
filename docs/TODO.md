@@ -166,8 +166,26 @@ something nobody here has is in "Blocked", with what it waits for.
      through pkexec (only ever asked for in the person's own session),
      an upgrade in place with inspectors open (they don't come back,
      as before).
+     **Deskbar** (2026-11-11): its model behind a lock, kept by the
+     app's looper and drawn by each display's bar on its own (HACKING's
+     Deskbar). The same to the pixel as the GPUI build at rest (2×
+     light; two displays at 1.5× dark), and in the Olo menu, a row's,
+     a heading's, the windowing modes' and every tray icon's menu,
+     Restart's alert and Approve Without Asking's window (both
+     cancelled), a clock's minute and the live figures apart; five
+     live widgets and a widget's tip look the same and cost half
+     (0.7% of a core against 1.4%). For it the kit got the wordmark
+     (`olo_kit::brand`), files dropped on an element (`on_drop`,
+     `files_dragged_over`), and a fix: a window hovered what lay
+     under its corner until the pointer first came (a new Deskbar's
+     Olo tile was lit). Not tried: files dropped on an application's
+     row (needs a drag from another program in the test session); a
+     row dragged out was started (the old and the new the same) but
+     dropped nowhere; the power button's alert; a display coming and
+     going while it runs; an upgrade in place keeping the
+     applications' order.
      *Next, smallest first:*
-     deskbar, telegram,
+     telegram,
      viewer, styled-edit, screen, tracker, passwords, terminal,
      preferences.
   5. **Tools, HACKING and the Olo Book**; GPUI and olo-ui leave the

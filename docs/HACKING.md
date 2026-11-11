@@ -12915,19 +12915,28 @@ journal and highlights every line in it.
 
 The Olo menu, the tray and the running applications, in the top-right
 corner of every display (a layer surface each, namespace `deskbar`, no
-keyboard: its menus take the keys as they open), on the GPUI kit. One
+keyboard: its menus take the keys as they open), on olo-kit. One
 model (`Deskbar`: app_server's windows, workspaces and displays as
 events say, the tray's status, other programs' tray items and launcher
-badges) that every display's bar (`BarView`, which keeps only what the
-pointer is doing over it) draws: a bar draws again when the model
-changes, the pointer moves onto something else in it (only that bar),
-a dot shakes or drains, or the clock's minute (or second) comes; idle,
-nothing runs. Each bar is painted in one `canvas` (the egui drawing,
+badges) behind a lock (`Model`), kept by the app's looper (`Hub`:
+what app_server, the status watchers and the tray say comes to it
+through the app's proxy, `Msg`), that every display's bar (`BarView`,
+on its window's own looper, which keeps only what the pointer is doing
+over it) draws: a bar draws again when the hub says the model changed
+(`BarMsg::Changed`; a bar that changes it, `Model::update`, has the
+hub tell them all), the pointer moves onto something else in it (only
+that bar), a dot shakes or drains, or the clock's minute (or second)
+comes (a thread of its own, asleep between); idle, nothing runs. What
+asks the person first (Restart and Shut Down, the upgrade) is the main
+display's bar's to open (`Effect`), so there's one of each; Approve
+Without Asking's window is the app's. The lock is held while a bar is
+drawn: nothing a drawing calls may take it again (its closures do
+later, as the pointer acts). Each bar is painted in one `canvas` (the egui drawing,
 moved over: the tile and wordmark, the tray's well, headings, rows,
 the lit workspace), with transparent hit areas over it for the pointer:
 a left click as a click, the right and middle buttons as they're
 pressed (menus open on the press, as BeOS's), hovering that lights and
-a tip in a popup of its own (`olo_ui::tip`: the bar is narrower than
+a tip in a popup of its own (`olo_kit::tip`: the bar is narrower than
 what its icons say). A tray icon opens its menu on either button (Ben,
 2026-11-06), each menu ending with the app that tells more (Network's,
 Displays', Power's, Sound's, Notifications' and Security's preferences,
@@ -13137,12 +13146,19 @@ ProcessController put their bars in its tray.
   Frames follow the pixels: a graph's when it has scrolled one, a
   level's when it has moved one (a heatmap's: a sixteenth of its
   colour), at most 60 a second, all on the window's one clock, none once
-  nothing moves. They're drawn on a layer of their own over the bar
-  (`widgets::Layer`, both cached under `BarRoot`): the bar lays them
+  nothing moves. They're drawn by a view of their own over the bar
+  (`widgets::Layer`, a child of the bar's view): the bar lays them
   out (`Shelf`) and draws their ground, tips and clicks, the layer
   draws them; a reading or a step of motion draws the layer alone (the
   bar too only while a widget's tip is up, for its words).
-* **Cost**, over 20 s on release builds at 2× (`tools/dev/cost`): no
+* **Cost on olo-kit** against the GPUI build (release, 2× headless,
+  the same five widgets: a tray's bars and number, two graphs and a
+  meter, 20 s): 0.7% of a core (1.4), 78 wakeups a second (78), 12.8
+  frames a second at 307 µs (15.8 at 494), 107.5 MB (107.9). With no
+  widgets, on two displays at 1.5×: 0.0%, a frame each few seconds as
+  the status watchers say something new (10 in 30 s, the GPUI build
+  7), 452 µs each (570).
+* **Cost** of the GPUI build, over 20 s on release builds at 2× (`tools/dev/cost`): no
   widgets, 0.1% of a core, 2 wakeups a second, 0.2 frames a second;
   eight (most read every second: three graphs, 16 cores' bars, a
   meter, a tray heatmap and number), 0.9%, 45 wakeups, 9.6 frames a
