@@ -1608,6 +1608,17 @@ impl<'a> WindowCx<'a> {
         &self.core.gfx.text_system
     }
 
+    /// Draws the colour glyphs (emoji) of `texts` in `font` at
+    /// `font_size`, for this window's scale, ahead of need and off its
+    /// looper, in the order given, so the frames that show them only
+    /// copy them. They're kept for every window of the program after
+    /// (`TextSystem::forget_kept_glyphs` lets go): a picker of emoji
+    /// opened again and again, each time a new window.
+    pub fn warm_text(&self, font: &crate::Font, font_size: Pixels, texts: impl Into<Arc<[crate::SharedString]>>) {
+        let font_id = self.core.gfx.text_system.resolve_font(font);
+        self.core.gfx.text_system.warm_text(font_id, font_size, self.core.gfx.scale_factor, texts.into());
+    }
+
     /// The text style everything in the window starts from.
     pub fn set_text_style(&mut self, style: TextStyle) {
         if self.core.gfx.text_style != style {

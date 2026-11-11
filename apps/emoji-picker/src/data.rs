@@ -244,11 +244,11 @@ impl Recents {
     }
 
     pub fn load() -> Recents {
-        olo_ui::store::load(&Self::path()).unwrap_or_default()
+        olo_kit::store::load(&Self::path()).unwrap_or_default()
     }
 
     fn save(&self) {
-        olo_ui::store::save(Self::path(), self);
+        olo_kit::store::save(Self::path(), self);
     }
 
     fn now() -> u64 {

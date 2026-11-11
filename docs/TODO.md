@@ -89,7 +89,9 @@ something nobody here has is in "Blocked", with what it waits for.
      The supervisor (its alert the same to the pixel). Olo Rescue (its
      shell a session of the program's, shown by whichever display has
      Rescue; a busy shell 946 µs a frame against 3,468).
-     *Next, smallest first:* emoji-picker, installer,
+     The emoji picker (each showing a new window with a picker of its
+     own; scrolling 3.2% of a core against 4.4%).
+     *Next, smallest first:* installer,
      pool, drive-setup, disk-usage, chrome, logs, palette, screenshot,
      diskbackup, portal, deskbar, notifications, doctor, telegram,
      activity, viewer, styled-edit, screen, tracker, passwords, terminal,
