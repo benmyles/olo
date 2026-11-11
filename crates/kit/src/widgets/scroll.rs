@@ -408,12 +408,13 @@ pub struct ScrollView {
     border: bool,
     focused: bool,
     background: Option<olo_theme::Rgba>,
+    on_scroll: Option<std::rc::Rc<dyn Fn(&Point<Pixels>, &mut WindowCx)>>,
     children: SmallVec<[Element; 4]>,
 }
 
 impl ScrollView {
     pub fn new(handle: &ScrollHandle) -> ScrollView {
-        ScrollView { handle: handle.clone(), vertical: true, horizontal: false, auto_hide: false, border: true, focused: false, background: None, children: SmallVec::new() }
+        ScrollView { handle: handle.clone(), vertical: true, horizontal: false, auto_hide: false, border: true, focused: false, background: None, on_scroll: None, children: SmallVec::new() }
     }
 
     /// Shows the vertical bar only while the content overflows: columns
@@ -446,6 +447,15 @@ impl ScrollView {
 
     pub fn background(mut self, rgba: olo_theme::Rgba) -> Self {
         self.background = Some(rgba);
+        self
+    }
+
+    /// Told as it scrolls (where it shows from now): for what puts in
+    /// it only what's near what shows, and so has more to put in (rows
+    /// of different heights, a wall of cards: what `uniform_rows` can't
+    /// place).
+    pub fn on_scroll(mut self, f: impl Fn(&Point<Pixels>, &mut WindowCx) + 'static) -> Self {
+        self.on_scroll = Some(std::rc::Rc::new(f));
         self
     }
 }
@@ -487,6 +497,9 @@ impl IntoElement for ScrollView {
                     cx.invalidate_owner();
                 }
             });
+        }
+        if let Some(f) = self.on_scroll.clone() {
+            content = content.on_scroll(move |at, cx| f(at, cx));
         }
         let backdrop = canvas(move |g, b| {
             let p = theme::palette();

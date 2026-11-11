@@ -1588,6 +1588,20 @@ impl<'a> WindowCx<'a> {
         self.on_display(move |window| window.set_layer_margin(margin));
     }
 
+    /// A layer surface takes the keyboard, or doesn't (a strip of
+    /// banners takes it only while one has a field to type in).
+    pub fn set_layer_keyboard(&self, keyboard: crate::LayerKeyboard) {
+        self.on_display(move |window| window.set_layer_keyboard(keyboard));
+    }
+
+    /// An activation token made for this window (xdg-activation: what
+    /// lets another program bring its window forward because the person
+    /// clicked here), handed to `done` on the display thread; None if
+    /// the compositor gives none.
+    pub fn activation_token(&self, done: impl FnOnce(Option<String>) + Send + 'static) {
+        self.on_display(move |window| window.activation_token(Box::new(done)));
+    }
+
     /// Drags `drag` out of the window to another app or a folder
     /// (Wayland's data device), while the press that began it is down.
     /// What comes back resolves, when the drag is over, to what it was

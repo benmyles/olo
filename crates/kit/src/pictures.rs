@@ -75,10 +75,6 @@ pub fn fitted(g: &mut Painter, path: &Path, place: (u32, u32)) -> Option<Arc<Ren
 
 /// [`fitted`]'s picture, made.
 fn make_fitted(path: &Path, place: (u32, u32)) -> Option<Arc<RenderImage>> {
-    use fast_image_resize::{
-        FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer,
-        images::{Image, ImageRef},
-    };
     let img = olo_images::open(path).ok()?.0.to_rgba8();
     let (sw, sh) = (img.width().max(1), img.height().max(1));
     let mut rgba = img.into_raw();
@@ -93,10 +89,23 @@ fn make_fitted(path: &Path, place: (u32, u32)) -> Option<Arc<RenderImage>> {
     }
     let k = (place.0 as f32 / sw as f32).min(place.1 as f32 / sh as f32);
     let (w, h) = (((sw as f32 * k).round() as u32).max(1), ((sh as f32 * k).round() as u32).max(1));
+    resampled(&rgba, (sw, sh), (w, h))
+}
+
+/// Premultiplied RGBA pixels, `from` in size, resampled to `to` device
+/// pixels (Lanczos made smaller; Catmull-Rom made bigger, as sharp to the
+/// eye at a third of the cost), as a picture to draw a texel a device
+/// pixel. Off the window's looper: it's milliseconds for a big one.
+pub fn resampled(rgba: &[u8], from: (u32, u32), to: (u32, u32)) -> Option<Arc<RenderImage>> {
+    use fast_image_resize::{
+        FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer,
+        images::{Image, ImageRef},
+    };
+    let ((sw, sh), (w, h)) = (from, to);
     let mut out = if (sw, sh) == (w, h) {
-        rgba
+        rgba.to_vec()
     } else {
-        let from = ImageRef::new(sw, sh, &rgba, PixelType::U8x4).ok()?;
+        let from = ImageRef::new(sw, sh, rgba, PixelType::U8x4).ok()?;
         let mut to = Image::new(w, h, PixelType::U8x4);
         let filter = if w > sw || h > sh { FilterType::CatmullRom } else { FilterType::Lanczos3 };
         Resizer::new().resize(&from, &mut to, &ResizeOptions::new().resize_alg(ResizeAlg::Convolution(filter)).use_alpha(false)).ok()?;
