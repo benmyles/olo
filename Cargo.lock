@@ -7737,6 +7737,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-fans"
+version = "0.1.0"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "olo-fido"
 version = "0.1.0"
 dependencies = [
@@ -8198,9 +8205,9 @@ dependencies = [
  "chrono",
  "libc",
  "olo-crash",
+ "olo-kit",
  "olo-system",
  "olo-token-pool",
- "olo-ui",
  "olo-xdg",
  "serde_json",
  "tracing",

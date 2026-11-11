@@ -683,7 +683,10 @@ impl WindowCore {
         if matches!(node.kind, NodeKind::Group) {
             text_styles.pop();
         }
-        let visible = self.visible_at(id);
+        // (Drawn for a review, `Painter::ext`: by what shows exactly.)
+        let reviewed = self.gfx.ext.is_some();
+        let visible = self.seen_at(id, !reviewed);
+        let shift = if reviewed { self.shift_at(id) } else { Point::default() };
         let WindowCore { nodes, views, gfx, recycled, .. } = self;
         let node = &mut nodes[id];
         let own_opacity = node.style.opacity;
@@ -693,6 +696,7 @@ impl WindowCore {
         let mut scene = recycled.pop().unwrap_or_else(crate::Scene::recording);
         {
             let mut p = Painter::new(gfx, &mut scene, &mut notes, &mut kept, visible, opacity, text_styles.clone());
+            p.shift = shift;
             p.with_element_opacity(own_opacity, |p| {
                 node.style.paint_behind(bounds, p);
                 match &node.kind {
@@ -715,6 +719,7 @@ impl WindowCore {
             let mut scene = recycled.pop().unwrap_or_else(crate::Scene::recording);
             {
                 let mut p = Painter::new(gfx, &mut scene, &mut notes, &mut kept, visible, opacity, text_styles);
+                p.shift = shift;
                 p.with_element_opacity(own_opacity, |p| node.style.paint_over(bounds, p));
             }
             node.over = keep(scene, recycled);
@@ -742,6 +747,13 @@ impl WindowCore {
     /// grid with one to spare each way: what draws only what can be
     /// seen draws again once in a while as it scrolls, not every frame.
     pub(crate) fn visible_at(&self, id: NodeId) -> Bounds<Pixels> {
+        self.seen_at(id, true)
+    }
+
+    /// [`Self::visible_at`]; without `banded`, exactly what shows now
+    /// (what a layout review goes by: what's scrolled out of sight isn't
+    /// there to it).
+    pub(crate) fn seen_at(&self, id: NodeId, banded: bool) -> Bounds<Pixels> {
         let mut path: SmallVec<[NodeId; 16]> = SmallVec::new();
         let mut at = self.nodes.get(id).and_then(|n| n.parent);
         while let Some(id) = at {
@@ -759,7 +771,7 @@ impl WindowCore {
                 let max = handle.max_offset();
                 let band = |from: Pixels, to: Pixels, by: Pixels, scrolls: bool| -> (Pixels, Pixels) {
                     let (from, to) = (from - by, to - by);
-                    if !scrolls {
+                    if !scrolls || !banded {
                         return (from, to);
                     }
                     (px(((from.0 / VISIBLE_BAND).floor() - 1.0) * VISIBLE_BAND), px(((to.0 / VISIBLE_BAND).ceil() + 1.0) * VISIBLE_BAND))

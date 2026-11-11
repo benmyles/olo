@@ -130,6 +130,9 @@ pub struct Painter<'a> {
     visible: Bounds<Pixels>,
     /// What the element being painted keeps (`node_state`).
     state: &'a mut Option<Box<dyn std::any::Any>>,
+    /// How far what's painted shows from where it's laid out
+    /// ([`Painter::scrolled_by`]).
+    pub(crate) shift: Point<Pixels>,
 }
 
 /// Which of a glyph's sub-pixel drawings goes at `origin` (device
@@ -153,7 +156,7 @@ impl<'a> Painter<'a> {
         opacity: f32,
         text_style: Vec<TextStyleRefinement>,
     ) -> Self {
-        Painter { gfx, scene, notes, content_mask_stack: Vec::new(), text_style_stack: text_style, element_opacity: opacity, visible, state }
+        Painter { gfx, scene, notes, content_mask_stack: Vec::new(), text_style_stack: text_style, element_opacity: opacity, visible, state, shift: Point::default() }
     }
 
     /// What the element being painted keeps from one drawing to the
@@ -306,6 +309,14 @@ impl<'a> Painter<'a> {
     /// when it changes: for notes on a drawing, not for what to draw.)
     pub fn clip(&self) -> Bounds<Pixels> {
         self.visible.intersect(&self.content_mask().bounds)
+    }
+
+    /// How far what's painted shows from where it's laid out and
+    /// painted: by everything round it that scrolls. (Known while
+    /// something is there to fill in, [`Self::ext`]: a review places what
+    /// was drawn where it shows.)
+    pub fn scrolled_by(&self) -> Point<Pixels> {
+        self.shift
     }
 
     /// What the kit put with the window for drawings to fill in
