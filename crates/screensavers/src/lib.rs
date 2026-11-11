@@ -15,6 +15,8 @@ mod desktop;
 pub mod geom;
 #[cfg(feature = "gpui")]
 pub mod gpui_canvas;
+#[cfg(feature = "kit")]
+pub mod kit_canvas;
 mod lines;
 mod message;
 

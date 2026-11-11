@@ -308,6 +308,16 @@ impl<'a> Painter<'a> {
         self.gfx.ext.is_some()
     }
 
+    /// Paints with `f`, none of whose text is noted as cut short: text
+    /// that's a picture, not something to read whole in a tip (a screen
+    /// saver's words running off the screen's edge).
+    pub fn without_cut_notes<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
+        let before = self.notes.cuts.len();
+        let result = f(self);
+        self.notes.cuts.truncate(before);
+        result
+    }
+
     /// What was painted waits for something still coming (a picture
     /// being decoded): the view is drawn again when it has.
     pub fn paint_unfinished(&mut self) {

@@ -132,7 +132,7 @@ pub(crate) struct Display {
     next_window: AtomicU64,
     events: Mutex<Option<Messenger<DisplayEvent>>>,
     /// Every display's bounds, as last heard.
-    displays: Mutex<Vec<crate::Bounds<crate::Pixels>>>,
+    displays: Mutex<Vec<(Option<String>, crate::Bounds<crate::Pixels>)>>,
     gone: AtomicBool,
 }
 
@@ -191,7 +191,10 @@ impl Display {
                     }));
                     common.callbacks.keyboard_layout_change = Some(Box::new(|| display().tell(DisplayEvent::KeyboardLayoutChanged)));
                 });
-                let _ = ready_tx.send((commands, text_system, headless));
+                // (The displays there are as it starts, with it: whoever asks
+                // first, a screen saver covering each, gets them all.)
+                let displays: Vec<(Option<String>, crate::Bounds<crate::Pixels>)> = client.displays().iter().map(|d| (d.name(), d.bounds())).collect();
+                let _ = ready_tx.send((commands, text_system, headless, displays));
                 let client = Rc::new(client);
                 ON_DISPLAY.with(|d| *d.borrow_mut() = Some(OnDisplay { client: client.clone(), stages: HashMap::new() }));
                 client.run();
@@ -208,20 +211,24 @@ impl Display {
                 drop(client);
             })
             .expect("no thread for the display");
-        let (commands, text_system, headless) = ready_rx.recv().expect("the display thread ended as it began");
-        let display = Display { commands, text_system, headless, next_window: AtomicU64::new(1), events: Mutex::new(None), displays: Mutex::new(Vec::new()), gone: AtomicBool::new(false) };
-        display.post(|on| self::display().note_displays(on));
-        display
+        let (commands, text_system, headless, displays) = ready_rx.recv().expect("the display thread ended as it began");
+        Display { commands, text_system, headless, next_window: AtomicU64::new(1), events: Mutex::new(None), displays: Mutex::new(displays), gone: AtomicBool::new(false) }
     }
 
     /// Every display's bounds, in points, as last heard.
     pub(crate) fn displays(&self) -> Vec<crate::Bounds<crate::Pixels>> {
-        self.displays.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.displays.lock().unwrap_or_else(|e| e.into_inner()).iter().map(|(_, bounds)| *bounds).collect()
+    }
+
+    /// Every display's name (its output's: "eDP-1"), in [`Self::displays`]'
+    /// order; None for one that has none yet.
+    pub(crate) fn display_names(&self) -> Vec<Option<String>> {
+        self.displays.lock().unwrap_or_else(|e| e.into_inner()).iter().map(|(name, _)| name.clone()).collect()
     }
 
     /// Keeps what displays there are now (on the display thread).
     fn note_displays(&self, on: &OnDisplay) {
-        let now: Vec<crate::Bounds<crate::Pixels>> = on.client.displays().iter().map(|d| d.bounds()).collect();
+        let now: Vec<(Option<String>, crate::Bounds<crate::Pixels>)> = on.client.displays().iter().map(|d| (d.name(), d.bounds())).collect();
         *self.displays.lock().unwrap_or_else(|e| e.into_inner()) = now;
     }
 

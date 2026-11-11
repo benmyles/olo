@@ -8399,8 +8399,8 @@ name = "olo-screensaver"
 version = "0.1.0"
 dependencies = [
  "olo-crash",
+ "olo-kit",
  "olo-screensavers",
- "olo-ui",
  "olo-xdg",
  "serde_json",
  "tracing",
@@ -8411,6 +8411,7 @@ name = "olo-screensavers"
 version = "0.1.0"
 dependencies = [
  "image",
+ "olo-kit",
  "olo-ui",
 ]
 

@@ -1063,6 +1063,12 @@ impl<'a> WindowCx<'a> {
         }
         let step = clock.pace.min(clock.finest).clamp(1.0 / 240.0, 60.0);
         let since = clock.asked_at.map_or(0.0, |at| at.elapsed().as_secs_f64());
+        if step <= since {
+            // (Due already: asked for every frame, a screen saver's
+            // drawing, it's drawn for the next as this one shows, with
+            // no timer between.)
+            return self.tick_clock();
+        }
         let id = self.core.id;
         let timer = self.looper.after(Duration::from_secs_f64((step - since).max(0.0)), move |looper| {
             with_window(looper, id, |cx| cx.tick_clock());

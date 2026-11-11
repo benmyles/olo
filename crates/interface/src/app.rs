@@ -59,10 +59,21 @@ pub fn on_displays_changed(f: impl Fn() + Send + Sync + 'static) {
     DISPLAYS_CHANGED.lock().unwrap_or_else(|e| e.into_inner()).push(std::sync::Arc::new(f));
 }
 
-/// Every display's bounds, in points, as app_server last said. (None
-/// yet for a moment as the program starts.)
+/// Whether there's a compositor to show windows on (not a headless
+/// run: tests, the layout lint).
+pub fn has_compositor() -> bool {
+    !crate::display::display().headless
+}
+
+/// Every display's bounds, in points, as app_server last said.
 pub fn displays() -> Vec<Bounds<Pixels>> {
     crate::display::display().displays()
+}
+
+/// Every display's name (its output's: "eDP-1"), in [`displays`]' order:
+/// what a layer surface is put on by (`LayerShellOptions::output`).
+pub fn display_names() -> Vec<Option<String>> {
+    crate::display::display().display_names()
 }
 
 /// Whether the program is ending.
