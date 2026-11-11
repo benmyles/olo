@@ -9965,8 +9965,15 @@ outwards, lighter, files greyer) beside a list of the folder by size
 whose bars wear the slices' colours, and DaisyDisk's Collector along the
 bottom: drag rows or slices into it (or ⌘D, Item ▸ Add to Collector),
 then Move to Trash or Delete… (confirmed) all at once. Click a slice to
-go into it, the middle (or Up, ⌘↑, Backspace) to go back up. On the
-GPUI kit (olo-ui): each slice is one `window.paint_sector` (the slices
+go into it, the middle (or Up, ⌘↑, Backspace) to go back up. On Olo's
+own kit (olo-kit): one view on its window's looper, told by the scan
+and by the threads that move things to the Trash and put them back
+(`cx.messenger()`); the chart, the Collector's well and what's dragged
+are canvases the view draws itself (`cx.canvas`), their pointer taken
+by listeners on them that find a slice or a chip's × by the arithmetic
+that drew it (`chart::hit`, `DiskUsage::chips`); a drag is the window's
+(`on_window_mouse_move`, `on_window_mouse_up`) until it's let go. Each
+slice is one `Painter::paint_sector` (the slices
 one paint layer, the hairlines another), so hovering redraws the window
 in about a millisecond and only when the slice under the pointer
 changes; the chart's width is kept on device pixels so the list beside

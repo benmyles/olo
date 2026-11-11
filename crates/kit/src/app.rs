@@ -587,6 +587,13 @@ impl View for Frame {
                     cx.stop_propagation();
                     return;
                 }
+                // Undo and Redo (the profile's keys) where no menu has
+                // them: the window's own view's `undo` and `redo`.
+                if let Some(redo) = crate::undo::pressed(&e.keystroke) {
+                    crate::menu::on_command(if redo { "redo" } else { "undo" }, cx);
+                    cx.stop_propagation();
+                    return;
+                }
                 // ⌘W (the profile's Close) on a window whose app has no
                 // Close of its own: closed as its tab's close button does,
                 // the app's confirmations first.

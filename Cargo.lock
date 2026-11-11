@@ -7584,10 +7584,10 @@ version = "0.1.0"
 dependencies = [
  "libc",
  "olo-crash",
+ "olo-kit",
  "olo-kit-base",
  "olo-sync",
  "olo-theme",
- "olo-ui",
  "olo-xdg",
  "serde",
  "serde_json",

@@ -97,8 +97,11 @@ something nobody here has is in "Blocked", with what it waits for.
      The file panels and Open With, in the kit (the same to the pixel).
      Drive Setup (its window and its forms that fit the same to the
      pixel; the forms that didn't fit, Format and Create, now do).
+     Undo, in the kit. Disk Usage (the same to a level in 255 of a
+     few of the chart's pixels; a redraw as the pointer crosses the
+     chart 578 µs against 793).
      *Next, smallest first:*
-     disk-usage, chrome, logs, palette, screenshot,
+     chrome, logs, palette, screenshot,
      diskbackup, portal, deskbar, notifications, doctor, telegram,
      activity, viewer, styled-edit, screen, tracker, passwords, terminal,
      preferences.

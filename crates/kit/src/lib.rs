@@ -21,6 +21,7 @@ pub mod review;
 pub mod style;
 pub mod theme;
 pub mod tip;
+pub mod undo;
 mod upgrade;
 pub mod widgets;
 
