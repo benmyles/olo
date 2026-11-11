@@ -996,8 +996,11 @@ impl<'a> WindowCx<'a> {
             WindowEvent::State(state) => {
                 if self.core.state != state {
                     self.core.state = state;
-                    // (The window's first view lays out by it.)
-                    if let Some(view) = self.core.root_view {
+                    // (The window's first view lays out by it, and so
+                    // does whatever asked how the window is held or how
+                    // big it is: a video's transport full screen.)
+                    let by_it: Vec<ViewId> = self.core.views.iter().filter(|(_, slot)| slot.reads_size).map(|(id, _)| id).chain(self.core.root_view).collect();
+                    for view in by_it {
                         self.core.invalidate_view(view);
                     }
                 }
@@ -1608,6 +1611,42 @@ impl<'a> WindowCx<'a> {
     /// tile).
     pub fn held_state(&self) -> WindowState {
         self.core.state
+    }
+
+    /// Whether the window is full screen (as app_server last said). (A
+    /// view whose `body` asks says what it shows again when that
+    /// changes, as for [`Self::viewport_size`].)
+    pub fn is_fullscreen(&self) -> bool {
+        SIZE_READ.with(|r| r.set(true));
+        self.core.state.fullscreen
+    }
+
+    /// Asks for the window full screen, or back: `is_fullscreen` and the
+    /// view's next `body` follow once app_server has done it.
+    pub fn toggle_fullscreen(&self) {
+        self.on_display(|window| window.toggle_fullscreen());
+    }
+
+    /// Keeps the screen from dimming, locking or sleeping while the
+    /// window shows (a playing video), until called with `false` or the
+    /// window closes.
+    pub fn set_keep_awake(&self, on: bool) {
+        self.on_display(move |window| window.set_keep_awake(on));
+    }
+
+    /// Draws the window in `gamut` from its next frame (Display P3 while
+    /// it shows a photo wider than sRGB; HDR10, an HDR video): its sRGB
+    /// colours converted as drawn, pictures in that space as they are.
+    /// With `only_on_hdr`, only if the window is on a display whose HDR
+    /// is on. Whether it does (the compositor must take the window's
+    /// colours, wp_color_management_v1): asked of the display thread, so
+    /// called when what's shown changes, not as it's drawn.
+    pub fn set_gamut(&mut self, gamut: crate::Gamut, only_on_hdr: bool) -> bool {
+        let id = self.core.id;
+        let drawn =
+            display().ask(move |on| on.stage(id).and_then(|stage| stage.with_window(|window| (!only_on_hdr || window.on_hdr_display()) && window.set_gamut(gamut))).unwrap_or(false)).unwrap_or(false);
+        self.refresh();
+        drawn
     }
 
     /// A handle another program's window can name to open over this

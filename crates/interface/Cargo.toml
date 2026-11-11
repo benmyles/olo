@@ -23,6 +23,7 @@ runtime_shaders = []
 [dependencies]
 olo-app = { workspace = true }
 olo-sync = { workspace = true }
+olo-yuv = { workspace = true }
 anyhow = "1.0.86"
 async-task = "4.7"
 collections = { path = "../../gpui/collections", package = "gpui_collections" }

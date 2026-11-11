@@ -47,7 +47,7 @@ mod text_system;
 mod util;
 mod view;
 mod window;
-mod yuv;
+use olo_yuv as yuv;
 
 #[cfg(doc)]
 pub mod _ownership_and_data_flow;

@@ -4332,6 +4332,7 @@ dependencies = [
  "olo-protocol",
  "olo-theme",
  "olo-xdg",
+ "olo-yuv",
  "oo7",
  "parking",
  "parking_lot",
@@ -7889,6 +7890,7 @@ dependencies = [
  "olo-sync",
  "olo-theme",
  "olo-xdg",
+ "olo-yuv",
  "parking",
  "parking_lot",
  "pathfinder_geometry",
@@ -8301,6 +8303,7 @@ dependencies = [
  "olo-color",
  "olo-crash",
  "olo-images",
+ "olo-kit",
  "olo-kit-base",
  "olo-richtext",
  "olo-sync",
@@ -8309,6 +8312,7 @@ dependencies = [
  "olo-vaapi",
  "olo-video",
  "olo-xdg",
+ "olo-yuv",
  "openh264",
  "opus-decoder",
  "pulldown-cmark",
@@ -8923,6 +8927,10 @@ dependencies = [
  "tracing",
  "zbus",
 ]
+
+[[package]]
+name = "olo-yuv"
+version = "0.1.0"
 
 [[package]]
 name = "once_cell"

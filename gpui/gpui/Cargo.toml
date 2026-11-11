@@ -127,6 +127,7 @@ olo-theme = { path = "../../crates/theme" }
 olo-emoji = { path = "../../crates/emoji", default-features = false }
 olo-protocol = { path = "../../crates/protocol" }
 olo-xdg = { path = "../../crates/xdg" }
+olo-yuv = { path = "../../crates/yuv" }
 bytemuck = { version = "1", optional = true }
 calloop = "0.13.0"
 calloop-wayland-source = { version = "0.3.0", optional = true }

@@ -518,7 +518,7 @@ fn to_bgra(px: &mut [u8]) {
 
 /// `src` resampled to `(w, h)` device pixels, to draw a texel a device
 /// pixel (`pictures::resampled`, in its gamut).
-fn resampled(src: &dyn Rgba, (w, h): (u32, u32)) -> Option<Arc<RenderImage>> {
+pub fn resampled(src: &dyn Rgba, (w, h): (u32, u32)) -> Option<Arc<RenderImage>> {
     let [sw, sh] = src.size();
     let image = crate::pictures::resampled(src.rgba(), (sw as u32, sh as u32), (w, h))?;
     Some(match src.gamut() {

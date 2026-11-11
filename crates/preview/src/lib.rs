@@ -12,6 +12,8 @@ pub mod bitmap;
 pub mod doc;
 pub mod edit;
 pub mod input;
+#[cfg(feature = "kit")]
+pub mod kit;
 pub mod load;
 pub mod media;
 pub mod opus;

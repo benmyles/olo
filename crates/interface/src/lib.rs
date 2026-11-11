@@ -41,7 +41,7 @@ mod tree;
 mod util;
 mod view;
 mod window;
-mod yuv;
+use olo_yuv as yuv;
 
 pub use anyhow::Result;
 pub use app::*;

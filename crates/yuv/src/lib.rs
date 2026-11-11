@@ -1,5 +1,6 @@
-//! Olo: a video's picture as its decoder made it (Y'CbCr, 4:2:0), drawn
-//! by the GPU (`Window::paint_yuv`): its planes uploaded as two textures
+//! A video's picture as its decoder made it (Y'CbCr, 4:2:0), drawn by
+//! the GPU (`Painter::paint_yuv`, Olo's GPUI's `Window::paint_yuv`: one
+//! type for both, so what decodes serves either): its planes uploaded as two textures
 //! (luma, and chroma interleaved), turned into RGB by the surface shader
 //! with the picture's own matrix and range. A 4K picture is 12 MB of
 //! planes rather than 33 MB of RGBA, and nothing converts it on the CPU.

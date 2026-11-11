@@ -8,14 +8,21 @@ license.workspace = true
 [features]
 # The views drawn with Olo's GPUI (the Viewer's and Quick Look's), and
 # video decoded on GPUs for them (olo-video's NVDEC, olo-vaapi's VA-API).
-gpui = ["dep:olo-ui", "dep:futures", "dep:smallvec", "dep:olo-xdg", "dep:olo-video", "dep:olo-vaapi"]
+gpui = ["gpu", "dep:olo-ui", "dep:futures", "dep:smallvec", "dep:olo-xdg"]
+# The same views on olo-kit (`kit`), for the apps that have moved to it.
+kit = ["gpu", "dep:olo-kit", "dep:smallvec", "dep:olo-xdg"]
+# Pictures as planes for a window's GPU (`olo_yuv`), and video decoded
+# on GPUs for them: what either set of views turns on.
+gpu = ["dep:olo-yuv", "dep:olo-video", "dep:olo-vaapi"]
 
 [dependencies]
 olo-video = { workspace = true, optional = true }
 olo-vaapi = { workspace = true, optional = true }
+olo-yuv = { workspace = true, optional = true }
 olo-crash.workspace = true
 olo-sync.workspace = true
 olo-ui = { workspace = true, optional = true }
+olo-kit = { workspace = true, optional = true }
 futures = { version = "0.3", optional = true }
 smallvec = { version = "1.6", optional = true }
 olo-xdg = { workspace = true, optional = true }
