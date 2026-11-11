@@ -1,0 +1,13 @@
+[package]
+name = "olo-fans"
+description = "Keeps a ThinkPad cool ahead of its firmware's own fan curve, so nothing is throttled for heat (a root service)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "olo-fans"
+path = "src/main.rs"
+
+[dependencies]
+libc = "0.2"

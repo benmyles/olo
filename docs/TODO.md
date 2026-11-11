@@ -92,8 +92,10 @@ something nobody here has is in "Blocked", with what it waits for.
      The emoji picker (each showing a new window with a picker of its
      own; scrolling 3.2% of a core against 4.4%).
      Olo Setup (its pages the same to the pixel).
+     Token Pool (both windows the same to the pixel; a window told
+     what the app keeps, reading the pool itself).
      *Next, smallest first:*
-     pool, drive-setup, disk-usage, chrome, logs, palette, screenshot,
+     drive-setup, disk-usage, chrome, logs, palette, screenshot,
      diskbackup, portal, deskbar, notifications, doctor, telegram,
      activity, viewer, styled-edit, screen, tracker, passwords, terminal,
      preferences.
@@ -104,33 +106,47 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **The fans on auto or at full speed, in Preferences ▸ Performance**
-  (Ben, 2026-11-10: "also under performance, add the option to have
-  fans be on auto or on full speed so that the user can temporarily
-  switch to full speed if they want -- also have it auto-revert to auto
-  after a selectable time period max of 1 day"). Found so far, on the
-  ThinkPad: thinkpad_acpi has fan control on
-  (`/sys/module/thinkpad_acpi/parameters/fan_control` says Y), and
-  `/proc/acpi/ibm/fan` takes `level auto`, `level full-speed`,
-  `level disengaged` (unregulated: faster still) and `watchdog N`
-  (1 to 120 seconds: the firmware takes the fans back if nobody says
-  the level again in that time); its hwmon (`thinkpad`) has `pwm1`,
-  `pwm1_enable` (0 full, 1 by hand, 2 auto), `fan1_input` and
-  `fan2_input`. As this was written its level read `disengaged`, 2,882
-  rpm: Ben had set it so himself for a while ("yes i temporarily set
-  the fan myself"), which is what this is to do for him. Both
-  are root's to write. *To do:* Auto and Full Speed in the panel, with
-  how long (15 minutes to a day at most), the time left shown and
-  counted down where the speed shows (the fans' rpm, live, while the
-  panel is open and not otherwise); a root-owned part that sets it and
-  puts it back (the precedent: `olo-power-now@.service`, Doctor's
-  helper installing it), which must go back to auto by itself whatever
-  happens to Olo: the firmware's watchdog kept fed while full speed is
-  wanted, so a crash, a logout or a sleep hands the fans back within
-  two minutes with nothing to run; the time it ends kept where a
-  restart finds it. Other machines by their hwmon `pwm*_enable` where
-  there is one, and the choice not offered where the fans can't be
-  set. Agents: the same through `olo-preferences`' documented way in.
+- **A fan profile, in Preferences ▸ Power, and the fans in Activity
+  Monitor** (Ben, 2026-11-10: "on auto settings the thinkpad is too slow
+  to ramp up the fans, it gets behind the thermal curve and then starts
+  throttling cpu … add under prefs -> power in the fan settings for the
+  fan profile an option to choose a different auto curve … still
+  adaptive like auto but ramps up quicker and keeps everything cooler
+  with the goal of avoiding any cpu throttling"; "make sure the fan
+  daemon looks at all the temps, cpu cores and both gpus and whatever
+  else we have"; "activity monitor should get updated to show stats and
+  details around this and graph temps to fan speeds and profile in use";
+  and, in place of the full-speed option asked for earlier the same day:
+  "we don't need to add the option for enabling full speed fans just
+  have in the power prefs the option for the default auto and this new
+  cooler/louder auto profile"). *Done:* the service, `olo-fans`
+  (`apps/fans`; its doc comment says how it decides), put in by hand on
+  Ben's ThinkPad as root (`/usr/local/libexec/olo/olo-fans`,
+  `olo-fans.service`, enabled; `/etc/olo/fans` says `cool`) and running:
+  24 sensors (the package each second; each core, the board's SEN zones,
+  whose 65 °C passive trip is the throttling, every three; the discrete
+  GPU as the firmware reads it; the SSD and the memory), the
+  processor's power as what's coming, the firmware's watchdog so a
+  stopped service hands the fans back in 30 seconds. `olo-fans
+  --status` prints what it reads and would do. Found: the firmware's
+  `auto` had the fans at 2,880 rpm with the package at 89–91 °C and
+  SEN1 at 67 °C, over its trip; level 7 is about 5,070 rpm. *To do:*
+  Fan Profile in Preferences ▸ Power (Auto: the firmware's; Cool:
+  cooler and louder), which installs the service itself (Doctor's
+  helper, as the login screen's parts) and writes `/etc/olo/fans`
+  through it, offered only where `/proc/acpi/ibm/fan` takes levels
+  (thinkpad_acpi with `fan_control=1`: the helper sets that too);
+  the service's status (`/run/olo-fans/status`) grown to what the
+  panels need (profile, level, why, each sensor's reading and room),
+  written only while something reads it; Activity Monitor's section:
+  temperatures against the fans' speed over time, the level, what
+  asked for it and the profile in use; whether the processor was
+  throttled (the package's `thermal_throttle` counts, the zones over
+  their trips), so the curve can be seen to work; the curve's numbers
+  tuned from that (where each kind of sensor starts the fans and has
+  them at full speed: `span`), and other machines by their hwmon
+  `pwm*`. Agents: the same through `olo-preferences`' documented way
+  in, and `olo-fans --status`.
 
 - **A scheduler of the person's choosing, in Preferences ▸ Performance**
   (Ben, 2026-11-10: "add to olo the ability to pick a custom scheduler
