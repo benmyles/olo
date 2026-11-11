@@ -2024,6 +2024,29 @@ impl Editor {
                             style::fill_rect(window, Bounds::new(point(px(qat.0 + x0), px(y)), size(px(x1 - x0), px(px1))), text_color);
                         }
                     }
+                    // Its misspelled words' marks, under the text (a
+                    // descender crosses its mark, not the mark it).
+                    if let Some(wrong) = self.shown.wrong.get(nth).and_then(Option::as_ref) {
+                        let mut segs = Vec::new();
+                        let mine = at.1 + q.at.1;
+                        for r in wrong.iter() {
+                            // In its cell (a word never crosses a tab).
+                            if !std::ptr::eq(&placed.parts[placed.part_of(r.start)], q) {
+                                continue;
+                            }
+                            // Not the word being typed.
+                            if focused && sel.is_empty() && (para.start + r.start..=para.start + r.end).contains(&self.caret) {
+                                continue;
+                            }
+                            let local = r.start.saturating_sub(q.start)..(r.end - q.start).min(q.len);
+                            for (x0, _, x1, y1) in q.laid.range_rects(local, false) {
+                                squiggle(&mut segs, snap(at.0 + q.at.0 + x0, s), snap(at.0 + q.at.0 + x1, s), snap(mine + y1, s) - 2.0 * px1, s);
+                            }
+                        }
+                        if !segs.is_empty() {
+                            window.paint_segments(&segs, px(px1), false, squiggle_color);
+                        }
+                    }
                     q.laid.paint(window, point(px(qat.0), px(qat.1)), text_color, clip);
                     // Its pictures, over their characters.
                     for (byte, (x0, y0, x1, y1)) in q.laid.pictures() {
@@ -2044,26 +2067,7 @@ impl Editor {
                         }
                     }
                 }
-                if let Some(wrong) = self.shown.wrong.get(nth).and_then(Option::as_ref) {
-                    let _ = (text, end);
-                    let mut segs = Vec::new();
-                    for r in wrong.iter() {
-                        // Not the word being typed.
-                        if focused && sel.is_empty() && (para.start + r.start..=para.start + r.end).contains(&self.caret) {
-                            continue;
-                        }
-                        // In its cell (a word never crosses a tab).
-                        let q = &placed.parts[placed.part_of(r.start)];
-                        let local = r.start.saturating_sub(q.start)..(r.end - q.start).min(q.len);
-                        let qat = (at.0 + q.at.0, at.1 + q.at.1);
-                        for (x0, _, x1, y1) in q.laid.range_rects(local, false) {
-                            squiggle(&mut segs, snap(qat.0 + x0, s), snap(qat.0 + x1, s), snap(qat.1 + y1, s) - 2.0 * px1, s);
-                        }
-                    }
-                    if !segs.is_empty() {
-                        window.paint_segments(&segs, px(px1), false, squiggle_color);
-                    }
-                }
+                let _ = (text, end);
                 if let Some(mk) = &placed.marker {
                     let laid = &placed.parts[0].laid;
                     let first_top = laid.rows.first().map_or(0.0, |r| r.top);

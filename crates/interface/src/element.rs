@@ -247,6 +247,9 @@ pub(crate) struct Interactivity {
     pub(crate) focusable: bool,
     /// A click on it gives it the keyboard.
     pub(crate) click_focus: bool,
+    /// A press on it leaves the keyboard where it is
+    /// ([`InteractiveElement::keeps_focus`]).
+    pub(crate) keeps_focus: bool,
     /// Tab reaches it.
     pub(crate) tab_stop: bool,
     /// It counts as having the keyboard while anything it holds has it.
@@ -667,6 +670,14 @@ pub trait InteractiveElement: Sized {
     /// [`Self::occlude`] nothing under it gets the pointer.
     fn raised(mut self) -> Self {
         self.interactivity().raised = true;
+        self
+    }
+
+    /// A press on it leaves the keyboard where it is, whatever it's in
+    /// that a click gives the keyboard to: a menu bar's titles (a
+    /// window's menus work on what has its keyboard, and never take it).
+    fn keeps_focus(mut self) -> Self {
+        self.interactivity().keeps_focus = true;
         self
     }
 

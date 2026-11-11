@@ -265,26 +265,59 @@ something nobody here has is in "Blocked", with what it waits for.
      pictures (no such display in a test session), an upgrade in
      place with documents open, a video's sound (no sound server in
      a test), the GPU decoders' choice.
-     *Next, smallest first:*
-     styled-edit, tracker, passwords, terminal, preferences.
-     StyledEdit's kit pieces are in (2026-11-11, compiled and
-     unit-tested, not run yet): `olo_kit::editor` (laid out as the
-     host's `body` runs, its drawing looking only), `widgets::ruler`,
-     `spell`, `code::Code`, a scroll view whose content scrolls
-     itself. *To do, the app:* as the Viewer: each document its
-     window's own view (`DocView`, the `EditorHost`) on its own
-     looper, with what `StyledEdit` did for a document moved into it
-     (load, save, export, print, find and replace, the save question,
-     its file panels answering as messages, Find, Replace and Header &
-     Footer as windows of its own); the app's looper a hub of the
-     windows open, their files followed on disk, new and imported
-     documents; `Common` (the search, spelling, the fonts) and the
-     pictures shared across loopers behind locks, not `Rc`;
-     `markdown::parse` through a `Doer` as `code::parse`; the
-     pictures' loader telling the window, not the proxy. Then run old
-     against new on text, styled, Markdown, source and tables, on
-     pages, with the ruler, typing through an input method, and the
-     Print panel.
+     **StyledEdit** (2026-11-11): each document its window's own view
+     (`DocView`, the `EditorHost`) on its own looper, doing for itself
+     what the app did for it (load, save, export, print, find and
+     replace, the save question, its file panels answering as
+     messages; Find, Replace and Header & Footer windows of its own);
+     the app's looper a `Hub` of the windows open, their files
+     followed on disk, new and imported documents; the search,
+     spelling and fonts shared behind a lock; `markdown::parse`
+     through a `Doer`; each document's pictures told to its window.
+     Old against new on made-up files (each kind of document at 1×,
+     1.5× and 2×, light and dark; the rest at 2×): plain text, a styled
+     document (read from RTF), Markdown (as it looks, as source, with
+     and without line numbers, scrolled to its picture), source code,
+     typing, bold and italic, undo, every menu and tool-bar picker,
+     the context menu, Find, Replace, Header & Footer, Page View, a
+     table, a picture put in, the Save panel, the save question, the
+     Print panel: the same to the pixel (but the caret's blink). The
+     files saved are the same (text and attributes); exported
+     Markdown, HTML, RTF, Word and OpenDocument the same bytes, the PDF
+     the same rendered. Over an in-place reload both windows, unsaved
+     text, its styles and the selection come back. The review: nothing
+     at 1×, 1.5× and 2×, light and dark (three findings both builds
+     had are gone: see below). *Measured* (release, 2×, old → new):
+     at rest 0.0% both (the caret's blink, 0.8 frames/s); a frame
+     typing in a 1 MB text 1444 → 1140 µs (8.0 → 5.8% of a core), in
+     350 KB of Markdown 1213 → 1127 µs (6.5 → 6.3%), in 450 KB of
+     Rust 1390 → 1192 µs (8.8 → 10.6%, with 167 frames drawn against
+     126); a frame scrolling 1431 → 770, 866 → 764, 971 → 675 µs;
+     resident 86 → 90 MB, 88 → 92, 107 → 112 (3–5 MB more).
+     *Differences, meant:* a window that isn't active (its Find
+     window, an alert, has the keyboard) shows its text without the
+     keyboard's ring (the old one's ring stayed, drawn before); a
+     Markdown document's scroll bar is right when it opens (the old
+     one's was once scrolled). *Found on the way, in the kit:* the
+     ruler drew at the window's top until the pointer first moved
+     over it; spelling marks drew over descenders; a window lost its
+     active look while its own menu was open, and a press on the
+     menu bar took the keyboard from what had it
+     (`InteractiveElement::keeps_focus`); the ruler's last number
+     ran past a window narrower than the page; the review called
+     rows of check boxes that touch crowded at 1× and 1.5×. *Not
+     tried:* printing to a printer (only the panel), files dropped
+     on a window, pictures on the web, a link opened, typing
+     through an input method in this app (the kit's editor was),
+     Learn and Ignore Spelling.
+     *Found, not fixed:* the Viewer's text preview, reviewed at 2×
+     in a 535 × 656 window, has its first line 4.9 pt under the menu
+     bar's titles ("crowded", six findings; there before this
+     change): the text view wants the document's inset under a menu
+     bar, or the review to know a document's lines as it knows the
+     document.
+     *Next, smallest first:* tracker, passwords, terminal,
+     preferences.
   5. **Tools, HACKING and the Olo Book**; GPUI and olo-ui leave the
      workspace (the `browser` and `olo-coder` branches build on them:
      they stay until those have moved). `tools/dev/bench`, `ui-lint`,
@@ -309,7 +342,15 @@ something nobody here has is in "Blocked", with what it waits for.
      `open_window`, with the app's looper (a `Hub`) told through the
      proxy; test old against new with the pointer moved off, then
      look at one shot of each batch: the same to the pixel can be the
-     same failure.
+     same failure. A drawing's place is the bounds it's handed,
+     never what a pointer handler last kept (nothing has moved over a
+     window just opened); what's shared between windows is behind a
+     lock in an `Arc`, each window keeping a flag the app reads (a
+     save under way) rather than the app reading its views; a window
+     the app must outlive (an error for a file that wouldn't open)
+     is opened before the one it's about is closed, or the app ends
+     between them; a test that drives a file panel types a name, not
+     a path, and checks the file is there before believing the shot.
 
 ## Not started (highest priority first)
 

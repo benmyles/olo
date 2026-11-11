@@ -6,10 +6,7 @@
 
 use std::sync::Arc;
 
-use olo_ui::{
-    gpui::{Font, FontStyle, FontWeight, TextSystem},
-    style,
-};
+use olo_kit::{Font, FontStyle, FontWeight, TextSystem, style};
 
 use crate::doc::{MONOSPACE, Style};
 

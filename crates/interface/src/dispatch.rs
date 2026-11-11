@@ -399,10 +399,14 @@ impl WindowCx<'_> {
         // What it went down on is held until it's let go: a click is
         // both on the same thing.
         let mut focus = None;
+        let mut kept = false;
         for id in &hovered {
             let Some(node) = self.core.nodes.get_mut(*id) else { continue };
             let Some(inter) = &node.inter else { continue };
-            if focus.is_none() && inter.click_focus {
+            // (What's in front decides: it keeps the keyboard where it
+            // is, or takes it.)
+            kept |= focus.is_none() && inter.keeps_focus;
+            if focus.is_none() && !kept && inter.click_focus {
                 focus = Some(*id);
             }
             if event.button == MouseButton::Left && (inter.paints_by_state || inter.active_style.is_some() || !inter.click.is_empty()) {

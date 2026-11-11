@@ -8600,8 +8600,27 @@ so); unwritable files are read-only (selectable, not editable). Saving
 writes `.NAME.saving` beside the file, copies its permissions and renames
 it over the original, on a thread.
 
-`doc.rs` is the model and is unit-tested. The app is on GPUI (the
-GPUI kit, `olo-ui`): each window's `DocView` keeps the GPUI kit's
+`doc.rs` is the model and is unit-tested. The app is on olo-kit, laid
+out as the Viewer: each document is its window's own view, `DocView`,
+on a looper of its own, and does for itself what its file needs (reads
+and saves it, exports and prints it on workers that answer through its
+messenger, `DocMsg`; its file panels and the Print panel answer the
+same way; its Find, Replace and Header & Footer windows are windows of
+its own, `open_window_here`, holding a `ViewRef` to it; it asks about
+unsaved changes when its close box does, `close_requested`). The app's
+looper is a hub (`Hub`): the windows open and their files, followed on
+disk (`ToHub::OnDisk` to every window, which reads its file again if
+nothing in it is unsaved), new and imported documents, a file already
+open brought forward, and an error with no window to say it over
+(`open_app_alert`, opened before the window it's about closes, or the
+app would end between them). What the windows share is behind a lock
+(`Shared`: the search, spelling on or off, the font families, whether
+new windows show the ruler and tool bars); one that changes it tells
+the hub, which tells them all (`ToHub::Again`). Each window keeps
+itself for an upgrade (`save_state`, a `SavedDoc`; `on_upgrade` joins
+them), and says while it is saving (`upgrade_waits_while`). A
+document's pictures are its own (`Pictures`, decoded on workers that
+tell its window). `DocView` keeps the kit's
 `editor::Editor` (so a document of any length scrolls and types at full
 speed) and is its `EditorHost`, and the `Doc` is its `Document` (`Styled`
 in main.rs, which also names each style's font, `fonts::font`): every edit is `Doc::edit`, which moves the
@@ -8654,8 +8673,8 @@ in the editor) keep their widths in StyledEdit's own files and in Word,
 OpenDocument, RTF and HTML (`<colgroup>`); Markdown has no widths.
 
 The ruler (Document ▸ Show Ruler, while lines wrap; each window keeps
-its own through a reload, new ones take the last choice) is the GPUI
-kit's `widgets::Ruler`, over the text (`Editor::text_span` places it,
+its own through a reload, new ones take the last choice) is the
+kit's `widgets::ruler::Ruler`, over the text (`Editor::text_span` places it,
 and `EditorHost::text_moved` moves it with the text in the same frame): it shows the caret's
 paragraph's indents and tab stops, and what is changed on it goes to
 every selected paragraph (not a table's rows) as one step to undo, with
@@ -8672,7 +8691,7 @@ indent as LibreOffice has them; `\li`, `\fi`, `\ri`, `\tx` with
 
 File ▸ Print… (⌘P) shows `olo_print`'s Print panel; Export ▸ PDF… and
 the panel's PDF File ask where, then write a PDF. `pages.rs` sets the
-document on pages on a worker (with GPUI's text system made for it,
+document on pages on a worker (with the kit's text system made for it,
 `TextSystem::standalone`, and the editor's own layout, so lines break
 as in the editor): each paragraph as `Doc::format` sets it, at the
 page's text width (an inch's margins), its rows down the pages (a row

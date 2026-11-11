@@ -201,8 +201,6 @@ pub struct Fill {
     pub cut: [bool; 4],
 }
 
-/// What a frame told the review about its layout, beyond what it
-
 /// A picture drawn from a bitmap: where, its bitmap's size in pixels
 /// (if known), and whether all of the bitmap is drawn.
 #[derive(Debug, Clone)]
@@ -578,6 +576,23 @@ fn crowded(p: &Parts, screen: Rect, ppp: f32, out: &mut Vec<Finding>) {
             }
             // (A line of text set in pieces, a word apart, is one line.)
             if *ta && *tb && (ba - bb).abs() <= SAME {
+                continue;
+            }
+            // (A control's own text is as near its neighbour as the
+            // control is: marks in rows one under the other touch, as
+            // BeOS stacks them, and their labels are then a few points
+            // from the next row.)
+            let abuts = |text: &Rect, other: &Rect| {
+                p.controls.iter().any(|c| {
+                    let r = c.shown();
+                    r != *text && r.expand(SAME).contains_rect(*text) && !r.expand(SAME).contains_rect(*other) && {
+                        let gx = (other.min.x - r.max.x).max(r.min.x - other.max.x);
+                        let gy = (other.min.y - r.max.y).max(r.min.y - other.max.y);
+                        gx.max(gy) <= touching
+                    }
+                })
+            };
+            if (*ta && abuts(ra, rb)) || (*tb && abuts(rb, ra)) {
                 continue;
             }
             let overlap_y = ra.max.y.min(rb.max.y) - ra.min.y.max(rb.min.y);

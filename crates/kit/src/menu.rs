@@ -1285,6 +1285,9 @@ impl IntoElement for MenuBar {
                 g.agent(agent::Node { role: "MenuBarItem", name: Some(title.clone()), bounds: r, enabled: true, clickable: true, selected: Some(open == Some(i)), ..Default::default() });
             }
         })
+        // (A window's menus work on what has its keyboard: the bar
+        // never takes it.)
+        .keeps_focus()
         // Menus open on the press, as on BeOS.
         .on_mouse_down(MouseButton::Left, move |e, cx| {
             let b = cx.listener_bounds();

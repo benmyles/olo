@@ -386,8 +386,10 @@ impl Ruler {
         let ind = shown.indents;
         let x_of = |v: f32| self.origin + v;
         let (first_x, left_x, right_x) = (x_of(ind.left + ind.first), x_of(ind.left), x_of(self.width - ind.right));
-        let (st, sb) = self.strip();
+        // (Where it is drawn, not where it last heard the pointer: it
+        // has heard nothing yet when it's first shown.)
         let (top, bottom) = (f32::from(rect.top()), f32::from(rect.bottom()));
+        let (st, sb) = (top + 6.0, bottom - 7.0);
 
         // The panel, the text's strip and its scale, then the markers.
         style::fill_rect(window, rect, style::c(p.panel_background));
@@ -403,7 +405,11 @@ impl Ruler {
         for k in 1..=n {
             let x = snap(self.origin + k as f32 * unit / parts as f32);
             if k % parts == 0 {
-                // The number, in the strip's middle.
+                // The number, in the strip's middle (none cut by the
+                // ruler's end: a page wider than the window).
+                if x + 6.0 > f32::from(rect.right()) || x - 6.0 < f32::from(rect.left()) {
+                    continue;
+                }
                 style::label(window, px(x), px(mid), style::Align::Center, (k / parts).to_string(), 9.0, style::ui_font(FontWeight::NORMAL), ink);
                 continue;
             }

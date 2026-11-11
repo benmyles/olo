@@ -96,6 +96,9 @@ pub(crate) struct WindowCore {
     pub(crate) commits: u64,
     /// The window it belongs to (a menu's, a tip's): it closes with it.
     pub(crate) owner: Option<WindowId>,
+    /// A menu (a popup that takes the keyboard): its owner is as active
+    /// as it was while this is open ([`WindowCx::is_window_active`]).
+    pub(crate) menu: bool,
     pub(crate) gfx: Gfx,
     /// The window's content, in points.
     pub(crate) size: Size<Pixels>,
@@ -305,11 +308,29 @@ pub(crate) fn with_window<R>(looper: &mut Looper, id: WindowId, f: impl FnOnce(&
         for view in [cx.core.root_view, cx.core.main_view].into_iter().flatten() {
             cx.with_any_view(view, |v, id, cx| v.window_closing(id, cx));
         }
+        // A menu gone: its owner says what it shows again (it may no
+        // longer be active: the menu was put away by a click elsewhere).
+        if let (true, Some(owner)) = (core.menu, core.owner) {
+            menu_gone(looper, owner);
+        }
         core.end(looper);
     } else if let Some(windows) = looper.state_mut::<Windows>() {
         windows.map.insert(id, core);
     }
     Some(result)
+}
+
+/// A menu of window `owner`'s went: once what's running is done, the
+/// views of it that show whether it's active say what they show again.
+fn menu_gone(looper: &mut Looper, owner: WindowId) {
+    looper.after(Duration::ZERO, move |looper| {
+        with_window(looper, owner, |cx| {
+            let by_it: Vec<ViewId> = cx.core.views.iter().filter(|(_, slot)| slot.reads_active).map(|(id, _)| id).collect();
+            for view in by_it {
+                cx.core.invalidate_view(view);
+            }
+        });
+    });
 }
 
 /// When a window's drawings that move with time are drawn again
@@ -459,6 +480,7 @@ impl WindowCore {
             main_view: None,
             commits: 0,
             owner: None,
+            menu: false,
             gfx,
             size: opened.size,
             title,
@@ -1598,11 +1620,13 @@ impl<'a> WindowCx<'a> {
     pub fn open_window_here<V: View>(&mut self, spec: crate::WindowSpec, build: impl FnOnce(&mut Cx<V>) -> V) -> Option<LocalWindow<V>> {
         let id = display().next_window_id();
         let title = spec.title.clone();
+        let menu = spec.focus && matches!(spec.kind, crate::WindowKind::Popup { .. });
         match open(self.looper, id, spec.params(), title, build) {
             Ok(id) => {
                 let owner = self.core.id;
                 if let Some(core) = self.looper.state_mut::<Windows>().and_then(|w| w.map.get_mut(&id)) {
                     core.owner = Some(owner);
+                    core.menu = menu;
                 }
                 Some(LocalWindow { id, _view: std::marker::PhantomData })
             }
@@ -1941,9 +1965,31 @@ impl<'a> WindowCx<'a> {
     /// Whether the window has the keyboard. (A view whose `body` asks
     /// says what it shows again when that changes: what's selected in
     /// it is drawn by it.)
+    ///
+    /// A window with a menu of its own open is as active as it was: the
+    /// menu has the keyboard for it (what's selected in the window, and
+    /// what has its keyboard, look as they did while the menu is up, as
+    /// in BeOS, where a window's menus never took its activation).
     pub fn is_window_active(&self) -> bool {
         ACTIVE_READ.with(|r| r.set(true));
-        self.core.active
+        self.core.active || self.has_menu_open()
+    }
+
+    /// Whether a menu of this window's (or a menu of that one's) is open.
+    fn has_menu_open(&self) -> bool {
+        let Some(windows) = self.looper.state::<Windows>() else { return false };
+        let mut owners = vec![self.core.id];
+        let mut found = false;
+        // (Menus of menus: a few deep at most.)
+        for _ in 0..8 {
+            let next: Vec<WindowId> = windows.map.values().filter(|c| c.menu && !c.closed && c.owner.is_some_and(|o| owners.contains(&o))).map(|c| c.id).collect();
+            if next.is_empty() {
+                break;
+            }
+            found = true;
+            owners = next;
+        }
+        found
     }
 
     /// Where the pointer was last seen in the window.

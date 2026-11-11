@@ -12,9 +12,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use olo_ui::{
+use olo_kit::{
+    Font, Hsla, Rgba,
     editor::{self, PICTURE, Span},
-    gpui::{Font, Hsla, Rgba},
     widgets::ruler,
 };
 use serde::{Deserialize, Serialize};
@@ -366,7 +366,7 @@ pub struct Doc {
     pub saved_generation: u64,
     /// Each change to the text since last taken, where its lines are
     /// (for source code's syntax: `take_edits`); None: not kept.
-    edits: Option<Vec<olo_ui::code::Edit>>,
+    edits: Option<Vec<olo_kit::code::Edit>>,
 }
 
 /// What each printed page shows above and below its text: left, centre
@@ -493,7 +493,7 @@ impl Doc {
     }
 
     /// The changes to the text since last taken, in order.
-    pub fn take_edits(&mut self) -> Vec<olo_ui::code::Edit> {
+    pub fn take_edits(&mut self) -> Vec<olo_kit::code::Edit> {
         self.edits.as_mut().map(std::mem::take).unwrap_or_default()
     }
 
@@ -507,7 +507,7 @@ impl Doc {
             let i = self.para_index(at);
             (i, at - self.para_starts[i])
         };
-        let e = olo_ui::code::Edit::new(removed.clone(), inserted, place(removed.start), place(removed.end));
+        let e = olo_kit::code::Edit::new(removed.clone(), inserted, place(removed.start), place(removed.end));
         if let Some(v) = self.edits.as_mut() {
             v.push(e);
         }

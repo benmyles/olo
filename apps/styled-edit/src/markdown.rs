@@ -12,7 +12,7 @@
 //! where they show (dimmed) as typed. As source: the same text in the
 //! monospaced face, coloured by what each part is, with line numbers.
 //! Code blocks are coloured by their fence's language in both
-//! (`olo_ui::code`).
+//! (`olo_kit::code`).
 //!
 //! The document is parsed again (pulldown-cmark, with each event's place
 //! in the source) when its text changes, into each line's block and the
@@ -26,10 +26,10 @@ use std::{
     path::Path,
 };
 
-use olo_ui::{
+use olo_kit::{
+    Font, FontStyle, FontWeight, Hsla,
     code::{self, Code},
     editor::{self, Span},
-    gpui::{Font, FontStyle, FontWeight, Hsla},
     style,
 };
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
@@ -836,7 +836,7 @@ impl Job {
 /// again (None: gone), the parse is taken (its lines measured again) and
 /// the view drawn, and if the text changed meanwhile it's parsed again.
 #[allow(clippy::type_complexity)]
-pub fn parse<V: 'static>(cx: &mut olo_ui::gpui::Context<V>, look: &mut Look, text: &str, generation: u64, find: fn(&mut V) -> Option<(&mut Look, &mut editor::Editor, &str, u64)>) {
+pub fn parse<V: olo_kit::View>(cx: &mut olo_kit::Cx<V>, look: &mut Look, text: &str, generation: u64, find: fn(&mut V) -> Option<(&mut Look, &mut editor::Editor, &str, u64)>) {
     // Being typed in: once the typing pauses.
     if text.len() > AT_ONCE
         && let Some(t) = look.touched
@@ -845,34 +845,41 @@ pub fn parse<V: 'static>(cx: &mut olo_ui::gpui::Context<V>, look: &mut Look, tex
         if !look.waiting {
             look.waiting = true;
             let wait = code::PAUSE - t.elapsed();
-            cx.spawn(async move |this, cx| {
-                cx.background_executor().timer(wait).await;
-                let _ = this.update(cx, |v, cx| {
-                    let Some((look, _, text, generation)) = find(v) else { return };
-                    look.waiting = false;
-                    parse(cx, look, text, generation, find);
-                });
-            })
-            .detach();
+            cx.after_do(wait, move |v, cx| {
+                let Some((look, ..)) = find(v) else { return };
+                look.waiting = false;
+                again(v, cx, find);
+            });
         }
         return;
     }
     let Some(job) = look.job(text, generation) else { return };
-    let task = cx.background_executor().spawn(async move { job.run() });
-    cx.spawn(async move |this, cx| {
-        let parsed = task.await;
-        let _ = this.update(cx, |v, cx| {
-            let Some((look, editor, text, generation)) = find(v) else { return };
+    let doer = cx.doer();
+    olo_kit::app_kit::pool::run(move || {
+        let parsed = job.run();
+        doer.run(move |v, cx| {
+            let Some((look, editor, text, _)) = find(v) else { return };
             let (changed, old) = look.done(parsed, text);
-            cx.background_executor().spawn(async move { drop(old) }).detach();
+            // (A big parse is let go on a worker too.)
+            olo_kit::app_kit::pool::run(move || drop(old)).detach();
             if let Some(r) = changed {
                 editor.restyled(r);
-                cx.notify();
+                cx.invalidate();
             }
-            parse(cx, look, text, generation, find);
+            again(v, cx, find);
         });
     })
     .detach();
+}
+
+/// [`parse`] for the look and text `find` finds in the view now.
+#[allow(clippy::type_complexity)]
+fn again<V: olo_kit::View>(v: &mut V, cx: &mut olo_kit::Cx<V>, find: fn(&mut V) -> Option<(&mut Look, &mut editor::Editor, &str, u64)>) {
+    let Some((_, _, text, generation)) = find(v) else { return };
+    let text = text.to_owned();
+    if let Some((look, ..)) = find(v) {
+        parse(cx, look, &text, generation, find);
+    }
 }
 
 /// What a code block, front matter and inline code are set on.
