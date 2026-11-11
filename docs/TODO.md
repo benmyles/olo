@@ -75,10 +75,12 @@ something nobody here has is in "Blocked", with what it waits for.
      benched against its GPUI build before it moves. *Done:* DeskCalc
      (hover 0.3% of a core against 1.0%, typing 1.5% against 2.0%, the
      same to the pixel); the screen saver (each screen a window on a
-     looper of its own; a frame 410-550 µs against 500-790); the lock screen (the
-     same to the pixel; typing 0.6% of a core against 1.0%).
-     *Next, smallest first:*
-     greeter, polkit-agent, supervisor, rescue, emoji-picker, installer,
+     looper of its own; a frame 410-550 µs against 500-790); the lock screen (typing
+     0.6% of a core against 1.0%); the greeter (its caret's frame 775 µs
+     against 2,511). Both are as the GPUI ones to the pixel but for
+     glyphs GPUI put a part of a pixel off: it drew their text first
+     left of a window not yet given its size, and kept those places.
+     *Next, smallest first:* polkit-agent, supervisor, rescue, emoji-picker, installer,
      pool, drive-setup, disk-usage, chrome, logs, palette, screenshot,
      diskbackup, portal, deskbar, notifications, doctor, telegram,
      activity, viewer, styled-edit, screen, tracker, passwords, terminal,

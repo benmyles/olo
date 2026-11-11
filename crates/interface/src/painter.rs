@@ -132,6 +132,17 @@ pub struct Painter<'a> {
     state: &'a mut Option<Box<dyn std::any::Any>>,
 }
 
+/// Which of a glyph's sub-pixel drawings goes at `origin` (device
+/// pixels): how far into its pixel it starts, in quarters across. Left
+/// of or above the window too (`fract` of a negative is negative, and
+/// every glyph there was the first variant: a line first drawn at a
+/// negative place, a panel centred in a window not yet given its size,
+/// kept those when it was moved into view).
+fn subpixel_variant(origin: Point<ScaledPixels>) -> Point<u8> {
+    let within = |v: f32, variants: u8| (((v - v.floor()) * variants as f32).floor() as u8).min(variants - 1);
+    Point { x: within(origin.x.0, SUBPIXEL_VARIANTS_X), y: within(origin.y.0, SUBPIXEL_VARIANTS_Y) }
+}
+
 impl<'a> Painter<'a> {
     pub(crate) fn new(
         gfx: &'a mut Gfx,
@@ -616,7 +627,7 @@ impl<'a> Painter<'a> {
         let scale_factor = self.scale_factor();
         let glyph_origin = origin.scale(scale_factor);
 
-        let subpixel_variant = Point { x: (glyph_origin.x.0.fract() * SUBPIXEL_VARIANTS_X as f32).floor() as u8, y: (glyph_origin.y.0.fract() * SUBPIXEL_VARIANTS_Y as f32).floor() as u8 };
+        let subpixel_variant = subpixel_variant(glyph_origin);
         let key = (font_id.0 as u32, glyph_id.0, font_size.0.to_bits(), subpixel_variant.x, subpixel_variant.y);
         let found = match self.gfx.glyph_memo.get(&key) {
             Some(found) => found.clone(),
@@ -730,7 +741,7 @@ impl<'a> Painter<'a> {
     fn glyph_sprite(&mut self, origin: Point<Pixels>, font_id: FontId, glyph_id: GlyphId, font_size: Pixels) -> Option<(Bounds<ScaledPixels>, AtlasTile)> {
         let scale_factor = self.scale_factor();
         let glyph_origin = origin.scale(scale_factor);
-        let subpixel_variant = Point { x: (glyph_origin.x.0.fract() * SUBPIXEL_VARIANTS_X as f32).floor() as u8, y: (glyph_origin.y.0.fract() * SUBPIXEL_VARIANTS_Y as f32).floor() as u8 };
+        let subpixel_variant = subpixel_variant(glyph_origin);
         let key = (font_id.0 as u32, glyph_id.0, font_size.0.to_bits(), subpixel_variant.x, subpixel_variant.y);
         let found = match self.gfx.glyph_memo.get(&key) {
             Some(found) => found.clone(),
@@ -1009,4 +1020,20 @@ struct GlyphRunKey {
     rendering: TextRendering,
     stamp: u64,
     phase: (i32, i32),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A glyph's sub-pixel variant is how far into its device pixel it
+    /// starts, whichever side of the window's corner it's on.
+    #[test]
+    fn subpixel_variants_left_of_the_window() {
+        let at = |x: f32| subpixel_variant(Point { x: ScaledPixels(x), y: ScaledPixels(-19.104) }).x;
+        assert_eq!([at(0.0), at(0.3), at(0.5), at(0.99)], [0, 1, 2, 3]);
+        // (-83.4 is 0.6 into the pixel from -84.)
+        assert_eq!([at(-84.0), at(-83.7), at(-83.4), at(-83.01)], [0, 1, 2, 3]);
+        assert_eq!(subpixel_variant(Point { x: ScaledPixels(-0.25), y: ScaledPixels(-0.5) }).y, 0);
+    }
 }

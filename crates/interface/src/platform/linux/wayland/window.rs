@@ -1306,6 +1306,20 @@ impl WaylandWindowStatePtr {
         if rendering != self.frames.text_rendering.replace(rendering) {
             self.frames.force.set(true);
             self.schedule_frame();
+            // Olo: whoever draws the window's text is told (its looper
+            // keeps what it drew: under GPUI every frame asked again).
+            // A layer surface's is LCD text until it's on its output and
+            // plain after, and its looper, not told, kept whichever it
+            // had drawn first: the same window came out either way from
+            // one run to the next.
+            let told = self.callbacks.borrow_mut().appearance_changed.take();
+            if let Some(mut told) = told {
+                told();
+                let mut callbacks = self.callbacks.borrow_mut();
+                if callbacks.appearance_changed.is_none() {
+                    callbacks.appearance_changed = Some(told);
+                }
+            }
         }
     }
 
@@ -1537,7 +1551,15 @@ impl WaylandWindowStatePtr {
             } else {
                 state.renderer.update_drawable_size(device_bounds.size);
             }
-            (state.bounds.size, state.scale)
+            // Olo: as big as its buffer (`content_size`): at a fractional
+            // scale the logical size times the scale rounds to whole
+            // device pixels, and laid out to the logical size the last
+            // row was never painted (a greeter's at 1.5×: 533 points are
+            // 799.5 of the buffer's 800 rows, and what was behind it
+            // showed along its bottom). GPUI asked `content_size` at each
+            // resize; the stage goes by what it's handed here.
+            let fits = Size { width: px(device_bounds.size.width.0 as f32 / state.scale), height: px(device_bounds.size.height.0 as f32 / state.scale) };
+            (fits, state.scale)
         };
 
         if let Some(ref mut fun) = self.callbacks.borrow_mut().resize {

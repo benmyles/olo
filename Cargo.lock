@@ -7784,8 +7784,8 @@ version = "0.1.0"
 dependencies = [
  "olo-crash",
  "olo-greet",
+ "olo-kit",
  "olo-theme",
- "olo-ui",
  "olo-xdg",
  "serde",
  "serde_json",
@@ -8184,8 +8184,8 @@ version = "0.1.0"
 dependencies = [
  "olo-crash",
  "olo-fido",
+ "olo-kit",
  "olo-system",
- "olo-ui",
  "olo-xdg",
  "tracing",
  "zeroize",
