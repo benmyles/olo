@@ -7980,9 +7980,9 @@ version = "0.1.0"
 dependencies = [
  "olo-crash",
  "olo-fido",
+ "olo-kit",
  "olo-system",
  "olo-theme",
- "olo-ui",
  "olo-xdg",
  "tracing",
  "zeroize",

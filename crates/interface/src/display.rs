@@ -51,6 +51,8 @@ pub(crate) enum DisplayEvent {
     ClipboardChanged,
     /// The keyboard's layout changed.
     KeyboardLayoutChanged,
+    /// What happened to the session lock (`lock_session`).
+    SessionLock(crate::SessionLockEvent),
 }
 
 pub(crate) enum Client {
@@ -264,6 +266,26 @@ impl Display {
         if let Some(to) = self.events.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
             to.send(event);
         }
+    }
+
+    /// Asks app_server to lock the session; what happens to the lock is
+    /// told to the app's looper (with the displays there are then: the
+    /// ones to cover).
+    pub(crate) fn lock_session(&self) -> Result<()> {
+        self.ask(|_| {
+            crate::platform::lock_session_on_display(|event| {
+                display().post(move |on| {
+                    display().note_displays(on);
+                    display().tell(DisplayEvent::SessionLock(event));
+                });
+            })
+        })
+        .unwrap_or_else(|| Err(anyhow::anyhow!("the display is gone")))
+    }
+
+    /// Ends the session lock: sent to app_server before this returns.
+    pub(crate) fn unlock_session(&self) {
+        let _ = self.ask(|_| crate::platform::unlock_session_on_display());
     }
 
     /// Whether the display thread has ended.

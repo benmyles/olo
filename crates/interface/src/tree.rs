@@ -153,7 +153,7 @@ impl Node {
     }
 
     /// Whether anything of it is drawn at all.
-    fn paints(&self) -> bool {
+    pub(crate) fn paints(&self) -> bool {
         !matches!(self.kind, NodeKind::Group) || self.style.paints_behind() || self.style.paints_over()
     }
 }

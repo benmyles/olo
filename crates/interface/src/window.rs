@@ -581,7 +581,10 @@ impl WindowCore {
         let resized = bounds.size != node.bounds.size;
         node.bounds = bounds;
         node.content_size = content;
-        let mut repaint = resized && (node.behind.is_some() || node.over.is_some());
+        // (Whatever draws, not only what has a drawing kept: one made
+        // with no room, a field in a window not yet given its size, is
+        // empty, and there's something to draw once there's room.)
+        let mut repaint = resized && node.paints();
         if moved && !repaint {
             // What it drew is moved with it, if that's by whole device
             // pixels (it nearly always is: layout lands on them).

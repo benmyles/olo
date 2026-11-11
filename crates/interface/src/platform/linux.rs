@@ -10,5 +10,6 @@ pub(crate) use headless::*;
 pub(crate) use keyboard::*;
 pub(crate) use platform::*;
 pub(crate) use text_system::*;
+pub use wayland::ImeInput;
 pub(crate) use wayland::*;
-pub use wayland::{ImeInput, lock_session, unlock_session};
+pub(crate) use wayland::{lock_session_on_display, unlock_session_on_display};

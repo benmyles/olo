@@ -76,6 +76,25 @@ pub fn display_names() -> Vec<Option<String>> {
     crate::display::display().display_names()
 }
 
+/// Who hears of the session lock, on the app's looper.
+struct LockHandler(std::rc::Rc<std::cell::RefCell<dyn FnMut(crate::SessionLockEvent, &mut AppCx)>>);
+
+/// Locks the session (ext-session-lock; app_server lets only its lock
+/// screen): `on_event` hears, on the app's looper, when it's locked
+/// (then a window with `WindowSpec::session_lock_output` is opened on
+/// each of [`display_names`]), when outputs change while it is (cover
+/// the new ones), and when app_server ends or refuses it.
+pub fn lock_session(app: &mut AppCx, on_event: impl FnMut(crate::SessionLockEvent, &mut AppCx) + 'static) -> anyhow::Result<()> {
+    app.looper.set_state(LockHandler(std::rc::Rc::new(std::cell::RefCell::new(on_event))));
+    display().lock_session()
+}
+
+/// Ends the session lock (the lock screen was answered): app_server has
+/// been told by the time this returns, so the program may end.
+pub fn unlock_session() {
+    display().unlock_session()
+}
+
 /// Whether the program is ending.
 pub fn is_quitting() -> bool {
     shared().is_some_and(|s| s.quitting.load(Ordering::Acquire))
@@ -448,6 +467,12 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut AppCx)) {
             all_windows(|cx| cx.displays_changed());
         }
         DisplayEvent::KeyboardLayoutChanged => {}
+        DisplayEvent::SessionLock(event) => {
+            let handler = _looper.state::<LockHandler>().map(|h| h.0.clone());
+            if let Some(handler) = handler {
+                (handler.borrow_mut())(event, &mut AppCx { looper: _looper });
+            }
+        }
     })));
     build(&mut AppCx { looper: &mut looper });
     looper.run();

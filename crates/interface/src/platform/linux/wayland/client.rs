@@ -1571,7 +1571,7 @@ fn session_lock_event(event: crate::SessionLockEvent) {
 /// locked (then open a `WindowKind::SessionLock` window on each output),
 /// when outputs change while it is (cover the new ones), and when the
 /// compositor ends or refuses it.
-pub fn lock_session(handler: impl FnMut(crate::SessionLockEvent) + 'static) -> anyhow::Result<()> {
+pub fn lock_session_on_display(handler: impl FnMut(crate::SessionLockEvent) + 'static) -> anyhow::Result<()> {
     let client = CLIENT.with(|c| c.borrow().upgrade()).context("no Wayland connection")?;
     let mut state = client.borrow_mut();
     let manager = state.globals.session_lock_manager.clone().context("the compositor can't lock the session")?;
@@ -1584,7 +1584,7 @@ pub fn lock_session(handler: impl FnMut(crate::SessionLockEvent) + 'static) -> a
 
 /// Olo: ends the session lock (the lock screen was answered), sent to
 /// the compositor at once.
-pub fn unlock_session() {
+pub fn unlock_session_on_display() {
     let Some(client) = CLIENT.with(|c| c.borrow().upgrade()) else {
         return;
     };

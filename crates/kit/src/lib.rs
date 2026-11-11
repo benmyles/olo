@@ -12,6 +12,7 @@ pub mod cut;
 pub mod icons;
 mod kept;
 pub mod keys;
+mod lock;
 pub mod menu;
 pub mod review;
 pub mod style;
@@ -24,6 +25,7 @@ pub use app::{
     FIRST_SHOW_WAIT, FirstShowHold, Frame, WindowOptions, app_id, begin_move, hold_first_show, message_handler, on_displays_changed, open_or_raise, open_window, open_window_here, proxy, raise, run,
     screen_room, set_content_height, stay_resident, tab_step,
 };
+pub use lock::{lock_session, unlock_session};
 pub use menu::{Menu, MenuBar, MenuItem};
 pub use olo_app as app_kit;
 pub use olo_interface::*;

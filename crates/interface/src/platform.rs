@@ -35,8 +35,9 @@ pub use keyboard::*;
 pub use keystroke::*;
 
 pub(crate) use blade::*;
+pub use linux::ImeInput;
 pub(crate) use linux::*;
-pub use linux::{ImeInput, lock_session, unlock_session};
+pub(crate) use linux::{lock_session_on_display, unlock_session_on_display};
 
 /// Whether the GPU device was lost (a driver reset): nothing more can be
 /// drawn with it, and the program starts again with its state.

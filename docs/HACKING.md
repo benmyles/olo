@@ -13048,10 +13048,17 @@ come back locked (only in the same session: display names get reused). Before sl
 app_server holds a logind delay inhibitor until every output shows the lock
 surface (or 3 s).
 
-`olo-lock` (on olo-ui) uses `olo_ui::lock_session(cx, build, on_event)`
-(a window from `build` on every output, and on any added while locked;
-`Locked` once, `Finished` if refused; the first output's window has the
-panel) and `olo_ui::unlock_session()` (sent at once, then quit). GPUI
+`olo-lock` (on olo-kit) uses `olo_kit::lock_session(app, build,
+on_event)` (a window from `build` on every output, each on a looper of
+its own, and on any added while locked; `on_event`, on the app's
+looper, hears `Locked` once, `Outputs` when the windows covering
+outputs changed, `Finished` if refused, each with those windows) and
+`olo_kit::unlock_session()` (app_server has been told by the time it
+returns; then quit). The lock itself (who is asked, what was answered)
+is kept on the app's looper, apart from any window: each screen is told
+what to show (`ScreenMsg::Shown`) and says what was typed through
+`olo_kit::proxy()`; the first open window has the panel, and the next
+one takes it if that window goes with its display. The Interface Kit
 takes app_server's `WAYLAND_SOCKET` as a Wayland connection, and a lock
 surface makes no commit before its first configure and checks the password with `olo_system::auth` (PAM via
 libpam, on a thread) while listening for Touch ID with
