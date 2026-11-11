@@ -100,8 +100,11 @@ something nobody here has is in "Blocked", with what it waits for.
      Undo, in the kit. Disk Usage (the same to a level in 255 of a
      few of the chart's pixels; a redraw as the pointer crosses the
      chart 578 µs against 793).
+     Search, in the kit, its suggestions raised over the window
+     (`InteractiveElement::raised`). Log Viewer (the same to the pixel;
+     a frame as the search is typed in 211 µs against 975).
      *Next, smallest first:*
-     chrome, logs, palette, screenshot,
+     chrome, palette, screenshot,
      diskbackup, portal, deskbar, notifications, doctor, telegram,
      activity, viewer, styled-edit, screen, tracker, passwords, terminal,
      preferences.

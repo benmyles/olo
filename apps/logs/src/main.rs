@@ -4,7 +4,8 @@
 //! "phrases", -words, and `program:` several or `all`, `-program:`,
 //! `level:`, `since:`, `pid:`) with the filters as menus beside it; a
 //! line's full text below the list, and Show in Context for the lines
-//! around one. On the GPUI kit (olo-ui).
+//! around one. On Olo's own kit (olo-kit): one view on its window's
+//! looper, told each batch of lines by the reader's thread.
 //!
 //! For agents the same query prints from the command line:
 //! `olo-logs --print [--query TEXT] [--since 10m|2h|today|boot|all]
@@ -29,19 +30,19 @@ use std::{
 };
 
 use model::{Level, Line, Now, Query, Since};
-use olo_kit_base::list::ListState;
-use olo_theme::Palette;
-use olo_ui::{
-    Frame, Menu, MenuBar, WindowOptions, agent,
+use olo_kit::{
+    Child, ClickEvent, ClipboardItem, Cx, Element, Font, FontWeight, Hsla, IntoElement as _, Menu, MenuBar, ParentElement as _, Pixels, Point, Styled as _, TextRun, View, WindowHandle, WindowOptions,
+    agent, canvas, clipboard, div,
     file_panel::{self, FilePanel, PanelResult},
-    gpui::{App, AppContext as _, ClipboardItem, Context, Entity, Font, FontWeight, Hsla, IntoElement, ParentElement as _, Render, Styled as _, Task, TextRun, Window, WindowHandle, canvas, div, px},
     instance::{self, Launch},
-    menu, metrics as m,
+    menu, metrics as m, px,
     search::{self, Facet, SearchEvent, SearchField, search_field},
     style::{self, c},
     theme,
     widgets::{Button, CheckBox, Column, ColumnListView, ListModel, SCROLL_BAR, TextView, text_view},
 };
+use olo_kit_base::list::ListState;
+use olo_theme::Palette;
 use reader::Update;
 use serde::{Deserialize, Serialize};
 
@@ -106,7 +107,6 @@ fn settings_path() -> std::path::PathBuf {
 }
 
 struct Logs {
-    win: Option<WindowHandle<Frame>>,
     settings: Settings,
     lines: Vec<Line>,
     /// The lines shown (indices into `lines`).
@@ -123,18 +123,20 @@ struct Logs {
     /// The search's filters (their values and counts), made again when
     /// the programs change.
     facets: Option<Rc<Vec<Facet>>>,
-    /// Lines being chosen again, a slice at a time (`refilter`), and the
-    /// task going through them.
+    /// Lines being chosen again, a slice at a time (`refilter`); the
+    /// count tells a slice asked for by an earlier filter from this one's.
     filter: Option<Filter>,
-    filtering: Option<Task<()>>,
-    /// A sliding window of time ("Last 10 Minutes") moving on.
-    ticking: Option<Task<()>>,
+    filters: u64,
+    /// A sliding window of time ("Last 10 Minutes") moving on: the count
+    /// of the tick that's waited for.
+    ticks: u64,
+    ticking: bool,
     now: Now,
     /// The search from before Show in Context, to go back to.
     before_context: Option<String>,
-    list: Entity<ListModel>,
-    search: Entity<SearchField>,
-    detail: Entity<TextView>,
+    list: ListModel,
+    search: Child<SearchField>,
+    detail: Child<TextView>,
     /// The selected line (an index into `lines`).
     selected: Option<usize>,
     /// Whether the list showed its last row (live lines keep it there).
@@ -148,14 +150,31 @@ struct Logs {
     /// and what it sent is dropped.
     generation: Arc<AtomicU64>,
     /// File ▸ Open Log File's panel, while it's open.
-    panel: Option<WindowHandle<Frame>>,
+    panel: Option<WindowHandle<file_panel::PanelView>>,
     /// The Agent Screens' logs, as last looked for (File ▸ Agent Screen
     /// Logs), and when.
     screen_logs: (Option<Instant>, Vec<(String, PathBuf)>),
 }
 
-/// An update from the reader of source `generation` ([`Logs::start`]).
-struct Tagged(u64, Update);
+/// What the window is told.
+enum Msg {
+    /// An update from the reader of source `generation` ([`Logs::start`]).
+    Read(u64, Update),
+    /// The next slice of filter number this.
+    FilterOn(u64),
+    /// Tick number this: time moved on.
+    Tick(u64),
+    /// The search's text changed.
+    Searched,
+    /// The list's selection changed.
+    Selected,
+    Context(usize, Point<Pixels>),
+    Command(String),
+    /// The Open Log File panel's answer.
+    Opened(Option<PathBuf>),
+    /// Launched again: the search to show and the log to read.
+    Launch(Option<String>, Option<PathBuf>),
+}
 
 /// The Agent Screens' logs (`$XDG_RUNTIME_DIR/olo-screens`: a screen's
 /// own, `NAME.log`, and each program run there, `NAME-PROGRAM.log`), the
@@ -201,7 +220,7 @@ const FILTER_SLICE: Duration = Duration::from_millis(2);
 
 /// `[u8; 4]` of a colour, for mixing.
 fn rgba(h: Hsla) -> [u8; 4] {
-    let r = olo_ui::gpui::Rgba::from(h);
+    let r = olo_kit::Rgba::from(h);
     [(r.r * 255.0).round() as u8, (r.g * 255.0).round() as u8, (r.b * 255.0).round() as u8, (r.a * 255.0).round() as u8]
 }
 
@@ -240,20 +259,61 @@ fn line_text(l: &Line, midnight: u64) -> String {
 }
 
 impl Logs {
+    fn new(settings: Settings, source: Option<PathBuf>, cx: &mut Cx<Self>) -> Logs {
+        let query = Query::from_text(&settings.search);
+        let search = search_field(cx, "Search: words, program:, level:, since:");
+        let text = settings.search.clone();
+        search.update(cx, |s, cx| s.set_text(text, cx));
+        cx.subscribe(&search, |_: &mut Logs, e: &SearchEvent, cx| {
+            if let SearchEvent::Changed = e {
+                cx.send(Msg::Searched);
+            }
+        });
+        let detail = text_view(cx, |v| v.mono(true).empty_text("Select a line to read it whole."));
+        let mut logs = Logs {
+            settings,
+            lines: Vec::new(),
+            view: Vec::new(),
+            warnings: 0,
+            errors: 0,
+            query,
+            programs: BTreeMap::new(),
+            programs_since: None,
+            facets: None,
+            filter: None,
+            filters: 0,
+            ticks: 0,
+            ticking: false,
+            now: Now::get(),
+            before_context: None,
+            list: ListModel::new(true),
+            search,
+            detail,
+            selected: None,
+            at_end: true,
+            loaded: false,
+            failed: None,
+            source,
+            generation: Arc::new(AtomicU64::new(0)),
+            panel: None,
+            screen_logs: (None, Vec::new()),
+        };
+        logs.start(cx);
+        logs.tick(cx);
+        logs
+    }
+
     fn store(&self) {
-        olo_ui::store::save(settings_path(), &self.settings);
+        olo_kit::store::save(settings_path(), &self.settings);
     }
 
     fn title(&self) -> String {
-        match &self.source {
-            Some(path) => format!("{} — {TITLE}", path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()),
-            None => TITLE.into(),
-        }
+        title_of(self.source.as_deref())
     }
 
     /// Read the source from the start, on a worker (the one before's
     /// reader stopping).
-    fn start(&mut self, cx: &mut Context<Self>) {
+    fn start(&mut self, cx: &mut Cx<Self>) {
         let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
         self.lines.clear();
         self.view.clear();
@@ -262,15 +322,14 @@ impl Logs {
         self.programs_since = None;
         self.facets = None;
         self.filter = None;
-        self.filtering = None;
         self.before_context = None;
-        self.list.update(cx, |l, _| l.state = ListState { multiple: true, ..ListState::default() });
+        *self.list.state_mut() = ListState { multiple: true, ..ListState::default() };
         self.selected = None;
         self.at_end = true;
         self.loaded = false;
         self.failed = None;
         self.show_detail(cx);
-        let (proxy, current, source) = (olo_ui::proxy(cx), self.generation.clone(), self.source.clone());
+        let (to, current, source) = (cx.messenger(), self.generation.clone(), self.source.clone());
         std::thread::Builder::new()
             .name("journal".into())
             .spawn(move || {
@@ -280,7 +339,7 @@ impl Logs {
                     }
                     // Nothing new: nothing to send.
                     if !matches!(&u, Update::Lines { new, more } if new.is_empty() && more.is_empty()) {
-                        proxy.send(Tagged(generation, u));
+                        return to.send(Msg::Read(generation, u));
                     }
                     true
                 };
@@ -290,17 +349,12 @@ impl Logs {
                 }
             })
             .expect("thread");
-        if let Some(w) = self.win {
-            let title = self.title();
-            cx.defer(move |cx| {
-                let _ = w.update(cx, |_, window, _| window.set_window_title(&title));
-            });
-        }
-        cx.notify();
+        cx.set_window_title(self.title());
+        cx.invalidate();
     }
 
     /// Read `source` (None: the journal) instead.
-    fn read(&mut self, source: Option<PathBuf>, cx: &mut Context<Self>) {
+    fn read(&mut self, source: Option<PathBuf>, cx: &mut Cx<Self>) {
         if source != self.source {
             self.source = source;
             self.start(cx);
@@ -318,48 +372,32 @@ impl Logs {
     /// Choose the lines shown again (the query changed, or time moved
     /// on), a slice at a time from now (`Filter`); then select line
     /// `select`.
-    fn refilter(&mut self, select: Option<usize>, cx: &mut Context<Self>) {
+    fn refilter(&mut self, select: Option<usize>, cx: &mut Cx<Self>) {
         self.now = Now::get();
         let since = self.query.since;
         let programs = (self.programs_since != Some(since) || matches!(since, Since::Minutes(_))).then(BTreeMap::new);
         self.programs_since = Some(since);
         self.filter = Some(Filter { query: self.query.clone(), now: self.now, next: 0, view: Vec::new(), warnings: 0, errors: 0, programs, select });
         // A slice, then frames' turn, until done.
-        self.filtering = Some(cx.spawn(async move |this, cx| {
-            loop {
-                let done = this.update(cx, |l, cx| l.filter_on(cx)).unwrap_or(true);
-                if done {
-                    break;
-                }
-                cx.background_executor().timer(Duration::ZERO).await;
-            }
-        }));
+        self.filters += 1;
+        cx.send(Msg::FilterOn(self.filters));
         self.tick(cx);
-        cx.notify();
+        cx.invalidate();
     }
 
     /// A sliding window of time ("Last 10 Minutes") is chosen again every
     /// five seconds while it's asked for (nothing ticks otherwise).
-    fn tick(&mut self, cx: &mut Context<Self>) {
-        if !matches!(self.query.since, Since::Minutes(_)) {
-            self.ticking = None;
-            return;
+    fn tick(&mut self, cx: &mut Cx<Self>) {
+        self.ticks += 1;
+        self.ticking = matches!(self.query.since, Since::Minutes(_));
+        if self.ticking {
+            cx.after(Duration::from_secs(5), Msg::Tick(self.ticks));
         }
-        self.ticking = Some(cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(Duration::from_secs(5)).await;
-            let _ = this.update(cx, |l, cx| {
-                if l.filter.is_none() {
-                    l.refilter(None, cx);
-                } else {
-                    l.tick(cx);
-                }
-            });
-        }));
     }
 
     /// Go through lines for the filter under way, for a slice; whether
     /// it's done.
-    fn filter_on(&mut self, cx: &mut Context<Self>) -> bool {
+    fn filter_on(&mut self, cx: &mut Cx<Self>) -> bool {
         let Some(f) = self.filter.as_mut() else { return true };
         let start = Instant::now();
         while f.next < self.lines.len() {
@@ -390,7 +428,6 @@ impl Logs {
             }
         }
         let f = self.filter.take().expect("a filter");
-        self.filtering = None;
         (self.view, self.warnings, self.errors) = (f.view, f.warnings, f.errors);
         if let Some(programs) = f.programs {
             self.programs = programs;
@@ -406,21 +443,25 @@ impl Logs {
         }
         // The rows were of the lines shown before.
         let row = self.selected.and_then(|s| self.view.binary_search(&s).ok());
-        let reveal = row.or(if self.at_end { self.view.len().checked_sub(1) } else { None });
-        self.list.update(cx, |l, _| {
-            l.state.selected = row.into_iter().collect();
-            l.state.anchor = row;
-            l.state.cursor = row;
-            if let Some(r) = reveal {
-                l.reveal(r);
-            }
-        });
+        {
+            let mut state = self.list.state_mut();
+            state.selected = row.into_iter().collect();
+            state.anchor = row;
+            state.cursor = row;
+        }
+        // (The last row, where the list was following: once the rows it
+        // has now are laid out.)
+        match row {
+            Some(r) => self.list.reveal(cx, r),
+            None if self.at_end => self.list.scroll_to_end(cx),
+            None => {}
+        }
         self.show_detail(cx);
-        cx.notify();
+        cx.invalidate();
         true
     }
 
-    fn query_changed(&mut self, cx: &mut Context<Self>) {
+    fn query_changed(&mut self, cx: &mut Cx<Self>) {
         self.before_context = None;
         self.query = Query::from_text(&self.settings.search);
         self.refilter(None, cx);
@@ -429,13 +470,13 @@ impl Logs {
 
     /// The search's text set from elsewhere (a filter's menu, Show in
     /// Context, Back): the field shows it.
-    fn set_search(&mut self, text: String, cx: &mut Context<Self>) {
+    fn set_search(&mut self, text: String, cx: &mut Cx<Self>) {
         self.settings.search = text.clone();
         self.search.update(cx, |s, cx| s.set_text(text, cx));
     }
 
-    fn take(&mut self, new: Vec<Line>, more: Vec<(usize, String)>, cx: &mut Context<Self>) {
-        let following = self.list.read(cx).at_end();
+    fn take(&mut self, new: Vec<Line>, more: Vec<(usize, String)>, cx: &mut Cx<Self>) {
+        let following = self.list.at_end();
         let mut detail = false;
         for (index, text) in more {
             if let Some(l) = self.lines.get_mut(index) {
@@ -462,17 +503,14 @@ impl Logs {
             self.show_detail(cx);
         }
         self.at_end = following;
-        if following
-            && self.settings.live
-            && let Some(last) = self.view.len().checked_sub(1)
-        {
-            self.list.update(cx, |l, _| l.reveal(last));
+        if following && self.settings.live && !self.view.is_empty() {
+            self.list.scroll_to_end(cx);
         }
-        cx.notify();
+        cx.invalidate();
     }
 
     /// The selected line, whole, in the pane under the list.
-    fn show_detail(&mut self, cx: &mut Context<Self>) {
+    fn show_detail(&mut self, cx: &mut Cx<Self>) {
         let text = self
             .selected
             .and_then(|i| self.lines.get(i))
@@ -482,7 +520,7 @@ impl Logs {
                 format!("{when} · {}{pid} · {}\n\n{}", l.program, l.level.name(), l.message)
             })
             .unwrap_or_default();
-        let p = theme::palette(cx);
+        let p = theme::palette();
         let words = self.query.words.clone();
         self.detail.update(cx, |d, cx| {
             let runs = (!text.is_empty()).then(|| highlighted(&text, &d.font(), c(p.document_text), &p, &words));
@@ -491,21 +529,21 @@ impl Logs {
     }
 
     /// The list's selection changed.
-    fn selection_changed(&mut self, cx: &mut Context<Self>) {
-        let line = self.list.read(cx).state.single().and_then(|r| self.view.get(r).copied());
+    fn selection_changed(&mut self, cx: &mut Cx<Self>) {
+        let line = self.list.state().single().and_then(|r| self.view.get(r).copied());
         self.selected = line;
         self.show_detail(cx);
-        cx.notify();
+        cx.invalidate();
     }
 
     /// The selected lines, as text.
-    fn selected_text(&self, cx: &App) -> String {
-        self.list.read(cx).state.selected.iter().filter_map(|&r| self.view.get(r)).map(|&i| line_text(&self.lines[i], self.now.midnight)).collect::<Vec<_>>().join("\n")
+    fn selected_text(&self) -> String {
+        self.list.state().selected.iter().filter_map(|&r| self.view.get(r)).map(|&i| line_text(&self.lines[i], self.now.midnight)).collect::<Vec<_>>().join("\n")
     }
 
     /// Show every line from the selected one's time range, all programs
     /// and levels, around it.
-    fn show_in_context(&mut self, cx: &mut Context<Self>) {
+    fn show_in_context(&mut self, cx: &mut Cx<Self>) {
         let Some(sel) = self.selected else { return };
         let saved = std::mem::take(&mut self.settings.search);
         self.set_search("program:all level:debug since:all".into(), cx);
@@ -514,7 +552,7 @@ impl Logs {
         self.refilter(Some(sel), cx);
     }
 
-    fn back_from_context(&mut self, cx: &mut Context<Self>) {
+    fn back_from_context(&mut self, cx: &mut Cx<Self>) {
         if let Some(q) = self.before_context.take() {
             self.set_search(q, cx);
             self.query = Query::from_text(&self.settings.search);
@@ -522,30 +560,30 @@ impl Logs {
         }
     }
 
-    fn command(&mut self, command: &str, window: &mut Window, cx: &mut Context<Self>) {
+    fn do_command(&mut self, command: &str, cx: &mut Cx<Self>) {
         match command {
             "copy" => {
-                let text = self.selected_text(cx);
+                let text = self.selected_text();
                 if !text.is_empty() {
-                    cx.write_to_clipboard(ClipboardItem::new_string(text));
+                    clipboard::write(ClipboardItem::new_string(text));
                 }
             }
             "select-all" => {
                 let n = self.view.len();
-                self.list.update(cx, |l, _| l.state.select_all(n));
-                cx.notify();
+                self.list.state_mut().select_all(n);
+                cx.invalidate();
             }
-            "find" => self.search.update(cx, |s, cx| s.focus(window, cx)),
+            "find" => self.search.update(cx, |s, cx| s.focus(cx)),
             "live" => {
                 self.settings.live = !self.settings.live;
                 if self.settings.live {
                     self.at_end = true;
-                    if let Some(last) = self.view.len().checked_sub(1) {
-                        self.list.update(cx, |l, _| l.reveal(last));
+                    if !self.view.is_empty() {
+                        self.list.scroll_to_end(cx);
                     }
                 }
                 self.store();
-                cx.notify();
+                cx.invalidate();
             }
             "context" => self.show_in_context(cx),
             "back" => self.back_from_context(cx),
@@ -560,36 +598,31 @@ impl Logs {
             }
             "end" => {
                 self.at_end = true;
-                if let Some(last) = self.view.len().checked_sub(1) {
-                    self.list.update(cx, |l, _| l.reveal(last));
+                if !self.view.is_empty() {
+                    self.list.scroll_to_end(cx);
                 }
-                cx.notify();
+                cx.invalidate();
             }
             "journal" => self.read(None, cx),
             "open-file" => {
-                if let Some(w) = self.panel {
-                    olo_ui::raise(Some(w), cx);
+                if olo_kit::raise(self.panel.as_ref()) {
                     return;
                 }
                 let dir = self.source.as_ref().and_then(|p| p.parent()).map_or_else(|| std::env::var_os("HOME").map_or_else(|| PathBuf::from("/"), PathBuf::from), PathBuf::from);
                 let panel = FilePanel::open(dir).filters(vec![file_panel::Filter::new("Log Files").glob("*.log").glob("*.txt").glob("*.out"), file_panel::Filter::new("All Files").glob("*")], 0);
-                let me = cx.entity();
-                cx.defer(move |cx| {
-                    let to = me.clone();
-                    let w = file_panel::show(cx, "Open Log File", panel, move |a, cx| {
-                        to.update(cx, |l, cx| {
-                            l.panel = None;
-                            if let PanelResult::Chosen(path) = a.result {
-                                l.read(Some(path), cx);
-                            }
-                        });
-                    });
-                    me.update(cx, |l, _| l.panel = w);
-                });
+                // (The panel answers on its own looper: it tells this
+                // window.)
+                let to = cx.messenger();
+                self.panel = Some(file_panel::show("Open Log File", panel, move |a| {
+                    to.send(Msg::Opened(match a.result {
+                        PanelResult::Chosen(path) => Some(path),
+                        _ => None,
+                    }));
+                }));
             }
             "quit" => {
                 self.store();
-                cx.quit();
+                olo_kit::quit();
             }
             c => {
                 if let Some(path) = c.strip_prefix("file:") {
@@ -601,7 +634,7 @@ impl Logs {
 
     /// The search's filters: Program (Olo's first, each with its lines in
     /// the query's time), Level and Time in the bar; `pid:` typed.
-    fn facets(&mut self, cx: &mut Context<Self>) -> Rc<Vec<Facet>> {
+    fn facets(&mut self, cx: &mut Cx<Self>) -> Rc<Vec<Facet>> {
         if let Some(f) = &self.facets {
             return f.clone();
         }
@@ -621,7 +654,8 @@ impl Logs {
         }
         let facets = Rc::new(vec![program, level, time, Facet::new("pid", "Process").typed_only()]);
         self.facets = Some(facets.clone());
-        self.search.update(cx, |s, cx| s.set_facets(facets.clone(), cx));
+        let shown = facets.clone();
+        self.search.update(cx, |s, cx| s.set_facets(shown, cx));
         facets
     }
 
@@ -656,51 +690,6 @@ impl Logs {
         ]
     }
 
-    fn message(&mut self, message: Box<dyn std::any::Any + Send>, cx: &mut Context<Self>) {
-        let message = match message.downcast::<Launch>() {
-            Ok(launch) => {
-                let (query, file) = window_args(&launch.args);
-                // A log file to read (from Tracker, or `olo-logs FILE`).
-                if let Some(a) = file {
-                    let path = launch.cwd.as_ref().map_or_else(|| PathBuf::from(&a), |c| c.join(&a));
-                    self.read(Some(path), cx);
-                }
-                // A search to show (Olo Doctor's "Viewer crashed").
-                if let Some(q) = query {
-                    self.set_search(q, cx);
-                    self.query_changed(cx);
-                }
-                if let Some(w) = self.win {
-                    cx.defer(move |cx| {
-                        olo_ui::raise(Some(w), cx);
-                    });
-                }
-                return;
-            }
-            Err(m) => m,
-        };
-        let Ok(tagged) = message.downcast::<Tagged>() else { return };
-        let Tagged(generation, update) = *tagged;
-        if generation != self.generation.load(Ordering::SeqCst) {
-            return;
-        }
-        match update {
-            Update::Lines { new, more } => self.take(new, more, cx),
-            Update::Loaded => {
-                self.loaded = true;
-                self.at_end = true;
-                if let Some(last) = self.view.len().checked_sub(1) {
-                    self.list.update(cx, |l, _| l.reveal(last));
-                }
-                cx.notify();
-            }
-            Update::Failed(why) => {
-                self.failed = Some(why);
-                cx.notify();
-            }
-        }
-    }
-
     /// What the bar under the list says: the counts, and how it's going.
     fn status(&self) -> String {
         let n = self.view.len();
@@ -722,61 +711,51 @@ impl Logs {
         status
     }
 
-    fn list_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let me = cx.entity();
+    fn list_view(&mut self, cx: &mut Cx<Self>) -> Element {
         // The message as wide as the rest of the list allows (inside its
         // frame and beside its scroll bar), so it never scrolls sideways
         // unless the window is too narrow.
-        let width = f32::from(window.viewport_size().width) - 2.0 * m::WINDOW_INSET;
-        let frame = f32::from(style::hairline(window)) * 4.0;
+        let width = f32::from(cx.viewport_size().width) - 2.0 * m::WINDOW_INSET;
+        let scale = cx.scale_factor();
+        let frame = style::line_pixels(scale) / scale * 4.0;
         let columns = vec![Column::new("Time", 150.0), Column::new("Program", 132.0), Column::new("Level", 70.0), Column::new("Message", (width - frame - SCROLL_BAR - 352.0).floor().max(200.0))];
         let empty = match (self.loaded, &self.source) {
             (true, _) => "No lines match.",
             (false, None) => "Reading the journal…",
             (false, Some(_)) => "Reading…",
         };
-        let cells = me.clone();
-        let (sel, ctx, keys) = (me.clone(), me.clone(), me.clone());
-        ColumnListView::new("logs-lines", &self.list, columns, self.view.len(), move |cell, window, cx| {
-            // What the cell shows, read first (the drawing needs the app).
-            let (text, level, midnight, words) = {
-                let logs = cells.read(cx);
-                let Some(l) = logs.view.get(cell.row).and_then(|&i| logs.lines.get(i)) else { return };
-                let midnight = logs.now.midnight;
-                let text = match cell.column {
-                    0 => model::format_time(l.time, midnight),
-                    1 => l.program.to_string(),
-                    2 => l.level.name().to_owned(),
-                    _ => message_text(l),
-                };
-                (text, l.level, midnight, logs.query.words.clone())
+        ColumnListView::new(cx, "logs-lines", &self.list, columns, self.view.len(), |logs: &Logs, cell, g| {
+            let Some(l) = logs.view.get(cell.row).and_then(|&i| logs.lines.get(i)) else { return };
+            let text = match cell.column {
+                0 => model::format_time(l.time, logs.now.midnight),
+                1 => l.program.to_string(),
+                2 => l.level.name().to_owned(),
+                _ => message_text(l),
             };
-            let _ = midnight;
-            let p = theme::palette(cx);
+            let p = theme::palette();
             match cell.column {
                 2 => {
-                    let color = match level {
+                    let color = match l.level {
                         _ if cell.selected => cell.text_color,
                         Level::Error => c(p.failure),
                         Level::Warning => c(p.warning),
                         _ => cell.text_color,
                     };
-                    cell.text_with(window, cx, text, style::ui_font(FontWeight::NORMAL), color);
+                    cell.text_with(g, text, style::ui_font(FontWeight::NORMAL), color);
                 }
                 3 if !cell.selected => {
-                    let runs = highlighted(&text, &style::ui_font(FontWeight::NORMAL), cell.text_color, &p, &words);
-                    cell.text_runs(window, cx, text, &runs);
+                    let runs = highlighted(&text, &style::ui_font(FontWeight::NORMAL), cell.text_color, &p, &logs.query.words);
+                    cell.text_runs(g, text, &runs);
                 }
-                _ => cell.text(window, cx, text),
+                _ => cell.text(g, text),
             }
         })
         .empty_text(empty)
         // A line is as it was read: drawn again only when what the search
         // marks in it, or the day it's counted from, changes (typing in
         // the search redraws only the lines it marks).
-        .row_key(move |row, cx| {
+        .row_key(|logs: &Logs, row| {
             use std::hash::{Hash, Hasher};
-            let logs = keys.read(cx);
             let mut h = std::collections::hash_map::DefaultHasher::new();
             if let Some(&i) = logs.view.get(row)
                 && let Some(l) = logs.lines.get(i)
@@ -786,98 +765,159 @@ impl Logs {
             }
             h.finish()
         })
-        .on_select(move |_, cx| sel.update(cx, |l, cx| l.selection_changed(cx)))
-        .on_context(move |row, at, window, cx| {
-            let menu = ctx.update(cx, |l, cx| {
-                l.list.update(cx, |list, _| {
-                    if !list.state.selected.contains(&row) {
-                        list.state.select(row);
-                    }
-                });
-                l.selection_changed(cx);
-                let program = l.view.get(row).map(|&i| l.lines[i].program.to_string()).unwrap_or_default();
-                Menu::new("").item("Copy", "copy").item("Show in Context", "context").item(format!("Show Only {program}"), "only-program")
-            });
-            let to = ctx.clone();
-            menu::context_menu(window, cx, menu, at, move |cmd, window, cx| to.update(cx, |l, cx| l.command(cmd, window, cx)));
-        })
+        .on_select(cx.msg_with(|_: &()| Msg::Selected))
+        .on_context(cx.msg_with(|(row, at): &(usize, Point<Pixels>)| Msg::Context(*row, *at)))
+        .into_element()
     }
 }
 
-impl Render for Logs {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let me = cx.entity();
-        let bar_me = me.clone();
-        let bar = MenuBar::new(self.menus(), move |cmd, window, cx| bar_me.update(cx, |l, cx| l.command(cmd, window, cx)));
+/// The window's title for what it reads.
+fn title_of(source: Option<&std::path::Path>) -> String {
+    match source {
+        Some(path) => format!("{} — {TITLE}", path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()),
+        None => TITLE.into(),
+    }
+}
+
+/// One line of words in the panel's colour, cut to its width, said to
+/// agents as a label.
+fn said(text: String, centred: bool) -> Element {
+    let look = style::key((&text, centred));
+    canvas(move |g, b| {
+        let p = theme::palette();
+        let (x, align) = if centred { (b.center().x, style::Align::Center) } else { (b.left(), style::Align::Left) };
+        style::label_fit(g, x, b.center().y, align, text.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), c(p.panel_text), b.size.width);
+        agent::record(g, agent::Node::label(text.clone(), b));
+    })
+    .paint_key(look)
+}
+
+impl View for Logs {
+    type Message = Msg;
+
+    fn message(&mut self, message: Msg, cx: &mut Cx<Self>) {
+        match message {
+            Msg::Read(generation, update) => {
+                if generation != self.generation.load(Ordering::SeqCst) {
+                    return;
+                }
+                match update {
+                    Update::Lines { new, more } => self.take(new, more, cx),
+                    Update::Loaded => {
+                        self.loaded = true;
+                        self.at_end = true;
+                        if !self.view.is_empty() {
+                            self.list.scroll_to_end(cx);
+                        }
+                        cx.invalidate();
+                    }
+                    Update::Failed(why) => {
+                        self.failed = Some(why);
+                        cx.invalidate();
+                    }
+                }
+            }
+            // A slice, then everything else's turn (the looper's queue),
+            // until done.
+            Msg::FilterOn(n) => {
+                if n == self.filters && !self.filter_on(cx) {
+                    cx.send(Msg::FilterOn(n));
+                }
+            }
+            Msg::Tick(n) => {
+                if n != self.ticks || !self.ticking {
+                    return;
+                }
+                if self.filter.is_none() {
+                    self.refilter(None, cx);
+                } else {
+                    self.tick(cx);
+                }
+            }
+            Msg::Searched => {
+                self.settings.search = self.search.read(cx).text(cx).to_owned();
+                self.query_changed(cx);
+            }
+            Msg::Selected => self.selection_changed(cx),
+            Msg::Context(row, at) => {
+                if !self.list.state().selected.contains(&row) {
+                    self.list.state_mut().select(row);
+                }
+                self.selection_changed(cx);
+                let program = self.view.get(row).map(|&i| self.lines[i].program.to_string()).unwrap_or_default();
+                let menu = Menu::new("").item("Copy", "copy").item("Show in Context", "context").item(format!("Show Only {program}"), "only-program");
+                let chose = cx.msg_with(|command: &str| Msg::Command(command.to_owned()));
+                menu::context_menu(cx, menu, at, chose);
+            }
+            Msg::Command(command) => self.do_command(&command, cx),
+            Msg::Opened(path) => {
+                self.panel = None;
+                if let Some(path) = path {
+                    self.read(Some(path), cx);
+                }
+            }
+            Msg::Launch(query, file) => {
+                // A log file to read (from Tracker, or `olo-logs FILE`).
+                if let Some(path) = file {
+                    self.read(Some(path), cx);
+                }
+                // A search to show (Olo Doctor's "Viewer crashed").
+                if let Some(q) = query {
+                    self.set_search(q, cx);
+                    self.query_changed(cx);
+                }
+                cx.activate_window();
+            }
+        }
+    }
+
+    fn command(&mut self, command: &str, cx: &mut Cx<Self>) -> bool {
+        self.do_command(command, cx);
+        true
+    }
+
+    /// Its settings kept as it ends, by hand or for an upgrade.
+    fn window_closing(&mut self, _: &mut Cx<Self>) {
+        self.store();
+    }
+
+    fn save_state(&mut self, _: &mut Cx<Self>) -> Option<String> {
+        self.store();
+        Some(String::new())
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        let menus = self.menus();
+        let bar = MenuBar::new(cx, menus);
 
         // The search and the filters' menus: in one row when there's
         // room, else the menus under the search (the kit's search header).
         let facets = self.facets(cx);
-        let width = f32::from(window.viewport_size().width) - 2.0 * m::WINDOW_INSET;
-        let controls = search::header(&self.search, "logs", facets, width).min_field(260.0).indent(search::list_indent(window));
+        let width = f32::from(cx.viewport_size().width) - 2.0 * m::WINDOW_INSET;
+        let controls = search::header(cx, &self.search, "logs", facets, width).min_field(260.0).indent(search::list_indent(cx));
 
         let list = match &self.failed {
-            Some(why) => {
-                let why = why.clone();
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .child(
-                        canvas(
-                            |_, _, _| {},
-                            move |b, _, window, cx| {
-                                let p = theme::palette(cx);
-                                style::label_fit(
-                                    window,
-                                    cx,
-                                    b.center().x,
-                                    b.center().y,
-                                    style::Align::Center,
-                                    why.clone(),
-                                    style::PLAIN_SIZE,
-                                    style::ui_font(FontWeight::NORMAL),
-                                    c(p.panel_text),
-                                    b.size.width,
-                                );
-                                agent::record(window, cx, agent::Node::label(why.clone(), b));
-                            },
-                        )
-                        .size_full(),
-                    )
-                    .into_any_element()
+            Some(why) => div().flex_1().min_h_0().child(said(why.clone(), true).size_full()),
+            None => {
+                let list = self.list_view(cx);
+                div().flex_1().min_h_0().child(list)
             }
-            None => div().flex_1().min_h_0().child(self.list_view(window, cx)).into_any_element(),
         };
 
         // The counts, and Live; Back after Show in Context.
-        let status = self.status();
         let mut foot = div().flex().flex_row().items_center().gap(px(m::SPACING)).h(px(m::CONTROL_HEIGHT));
         if self.before_context.is_some() {
-            let back = me.clone();
-            foot = foot.child(div().w(px(80.0)).child(Button::new("Back").on_click(move |_, cx| back.update(cx, |l, cx| l.back_from_context(cx)))));
+            foot = foot.child(div().w(px(80.0)).child(Button::new("Back").on_click(cx.msg_with(|_: &ClickEvent| Msg::Command("back".into())))));
         }
-        foot = foot.child(
-            canvas(
-                |_, _, _| {},
-                move |b, _, window, cx| {
-                    let p = theme::palette(cx);
-                    style::label_fit(window, cx, b.left(), b.center().y, style::Align::Left, status.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), c(p.panel_text), b.size.width);
-                    agent::record(window, cx, agent::Node::label(status.clone(), b));
-                },
-            )
-            .flex_1()
-            .h_full(),
-        );
-        let live = me.clone();
-        foot = foot
-            .child(div().w(px(64.0)).flex().justify_center().child(CheckBox::new("Live", self.settings.live).on_toggle(move |_, window, cx| live.update(cx, |l, cx| l.command("live", window, cx)))));
+        foot = foot.child(said(self.status(), false).flex_1().h_full());
+        foot = foot.child(div().w(px(64.0)).flex().justify_center().child(CheckBox::new("Live", self.settings.live).on_toggle(cx.msg_with(|_: &bool| Msg::Command("live".into())))));
 
         div()
             .size_full()
             .flex()
             .flex_col()
             .child(bar)
-            .child(div().flex_1().min_h_0().p(px(m::WINDOW_INSET)).flex().flex_col().gap(px(m::SPACING)).child(controls).child(list).child(div().h(px(DETAIL)).child(self.detail.clone())).child(foot))
+            .child(div().flex_1().min_h_0().p(px(m::WINDOW_INSET)).flex().flex_col().gap(px(m::SPACING)).child(controls).child(list).child(div().h(px(DETAIL)).child(&self.detail)).child(foot))
     }
 }
 
@@ -1025,9 +1065,9 @@ fn main() {
     if instance::forward(APP_ID, &args) {
         return;
     }
-    olo_ui::run(APP_ID, move |cx| {
-        instance::listen(APP_ID, olo_ui::proxy(cx));
-        let mut settings: Settings = olo_ui::store::load(&settings_path()).unwrap_or_default();
+    olo_kit::run(APP_ID, move |app| {
+        instance::listen(APP_ID, olo_kit::proxy());
+        let mut settings: Settings = olo_kit::store::load(&settings_path()).unwrap_or_default();
         // From before the search was one text.
         if let Some(old) = settings.query.take() {
             settings.search = old.text();
@@ -1038,71 +1078,19 @@ fn main() {
         if let Some(q) = query {
             settings.search = q;
         }
-        let query = Query::from_text(&settings.search);
-        let list = ListModel::new(cx, true);
-        let search = search_field(cx, "Search: words, program:, level:, since:");
-        let text = settings.search.clone();
-        search.update(cx, |s, cx| s.set_text(text, cx));
-        let detail = text_view(cx, "logs-detail", |v| v.mono(true).empty_text("Select a line to read it whole."));
-        let app = cx.new(|cx| {
-            cx.subscribe(&search, |l: &mut Logs, s, e: &SearchEvent, cx| {
-                if let SearchEvent::Changed = e {
-                    l.settings.search = s.read(cx).text(cx).to_owned();
-                    l.query_changed(cx);
-                }
-            })
-            .detach();
-            Logs {
-                win: None,
-                settings,
-                lines: Vec::new(),
-                view: Vec::new(),
-                warnings: 0,
-                errors: 0,
-                query,
-                programs: BTreeMap::new(),
-                programs_since: None,
-                facets: None,
-                filter: None,
-                filtering: None,
-                ticking: None,
-                now: Now::get(),
-                before_context: None,
-                list,
-                search,
-                detail,
-                selected: None,
-                at_end: true,
-                loaded: false,
-                failed: None,
-                // A log file named on the command line, else the journal.
-                source: file.map(PathBuf::from).map(|p| std::fs::canonicalize(&p).unwrap_or(p)),
-                generation: Arc::new(AtomicU64::new(0)),
-                panel: None,
-                screen_logs: (None, Vec::new()),
+        // A log file named on the command line, else the journal.
+        let source = file.map(PathBuf::from).map(|p| std::fs::canonicalize(&p).unwrap_or(p));
+        let title = title_of(source.as_deref());
+        let window = olo_kit::open_window(WindowOptions::new(title, 820.0, 520.0).min_size(560.0, 340.0).keep_size("main"), move |cx| Logs::new(settings, source, cx));
+        // Launched again: the window comes forward, with the search and
+        // the log asked for.
+        olo_kit::message_handler(app, move |message, _| {
+            if let Ok(launch) = message.downcast::<Launch>() {
+                let (query, file) = window_args(&launch.args);
+                let file = file.map(|a| launch.cwd.as_ref().map_or_else(|| PathBuf::from(&a), |c| c.join(&a)));
+                window.messenger().send(Msg::Launch(query, file));
             }
         });
-        let (view, title) = (app.clone(), app.read(cx).title());
-        let window = olo_ui::open_window(cx, WindowOptions::new(title, 820.0, 520.0).min_size(560.0, 340.0).keep_size("main"), move |_, _| view);
-        app.update(cx, |l, cx| {
-            l.win = window;
-            l.start(cx);
-            l.tick(cx);
-        });
-        let messages = app.clone();
-        olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |l, cx| l.message(message, cx)));
-        // Its settings kept as it ends, by hand or for an upgrade.
-        let saving = app.clone();
-        olo_ui::on_upgrade(cx, move |cx| {
-            saving.read(cx).store();
-            Some(String::new())
-        });
-        let quitting = app.clone();
-        cx.on_app_quit(move |cx| {
-            quitting.read(cx).store();
-            async {}
-        })
-        .detach();
     });
 }
 

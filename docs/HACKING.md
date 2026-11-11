@@ -12774,7 +12774,11 @@ the list's kept cells (keyed by line) are keyed by the generation too.
   first, `key=value` keys, strings, numbers, paths and URLs, type names,
   trouble words; the list and the detail pane colour them from the
   palette.
-- main.rs, on the GPUI kit (olo-ui): the kit's `SearchField` and a `FilterBar` (Program, with
+- main.rs, on Olo's own kit (olo-kit): one `Logs` view on its window's
+  looper, told each batch of lines by the reader's thread
+  (`cx.messenger()`), filtering a slice at a time by a message to
+  itself (`Msg::FilterOn`: everything else in the looper's queue gets
+  its turn between slices); the kit's `SearchField` and a `FilterBar` (Program, with
   each program's lines in the query's time and Olo's first; Level; Time)
   above a `ColumnListView`, in one row when the window has room for the
   field, else the menus under it (their text over the list's first

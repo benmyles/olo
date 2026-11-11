@@ -1047,6 +1047,16 @@ impl<'a> WindowCx<'a> {
             // said again at the new scale, and drawn again.
             let rem = core.gfx.rem_size;
             for (_, node) in core.nodes.iter_mut() {
+                // (What's scrolled stays on device pixels: an offset that
+                // was on the old scale's grid is a fraction of a pixel
+                // on the new one's, and every row with it.)
+                if let Some(handle) = &node.scroll {
+                    let at = handle.offset();
+                    let to = point(px((at.x.0 * scale).round() / scale), px((at.y.0 * scale).round() / scale));
+                    if to != at {
+                        handle.put(to);
+                    }
+                }
                 core.layout.set_style(node.layout, &node.style, rem, scale);
                 if let NodeKind::Text(text) = &mut node.kind {
                     text.laid = None;

@@ -102,8 +102,6 @@ pub struct SearchField {
 /// What a search field is told (by what's in it).
 pub enum SearchMsg {
     Hover(Option<usize>),
-    Take(usize),
-    Clear,
     OverClear(bool),
     Focus(bool),
 }
@@ -365,17 +363,6 @@ impl View for SearchField {
                 }
                 self.hover = k;
             }
-            SearchMsg::Take(k) => {
-                if let Some(s) = self.list.get(k).cloned() {
-                    self.take(&s, cx);
-                }
-                return;
-            }
-            SearchMsg::Clear => {
-                self.clear(cx);
-                self.field.focus(cx);
-                return;
-            }
             SearchMsg::OverClear(over) => {
                 if self.over_clear == over {
                     return;
@@ -413,9 +400,10 @@ impl View for SearchField {
             }))
             .on_mouse_down(
                 MouseButton::Left,
-                cx.listener(move |_: &mut Self, e: &MouseDownEvent, cx| {
+                cx.listener(move |s: &mut Self, e: &MouseDownEvent, cx| {
                     if has_text && clear_bounds(cx.scale_factor(), cx.listener_bounds()).contains(&e.position) {
-                        cx.send(SearchMsg::Clear);
+                        s.clear(cx);
+                        s.field.focus(cx);
                         cx.stop_propagation();
                     }
                 }),
@@ -463,9 +451,11 @@ impl View for SearchField {
                 }))
                 .on_mouse_down(
                     MouseButton::Left,
-                    cx.listener(move |_: &mut Self, e: &MouseDownEvent, cx| {
-                        if let Some(k) = row_at(cx.listener_bounds(), e.position.y).filter(|&k| k < n) {
-                            cx.send(SearchMsg::Take(k));
+                    // (At once: the click takes the keyboard from the
+                    // field, and the list is gone by the next turn.)
+                    cx.listener(move |s: &mut Self, e: &MouseDownEvent, cx| {
+                        if let Some(sg) = row_at(cx.listener_bounds(), e.position.y).filter(|&k| k < n).and_then(|k| s.list.get(k).cloned()) {
+                            s.take(&sg, cx);
                             cx.stop_propagation();
                         }
                     }),
