@@ -103,6 +103,33 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **The fans on auto or at full speed, in Preferences ▸ Performance**
+  (Ben, 2026-11-10: "also under performance, add the option to have
+  fans be on auto or on full speed so that the user can temporarily
+  switch to full speed if they want -- also have it auto-revert to auto
+  after a selectable time period max of 1 day"). Found so far, on the
+  ThinkPad: thinkpad_acpi has fan control on
+  (`/sys/module/thinkpad_acpi/parameters/fan_control` says Y), and
+  `/proc/acpi/ibm/fan` takes `level auto`, `level full-speed`,
+  `level disengaged` (unregulated: faster still) and `watchdog N`
+  (1 to 120 seconds: the firmware takes the fans back if nobody says
+  the level again in that time); its hwmon (`thinkpad`) has `pwm1`,
+  `pwm1_enable` (0 full, 1 by hand, 2 auto), `fan1_input` and
+  `fan2_input`. As this was written its level read `disengaged`, 2,882
+  rpm, by whoever set it (not Olo: nothing of Olo's writes it). Both
+  are root's to write. *To do:* Auto and Full Speed in the panel, with
+  how long (15 minutes to a day at most), the time left shown and
+  counted down where the speed shows (the fans' rpm, live, while the
+  panel is open and not otherwise); a root-owned part that sets it and
+  puts it back (the precedent: `olo-power-now@.service`, Doctor's
+  helper installing it), which must go back to auto by itself whatever
+  happens to Olo: the firmware's watchdog kept fed while full speed is
+  wanted, so a crash, a logout or a sleep hands the fans back within
+  two minutes with nothing to run; the time it ends kept where a
+  restart finds it. Other machines by their hwmon `pwm*_enable` where
+  there is one, and the choice not offered where the fans can't be
+  set. Agents: the same through `olo-preferences`' documented way in.
+
 - **A scheduler of the person's choosing, in Preferences ▸ Performance**
   (Ben, 2026-11-10: "add to olo the ability to pick a custom scheduler
   in preferences -> performance and the recommendation should be
