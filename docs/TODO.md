@@ -103,8 +103,9 @@ something nobody here has is in "Blocked", with what it waits for.
      Search, in the kit, its suggestions raised over the window
      (`InteractiveElement::raised`). Log Viewer (the same to the pixel;
      a frame as the search is typed in 211 µs against 975).
+     Chrome's offer to download it (the same to the pixel).
      *Next, smallest first:*
-     chrome, palette, screenshot,
+     palette, screenshot,
      diskbackup, portal, deskbar, notifications, doctor, telegram,
      activity, viewer, styled-edit, screen, tracker, passwords, terminal,
      preferences.
