@@ -40,6 +40,7 @@ thread_local! {
     /// view's `body`, or what it built: it says what it shows again
     /// when the window is sized).
     static SIZE_READ: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static ACTIVE_READ: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// The size of the window that's being worked on now, on this thread
@@ -210,6 +211,11 @@ struct Listing {
 }
 
 /// No clip at all, in device pixels.
+/// A node's place in the list of what shows when the list doesn't reach
+/// it (what holds it is hidden, or cut away whole): it shows nothing,
+/// whatever it draws next.
+const UNLISTED: u32 = u32::MAX - 1;
+
 const EVERYWHERE: Bounds<ScaledPixels> = Bounds { origin: Point { x: ScaledPixels(-1.0e7), y: ScaledPixels(-1.0e7) }, size: Size { width: ScaledPixels(2.0e7), height: ScaledPixels(2.0e7) } };
 
 /// A window, as whatever is running on its looper is handed it: the
@@ -734,6 +740,14 @@ impl WindowCore {
         listing.scrollers.clear();
         listing.watchers.clear();
         listing.layers.push(Layer { id: 0, parent: 0, viewport: window, max: Size::default(), view: self.size, axes: (false, false), set: None });
+        // (What the listing doesn't reach, held by something hidden or
+        // cut away whole, is in no place in it: a place kept from the
+        // list before was another node's in this one, and its next
+        // drawing went there. Full screen, the Viewer's hidden menu bar
+        // took its video's place.)
+        for (_, node) in self.nodes.iter_mut() {
+            node.slots = [UNLISTED; 2];
+        }
         if let Some(root) = self.root {
             self.collect(root, window, 0, &mut listing);
             // What's raised, over the rest, cut by the window alone.
@@ -750,10 +764,10 @@ impl WindowCore {
         let scale = self.gfx.scale_factor;
         let rem = self.gfx.rem_size;
         let Some(node) = self.nodes.get_mut(id) else { return };
-        node.slots = [u32::MAX; 2];
         if node.style.visibility == crate::Visibility::Hidden {
             return;
         }
+        node.slots = [u32::MAX; 2];
         if node.inter.as_ref().is_some_and(|i| i.raised)
             && let Some(raised) = out.raised.as_mut()
         {
@@ -822,6 +836,10 @@ impl WindowCore {
     /// nothing, or the other way).
     fn patch_items(&mut self, id: NodeId) -> bool {
         let Some(node) = self.nodes.get(id) else { return true };
+        // (Not reached by the list: whatever it draws, it doesn't show.)
+        if node.slots == [UNLISTED; 2] {
+            return true;
+        }
         for (slot, list) in [(node.slots[0], &node.behind), (node.slots[1], &node.over)] {
             match (self.items.get_mut(slot as usize), list) {
                 (Some(item), Some(list)) => {
@@ -960,6 +978,10 @@ impl<'a> WindowCx<'a> {
             WindowEvent::Resized { size, scale } => self.resized(size, scale),
             WindowEvent::Active(active) => {
                 self.core.active = active;
+                let by_it: Vec<ViewId> = self.core.views.iter().filter(|(_, slot)| slot.reads_active).map(|(id, _)| id).collect();
+                for view in by_it {
+                    self.core.invalidate_view(view);
+                }
                 if let Some(view) = self.core.main_view.or(self.core.root_view) {
                     self.with_any_view(view, |view, id, cx| view.window_activated(id, active, cx));
                 }
@@ -1211,10 +1233,12 @@ impl<'a> WindowCx<'a> {
                 }
                 let Some(mut boxed) = self.core.views[view].view.take() else { continue };
                 SIZE_READ.with(|r| r.set(false));
+                ACTIVE_READ.with(|r| r.set(false));
                 let mut element = boxed.body(view, self);
                 if let Some(slot) = self.core.views.get_mut(view) {
                     slot.view = Some(boxed);
                     slot.reads_size = SIZE_READ.with(|r| r.get());
+                    slot.reads_active = ACTIVE_READ.with(|r| r.get());
                 }
                 if matches!(element.kind, crate::element::Kind::View(_)) {
                     // (A view that is only another view: held in a box
@@ -1423,7 +1447,7 @@ impl<'a> WindowCx<'a> {
 
     /// Makes a view in this window; whoever keeps the [`Child`] owns it.
     pub fn new_view<T: View>(&mut self, build: impl FnOnce(&mut Cx<T>) -> T) -> Child<T> {
-        let id = self.core.views.insert(ViewSlot { view: None, root: None, dirty: false, reads_size: false, subscribers: Vec::new(), timers: Vec::new() });
+        let id = self.core.views.insert(ViewSlot { view: None, root: None, dirty: false, reads_size: false, reads_active: false, subscribers: Vec::new(), timers: Vec::new() });
         let view = build(&mut Cx::new(self, id));
         if let Some(slot) = self.core.views.get_mut(id) {
             slot.view = Some(Box::new(view));
@@ -1906,8 +1930,11 @@ impl<'a> WindowCx<'a> {
         self.flush();
     }
 
-    /// Whether the window has the keyboard.
+    /// Whether the window has the keyboard. (A view whose `body` asks
+    /// says what it shows again when that changes: what's selected in
+    /// it is drawn by it.)
     pub fn is_window_active(&self) -> bool {
+        ACTIVE_READ.with(|r| r.set(true));
         self.core.active
     }
 

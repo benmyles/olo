@@ -166,6 +166,9 @@ pub(crate) struct ViewSlot {
     /// Its `body` asked the window's size: it runs again when that
     /// changes.
     pub(crate) reads_size: bool,
+    /// Its `body` asked whether the window has the keyboard: it runs
+    /// again when that changes.
+    pub(crate) reads_active: bool,
     /// Who hears what it emits, by the event's type.
     pub(crate) subscribers: Vec<(TypeId, Subscriber)>,
     /// Timers and tasks that end with it.

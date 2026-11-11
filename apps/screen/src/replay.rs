@@ -162,6 +162,8 @@ pub struct Replay {
     pub running: bool,
     /// A time filter moving on with the clock: picked again each second.
     ticking: Option<olo_kit::TimerId>,
+    /// The timer the rest of the actions are picked on.
+    picking_on: Option<olo_kit::TimerId>,
     /// Following the history's folder, for as long as this is shown.
     _watch: Option<olo_kit::watch::Watch>,
 }
@@ -354,6 +356,7 @@ impl Replay {
             width: 600.0,
             running: false,
             ticking: None,
+            picking_on: None,
             _watch: follow(name, proxy),
         }
     }
@@ -970,8 +973,14 @@ impl View for Replay {
         if !self.loaded {
             return empty("Reading the history…");
         }
-        if self.go_on_picking() {
-            Self::next_frame(cx);
+        // (On a timer, not the next frame: a stretch that picks nothing
+        // new draws nothing, and a window that draws nothing is shown no
+        // frame to go on at.)
+        if self.go_on_picking() && self.picking_on.is_none() {
+            self.picking_on = Some(cx.after_do(Duration::from_millis(1), |r, cx| {
+                r.picking_on = None;
+                cx.invalidate();
+            }));
         }
         let (_, end) = self.range();
         if end == 0 {

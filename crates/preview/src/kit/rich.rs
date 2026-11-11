@@ -9,7 +9,7 @@
 //!
 //! Blocks are laid out once for a width, scale and look (shaped, wrapped
 //! lines, painted again as they are), as the view's `body` runs: those
-//! in view at once, the rest a few milliseconds a frame after. Only those
+//! in view at once, the rest a few milliseconds at a time after. Only those
 //! in view are drawn (`Painter::visible_bounds`: drawn again as it's
 //! scrolled, laid out or not).
 
@@ -105,6 +105,8 @@ pub struct RichView {
     hover: Option<(usize, usize)>,
     /// How wide the page is (its place, as layout last said).
     width: f32,
+    /// The timer the rest of the page is laid out on.
+    more: Option<olo_kit::TimerId>,
     /// The window has the keyboard (what's selected is drawn so).
     active: bool,
     /// The text selected: where it began, where it goes (or the whole
@@ -1106,19 +1108,18 @@ impl View for RichView {
         }
     }
 
-    fn window_activated(&mut self, _: bool, cx: &mut Cx<Self>) {
-        if self.has_selection() {
-            cx.invalidate();
-        }
-    }
-
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         let p = theme::palette();
         self.active = cx.is_window_active();
-        if self.lay_out(cx.scale_factor(), &p) {
-            // The rest, a few milliseconds a frame.
-            let me = cx.view_ref();
-            cx.on_next_frame(move |cx| me.update(cx, |_, cx| cx.invalidate()));
+        if self.lay_out(cx.scale_factor(), &p) && self.more.is_none() {
+            // The rest a few milliseconds at a time, the looper free for
+            // what else comes in between. (On a timer, not the next
+            // frame: laying out below the view draws nothing, and a
+            // window that draws nothing is shown no frame to go on at.)
+            self.more = Some(cx.after_do(Duration::from_millis(1), |v, cx| {
+                v.more = None;
+                cx.invalidate();
+            }));
         }
         self.want_pictures(cx);
         let page = cx.canvas(|v: &RichView, g, b| v.paint(g, b)).paint_key(self.paint_key()).size_full();

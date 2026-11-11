@@ -102,6 +102,7 @@ pub(crate) struct Shared {
     pub(crate) to_item: Cell<Option<usize>>,
     /// A span of its content to show (down it: top, bottom).
     pub(crate) to_span: Cell<Option<(Pixels, Pixels)>>,
+    pub(crate) to_offset: Cell<Option<Point<Pixels>>>,
     /// Where each thing it holds is, in its content.
     pub(crate) children: RefCell<Vec<Bounds<Pixels>>>,
 }
@@ -131,6 +132,7 @@ impl ScrollHandle {
             to_bottom: Cell::new(false),
             to_item: Cell::new(None),
             to_span: Cell::new(None),
+            to_offset: Cell::new(None),
             children: RefCell::default(),
         }))
     }
@@ -203,9 +205,18 @@ impl ScrollHandle {
         self.0.to_span.set(Some((top, bottom)));
     }
 
+    /// Scrolls to `offset` once what it holds is next laid out, kept
+    /// within its ends as they are then: for content whose size is
+    /// changing in the same turn (a page zoomed about a point, where
+    /// [`Self::set_offset`] would hold it to the ends it had before).
+    pub fn set_offset_once_laid_out(&self, cx: &mut WindowCx, offset: Point<Pixels>) {
+        self.0.to_offset.set(Some(offset));
+        cx.core.scroll_asked(self.clone());
+    }
+
     /// Whether something was asked of it that waits for layout.
     pub(crate) fn asked(&self) -> bool {
-        self.0.to_bottom.get() || self.0.to_item.get().is_some() || self.0.to_span.get().is_some()
+        self.0.to_bottom.get() || self.0.to_item.get().is_some() || self.0.to_span.get().is_some() || self.0.to_offset.get().is_some()
     }
 
     /// Puts it somewhere, from the looper's side: the stage is told with
@@ -222,7 +233,7 @@ impl ScrollHandle {
     pub(crate) fn settle(&self) -> u8 {
         let max = self.0.max.get();
         let at = self.0.offset.get();
-        let mut to = at;
+        let mut to = self.0.to_offset.take().unwrap_or(at);
         if self.0.to_bottom.take() {
             to.y = -max.height;
         }

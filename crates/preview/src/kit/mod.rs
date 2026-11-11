@@ -80,6 +80,14 @@ pub enum PreviewEvent {
     /// What decodes its video became known, or changed
     /// ([`PreviewView::decoding`]): a menu saying it is drawn again.
     Decoding,
+    /// Its video started playing, or stopped
+    /// ([`PreviewView::playing_video`]).
+    Playing,
+    /// Its video is shown again: another picture of it, or it was moved
+    /// to another moment ([`PreviewView::position`]). For what follows
+    /// the video's time beside it (the Viewer's editor's playhead, which
+    /// passes over what's cut).
+    Played,
 }
 
 /// What the view is told: by its loader's worker, its timers and the
@@ -833,14 +841,6 @@ impl View for PreviewView {
         }
     }
 
-    fn window_activated(&mut self, _: bool, cx: &mut Cx<Self>) {
-        // (What's selected in a text is drawn by whether the window has
-        // the keyboard.)
-        if self.text_sel.is_some_and(|(a, b)| a != b) {
-            cx.invalidate();
-        }
-    }
-
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         self.active = cx.is_window_active();
         let content: Element = match (&self.failed, &self.body) {
@@ -1578,16 +1578,17 @@ impl PreviewView {
                 }
             }
             next_due = next;
+            cx.emit(PreviewEvent::Played);
         }
         if let Some(d) = next_due {
             self.tick_in(d, cx);
         }
         // Stopped (played to its end) or started as the clock ticked here:
-        // the window again, for what its owner drew before this.
+        // whoever shows it is told (its window keeps the screen awake
+        // while it plays).
         if self.playing_video() != self.video_played {
             self.video_played = !self.video_played;
-            let me = cx.view_ref();
-            cx.on_next_frame(move |cx| me.update(cx, |_, cx| cx.invalidate()));
+            cx.emit(PreviewEvent::Playing);
         }
         // (A sound still opening is drawn again too: it says it's playing
         // only once its first sound is sent, after this was drawn.)
