@@ -50,10 +50,16 @@ const STATUS: &str = "/run/olo-fans/status";
 const WATCHDOG: u32 = 30;
 /// How often a held level is said again (the watchdog's food).
 const KEEP: Duration = Duration::from_secs(8);
-/// A level is held this long before the fans come down a step.
-const HOLD: Duration = Duration::from_secs(15);
+/// A level is held this long before the fans come down a step, and
+/// twice as long when they came up again soon after last coming down
+/// (hunting between two levels under a steady load: heard as the fans
+/// never settling; 286 changes in an hour of builds, at 15 seconds and
+/// 3 degrees).
+const HOLD: Duration = Duration::from_secs(30);
+/// Coming up within this of coming down is hunting.
+const SOON: Duration = Duration::from_secs(90);
 /// Coming down needs this much room under what brought them up (°C).
-const HYSTERESIS: f32 = 3.0;
+const HYSTERESIS: f32 = 6.0;
 /// How far ahead a rising temperature is looked (seconds), and the most
 /// that adds (°C).
 const AHEAD: f32 = 5.0;
@@ -336,6 +342,10 @@ struct Fans {
     /// When the level last changed, and was last said.
     changed: Instant,
     said: Instant,
+    /// When they last came down a step, and whether they came up again
+    /// soon after (held longer, then).
+    came_down: Option<Instant>,
+    hunting: bool,
 }
 
 fn say(command: &str) -> std::io::Result<()> {
@@ -352,6 +362,11 @@ impl Fans {
             say("watchdog 0")?;
         }
         if level != self.level {
+            if level < self.level {
+                self.came_down = Some(now);
+            } else {
+                self.hunting = self.came_down.is_some_and(|at| now.duration_since(at) < SOON);
+            }
             eprintln!("olo-fans: {} → {} ({why})", level_word(self.level), level_word(level));
             self.level = level;
             self.changed = now;
@@ -449,7 +464,7 @@ fn main() -> std::process::ExitCode {
     let mut power = Power::new();
     eprintln!("olo-fans: watching {} sensors{}", list.len(), if power.file.is_some() { " and the processor's power" } else { "" });
     let start = Instant::now();
-    let mut fans = Fans { level: AUTO, changed: start, said: start };
+    let mut fans = Fans { level: AUTO, changed: start, said: start, came_down: None, hunting: false };
     let mut current = None;
     let code = loop {
         let now = Instant::now();
@@ -487,7 +502,7 @@ fn main() -> std::process::ExitCode {
                 let mut next = fans.level;
                 if up > fans.level {
                     next = up;
-                } else if down < fans.level && now.duration_since(fans.changed) >= HOLD {
+                } else if down < fans.level && now.duration_since(fans.changed) >= if fans.hunting { HOLD * 2 } else { HOLD } {
                     // Down a step at a time (from the first step, to the
                     // firmware's own).
                     next = if fans.level <= FIRST { AUTO } else { fans.level - 1 };
