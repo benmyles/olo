@@ -188,15 +188,17 @@ mod tests {
 
     #[test]
     fn test_random_iterations() {
-        random_iterations(1.0);
-        // (Olo: spread over many cells, far outside too.)
-        random_iterations(40.0);
-        random_iterations(1000.0);
+        random_iterations(1.0, 1000);
+        // (Olo: spread over many cells, far outside too. Fewer of
+        // them: something 50,000 across is in tens of thousands of cells,
+        // and a thousand such trees took a minute of every test run.)
+        random_iterations(40.0, 100);
+        random_iterations(1000.0, 10);
     }
 
-    fn random_iterations(spread: f32) {
+    fn random_iterations(spread: f32, seeds: u64) {
         let max_bounds = 100;
-        for seed in 1..=1000 {
+        for seed in 1..=seeds {
             // let seed = 44;
             let mut tree = BoundsTree::default();
             let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64);

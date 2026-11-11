@@ -27,6 +27,8 @@ if [ ${#rust[@]} -gt 0 ]; then
 fi
 if [ "${OLO_SKIP_UI_LINT:-}" != 1 ] && git diff --cached --name-only | grep -qE '^(apps/|crates/(ui|kit-base|theme|preview)/|gpui/)'; then
     echo "pre-commit: UI code changed; the layout lint (cargo ui-lint)…" >&2
+    began=$SECONDS
+    trap 'echo "pre-commit: the layout lint took $((SECONDS - began)) s" >&2' EXIT
     if ! out=$(env -u WAYLAND_DISPLAY -u OLO_SOCKET cargo ui-lint 2>&1); then
         echo "$out" | grep -E "^  (light|dark) at|panicked|^error" >&2 || echo "$out" | tail -30 >&2
         echo "pre-commit: the layout lint found the above; fix it (or OLO_SKIP_UI_LINT=1, saying why)." >&2
