@@ -218,8 +218,55 @@ something nobody here has is in "Blocked", with what it waits for.
      Screen's window, Move Windows To, New Screen (Start Screen, the
      same way in, was), a rename kept, several screens chosen at
      once, an upgrade in place.
+     **Viewer** (2026-11-11; HACKING's Viewer), with olo-preview's
+     views as kit views (`olo_preview::kit`, beside the GPUI ones
+     Tracker's Quick Look still uses). Run old against new in a test
+     session on made-up files (a picture, a text, code, Markdown, a
+     CSV, a zip, a sound, a three-page PDF with a form field, a font,
+     and a recording of the test session itself as its video): each
+     kind as it opens, the same to the pixel at 1×, 1.5× and 2×, light
+     and dark; a picture zoomed, rotated, cropped, full screen, the
+     save question; a text selected and found in; a sheet sorted and
+     searched; a PDF's field typed in, text added, drawn on, zoomed,
+     paged, found in, saved (the same bytes' length), signed (the pad,
+     the Sign menu); Save As and Open panels; a sound paused; a look
+     put away with Space; a video sought, trimmed (a copy), its editor
+     (a stretch chosen and cut, a mark, undo, the export panel and an
+     export, Done's question), full screen with and without it; a
+     second start handed to the first; a file changed on disk shown
+     again; app_server restarted in place under two windows. At rest
+     0.0% of a core both; a video playing 0.5% against 1.5% (frames
+     314 µs against 611); a text scrolled 418 µs a frame against 575,
+     a document 250 against 468. It found, fixed in the kit: what the
+     list of what shows didn't reach kept its place from the list
+     before, so a hidden element's next drawing took another's (full
+     screen with the editor open, the hidden menu bar showed and the
+     video didn't); pictures drawn bigger than they are blended their
+     edge pixels with their neighbours in the atlas (a line at each
+     edge of a zoomed picture's tiles, different each run; GPUI's
+     does the same, in one order); a view that draws by whether the
+     window is active or full screen is told again when that changes;
+     work that goes on with nothing to draw runs on a timer, not the
+     next frame (a document's layout stopped part way until the
+     pointer moved, as GPUI's did; Agent Screens' search the same).
+     Differences left: the old build's document stops laying out
+     below the view until something draws (its scroll bar's thumb is
+     longer than the page warrants; the new one's is right); a page
+     just out of view above shows its shadow's two lines (the old
+     build left a page's shadow out with the page); a zoomed
+     picture's edges (above). The layout review's findings are the
+     old build's too, to the pixel: a text's first row 4.9 points
+     under the menu bar at 2× (its line numbers and the menus' titles
+     a point apart on the left at 1× and 1.5×), and a sheet's bar's
+     rule three points from its header's edge. Not explained: at 2× a
+     picture's window holds 43 MB of its own against 29 (the same at
+     1×). Not tried: a picture dragged out, files dropped on a
+     window, a look following its panel (`--follow`), HDR and wide
+     pictures (no such display in a test session), an upgrade in
+     place with documents open, a video's sound (no sound server in
+     a test), the GPU decoders' choice.
      *Next, smallest first:*
-     viewer, styled-edit, tracker, passwords, terminal, preferences.
+     styled-edit, tracker, passwords, terminal, preferences.
   5. **Tools, HACKING and the Olo Book**; GPUI and olo-ui leave the
      workspace (the `browser` and `olo-coder` branches build on them:
      they stay until those have moved). `tools/dev/bench`, `ui-lint`,

@@ -8408,14 +8408,30 @@ until it's closed (Stop) or HOLD seconds pass.
 
 The Viewer opens any file Quick Look previews (`olo-viewer FILE…`; one
 process, a second start hands its files over: `instance::forward`), on
-the GPUI kit. Each window is a `Doc` entity (its file, the files beside
-it for Go ▸ Previous / Next File and the arrows, a picture's edits);
-the `Viewer` entity keeps them, the signatures, the folder watch and the
-panels. The document has the keyboard from the moment its window opens
-(given it in the window's build, before the `Frame` would take it).
+olo-kit. Each document is its window's own view, `Doc` (its file, the
+files beside it for Go ▸ Previous / Next File and the arrows, a
+picture's edits), on a looper of its own: its workers (the PDF's, a
+picture's editor, the folder's listing, an export) tell it through its
+messenger (`DocMsg`), and so do its file panels. The app's looper
+(`Hub`) knows which windows show which files, opens them (or brings one
+forward), follows the open files and their folders on disk and tells
+the windows; a window asks things of it through the proxy (`ToHub`:
+another file opened, the file it shows now, Quit). What every window
+knows is shared (`Shared`: the signatures, a look's flags, each
+window's "unsaved, or saving" for the upgrade's wait). New Signature's
+pad and Adjust Size are windows of the document's own
+(`open_window_here`). Each window keeps its file and speed for an
+upgrade (`View::save_state`), put together by `on_upgrade`. The
+document has the keyboard from the moment its window opens
+(`FocusHandle::focus_if_none`). What a child view shows that the window
+says too is told as events: the preview's (`PreviewEvent`: shown, its
+gamut, what decodes, playing or stopped, and each picture of a video
+while its editor follows), and the PDF view's `Changed` (its page and
+zoom in the tool bar, its tool, whether it's edited, what its menus
+offer).
 
-- Everything but PDF is `olo_preview::ui::PreviewView` (olo-preview's
-  `gpui` feature): pictures in the kit's `ImageView` (zoom ⌘= ⌘- ⌘0 ⌘9,
+- Everything but PDF is `olo_preview::kit::PreviewView` (olo-preview's
+  `kit` feature): pictures in the kit's `ImageView` (zoom ⌘= ⌘- ⌘0 ⌘9,
   pan), formatted documents in `RichView`, sheets in `TableView`, and
   text, listings, fonts, sound and video. The window opens at the size
   its content asks (`ideal_size`) for the display it opens on.
@@ -8493,13 +8509,19 @@ panels. The document has the keyboard from the moment its window opens
   view): pages rendered by hayro on the worker in 1024-pixel tiles for
   the zoom and scale, at most 12 MB uploaded a frame, the pages near the
   view kept. Forms are filled in place (a `TextField` over the field in
-  the form's font; Tab and ⇧Tab between fields, Escape ends; check boxes
+  the form's font; Tab and ⇧Tab between fields, Escape ends: taken on
+  their way to the field, `capture_key_down` on what holds it, which
+  also ends the typing when the keyboard leaves it; check boxes
   and radio buttons by a click; a pop-up's choices from a menu under it),
   text boxes and ink added with the Text and Draw tools, signatures drawn
   once (New Signature…, `signature.rs`) and placed from Sign…; saved as
   an incremental update (earlier revisions and signatures survive). The
-  toolbar's page and zoom are read as it paints: the page view settles
-  them in its prepaint, after the toolbar was built. Agents read the
+  page view's `body` settles where it's scrolled to (which page is the
+  current one, which pages to ask of the worker, a fit's zoom; scrolls
+  asked for land once the pages are laid out at their zoom,
+  `ScrollHandle::set_offset_once_laid_out`), its drawing looks only
+  (the pages in view, `Painter::visible_bounds`), and the tool bar is
+  told when its page or zoom changes (`pdfview::Changed`). Agents read the
   fields as `TextInput`, `CheckBox` (checked), `RadioButton` (its
   on-state as its value), `ComboBox` or `ListBox`; while one is typed in,
   as its editor.

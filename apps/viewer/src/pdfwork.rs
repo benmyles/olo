@@ -19,7 +19,7 @@ use hayro::{
     vello_cpu::color::palette::css::WHITE,
 };
 use lopdf::Document;
-use olo_ui::gpui::RenderImage;
+use olo_kit::RenderImage;
 
 use crate::{
     pdfdoc::{self, Model, PageGeom},

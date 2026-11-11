@@ -3,13 +3,12 @@
 //! dimmed, the frame's thirds show while it moves, and its size shows
 //! under it.
 
-use olo_preview::edit::Op;
-use olo_ui::{
-    agent,
-    gpui::{self, App, Bounds, CursorStyle, FontWeight, Pixels, Point, Window, point, px, size},
+use olo_kit::{
+    Bounds, CursorStyle, FontWeight, Painter, Pixels, Point, agent, point, px, size,
     style::{self, Align},
     theme,
 };
+use olo_preview::edit::Op;
 
 const HANDLE: f32 = 7.0;
 
@@ -152,53 +151,53 @@ impl CropFrame {
     }
 
     /// Dim what will go, outline what stays.
-    pub fn paint(&self, window: &mut Window, cx: &mut App, view: Bounds<Pixels>, shown: Bounds<Pixels>, full: (u32, u32)) {
-        let p = theme::palette(cx);
+    pub fn paint(&self, g: &mut Painter, view: Bounds<Pixels>, shown: Bounds<Pixels>, full: (u32, u32)) {
+        let p = theme::palette();
         let shade = style::c(p.scrim);
-        window.with_content_mask(Some(gpui::ContentMask { bounds: view }), |window| {
+        g.with_content_mask(Some(olo_kit::ContentMask { bounds: view }), |g| {
             let Some(r) = self.sel else {
-                window.paint_quad(gpui::fill(shown, shade.opacity(0.4)));
+                g.paint_quad(olo_kit::fill(shown, shade.opacity(0.4)));
                 return;
             };
-            let s = style::snap(window, to_window(r, shown, full));
+            let s = style::snap(g, to_window(r, shown, full));
             for b in [
                 Bounds::from_corners(shown.origin, point(shown.right(), s.top())),
                 Bounds::from_corners(point(shown.left(), s.bottom()), shown.bottom_right()),
                 Bounds::from_corners(point(shown.left(), s.top()), point(s.left(), s.bottom())),
                 Bounds::from_corners(point(s.right(), s.top()), point(shown.right(), s.bottom())),
             ] {
-                window.paint_quad(gpui::fill(b, shade));
+                g.paint_quad(olo_kit::fill(b, shade));
             }
-            style::frame_rect(window, s, gpui::white());
+            style::frame_rect(g, s, olo_kit::white());
             // Dark just outside it, a line out (not a point: at 1.5× that
             // leaves a gap), to show on light pictures too.
-            style::frame_rect(window, style::inset(window, s, -1.0), gpui::black().opacity(160.0 / 255.0));
+            style::frame_rect(g, style::inset(g, s, -1.0), olo_kit::black().opacity(160.0 / 255.0));
             // Thirds, while it is being dragged.
             if self.drag.is_some() {
-                let guide = gpui::white().opacity(110.0 / 255.0);
+                let guide = olo_kit::white().opacity(110.0 / 255.0);
                 for i in 1..3 {
                     let x = s.left() + s.size.width * (i as f32 / 3.0);
                     let y = s.top() + s.size.height * (i as f32 / 3.0);
-                    style::vline(window, x, s.top(), s.bottom(), guide);
-                    style::hline(window, s.left(), s.right(), y, guide);
+                    style::vline(g, x, s.top(), s.bottom(), guide);
+                    style::hline(g, s.left(), s.right(), y, guide);
                 }
             }
             for c in [s.origin, point(s.right(), s.top()), point(s.left(), s.bottom()), s.bottom_right()] {
-                let h = style::snap_centred(window, c, HANDLE, HANDLE);
-                window.paint_quad(gpui::fill(h, gpui::white()));
-                style::frame_rect(window, h, style::c(p.keyboard_navigation));
+                let h = style::snap_centred(g, c, HANDLE, HANDLE);
+                g.paint_quad(olo_kit::fill(h, olo_kit::white()));
+                style::frame_rect(g, h, style::c(p.keyboard_navigation));
             }
             // The size it will be.
             let text = format!("{} × {}", (r[2] - r[0]).round(), (r[3] - r[1]).round());
             let font = style::ui_font(FontWeight::NORMAL);
-            let w = f32::from(style::text_width(window, text.clone(), style::SMALL_SIZE, font.clone()));
+            let w = f32::from(style::text_width(text.clone(), style::SMALL_SIZE, font.clone()));
             let h = (style::SMALL_SIZE * style::LINE_HEIGHT).ceil();
             let top = (s.bottom() + px(6.0)).min(view.bottom() - px(h + 10.0));
-            let tip = style::snap(window, Bounds::new(point(s.center().x - px(w / 2.0 + 5.0), top), size(px(w + 10.0), px(h + 4.0))));
-            window.paint_quad(gpui::fill(tip, style::c(p.tooltip_background)).corner_radii(px(4.0)));
-            window.paint_quad(gpui::outline(tip, style::c(p.control_border), gpui::BorderStyle::Solid).corner_radii(px(4.0)));
-            let at = style::label(window, cx, tip.center().x, tip.center().y, Align::Center, text.clone(), style::SMALL_SIZE, font, style::c(p.tooltip_text));
-            agent::record(window, cx, agent::Node::label(text, at));
+            let tip = style::snap(g, Bounds::new(point(s.center().x - px(w / 2.0 + 5.0), top), size(px(w + 10.0), px(h + 4.0))));
+            g.paint_quad(olo_kit::fill(tip, style::c(p.tooltip_background)).corner_radii(px(4.0)));
+            g.paint_quad(olo_kit::outline(tip, style::c(p.control_border), olo_kit::BorderStyle::Solid).corner_radii(px(4.0)));
+            let at = style::label(g, tip.center().x, tip.center().y, Align::Center, text.clone(), style::SMALL_SIZE, font, style::c(p.tooltip_text));
+            agent::record(g, agent::Node::label(text, at));
         });
     }
 }
