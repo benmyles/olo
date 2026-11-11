@@ -2077,7 +2077,9 @@ event reaches it.
   graph's place and says where it is, and its clip, as it's laid out)
   and empties the `GraphShelf` as it renders; with both cached, a graph
   moving a pixel redraws the layer, not the cards, legends and figures
-  around it (Activity Monitor's CPU section: 4.2 ms a frame to 1.4).
+  around it (Activity Monitor's CPU section, while it was on this kit:
+  4.2 ms a frame to 1.4; on olo-kit a `Graph::live` draws itself again
+  alone, with no layer to keep).
 - `StringView::wrap(true)` (a paragraph, as tall as it wraps to),
   `StringView::cut(true)` (one line as wide as it's given, not as its
   text, cut short with "…" and its whole in a tip and to agents: a path
@@ -2344,10 +2346,7 @@ event reaches it.
   `part::Part::new(&app, draw, cx)` is such a view drawn from the app's
   entity (`draw(&mut App, window, cx)`, drawn again as the app changes;
   `.observe(&model, cx)` for a list's model it shows too), placed with
-  `part::cached(&part, style)` (its size in the style). Activity
-  Monitor's window is parts (menu bar, sidebar, the section's cards,
-  the process list) and a `GraphLayer`: a graph's tick redraws the
-  graphs and the window's few boxes around them. Passwords' panes are
+  `part::cached(&part, style)` (its size in the style). Passwords' panes are
   parts, and a one-time code counting down notifies the item pane's
   part alone, once a second.
 - `Window::warm_glyphs(font, size)` (Olo's GPUI) has a face and size's
@@ -8781,31 +8780,65 @@ its own range, from the context menu). ⌘1 to ⌘9 are the sections
 the Overview's last card says what was busiest at that moment (top CPU
 and disk processes are kept for each sample, half an hour of them).
 
-It is on the GPUI kit (olo-ui). `main.rs` has the app, an `Activity`
-entity: the sampler's messages, the menus, the section shown, the Tune
-dialog. Its window is cached `Part`s, each drawn from the app as it
-changes (a sample, a choice) and replayed otherwise: the menu bar, the
-`Sidebar`, the process list, the section's cards; and over the cards
-a `GraphLayer` (GPUI draws again every view above one that changed:
-this way a graph moving a pixel redraws the graphs and the window's few
-boxes, and a caret blinking in the search the row it's in, not the
-list). `sections.rs` draws the cards from the kit's dashboard (`Card`s
-on the gutter in a `ScrollView`, `legend`s, `Facts` in one or two
-columns, `meter`s, small lists of processes drawn as facts are; cards
-side by side flow in as many columns as fit, given the room left of
-the scroll bar), its graphs put on the layer (`Graph::on_layer`); the
-Graphs section's cards share the window's height evenly between their
-graphs. `processes.rs` is a `ColumnListView` whose rows (`Rows`: each
-row's place, process and name) are made only when the processes, the
-sort, the query, Tree or what's folded change; its cells read the
-processes from the app as they're drawn, and a tree's triangles are
-drawn by the Name cell and taken by `on_press` where they were drawn.
-The filters' menus are made again only for a new list of processes.
-Each inspector is an entity in a window of its own (as a tab of the
-app's window where the session groups them), following the app's
-samples (`observe`); its Process menu acts on its process. Settings
-are written whole (beside, then renamed), on a worker as they change
-and at once at Quit and before an upgrade replaces the program.
+It is on olo-kit. The app's looper is a hub (`Hub`, `main.rs`): the
+samplers, the helper and the windows tell it things (`Msg`, through
+the app's proxy, `tell`), and it keeps who measures, what the app may
+do (`Access`, the helper, what's to do once full access comes), the
+settings and its windows, each told what it shows. The main window is
+the `Activity` view on its window's looper: every source's history,
+the processes, the section shown, the Tune dialog (a window of its own
+on the main window's looper, `open_window_here`, which has the main
+window do what it sets). Each inspector is an `Inspector` view in a
+window on a looper of its own (a tab of the app's window where the
+session groups them), told each sample's account of its process
+(`Seen`: the process, its parent's name, the machine's figures its
+tabs go by), its details, and what every window knows (`Shared`: the
+settings, the access, the sections this machine has, the supervisor's
+state); it keeps its own CPU history. The hub passes on a sample only
+from whoever measures now (the helper, with full access), so the
+windows needn't know. What a window does to processes it does itself
+(`act_all`, `quit_processes`: alerts are the asking window's), asking
+the hub only for what's the app's: the helper's work with full access
+(`Msg::Act`), asking for full access and doing what waited for it
+(`Msg::GetAccess`), opening an inspector (`Msg::Inspect`), and an
+inspector's menu commands that aren't about its process
+(`Msg::Command`: the main window's, opened for it unless it only sets
+something). Started for an inspector alone (`--inspect PID`) there is
+no main window until it's asked for; closing the main window ends the
+app, and closing the last inspector does when there's no main window.
+
+`sections.rs` draws the cards from the kit's dashboard (`Card`s on the
+gutter in a `ScrollView`, `legend`s, `Facts` in one or two columns,
+`meter`s, small lists of processes drawn as facts are over a
+`control_canvas` a row, which lights under the pointer and takes its
+press; cards side by side flow in as many columns as fit, given the
+room left of the scroll bar); its graphs are `Graph::live`, each
+drawing itself again alone as its samples move a device pixel
+(`Activity::graph_clock`: an interval behind the latest sample, so
+lines scroll into the edge rather than jump); the Graphs section's
+cards share the window's height evenly between their graphs. The view's
+`body` runs once a sample; what it makes is compared with what the
+window has, so a sample draws again only what changed. `processes.rs`
+is a `ColumnListView` whose rows (`Rows`: each row's place, process and
+name) are made only when the processes, the sort, the query, Tree or
+what's folded change; its cells read the processes from the view as
+they're drawn (a row is drawn again only when what it says does,
+`row_key`), and a tree's triangles are drawn by the Name cell and
+taken by `on_press` where they were drawn. The filters' menus are made
+again only for a new list of processes. The search field is a view of
+its own: its caret blinking draws nothing else. Settings are the main
+window's while it's open; each change is told to the hub
+(`Msg::Settings`), which writes them whole (beside, then renamed) on a
+worker and tells the inspectors what's theirs (the graphs' span and
+smoothness, the interval, the menus' checks); the main window writes
+them at once as it closes and before an upgrade replaces the program.
+
+On olo-kit against the GPUI build (release, 2× on a headless screen,
+10 s each, under the same load): Overview 3.7% of a core (4.1: the UI
+0.9 in both, on two threads now, the display's and the window's), the
+same 11.9 frames a second at 472 µs each (598); Processes 5.1 (5.2),
+its once-a-second frame 1.68 ms (1.67); 77.5 MB resident (77.9) and
+78.9 (78.3). The sampler thread is the same code, and most of either.
 
 Against the egui Activity Monitor (release, 2× on a headless screen,
 each section 20 s, the UI thread alone; the sampler thread is the same

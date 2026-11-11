@@ -5,17 +5,12 @@
 
 use std::rc::Rc;
 
-use olo_theme::Palette;
-use olo_ui::{
-    Menu, agent,
+use olo_kit::{
+    Bounds, Cx, Element, FontWeight, Hsla, InteractiveElement as _, IntoElement as _, Menu, MouseButton, ParentElement as _, Pixels, SharedString, Styled as _, ViewRef, agent, canvas, div,
     files::format_size,
-    gpui::{
-        AnyElement, App, Bounds, Context, Entity, FontWeight, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, Pixels,
-        SharedString, Styled as _, Window, canvas, div, point, px, transparent_black,
-    },
-    menu, metrics as m,
+    menu, metrics as m, point, px,
     style::{self, c},
-    theme,
+    theme, transparent_black,
     widgets::{
         Button, CheckBox, Column, ColumnListView, Graph, HEADER_HEIGHT, LegendItem, MenuField, SCROLL_BAR, ScrollView, Series, StringView, TextControl,
         charts::FACT_ROW,
@@ -23,6 +18,7 @@ use olo_ui::{
         legend, legend_height, nice_ceiling,
     },
 };
+use olo_theme::Palette;
 
 use crate::{
     Access, Activity, Section,
@@ -39,7 +35,7 @@ const MINI_MIN_WIDTH: f32 = 150.0;
 const OVERVIEW_CARD: f32 = 196.0;
 const CONNECTIONS_HEIGHT: f32 = 320.0;
 
-type Me = Entity<Activity>;
+type Me = ViewRef<Activity>;
 
 /// A source's series for a graph: its name, colour and samples.
 fn series(app: &Activity, p: &Palette, key: &str, fill: bool) -> Option<Series> {
@@ -74,25 +70,26 @@ fn figure(name: &str, value: impl Into<SharedString>) -> LegendItem {
 /// A graph of `keys` (the first filled, its unit the graph's), scaled
 /// to `max` or what it shows, `h` tall; a click looks back to then
 /// (`drill`: the app to tell).
-fn graph(app: &Activity, drill: Option<&Me>, keys: &[&str], max: Option<f64>, h: f32, cx: &App) -> AnyElement {
-    let p = theme::palette(cx);
+fn graph(app: &Activity, drill: Option<&Me>, keys: &[&str], max: Option<f64>, h: f32, _: &Cx<Activity>) -> Element {
+    let p = theme::palette();
     let s: Vec<Series> = keys.iter().enumerate().filter_map(|(i, k)| series(app, &p, k, i == 0)).collect();
     let unit = keys.first().and_then(|k| app.source(k)).map_or(Unit::Percent, |i| app.sources[i].unit);
     let id = SharedString::from(format!("activity-{}", keys.join(",")));
-    let mut g = Graph::new(id, s, app.now()).span(app.settings.span as f64).grid(grid_for(app.settings.span)).unit(move |v| unit.format(v)).smooth(app.settings.smooth).plain();
+    let mut g = Graph::live(id, s, app.graph_clock()).span(app.settings.span as f64).grid(grid_for(app.settings.span)).unit(move |v| unit.format(v)).smooth(app.settings.smooth).plain();
     if let Some(m) = max {
         g = g.max(m);
     }
     if let Some(me) = drill {
-        let me = me.clone();
-        g = g.on_click(move |t, _, cx| {
-            me.update(cx, |a, cx| {
+        let me = *me;
+        g = g.on_click(move |t, cx| {
+            let t = *t;
+            me.update(cx, move |a, cx| {
                 a.drill = Some(t);
-                cx.notify();
+                cx.invalidate();
             })
         });
     }
-    div().h(px(h)).flex_shrink_0().child(g.on_layer(&app.shelf)).into_any_element()
+    div().h(px(h)).flex_shrink_0().child(g).into_any_element()
 }
 
 /// Time lines: every 10 s over a minute, a minute over 5, 5 over 30.
@@ -106,14 +103,14 @@ fn grid_for(span: u32) -> f64 {
 }
 
 /// A legend of `items`, as wide as `width`.
-fn legend_el(items: Vec<LegendItem>, width: f32, cx: &App) -> AnyElement {
-    let h = legend_height(cx, width, &items);
-    canvas(|_, _, _| {}, move |b, _, window, cx| legend(window, cx, b, &items)).w_full().h(px(h)).flex_shrink_0().into_any_element()
+fn legend_el(items: Vec<LegendItem>, width: f32, _: &Cx<Activity>) -> Element {
+    let h = legend_height(width, &items);
+    canvas(move |g, b| legend(g, b, &items)).w_full().h(px(h)).flex_shrink_0().into_any_element()
 }
 
 /// A bar of parts of a whole (`dashboard::meter`), `h` tall.
-fn meter_el(parts: Vec<(Hsla, f64)>, total: f64, h: f32) -> AnyElement {
-    canvas(|_, _, _| {}, move |b, _, window, cx| meter(window, cx, b, &parts, total)).w_full().h(px(h)).flex_shrink_0().into_any_element()
+fn meter_el(parts: Vec<(Hsla, f64)>, total: f64, h: f32) -> Element {
+    canvas(move |g, b| meter(g, b, &parts, total)).w_full().h(px(h)).flex_shrink_0().into_any_element()
 }
 
 fn facts(rows: Vec<(String, String)>) -> Facts {
@@ -121,7 +118,7 @@ fn facts(rows: Vec<(String, String)>) -> Facts {
 }
 
 /// Facts in two columns side by side (the first takes the odd one).
-fn facts_two(rows: Vec<(String, String)>) -> AnyElement {
+fn facts_two(rows: Vec<(String, String)>) -> Element {
     let half = rows.len().div_ceil(2);
     let mut rows = rows;
     let right = rows.split_off(half);
@@ -129,28 +126,24 @@ fn facts_two(rows: Vec<(String, String)>) -> AnyElement {
 }
 
 /// Text wrapped to the card, quiet or not.
-fn para(text: impl Into<SharedString>, color: Hsla) -> AnyElement {
+fn para(text: impl Into<SharedString>, color: Hsla) -> Element {
     StringView::new(text).wrap(true).color(color).into_any_element()
 }
 
 /// A small graph with its name and value over it (a core, a sensor).
-fn mini(app: &Activity, key: &str, label: String, max: Option<f64>, cx: &App) -> AnyElement {
+fn mini(app: &Activity, key: &str, label: String, max: Option<f64>, cx: &Cx<Activity>) -> Element {
     if app.source(key).is_none() {
         return div().into_any_element();
     }
     let v = value(app, key);
-    let head = canvas(
-        |_, _, _| {},
-        move |b, _, window, cx| {
-            let p = theme::palette(cx);
-            let ink = style::card_ink(&p);
-            let font = style::ui_font(FontWeight::NORMAL);
-            let vr = style::label(window, cx, b.right(), b.top() + px(8.0), style::Align::Right, v.clone(), style::SMALL_SIZE, font.clone(), ink.text);
-            let l =
-                style::label_fit(window, cx, b.left(), b.top() + px(8.0), style::Align::Left, label.clone(), style::SMALL_SIZE, font, ink.dim, (vr.left() - px(m::SPACING) - b.left()).max(px(0.0)));
-            agent::record(window, cx, agent::Node { value: Some(v.clone().into()), ..agent::Node::label(label.clone(), l) });
-        },
-    )
+    let head = canvas(move |g, b| {
+        let p = theme::palette();
+        let ink = style::card_ink(&p);
+        let font = style::ui_font(FontWeight::NORMAL);
+        let vr = style::label(g, b.right(), b.top() + px(8.0), style::Align::Right, v.clone(), style::SMALL_SIZE, font.clone(), ink.text);
+        let l = style::label_fit(g, b.left(), b.top() + px(8.0), style::Align::Left, label.clone(), style::SMALL_SIZE, font, ink.dim, (vr.left() - px(m::SPACING) - b.left()).max(px(0.0)));
+        agent::record(g, agent::Node { value: Some(v.clone().into()), ..agent::Node::label(label.clone(), l) });
+    })
     .w_full()
     .h(px(16.0))
     .flex_shrink_0();
@@ -167,7 +160,7 @@ fn columns(width: f32, n: usize, min: f32, max: usize) -> Vec<f32> {
 
 /// `items` in rows of as many columns as fit, cells in a row as tall as
 /// the tallest.
-fn flow(items: Vec<AnyElement>, width: f32, min: f32, max: usize) -> AnyElement {
+fn flow(items: Vec<Element>, width: f32, min: f32, max: usize) -> Element {
     let widths = columns(width, items.len(), min, max);
     let mut out = div().flex().flex_col().gap(px(GAP));
     let mut items = items.into_iter().peekable();
@@ -182,7 +175,7 @@ fn flow(items: Vec<AnyElement>, width: f32, min: f32, max: usize) -> AnyElement 
 }
 
 /// Small graphs in a grid across `width`.
-fn mini_grid(cells: Vec<AnyElement>, width: f32) -> AnyElement {
+fn mini_grid(cells: Vec<Element>, width: f32) -> Element {
     flow(cells, width, MINI_MIN_WIDTH, 8)
 }
 
@@ -219,14 +212,6 @@ fn wall(app: &Activity, t: f64) -> f64 {
 
 fn ghz(mhz: f64) -> String {
     if mhz >= 1000.0 { format!("{:.2} GHz", mhz / 1000.0) } else { format!("{mhz:.0} MHz") }
-}
-
-/// The section shown (but Processes): its cards, for a cached `Part`
-/// under its graphs' layer.
-pub fn cards(app: &mut Activity, window: &mut Window, cx: &mut Context<Activity>) -> AnyElement {
-    let width = f32::from(window.viewport_size().width) - crate::SIDEBAR_WIDTH;
-    let s = app.settings.section;
-    view(app, s, width, cx)
 }
 
 /// The sidebar's figure for a section.
@@ -280,19 +265,17 @@ fn hottest(app: &Activity) -> Option<(String, f64)> {
 }
 
 /// Section `s`, `width` wide: cards on the gutter, scrolling.
-pub fn view(app: &mut Activity, s: Section, width: f32, cx: &mut Context<Activity>) -> AnyElement {
-    let me = cx.entity();
-    // Its graphs put on the layer anew as it's laid out.
-    app.shelf.clear();
-    let p = theme::palette(cx);
+pub fn view(app: &mut Activity, s: Section, width: f32, cx: &mut Cx<Activity>) -> Element {
+    let me = cx.view_ref();
+    let p = theme::palette();
     // Inside the gutter round the cards (and the scroll bar, but for the
     // Graphs, which fit), and the cards' inset.
     if s == Section::Graphs {
-        return graphs(app, &me, width - 2.0 * GAP - 2.0 * m::CARD_INSET, cx);
+        return graphs(app, width - 2.0 * GAP - 2.0 * m::CARD_INSET, cx);
     }
     let area = width - SCROLL_BAR - 2.0 * GAP;
     let inner = area - 2.0 * m::CARD_INSET;
-    let cards: Vec<AnyElement> = match s {
+    let cards: Vec<Element> = match s {
         Section::Overview => overview(app, &me, area, cx),
         Section::Cpu => cpu(app, &me, inner, cx),
         Section::Memory => memory(app, area, inner, cx),
@@ -308,13 +291,13 @@ pub fn view(app: &mut Activity, s: Section, width: f32, cx: &mut Context<Activit
         Section::Processes | Section::Graphs => Vec::new(),
     };
     let body = div().flex().flex_col().gap(px(GAP)).p(px(GAP)).children(cards);
-    ScrollView::new(SharedString::from(format!("activity-section-{}", s.name())), &app.scroll).border(false).background(dashboard::gutter(&p)).child(body).into_any_element()
+    ScrollView::new(&app.scroll).border(false).background(dashboard::gutter(&p)).child(body).into_any_element()
 }
 
 // ---- Overview --------------------------------------------------------
 
-fn overview(app: &Activity, me: &Me, area: f32, cx: &App) -> Vec<AnyElement> {
-    let p = theme::palette(cx);
+fn overview(app: &Activity, me: &Me, area: f32, cx: &Cx<Activity>) -> Vec<Element> {
+    let p = theme::palette();
     let sys = &app.system;
     let mut cards: Vec<Section> = vec![Section::Cpu, Section::Memory, Section::Network, Section::Disks];
     if app.source("gpu-busy").is_some() {
@@ -377,12 +360,12 @@ fn overview(app: &Activity, me: &Me, area: f32, cx: &App) -> Vec<AnyElement> {
         if *s == Section::Sensors && sys.battery.is_some() {
             items.extend(legend_items(app, &p, &["battery-power"], &["Power"]));
         }
-        let lh = legend_height(cx, card_inner, &items);
+        let lh = legend_height(card_inner, &items);
         let head = dashboard::Card::height(0.0, !caption.is_empty());
         let graph_h = (OVERVIEW_CARD - head - lh - m::TIGHT).max(20.0);
-        let go = me.clone();
+        let go = *me;
         let section = *s;
-        let mut card = Card::new(format!("overview-{title}"), title).figure(figure_text).caption(caption).on_click(move |_, cx| go.update(cx, |a, cx| a.set_section(section, cx)));
+        let mut card = Card::new(format!("overview-{title}"), title).figure(figure_text).caption(caption).on_click(move |_, cx| go.update(cx, move |a, cx| a.set_section(section, cx)));
         if !keys.is_empty() {
             card = card.child(graph(app, Some(me), &keys, max, graph_h, cx));
         } else if *s == Section::Sensors {
@@ -402,7 +385,7 @@ fn overview(app: &Activity, me: &Me, area: f32, cx: &App) -> Vec<AnyElement> {
 type Busy = (i32, String, String);
 
 /// The busiest processes now, or at the moment chosen on a graph.
-fn busiest(app: &Activity, me: &Me) -> AnyElement {
+fn busiest(app: &Activity, me: &Me) -> Element {
     let rows = 6;
     let moment = app.drill.and_then(|t| app.moments.iter().rev().find(|m| m.at <= t + 0.01).or(app.moments.front()));
     let (title, caption) = match moment {
@@ -440,16 +423,16 @@ fn busiest(app: &Activity, me: &Me) -> AnyElement {
         return card.into_any_element();
     }
     // Now, at the head's right, back to the present.
-    let now = me.clone();
+    let now = *me;
     div()
         .relative()
         .flex()
         .flex_col()
         .child(card)
         .child(div().absolute().top(px(m::CARD_INSET - 2.0)).right(px(m::CARD_INSET)).child(Button::new("Now").on_click(move |_, cx| {
-            now.update(cx, |a, cx| {
+            now.update(cx, move |a, cx| {
                 a.drill = None;
-                cx.notify();
+                cx.invalidate();
             })
         })))
         .into_any_element()
@@ -458,60 +441,60 @@ fn busiest(app: &Activity, me: &Me) -> AnyElement {
 /// A small list of processes (name and a figure) under a quiet head,
 /// each a way to it in Processes: drawn as one, each row `FACT_ROW` from
 /// the last as facts are (rows laid out apart came out a pixel uneven).
-fn process_rows(me: &Me, head: &str, rows: Vec<Busy>) -> AnyElement {
+fn process_rows(me: &Me, head: &str, rows: Vec<Busy>) -> Element {
     let head = SharedString::from(head.to_owned());
     let n = rows.len();
     let row = |b: Bounds<Pixels>, i: usize| Bounds::from_corners(point(b.left(), b.top() + px((i + 1) as f32 * FACT_ROW)), point(b.right(), b.top() + px((i + 2) as f32 * FACT_ROW)));
-    let me = me.clone();
-    canvas(
-        move |b, window, _| (0..n).map(|i| window.insert_hitbox(row(b, i), HitboxBehavior::Normal)).collect::<Vec<_>>(),
-        move |b, hitboxes, window, cx| {
-            let p = theme::palette(cx);
+    let mut out = div().relative().w_full().h(px((n + 1) as f32 * FACT_ROW)).flex_shrink_0();
+    // Under each row, what lights it under the pointer and takes its
+    // press (it alone is drawn again).
+    for (i, (pid, name, _)) in rows.iter().enumerate() {
+        let (me, pid) = (*me, *pid);
+        out = out.child(
+            olo_kit::control_canvas(|g, b, state| {
+                if state.hovered {
+                    let ink = style::card_ink(&theme::palette());
+                    let lit = style::snap(g, b);
+                    g.paint_quad(olo_kit::fill(lit, ink.hover).corner_radii(px(3.0)));
+                }
+            })
+            .id(SharedString::from(format!("busy-{head}-{i}-{name}")))
+            .paint_key(0)
+            .on_mouse_down(MouseButton::Left, move |_, cx| me.update(cx, move |a, cx| a.run(&format!("select:{pid}"), cx)))
+            .absolute()
+            .left(px(-4.0))
+            .right(px(-4.0))
+            .top(px((i + 1) as f32 * FACT_ROW))
+            .h(px(FACT_ROW)),
+        );
+    }
+    let key = style::key((&head, &rows));
+    out.child(
+        canvas(move |g, b| {
+            let p = theme::palette();
             let ink = style::card_ink(&p);
             let font = style::ui_font(FontWeight::NORMAL);
-            let h = style::label(window, cx, b.left(), b.top() + px(FACT_ROW / 2.0), style::Align::Left, head.clone(), style::SMALL_SIZE, font.clone(), ink.dim);
-            agent::record(window, cx, agent::Node::label(head.clone(), h));
-            let hovered = hitboxes.iter().position(|h| h.is_hovered(window));
+            let h = style::label(g, b.left(), b.top() + px(FACT_ROW / 2.0), style::Align::Left, head.clone(), style::SMALL_SIZE, font.clone(), ink.dim);
+            agent::record(g, agent::Node::label(head.clone(), h));
             for (i, (_, name, fig)) in rows.iter().enumerate() {
                 let r = row(b, i);
-                if hovered == Some(i) {
-                    let lit = Bounds::from_corners(point(r.left() - px(4.0), r.top()), point(r.right() + px(4.0), r.bottom()));
-                    window.paint_quad(olo_ui::gpui::fill(style::snap(window, lit), ink.hover).corner_radii(px(3.0)));
-                }
                 let mid = r.top() + px(FACT_ROW / 2.0);
-                let f = style::label(window, cx, r.right(), mid, style::Align::Right, fig.clone(), style::PLAIN_SIZE, font.clone(), ink.text);
-                style::label_fit(window, cx, r.left(), mid, style::Align::Left, name.clone(), style::PLAIN_SIZE, font.clone(), ink.text, (f.left() - px(m::SPACING) - r.left()).max(px(0.0)));
-                agent::record(window, cx, agent::Node { value: Some(fig.clone().into()), ..agent::Node::button(name.clone(), r) });
+                let f = style::label(g, r.right(), mid, style::Align::Right, fig.clone(), style::PLAIN_SIZE, font.clone(), ink.text);
+                style::label_fit(g, r.left(), mid, style::Align::Left, name.clone(), style::PLAIN_SIZE, font.clone(), ink.text, (f.left() - px(m::SPACING) - r.left()).max(px(0.0)));
+                agent::record(g, agent::Node { value: Some(fig.clone().into()), ..agent::Node::button(name.clone(), r) });
             }
-            // The pointer moving onto another row: drawn again.
-            let hbs = hitboxes.clone();
-            window.on_mouse_event(move |_: &MouseMoveEvent, phase, window, _| {
-                if phase.bubble() && hbs.iter().position(|h| h.is_hovered(window)) != hovered {
-                    window.refresh();
-                }
-            });
-            let (me, pids): (Me, Vec<i32>) = (me.clone(), rows.iter().map(|(pid, ..)| *pid).collect());
-            window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {
-                if phase.bubble()
-                    && e.button == MouseButton::Left
-                    && let Some(i) = hitboxes.iter().position(|h| h.is_hovered(window))
-                {
-                    let pid = pids[i];
-                    me.update(cx, |a, cx| a.command(&format!("select:{pid}"), None, cx));
-                }
-            });
-        },
+        })
+        .paint_key(key)
+        .absolute()
+        .inset_0(),
     )
-    .w_full()
-    .h(px((n + 1) as f32 * FACT_ROW))
-    .flex_shrink_0()
     .into_any_element()
 }
 
 // ---- CPU -------------------------------------------------------------
 
-fn cpu(app: &Activity, me: &Me, inner: f32, cx: &App) -> Vec<AnyElement> {
-    let p = theme::palette(cx);
+fn cpu(app: &Activity, me: &Me, inner: f32, cx: &Cx<Activity>) -> Vec<Element> {
+    let p = theme::palette();
     let sys = &app.system;
     let mut out = Vec::new();
     // Everything.
@@ -530,7 +513,7 @@ fn cpu(app: &Activity, me: &Me, inner: f32, cx: &App) -> Vec<AnyElement> {
 
     // Each core.
     let cores: Vec<usize> = app.sources.iter().enumerate().filter(|(_, s)| s.group == Group::Cpus).map(|(i, _)| i).collect();
-    let cells: Vec<AnyElement> = cores
+    let cells: Vec<Element> = cores
         .iter()
         .enumerate()
         .map(|(k, &i)| {
@@ -553,34 +536,20 @@ fn cpu(app: &Activity, me: &Me, inner: f32, cx: &App) -> Vec<AnyElement> {
             let label: SharedString = format!("{}: {} – {}, now {}", names[k], ghz(pol.min), ghz(pol.max), ghz(pol.now)).into();
             let chosen = pol.governors.iter().position(|g| *g == pol.governor).unwrap_or(0);
             let options: Vec<SharedString> = pol.governors.iter().map(|g| SharedString::from(g.clone())).collect();
-            let text = canvas(
-                |_, _, _| {},
-                move |b, _, window, cx| {
-                    let p = theme::palette(cx);
-                    let r = style::label_fit(
-                        window,
-                        cx,
-                        b.left(),
-                        b.center().y,
-                        style::Align::Left,
-                        label.clone(),
-                        style::PLAIN_SIZE,
-                        style::ui_font(FontWeight::NORMAL),
-                        style::card_ink(&p).text,
-                        b.size.width,
-                    );
-                    agent::record(window, cx, agent::Node::label(label.clone(), r));
-                },
-            )
+            let text = canvas(move |g, b| {
+                let p = theme::palette();
+                let r = style::label_fit(g, b.left(), b.center().y, style::Align::Left, label.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::card_ink(&p).text, b.size.width);
+                agent::record(g, agent::Node::label(label.clone(), r));
+            })
             .flex_1()
             .min_w_0()
             .h_full();
             let mut row = div().flex().flex_row().items_center().gap(px(m::SPACING)).h(px(m::CONTROL_HEIGHT)).mb(px(m::TIGHT)).child(text);
             if !options.is_empty() {
-                let (policy, governors, act) = (pol.id, pol.governors.clone(), me.clone());
-                row = row.child(MenuField::new(SharedString::from(format!("governor-{}", pol.id)), options, chosen).label("Governor:").width(field_w).on_change(move |i, _, cx| {
-                    let governor = governors[i].clone();
-                    act.update(cx, |a, cx| a.act(Action::Governor { policy, governor }, cx));
+                let (policy, governors, act) = (pol.id, pol.governors.clone(), *me);
+                row = row.child(MenuField::new(SharedString::from(format!("governor-{}", pol.id)), options, chosen).label("Governor:").width(field_w).on_change(move |i, cx| {
+                    let governor = governors[*i].clone();
+                    act.update(cx, move |a, cx| a.act(Action::Governor { policy, governor }, cx));
                 }));
             }
             card = card.child(row);
@@ -633,8 +602,8 @@ fn cluster_name(pol: &crate::sample::Policy) -> String {
 
 // ---- Memory ----------------------------------------------------------
 
-fn memory(app: &Activity, area: f32, inner: f32, cx: &App) -> Vec<AnyElement> {
-    let p = theme::palette(cx);
+fn memory(app: &Activity, area: f32, inner: f32, cx: &Cx<Activity>) -> Vec<Element> {
+    let p = theme::palette();
     let sys = &app.system;
     let field = |k: &str| sys.memory.iter().find(|(n, _)| n == k).map_or(0, |(_, v)| *v);
     let total = field("MemTotal");
@@ -644,7 +613,7 @@ fn memory(app: &Activity, area: f32, inner: f32, cx: &App) -> Vec<AnyElement> {
     let caption = format!("of {} · {} available", format_size(total), format_size(field("MemAvailable")));
     let used = app.latest("memory").unwrap_or(0.0);
     let cached = app.latest("cached").unwrap_or(0.0);
-    let hue = |k: &str| app.source(k).map_or(olo_ui::gpui::opaque_grey(0.5, 1.0), |i| c(p.hue(app.sources[i].color)));
+    let hue = |k: &str| app.source(k).map_or(olo_kit::opaque_grey(0.5, 1.0), |i| c(p.hue(app.sources[i].color)));
     out.push(
         Card::new("memory", "Memory")
             .figure(value(app, "memory"))
@@ -703,8 +672,8 @@ fn memory(app: &Activity, area: f32, inner: f32, cx: &App) -> Vec<AnyElement> {
 
 // ---- Disks -----------------------------------------------------------
 
-fn disks(app: &Activity, me: &Me, inner: f32, cx: &App) -> Vec<AnyElement> {
-    let p = theme::palette(cx);
+fn disks(app: &Activity, me: &Me, inner: f32, cx: &Cx<Activity>) -> Vec<Element> {
+    let p = theme::palette();
     let sys = &app.system;
     let mut out = Vec::new();
     for d in &sys.disks {
@@ -770,34 +739,20 @@ fn disks(app: &Activity, me: &Me, inner: f32, cx: &App) -> Vec<AnyElement> {
             _ => None,
         };
         volumes = volumes.child(
-            canvas(
-                |_, _, _| {},
-                move |r, _, window, cx| {
-                    let p = theme::palette(cx);
-                    let ink = style::card_ink(&p);
-                    let (plain, bold) = (style::ui_font(FontWeight::NORMAL), style::ui_font(FontWeight::BOLD));
-                    let d = style::label(window, cx, r.right(), r.top() + px(9.0), style::Align::Right, detail.clone(), style::PLAIN_SIZE, plain.clone(), ink.text);
-                    let t = style::label_fit(
-                        window,
-                        cx,
-                        r.left(),
-                        r.top() + px(9.0),
-                        style::Align::Left,
-                        title.clone(),
-                        style::PLAIN_SIZE,
-                        bold,
-                        ink.text,
-                        (d.left() - px(m::SPACING) - r.left()).max(px(0.0)),
-                    );
-                    let s = style::label_fit(window, cx, r.left(), r.top() + px(24.0), style::Align::Left, sub.clone(), style::SMALL_SIZE, plain, ink.dim, r.size.width * 0.5);
-                    agent::record(window, cx, agent::Node { value: Some(detail.clone()), ..agent::Node::label(title.clone(), t) });
-                    agent::record(window, cx, agent::Node::label(sub.clone(), s));
-                    if let Some((parts, total)) = &bar {
-                        let b = olo_ui::gpui::Bounds::from_corners(olo_ui::gpui::point(r.left() + r.size.width * 0.5, r.top() + px(21.0)), olo_ui::gpui::point(r.right(), r.top() + px(27.0)));
-                        meter(window, cx, b, parts, *total);
-                    }
-                },
-            )
+            canvas(move |g, r| {
+                let p = theme::palette();
+                let ink = style::card_ink(&p);
+                let (plain, bold) = (style::ui_font(FontWeight::NORMAL), style::ui_font(FontWeight::BOLD));
+                let d = style::label(g, r.right(), r.top() + px(9.0), style::Align::Right, detail.clone(), style::PLAIN_SIZE, plain.clone(), ink.text);
+                let t = style::label_fit(g, r.left(), r.top() + px(9.0), style::Align::Left, title.clone(), style::PLAIN_SIZE, bold, ink.text, (d.left() - px(m::SPACING) - r.left()).max(px(0.0)));
+                let s = style::label_fit(g, r.left(), r.top() + px(24.0), style::Align::Left, sub.clone(), style::SMALL_SIZE, plain, ink.dim, r.size.width * 0.5);
+                agent::record(g, agent::Node { value: Some(detail.clone()), ..agent::Node::label(title.clone(), t) });
+                agent::record(g, agent::Node::label(sub.clone(), s));
+                if let Some((parts, total)) = &bar {
+                    let b = olo_kit::Bounds::from_corners(olo_kit::point(r.left() + r.size.width * 0.5, r.top() + px(21.0)), olo_kit::point(r.right(), r.top() + px(27.0)));
+                    meter(g, b, parts, *total);
+                }
+            })
             .w_full()
             .h(px(40.0))
             .flex_shrink_0(),
@@ -818,8 +773,8 @@ fn disks(app: &Activity, me: &Me, inner: f32, cx: &App) -> Vec<AnyElement> {
 
 // ---- Network ---------------------------------------------------------
 
-fn network(app: &Activity, me: &Me, inner: f32, cx: &App) -> Vec<AnyElement> {
-    let p = theme::palette(cx);
+fn network(app: &Activity, me: &Me, inner: f32, cx: &Cx<Activity>) -> Vec<Element> {
+    let p = theme::palette();
     let mut out = Vec::new();
     for n in &app.system.interfaces {
         let keys = [format!("net:{}:rx", n.name), format!("net:{}:tx", n.name)];
@@ -863,10 +818,10 @@ fn network(app: &Activity, me: &Me, inner: f32, cx: &App) -> Vec<AnyElement> {
     // Connections: who talks to whom.
     let full = app.access == Access::Full;
     let caption = if full { "Every program's" } else { "Programs of other users show no name without full access" };
-    let needle = olo_ui::search::Needle::new(app.connections_search.read(cx).text().trim());
+    let needle = olo_kit::search::Needle::new(app.connections_search.read(cx).text().trim());
     let mut rows: Vec<&crate::sample::Connection> =
         app.connections.iter().filter(|cn| needle.is_empty() || [cn.local.as_str(), &cn.remote, &cn.state, &cn.process, cn.proto.as_str()].iter().any(|f| needle.in_text(f))).collect();
-    let (col, asc) = app.connections_list.read(cx).state.sort.or(app.settings.connections_sort).unwrap_or((4, true));
+    let (col, asc) = app.connections_list.state().sort.or(app.settings.connections_sort).unwrap_or((4, true));
     rows.sort_by(|a, b| {
         let o = match col {
             0 => a.proto.cmp(&b.proto),
@@ -894,30 +849,30 @@ fn network(app: &Activity, me: &Me, inner: f32, cx: &App) -> Vec<AnyElement> {
     let pids: Vec<Option<i32>> = rows.iter().map(|cn| cn.pid).collect();
     let columns = vec![Column::new("Protocol", 64.0), Column::new("Local", 170.0), Column::new("Remote", 170.0), Column::new("State", 90.0), Column::new("Program", 150.0)];
     let list_cells = cells.clone();
-    let (sorted, opened) = (me.clone(), me.clone());
-    let list = ColumnListView::new("activity-connections", &app.connections_list, columns, cells.len(), move |cell, window, cx| {
+    let (sorted, opened) = (*me, *me);
+    let list = ColumnListView::new(cx, "activity-connections", &app.connections_list, columns, cells.len(), move |_: &Activity, cell, g| {
         if let Some(row) = list_cells.get(cell.row) {
-            cell.text(window, cx, row[cell.column].clone());
+            cell.text(g, row[cell.column].clone());
         }
     })
     .empty_text("No connections match.")
     .on_sort(move |_, cx| {
-        sorted.update(cx, |a, cx| {
-            a.settings.connections_sort = a.connections_list.read(cx).state.sort;
+        sorted.update(cx, move |a, cx| {
+            a.settings.connections_sort = a.connections_list.state().sort;
             a.store();
-            cx.notify();
+            cx.invalidate();
         })
     })
-    .on_open(move |row, _, cx| {
-        if let Some(Some(pid)) = pids.get(row) {
+    .on_open(move |row, cx| {
+        if let Some(Some(pid)) = pids.get(*row) {
             let pid = *pid;
-            opened.update(cx, |a, cx| a.inspect(pid, cx));
+            opened.update(cx, move |a, cx| a.inspect(pid, cx));
         }
     });
     out.push(
         Card::new("connections", "Connections")
             .caption(caption)
-            .child(div().w(px(320.0f32.min(inner))).child(TextControl::new(app.connections_search.clone()).label("Search:")))
+            .child(div().w(px(320.0f32.min(inner))).child(TextControl::new(cx, &app.connections_search).label("Search:")))
             .child(div().h(px(m::SPACING)))
             .child(div().h(px(CONNECTIONS_HEIGHT)).flex().flex_col().child(div().flex_1().min_h_0().flex().flex_col().child(list)))
             .into_any_element(),
@@ -927,8 +882,8 @@ fn network(app: &Activity, me: &Me, inner: f32, cx: &App) -> Vec<AnyElement> {
 
 // ---- GPU -------------------------------------------------------------
 
-fn gpu(app: &Activity, me: &Me, area: f32, inner: f32, cx: &App) -> Vec<AnyElement> {
-    let p = theme::palette(cx);
+fn gpu(app: &Activity, me: &Me, area: f32, inner: f32, cx: &Cx<Activity>) -> Vec<Element> {
+    let p = theme::palette();
     let sys = &app.system;
     let mut out = Vec::new();
     let clients = sys.gpu_clients.clone().unwrap_or_default();
@@ -1027,8 +982,8 @@ fn gpu(app: &Activity, me: &Me, area: f32, inner: f32, cx: &App) -> Vec<AnyEleme
 /// (`Activity::frame_history`): each `(key, name, hue)` a line, the first
 /// filled, read by `unit`, `GRAPH` tall over the span chosen, with a
 /// legend of each line's latest under it.
-fn history_graph(app: &Activity, id: &str, lines: &[(&str, &str, olo_theme::Hue)], unit: fn(f64) -> String, max: Option<f64>, inner: f32, cx: &App) -> Vec<AnyElement> {
-    let p = theme::palette(cx);
+fn history_graph(app: &Activity, id: &str, lines: &[(&str, &str, olo_theme::Hue)], unit: fn(f64) -> String, max: Option<f64>, inner: f32, cx: &Cx<Activity>) -> Vec<Element> {
+    let p = theme::palette();
     let series: Vec<Series> = lines
         .iter()
         .enumerate()
@@ -1041,12 +996,16 @@ fn history_graph(app: &Activity, id: &str, lines: &[(&str, &str, olo_theme::Hue)
             LegendItem { color: c(p.hue(*hue)), name: SharedString::from(name.to_string()), value: latest.into() }
         })
         .collect();
-    let mut g =
-        Graph::new(SharedString::from(format!("activity-{id}")), series, app.t()).span(app.settings.span as f64).grid(grid_for(app.settings.span)).unit(unit).smooth(app.settings.smooth).plain();
+    let mut g = Graph::live(SharedString::from(format!("activity-{id}")), series, app.time_clock())
+        .span(app.settings.span as f64)
+        .grid(grid_for(app.settings.span))
+        .unit(unit)
+        .smooth(app.settings.smooth)
+        .plain();
     if let Some(m) = max {
         g = g.max(m);
     }
-    vec![div().h(px(GRAPH)).flex_shrink_0().child(g.on_layer(&app.shelf)).into_any_element(), legend_el(items, inner, cx)]
+    vec![div().h(px(GRAPH)).flex_shrink_0().child(g).into_any_element(), legend_el(items, inner, cx)]
 }
 
 fn ms_value(v: f64) -> String {
@@ -1057,8 +1016,8 @@ fn whole(v: f64) -> String {
     style::thousands(v.max(0.0).round() as usize)
 }
 
-fn displays(app: &Activity, me: &Me, inner: f32, cx: &App) -> Vec<AnyElement> {
-    let p = theme::palette(cx);
+fn displays(app: &Activity, me: &Me, inner: f32, cx: &Cx<Activity>) -> Vec<Element> {
+    let p = theme::palette();
     let ink = style::card_ink(&p);
     let ms = |us: u64| format!("{:.1} ms", us as f64 / 1000.0);
     let mut out = Vec::new();
@@ -1105,13 +1064,16 @@ fn displays(app: &Activity, me: &Me, inner: f32, cx: &App) -> Vec<AnyElement> {
         let drawing = history_graph(app, &format!("display-draw-{}", d.output), &[(&p95, "Drawing a frame, 95th percentile", olo_theme::Hue::Teal)], ms_value, None, inner, cx);
         out.push(card.child(facts(rows)).children(graph).children(drawing).into_any_element());
     }
-    let toggle = me.clone();
+    let toggle = *me;
     out.push(
         Card::new("displays-capture", "When a Frame Drops")
             .caption("For finding out why")
             .child(
                 CheckBox::new("Capture debug information whenever a frame drops", app.frames_capture)
-                    .on_toggle(move |on, _, cx| toggle.update(cx, |a, cx| a.set_frames_capture(on, cx))),
+                    .on_toggle(move |on, cx| {
+                        let on = *on;
+                        toggle.update(cx, move |a, cx| a.set_frames_capture(on, cx))
+                    }),
             )
             .child(div().h(px(m::TIGHT)))
             .child(para(
@@ -1149,8 +1111,8 @@ fn terminal_preferences() -> Button {
 
 /// The models on this computer: brush's command suggestions, what they
 /// offered and what was taken, how quickly, and how they learn.
-fn ai(app: &Activity, inner: f32, cx: &App) -> Vec<AnyElement> {
-    let p = theme::palette(cx);
+fn ai(app: &Activity, inner: f32, cx: &Cx<Activity>) -> Vec<Element> {
+    let p = theme::palette();
     let ink = style::card_ink(&p);
     let Some(s) = app.model.as_deref() else {
         let (caption, about) = if app.model_on {
@@ -1242,8 +1204,8 @@ fn ai(app: &Activity, inner: f32, cx: &App) -> Vec<AnyElement> {
 
 /// The pointer's and the touchpad's reports as app_server gets them, and
 /// what's done with each kind of input, over time.
-fn inputs(app: &Activity, inner: f32, cx: &App) -> Vec<AnyElement> {
-    let p = theme::palette(cx);
+fn inputs(app: &Activity, inner: f32, cx: &Cx<Activity>) -> Vec<Element> {
+    let p = theme::palette();
     let ink = style::card_ink(&p);
     let mut out = Vec::new();
     // The pointer's reports, as app_server gets them: the mouse and its
@@ -1387,8 +1349,8 @@ fn inputs(app: &Activity, inner: f32, cx: &App) -> Vec<AnyElement> {
 
 // ---- Sensors ---------------------------------------------------------
 
-fn sensors(app: &Activity, inner: f32, cx: &App) -> Vec<AnyElement> {
-    let p = theme::palette(cx);
+fn sensors(app: &Activity, inner: f32, cx: &Cx<Activity>) -> Vec<Element> {
+    let p = theme::palette();
     let sys = &app.system;
     let mut out = Vec::new();
     if let Some(b) = &sys.battery {
@@ -1426,7 +1388,7 @@ fn sensors(app: &Activity, inner: f32, cx: &App) -> Vec<AnyElement> {
         if keys.is_empty() {
             continue;
         }
-        let cells: Vec<AnyElement> = keys
+        let cells: Vec<Element> = keys
             .iter()
             .map(|(key, name)| {
                 // The card says what kind; each says which.
@@ -1441,8 +1403,8 @@ fn sensors(app: &Activity, inner: f32, cx: &App) -> Vec<AnyElement> {
 
 // ---- System ----------------------------------------------------------
 
-fn system(app: &Activity, me: &Me, inner: f32, cx: &App) -> Vec<AnyElement> {
-    let p = theme::palette(cx);
+fn system(app: &Activity, me: &Me, inner: f32, cx: &Cx<Activity>) -> Vec<Element> {
+    let p = theme::palette();
     let mut out = Vec::new();
     let sys = &app.system;
     let mem = sys.memory.iter().find(|(k, _)| k == "MemTotal").map_or(0, |(_, v)| *v);
@@ -1463,8 +1425,8 @@ fn system(app: &Activity, me: &Me, inner: f32, cx: &App) -> Vec<AnyElement> {
     ];
     let mut card = Card::new("this-computer", "This Computer").child(facts_two(rows));
     if app.access == Access::Mine && crate::helper::way() != crate::helper::Way::Off {
-        let me = me.clone();
-        card = card.child(div().h(px(m::SPACING))).child(div().flex().child(Button::new("Get Full Access…").min_width(140.0).on_click(move |_, cx| me.update(cx, |a, cx| a.get_full_access(cx)))));
+        let me = *me;
+        card = card.child(div().h(px(m::SPACING))).child(div().flex().child(Button::new("Get Full Access…").min_width(140.0).on_click(move |_, cx| me.update(cx, move |a, cx| a.get_full_access(cx)))));
     }
     out.push(card.into_any_element());
 
@@ -1504,22 +1466,21 @@ fn system(app: &Activity, me: &Me, inner: f32, cx: &App) -> Vec<AnyElement> {
         Rc::new(sys.tunables.iter().map(|(k, v)| [k.clone(), v.clone(), crate::sample::TUNABLES.iter().find(|(n, _)| n == k).map_or("", |(_, d)| *d).to_owned()]).collect());
     let columns = vec![Column::new("Setting", 230.0), Column::new("Value", 100.0), Column::new("What it does", 320.0)];
     let (list_cells, open_cells, menu_cells) = (cells.clone(), cells.clone(), cells.clone());
-    let (opened, menued) = (me.clone(), me.clone());
-    let list = ColumnListView::new("activity-tunables", &app.tunables_list, columns, cells.len(), move |cell, window, cx| {
+    let (opened, menued) = (*me, *me);
+    let list = ColumnListView::new(cx, "activity-tunables", &app.tunables_list, columns, cells.len(), move |_: &Activity, cell, g| {
         if let Some(row) = list_cells.get(cell.row) {
-            cell.text(window, cx, row[cell.column].clone());
+            cell.text(g, row[cell.column].clone());
         }
     })
-    .on_open(move |row, _, cx| {
-        if let Some(cl) = open_cells.get(row) {
+    .on_open(move |row, cx| {
+        if let Some(cl) = open_cells.get(*row) {
             let name = cl[0].clone();
-            opened.update(cx, |a, cx| a.tune(&name, cx));
+            opened.update(cx, move |a, cx| a.tune(&name, cx));
         }
     })
-    .on_context(move |row, at, window, cx| {
+    .on_context(move |&(row, at), cx| {
         let Some(cl) = menu_cells.get(row) else { return };
-        let to = menued.clone();
-        menu::context_menu(window, cx, Menu::new("").item("Change…", format!("tune:{}", cl[0])), at, move |cmd, window, cx| to.update(cx, |a, cx| a.command(cmd, Some(window), cx)));
+        menu::context_menu(cx, Menu::new("").item("Change…", format!("tune:{}", cl[0])), at, crate::runs(menued));
     });
     out.push(Card::new("tuning", "Tuning").caption(caption).child(div().h(px(list_h)).flex().flex_col().child(div().flex_1().min_h_0().flex().flex_col().child(list))).into_any_element());
     out
@@ -1530,8 +1491,8 @@ fn system(app: &Activity, me: &Me, inner: f32, cx: &App) -> Vec<AnyElement> {
 /// Haiku's ActivityMonitor: graphs of whatever you choose (right-click a
 /// graph to choose; add and remove graphs), sharing the window's height
 /// (each card's graph as tall as the others').
-fn graphs(app: &Activity, me: &Me, inner: f32, cx: &App) -> AnyElement {
-    let p = theme::palette(cx);
+fn graphs(app: &Activity, inner: f32, cx: &mut Cx<Activity>) -> Element {
+    let p = theme::palette();
     let span = app.settings.span as f64;
     let now = app.now();
     let mut col = div().flex().flex_col().gap(px(GAP)).p(px(GAP)).size_full().bg(c(dashboard::gutter(&p)));
@@ -1543,7 +1504,7 @@ fn graphs(app: &Activity, me: &Me, inner: f32, cx: &App) -> AnyElement {
                 Some(LegendItem { color: c(p.hue(app.sources[i].color)), name: app.sources[i].name.clone().into(), value: value(app, k).into() })
             })
             .collect();
-        let lh = legend_height(cx, inner, &items).max(FACT_ROW);
+        let lh = legend_height(inner, &items).max(FACT_ROW);
         // Each source scaled to its own range (its fixed top, or what it
         // shows), so CPU and memory share a graph.
         let s: Vec<Series> = keys
@@ -1556,9 +1517,8 @@ fn graphs(app: &Activity, me: &Me, inner: f32, cx: &App) -> AnyElement {
                 Series::new(src.name.clone(), c(p.hue(src.color)), app.history[i].clone()).top(src.max.unwrap_or_else(|| nice_ceiling(seen))).format(move |x| unit.format(x))
             })
             .collect();
-        let g = Graph::new(SharedString::from(format!("activity-view-{v}")), s, now).span(span).grid(grid_for(app.settings.span)).smooth(app.settings.smooth).plain();
-        let menu_me = me.clone();
-        let card = canvas(|_, _, _| {}, |b, _, window, cx| style::card(window, b, &theme::palette(cx), false, false)).absolute().inset_0();
+        let g = Graph::live(SharedString::from(format!("activity-view-{v}")), s, app.graph_clock()).span(span).grid(grid_for(app.settings.span)).smooth(app.settings.smooth).plain();
+        let card = canvas(|g, b| style::card(g, b, &theme::palette(), false, false)).paint_key(0).absolute().inset_0();
         // (Untitled cards: what isn't graph is the same in each, so the
         // room left is shared evenly between the graphs.)
         let fixed = 2.0 * m::CARD_INSET + m::TIGHT + lh;
@@ -1572,13 +1532,15 @@ fn graphs(app: &Activity, me: &Me, inner: f32, cx: &App) -> AnyElement {
                 .flex_basis(px(fixed))
                 .min_h(px(fixed + 48.0))
                 .p(px(m::CARD_INSET))
-                .on_mouse_down(MouseButton::Right, move |e: &MouseDownEvent, window, cx| {
-                    let menu = view_menu(menu_me.read(cx), v);
-                    let to = menu_me.clone();
-                    menu::context_menu(window, cx, menu, e.position, move |cmd, window, cx| to.update(cx, |a, cx| a.command(cmd, Some(window), cx)));
-                })
+                .on_mouse_down(
+                    MouseButton::Right,
+                    cx.listener(move |a: &mut Activity, e: &olo_kit::MouseDownEvent, cx| {
+                        let (menu, to) = (view_menu(a, v), cx.view_ref());
+                        menu::context_menu(cx, menu, e.position, crate::runs(to));
+                    }),
+                )
                 .child(card)
-                .child(div().flex_1().min_h_0().child(g.on_layer(&app.shelf)))
+                .child(div().flex_1().min_h_0().child(g))
                 .child(div().h(px(m::TIGHT)).flex_shrink_0())
                 .child(legend_el(items, inner, cx)),
         );
@@ -1647,15 +1609,15 @@ pub fn supervise(change: Supervise) {
 }
 
 /// Buttons in a row that wraps (`button_flow`'s).
-fn buttons(row: Vec<Button>) -> AnyElement {
+fn buttons(row: Vec<Button>) -> Element {
     div().flex().flex_row().flex_wrap().gap(px(m::SPACING)).children(row).into_any_element()
 }
 
 /// The supervisor (Preferences ▸ Performance): whether it's on and what
 /// it favours; each finding with how sure it is, why, and what can be
 /// done; what it lowered; what it did lately.
-fn supervisor(app: &Activity, me: &Me, cx: &App) -> Vec<AnyElement> {
-    let p = theme::palette(cx);
+fn supervisor(app: &Activity, me: &Me, _: &Cx<Activity>) -> Vec<Element> {
+    let p = theme::palette();
     let ink = style::card_ink(&p);
     let st = app.supervisor.clone();
     let mut out = Vec::new();
@@ -1727,10 +1689,10 @@ fn supervisor(app: &Activity, me: &Me, cx: &App) -> Vec<AnyElement> {
             card = card.child(para(format!("•  {e}"), ink.dim));
         }
         let (pid, name) = (f.pid, f.name.clone());
-        let (inspect, stop) = (me.clone(), me.clone());
+        let (inspect, stop) = (*me, *me);
         card = card.child(div().h(px(m::SPACING))).child(buttons(vec![
-            Button::new("Inspect").id(format!("finding-inspect-{pid}")).on_click(move |_, cx| inspect.update(cx, |a, cx| a.inspect_at(pid, crate::inspector::SUPERVISOR_TAB, cx))),
-            Button::new("Stop Process").id(format!("finding-stop-{pid}")).on_click(move |_, cx| stop.update(cx, |a, cx| a.act(Action::Signal { pid, signal: libc::SIGTERM }, cx))),
+            Button::new("Inspect").id(format!("finding-inspect-{pid}")).on_click(move |_, cx| inspect.update(cx, move |a, cx| a.inspect_at(pid, crate::inspector::SUPERVISOR_TAB, cx))),
+            Button::new("Stop Process").id(format!("finding-stop-{pid}")).on_click(move |_, cx| stop.update(cx, move |a, cx| a.act(Action::Signal { pid, signal: libc::SIGTERM }, cx))),
             Button::new("Ignore This Process").id(format!("finding-ignore-{pid}")).on_click(move |_, _| supervise(Supervise::Ignore(name.clone()))),
         ]));
         out.push(card.into_any_element());

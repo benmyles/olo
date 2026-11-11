@@ -144,9 +144,31 @@ something nobody here has is in "Blocked", with what it waits for.
      core against 3.8–4.2%. Not tried: a reply typed in a banner
      (needs an app that asks for one), a link clicked (it opens the
      browser), snoozing through its time.
+     **Activity Monitor** (2026-11-11): the app's looper is a hub
+     that feeds the main window and each inspector by messages
+     (HACKING's Activity Monitor); every section, the process list
+     (search, filters, Tree, the row menu, Force Quit's alert), an
+     inspector's seven tabs and menus, the Tune dialog, a graph's
+     menu and looking back from a graph were run old against new in
+     a test session, the same but for the live figures, light and
+     dark, with nothing in the layout review at 1×, 1.5× and 2×;
+     3.7% of a core at the Overview against 4.1%, 5.1% at Processes
+     against 5.2%, the same memory. It found three things in the kit,
+     fixed: a scroll bar kept showing the scroller it was first given
+     when its view swapped handles; a search field's ring stayed lit
+     after a click elsewhere took the keyboard (`on_focus_changed` now
+     tells what holds the keyboard's element too); and no kit app's
+     window came forward when asked to (the window's app id wasn't
+     kept for `activate`'s token: every app ported so far, until
+     rebuilt). Full access was run unelevated
+     (`OLO_ACTIVITY_HELPER=direct`: the helper's samples and details,
+     a sleep of the test's own quit through it). Not tried: the helper
+     through pkexec (only ever asked for in the person's own session),
+     an upgrade in place with inspectors open (they don't come back,
+     as before).
      *Next, smallest first:*
      deskbar, telegram,
-     activity, viewer, styled-edit, screen, tracker, passwords, terminal,
+     viewer, styled-edit, screen, tracker, passwords, terminal,
      preferences.
   5. **Tools, HACKING and the Olo Book**; GPUI and olo-ui leave the
      workspace (the `browser` and `olo-coder` branches build on them:
