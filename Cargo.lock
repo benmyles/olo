@@ -8529,10 +8529,10 @@ version = "0.1.0"
 dependencies = [
  "libc",
  "olo-crash",
+ "olo-kit",
  "olo-protocol",
  "olo-sync",
  "olo-system",
- "olo-ui",
  "olo-xdg",
  "serde_json",
  "tracing",

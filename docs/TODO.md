@@ -82,7 +82,8 @@ something nobody here has is in "Blocked", with what it waits for.
      left of a window not yet given its size, and kept those places.
      The polkit agent and its keyring prompts (the same to the pixel;
      typing 381 µs a frame against 602).
-     *Next, smallest first:* supervisor, rescue, emoji-picker, installer,
+     The supervisor (its alert the same to the pixel).
+     *Next, smallest first:* rescue, emoji-picker, installer,
      pool, drive-setup, disk-usage, chrome, logs, palette, screenshot,
      diskbackup, portal, deskbar, notifications, doctor, telegram,
      activity, viewer, styled-edit, screen, tracker, passwords, terminal,
