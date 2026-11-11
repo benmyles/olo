@@ -89,6 +89,29 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **What a restart undoes, Olo sets again by itself as the session
+  starts** (Ben, 2026-11-10, with a picture of Olo Doctor: "this comes
+  up after every reboot olo should just set ephemeral stuff like that
+  as needed on startup when logging into olo"). What it showed, after a
+  restart: "1 problem found. Yubico YubiKey OTP+FIDO+CCID may be put to
+  sleep: USB power management autosuspends it (power/control is “auto”
+  at USB port 3-1) … The fix keeps it on", with Ignore and Keep It
+  Awake; the other 24 things fine. Keep It Awake writes
+  `power/control`, which lasts until the next restart (or the next
+  plug), so the same finding comes back each time. *To do:* go through
+  every Doctor fix and say which last (a file installed, a unit
+  enabled) and which don't (a sysfs or procfs value, anything "until
+  the next restart": the Thunderbolt 5 ports' USB kept awake reads so
+  too). Each that doesn't last is set by Olo itself as someone logs in
+  to it, and again when what it's about comes (a device plugged in),
+  with nothing for a person to press: by a rule or a unit Olo installs
+  where one can do it (71-olo-input.rules keeps mice, keyboards and
+  receivers awake: a security key belongs in it, or in a rule of its
+  own), else by the session as it starts. Doctor then finds nothing to
+  say, and its fix for such a thing installs what makes it last, not
+  the value for today. Read the code that does each fix before
+  deciding which it is; nothing here was looked at beyond the picture.
+
 - **A display that left with its dock is still "plugged in"** (Ben,
   2026-11-10: "there are no externals just my builtin display now why
   does it think there's still an external"; then "manually fix it and
