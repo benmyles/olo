@@ -837,6 +837,15 @@ impl WaylandClientStatePtr {
             && !window.ptr_eq(&closed_window)
         {
             state.keyboard_focused_window = Some(window);
+        } else {
+            // Olo: the window that had the keyboard is gone, and with it
+            // whatever key was held in it: its release never comes (no
+            // surface to tell), so it mustn't go on repeating into the
+            // next window to take the keyboard. (Return on one alert
+            // pressed the default button of the next, opened within the
+            // repeat delay, by itself.)
+            state.repeat.current_id += 1;
+            state.repeat.current_keycode = None;
         }
         // (Olo: an app with no windows left decides itself whether it
         // ends: olo-ui quits unless it stays resident, as an agent does.)
@@ -2303,6 +2312,10 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandClientStatePtr {
                 this.handle_keyboard_layout_change();
             }
             wl_keyboard::Event::Enter { surface, .. } => {
+                // (Olo: a key held before this window had the keyboard
+                // doesn't repeat into it.)
+                state.repeat.current_id += 1;
+                state.repeat.current_keycode = None;
                 state.keyboard_focused_window = get_window(&mut state, &surface.id());
                 state.enter_token = Some(());
 
