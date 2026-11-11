@@ -109,6 +109,11 @@ impl OnDisplay {
         self.stages.get(&id).cloned()
     }
 
+    /// Every window goes (the program is quitting).
+    pub(crate) fn close_all(&mut self) {
+        self.stages.clear();
+    }
+
     /// Ends the display thread's loop (the program is quitting).
     pub(crate) fn stop(&mut self) {
         self.client.with_common(|common| {
@@ -139,6 +144,8 @@ pub(crate) struct Display {
 }
 
 static DISPLAY: OnceLock<Display> = OnceLock::new();
+/// The display thread has ended, its windows and connection gone.
+static ENDED: AtomicBool = AtomicBool::new(false);
 
 /// The display thread, started the first time it's asked for.
 pub(crate) fn display() -> &'static Display {
@@ -211,10 +218,20 @@ impl Display {
                     }
                 });
                 drop(client);
+                ENDED.store(true, Ordering::Release);
             })
             .expect("no thread for the display");
         let (commands, text_system, headless, displays) = ready_rx.recv().expect("the display thread ended as it began");
         Display { commands, text_system, headless, next_window: AtomicU64::new(1), events: Mutex::new(None), displays: Mutex::new(displays), gone: AtomicBool::new(false) }
+    }
+
+    /// Waits for the display thread to end (asked to stop), `most` at
+    /// most: a program that's quitting never hangs on it.
+    pub(crate) fn wait_until_ended(&self, most: std::time::Duration) {
+        let until = std::time::Instant::now() + most;
+        while !ENDED.load(Ordering::Acquire) && std::time::Instant::now() < until {
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
     }
 
     /// Every display's bounds, in points, as last heard.

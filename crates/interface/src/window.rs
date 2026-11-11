@@ -127,6 +127,11 @@ pub(crate) struct WindowCore {
     /// What the pointer is over may have changed under it (something
     /// scrolled).
     pub(crate) hover_stale: bool,
+    /// The timers of views that ended (`Cx::every`'s), to be cancelled
+    /// once there's a looper to hand (`with_window`): a caret's blink
+    /// went on waking the window twice a second after its field's dialog
+    /// had closed.
+    pub(crate) ended_timers: Vec<olo_app::TimerId>,
     /// Nodes drawn by what can be seen of them.
     pub(crate) by_visible: Vec<NodeId>,
     /// Nodes that hold rows made as they come near what shows.
@@ -274,6 +279,9 @@ pub(crate) fn with_window<R>(looper: &mut Looper, id: WindowId, f: impl FnOnce(&
     let result = f(&mut WindowCx { core: &mut core, looper });
     SCALE.with(|s| s.set(outer.0));
     SIZE.with(|s| s.set(outer.1));
+    for timer in core.ended_timers.drain(..) {
+        looper.cancel(timer);
+    }
     if core.closed {
         // Its own view hears it's going, while there's still a window
         // to hear it in.
@@ -453,6 +461,7 @@ impl WindowCore {
             scroll_changed: Vec::new(),
             scroll_asks: Vec::new(),
             hover_stale: false,
+            ended_timers: Vec::new(),
             by_visible: Vec::new(),
             row_nodes: Vec::new(),
             bounds_changed: Vec::new(),
@@ -496,6 +505,7 @@ impl WindowCore {
     /// A view's owner let go of it: it and what it showed are gone.
     fn end_view(&mut self, view: ViewId) {
         let Some(slot) = self.views.remove(view) else { return };
+        self.ended_timers.extend(slot.timers.iter().copied());
         if let Some(root) = slot.root
             && let Some(node) = self.nodes.get_mut(root)
         {
@@ -915,6 +925,11 @@ impl WindowCore {
                 stage.close();
             }
         });
+        // Its views' timers stop with it (on a looper it shares with
+        // the window it belongs to, nothing else would stop them).
+        for timer in self.views.values().flat_map(|slot| slot.timers.iter().copied()).chain(self.ended_timers.drain(..)).collect::<Vec<_>>() {
+            looper.cancel(timer);
+        }
         // (Views first: what they own may want the tree.)
         self.views.clear();
         self.nodes.clear();
@@ -1564,6 +1579,23 @@ impl<'a> WindowCx<'a> {
     /// windows can't be exported.
     pub fn export_handle(&self, done: impl FnOnce(Option<String>) + Send + 'static) {
         self.on_display(move |window| window.export_handle(Box::new(done)));
+    }
+
+    /// A layer surface's margins from the edges it's anchored to (top,
+    /// right, bottom, left; points): how one is moved (the camera bubble,
+    /// dragged).
+    pub fn set_layer_margin(&self, margin: (i32, i32, i32, i32)) {
+        self.on_display(move |window| window.set_layer_margin(margin));
+    }
+
+    /// Drags `drag` out of the window to another app or a folder
+    /// (Wayland's data device), while the press that began it is down.
+    /// What comes back resolves, when the drag is over, to what it was
+    /// dropped as (None: cancelled).
+    pub fn start_drag(&self, drag: crate::OutgoingDrag) -> futures::channel::oneshot::Receiver<Option<crate::DragAction>> {
+        let (done, over) = futures::channel::oneshot::channel();
+        self.on_display(move |window| window.start_drag(drag, done));
+        over
     }
 
     /// A window with no display (a headless run: the layout lint's

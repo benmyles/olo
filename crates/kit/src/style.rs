@@ -366,21 +366,27 @@ fn paint_label(g: &mut Painter, x: Pixels, center_y: Pixels, align: Align, text:
 /// `text` cut short with "…" to fit `max_width` (whole as it is when it
 /// fits), measured as it's shaped, kerning and all.
 pub fn fit(g: &mut Painter, text: SharedString, font_size: f32, font: &Font, max_width: Pixels) -> SharedString {
-    let shape = |g: &mut Painter, t: SharedString| {
+    fit_with(g.text_system(), text, font_size, font, max_width)
+}
+
+/// [`fit`], where there's no painter (a drag's picture, made as a press
+/// drags): with the window's text system.
+pub fn fit_with(text_system: &olo_interface::WindowTextSystem, text: SharedString, font_size: f32, font: &Font, max_width: Pixels) -> SharedString {
+    let shape = |t: SharedString| {
         let run = TextRun { len: t.len(), font: font.clone(), color: Hsla::default(), background_color: None, underline: None, strikethrough: None, size: None };
-        g.text_system().shape_line(t, px(font_size), &[run], None)
+        text_system.shape_line(t, px(font_size), &[run], None)
     };
-    let line = shape(g, text.clone());
+    let line = shape(text.clone());
     if line.width <= max_width {
         return text;
     }
-    let ellipsis = shape(g, "…".into()).width;
+    let ellipsis = shape("…".into()).width;
     let mut end = line.index_for_x(max_width - ellipsis).unwrap_or(text.len());
     // Shaped as a whole, a cut can still come out a little wider (a
     // kern, a ligature taken apart): one character back until it fits.
     loop {
         let cut: SharedString = format!("{}…", text[..end].trim_end()).into();
-        if end == 0 || shape(g, cut.clone()).width <= max_width {
+        if end == 0 || shape(cut.clone()).width <= max_width {
             return cut;
         }
         end = text[..end].char_indices().next_back().map_or(0, |(i, _)| i);

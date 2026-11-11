@@ -889,6 +889,7 @@ impl<'a> Painter<'a> {
             .expect("Callback above only returns Some");
         let content_mask = self.content_mask().scale(scale_factor);
         let opacity = self.element_opacity();
+        self.scene.images.push(data.clone());
         for t in triangles {
             let corners = [t[0].0.scale(scale_factor), t[1].0.scale(scale_factor), t[2].0.scale(scale_factor)];
             let min = point(corners[0].x.min(corners[1].x).min(corners[2].x), corners[0].y.min(corners[1].y).min(corners[2].y));
@@ -920,6 +921,8 @@ impl<'a> Painter<'a> {
         let content_mask = self.content_mask().scale(scale_factor);
         let corner_radii = corner_radii.scale(scale_factor);
         let opacity = self.element_opacity();
+        // (Held while the frame shows it: its tile goes when it does.)
+        self.scene.images.push(data.clone());
 
         self.scene.insert_primitive(PolychromeSprite {
             order: 0,

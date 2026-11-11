@@ -58,6 +58,10 @@ pub(crate) struct Scene {
     pub(crate) polychrome_sprites: Vec<PolychromeSprite>,
     pub(crate) image_triangles: Vec<ImageTriangle>,
     pub(crate) surfaces: Vec<PaintSurface>,
+    /// The pictures it shows, held while it does: a picture's tiles in
+    /// the atlas go when the picture does (`RenderImage`'s drop), which
+    /// is never while a frame or a kept drawing still draws from them.
+    pub(crate) images: Vec<std::sync::Arc<crate::RenderImage>>,
     /// How many things it holds.
     count: usize,
     /// A view's drawing being kept (a display list), not a frame. What
@@ -121,6 +125,7 @@ impl Scene {
         self.polychrome_sprites.clear();
         self.image_triangles.clear();
         self.surfaces.clear();
+        self.images.clear();
     }
 
     /// How many things it holds.
@@ -353,6 +358,7 @@ impl Scene {
         if reach.is_empty() {
             return;
         }
+        self.images.extend(recorded.images.iter().cloned());
         let base = self.primitive_bounds.insert_run(reach, recorded.depth());
         // Each thing moved, its clip with it and cut by `clip`; what's
         // clipped away whole is left out.

@@ -1568,7 +1568,12 @@ impl WaylandWindowStatePtr {
         {
             let state = self.state.borrow();
             if let Some(viewport) = &state.viewport {
-                viewport.set_destination(size.width.0 as i32, size.height.0 as i32);
+                // (A point at least each way: a size under one, a 1 × 1
+                // point window at 1.25×, a layer surface before it's
+                // given its screen, is no viewport at all: a protocol
+                // error, the connection gone, and the app started again,
+                // over and over.)
+                viewport.set_destination((size.width.0 as i32).max(1), (size.height.0 as i32).max(1));
             }
         }
     }

@@ -75,6 +75,8 @@ impl BladeContext {
         drop(aside);
         let gpu = Arc::new(made.map_err(|e| anyhow::anyhow!("{e:?}"))?);
         let atlas = Arc::new(super::BladeAtlas::new(&gpu));
+        let holds: Arc<dyn crate::PlatformAtlas> = atlas.clone();
+        crate::assets::holds_images(&holds);
         Ok(Self { gpu, pipelines: Arc::default(), atlas })
     }
 }

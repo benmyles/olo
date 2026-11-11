@@ -484,7 +484,16 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut AppCx)) {
         }
     }
     display.set_events(None);
-    display.post(|on| on.stop());
+    // The windows go while the display thread still turns (a window's
+    // going is finished by a task of its, and sent as it next flushes),
+    // then it stops, and is waited for: a program that carries on with
+    // no windows (holding the clipboard after a screenshot) has none on
+    // the screen. (Upstream's went as the app was dropped; here the
+    // region picker's overlays stayed over the screen until the
+    // clipboard changed.)
+    display.post(|on| on.close_all());
+    display.post(|_| crate::display::display().post(|_| crate::display::display().post(|on| on.stop())));
+    display.wait_until_ended(std::time::Duration::from_secs(2));
 }
 
 /// The size a window is given when nothing says.

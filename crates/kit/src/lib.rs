@@ -10,6 +10,7 @@ pub mod agent;
 mod app;
 pub mod code;
 pub mod cut;
+pub mod dnd;
 pub mod file_panel;
 pub mod icons;
 mod kept;
