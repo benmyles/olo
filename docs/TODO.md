@@ -348,6 +348,33 @@ something nobody here has is in "Blocked", with what it waits for.
      ends as the window loses the keyboard, not as the field does),
      dark mode against the old build, the D-Bus file manager.
      *Next, smallest first:* passwords, terminal, preferences.
+     *How Passwords moves* (2026-11-11, all of main.rs read; the kit
+     has `copy::secret` for it, and needs no `part`: a pane is a child
+     view): it runs with no window (`--agent`: the SSH agent and the
+     keychain, locked) and its window comes and goes, so `Passwords`
+     can't be its window's view. Its state and logic stay one struct,
+     the app's, behind a lock (`Arc<Mutex<Passwords>>`): the app's
+     looper takes what the proxy brings (the store's replies, the
+     lock's, other programs' requests, settings, the timers `Due`
+     kept) and the windows' views lock it to draw and to act. What
+     only a window has leaves it: the text fields (account, lock,
+     search, the editor's form), the list model, the scroll handles,
+     the focus handles; what the logic wants of them (clear the
+     password field, put text in the search, scroll the editor to its
+     end, make the form again, give the generator's password to a
+     field) it leaves as asks the main view takes when told to show
+     again. `cx.notify()` becomes "tell the window" (a `Refresh` to
+     its messenger) and the next thing due set on the app's looper;
+     alerts are the app's (`open_app_alert`), their answers locking it
+     again; `Rc` in it becomes `Arc` (the filters, the list worked
+     out). The main view's panes (sources, items, detail) are child
+     views, so a one-time code counting down shows the detail pane
+     again alone, each second, by its own timer. Review Sync, Sync
+     Problems, the generator and the passkey question are windows of
+     their own that lock the app the same way. Closing the main
+     window quits, as now. Tested as HACKING says: `onepassword-fake`,
+     `OLO_NO_FINGERPRINT=1`, a stand-in PAM service, tsession's key
+     file, a scratch home; never the real vault, account or keyring.
   6. **The build from before all this, on the login screen** (Ben,
      2026-11-11: "when you finish can you also make the pre-refactor
      known good build available as a login option in the display
