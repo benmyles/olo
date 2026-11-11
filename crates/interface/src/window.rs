@@ -1566,6 +1566,25 @@ impl<'a> WindowCx<'a> {
         self.on_display(move |window| window.export_handle(Box::new(done)));
     }
 
+    /// A window with no display (a headless run: the layout lint's
+    /// tests) takes this scale, as if a compositor gave it.
+    #[doc(hidden)]
+    pub fn set_headless_scale(&self, scale: f32) {
+        self.on_display(move |window| window.set_headless_scale(scale));
+    }
+
+    /// A click at `at` handed to a window with no display, as if the
+    /// person made it (the lint clicks each tab).
+    #[doc(hidden)]
+    pub fn headless_click(&self, at: Point<Pixels>) {
+        self.on_display(move |window| {
+            let (button, modifiers) = (crate::MouseButton::Left, crate::Modifiers::default());
+            window.headless_input(crate::PlatformInput::MouseMove(crate::MouseMoveEvent { position: at, pressed_button: None, modifiers }));
+            window.headless_input(crate::PlatformInput::MouseDown(crate::MouseDownEvent { button, position: at, modifiers, click_count: 1, first_mouse: false }));
+            window.headless_input(crate::PlatformInput::MouseUp(crate::MouseUpEvent { button, position: at, modifiers, click_count: 1 }));
+        });
+    }
+
     /// Brings the window forward and gives it the keyboard.
     pub fn activate_window(&mut self) {
         self.on_display(|window| window.activate());

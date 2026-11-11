@@ -374,6 +374,13 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
 
     fn update_ime_position(&self, _bounds: Bounds<Pixels>);
 
+    /// Olo: a window with no display takes this scale, and says so as a
+    /// compositor would (the layout lint's tests; nothing to any other).
+    fn set_headless_scale(&self, _scale: f32) {}
+    /// Olo: input handed to a window with no display, as if it came from
+    /// the person (the lint clicks each tab).
+    fn headless_input(&self, _input: PlatformInput) {}
+
     /// Olo: the wheel's notches still easing in aren't dropped though
     /// the step just handed out drew nothing in its frame: what took it
     /// draws from another thread.

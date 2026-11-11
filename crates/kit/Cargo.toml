@@ -29,3 +29,7 @@ olo-images.workspace = true
 libc = "0.2"
 smallvec = "1.6"
 unicode-segmentation = "1.12"
+
+[[test]]
+name = "lint"
+required-features = ["lint"]

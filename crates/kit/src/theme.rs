@@ -27,7 +27,7 @@ pub fn palette() -> Arc<Palette> {
     PALETTE.write().unwrap_or_else(|e| e.into_inner()).get_or_insert(palette).clone()
 }
 
-fn set_palette(palette: Arc<Palette>) -> bool {
+pub(crate) fn set_palette(palette: Arc<Palette>) -> bool {
     let mut slot = PALETTE.write().unwrap_or_else(|e| e.into_inner());
     if slot.as_ref().is_some_and(|p| **p == *palette) {
         return false;

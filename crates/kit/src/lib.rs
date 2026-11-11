@@ -14,6 +14,8 @@ pub mod file_panel;
 pub mod icons;
 mod kept;
 pub mod keys;
+#[cfg(feature = "lint")]
+pub mod lint;
 mod lock;
 pub mod menu;
 pub mod open_with;

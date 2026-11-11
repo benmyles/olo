@@ -12,7 +12,7 @@ import json, os, subprocess, sys
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", ".."))
 # (What `ui-lint` in .cargo/config.toml names.)
-LINTED = ["olo-ui", "olo-preferences", "olo-diskbackup-app"]
+LINTED = ["olo-ui", "olo-kit", "olo-preferences", "olo-diskbackup-app"]
 
 
 def main():

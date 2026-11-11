@@ -4223,6 +4223,17 @@ Watchdog), not scrolled.
 
 ### The layout lint (`olo_ui::lint`, `cargo ui-lint`)
 
+On olo-kit the lint is `olo_kit::lint` (the `lint` feature; the same
+`Lint::window`, `Lint::trees`, `keeps_room` and `assert_clean`): the
+window is opened in a program started once in the test binary with no
+compositor (`OLO_HEADLESS`: olo-interface's window with no display,
+which has a size and a scale, gives a resize asked for at once, and
+rasterises nothing), set to each scale and reviewed on its own looper
+(`review_window`), its tabs clicked as agents find them. The look is
+the program's, so one `Lint` works at a time. `build` is `Fn(&mut
+Cx<V>) -> V + Clone + Send`. `crates/kit/tests/lint.rs` lints the kit's
+own form (and checks that every look and scale was drawn).
+
 A window's view drawn as it will be shown, without a session: GPUI's
 test platform with Olo's text system and fonts
 (`TestAppContext::with_olo_text`), the window opened as an app opens it
