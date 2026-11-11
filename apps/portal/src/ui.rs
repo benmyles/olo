@@ -1,13 +1,10 @@
 //! What the portal's dialogs share: a window over the app that asked (its
 //! exported handle, xdg-foreign), and an answer given once. A dialog that
 //! goes without answering (closed from its tab, cancelled by the app,
-//! the portal ending) answers no as it's dropped, so a request never
+//! the portal ending) answers no as its view is dropped, so a request never
 //! waits on a window that isn't there.
 
-use olo_ui::{
-    Frame, WindowOptions,
-    gpui::{App, AppContext as _, Context, Entity, Render, Window, WindowHandle},
-};
+use olo_kit::{View, WindowHandle, WindowOptions};
 
 /// An answer to a request, given once: `give`n, or `cancel` when dropped
 /// unanswered.
@@ -42,12 +39,34 @@ pub fn over(options: WindowOptions, parent: &str) -> WindowOptions {
     if parent.is_empty() { options } else { options.foreign_parent(parent) }
 }
 
-/// Opens a dialog showing `view` (made by `build`), with the keyboard. A
+/// A dialog on screen, as the portal keeps it: to close when the app
+/// that asked cancels, and to know it's still up (an upgrade waits).
+pub struct Shown {
+    close: Box<dyn Fn() + Send>,
+    open: Box<dyn Fn() -> bool + Send>,
+}
+
+impl Shown {
+    pub fn of<V: View>(window: WindowHandle<V>) -> Shown {
+        let closing = window.clone();
+        Shown { close: Box::new(move || closing.close()), open: Box::new(move || window.is_open()) }
+    }
+
+    /// Closes it (it answers no as it goes).
+    pub fn close(&self) {
+        (self.close)()
+    }
+
+    pub fn is_open(&self) -> bool {
+        (self.open)()
+    }
+}
+
+/// Opens a dialog showing the view `build` makes, with the keyboard. A
 /// close from its tab drops it (answering no).
-pub fn open<V: Render + 'static>(cx: &mut App, options: WindowOptions, build: impl FnOnce(&mut Window, &mut Context<V>) -> V + 'static) -> Option<WindowHandle<Frame>> {
-    olo_ui::open_window(cx, options, move |window, cx| {
-        window.activate_window();
-        let view: Entity<V> = cx.new(|cx| build(window, cx));
-        view
+pub fn open<V: View>(options: WindowOptions, build: impl FnOnce(&mut olo_kit::Cx<V>) -> V + Send + 'static) -> WindowHandle<V> {
+    olo_kit::open_window(options, move |cx| {
+        cx.activate_window();
+        build(cx)
     })
 }

@@ -13,18 +13,16 @@
 use olo_sync::Mutex;
 use std::{collections::HashMap, os::unix::net::UnixStream, sync::Arc};
 
-use olo_protocol::shortcuts::Chord;
-use olo_ui::{
-    Frame, WindowOptions,
-    gpui::{App, Bounds, Context, FocusHandle, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, Render, Styled as _, Window, WindowHandle, canvas, div, point, px, size},
-    metrics as m,
+use olo_kit::{
+    Bounds, ClickEvent, Cx, Element, FontWeight, InteractiveElement as _, KeyDownEvent, ParentElement as _, Styled as _, View, WindowHandle, WindowOptions, canvas, div, metrics as m, point, px, size,
     style::{self, Align},
     theme,
     widgets::{
-        AlertFrame, Button, alert,
+        AlertFrame, Button,
         alert::{ALERT_TEXT_X, alert_title, button_row, paragraph, paragraph_height},
     },
 };
+use olo_protocol::shortcuts::Chord;
 use serde::{Deserialize, Serialize};
 use zbus::{
     object_server::SignalEmitter,
@@ -92,12 +90,12 @@ fn allowed_path() -> Option<std::path::PathBuf> {
 }
 
 fn load_allowed() -> Allowed {
-    allowed_path().and_then(|p| olo_ui::store::load(&p)).unwrap_or_default()
+    allowed_path().and_then(|p| olo_kit::store::load(&p)).unwrap_or_default()
 }
 
 fn save_allowed(a: &Allowed) {
     if let Some(p) = allowed_path() {
-        olo_ui::store::save(p, a);
+        olo_kit::store::save(p, a);
     }
 }
 
@@ -372,7 +370,6 @@ pub struct Dialog {
     answer: Answer<bool>,
     app: String,
     rows: Vec<(Wanted, bool)>,
-    focus: FocusHandle,
 }
 
 fn body(app: &str) -> String {
@@ -380,34 +377,30 @@ fn body(app: &str) -> String {
     format!("{who} would like these keys to work whatever you're using:")
 }
 
-fn height(cx: &App, ask: &Ask) -> f32 {
-    let text = m::LABEL_ROW + m::TIGHT + paragraph_height(cx, &body(&ask.app), COLUMN) + m::SPACING;
+fn height(ask: &Ask) -> f32 {
+    let text = m::LABEL_ROW + m::TIGHT + paragraph_height(&body(&ask.app), COLUMN) + m::SPACING;
     let rows = ask.rows.len() as f32 * m::LABEL_ROW;
     (2.0 * m::WINDOW_INSET + text + rows + m::SPACING + m::CONTROL_HEIGHT + m::WINDOW_INSET).ceil()
 }
 
-pub fn open(cx: &mut App, ask: Ask) -> Option<WindowHandle<Frame>> {
-    let options = ui::over(WindowOptions::alert("Keyboard Shortcuts", WIDTH, height(cx, &ask)), &ask.parent);
-    ui::open(cx, options, move |window, cx| {
-        let focus = cx.focus_handle();
-        window.focus(&focus);
-        Dialog { answer: Answer::new(ask.reply, false), app: ask.app, rows: ask.rows, focus }
-    })
+pub fn open(ask: Ask) -> WindowHandle<Dialog> {
+    let options = ui::over(WindowOptions::alert("Keyboard Shortcuts", WIDTH, height(&ask)), &ask.parent);
+    ui::open(options, move |_| Dialog { answer: Answer::new(ask.reply, false), app: ask.app, rows: ask.rows })
 }
 
 impl Dialog {
-    fn finish(&mut self, yes: bool, window: &mut Window) {
+    fn finish(&mut self, yes: bool, cx: &mut Cx<Self>) {
         self.answer.give(yes);
-        window.remove_window();
+        cx.close_window();
     }
 }
 
-impl Render for Dialog {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let me = cx.entity();
-        // Each shortcut: what it does, and its keys at the right (or why
-        // it has none).
-        // (Keys it may have, as menus show them; else why it has none.)
+impl View for Dialog {
+    type Message = ();
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        // Each shortcut: what it does, and its keys at the right (as
+        // menus show them; or why it has none).
         let rows: Vec<(String, String, bool)> = self
             .rows
             .iter()
@@ -422,53 +415,37 @@ impl Render for Dialog {
             })
             .collect();
         let n = rows.len();
-        let list = canvas(
-            |_, _, _| {},
-            move |b, _, window, cx| {
-                let p = theme::palette(cx);
-                let font = style::ui_font(FontWeight::NORMAL);
-                for (i, (what, keys, usable)) in rows.iter().enumerate() {
-                    let top = b.top() + px(i as f32 * m::LABEL_ROW);
-                    let mid = top + px(m::LABEL_ROW / 2.0);
-                    let keys_w = if *usable { px(style::key_combo_width(window, keys)) } else { style::text_width(window, keys.clone(), style::PLAIN_SIZE, font.clone()) };
-                    style::label_fit(
-                        window,
-                        cx,
-                        b.left(),
-                        mid,
-                        Align::Left,
-                        what.clone(),
-                        style::PLAIN_SIZE,
-                        font.clone(),
-                        style::c(p.panel_text),
-                        (b.size.width - keys_w - px(m::SPACING)).max(px(0.0)),
-                    );
-                    if *usable {
-                        style::key_combo(window, cx, point(b.right(), mid), keys, style::c(p.panel_text));
-                    } else {
-                        style::label(window, cx, b.right(), mid, Align::Right, keys.clone(), style::PLAIN_SIZE, font.clone(), style::disabled_text(&p));
-                    }
-                    let row = Bounds { origin: point(b.left(), top), size: size(b.size.width, px(m::LABEL_ROW)) };
-                    olo_ui::agent::record(window, cx, olo_ui::agent::Node::label(format!("{what}: {keys}"), row));
+        let look = style::key(&rows);
+        let list = canvas(move |g, b| {
+            let p = theme::palette();
+            let font = style::ui_font(FontWeight::NORMAL);
+            for (i, (what, keys, usable)) in rows.iter().enumerate() {
+                let top = b.top() + px(i as f32 * m::LABEL_ROW);
+                let mid = top + px(m::LABEL_ROW / 2.0);
+                let keys_w = if *usable { px(style::key_combo_width(keys)) } else { style::text_width(keys.clone(), style::PLAIN_SIZE, font.clone()) };
+                style::label_fit(g, b.left(), mid, Align::Left, what.clone(), style::PLAIN_SIZE, font.clone(), style::c(p.panel_text), (b.size.width - keys_w - px(m::SPACING)).max(px(0.0)));
+                if *usable {
+                    style::key_combo(g, point(b.right(), mid), keys, style::c(p.panel_text));
+                } else {
+                    style::label(g, b.right(), mid, Align::Right, keys.clone(), style::PLAIN_SIZE, font.clone(), style::disabled_text(&p));
                 }
-            },
-        )
+                let row = Bounds { origin: point(b.left(), top), size: size(b.size.width, px(m::LABEL_ROW)) };
+                olo_kit::agent::record(g, olo_kit::agent::Node::label(format!("{what}: {keys}"), row));
+            }
+        })
+        .paint_key(look)
         .w_full()
         .h(px(n as f32 * m::LABEL_ROW));
-        let no = Button::new("Don't Allow").on_click({
-            let me = me.clone();
-            move |window, cx| me.update(cx, |d, _| d.finish(false, window))
-        });
-        let yes = Button::new("Allow").default(true).on_click({
-            let me = me.clone();
-            move |window, cx| me.update(cx, |d, _| d.finish(true, window))
-        });
+        let no = Button::new("Don't Allow").on_click(cx.listener(|d: &mut Dialog, _: &ClickEvent, cx| d.finish(false, cx)));
+        // (Return allows: the default button. Escape doesn't.)
+        let yes = Button::new("Allow").default(true).on_click(cx.listener(|d: &mut Dialog, _: &ClickEvent, cx| d.finish(true, cx)));
         div()
             .size_full()
-            .key_context(alert::CONTEXT)
-            .track_focus(&self.focus)
-            .on_action(cx.listener(|d, _: &alert::Default, window, _| d.finish(true, window)))
-            .on_action(cx.listener(|d, _: &alert::Cancel, window, _| d.finish(false, window)))
+            .on_window_key_down(cx.listener(|d: &mut Dialog, e: &KeyDownEvent, cx| {
+                if e.keystroke.key == "escape" && !e.keystroke.modifiers.modified() {
+                    d.finish(false, cx);
+                }
+            }))
             .child(
                 AlertFrame::new(ICON)
                     .child(alert_title("Allow Keyboard Shortcuts?"))

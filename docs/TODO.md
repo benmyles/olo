@@ -121,8 +121,18 @@ something nobody here has is in "Blocked", with what it waits for.
      protocol error makes a kit app start again, over and over (a
      1 × 1 point layer surface at 1.25× did, fixed where it came
      from: the restart itself should give up after a few).
+     *The portal* (olo-portal: the permission dialog, Open With, the
+     screen-share picker, Keyboard Shortcuts, Desktop Background, the
+     file and Print panels it shows for other programs) is on it, with
+     the Print panel (`olo_print::panel::kit`; StyledEdit still shows
+     the GPUI one). Each dialog asked for over a test bus is the same
+     to the pixel as before at 1×, 1.5× and 2×, but the default
+     button's ring in Desktop Background at 1.5× (a device pixel
+     lower: nine spare pixels round it, and the odd one is under it
+     now). The picker's remote-control wording and a real share
+     (xdg-desktop-portal, PipeWire) weren't run again.
      *Next, smallest first:*
-     portal, deskbar, notifications, doctor, telegram,
+     deskbar, notifications, doctor, telegram,
      activity, viewer, styled-edit, screen, tracker, passwords, terminal,
      preferences.
   5. **Tools, HACKING and the Olo Book**; GPUI and olo-ui leave the

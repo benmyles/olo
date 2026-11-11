@@ -1,6 +1,6 @@
 //! olo-portal: Olo's xdg-desktop-portal backend (screen sharing first).
 //! It serves `org.freedesktop.impl.portal.desktop.olo` on the session bus
-//! (`portal.rs`), asks the person what to share in a dialog of the GPUI
+//! (`portal.rs`), asks the person what to share in a dialog of Olo's
 //! kit (`picker.rs`), and shares screens as PipeWire streams
 //! (`stream.rs`) of frames app_server draws into its buffers
 //! (`capture.rs`).
@@ -24,10 +24,9 @@
 //! olo-portal --stop SESSION       end a share (Deskbar's Stop Sharing)
 //! ```
 
-use olo_ui::{
-    Frame,
+use olo_kit::{
+    WindowHandle,
     file_panel::{self, FilePanel, PanelResult},
-    gpui::{AnyWindowHandle, App, AppContext as _, Context, Entity, WeakEntity, WindowHandle},
     instance,
 };
 
@@ -42,7 +41,6 @@ mod files;
 mod inhibit;
 mod notification;
 mod picker;
-mod pictures;
 mod portal;
 mod print;
 mod remote;
@@ -112,8 +110,8 @@ pub fn shareables() -> Vec<Shareable> {
         .collect();
     // The agent screens running, on the person's own display: an agent's
     // screen shared into a call, captured from its own app_server.
-    if olo_ui::moving::menus_offer() {
-        for s in olo_ui::moving::screens() {
+    if olo_kit::moving::menus_offer() {
+        for s in olo_kit::moving::screens() {
             let (w, h) = (s.size.0 as i32, s.size.1 as i32);
             all.push(Shareable {
                 key: format!("agent:{}", s.name),
@@ -148,43 +146,39 @@ pub fn app_name(app_id: &str) -> String {
     olo_xdg::desktop_entry::find(app_id).map(|e| e.name).unwrap_or_default()
 }
 
+/// The dialogs open, by the request each answers (so the app can cancel
+/// it): pickers, permission questions, file and print panels, choosers.
+/// Shared with the upgrade's thread, which waits while any is up.
+type Open = std::sync::Arc<olo_sync::Mutex<Vec<(String, ui::Shown)>>>;
+
+/// What the portal keeps, on the app's looper.
 struct Portal {
-    /// The dialogs open, by the request each answers (so the app can
-    /// cancel it): pickers, permission questions, file and print panels,
-    /// choosers.
-    open: Vec<(String, AnyWindowHandle)>,
+    open: Open,
     /// Open With choosers, to give the apps offered as they change.
-    choosers: Vec<WeakEntity<chooser::Dialog>>,
+    choosers: Vec<(String, WindowHandle<chooser::Dialog>)>,
     /// The bus, once served (to end sessions from here).
     bus: std::sync::Arc<olo_sync::Mutex<Option<zbus::blocking::Connection>>>,
 }
 
 impl Portal {
-    /// End a session from our side, off the UI thread (it waits on the bus).
+    /// End a session from our side, off the app's looper (it waits on the bus).
     fn end(&self, session: String) {
         let Some(conn) = self.bus.lock().unwrap().clone() else { return };
         let _ = std::thread::Builder::new().name("portal-end".into()).spawn(move || portal::end(&conn, &session));
     }
 
-    fn opened(&mut self, request: &str, win: Option<WindowHandle<Frame>>) {
-        if let Some(w) = win {
-            self.open.push((request.to_owned(), w.into()));
-        }
-    }
-
-    /// Sharing (or asking to): an upgrade would cut it off, so it waits.
-    fn busy(&self, cx: &App) -> bool {
-        stream::live() > 0 || self.open.iter().any(|(_, w)| cx.windows().contains(w))
+    fn opened<V: olo_kit::View>(&mut self, request: &str, window: WindowHandle<V>) {
+        self.open.lock().unwrap().push((request.to_owned(), ui::Shown::of(window)));
     }
 
     /// Open a file panel for another program (the FileChooser portal).
     /// It opens where it was last for the app that asked (unless the app
     /// named a file to save over: in its folder), else where the app
     /// asks, else Home; where it was left is kept for the app's next.
-    fn open_panel(&mut self, cx: &mut Context<Self>, ask: files::Ask) {
+    fn open_panel(&mut self, ask: files::Ask) {
         let saving = matches!(ask.purpose, files::Purpose::Save | files::Purpose::SaveFiles);
         // (A small file read, as the panel's own folder pop-up reads it.)
-        let last = (!ask.at_file).then(|| olo_ui::places::last_for(&ask.app, saving)).flatten();
+        let last = (!ask.at_file).then(|| olo_kit::places::last_for(&ask.app, saving)).flatten();
         let asked = ask.folder.clone().filter(|d| d.is_dir());
         let dir = last.or(asked).unwrap_or_else(|| std::env::var_os("HOME").map_or_else(|| "/".into(), Into::into));
         let (default, mut panel) = match ask.purpose {
@@ -201,9 +195,9 @@ impl Portal {
         // (Answered once; closed from its tab, it says Cancelled.)
         let mut answer = ui::Answer::new(ask.reply, None);
         let app = ask.app.clone();
-        let win = file_panel::show_in(cx, options, panel, move |a, _| {
+        let win = file_panel::show_in(options, panel, move |a| {
             let (app, dir) = (app.clone(), a.dir.clone());
-            std::thread::spawn(move || olo_ui::places::left_in(&app, saving, &dir));
+            std::thread::spawn(move || olo_kit::places::left_in(&app, saving, &dir));
             let paths = match a.result {
                 PanelResult::Chosen(p) => Some(vec![p]),
                 PanelResult::Several(ps) => Some(ps),
@@ -214,7 +208,7 @@ impl Portal {
         self.opened(&request, win);
     }
 
-    fn message(&mut self, message: Box<dyn std::any::Any + Send>, cx: &mut Context<Self>) {
+    fn message(&mut self, message: Box<dyn std::any::Any + Send>) {
         let message = match message.downcast::<instance::Launch>() {
             // `olo-portal --stop SESSION` (Deskbar's Stop Sharing); any
             // other second start: we are already serving the session.
@@ -230,9 +224,8 @@ impl Portal {
         };
         let Ok(m) = message.downcast::<portal::ToUi>() else { return };
         // (Those closed since go from the list.)
-        let live = cx.windows();
-        self.open.retain(|(_, w)| live.contains(w));
-        self.choosers.retain(|c| c.upgrade().is_some());
+        self.open.lock().unwrap().retain(|(_, w)| w.is_open());
+        self.choosers.retain(|(_, c)| c.is_open());
         match *m {
             portal::ToUi::Pick(ask) => {
                 let (mut screens, mut windows) = (Vec::new(), Vec::new());
@@ -241,55 +234,53 @@ impl Portal {
                     if s.window { windows.push(item) } else { screens.push(item) }
                 }
                 let request = ask.request.clone();
-                let win = picker::open(cx, ask, screens, windows);
+                let win = picker::open(ask, screens, windows);
                 self.opened(&request, win);
             }
             portal::ToUi::Ended => {}
             portal::ToUi::Lost(session) => self.end(session),
-            portal::ToUi::Files(ask) => self.open_panel(cx, ask),
+            portal::ToUi::Files(ask) => self.open_panel(ask),
             portal::ToUi::Shortcuts(ask) => {
                 let request = ask.request.clone();
-                let win = shortcuts::open(cx, ask);
+                let win = shortcuts::open(ask);
                 self.opened(&request, win);
             }
             portal::ToUi::Wallpaper(ask) => {
                 let request = ask.request.clone();
-                let win = wallpaper::open(cx, ask);
+                let win = wallpaper::open(ask);
                 self.opened(&request, win);
             }
             portal::ToUi::Choose(ask) => {
                 let request = ask.request.clone();
-                if let Some((win, view)) = chooser::open(cx, ask) {
-                    self.opened(&request, Some(win));
-                    self.choosers.push(view);
-                }
+                let win = chooser::open(ask);
+                self.choosers.push((request.clone(), win.clone()));
+                self.opened(&request, win);
             }
             portal::ToUi::Offers(request, offers) => {
-                let found: Option<Entity<chooser::Dialog>> = self.choosers.iter().filter_map(|c| c.upgrade()).find(|c| c.read(cx).request() == request);
-                if let Some(c) = found {
-                    c.update(cx, |d, cx| d.offer(offers, cx));
+                if let Some((_, c)) = self.choosers.iter().find(|(r, _)| *r == request) {
+                    c.messenger().send(chooser::Offers(offers));
                 }
             }
             portal::ToUi::Access(ask) => {
                 let request = ask.request.clone();
-                let win = access::open(cx, ask);
+                let win = access::open(ask);
                 self.opened(&request, win);
             }
             portal::ToUi::Print(ask) => {
                 let title = if ask.title.is_empty() { "Print".to_owned() } else { format!("Print “{}”", ask.title) };
-                let options = ui::over(olo_print::panel::view::window_options(title), &ask.parent);
+                let options = ui::over(olo_print::panel::kit::window_options(title), &ask.parent);
                 let request = ask.request.clone();
                 let mut answer = ui::Answer::new(ask.reply, None);
-                let win = olo_print::panel::view::show(cx, options, None, move |choice, _| answer.give(choice));
+                let win = olo_print::panel::kit::show(options, None, move |choice| answer.give(choice));
                 self.opened(&request, win);
             }
             portal::ToUi::Cancel(request) => {
                 // Closed, each answers no as it goes.
-                let wins: Vec<AnyWindowHandle> = self.open.iter().filter(|(r, _)| *r == request).map(|(_, w)| *w).collect();
-                self.open.retain(|(r, _)| *r != request);
-                for w in wins {
-                    cx.defer(move |cx| cx.close_window(w));
+                let mut open = self.open.lock().unwrap();
+                for (_, w) in open.iter().filter(|(r, _)| *r == request) {
+                    w.close();
                 }
+                open.retain(|(r, _)| *r != request);
             }
         }
     }
@@ -394,11 +385,11 @@ fn main() -> std::process::ExitCode {
     if address.is_none() && instance::forward(APP_ID, &args) {
         return std::process::ExitCode::SUCCESS;
     }
-    olo_ui::run(APP_ID, move |cx| {
-        olo_ui::stay_resident(cx);
+    olo_kit::run(APP_ID, move |app| {
+        olo_kit::stay_resident();
         // (`--stop` comes this way, in a test's session too.)
-        instance::listen(APP_ID, olo_ui::proxy(cx));
-        let proxy = olo_ui::proxy(cx);
+        let proxy = olo_kit::proxy();
+        instance::listen(APP_ID, proxy.clone());
         let bus = std::sync::Arc::new(olo_sync::Mutex::new(None));
         let slot = bus.clone();
         std::thread::Builder::new()
@@ -420,11 +411,11 @@ fn main() -> std::process::ExitCode {
                 }
             })
             .expect("thread");
-        let portal = cx.new(|_| Portal { open: Vec::new(), choosers: Vec::new(), bus });
-        let messages = portal.clone();
-        olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |p, cx| p.message(message, cx)));
-        let busy = portal.clone();
-        olo_ui::upgrade_waits_while(cx, move |cx| busy.read(cx).busy(cx));
+        let open: Open = Default::default();
+        let mut portal = Portal { open: open.clone(), choosers: Vec::new(), bus };
+        olo_kit::message_handler(app, move |message, _| portal.message(message));
+        // Sharing (or asking to): an upgrade would cut it off, so it waits.
+        olo_kit::upgrade_waits_while(move || stream::live() > 0 || open.lock().unwrap().iter().any(|(_, w)| w.is_open()));
     });
     std::process::ExitCode::SUCCESS
 }
