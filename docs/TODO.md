@@ -80,7 +80,9 @@ something nobody here has is in "Blocked", with what it waits for.
      against 2,511). Both are as the GPUI ones to the pixel but for
      glyphs GPUI put a part of a pixel off: it drew their text first
      left of a window not yet given its size, and kept those places.
-     *Next, smallest first:* polkit-agent, supervisor, rescue, emoji-picker, installer,
+     The polkit agent and its keyring prompts (the same to the pixel;
+     typing 381 µs a frame against 602).
+     *Next, smallest first:* supervisor, rescue, emoji-picker, installer,
      pool, drive-setup, disk-usage, chrome, logs, palette, screenshot,
      diskbackup, portal, deskbar, notifications, doctor, telegram,
      activity, viewer, styled-edit, screen, tracker, passwords, terminal,
