@@ -69,7 +69,7 @@ pub(crate) use svg_renderer::*;
 pub use text_system::*;
 pub use tree::{DISABLED_OPACITY, Measuring};
 pub use util::{FluentBuilder, arc_cow::ArcCow};
-pub use view::{AnyChild, Child, Cx, TextInput, View, ViewRef};
+pub use view::{AnyChild, Child, Cx, Doer, Invalidator, TextInput, View, ViewRef};
 pub use window::{LocalWindow, NodeRef, WindowCx, scale_factor, thread_text_system, viewport_size, with_window_on};
 pub use yuv::{YuvFrame, YuvMatrix, YuvMemory};
 

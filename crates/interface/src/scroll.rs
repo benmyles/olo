@@ -176,6 +176,26 @@ impl ScrollHandle {
         }
     }
 
+    /// For content that scrolls itself, laying out only what shows (a
+    /// document editor): where it shows, how far it scrolls and where
+    /// it is now, for the scroll bars on this handle, in place of what
+    /// layout finds for a scroller that tracks it. The bars move it as
+    /// ever ([`Self::set_offset`]); the content hears with
+    /// `InteractiveElement::on_scroll_of`.
+    pub fn set_extent(&self, cx: &mut WindowCx, bounds: Bounds<Pixels>, max: Size<Pixels>, offset: Point<Pixels>) {
+        let at = self.0.offset.get();
+        let ends = self.0.bounds.get() != bounds || self.0.max.get() != max;
+        self.0.bounds.set(bounds);
+        self.0.max.set(max);
+        self.0.offset.set(offset);
+        self.0.shown.set(offset);
+        let ways = moved(at, offset) | if ends { ENDS } else { 0 };
+        if ways != 0 {
+            cx.core.note_scrolled(self.0.id, ways);
+            cx.core.needs_commit = true;
+        }
+    }
+
     /// Scrolls by `delta` (positive towards the content's start, as an
     /// offset).
     pub fn scroll_by(&self, cx: &mut WindowCx, delta: Point<Pixels>) {

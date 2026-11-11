@@ -410,13 +410,26 @@ pub struct ScrollView {
     border: bool,
     focused: bool,
     background: Option<olo_theme::Rgba>,
+    /// Its content scrolls itself (`scrolls_itself`).
+    own: bool,
     on_scroll: Option<std::rc::Rc<dyn Fn(&Point<Pixels>, &mut WindowCx)>>,
     children: SmallVec<[Element; 4]>,
 }
 
 impl ScrollView {
     pub fn new(handle: &ScrollHandle) -> ScrollView {
-        ScrollView { handle: handle.clone(), vertical: true, horizontal: false, auto_hide: false, border: true, focused: false, background: None, on_scroll: None, children: SmallVec::new() }
+        ScrollView {
+            handle: handle.clone(),
+            vertical: true,
+            horizontal: false,
+            auto_hide: false,
+            border: true,
+            focused: false,
+            background: None,
+            own: false,
+            on_scroll: None,
+            children: SmallVec::new(),
+        }
     }
 
     /// Shows the vertical bar only while the content overflows: columns
@@ -456,6 +469,22 @@ impl ScrollView {
     /// it only what's near what shows, and so has more to put in (rows
     /// of different heights, a wall of cards: what `uniform_rows` can't
     /// place).
+    /// The desk under a document's sheets of paper
+    /// ([`crate::editor::desk`]), in the theme's colours.
+    pub fn desk(mut self) -> Self {
+        self.background = Some(crate::editor::desk(&theme::palette()));
+        self
+    }
+
+    /// Its content scrolls itself, laying out only what shows, and tells
+    /// the handle where it is and how far it goes
+    /// (`ScrollHandle::set_extent`); the bars drive the handle as ever,
+    /// and the content hears (`on_scroll_of`).
+    pub fn scrolls_itself(mut self, on: bool) -> Self {
+        self.own = on;
+        self
+    }
+
     pub fn on_scroll(mut self, f: impl Fn(&Point<Pixels>, &mut WindowCx) + 'static) -> Self {
         self.on_scroll = Some(std::rc::Rc::new(f));
         self
@@ -479,15 +508,17 @@ impl IntoElement for ScrollView {
         let right = inset + if vbar { SCROLL_BAR } else { 0.0 };
         let bottom = inset + if hbar { SCROLL_BAR } else { 0.0 };
         let (border, focused, background) = (self.border, self.focused, self.background);
-        let mut content = div().absolute().left(px(inset)).top(px(inset)).right(px(right)).bottom(px(bottom)).track_scroll(&self.handle);
+        let mut content = div().absolute().left(px(inset)).top(px(inset)).right(px(right)).bottom(px(bottom));
         // (A hidden bar's content scrolls all the same: clipped to the
         // view, and measured, so the bar comes when it overflows.)
         let vscroll = vbar || (self.vertical && self.auto_hide);
-        content = match (vscroll, hbar) {
-            (true, true) => content.overflow_scroll(),
-            (true, false) => content.overflow_y_scroll(),
-            (false, true) => content.overflow_x_scroll(),
-            (false, false) => content,
+        content = match (self.own, vscroll, hbar) {
+            // (What scrolls itself is only cut to its place.)
+            (true, ..) => content.overflow_hidden(),
+            (false, true, true) => content.track_scroll(&self.handle).overflow_scroll(),
+            (false, true, false) => content.track_scroll(&self.handle).overflow_y_scroll(),
+            (false, false, true) => content.track_scroll(&self.handle).overflow_x_scroll(),
+            (false, false, false) => content.track_scroll(&self.handle),
         };
         if self.vertical && self.auto_hide {
             // The bar comes and goes with what there is to scroll: the

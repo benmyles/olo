@@ -12,6 +12,7 @@ pub mod image_view;
 pub mod key_hint;
 pub mod list;
 pub mod menu_field;
+pub mod ruler;
 pub mod scroll;
 pub mod side_pane;
 pub mod sidebar;

@@ -255,6 +255,9 @@ pub(crate) struct Interactivity {
     pub(crate) scroll: Option<crate::ScrollHandle>,
     /// It hears where it's scrolled to, when that changes.
     pub(crate) scroll_listeners: SmallVec<[Listener<Point<Pixels>>; 1]>,
+    /// It hears where a scroller it doesn't hold is, when that moves
+    /// (`on_scroll_of`).
+    pub(crate) scroll_of_listeners: SmallVec<[(crate::ScrollHandle, Listener<Point<Pixels>>); 1]>,
     /// It hears where layout put it, when that changes.
     pub(crate) bounds_listeners: SmallVec<[Listener<Bounds<Pixels>>; 1]>,
     /// Scrollers it draws by (a scroll bar): it's drawn again when one
@@ -714,6 +717,18 @@ pub trait InteractiveElement: Sized {
     /// do (a scroll bar's knob follows its view).
     fn watch_scroll(mut self, handle: &crate::ScrollHandle) -> Self {
         self.interactivity().watches.push((handle.id(), crate::scroll::ANY));
+        self
+    }
+
+    /// Hears where `handle` is scrolled to whenever that changes,
+    /// whoever moved it (and is drawn again): for content that scrolls
+    /// itself by a handle its scroll bars drive
+    /// (`ScrollHandle::set_extent`), which tracks no scroller of its
+    /// own to hear of with [`Self::on_scroll`].
+    fn on_scroll_of(mut self, handle: &crate::ScrollHandle, listener: impl Fn(&Point<Pixels>, &mut WindowCx) + 'static) -> Self {
+        let inter = self.interactivity();
+        inter.watches.push((handle.id(), crate::scroll::ANY));
+        inter.scroll_of_listeners.push((handle.clone(), Rc::new(listener)));
         self
     }
 

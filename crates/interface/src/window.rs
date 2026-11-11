@@ -705,7 +705,7 @@ impl WindowCore {
     }
 
     /// What hears of scroller `id` is to hear it changed (`ways`).
-    fn note_scrolled(&mut self, id: u64, ways: u8) {
+    pub(crate) fn note_scrolled(&mut self, id: u64, ways: u8) {
         match self.scroll_changed.iter_mut().find(|(changed, _)| *changed == id) {
             Some((_, was)) => *was |= ways,
             None => self.scroll_changed.push((id, ways)),
@@ -1079,6 +1079,14 @@ impl<'a> WindowCx<'a> {
                 let watching: Vec<NodeId> = self.core.watchers.iter().filter(|(watched, which, _)| *watched == id && which & ways != 0).map(|(_, _, node)| *node).collect();
                 for node in watching {
                     self.core.mark_paint(node);
+                    // What hears of a scroller it doesn't hold.
+                    let hearing: Vec<_> =
+                        self.core.nodes.get(node).and_then(|n| n.inter.as_ref()).map(|i| i.scroll_of_listeners.iter().filter(|(h, _)| h.id() == id).cloned().collect()).unwrap_or_default();
+                    self.core.current = Some(node);
+                    for (handle, listener) in hearing {
+                        listener(&handle.offset(), self);
+                    }
+                    self.core.current = None;
                 }
                 let Some(node) = self.core.scrollers.get(&id).copied() else { continue };
                 let Some((offset, listeners)) = self.core.nodes.get(node).and_then(|n| Some((n.scroll.as_ref()?.offset(), n.inter.as_ref()?.scroll_listeners.clone()))) else { continue };

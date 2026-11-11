@@ -350,6 +350,41 @@ impl<V: View> ViewRef<V> {
     }
 }
 
+/// Has a view say what it shows again, from any thread
+/// ([`Cx::invalidator`]). Cheap to clone; a view that has gone hears
+/// nothing.
+#[derive(Clone)]
+pub struct Invalidator(Messenger<()>);
+
+impl Invalidator {
+    pub fn invalidate(&self) {
+        self.0.send(());
+    }
+}
+
+/// Has something done to a view from any thread, once what its looper
+/// is doing is done ([`Cx::doer`]): for a part of a view that any app's
+/// view may hold (an editor, with no message of its host's to send) to
+/// hear from its workers. A view's own workers send it its messages
+/// ([`Cx::messenger`]).
+pub struct Doer<V>(Messenger<Deed<V>>);
+
+type Deed<V> = Box<dyn for<'a, 'b, 'c> FnOnce(&'c mut V, &'c mut Cx<'a, 'b, V>) + Send>;
+
+impl<V> Clone for Doer<V> {
+    fn clone(&self) -> Self {
+        Doer(self.0.clone())
+    }
+}
+
+impl<V: View> Doer<V> {
+    /// Has `f` run on the view (nothing, if it has gone). False if its
+    /// looper has ended.
+    pub fn run(&self, f: impl for<'a, 'b, 'c> FnOnce(&'c mut V, &'c mut Cx<'a, 'b, V>) + Send + 'static) -> bool {
+        self.0.send(Box::new(f))
+    }
+}
+
 /// What a view is handed with everything it's told: the window it's in
 /// (it derefs to [`WindowCx`]) and itself.
 pub struct Cx<'a, 'b, V> {
@@ -407,6 +442,22 @@ impl<'a, 'b, V: View> Cx<'a, 'b, V> {
         V::Message: Send,
     {
         self.view_ref().messenger(self.window)
+    }
+
+    /// A way to have this view say what it shows again, from any thread:
+    /// for what's made ready elsewhere with no message of the view's own
+    /// to bring it (a dictionary read on a worker, for an editor in any
+    /// app's view).
+    pub fn invalidator(&self) -> Invalidator {
+        let (window, view) = (self.window.core.id, self.view);
+        Invalidator(Messenger::new(self.window.looper.handle(), move |looper, ()| crate::window::deliver_to_view::<V>(looper, window, view, |_, cx| cx.invalidate())))
+    }
+
+    /// A way to have something done to this view from any thread
+    /// ([`Doer`]).
+    pub fn doer(&self) -> Doer<V> {
+        let (window, view) = (self.window.core.id, self.view);
+        Doer(Messenger::new(self.window.looper.handle(), move |looper, deed: Deed<V>| crate::window::deliver_to_view::<V>(looper, window, view, |v, cx| deed(v, cx))))
     }
 
     /// Sends this view a message, taken once what's running now is done.
