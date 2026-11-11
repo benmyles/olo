@@ -533,6 +533,15 @@ impl<'a, 'b, V: View> Cx<'a, 'b, V> {
         self.window.looper.after(delay, move |looper| deliver_to_view::<V>(looper, window, view, |v, cx| v.message(message, cx)));
     }
 
+    /// Has `f` run on this view after `delay`, unless the view has
+    /// ended or the timer is cancelled (`cx.cancel(timer)`): for what a
+    /// view has due at a time it works out as it goes (the kit's `Due`),
+    /// where a message of its own would say no more.
+    pub fn after_do(&mut self, delay: Duration, f: impl FnOnce(&mut V, &mut Cx<V>) + 'static) -> olo_app::TimerId {
+        let (window, view) = (self.window.core.id, self.view);
+        self.window.looper.after(delay, move |looper| deliver_to_view::<V>(looper, window, view, f))
+    }
+
     /// Sends this view a message every `interval` until the view ends
     /// or the timer is cancelled (`cx.cancel(timer)`). Not for looking
     /// for changes: a clock's tick, a caret's blink.

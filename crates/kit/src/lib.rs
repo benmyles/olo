@@ -12,6 +12,7 @@ pub mod brand;
 pub mod code;
 pub mod cut;
 pub mod dnd;
+pub mod due;
 pub mod file_panel;
 pub mod icons;
 mod kept;

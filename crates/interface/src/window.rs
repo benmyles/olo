@@ -1640,6 +1640,12 @@ impl<'a> WindowCx<'a> {
         });
     }
 
+    /// Stops a timer (`Cx::every`, `Cx::after_do`): it doesn't fire
+    /// again, or at all.
+    pub fn cancel(&mut self, timer: olo_app::TimerId) {
+        self.looper.cancel(timer);
+    }
+
     /// Whether files are being dragged over the window from somewhere
     /// else (what would take them, `on_drop`, can show it: it's hovered
     /// as under the pointer meanwhile).
