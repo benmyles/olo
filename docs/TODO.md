@@ -131,8 +131,11 @@ something nobody here has is in "Blocked", with what it waits for.
      lower: nine spare pixels round it, and the odd one is under it
      now). The picker's remote-control wording and a real share
      (xdg-desktop-portal, PipeWire) weren't run again.
+     *Olo Doctor and Olo Suggestions* (one window for both) are on it:
+     the same to the pixel as before at 1×, 1.5× and 2×, light and
+     dark; Ignore, Check Again and the menus tried, no Fix pressed.
      *Next, smallest first:*
-     deskbar, notifications, doctor, telegram,
+     deskbar, notifications, telegram,
      activity, viewer, styled-edit, screen, tracker, passwords, terminal,
      preferences.
   5. **Tools, HACKING and the Olo Book**; GPUI and olo-ui leave the

@@ -27,12 +27,10 @@ use crate::{
     helper::{self, FromHelper, Helper, ToHelper},
     notify, suggest,
 };
-use olo_ui::{
-    Frame, Menu, MenuBar, Proxy, WindowOptions,
-    gpui::{self, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, ScrollHandle, Styled as _, Window, WindowHandle, canvas, div, px},
-    icons,
+use olo_kit::{
+    ClickEvent, Cx, Element, Hsla, Menu, MenuBar, ParentElement as _, ScrollHandle, Styled as _, View, WindowOptions, canvas, div, icons,
     instance::{self, Launch},
-    metrics as m, style, theme,
+    metrics as m, px, style, theme,
     widgets::{BBox, Button, ScrollView, StringView, heading},
 };
 use serde::{Deserialize, Serialize};
@@ -111,6 +109,8 @@ impl Kind {
 }
 
 enum Msg {
+    /// Opened again: look again.
+    Again,
     Scanned(Report),
     /// A fix run as this user: the finding and its steps' outcomes.
     Ran(String, Vec<Result<(), String>>),
@@ -135,8 +135,6 @@ struct Saved {
 }
 
 struct Doctor {
-    proxy: Proxy,
-    window: Option<WindowHandle<Frame>>,
     report: Option<Report>,
     scanning: bool,
     /// Another look is due once this one is in (a fix finished meanwhile).
@@ -161,19 +159,18 @@ struct Doctor {
 }
 
 impl Doctor {
-    fn scan(&mut self, cx: &mut Context<Self>) {
+    fn scan(&mut self, cx: &mut Cx<Self>) {
         if self.scanning {
             self.rescan = true;
             return;
         }
         self.scanning = true;
-        let proxy = self.proxy.clone();
-        // Off the UI thread: it asks systemd and reads /proc and /sys.
-        std::thread::Builder::new().name("doctor-scan".into()).spawn(move || proxy.send(Msg::Scanned(kind().scan()))).expect("spawn");
-        cx.notify();
+        // Off the window's looper: it asks systemd and reads /proc and /sys.
+        cx.work(|| kind().scan(), Msg::Scanned);
+        cx.invalidate();
     }
 
-    fn scanned(&mut self, report: Report, cx: &mut Context<Self>) {
+    fn scanned(&mut self, report: Report, cx: &mut Cx<Self>) {
         self.scanning = false;
         // What was fixed and isn't found any more is listed as fixed;
         // what failed or is still found keeps its outcome.
@@ -195,7 +192,7 @@ impl Doctor {
         if std::mem::take(&mut self.rescan) {
             self.scan(cx);
         }
-        cx.notify();
+        cx.invalidate();
     }
 
     fn busy(&self) -> bool {
@@ -204,7 +201,7 @@ impl Doctor {
 
     /// Fix the findings `ids` (those with a fix): as this user at once,
     /// as root through the helper (one password for them all).
-    fn fix(&mut self, ids: &[String], cx: &mut Context<Self>) {
+    fn fix(&mut self, ids: &[String], cx: &mut Cx<Self>) {
         let Some(report) = &self.report else { return };
         let mut root = Vec::new();
         for id in ids {
@@ -217,17 +214,21 @@ impl Doctor {
             if fix.root {
                 root.push((id.clone(), fix.steps.clone()));
             } else {
-                let (proxy, id, steps) = (self.proxy.clone(), id.clone(), fix.steps.clone());
+                let (to, id, steps) = (cx.messenger(), id.clone(), fix.steps.clone());
                 std::thread::spawn(move || {
-                    let results = helper::run_steps_with(&steps, &mut |text| proxy.send(Msg::Progress(id.clone(), text)));
-                    proxy.send(Msg::Ran(id, results))
+                    let results = helper::run_steps_with(&steps, &mut |text| {
+                        to.send(Msg::Progress(id.clone(), text));
+                    });
+                    to.send(Msg::Ran(id, results));
                 });
             }
         }
         if !root.is_empty() {
             if self.helper.is_none() {
-                let proxy = self.proxy.clone();
-                match Helper::start(helper::way(), move |m| proxy.send(Msg::Helper(m))) {
+                let to = cx.messenger();
+                match Helper::start(helper::way(), move |m| {
+                    to.send(Msg::Helper(m));
+                }) {
                     Ok(h) => {
                         self.helper = Some(h);
                         self.helper_ready = false;
@@ -236,7 +237,7 @@ impl Doctor {
                         for (id, _) in root {
                             self.outcomes.insert(id, Outcome::Failed(format!("The administrator couldn't be asked: {e}.")));
                         }
-                        cx.notify();
+                        cx.invalidate();
                         return;
                     }
                 }
@@ -247,15 +248,15 @@ impl Doctor {
             }
             self.send_queued();
         }
-        cx.notify();
+        cx.invalidate();
     }
 
     /// Ignore finding `id` (`on`), or stop: kept (ignored.rs), the window
     /// and the tray as it says at once.
-    fn ignore(&mut self, id: &str, on: bool, cx: &mut Context<Self>) {
+    fn ignore(&mut self, id: &str, on: bool, cx: &mut Cx<Self>) {
         if let Err(e) = crate::ignored::set(kind(), id, on) {
             self.outcomes.insert(id.to_owned(), Outcome::Failed(format!("It couldn't be kept: {e}.")));
-            return cx.notify();
+            return cx.invalidate();
         }
         if let Some(r) = self.report.as_mut() {
             r.move_ignored(id, on);
@@ -263,10 +264,10 @@ impl Doctor {
                 checks::tell_tray(r);
             }
         }
-        cx.notify();
+        cx.invalidate();
     }
 
-    fn fix_all(&mut self, cx: &mut Context<Self>) {
+    fn fix_all(&mut self, cx: &mut Cx<Self>) {
         let ids: Vec<String> = self.report.iter().flat_map(|r| r.fixable()).map(|f| f.id.clone()).collect();
         self.fix(&ids, cx);
     }
@@ -282,7 +283,7 @@ impl Doctor {
         }
     }
 
-    fn finished(&mut self, id: String, results: Vec<Result<(), String>>, cx: &mut Context<Self>) {
+    fn finished(&mut self, id: String, results: Vec<Result<(), String>>, cx: &mut Cx<Self>) {
         let outcome = match results.into_iter().find_map(Result::err) {
             Some(e) => Outcome::Failed(e),
             None => Outcome::Fixed,
@@ -293,21 +294,14 @@ impl Doctor {
             // What the fix leaves to do as the person (off this thread:
             // it asks rtkit), then the look.
             self.following += 1;
-            let proxy = self.proxy.clone();
-            std::thread::Builder::new()
-                .name("doctor-after-fix".into())
-                .spawn(move || {
-                    then();
-                    proxy.send(Msg::Followed);
-                })
-                .expect("spawn");
+            cx.work(then, |()| Msg::Followed);
         } else if !self.busy() {
             self.scan(cx);
         }
-        cx.notify();
+        cx.invalidate();
     }
 
-    fn heard(&mut self, m: Option<FromHelper>, cx: &mut Context<Self>) {
+    fn heard(&mut self, m: Option<FromHelper>, cx: &mut Cx<Self>) {
         match m {
             Some(FromHelper::Ready) => {
                 self.helper_ready = true;
@@ -335,40 +329,7 @@ impl Doctor {
                 self.helper_ready = false;
             }
         }
-        cx.notify();
-    }
-
-    fn message(&mut self, message: Box<dyn std::any::Any + Send>, cx: &mut Context<Self>) {
-        if message.downcast_ref::<Launch>().is_some() {
-            // Opened again: look again, and come forward.
-            if let Some(w) = self.window {
-                cx.defer(move |cx| {
-                    olo_ui::raise(Some(w), cx);
-                });
-            }
-            return self.scan(cx);
-        }
-        let Ok(msg) = message.downcast::<Msg>() else { return };
-        match *msg {
-            Msg::Scanned(r) => self.scanned(r, cx),
-            Msg::Followed => {
-                self.following = self.following.saturating_sub(1);
-                if !self.busy() {
-                    self.scan(cx);
-                }
-            }
-            Msg::Ran(id, results) => {
-                self.progress.remove(&id);
-                self.finished(id, results, cx)
-            }
-            Msg::Progress(id, text) => {
-                if self.outcomes.get(&id) == Some(&Outcome::Fixing) {
-                    self.progress.insert(id, text);
-                    cx.notify();
-                }
-            }
-            Msg::Helper(m) => self.heard(m, cx),
-        }
+        cx.invalidate();
     }
 
     fn menus(&self) -> Vec<Menu> {
@@ -377,20 +338,6 @@ impl Doctor {
             Menu::new("File").item("Check Again", "check").key("r").enabled(!self.scanning).separator().item("Close", "close").key("w").item("Quit", "quit").key("q"),
             Menu::new(if kind() == Kind::Doctor { "Fix" } else { "Apply" }).item(kind().all(), "fix-all").shift_key(if kind() == Kind::Doctor { "f" } else { "a" }).enabled(fixable),
         ]
-    }
-
-    fn command(&mut self, command: &str, cx: &mut Context<Self>) -> bool {
-        match command {
-            "check" => self.scan(cx),
-            "fix-all" => self.fix_all(cx),
-            "close" | "quit" => cx.quit(),
-            _ => return false,
-        }
-        true
-    }
-
-    fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&Saved { fixed: self.fixed.clone() }).ok()
     }
 
     /// The summary at the top.
@@ -436,50 +383,78 @@ impl Doctor {
 }
 
 /// A check mark in a row of its own height, in `color`.
-fn mark(color: gpui::Hsla) -> impl IntoElement {
-    canvas(
-        |_, _, _| {},
-        move |b, _, window, _| {
-            let r = style::snap_centred(window, b.center(), 10.0, 8.0);
-            olo_ui::menu::check_mark(window, r, color);
-        },
-    )
+fn mark(color: Hsla) -> Element {
+    canvas(move |g, b| {
+        let r = style::snap_centred(g, b.center(), 10.0, 8.0);
+        style::check_mark(g, r, color);
+    })
+    .paint_key(style::key(("mark", color.h.to_bits(), color.s.to_bits(), color.l.to_bits())))
     .w(px(m::MARK_SIZE))
     .h(px(m::LABEL_ROW))
     .flex_shrink_0()
 }
 
-impl Render for Doctor {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let me = cx.entity();
-        let p = theme::palette(cx);
-        let bar_me = me.clone();
-        let bar = MenuBar::of(
-            &me,
-            |d: &Self, _| d.menus(),
-            move |cmd, _, cx| {
-                bar_me.update(cx, |d, cx| d.command(cmd, cx));
-            },
-        );
+impl View for Doctor {
+    type Message = Msg;
+
+    fn message(&mut self, msg: Msg, cx: &mut Cx<Self>) {
+        match msg {
+            Msg::Again => self.scan(cx),
+            Msg::Scanned(r) => self.scanned(r, cx),
+            Msg::Followed => {
+                self.following = self.following.saturating_sub(1);
+                if !self.busy() {
+                    self.scan(cx);
+                }
+            }
+            Msg::Ran(id, results) => {
+                self.progress.remove(&id);
+                self.finished(id, results, cx)
+            }
+            Msg::Progress(id, text) => {
+                if self.outcomes.get(&id) == Some(&Outcome::Fixing) {
+                    self.progress.insert(id, text);
+                    cx.invalidate();
+                }
+            }
+            Msg::Helper(m) => self.heard(m, cx),
+        }
+    }
+
+    fn command(&mut self, command: &str, cx: &mut Cx<Self>) -> bool {
+        match command {
+            "check" => self.scan(cx),
+            "fix-all" => self.fix_all(cx),
+            "close" | "quit" => olo_kit::quit(),
+            _ => return false,
+        }
+        true
+    }
+
+    /// What comes back after an upgrade: what was fixed this time.
+    fn save_state(&mut self, _: &mut Cx<Self>) -> Option<String> {
+        serde_json::to_string(&Saved { fixed: self.fixed.clone() }).ok()
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        let p = theme::palette();
+        let bar = MenuBar::new(cx, self.menus());
         let (title, detail) = self.summary();
         let fixable = self.report.as_ref().is_some_and(|r| r.fixable().any(|f| self.outcomes.get(&f.id) != Some(&Outcome::Fixing)));
-        let icon = canvas(
-            |_, _, _| {},
-            |b, _, window, _| {
-                icons::paint(window, style::snap_centred(window, b.center(), 32.0, 32.0), kind().icon());
-            },
-        )
+        let icon = canvas(|g, b| {
+            icons::paint(g, style::snap_centred(g, b.center(), 32.0, 32.0), kind().icon());
+        })
+        .paint_key(style::key("doctor-icon"))
         .size(px(32.0))
         .flex_shrink_0();
-        let (check, all) = (me.clone(), me.clone());
         let header = div()
             .flex()
             .items_center()
             .gap(px(m::SPACING + 2.0))
             .child(icon)
             .child(div().flex_1().min_w_0().flex().flex_col().child(StringView::new(title).bold(true).height(m::LABEL_ROW + 2.0)).child(StringView::new(detail).dim(true).height(m::LABEL_ROW + 2.0)))
-            .child(Button::new("Check Again").enabled(!self.scanning).on_click(move |_, cx| check.update(cx, |d, cx| d.scan(cx))))
-            .child(Button::new(kind().all()).default(fixable).enabled(fixable).on_click(move |_, cx| all.update(cx, |d, cx| d.fix_all(cx))));
+            .child(Button::new("Check Again").enabled(!self.scanning).on_click(cx.listener(|d: &mut Doctor, _: &ClickEvent, cx| d.scan(cx))))
+            .child(Button::new(kind().all()).default(fixable).enabled(fixable).on_click(cx.listener(|d: &mut Doctor, _: &ClickEvent, cx| d.fix_all(cx))));
         let mut list = div().flex().flex_col().gap(px(m::SPACING)).pb(px(m::SPACING)).pr(px(m::SPACING));
         if let Some(r) = &self.report {
             for f in &r.findings {
@@ -495,19 +470,23 @@ impl Render for Doctor {
                 let mut row = div().flex().items_center().gap(px(m::SPACING)).child(div().flex_1().min_w_0().child(status));
                 // Not wanted: set aside, quietly (ignored.rs).
                 {
-                    let (me, id) = (me.clone(), f.id.clone());
-                    row = row
-                        .child(Button::new("Ignore").id(format!("ignore-{}", f.id)).enabled(outcome != Some(&Outcome::Fixing)).on_click(move |_, cx| me.update(cx, |d, cx| d.ignore(&id, true, cx))));
+                    let id = f.id.clone();
+                    row = row.child(
+                        Button::new("Ignore")
+                            .id(format!("ignore-{}", f.id))
+                            .enabled(outcome != Some(&Outcome::Fixing))
+                            .on_click(cx.listener(move |d: &mut Doctor, _: &ClickEvent, cx| d.ignore(&id, true, cx))),
+                    );
                 }
                 match &f.fix {
                     Some(fix) => {
-                        let (me, id) = (me.clone(), f.id.clone());
+                        let id = f.id.clone();
                         let label = if matches!(outcome, Some(Outcome::Failed(_))) { "Try Again".to_owned() } else { fix.label.clone() };
                         row = row.child(
                             Button::new(label)
                                 .id(format!("fix-{}", f.id))
                                 .enabled(outcome != Some(&Outcome::Fixing))
-                                .on_click(move |_, cx| me.update(cx, |d, cx| d.fix(std::slice::from_ref(&id), cx))),
+                                .on_click(cx.listener(move |d: &mut Doctor, _: &ClickEvent, cx| d.fix(std::slice::from_ref(&id), cx))),
                         );
                     }
                     None => row = row.child(StringView::new(if kind() == Kind::Doctor { "Fixed by hand" } else { "Not yet" }).dim(true)),
@@ -533,7 +512,7 @@ impl Render for Doctor {
                     // What's applied can be undone.
                     if let Some(u) = r.undo.iter().find(|u| u.title == f.title) {
                         let outcome = self.outcomes.get(&u.id);
-                        let (me, id) = (me.clone(), u.id.clone());
+                        let id = u.id.clone();
                         let label = match outcome {
                             Some(Outcome::Fixing) => "Undoing…".to_owned(),
                             Some(Outcome::Failed(_)) => "Try Again".to_owned(),
@@ -543,7 +522,7 @@ impl Render for Doctor {
                             Button::new(label)
                                 .id(format!("fix-{}", u.id))
                                 .enabled(outcome != Some(&Outcome::Fixing))
-                                .on_click(move |_, cx| me.update(cx, |d, cx| d.fix(std::slice::from_ref(&id), cx))),
+                                .on_click(cx.listener(move |d: &mut Doctor, _: &ClickEvent, cx| d.fix(std::slice::from_ref(&id), cx))),
                         );
                         if let Some(Outcome::Failed(e)) = outcome {
                             line = line.child(StringView::new(e.clone()).wrap(true).color(style::c(p.failure)));
@@ -566,21 +545,21 @@ impl Render for Doctor {
                         Some(Outcome::Failed(e)) => line = line.child(StringView::new(e.clone()).wrap(true).color(style::c(p.failure))),
                         _ => {}
                     }
-                    let (unignore, id) = (me.clone(), f.id.clone());
+                    let id = f.id.clone();
                     line = line.child(
                         Button::new("Stop Ignoring")
                             .id(format!("unignore-{}", f.id))
                             .enabled(outcome != Some(&Outcome::Fixing))
-                            .on_click(move |_, cx| unignore.update(cx, |d, cx| d.ignore(&id, false, cx))),
+                            .on_click(cx.listener(move |d: &mut Doctor, _: &ClickEvent, cx| d.ignore(&id, false, cx))),
                     );
                     if let Some(fix) = &f.fix {
-                        let (me, id) = (me.clone(), f.id.clone());
+                        let id = f.id.clone();
                         let label = if matches!(outcome, Some(Outcome::Failed(_))) { "Try Again".to_owned() } else { fix.label.clone() };
                         line = line.child(
                             Button::new(label)
                                 .id(format!("fix-{}", f.id))
                                 .enabled(outcome != Some(&Outcome::Fixing))
-                                .on_click(move |_, cx| me.update(cx, |d, cx| d.fix(std::slice::from_ref(&id), cx))),
+                                .on_click(cx.listener(move |d: &mut Doctor, _: &ClickEvent, cx| d.fix(std::slice::from_ref(&id), cx))),
                         );
                     }
                     list = list.child(line);
@@ -596,7 +575,7 @@ impl Render for Doctor {
                 .gap(px(m::SPACING + 2.0))
                 .p(px(m::WINDOW_INSET))
                 .child(header)
-                .child(div().flex_1().min_h_0().child(ScrollView::new("doctor-findings", &self.scroll).border(false).child(list))),
+                .child(div().flex_1().min_h_0().child(ScrollView::new(&self.scroll).border(false).child(list))),
         )
     }
 }
@@ -622,37 +601,35 @@ pub fn run(which: Kind) {
     if instance::forward(app_id, &args) {
         return;
     }
-    olo_ui::run(app_id, move |cx| {
-        instance::listen(app_id, olo_ui::proxy(cx));
-        let saved: Saved = olo_ui::restored_state().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
-        let proxy = olo_ui::proxy(cx);
-        let app: Entity<Doctor> = cx.new(|_| Doctor {
-            proxy,
-            window: None,
-            report: None,
-            scanning: false,
-            rescan: false,
-            following: 0,
-            outcomes: BTreeMap::new(),
-            fixed: saved.fixed,
-            helper: None,
-            helper_ready: false,
-            queued: Vec::new(),
-            running: BTreeMap::new(),
-            progress: BTreeMap::new(),
-            next_run: 0,
-            scroll: ScrollHandle::new(),
+    olo_kit::run(app_id, move |app| {
+        instance::listen(app_id, olo_kit::proxy());
+        let saved: Saved = olo_kit::restored_state().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        let window = olo_kit::open_window(WindowOptions::new(which.title(), 600.0, 560.0).min_size(460.0, 360.0).keep_size(which.title()), move |cx| {
+            let mut doctor = Doctor {
+                report: None,
+                scanning: false,
+                rescan: false,
+                following: 0,
+                outcomes: BTreeMap::new(),
+                fixed: saved.fixed,
+                helper: None,
+                helper_ready: false,
+                queued: Vec::new(),
+                running: BTreeMap::new(),
+                progress: BTreeMap::new(),
+                next_run: 0,
+                scroll: ScrollHandle::new(),
+            };
+            doctor.scan(cx);
+            doctor
         });
-        let view = app.clone();
-        let window = olo_ui::open_window(cx, WindowOptions::new(which.title(), 600.0, 560.0).min_size(460.0, 360.0).keep_size(which.title()), move |_, _| view);
-        app.update(cx, |d, cx| {
-            d.window = window;
-            d.scan(cx);
+        // Opened again: look again, and come forward.
+        olo_kit::message_handler(app, move |message, _| {
+            if message.downcast_ref::<Launch>().is_some() {
+                olo_kit::raise(Some(&window));
+                window.messenger().send(Msg::Again);
+            }
         });
-        let messages = app.clone();
-        olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |d, cx| d.message(message, cx)));
-        let saving = app.clone();
-        olo_ui::on_upgrade(cx, move |cx| saving.read(cx).save_state());
     });
 }
 
