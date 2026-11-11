@@ -15,6 +15,11 @@ use olo_kit_base::{
     layout_review::{self as checks, Control, CutText, Fill, Icon, Parts, Text},
 };
 
+/// A window the review leaves out (a menu showing: not a window's
+/// layout), said as the window is made.
+#[derive(Default)]
+pub(crate) struct NotReviewed(pub(crate) bool);
+
 /// Closer than this, two things count as lined up (a rounding).
 const SAME: f32 = 0.5;
 

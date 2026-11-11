@@ -104,8 +104,12 @@ something nobody here has is in "Blocked", with what it waits for.
      (`InteractiveElement::raised`). Log Viewer (the same to the pixel;
      a frame as the search is typed in 211 µs against 975).
      Chrome's offer to download it (the same to the pixel).
+     The command palette, its shortcuts sheet and a window's menu (the
+     palette the same to the pixel; typing in it 620 µs a frame against
+     562, the same 0.4% of a core; /ask's answers not tried: they need
+     the model).
      *Next, smallest first:*
-     palette, screenshot,
+     screenshot,
      diskbackup, portal, deskbar, notifications, doctor, telegram,
      activity, viewer, styled-edit, screen, tracker, passwords, terminal,
      preferences.

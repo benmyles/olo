@@ -16,13 +16,12 @@
 
 use std::path::PathBuf;
 
-use olo_protocol::{Client, KeyboardProfile, Reply, Request, app_keys, shortcuts};
-use olo_ui::{
-    Frame, Proxy,
-    gpui::{App, AppContext as _, Context, IntoElement, LayerKeyboard, MouseDownEvent, Pixels, Point, Render, Styled as _, Window, WindowHandle, canvas, point, px},
+use olo_kit::{
+    Cx, Element, InteractiveElement as _, LayerKeyboard, LocalWindow, MouseDownEvent, Pixels, Point, Proxy, Styled as _, View, WindowHandle, canvas,
     menu::{self, Menu, MenuPopup},
-    tracker,
+    point, px, tracker,
 };
+use olo_protocol::{Client, KeyboardProfile, Reply, Request, app_keys, shortcuts};
 
 /// What `--window-menu` asked for.
 #[derive(Debug, Clone, PartialEq)]
@@ -86,7 +85,7 @@ pub struct Facts {
     /// The agent screens it can be moved to (name, label), when its
     /// program can move (`WindowInfo::kept`) and this is the person's
     /// display; None, no Move to Agent Screen.
-    pub screens: Option<Vec<olo_ui::moving::RunningScreen>>,
+    pub screens: Option<Vec<olo_kit::moving::RunningScreen>>,
 }
 
 /// Whose window it is, and the app's own Close and Quit if it's on the
@@ -164,17 +163,17 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             .map(|o| (o.id, if o.title.is_empty() { o.app_id.clone() } else { o.title.chars().take(60).collect() }))
             .collect();
         let path = match (w.pid, w.surface) {
-            (Some(pid), Some(surface)) if w.app_id != "olo.tracker" => olo_ui::commands::path(pid as u32, surface),
+            (Some(pid), Some(surface)) if w.app_id != "olo.tracker" => olo_kit::commands::path(pid as u32, surface),
             _ => None,
         };
         let (rolled, on_top, grouped, floating, floats_always) = (w.rolled, w.on_top, w.group.is_some(), w.floating, w.floats_always);
         let pid = w.pid.map(|p| p as u32);
-        let own = pid.zip(w.surface).and_then(|(pid, surface)| olo_ui::commands::menus_in(pid, surface)).map(|m| m.entries).unwrap_or_default();
+        let own = pid.zip(w.surface).and_then(|(pid, surface)| olo_kit::commands::menus_in(pid, surface)).map(|m| m.entries).unwrap_or_default();
         let find = |command: &str| own.iter().find(|e| e.command == command && e.path.len() == 1).map(|e| (e.label.clone(), e.keys.clone(), e.enabled));
         let entry = if olo_xdg::apps::our_app(&w.app_id).is_some() { None } else { olo_xdg::desktop_entry::find(&w.app_id) };
         let (name, _) = olo_xdg::apps::app_name(&w.app_id, entry.as_ref());
         let app = Owner { pid, surface: w.surface, app_id: w.app_id.clone(), name, close: find("close"), quit: find("quit") };
-        let screens = (w.kept && olo_ui::moving::menus_offer()).then(olo_ui::moving::screens);
+        let screens = (w.kept && olo_kit::moving::menus_offer()).then(olo_kit::moving::screens);
         proxy.send(Facts {
             ask,
             title: w.title,
@@ -368,15 +367,15 @@ pub fn build(f: &Facts) -> Menu {
 
 /// Do `command` to `window` (of `app`), off the UI thread.
 pub fn perform(window: u64, app: &Owner, command: &str) {
-    if let Some(screen) = olo_ui::moving::screen_command(command) {
-        olo_ui::moving::take_to_screen(screen, vec![window]);
+    if let Some(screen) = olo_kit::moving::screen_command(command) {
+        olo_kit::moving::take_to_screen(screen, vec![window]);
         return;
     }
     // The app's own Close and Quit, in that window.
     if let ("app-close" | "app-quit", Some(pid), Some(surface)) = (command, app.pid, app.surface) {
         let command = if command == "app-close" { "close" } else { "quit" };
         let _ = std::thread::Builder::new().name("window-menu-do".into()).spawn(move || {
-            if !olo_ui::commands::invoke_in(pid, surface, command) {
+            if !olo_kit::commands::invoke_in(pid, surface, command) {
                 tracing::warn!("the app (pid {pid}) didn't take its {command}");
             }
         });
@@ -451,83 +450,82 @@ pub fn perform(window: u64, app: &Owner, command: &str) {
     });
 }
 
-/// The menu's clear layer: it pops the menu as it is first drawn, and
-/// goes when the menu does (chosen from, put away with Escape, or a
-/// click on the layer: elsewhere on the screen).
-struct Layer {
+/// The menu's clear layer: it pops the menu once it's there, and goes
+/// when the menu does (chosen from, put away with Escape, or a click on
+/// the layer: elsewhere on the screen).
+pub struct Layer {
     window: u64,
     app: Owner,
     path: Option<PathBuf>,
     at: Point<Pixels>,
     menu: Option<Menu>,
-    popup: Option<WindowHandle<MenuPopup>>,
+    popup: Option<LocalWindow<MenuPopup>>,
 }
 
-impl Render for Layer {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let me = cx.entity();
-        canvas(
-            |_, _, _| {},
-            move |_, _, window, cx| {
-                // A click off the menu lands here (the same program's, so
-                // the menu's grab lets it through): away with it.
-                let clicked = me.clone();
-                window.on_mouse_event(move |_: &MouseDownEvent, phase, window, cx| {
-                    if !phase.bubble() {
-                        return;
-                    }
-                    match clicked.update(cx, |l, _| l.popup.take()) {
-                        Some(popup) => {
-                            let _ = popup.update(cx, |m, window, cx| m.close(window, cx));
-                        }
-                        None => window.remove_window(),
-                    }
-                });
-                let Some(menu) = me.update(cx, |l, _| l.menu.take()) else { return };
-                let (target, app, path, at) = me.read_with(cx, |l, _| (l.window, l.app.clone(), l.path.clone(), l.at));
-                let layer = window.window_handle();
-                // After this frame: a window opened while one paints
-                // would draw into the frame's arena.
-                let shown = me.clone();
-                window.defer(cx, move |window, cx| {
-                    let popup = menu::context_menu_then(
-                        window,
-                        cx,
-                        menu,
-                        at,
-                        move |cmd, _, _| match &path {
-                            Some(path) if cmd == tracker::COMMAND => {
-                                if let Err(e) = tracker::open(path) {
-                                    tracing::warn!("couldn't show {} in Tracker: {e}", path.display());
-                                }
+/// What the layer is told.
+pub enum LayerMsg {
+    /// It's there: its menu pops.
+    Pop,
+    /// The menu has gone: so does the layer.
+    Gone,
+}
+
+impl View for Layer {
+    type Message = LayerMsg;
+
+    fn message(&mut self, message: LayerMsg, cx: &mut Cx<Self>) {
+        match message {
+            LayerMsg::Pop => {
+                let Some(menu) = self.menu.take() else { return };
+                let (target, app, path) = (self.window, self.app.clone(), self.path.clone());
+                let gone = cx.messenger();
+                self.popup = menu::context_menu_then(
+                    cx,
+                    menu,
+                    self.at,
+                    move |cmd, _| match &path {
+                        Some(path) if cmd == tracker::COMMAND => {
+                            if let Err(e) = tracker::open(path) {
+                                tracing::warn!("couldn't show {} in Tracker: {e}", path.display());
                             }
-                            _ => perform(target, &app, cmd),
-                        },
-                        move |cx: &mut App| {
-                            let _ = layer.update(cx, |_, window, _| window.remove_window());
-                        },
-                    );
-                    match popup {
-                        Some(popup) => shown.update(cx, |l, _| l.popup = Some(popup)),
-                        // No menu: no layer.
-                        None => window.remove_window(),
-                    }
-                });
-            },
-        )
-        .size_full()
+                        }
+                        _ => perform(target, &app, cmd),
+                    },
+                    move |_| {
+                        gone.send(LayerMsg::Gone);
+                    },
+                );
+                // No menu: no layer.
+                if self.popup.is_none() {
+                    cx.close_window();
+                }
+            }
+            LayerMsg::Gone => cx.close_window(),
+        }
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        // A click off the menu lands here (the same program's, so the
+        // menu's grab lets it through): away with it.
+        canvas(|_, _| {}).paint_key(0).id("window-menu-layer").size_full().on_any_mouse_down(cx.listener(|l: &mut Self, _: &MouseDownEvent, cx| match l.popup.take() {
+            Some(popup) => {
+                popup.update(cx, |m, cx| m.close(cx));
+            }
+            None => cx.close_window(),
+        }))
     }
 }
 
 /// Covers the window's output with the clear layer and pops its menu.
-pub fn open(facts: Facts, cx: &mut App) -> Option<WindowHandle<Frame>> {
-    let output = facts.ask.output.clone().filter(|o| cx.displays().iter().any(|d| d.name().as_deref() == Some(o.as_str())));
-    let layer =
-        cx.new(|_| Layer { window: facts.ask.window, app: facts.app.clone(), path: facts.path.clone(), at: point(px(facts.ask.at.0), px(facts.ask.at.1)), menu: Some(build(&facts)), popup: None });
+pub fn open(facts: Facts) -> WindowHandle<Layer> {
+    let output = facts.ask.output.clone().filter(|o| olo_kit::display_names().iter().any(|d| d.as_deref() == Some(o.as_str())));
     // The menu is a popup of the layer and takes the keyboard itself
     // (app_server gives every key to a layer that holds it exclusively).
     let options = crate::overlay("Window Menu", "window-menu", output).layer_options(|l| l.keyboard = LayerKeyboard::OnDemand);
-    olo_ui::open_window(cx, options, move |_, _| layer)
+    olo_kit::open_window(options, move |cx| {
+        cx.send(LayerMsg::Pop);
+        Layer { window: facts.ask.window, app: facts.app.clone(), path: facts.path.clone(), at: point(px(facts.ask.at.0), px(facts.ask.at.1)), menu: Some(build(&facts)), popup: None }
+    })
 }
 
 #[cfg(test)]
@@ -564,7 +562,7 @@ mod tests {
             display: Some(1),
             others: vec![("HDMI-A-1".into(), 0)],
             app: Owner { app_id: "org.gnome.gedit".into(), name: "Gedit".into(), ..Default::default() },
-            screens: Some(vec![olo_ui::moving::RunningScreen {
+            screens: Some(vec![olo_kit::moving::RunningScreen {
                 name: "agent".into(),
                 label: "Research".into(),
                 wayland_display: "wayland-3".into(),
@@ -590,7 +588,7 @@ mod tests {
         for c in &all {
             let known = c.strip_prefix("shortcut:").is_some_and(|id| shortcuts::SHORTCUTS.iter().any(|s| s.id == id))
                 || c.starts_with("workspace:")
-                || olo_ui::moving::screen_command(c).is_some()
+                || olo_kit::moving::screen_command(c).is_some()
                 || c.strip_prefix("tile-with:").is_some_and(|id| id.parse::<u64>().is_ok())
                 || c.strip_prefix("window-to:").is_some_and(|id| id.parse::<u64>().is_ok())
                 || c.strip_prefix("group-to:").is_some_and(|id| id.parse::<u64>().is_ok())

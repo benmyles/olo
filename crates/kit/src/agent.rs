@@ -170,7 +170,8 @@ fn answer(query: Query) {
         }
         Query::Review(reply) => {
             let dark = crate::theme::palette().mode != olo_theme::ThemeMode::Light;
-            let _ = reply.send(olo_interface::ask_windows(Duration::from_millis(3000), move |cx| Some(crate::review::review_window(cx, dark).0)));
+            let _ =
+                reply.send(olo_interface::ask_windows(Duration::from_millis(3000), move |cx| (!cx.window_state::<crate::review::NotReviewed>().0).then(|| crate::review::review_window(cx, dark).0)));
         }
         Query::Path(surface, reply) => {
             let found = olo_interface::ask_windows(WAIT, move |cx| (cx.surface_id() == Some(surface)).then(|| cx.window_state::<Shown>().path.clone())).into_iter().next().flatten();

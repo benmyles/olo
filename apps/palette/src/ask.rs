@@ -29,7 +29,7 @@ pub struct Snippet {
     pub code: String,
     /// Each line's coloured stretches (from the line's start), by its
     /// language (`colour`; none for one Olo doesn't colour).
-    pub classes: Vec<Vec<(std::ops::Range<usize>, olo_ui::code::Class)>>,
+    pub classes: Vec<Vec<(std::ops::Range<usize>, olo_kit::code::Class)>>,
 }
 
 impl Snippet {
@@ -42,9 +42,9 @@ impl Snippet {
 /// `code`'s classes line by line, in `language` (a fence's word: "bash",
 /// "py"), as the editor colours it (olo-syntax). On the worker: a
 /// language's first parse makes its query, up to half a second.
-pub fn colour(language: &str, code: &str) -> Vec<Vec<(std::ops::Range<usize>, olo_ui::code::Class)>> {
-    let Some(lang) = olo_ui::code::by_name(language) else { return Vec::new() };
-    let mut h = olo_ui::code::syntax::Highlighter::new(lang);
+pub fn colour(language: &str, code: &str) -> Vec<Vec<(std::ops::Range<usize>, olo_kit::code::Class)>> {
+    let Some(lang) = olo_kit::code::by_name(language) else { return Vec::new() };
+    let mut h = olo_kit::code::syntax::Highlighter::new(lang);
     if let Some(job) = h.job(code) {
         h.done(job.run());
     }
@@ -54,7 +54,7 @@ pub fn colour(language: &str, code: &str) -> Vec<Vec<(std::ops::Range<usize>, ol
             let mut out = Vec::new();
             h.classes(code, at..at + line.len(), &mut out);
             at += line.len() + 1;
-            out.retain(|(_, c)| *c != olo_ui::code::Class::Plain);
+            out.retain(|(_, c)| *c != olo_kit::code::Class::Plain);
             out
         })
         .collect()
@@ -132,7 +132,7 @@ fn context() -> String {
 
 /// Ask `question` (after `history`) on a worker, telling the palette as it
 /// comes; stops once `cancel` is set.
-pub fn ask(n: u64, question: String, history: Vec<olo_ai::Turn>, cancel: Arc<AtomicBool>, proxy: olo_ui::Proxy) {
+pub fn ask(n: u64, question: String, history: Vec<olo_ai::Turn>, cancel: Arc<AtomicBool>, proxy: olo_kit::Proxy) {
     let _ = std::thread::Builder::new().name("palette-ask".into()).spawn(move || {
         let done = |r: Result<(String, Vec<Snippet>, String), String>| proxy.send(Asked::Done(n, r));
         let settings = match Client::connect().map_err(|e| e.to_string()).and_then(|mut c| c.request(&Request::GetSettings).map_err(|e| e.to_string())) {
@@ -201,7 +201,7 @@ mod tests {
     /// line; one in a language Olo doesn't know is plain.
     #[test]
     fn snippets_are_coloured() {
-        use olo_ui::code::Class;
+        use olo_kit::code::Class;
         let lines = colour("bash", "# list them\nss -tulpn | grep \"LISTEN\"");
         assert_eq!(lines.len(), 2);
         assert!(lines[0].iter().any(|(r, c)| *c == Class::Comment && r.start == 0), "{lines:?}");

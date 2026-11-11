@@ -622,20 +622,10 @@ fn open(cx: &mut WindowCx, menu: Menu, place: Place, on_choose: OnChoose, parent
     }
     let owner = cx.window_id();
     let spec = WindowSpec { kind: WindowKind::Popup { parent: owner, anchor, corner, offset }, ..WindowSpec::new(menu.title.clone(), w, h) };
-    cx.open_window_here(spec, move |_| MenuPopup {
-        menu,
-        selected,
-        on_choose,
-        origin,
-        parent_menu,
-        sub: None,
-        pressed_inside: false,
-        scroll,
-        content,
-        view_h: h - 2.0 * POPUP_PAD,
-        scrolling: None,
-        pointer: None,
-        on_close,
+    cx.open_window_here(spec, move |cx| {
+        // (A menu isn't a window's layout: the review leaves it out.)
+        cx.window_state::<crate::review::NotReviewed>().0 = true;
+        MenuPopup { menu, selected, on_choose, origin, parent_menu, sub: None, pressed_inside: false, scroll, content, view_h: h - 2.0 * POPUP_PAD, scrolling: None, pointer: None, on_close }
     })
 }
 
