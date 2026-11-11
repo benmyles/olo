@@ -587,9 +587,16 @@ impl WindowCx<'_> {
             node.focused = focused;
             let listeners: SmallVec<[Listener<bool>; 1]> = node.inter.as_ref().map(|i| i.focus_changed.clone()).unwrap_or_default();
             self.core.state_changed(id);
+            // (Its listeners run as its own: `invalidate_owner` and
+            // `listener_bounds` are this element's, not whatever was
+            // being handled when the keyboard moved, or nothing at all:
+            // a list given the keyboard as its window opened kept its
+            // selection in the colour of one without it.)
+            let outer = std::mem::replace(&mut self.core.current, Some(id));
             for listener in listeners {
                 listener(&focused, self);
             }
+            self.core.current = outer;
         }
         // What holds them and counts the keyboard as its own while it's
         // inside (`focus_within`).
