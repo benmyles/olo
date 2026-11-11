@@ -3,7 +3,8 @@
 #  1. Rust staged is formatted (rustfmt, each file by the rustfmt.toml
 #     nearest it: Olo's wide style, upstream's in gpui/ and smithay/) and
 #     staged again, so the repo stays formatted without anyone asking.
-#  2. When UI code is staged (an app, the kit, GPUI), the layout lint runs
+#  2. When something the lint builds is staged (Preferences, DiskBackup,
+#     the kits and what they're built on), the layout lint runs
 #     headless (`cargo ui-lint`: every Preferences panel and the kit's
 #     forms at 1, 1.5 and 2×, light and dark) and a finding stops the
 #     commit. docs/HACKING.md, "The layout lint".
@@ -25,7 +26,9 @@ if [ ${#rust[@]} -gt 0 ]; then
     fi
     git add -- "${rust[@]}"
 fi
-if [ "${OLO_SKIP_UI_LINT:-}" != 1 ] && git diff --cached --name-only | grep -qE '^(apps/|crates/(ui|kit-base|theme|preview)/|gpui/)'; then
+# (Only for what the lint builds, as cargo says: `lint-covers`. An app it
+# doesn't draw, a daemon, the docs: nothing to wait for.)
+if [ "${OLO_SKIP_UI_LINT:-}" != 1 ] && git diff --cached --name-only | tools/hooks/lint-covers; then
     echo "pre-commit: UI code changed; the layout lint (cargo ui-lint)…" >&2
     began=$SECONDS
     trap 'echo "pre-commit: the layout lint took $((SECONDS - began)) s" >&2' EXIT
