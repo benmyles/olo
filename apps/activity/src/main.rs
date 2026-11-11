@@ -706,6 +706,12 @@ pub struct Activity {
     pub model_on: bool,
     pub model: Option<Box<olo_complete::protocol::Stats>>,
     model_ask: mpsc::Sender<bool>,
+    /// How often the processor had been throttled for heat at each
+    /// sample (`Cooling::throttled`), and at the first: for how often
+    /// lately, and since this window opened. Its rate over time is
+    /// `frame_history`'s "cooling.throttled", for the fans' graph.
+    throttles: VecDeque<(f64, u64)>,
+    throttled_first: Option<u64>,
     /// The sections' scrolling, kept while each shows.
     pub scroll: ScrollHandle,
     /// The dialog setting a tunable, while it's open.
@@ -777,6 +783,8 @@ impl Activity {
             model_on: false,
             model: None,
             model_ask: pollers.model_ask,
+            throttles: VecDeque::new(),
+            throttled_first: None,
             scroll: ScrollHandle::new(),
             tune: None,
         };
@@ -820,6 +828,14 @@ impl Activity {
     pub fn time_clock(&self) -> impl Fn() -> f64 + 'static {
         let clock = self.clock;
         move || clock.elapsed().as_secs_f64()
+    }
+
+    /// How often the processor was throttled for heat in the last
+    /// minute, and since this window opened (None: it doesn't say).
+    pub fn throttled_lately(&self) -> Option<(u64, u64)> {
+        let (first, &(at, now)) = (self.throttled_first?, self.throttles.back()?);
+        let minute_ago = self.throttles.iter().find(|(t, _)| at - t <= 60.0).map_or(now, |(_, n)| *n);
+        Some((now.saturating_sub(minute_ago), now.saturating_sub(first)))
     }
 
     pub fn source(&self, key: &str) -> Option<usize> {
@@ -871,6 +887,23 @@ impl Activity {
         }
         self.last = Some(at);
         self.system = s.system;
+        if let Some(n) = self.system.cooling.throttled {
+            self.throttled_first.get_or_insert(n);
+            // How often a second since the last sample.
+            if let Some(&(t0, n0)) = self.throttles.back()
+                && at > t0
+            {
+                let q = Rc::make_mut(self.frame_history.entry("cooling.throttled".into()).or_default());
+                q.push_back((at, n.saturating_sub(n0) as f64 / (at - t0)));
+                while q.front().is_some_and(|(t, _)| at - t > FRAME_HISTORY_SECONDS) {
+                    q.pop_front();
+                }
+            }
+            self.throttles.push_back((at, n));
+            while self.throttles.front().is_some_and(|(t, _)| at - t > 120.0) {
+                self.throttles.pop_front();
+            }
+        }
         if let Some(list) = s.processes {
             let top = |f: &dyn Fn(&Proc) -> f64| {
                 let mut v: Vec<(i32, String, f64)> = list.iter().map(|p| (p.pid, p.name.clone(), f(p))).filter(|(_, _, x)| *x > 0.0).collect();

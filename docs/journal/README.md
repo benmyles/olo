@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-11
 
+### Activity Monitor: the fans against what they cool
+
+*04:00* — Sensors has a Fans card in place of a small graph a fan: each fan's speed, the processor's temperature and how often it was throttled for heat on one graph (each to its own scale, the fans to one), the fan profile in use and the level Olo's fan service holds, and the throttling counted since the computer started and since the window opened, so a fan curve can be seen to work. (Activity Monitor is on olo-kit as of today.)
+
+![Activity Monitor: the fans against what they cool](2026-11-11/040027-activity-monitor-the-fans-against-what-they-cool.png)
+
 ### Screenshot: New screenshot shows the new picture
 
 *02:45* — Screenshot moved to Olo's own kit. Its preview was kept while the picture's size was the same, so New screenshot went on showing the one before; a preview is now of one picture. The region and colour pickers show the screen a pixel to a device pixel at 1.5× and 1.75× too (the overlay's whole-point size was half a device pixel off the screen's, and the frozen picture was stretched by it).

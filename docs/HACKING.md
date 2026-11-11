@@ -8772,7 +8772,8 @@ programs using it most, every connection and its program), GPU (busy, power, mem
 GPU memory from DRM fdinfo), AI (brush's command model: suggestions
 offered and taken, latency, how it learns; HACKING, "brush's
 suggestions"), Sensors (the battery's health, cycles and
-capacity; every temperature, power and fan sensor), System (the
+capacity; the fans against what they cool, below; every temperature
+and power sensor), System (the
 machine, pressure, and the kernel's tunables, which can be set) and
 Graphs (Haiku's ActivityMonitor: graphs of any sources, each scaled to
 its own range, from the context menu). ⌘1 to ⌘9 are the sections
@@ -8874,6 +8875,19 @@ shows. A process whose files can't be seen (another user's, without
 full access) has none. Settings saved before those columns came in at
 8 have their sort column moved along (`Settings::migrate`).
 
+Sensors' Fans card (`sections::fans_card`, where there are fans to
+read) is one graph of each fan's speed (to one scale; one that has
+never turned left out beside ones that do), the processor's package
+temperature (the hottest sensor where there's no package) and how
+often a second the package was throttled for heat, each to its own
+scale; under it the fan profile in use and the level Olo's fan service
+holds with what asked for it (`sample::Cooling`: `/etc/olo/fans`,
+`/run/olo-fans/status`; "The fans", below), and the throttling counted
+(`cpu0/thermal_throttle/package_throttle_count` and its total time):
+since the computer started, in the last minute and since the window
+opened (`Activity::throttled_lately`), so a fan curve can be seen to
+work. The sampler reads those three small files with each sample.
+
 A process's inspector (double-click, ⌘I, Inspect) reads `details.rs` on
 a worker at each sample: General (program, command, folder, parent,
 start, CPU time, scheduling, cores, context switches, I/O, control group,
@@ -8922,6 +8936,37 @@ found by its exact ID (`pid:N` in the search).**
 `cpu`, …); `olo-activity --inspect PID` opens only that process's
 inspector, at its Supervisor tab (the supervisor's alert and Deskbar's
 gauge menu use it; with a copy running, both are handed to it).
+
+## The fans (apps/fans, `olo-fans`)
+
+A ThinkPad's fans run ahead of the heat, so the computer isn't slowed
+down for it: the firmware's own curve waits for the processor to be
+hot, falls behind, and the board's sensors pass the temperature at
+which the firmware throttles the processor (their zones' passive trip,
+65 °C on a P1). `olo-fans` is a root service (systemd's
+`olo-fans.service`; the fans are root's to set, through
+`/proc/acpi/ibm/fan` of thinkpad_acpi loaded with `fan_control=1`).
+`/etc/olo/fans` holds the profile, one word: `auto` (the firmware's
+own curve: nothing read or written, asleep until the file changes) or
+`cool` (the firmware's curve while everything is cool, the fans raised
+early as anything warms, up to full speed). There are only those two.
+In `cool` it watches every sensor the computer has (each core and the
+package, the firmware's own readings, every thermal zone with a trip,
+the SSD, the memory), each with where the fans start for it and where
+they're at full speed (`Sensor::span`, from its own limit), and sets
+the level by the worst of three things: how near a sensor is to where
+it would be throttled, how fast it's rising, and how much power the
+processor draws (heat that hasn't reached a sensor yet). It comes down
+a step at a time, after a hold. It is safe by the firmware's watchdog:
+while it holds a level it says so every few seconds, and if it stops
+the firmware takes the fans back within 30 seconds; ending, it hands
+them back itself. `olo-fans --status` prints what it reads and would
+do, changing nothing (as anyone); `/run/olo-fans/status` is a line of
+`level=… why=…`, written when the level changes (Activity Monitor ▸
+Sensors reads it). Its source's doc comment has the rest. It is put in
+by hand for now (TODO: Preferences ▸ Power's Fan Profile installs it
+and writes the profile through a helper). Never run the service, or
+write a fan level, from a test: `--status` and its unit tests only.
 
 ## Olo Doctor (apps/doctor)
 

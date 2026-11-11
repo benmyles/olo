@@ -214,9 +214,47 @@ pub struct Volume {
     pub read_only: bool,
 }
 
+/// Who keeps the fans (Olo's `olo-fans`, if it's here) and how, and
+/// whether the processor was held back for heat.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Cooling {
+    /// The fan profile chosen (`/etc/olo/fans`: "cool", or "auto", the
+    /// firmware's own curve); empty where there's no such choice.
+    pub profile: String,
+    /// The level the service holds the fans at ("auto": left to the
+    /// firmware; "3" to "7"; "full-speed"), and what asked for it;
+    /// empty: it isn't running.
+    pub level: String,
+    pub why: String,
+    /// How often the processor's package was throttled for heat since
+    /// the computer started, and for how long in all (None: the
+    /// processor doesn't say).
+    pub throttled: Option<u64>,
+    pub throttled_ms: Option<u64>,
+}
+
+/// `olo-fans`' status line ("level=6 why=coretemp Package id 0 74°"):
+/// its level and why.
+fn fan_status(line: &str) -> (String, String) {
+    let Some(rest) = line.trim().strip_prefix("level=") else { return Default::default() };
+    match rest.split_once(" why=") {
+        Some((level, why)) => (level.to_owned(), why.to_owned()),
+        None => (rest.to_owned(), String::new()),
+    }
+}
+
+fn cooling() -> Cooling {
+    let (level, why) = fan_status(&read("/run/olo-fans/status"));
+    let count = |name: &str| read(format!("/sys/devices/system/cpu/cpu0/thermal_throttle/{name}")).trim().parse().ok();
+    Cooling { profile: read("/etc/olo/fans").trim().to_owned(), level, why, throttled: count("package_throttle_count"), throttled_ms: count("package_throttle_total_time_ms") }
+}
+
 /// What isn't a series: the machine, and the state of things now.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct System {
+    /// The fans' keeper and the processor's throttling.
+    #[serde(default)]
+    pub cooling: Cooling,
     pub host: String,
     pub kernel: String,
     pub model: String,
@@ -1051,6 +1089,7 @@ fn system(probe: &Probe, mi: &str, static_disks: &[Disk], disk_rates: &HashMap<S
         };
         s.gpus.push(Gpu { prefix: g.prefix.clone(), name, driver: g.driver.clone(), memory_used: used, memory_limit: limit, jobs, asleep });
     }
+    s.cooling = cooling();
     s.tunables = TUNABLES.iter().map(|(k, _)| ((*k).to_owned(), read(sysctl_path(k)).trim().to_owned())).filter(|(_, v)| !v.is_empty()).collect();
     let nr: Vec<u64> = read("/proc/sys/fs/file-nr").split_whitespace().map(num).collect();
     s.open_files = (nr.first().copied().unwrap_or(0), nr.get(2).copied().unwrap_or(0));
@@ -1407,6 +1446,14 @@ mod tests {
         assert_eq!(cpu_times(stat), [(150, 1000), (80, 500)]);
         let all = cpu_lines(stat);
         assert_eq!((all[0].user, all[0].system, all[0].iowait), (100, 50, 50));
+    }
+
+    #[test]
+    fn fan_service_status() {
+        assert_eq!(fan_status("level=6 why=coretemp Package id 0 74° (+4 rising)\n"), ("6".to_owned(), "coretemp Package id 0 74° (+4 rising)".to_owned()));
+        assert_eq!(fan_status("level=auto why=profile auto"), ("auto".to_owned(), "profile auto".to_owned()));
+        assert_eq!(fan_status("level=7"), ("7".to_owned(), String::new()));
+        assert_eq!(fan_status(""), (String::new(), String::new()));
     }
 
     #[test]

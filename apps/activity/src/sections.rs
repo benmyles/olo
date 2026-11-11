@@ -1383,7 +1383,14 @@ fn sensors(app: &Activity, inner: f32, cx: &Cx<Activity>) -> Vec<Element> {
                 .into_any_element(),
         );
     }
+    // The fans against what they cool, in place of a graph each.
+    let fans = fans_card(app, inner, cx);
+    let has_fans = fans.is_some();
+    out.extend(fans);
     for (unit, title, caption) in [(Unit::Celsius, "Temperatures", "Every thermal sensor"), (Unit::Watts, "Power", "What each part draws"), (Unit::Rpm, "Fans", "")] {
+        if unit == Unit::Rpm && has_fans {
+            continue;
+        }
         let keys: Vec<(String, String)> = app.sources.iter().filter(|s| s.group == Group::Sensors && s.unit == unit).map(|s| (s.key.clone(), s.name.clone())).collect();
         if keys.is_empty() {
             continue;
@@ -1399,6 +1406,138 @@ fn sensors(app: &Activity, inner: f32, cx: &Cx<Activity>) -> Vec<Element> {
         out.push(Card::new(format!("sensors-{title}"), title).caption(caption).child(mini_grid(cells, inner)).into_any_element());
     }
     out
+}
+
+/// "19,497": a count, its thousands apart.
+fn grouped(n: u64) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (i, ch) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(ch);
+    }
+    out
+}
+
+/// "1 time", "3 times".
+fn times(n: u64) -> String {
+    if n == 1 { "1 time".into() } else { format!("{} times", grouped(n)) }
+}
+
+/// What the fan profile and the service's level say, for people: the
+/// card's caption, and the Profile and Level facts.
+fn fan_words(cool: &crate::sample::Cooling) -> (String, Option<&'static str>, Option<String>) {
+    let level = match cool.level.as_str() {
+        "" => "The fan service isn't running".to_owned(),
+        "auto" => "Left to the firmware for now".to_owned(),
+        "full-speed" => "Full speed".to_owned(),
+        n => format!("{n} of 7"),
+    };
+    match cool.profile.as_str() {
+        "cool" => {
+            let short = match cool.level.as_str() {
+                "" => "the fan service isn't running".to_owned(),
+                "auto" => "left to the firmware for now".to_owned(),
+                "full-speed" => "full speed".to_owned(),
+                n => format!("level {n} of 7"),
+            };
+            (format!("Cool profile · {short}"), Some("Cool: cooler and louder"), Some(level))
+        }
+        "" => (String::new(), None, None),
+        _ => ("Auto profile · the firmware's own curve".to_owned(), Some("Auto: the firmware's own curve"), None),
+    }
+}
+
+/// The fans against what they cool: each fan's speed, the processor's
+/// temperature and how often it was throttled for heat, over time (each
+/// to its own scale, the fans to one); the fan profile in use, the
+/// level Olo's fan service (`olo-fans`) holds and what asked for it;
+/// and the throttling counted, so a curve can be seen to work. None
+/// where there are no fans to read.
+fn fans_card(app: &Activity, inner: f32, cx: &Cx<Activity>) -> Option<Element> {
+    let p = theme::palette();
+    let fans: Vec<usize> = app.sources.iter().enumerate().filter(|(_, s)| s.group == Group::Sensors && s.unit == Unit::Rpm).map(|(i, _)| i).collect();
+    if fans.is_empty() {
+        return None;
+    }
+    // (One that has never turned isn't a fan to watch, beside ones
+    // that do: ACPI's `fan1` on a ThinkPad, whose own two say.)
+    let turned = |i: &usize| app.history[*i].iter().any(|(_, v)| *v > 0.0);
+    let fans: Vec<usize> = if fans.iter().any(turned) { fans.into_iter().filter(turned).collect() } else { fans };
+    let cool = &app.system.cooling;
+    let (span, now) = (app.settings.span as f64, app.now());
+    let seen = |h: &std::collections::VecDeque<(f64, f64)>| h.iter().filter(|(t, _)| *t >= now - span).map(|(_, v)| *v).filter(|v| v.is_finite()).fold(0.0, f64::max);
+    let latest = |h: &std::collections::VecDeque<(f64, f64)>| h.back().map(|(_, v)| *v).filter(|v| v.is_finite());
+    let (mut series, mut items) = (Vec::new(), Vec::new());
+    // The fans to one scale, so one is seen against another.
+    let top = nice_ceiling(fans.iter().map(|&i| seen(&app.history[i])).fold(1000.0, f64::max));
+    let hues = [olo_theme::Hue::Blue, olo_theme::Hue::Teal, olo_theme::Hue::Purple, olo_theme::Hue::Green];
+    let mut fastest: f64 = 0.0;
+    for (k, &i) in fans.iter().enumerate() {
+        let (name, color) = (SharedString::from(app.sources[i].name.clone()), c(p.hue(hues[k % hues.len()])));
+        let v = latest(&app.history[i]);
+        fastest = fastest.max(v.unwrap_or(0.0));
+        series.push(Series::new(name.clone(), color, app.history[i].clone()).top(top).format(|v| Unit::Rpm.format(v)).fill(k == 0));
+        items.push(LegendItem { color, name, value: v.map_or_else(|| "–".into(), |v| Unit::Rpm.format(v)).into() });
+    }
+    // The processor's package where it's read (what throttles), else
+    // the hottest sensor now.
+    let package = app.sources.iter().position(|s| s.group == Group::Sensors && s.unit == Unit::Celsius && s.name.contains("Package"));
+    let hottest_now = || {
+        app.sources
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.group == Group::Sensors && s.unit == Unit::Celsius)
+            .filter_map(|(i, _)| Some((i, latest(&app.history[i])?)))
+            .max_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(i, _)| i)
+    };
+    if let Some(i) = package.or_else(hottest_now) {
+        let (name, color) = (SharedString::from(app.sources[i].name.clone()), c(p.hue(olo_theme::Hue::Red)));
+        series.push(Series::new(name.clone(), color, app.history[i].clone()).top(100.0).format(|v| Unit::Celsius.format(v)));
+        items.push(LegendItem { color, name, value: latest(&app.history[i]).map_or_else(|| "–".into(), |v| Unit::Celsius.format(v)).into() });
+    }
+    if let Some(h) = app.frame_history.get("cooling.throttled") {
+        let color = c(p.hue(olo_theme::Hue::Orange));
+        series.push(Series::new("Throttled", color, h.clone()).top(nice_ceiling(seen(h)).max(1.0)).format(|v| Unit::PerSecond.format(v)));
+        items.push(LegendItem { color, name: "Throttled".into(), value: latest(h).map_or_else(|| "–".into(), |v| Unit::PerSecond.format(v)).into() });
+    }
+    let g = Graph::live("activity-fans", series, app.graph_clock()).span(span).grid(grid_for(app.settings.span)).smooth(app.settings.smooth).plain();
+
+    let (caption, profile, level) = fan_words(cool);
+    let mut rows: Vec<(String, String)> = Vec::new();
+    if let Some(profile) = profile {
+        rows.push(("Profile".into(), profile.into()));
+    }
+    if let Some(level) = level {
+        rows.push(("Level".into(), level));
+    }
+    if !cool.why.is_empty() {
+        rows.push(("Because".into(), cool.why.clone()));
+    }
+    if let Some(n) = cool.throttled {
+        let long = cool.throttled_ms.filter(|ms| *ms >= 1000).map(|ms| format!(", {} in all", duration(ms as f64 / 1000.0))).unwrap_or_default();
+        rows.push(("Throttled".into(), if n == 0 { "Never since the computer started".into() } else { format!("{} since the computer started{long}", times(n)) }));
+        if let Some((minute, open)) = app.throttled_lately() {
+            let lately = match (minute, open) {
+                (_, 0) => "Not since this window opened".to_owned(),
+                (0, open) => format!("Not in the last minute; {} since this window opened", times(open)),
+                (minute, open) => format!("{} in the last minute, {} since this window opened", times(minute), times(open)),
+            };
+            rows.push(("Lately".into(), lately));
+        }
+    }
+    let mut card = Card::new("fans", "Fans").figure(Unit::Rpm.format(fastest));
+    if !caption.is_empty() {
+        card = card.caption(caption);
+    }
+    card = card.child(div().h(px(GRAPH)).flex_shrink_0().child(g)).child(legend_el(items, inner, cx));
+    if !rows.is_empty() {
+        card = card.child(div().h(px(m::SPACING))).child(facts(rows));
+    }
+    Some(card.into_any_element())
 }
 
 // ---- System ----------------------------------------------------------

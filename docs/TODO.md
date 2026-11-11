@@ -212,7 +212,16 @@ something nobody here has is in "Blocked", with what it waits for.
   GPU as the firmware reads it; the SSD and the memory), the
   processor's power as what's coming, the firmware's watchdog so a
   stopped service hands the fans back in 30 seconds. `olo-fans
-  --status` prints what it reads and would do. Found: the firmware's
+  --status` prints what it reads and would do. Activity Monitor ▸
+  Sensors has the Fans card (2026-11-11; HACKING's Activity Monitor):
+  the fans' speeds, the package's temperature and its throttling for
+  heat on one graph, the profile, the level held and what the service
+  says asked for it, and the throttling counted (19,497 times, seven
+  minutes in all, between this start of the computer and the service
+  going in). It shows the service's status as it is now, whose "why"
+  while a level is held on the way down is what would ask now (a
+  level 5 "because 8 W"): the status grown, below, is to say what set
+  the level and each zone over its trip. Found: the firmware's
   `auto` had the fans at 2,880 rpm with the package at 89–91 °C and
   SEN1 at 67 °C, over its trip; level 7 is about 5,070 rpm. *To do:*
   Fan Profile in Preferences ▸ Power (Auto: the firmware's; Cool:
@@ -222,11 +231,7 @@ something nobody here has is in "Blocked", with what it waits for.
   (thinkpad_acpi with `fan_control=1`: the helper sets that too);
   the service's status (`/run/olo-fans/status`) grown to what the
   panels need (profile, level, why, each sensor's reading and room),
-  written only while something reads it; Activity Monitor's section:
-  temperatures against the fans' speed over time, the level, what
-  asked for it and the profile in use; whether the processor was
-  throttled (the package's `thermal_throttle` counts, the zones over
-  their trips), so the curve can be seen to work; the curve's numbers
+  written only while something reads it; the curve's numbers
   tuned from that (where each kind of sensor starts the fans and has
   them at full speed: `span`), and other machines by their hwmon
   `pwm*`. Agents: the same through `olo-preferences`' documented way
