@@ -894,7 +894,13 @@ and offers actions; where it is dropped picks the type and the action.
   `dnd::picture(window, cx, icon, size, label, hotspot)` makes the
   picture under the pointer (the icon, its name below in the
   selection's colours). `done` gets the action it was dropped as (None:
-  nothing took it). Viewer and Quick Look drag their file out from the
+  nothing took it). On olo-kit the same is `olo_kit::dnd`:
+  `dnd::picture(cx, icon, size, label, hotspot)` and
+  `dnd::start(cx, drag, done)` from a view, where `done` makes the
+  message the view is sent when the drag is over (the pointer left the
+  window with the drag and its leaving isn't told: a view that tracks
+  hovering puts that right then, as Screenshot's after-recording card
+  does). Viewer and Quick Look drag their file out from the
   picture when it fits (a drag that doesn't pan), Quick Look also from
   its footer's icon, Get Info from its icon. Tracker's folders are
   spring-loaded: a drag resting on one for 1 s opens it. Deskbar takes

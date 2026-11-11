@@ -595,7 +595,7 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
     let backdrop = match &source {
         Source::Window { id, .. } if args.iter().any(|a| a == "--background") || settings.as_ref().is_some_and(|s| s.background) => Some(crate::backdrop::Look {
             wallpaper: all.as_ref().and_then(|s| s.wallpaper.clone()),
-            dark: all.as_ref().is_some_and(|s| s.appearance.effective_theme == olo_ui::palette::ThemeMode::Dark),
+            dark: all.as_ref().is_some_and(|s| s.appearance.effective_theme == olo_kit::palette::ThemeMode::Dark),
             colour: all.as_ref().and_then(|s| s.workspace_colors.first().copied()).unwrap_or([51, 102, 152]),
             scale: window_scale(*id),
         }),
@@ -779,7 +779,7 @@ impl Drop for Status {
 fn wait_finished(g: &Going) {
     let (tx, rx) = std::sync::mpsc::channel();
     let watched = tx.clone();
-    let _watch = olo_ui::watch::watch([going_path()], move |_| {
+    let _watch = olo_kit::watch::watch([going_path()], move |_| {
         let _ = watched.send(());
     });
     let pid = g.pid;
@@ -1376,7 +1376,7 @@ pub fn toggle(args: &[String]) -> i32 {
     // A person's start: counted down, as the settings say (unless given).
     let mut args = args.to_vec();
     if option(&args, "--countdown").is_none() {
-        let n = olo_ui::settings::current().map_or(3, |s| s.screen_recording.countdown);
+        let n = olo_kit::settings::current().map_or(3, |s| s.screen_recording.countdown);
         args.extend(["--countdown".to_owned(), n.to_string()]);
     }
     // The controls on the screen (never in the recording), for as long
@@ -1414,7 +1414,7 @@ pub fn toggle(args: &[String]) -> i32 {
 /// A notification that the recording was saved, with Show in Tracker
 /// (a person's recording; an agent's is said on its command line).
 fn tell(made: &Made) {
-    use olo_ui::notify::{Note, NoteEvent, Notifier};
+    use olo_kit::notify::{Note, NoteEvent, Notifier};
     let (tx, rx) = std::sync::mpsc::channel();
     let notes = Notifier::with_events("Screenshot", "olo-screenshot", move |e| {
         let _ = tx.send(e);
@@ -1428,7 +1428,7 @@ fn tell(made: &Made) {
     while let Ok(e) = rx.recv_timeout(Duration::from_secs(60)) {
         match e {
             NoteEvent::Action { .. } => {
-                let _ = olo_ui::tracker::open(&path);
+                let _ = olo_kit::tracker::open(&path);
                 return;
             }
             NoteEvent::Closed { .. } => return,

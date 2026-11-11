@@ -108,8 +108,20 @@ something nobody here has is in "Blocked", with what it waits for.
      palette the same to the pixel; typing in it 620 µs a frame against
      562, the same 0.4% of a core; /ask's answers not tried: they need
      the model).
+     *Screenshot* (its window, the region and colour pickers, the
+     recording controls, the camera bubble, the after-recording card
+     and the recordings library) is on it too; the kit got `dnd`
+     (dragging out), pictures that take their textures with them when
+     they go, windows that go at quit while the process carries on,
+     and views' timers that stop with them. Left of it: the camera
+     bubble wasn't run (it turns the camera on: try Record ▸ Show
+     Camera); the region picker's four shape buttons' labels are
+     anti-aliased a fraction of a pixel differently from the GPUI
+     build's (same place, same extent; not explained); and a Wayland
+     protocol error makes a kit app start again, over and over (a
+     1 × 1 point layer surface at 1.25× did, fixed where it came
+     from: the restart itself should give up after a few).
      *Next, smallest first:*
-     screenshot,
      portal, deskbar, notifications, doctor, telegram,
      activity, viewer, styled-edit, screen, tracker, passwords, terminal,
      preferences.

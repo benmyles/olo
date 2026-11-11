@@ -13,13 +13,9 @@
 use olo_sync::Mutex;
 use std::{io::Write as _, sync::Arc};
 
-use olo_ui::{
-    WindowOptions,
-    gpui::{
-        self, App, AppContext as _, BoxShadow, Context, Corners, InteractiveElement as _, IntoElement, LayerKeyboard, LayerShellLayer, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-        ParentElement as _, Pixels, Point, Render, RenderImage, Styled as _, Window, canvas, div, point, px,
-    },
-    theme,
+use olo_kit::{
+    Bounds, BoxShadow, Corners, Cx, Element, InteractiveElement as _, LayerKeyboard, LayerShellLayer, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point,
+    RenderImage, Styled as _, View, WindowOptions, div, hsla, point, px, size, theme,
 };
 
 const APP_ID: &str = "olo.screenshot";
@@ -41,8 +37,8 @@ enum Msg {
 struct Bubble {
     latest: Latest,
     name: String,
+    /// The frame shown (the one before goes, its texture with it).
     frame: Option<Arc<RenderImage>>,
-    dropped: Vec<Arc<RenderImage>>,
     /// Its margins from the right and bottom edges (points).
     margin: (i32, i32),
     /// Being dragged: where it was taken (points in the window).
@@ -50,7 +46,23 @@ struct Bubble {
 }
 
 impl Bubble {
-    fn message(&mut self, m: Msg, window: &mut Window, cx: &mut Context<Self>) {
+    /// Moved by `by` (points): its margins less that, kept on the screen.
+    fn moved(&mut self, by: Point<Pixels>, cx: &mut Cx<Self>) {
+        let screen = cx.display_bounds().map(|d| d.size).unwrap_or(size(px(1280.0), px(800.0)));
+        let outer = (SIDE + 2.0 * SHADOW) as i32;
+        let right = (self.margin.0 - f32::from(by.x).round() as i32).clamp(0, (f32::from(screen.width) as i32 - outer).max(0));
+        let bottom = (self.margin.1 - f32::from(by.y).round() as i32).clamp(0, (f32::from(screen.height) as i32 - outer).max(0));
+        if (right, bottom) != self.margin {
+            self.margin = (right, bottom);
+            cx.set_layer_margin((0, right, bottom, 0));
+        }
+    }
+}
+
+impl View for Bubble {
+    type Message = Msg;
+
+    fn message(&mut self, m: Msg, cx: &mut Cx<Self>) {
         match m {
             Msg::Frame => {
                 let img = {
@@ -60,78 +72,50 @@ impl Bubble {
                 };
                 if let Some(img) = img {
                     let first = self.frame.is_none();
-                    self.dropped.extend(self.frame.replace(Arc::new(RenderImage::new([image::Frame::new(img)]))));
+                    self.frame = Some(Arc::new(RenderImage::new([image::Frame::new(img)])));
                     if first {
                         println!("ready\t{}", self.name);
                         let _ = std::io::stdout().flush();
                     }
-                    cx.notify();
+                    cx.invalidate();
                 }
             }
             Msg::Failed(e) => {
                 println!("{e}");
                 let _ = std::io::stdout().flush();
-                let _ = window;
-                cx.quit();
+                olo_kit::quit();
             }
         }
     }
 
-    /// Moved by `by` (points): its margins less that, kept on the screen.
-    fn moved(&mut self, by: Point<Pixels>, window: &mut Window, cx: &App) {
-        let screen = window.display(cx).map(|d| d.bounds().size).unwrap_or(gpui::size(px(1280.0), px(800.0)));
-        let outer = (SIDE + 2.0 * SHADOW) as i32;
-        let right = (self.margin.0 - f32::from(by.x).round() as i32).clamp(0, (f32::from(screen.width) as i32 - outer).max(0));
-        let bottom = (self.margin.1 - f32::from(by.y).round() as i32).clamp(0, (f32::from(screen.height) as i32 - outer).max(0));
-        if (right, bottom) != self.margin {
-            self.margin = (right, bottom);
-            window.set_layer_margin((0, right, bottom, 0));
-        }
-    }
-}
-
-impl Render for Bubble {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let (frame, name, dropped) = (self.frame.clone(), self.name.clone(), std::mem::take(&mut self.dropped));
-        let p = theme::palette(cx);
-        let ring = olo_ui::style::c(p.panel_background);
-        let _ = window;
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         div()
             .size_full()
-            .on_mouse_down(MouseButton::Left, cx.listener(|b, e: &MouseDownEvent, _, _| b.drag = Some(e.position)))
-            .on_mouse_move(cx.listener(|b, e: &MouseMoveEvent, window, cx| {
+            .on_mouse_down(MouseButton::Left, cx.listener(|b: &mut Bubble, e: &MouseDownEvent, _| b.drag = Some(e.position)))
+            .on_mouse_move(cx.listener(|b: &mut Bubble, e: &MouseMoveEvent, cx| {
                 if let Some(at) = b.drag.filter(|_| e.pressed_button == Some(MouseButton::Left)) {
-                    b.moved(e.position - at, window, cx);
+                    b.moved(e.position - at, cx);
                 }
             }))
-            .on_mouse_up(MouseButton::Left, cx.listener(|b, _: &MouseUpEvent, _, _| b.drag = None))
+            .on_mouse_up(MouseButton::Left, cx.listener(|b: &mut Bubble, _: &MouseUpEvent, _| b.drag = None))
             .child(
-                canvas(
-                    |_, _, _| {},
-                    move |bounds, _, window, cx| {
-                        for img in dropped {
-                            let _ = window.drop_image(img);
+                cx.canvas(|bubble: &Bubble, g, bounds| {
+                    let side = px(SIDE);
+                    let at = bounds.origin + point(px(SHADOW), px(SHADOW * 0.6));
+                    let circle = Bounds::new(at, size(side, side));
+                    let round = Corners::all(side / 2.0);
+                    g.paint_shadows(circle, round, &[BoxShadow { color: hsla(0.0, 0.0, 0.0, 0.35), offset: point(px(0.0), px(3.0)), blur_radius: px(SHADOW * 0.8), spread_radius: px(0.0) }]);
+                    match &bubble.frame {
+                        Some(img) => {
+                            let _ = g.paint_image(circle, round, img.clone(), 0, false);
                         }
-                        let side = px(SIDE);
-                        let at = bounds.origin + point(px(SHADOW), px(SHADOW * 0.6));
-                        let circle = gpui::Bounds::new(at, gpui::size(side, side));
-                        let round = Corners::all(side / 2.0);
-                        window.paint_shadows(
-                            circle,
-                            round,
-                            &[BoxShadow { color: gpui::hsla(0.0, 0.0, 0.0, 0.35), offset: point(px(0.0), px(3.0)), blur_radius: px(SHADOW * 0.8), spread_radius: px(0.0) }],
-                        );
-                        match frame {
-                            Some(img) => {
-                                let _ = window.paint_image(circle, round, img, 0, false);
-                            }
-                            None => window.paint_quad(gpui::fill(circle, gpui::hsla(0.0, 0.0, 0.15, 1.0)).corner_radii(round)),
-                        }
-                        // A thin ring in the panel's colour, so it shows on anything.
-                        window.paint_quad(gpui::outline(circle, ring, gpui::BorderStyle::Solid).border_widths(px(2.0)).corner_radii(round));
-                        olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Image", name: Some(format!("Camera: {name}").into()), bounds: circle, enabled: true, ..Default::default() });
-                    },
-                )
+                        None => g.paint_quad(olo_kit::fill(circle, hsla(0.0, 0.0, 0.15, 1.0)).corner_radii(round)),
+                    }
+                    // A thin ring in the panel's colour, so it shows on anything.
+                    let ring = olo_kit::style::c(theme::palette().panel_background);
+                    g.paint_quad(olo_kit::outline(circle, ring, olo_kit::BorderStyle::Solid).border_widths(px(2.0)).corner_radii(round));
+                    olo_kit::agent::record(g, olo_kit::agent::Node { role: "Image", name: Some(format!("Camera: {}", bubble.name).into()), bounds: circle, enabled: true, ..Default::default() });
+                })
                 .size_full(),
             )
     }
@@ -164,22 +148,15 @@ pub fn run(args: &[String]) -> i32 {
     };
     let name = camera.info.name.clone();
     let latest: Latest = Arc::default();
-    olo_ui::run(APP_ID, move |cx| {
+    olo_kit::run(APP_ID, move |_| {
         let options =
             WindowOptions::new("Camera", SIDE + 2.0 * SHADOW, SIDE + 2.0 * SHADOW).no_panel().layer("screenshot-camera", LayerShellLayer::Overlay, (false, true, false, true)).layer_options(|l| {
                 l.margin = (0, MARGIN, MARGIN, 0);
                 l.keyboard = LayerKeyboard::None;
             });
-        let bubble = cx.new(|_| Bubble { latest: latest.clone(), name, frame: None, dropped: Vec::new(), margin: (MARGIN, MARGIN), drag: None });
-        let view = bubble.clone();
-        let handle = olo_ui::open_window(cx, options, move |_, _| view);
-        let messages = bubble.clone();
-        olo_ui::message_handler(cx, move |m, cx| {
-            if let (Ok(m), Some(h)) = (m.downcast::<Msg>(), handle) {
-                let _ = h.update(cx, |_, window, cx| messages.update(cx, |b, cx| b.message(*m, window, cx)));
-            }
-        });
-        let proxy = olo_ui::proxy(cx);
+        let shown = latest.clone();
+        let window = olo_kit::open_window(options, move |_| Bubble { latest: shown, name, frame: None, margin: (MARGIN, MARGIN), drag: None });
+        let to = window.messenger();
         std::thread::Builder::new()
             .name("camera".into())
             .spawn(move || {
@@ -193,11 +170,11 @@ pub fn run(args: &[String]) -> i32 {
                                 !std::mem::replace(&mut l.1, true)
                             };
                             if tell {
-                                proxy.send(Msg::Frame);
+                                to.send(Msg::Frame);
                             }
                         }
                         Err(e) => {
-                            proxy.send(Msg::Failed(format!("the camera stopped: {e}")));
+                            to.send(Msg::Failed(format!("the camera stopped: {e}")));
                             return;
                         }
                     }
