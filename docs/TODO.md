@@ -103,6 +103,51 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **A scheduler of the person's choosing, in Preferences ▸ Performance**
+  (Ben, 2026-11-10: "add to olo the ability to pick a custom scheduler
+  in preferences -> performance and the recommendation should be
+  scx_lavd and if the user enables it then olo should handle installing
+  (if we can vendor it great and then just install and activate it if
+  the user enables)"). Found so far, on the ThinkPad (Fedora 45, kernel
+  7.2.15): the kernel has sched_ext (`/sys/kernel/sched_ext/state` says
+  `disabled`: none loaded); Fedora's own repositories have only
+  `scx_layered`, `scx_rustland` and `scx_rusty`, old builds, and no
+  `scx_lavd` nor `scx-scheds` (those come from a COPR), so it can't be
+  installed from Fedora: it's to be vendored. `scx_lavd` is a Rust
+  program with a BPF part (GPL-2.0, sched-ext/scx; on crates.io), built
+  with clang's BPF target and libbpf. *To work out:* building it with
+  Olo (what tools/setup.sh must add; the build's cost); where a program
+  that runs as root is installed and what starts it (Olo's own are in
+  the home folder: a root service must not run a file the person can
+  write, so Doctor's privileged helper puts it in a root-owned place
+  with a unit, as olo-login's parts are); the setting
+  (`performance.json`), the panel's choice with what each scheduler is
+  for and why LAVD is recommended, its state read from
+  `/sys/kernel/sched_ext` (what's loaded now, whoever loaded it), and
+  falling back by itself if it won't load or is thrown out (the kernel
+  does that; Olo says so). app_server's and the windows' asking for a
+  fast core while they draw (`util_floor`) is to be measured under it:
+  LAVD decides by its own measure of latency-criticality. It can't be
+  switched on from a test session (root, and the whole machine's
+  scheduler): what's tested without Ben is the build, the helper's
+  steps against a fake root, and the panel.
+  *Put in by hand meanwhile* (Ben, the same evening: "install scx_lavd
+  and enable for me now as part of your test and leave it enabled so
+  that i don't have to wait"): `scx_lavd` 1.1.4 built from crates.io
+  (`cargo install scx_lavd --locked`; with clang 23 and
+  elfutils-libelf-devel it built as Fedora 45 comes, nothing added: it
+  carries its own libbpf and vmlinux.h), copied root-owned to
+  `/usr/local/libexec/olo/scx_lavd`, with
+  `/etc/systemd/system/olo-scheduler.service` (ExecStart that, no
+  options: its autopilot; Restart=on-failure, three tries in two
+  minutes), enabled and started at 22:19. The kernel says
+  `enabled`, `lavd_1.1.4_x86_64_unknown_linux_gnu`. Olo's own install
+  takes this unit's name and place over, so what's there now is
+  replaced, not left beside it. To go back:
+  `sudo systemctl disable --now olo-scheduler.service`. (Costs measured
+  from here on are under LAVD, not the kernel's EEVDF: an app is
+  compared with its GPUI build in the same sitting, as before.)
+
 - **What a restart undoes, Olo sets again by itself as the session
   starts** (Ben, 2026-11-10, with a picture of Olo Doctor: "this comes
   up after every reboot olo should just set ephemeral stuff like that
