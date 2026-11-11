@@ -267,10 +267,44 @@ something nobody here has is in "Blocked", with what it waits for.
      a test), the GPU decoders' choice.
      *Next, smallest first:*
      styled-edit, tracker, passwords, terminal, preferences.
+     StyledEdit first needs olo-ui's `editor` (4,000 lines: a GPUI
+     element that lays out and draws as it paints, with key bindings
+     in a key context and an input handler), `widgets::ruler` and
+     `spell` on the kit. *How:* the app's view still owns the
+     `Editor` and its `Document` (`EditorHost`); `editor::view` lays
+     out what shows as the host's `body` runs (for the bounds
+     `on_bounds_changed` says: `Editor::prepare`, the spelling's
+     results taken in there), and its drawing looks only (the
+     paragraphs placed, kept in `Shown`; what it finds, the tables'
+     rules to take hold of, in a `RefCell`); keys are matched to
+     `Cmd`s in `on_key_down` (the bindings' table as a function),
+     typing and composing come as `TextInputEvent`s; the caret's
+     blink and a selection's scroll past an edge are timers.
   5. **Tools, HACKING and the Olo Book**; GPUI and olo-ui leave the
      workspace (the `browser` and `olo-coder` branches build on them:
      they stay until those have moved). `tools/dev/bench`, `ui-lint`,
      `tsession review` and `lockcheck` still drive olo-ui's apps.
+     *For the Book, learned porting (each cost a bug):* a drawing only
+     looks (`Cx::canvas(|v: &V, g, b|)`): what it lacks it asks of its
+     view by a message, and what it finds (where something went) goes
+     in a `Cell`; lay out in `body`, for the width
+     `on_bounds_changed` says, and draw what `Painter::visible_bounds`
+     shows, with a `paint_key` so work below the view draws nothing;
+     work that goes on with nothing to draw runs on a timer
+     (`Cx::after_do`), never `on_next_frame` (no frame comes to a
+     window that drew nothing); a pointer's place in scrolled content
+     is `cx.listener_bounds()`, a drawing's own bounds are where it's
+     laid out; a parent that says something of its child (a title, a
+     tool bar, menus) hears it as an event the child emits when that
+     changes, since the parent's `body` doesn't run with the child's;
+     `ViewRef::update` runs later and reaches a view in another window
+     of the looper, `Child::update` runs now; a scroll asked for as the
+     content's size changes is `set_offset_once_laid_out`; windows of a
+     document's own are `open_window_here`, documents' windows
+     `open_window`, with the app's looper (a `Hub`) told through the
+     proxy; test old against new with the pointer moved off, then
+     look at one shot of each batch: the same to the pixel can be the
+     same failure.
 
 ## Not started (highest priority first)
 
