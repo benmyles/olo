@@ -396,7 +396,10 @@ impl WaylandWindowState {
             acknowledged_first_configure: false,
             surface,
             decoration,
-            app_id: None,
+            // (Kept as it's given to the toplevel: `activate` asks for
+            // its token by it, and does nothing without. Left unset, no
+            // window of a kit app ever came forward when asked to.)
+            app_id: options.app_id.clone(),
             blur: None,
             inhibitor: None,
             fractional_scale: None,

@@ -597,7 +597,8 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// The keyboard came to it (true) or left.
+    /// The keyboard came to it, or into it (to something it holds), or
+    /// left it: true while it's there.
     fn on_focus_changed(mut self, listener: impl Fn(&bool, &mut WindowCx) + 'static) -> Self {
         self.interactivity().focus_changed.push(Rc::new(listener));
         self

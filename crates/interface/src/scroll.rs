@@ -135,7 +135,10 @@ impl ScrollHandle {
         }))
     }
 
-    pub(crate) fn id(&self) -> u64 {
+    /// Which scroller it is: part of the key of a drawing made from it
+    /// (a scroll bar's knob), so one handed another scroller is drawn
+    /// again from that one.
+    pub fn id(&self) -> u64 {
         self.0.id
     }
 

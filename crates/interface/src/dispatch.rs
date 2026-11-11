@@ -613,6 +613,22 @@ impl WindowCx<'_> {
                 self.core.state_changed(*id);
             }
         }
+        // And what holds them and asked to hear of it: told when the
+        // keyboard came into it or left it altogether (a search field's
+        // ring, round the text field it holds, went on showing after a
+        // click elsewhere took the keyboard).
+        let crossed = old.iter().filter(|id| !new.contains(id) && Some(**id) != from).map(|id| (*id, false)).chain(new.iter().filter(|id| !old.contains(id) && Some(**id) != to).map(|id| (*id, true)));
+        for (id, within) in crossed.collect::<Vec<_>>() {
+            let listeners: SmallVec<[Listener<bool>; 1]> = self.core.nodes.get(id).and_then(|n| n.inter.as_ref()).map(|i| i.focus_changed.clone()).unwrap_or_default();
+            if listeners.is_empty() {
+                continue;
+            }
+            let outer = std::mem::replace(&mut self.core.current, Some(id));
+            for listener in listeners {
+                listener(&within, self);
+            }
+            self.core.current = outer;
+        }
     }
 
     /// Takes the keyboard from whatever has it.

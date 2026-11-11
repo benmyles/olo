@@ -286,7 +286,9 @@ impl IntoElement for ScrollBar {
             let held = g.node_state::<BarState>().held.map(|h| h.part);
             ground.paint_ground(g, bounds, held, enabled(&ground_handle, vertical));
         })
-        .paint_key(self.vertical as u64)
+        // (Keyed by its scroller: a view that swaps the handle it keeps,
+        // for what it shows now, has the bar drawn from the new one.)
+        .paint_key(style::key((self.vertical, self.handle.id())))
         .relative()
         .size_full()
         .cursor(CursorStyle::Arrow)
@@ -305,7 +307,7 @@ impl IntoElement for ScrollBar {
                 let held = *held;
                 knob.paint_knob(g, bounds, held);
             })
-            .paint_key(self.vertical as u64)
+            .paint_key(style::key((self.vertical, self.handle.id())))
             .absolute()
             .inset_0()
             .watch_scroll(&self.handle)
