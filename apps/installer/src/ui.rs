@@ -13,10 +13,9 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-use olo_ui::{
-    Proxy,
-    gpui::{self, Context, FontStyle, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, Render, ScrollHandle, Styled as _, Window, canvas, div, px},
-    icons, metrics as m, style, theme,
+use olo_kit::{
+    Bounds, Cx, Element, Font, FontFallbacks, FontStyle, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, ScrollHandle, SharedString, Styled as _, View, black, canvas, div,
+    icons, metrics as m, point, px, size, style, theme, white,
     widgets::{Button, CheckBox, RadioButton, ScrollView, StatusBar, StringView},
 };
 
@@ -58,21 +57,38 @@ pub struct Setup {
     given: Option<String>,
     /// Going through the pages by itself (`--yes`: tests, an agent).
     auto: bool,
-    proxy: Proxy,
     licence: ScrollHandle,
     notes_scroll: ScrollHandle,
 }
 
-/// What the worker thread tells the window.
-pub struct Told(pub Event);
-
-/// Moving on by itself (`--yes`), after this long on a page.
-pub struct Advance;
+/// What the window is told: by the worker thread, by `--yes`, and by its
+/// own controls.
+#[derive(Clone)]
+pub enum Msg {
+    /// What the worker thread says.
+    Told(Event),
+    /// Moving on by itself (`--yes`), after a while on a page.
+    Advance,
+    Next,
+    Back,
+    Accept(bool),
+    LoginScreen(bool),
+    BootSplash(bool),
+    RpmFusion(bool),
+    About(bool),
+    /// Install again, after it failed.
+    Again,
+    /// Stop installing.
+    Stop,
+    /// Log out or restart, Olo installed.
+    Leave(bool),
+    Quit,
+}
 
 const LICENCE: &str = include_str!("licence.txt");
 
 impl Setup {
-    pub fn new(proxy: Proxy, given: Option<String>, auto: bool, choices: Choices) -> Setup {
+    pub fn new(given: Option<String>, auto: bool, choices: Choices) -> Setup {
         let computer = plan::look();
         Setup {
             page: Page::Welcome,
@@ -90,14 +106,13 @@ impl Setup {
             about: false,
             given,
             auto,
-            proxy,
             licence: ScrollHandle::new(),
             notes_scroll: ScrollHandle::new(),
         }
     }
 
     /// The next page (Installing starts the work).
-    fn next(&mut self, cx: &mut Context<Self>) {
+    fn next(&mut self) {
         self.page = match self.page {
             Page::Welcome => Page::Licence,
             Page::Licence => Page::Choose,
@@ -107,16 +122,14 @@ impl Setup {
             }
             Page::Installing | Page::Finish => Page::Finish,
         };
-        cx.notify();
     }
 
-    fn back(&mut self, cx: &mut Context<Self>) {
+    fn back(&mut self) {
         self.page = match self.page {
             Page::Licence => Page::Welcome,
             Page::Choose => Page::Licence,
             p => p,
         };
-        cx.notify();
     }
 
     /// Install, on a worker thread.
@@ -127,11 +140,11 @@ impl Setup {
         self.share = None;
         self.doing.clear();
         self.notes.clear();
-        let (choices, given, stop, proxy) = (self.choices, self.given.clone(), self.stop.clone(), self.proxy.clone());
-        std::thread::Builder::new().name("setup".into()).spawn(move || plan::install(choices, given, stop, move |e| proxy.send(Told(e)))).expect("spawn");
+        let (choices, given, stop, proxy) = (self.choices, self.given.clone(), self.stop.clone(), olo_kit::proxy());
+        std::thread::Builder::new().name("setup".into()).spawn(move || plan::install(choices, given, stop, move |e| proxy.send(Msg::Told(e)))).expect("spawn");
     }
 
-    pub fn told(&mut self, e: Event, cx: &mut Context<Self>) {
+    fn told(&mut self, e: Event, cx: &mut Cx<Self>) {
         match e {
             Event::Stage { n, of, title } => {
                 self.notes.push(title.clone());
@@ -164,20 +177,20 @@ impl Setup {
                 self.page = Page::Finish;
             }
         }
-        self.notes_scroll.scroll_to_bottom();
-        cx.notify();
+        self.notes_scroll.scroll_to_bottom(cx);
+        cx.invalidate();
     }
 
     /// `--yes`: on to the next page.
-    pub fn advance(&mut self, cx: &mut Context<Self>) {
+    fn advance(&mut self, cx: &mut Cx<Self>) {
         match self.page {
-            Page::Welcome if plan::unsuitable(&self.computer).is_none() => self.next(cx),
+            Page::Welcome if plan::unsuitable(&self.computer).is_none() => self.next(),
             Page::Licence => {
                 self.accepted = true;
-                self.next(cx);
+                self.next();
             }
-            Page::Choose => self.next(cx),
-            Page::Finish => cx.quit(),
+            Page::Choose => self.next(),
+            Page::Finish => olo_kit::quit(),
             _ => {}
         }
     }
@@ -198,11 +211,11 @@ const NIGHT: olo_theme::Rgba = [0, 0, 5, 255];
 
 /// The title's face: Times New Roman's, as Windows 95's Setup had (its
 /// metric twin, Liberation Serif), bold and italic.
-fn title_font() -> gpui::Font {
+fn title_font() -> Font {
     let mut f = style::ui_font(FontWeight::BOLD);
     f.family = "Liberation Serif".into();
     f.style = FontStyle::Italic;
-    f.fallbacks = Some(gpui::FontFallbacks::from_fonts(vec!["Noto Serif".into(), "DejaVu Serif".into(), "Nimbus Roman".into()]));
+    f.fallbacks = Some(FontFallbacks::from_fonts(vec!["Noto Serif".into(), "DejaVu Serif".into(), "Nimbus Roman".into()]));
     f
 }
 
@@ -215,38 +228,34 @@ const PICTURE: f32 = 168.0;
 
 /// A BeOS window drawn on the backdrop: the tab (its title in it), then
 /// the grey panel with its frame, holding `body`.
-fn beos_window<B: IntoElement + 'static>(title: &'static str, body: B, w: f32, h: f32, cx: &mut gpui::App) -> impl IntoElement + use<B> {
-    let p = theme::palette(cx);
-    let tab_p = p.clone();
-    let tab = canvas(
-        |_, _, _| {},
-        move |b, _, window, cx| {
-            let font = style::ui_font(FontWeight::BOLD);
-            let tw = f32::from(style::text_width(window, title, 12.0, font.clone()));
-            let r = style::snap(window, gpui::Bounds::new(b.origin, gpui::size(px(tw + 2.0 * 14.0), px(TAB))));
-            style::fill_rect(window, r, style::c(tab_p.tab_focused));
-            style::bevel(window, r, style::c(tab_p.tab_focused_light), style::c(tab_p.tab_focused_shadow));
-            style::frame_rect(window, gpui::Bounds::new(r.origin - gpui::point(px(1.0), px(1.0)), r.size + gpui::size(px(2.0), px(1.0))), style::c(tab_p.frame_focused[0]));
-            style::label(window, cx, r.origin.x + px(14.0), r.center().y, style::Align::Left, title, 12.0, font, style::c(tab_p.tab_text_focused));
-        },
-    )
+fn beos_window(title: &'static str, body: impl IntoElement, w: f32, h: f32) -> Element {
+    let tab = canvas(move |g, b| {
+        let p = theme::palette();
+        let font = style::ui_font(FontWeight::BOLD);
+        let tw = f32::from(style::text_width(title, 12.0, font.clone()));
+        let r = style::snap(g, Bounds::new(b.origin, size(px(tw + 2.0 * 14.0), px(TAB))));
+        style::fill_rect(g, r, style::c(p.tab_focused));
+        style::bevel(g, r, style::c(p.tab_focused_light), style::c(p.tab_focused_shadow));
+        style::frame_rect(g, Bounds::new(r.origin - point(px(1.0), px(1.0)), r.size + size(px(2.0), px(1.0))), style::c(p.frame_focused[0]));
+        style::label(g, r.origin.x + px(14.0), r.center().y, style::Align::Left, title, 12.0, font, style::c(p.tab_text_focused));
+    })
+    .paint_key(style::key(title))
     .w(px(w))
     .h(px(TAB));
-    let frame_p = p.clone();
     let panel = div()
         .relative()
         .w(px(w))
         .h(px(h - TAB))
         .child(
-            canvas(
-                |_, _, _| {},
-                move |b, _, window, _| {
-                    let r = style::snap(window, b);
-                    style::fill_rect(window, r, style::c(frame_p.panel_background));
-                    style::frame_rect(window, r, style::c(frame_p.frame_focused[0]));
-                    style::bevel(window, style::inset(window, r, 1.0), style::c(frame_p.frame_focused[1]), style::c(frame_p.frame_focused[4]));
-                },
-            )
+            canvas(|g, b| {
+                let p = theme::palette();
+                let r = style::snap(g, b);
+                style::fill_rect(g, r, style::c(p.panel_background));
+                style::frame_rect(g, r, style::c(p.frame_focused[0]));
+                let inside = style::inset(g, r, 1.0);
+                style::bevel(g, inside, style::c(p.frame_focused[1]), style::c(p.frame_focused[4]));
+            })
+            .paint_key(0)
             .absolute()
             .size_full(),
         )
@@ -256,36 +265,34 @@ fn beos_window<B: IntoElement + 'static>(title: &'static str, body: B, w: f32, h
 
 /// Setup's picture down the window's left: a sunken well, dark, with an
 /// icon in it.
-fn picture(icon: &'static str, cx: &mut gpui::App) -> impl IntoElement + use<> {
-    let p = theme::palette(cx);
-    canvas(
-        |_, _, _| {},
-        move |b, _, window, _| {
-            let r = style::snap(window, b);
-            style::vgradient(window, r, style::c(SKY), style::c(NIGHT));
-            style::bevel(window, r, style::c(p.frame_focused[4]), style::c(p.frame_focused[1]));
-            icons::paint(window, style::snap_centred(window, gpui::point(r.center().x, r.origin.y + px(96.0)), 128.0, 128.0), icon);
-        },
-    )
+fn picture(icon: &'static str) -> Element {
+    canvas(move |g, b| {
+        let p = theme::palette();
+        let r = style::snap(g, b);
+        style::vgradient(g, r, style::c(SKY), style::c(NIGHT));
+        style::bevel(g, r, style::c(p.frame_focused[4]), style::c(p.frame_focused[1]));
+        let at = style::snap_centred(g, point(r.center().x, r.origin.y + px(96.0)), 128.0, 128.0);
+        icons::paint(g, at, icon);
+    })
+    .paint_key(style::key(icon))
     .w(px(PICTURE))
     .h_full()
     .flex_shrink_0()
 }
 
 /// A heading, as Setup's pages begin.
-fn heading(text: impl Into<gpui::SharedString>) -> impl IntoElement {
+fn heading(text: impl Into<SharedString>) -> StringView {
     StringView::new(text).bold(true).size(15.0).height(22.0)
 }
 
-fn para(text: impl Into<gpui::SharedString>) -> impl IntoElement {
+fn para(text: impl Into<SharedString>) -> StringView {
     StringView::new(text).wrap(true)
 }
 
 impl Setup {
     /// This page's title, picture, words and controls.
-    fn page_body(&mut self, cx: &mut Context<Self>) -> (&'static str, &'static str, gpui::AnyElement) {
-        let me = cx.entity();
-        let p = theme::palette(cx);
+    fn page_body(&mut self, cx: &mut Cx<Self>) -> (&'static str, &'static str, Element) {
+        let p = theme::palette();
         let col = || div().flex().flex_col().gap(px(m::STACK));
         match self.page {
             Page::Welcome => {
@@ -301,40 +308,20 @@ impl Setup {
                     Some(why) => c = c.child(StringView::new(why).wrap(true).color(style::c(p.failure))),
                     None => c = c.child(para("Click Next to go on.")),
                 }
-                ("Welcome", "installer", c.into_any_element())
+                ("Welcome", "installer", c)
             }
             Page::Licence => {
-                let (yes, no) = (me.clone(), me.clone());
                 let c = col()
                     .h_full()
                     .child(heading("Licence Agreement"))
                     .child(para("Please read the licence agreement. Scroll down to see the rest of it."))
-                    .child(div().flex_1().min_h_0().child(ScrollView::new("licence", &self.licence).child(div().p(px(m::TEXT_INSET)).child(StringView::new(LICENCE).wrap(true)))))
-                    .child(RadioButton::new("I accept the agreement", self.accepted).id("accept").on_select(move |_, cx| {
-                        yes.update(cx, |s, cx| {
-                            s.accepted = true;
-                            cx.notify();
-                        })
-                    }))
-                    .child(RadioButton::new("I don't accept the agreement", !self.accepted).id("refuse").on_select(move |_, cx| {
-                        no.update(cx, |s, cx| {
-                            s.accepted = false;
-                            cx.notify();
-                        })
-                    }));
-                ("Licence Agreement", "document", c.into_any_element())
+                    .child(div().flex_1().min_h_0().child(ScrollView::new(&self.licence).child(div().p(px(m::TEXT_INSET)).child(StringView::new(LICENCE).wrap(true)))))
+                    .child(RadioButton::new("I accept the agreement", self.accepted).id("accept").on_select(cx.msg(Msg::Accept(true))))
+                    .child(RadioButton::new("I don't accept the agreement", !self.accepted).id("refuse").on_select(cx.msg(Msg::Accept(false))));
+                ("Licence Agreement", "document", c)
             }
             Page::Choose => {
                 let ch = self.choices;
-                let toggle = |f: fn(&mut Choices, bool)| {
-                    let me = me.clone();
-                    move |on: bool, _: &mut Window, cx: &mut gpui::App| {
-                        me.update(cx, |s, cx| {
-                            f(&mut s.choices, on);
-                            cx.notify();
-                        })
-                    }
-                };
                 // Each choice with its words under it, a little apart from the next.
                 let choice = |check: CheckBox, t: &str| {
                     div().flex().flex_col().gap(px(2.0)).child(check).child(div().pl(px(m::MARK_SIZE + m::MARK_GAP + 4.0)).child(StringView::new(t.to_owned()).wrap(true).dim(true)))
@@ -350,22 +337,22 @@ impl Setup {
                         "The desktop itself and its apps, in your home folder (~/.local), and Olo on the login screen's session menu. Always installed.",
                     ))
                     .child(choice(
-                        CheckBox::new("Olo's login screen", ch.login_screen).id("login-screen").on_toggle(toggle(|c, on| c.login_screen = on)),
+                        CheckBox::new("Olo's login screen", ch.login_screen).id("login-screen").on_toggle(cx.msg_with(|on: &bool| Msg::LoginScreen(*on))),
                         &updated(had.login_screen, "Olo's own login screen in place of GNOME's (GDM, which stays installed). Your password there also opens Olo's keyring."),
                     ))
                     .child(choice(
-                        CheckBox::new("Olo's boot splash", ch.boot_splash).id("boot-splash").on_toggle(toggle(|c, on| c.boot_splash = on)),
+                        CheckBox::new("Olo's boot splash", ch.boot_splash).id("boot-splash").on_toggle(cx.msg_with(|on: &bool| Msg::BootSplash(*on))),
                         &updated(had.boot_splash, "Olo's picture while the computer starts, in place of Fedora's."),
                     ))
                     .child(choice(
-                        CheckBox::new("RPM Fusion", ch.rpm_fusion).id("rpm-fusion").on_toggle(toggle(|c, on| c.rpm_fusion = on)),
+                        CheckBox::new("RPM Fusion", ch.rpm_fusion).id("rpm-fusion").on_toggle(cx.msg_with(|on: &bool| Msg::RpmFusion(*on))),
                         &if had.rpm_fusion {
                             "Fedora's companion repositories: NVIDIA's own driver and more video formats. Added already.".to_owned()
                         } else {
                             format!("Fedora's companion repositories: NVIDIA's own driver and more video formats.{nvidia}")
                         },
                     ));
-                ("Choose What to Install", "preferences", c.into_any_element())
+                ("Choose What to Install", "preferences", c)
             }
             Page::Installing => {
                 let failed = matches!(self.outcome, Some(Outcome::Failed { .. }));
@@ -393,8 +380,8 @@ impl Setup {
                 for n in &self.notes {
                     notes = notes.child(StringView::new(n.clone()).wrap(true).dim(true));
                 }
-                c = c.child(div().flex_1().min_h_0().child(ScrollView::new("notes", &self.notes_scroll).child(notes)));
-                (if failed { "Setup Stopped" } else { "Installing" }, if failed { "warning" } else { "archive" }, c.into_any_element())
+                c = c.child(div().flex_1().min_h_0().child(ScrollView::new(&self.notes_scroll).child(notes)));
+                (if failed { "Setup Stopped" } else { "Installing" }, if failed { "warning" } else { "archive" }, c)
             }
             Page::Finish => {
                 let c = match &self.outcome {
@@ -411,59 +398,33 @@ impl Setup {
                 let c = c.child(
                     div().pt(px(m::SECTION)).child(StringView::new("Olo is a work of love, dedicated to Sir Samwise, the bestest English Labrador that ever walked the earth.").wrap(true).dim(true)),
                 );
-                ("Finish", "olo", c.into_any_element())
+                ("Finish", "olo", c)
             }
         }
     }
 
     /// The buttons along the bottom.
-    fn buttons(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let me = cx.entity();
+    fn buttons(&self, cx: &mut Cx<Self>) -> Element {
         let failed = matches!(self.outcome, Some(Outcome::Failed { .. }));
-        let (back, next, cancel, about) = (me.clone(), me.clone(), me.clone(), me.clone());
         let mut left = div().flex().gap(px(m::SPACING));
         if self.page == Page::Welcome {
-            left = left.child(Button::new("About…").id("about").on_click(move |_, cx| {
-                about.update(cx, |s, cx| {
-                    s.about = true;
-                    cx.notify();
-                })
-            }));
+            left = left.child(Button::new("About…").id("about").on_click(cx.msg(Msg::About(true))));
         }
         let mut right = div().flex().gap(px(m::SPACING));
         match self.page {
             Page::Finish => {
-                let done = me.clone();
                 let restart = matches!(self.outcome, Some(Outcome::Done { restart: true, .. }));
                 let installed = matches!(self.outcome, Some(Outcome::Done { .. }));
                 if installed {
-                    let leave = me.clone();
-                    right = right.child(Button::new(if restart { "Restart" } else { "Log Out" }).id("leave").on_click(move |_, cx| {
-                        leave.update(cx, |_, _| crate::session::leave(restart));
-                    }));
+                    right = right.child(Button::new(if restart { "Restart" } else { "Log Out" }).id("leave").on_click(cx.msg(Msg::Leave(restart))));
                 }
-                right = right.child(Button::new("Finish").id("finish").default(true).on_click(move |_, cx| done.update(cx, |_, cx| cx.quit())));
+                right = right.child(Button::new("Finish").id("finish").default(true).on_click(cx.msg(Msg::Quit)));
             }
             Page::Installing if failed => {
-                let again = me.clone();
-                right = right
-                    .child(Button::new("Try Again").id("again").default(true).on_click(move |_, cx| {
-                        again.update(cx, |s, cx| {
-                            s.start();
-                            cx.notify();
-                        })
-                    }))
-                    .child(Button::new("Quit").id("quit").on_click(move |_, cx| cancel.update(cx, |_, cx| cx.quit())));
+                right = right.child(Button::new("Try Again").id("again").default(true).on_click(cx.msg(Msg::Again))).child(Button::new("Quit").id("quit").on_click(cx.msg(Msg::Quit)));
             }
             Page::Installing => {
-                right = right.child(Button::new("< Back").enabled(false)).child(Button::new("Next >").enabled(false)).child(Button::new("Cancel").id("cancel").on_click(move |_, cx| {
-                    cancel.update(cx, |s, cx| {
-                        s.stop.store(true, Ordering::Relaxed);
-                        olo_net::nudge();
-                        s.doing = "Stopping…".into();
-                        cx.notify();
-                    })
-                }));
+                right = right.child(Button::new("< Back").enabled(false)).child(Button::new("Next >").enabled(false)).child(Button::new("Cancel").id("cancel").on_click(cx.msg(Msg::Stop)));
             }
             _ => {
                 let can_next = match self.page {
@@ -473,9 +434,9 @@ impl Setup {
                 };
                 let label = if self.page == Page::Choose { "Install" } else { "Next >" };
                 right = right
-                    .child(Button::new("< Back").id("back").enabled(self.page != Page::Welcome).on_click(move |_, cx| back.update(cx, |s, cx| s.back(cx))))
-                    .child(Button::new(label).id("next").default(true).enabled(can_next).on_click(move |_, cx| next.update(cx, |s, cx| s.next(cx))))
-                    .child(Button::new("Cancel").id("cancel").on_click(move |_, cx| cancel.update(cx, |_, cx| cx.quit())));
+                    .child(Button::new("< Back").id("back").enabled(self.page != Page::Welcome).on_click(cx.msg(Msg::Back)))
+                    .child(Button::new(label).id("next").default(true).enabled(can_next).on_click(cx.msg(Msg::Next)))
+                    .child(Button::new("Cancel").id("cancel").on_click(cx.msg(Msg::Quit)));
             }
         }
         div().flex().items_center().justify_between().child(left).child(right)
@@ -483,14 +444,12 @@ impl Setup {
 }
 
 /// The About window: what Setup is, and for whom.
-fn about(cx: &mut Context<Setup>) -> impl IntoElement + use<> {
-    let me = cx.entity();
-    let icon = canvas(
-        |_, _, _| {},
-        |b, _, window, _| {
-            icons::paint(window, style::snap_centred(window, b.center(), 64.0, 64.0), "olo");
-        },
-    )
+fn about(cx: &mut Cx<Setup>) -> Element {
+    let icon = canvas(|g, b| {
+        let at = style::snap_centred(g, b.center(), 64.0, 64.0);
+        icons::paint(g, at, "olo");
+    })
+    .paint_key(0)
     .size(px(64.0))
     .flex_shrink_0();
     let body = div()
@@ -507,30 +466,48 @@ fn about(cx: &mut Context<Setup>) -> impl IntoElement + use<> {
         )
         .child(para("Olo is a desktop in the spirit of BeOS: fast, light, and made to be understood, for people and for the agents working beside them."))
         .child(para("Olo is a work of love, dedicated to Sir Samwise, the bestest English Labrador that ever walked the earth."))
-        .child(div().flex().justify_end().child(Button::new("OK").id("about-ok").default(true).on_click(move |_, cx| {
-            me.update(cx, |s, cx| {
-                s.about = false;
-                cx.notify();
-            })
-        })));
-    beos_window("About Olo Setup", body, 420.0, 236.0, cx)
+        .child(div().flex().justify_end().child(Button::new("OK").id("about-ok").default(true).on_click(cx.msg(Msg::About(false)))));
+    beos_window("About Olo Setup", body, 420.0, 236.0)
 }
 
-impl Render for Setup {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let screen = window.viewport_size();
+impl View for Setup {
+    type Message = Msg;
+
+    fn message(&mut self, message: Msg, cx: &mut Cx<Self>) {
+        match message {
+            Msg::Told(e) => return self.told(e, cx),
+            Msg::Advance => self.advance(cx),
+            Msg::Next => self.next(),
+            Msg::Back => self.back(),
+            Msg::Accept(on) => self.accepted = on,
+            Msg::LoginScreen(on) => self.choices.login_screen = on,
+            Msg::BootSplash(on) => self.choices.boot_splash = on,
+            Msg::RpmFusion(on) => self.choices.rpm_fusion = on,
+            Msg::About(on) => self.about = on,
+            Msg::Again => self.start(),
+            Msg::Stop => {
+                self.stop.store(true, Ordering::Relaxed);
+                olo_net::nudge();
+                self.doing = "Stopping…".into();
+            }
+            Msg::Leave(restart) => crate::session::leave(restart),
+            Msg::Quit => olo_kit::quit(),
+        }
+        cx.invalidate();
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        let screen = olo_kit::viewport_size();
         let (sw, sh) = (f32::from(screen.width), f32::from(screen.height));
-        let backdrop = canvas(
-            |_, _, _| {},
-            |b, _, window, cx| {
-                style::vgradient(window, b, style::c(SKY), style::c(NIGHT));
-                let font = title_font();
-                let (x, y) = (b.origin.x + px(44.0), b.origin.y + px(58.0));
-                // Its shadow, then it: as Windows 95's Setup drew its title.
-                style::label(window, cx, x + px(4.0), y + px(4.0), style::Align::Left, "Olo Setup", 46.0, font.clone(), gpui::black());
-                style::label(window, cx, x, y, style::Align::Left, "Olo Setup", 46.0, font, gpui::white());
-            },
-        )
+        let backdrop = canvas(|g, b| {
+            style::vgradient(g, b, style::c(SKY), style::c(NIGHT));
+            let font = title_font();
+            let (x, y) = (b.origin.x + px(44.0), b.origin.y + px(58.0));
+            // Its shadow, then it: as Windows 95's Setup drew its title.
+            style::label(g, x + px(4.0), y + px(4.0), style::Align::Left, "Olo Setup", 46.0, font.clone(), black());
+            style::label(g, x, y, style::Align::Left, "Olo Setup", 46.0, font, white());
+        })
+        .paint_key(0)
         .absolute()
         .size_full();
         let (title, icon, body) = self.page_body(cx);
@@ -539,10 +516,10 @@ impl Render for Setup {
             .size_full()
             .flex()
             .gap(px(m::SPACING + 4.0))
-            .child(picture(icon, cx))
+            .child(picture(icon))
             .child(div().flex_1().min_w_0().h_full().flex().flex_col().gap(px(m::SPACING)).child(div().flex_1().min_h_0().child(body)).child(buttons));
         let (w, h) = DIALOG;
-        let dialog = div().absolute().left(px(((sw - w) / 2.0).round())).top(px(((sh - h) / 2.0).round().max(110.0))).child(beos_window(title, content, w, h, cx));
+        let dialog = div().absolute().left(px(((sw - w) / 2.0).round())).top(px(((sh - h) / 2.0).round().max(110.0))).child(beos_window(title, content, w, h));
         let mut root = div().relative().size_full().child(backdrop).child(dialog);
         if self.about {
             let (aw, ah) = (420.0, 236.0);

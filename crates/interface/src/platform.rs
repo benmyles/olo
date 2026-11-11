@@ -891,6 +891,9 @@ pub(crate) struct WindowParams {
     /// Olo: a dialog (`WindowOptions::dialog`).
     pub dialog: Option<Dialog>,
 
+    /// Olo: it opens full screen (`WindowSpec::fullscreen`).
+    pub fullscreen: bool,
+
     /// Olo: another program's window it belongs to (`WindowOptions::foreign_parent`).
     pub foreign_parent: Option<String>,
 

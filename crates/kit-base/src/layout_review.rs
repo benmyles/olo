@@ -498,8 +498,10 @@ fn texts_over(p: &Parts, screen: Rect, out: &mut Vec<Finding>) {
             // closer than their advance by a point or so; their ink
             // doesn't.)
             // (The same words a point or less off are a shadow: the
-            // desktop's labels have one.)
-            let shadow = a.label == b.label && (a.rect.min.x - b.rect.min.x).abs() <= 1.5 && (a.rect.min.y - b.rect.min.y).abs() <= 1.5;
+            // desktop's labels have one. A title's falls further, by its
+            // size: Olo Setup's, 4 points under 46-point words.)
+            let off = (a.size.min(b.size) * 0.1).max(1.5);
+            let shadow = a.label == b.label && (a.rect.min.x - b.rect.min.x).abs() <= off && (a.rect.min.y - b.rect.min.y).abs() <= off;
             if over.width() > 2.0 && over.height() > a.size.min(b.size) * 0.4 && !shadow {
                 push(out, finding(Level::Error, "text-over-text", format!("{} and {} overlap by {:.1}×{:.1}", quote(a), quote(b), over.width(), over.height()), over));
             }

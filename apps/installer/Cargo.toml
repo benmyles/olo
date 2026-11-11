@@ -12,7 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 olo-crash.workspace = true
-olo-ui.workspace = true
+olo-kit.workspace = true
 olo-net = { workspace = true, features = ["ureq"] }
 olo-doctor = { path = "../doctor" }
 olo-system.workspace = true

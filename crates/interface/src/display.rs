@@ -298,7 +298,14 @@ impl Display {
     /// the GPU's side of a window is made here).
     pub(crate) fn open_window(&self, id: WindowId, params: WindowParams, link: WindowLink) -> Result<crate::stage::Opened> {
         self.ask(move |on| {
+            let fullscreen = params.fullscreen;
             let window = on.client.open_window(id, params)?;
+            // (Asked for with its first commit: app_server gives it the
+            // whole display as its first size. The spec said so and
+            // nothing asked: Setup opened as a window.)
+            if fullscreen {
+                window.toggle_fullscreen();
+            }
             let (stage, opened) = Stage::new(id, window, link);
             on.stages.insert(id, stage);
             Ok(opened)

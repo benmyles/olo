@@ -91,7 +91,8 @@ something nobody here has is in "Blocked", with what it waits for.
      Rescue; a busy shell 946 µs a frame against 3,468).
      The emoji picker (each showing a new window with a picker of its
      own; scrolling 3.2% of a core against 4.4%).
-     *Next, smallest first:* installer,
+     Olo Setup (its pages the same to the pixel).
+     *Next, smallest first:*
      pool, drive-setup, disk-usage, chrome, logs, palette, screenshot,
      diskbackup, portal, deskbar, notifications, doctor, telegram,
      activity, viewer, styled-edit, screen, tracker, passwords, terminal,
@@ -116,7 +117,8 @@ something nobody here has is in "Blocked", with what it waits for.
   the level again in that time); its hwmon (`thinkpad`) has `pwm1`,
   `pwm1_enable` (0 full, 1 by hand, 2 auto), `fan1_input` and
   `fan2_input`. As this was written its level read `disengaged`, 2,882
-  rpm, by whoever set it (not Olo: nothing of Olo's writes it). Both
+  rpm: Ben had set it so himself for a while ("yes i temporarily set
+  the fan myself"), which is what this is to do for him. Both
   are root's to write. *To do:* Auto and Full Speed in the panel, with
   how long (15 minutes to a day at most), the time left shown and
   counted down where the speed shows (the fans' rpm, live, while the

@@ -288,6 +288,7 @@ impl WindowSpec {
             app_id: Some(app_id().to_owned()).filter(|id| !id.is_empty()),
             layer_shell: self.layer_shell.clone(),
             dialog: self.dialog,
+            fullscreen: self.fullscreen,
             foreign_parent: self.foreign_parent.clone(),
             session_lock_output: self.session_lock_output.clone(),
             background: self.background,
