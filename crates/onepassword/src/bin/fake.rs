@@ -1,9 +1,11 @@
 //! `onepassword-fake [--account NAME] [--socket NAME] [--data FILE]
-//! [--accounts DIR]`: a stand-in 1Password app for headless sessions (see
-//! `fake`). It starts with sample data, or FILE's (which it keeps up to
-//! date; `others` in it are more signed-in accounts). `--accounts` writes
-//! DIR/1password.sqlite listing its accounts, as the app's own does (point
-//! `OLO_1PASSWORD_DATA` at DIR).
+//! [--accounts DIR] [--items N]`: a stand-in 1Password app for headless
+//! sessions (see `fake`). It starts with sample data, or FILE's (which it
+//! keeps up to date; `others` in it are more signed-in accounts).
+//! `--accounts` writes DIR/1password.sqlite listing its accounts, as the
+//! app's own does (point `OLO_1PASSWORD_DATA` at DIR). `--items N` adds N
+//! made-up logins to the sample (for measuring with a vault the size of a
+//! person's).
 
 fn main() {
     olo_crash::install();
@@ -11,6 +13,7 @@ fn main() {
     let mut socket = onepassword::desktop::SOCKET.to_string();
     let mut data = None;
     let mut accounts = None;
+    let mut items = 0usize;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -18,13 +21,18 @@ fn main() {
             "--socket" => socket = args.next().expect("--socket NAME"),
             "--data" => data = Some(std::path::PathBuf::from(args.next().expect("--data FILE"))),
             "--accounts" => accounts = Some(std::path::PathBuf::from(args.next().expect("--accounts DIR"))),
+            "--items" => items = args.next().and_then(|n| n.parse().ok()).expect("--items N"),
             _ => {
-                eprintln!("usage: onepassword-fake [--account NAME] [--socket NAME] [--data FILE] [--accounts DIR]");
+                eprintln!("usage: onepassword-fake [--account NAME] [--socket NAME] [--data FILE] [--accounts DIR] [--items N]");
                 std::process::exit(2);
             }
         }
     }
-    let contents = data.as_ref().and_then(|path| std::fs::read(path).ok()).and_then(|bytes| serde_json::from_slice(&bytes).ok()).unwrap_or_else(|| onepassword::fake::sample(&account));
+    let contents = data.as_ref().and_then(|path| std::fs::read(path).ok()).and_then(|bytes| serde_json::from_slice(&bytes).ok()).unwrap_or_else(|| {
+        let mut sample = onepassword::fake::sample(&account);
+        onepassword::fake::add_logins(&mut sample, items);
+        sample
+    });
     if let Some(dir) = accounts {
         let _ = std::fs::create_dir_all(&dir);
         let mut listed = vec![onepassword::fake::local_account(&contents)];

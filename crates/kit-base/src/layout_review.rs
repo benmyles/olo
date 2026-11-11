@@ -681,6 +681,13 @@ fn crowded_lines(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
             if ringed {
                 continue;
             }
+            // (A level bar's edges and the gloss along its fill, however
+            // thin the bar, a password's strength under it: the kit's,
+            // drawn so.)
+            let barred = p.controls.iter().any(|c| c.role == "ProgressBar" && c.rect.expand(SAME).contains_rect(*a) && c.rect.expand(SAME).contains_rect(*b));
+            if barred {
+                continue;
+            }
             if overlap >= 0.5 * shorter && gap > touching && gap < LINE_ROOM {
                 let text = format!(
                     "two lines {gap:.1} pt apart (at {:.0},{:.0} and {:.0},{:.0}): an edge almost on another's; give it room (`metrics::BOX_INSET`, `WINDOW_INSET`)",
@@ -787,6 +794,8 @@ fn uneven_gaps(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
 
 /// What a commit row's buttons say: they act on what's above them.
 const COMMITS: [&str; 5] = ["Apply", "Revert", "Save", "Save Changes", "Done"];
+/// A scroll bar's arrows, as the kit names them to agents.
+const SCROLL_ARROWS: [&str; 4] = ["Scroll Up", "Scroll Down", "Scroll Left", "Scroll Right"];
 
 /// A commit row (Apply, Revert…) with something close under it. The row acts on what's above it and ends that group, so what
 /// follows is a new section, `metrics::SECTION` under it; closer, the
@@ -795,6 +804,7 @@ const COMMITS: [&str; 5] = ["Apply", "Revert", "Save", "Save Changes", "Done"];
 /// were to each other).
 fn after_commit(p: &Parts, out: &mut Vec<Finding>) {
     let all = items(p);
+    let bars: Vec<Rect> = p.controls.iter().filter(|c| c.role == "ScrollBar" || (c.role == "Button" && SCROLL_ARROWS.contains(&c.name.as_str()))).map(|c| c.shown()).collect();
     let mut rows: Vec<f32> = Vec::new();
     // (Enabled or not: a dimmed Apply ends its group all the same. Push
     // buttons, a commit row's: a toolbar's Save is an icon, not one.)
@@ -807,7 +817,10 @@ fn after_commit(p: &Parts, out: &mut Vec<Finding>) {
             continue;
         }
         rows.push(r.max.y);
-        let under = all.iter().filter(|(o, ..)| o.min.y > r.max.y).map(|(o, name, ..)| (o.min.y - r.max.y, name.clone(), *o));
+        // (Not a scroll bar's own parts: the arrow at the foot of the
+        // bar beside a form scrolled to its end is the scroller's, not
+        // something that follows the form's Save.)
+        let under = all.iter().filter(|(o, ..)| o.min.y > r.max.y && !bars.contains(o)).map(|(o, name, ..)| (o.min.y - r.max.y, name.clone(), *o));
         let boxes = p.containers.iter().filter(|b| b.min.y > r.max.y && !p.panes.contains(b)).map(|b| (b.min.y - r.max.y, "a box".to_owned(), *b));
         let Some((gap, name, at)) = under.chain(boxes).min_by(|a, b| a.0.total_cmp(&b.0)) else { continue };
         if gap < crate::metrics::SECTION - NEAR_EDGE {
@@ -1235,6 +1248,38 @@ mod tests {
         // cut by nothing would: that's `text-cut`'s, not this.)
         p.texts = vec![text("Restore…", 258.0, 64.0)];
         assert!(found(&p).is_empty());
+    }
+
+    /// Something close under a form's Save is found; a scroll bar's
+    /// arrow there (the form scrolled to its end, the bar beside it)
+    /// isn't.
+    #[test]
+    fn a_scroll_arrow_does_not_follow_a_commit_row() {
+        let found = |p: &Parts| review(p, 400.0, 300.0, 2.0).into_iter().filter(|f| f.kind == "after-commit").count();
+        let under = |name: &str| {
+            let mut c = button(name, 110.0, "[under]");
+            c.rect = Rect::from_min_max(pos2(110.0, 46.0), pos2(190.0, 70.0));
+            c
+        };
+        let p = Parts { controls: vec![button("Save", 20.0, "[save]"), under("More…")], ..Parts::default() };
+        assert_eq!(found(&p), 1);
+        let p = Parts { controls: vec![button("Save", 20.0, "[save]"), under("Scroll Down")], ..Parts::default() };
+        assert_eq!(found(&p), 0);
+    }
+
+    /// Two long lines a few points apart are found; a thin level bar's
+    /// own (its edge, the gloss along its fill) aren't.
+    #[test]
+    fn a_level_bar_is_not_crowded_lines() {
+        let found = |p: &Parts| review(p, 400.0, 300.0, 2.0).into_iter().filter(|f| f.kind == "crowded-lines").count();
+        let line = |y: f32| Fill { rect: Rect::from_min_max(pos2(20.0, y), pos2(368.0, y + 1.0)), cut: [false; 4] };
+        let mut p = Parts { fills: vec![line(115.0), line(119.0)], ..Parts::default() };
+        assert_eq!(found(&p), 1);
+        let mut bar = button("Strong", 20.0, "[bar]");
+        bar.role = "ProgressBar".into();
+        bar.rect = Rect::from_min_max(pos2(20.0, 94.0), pos2(368.0, 121.0));
+        p.controls = vec![bar];
+        assert_eq!(found(&p), 0);
     }
 
     /// Words over others are found; the same words a point off (the

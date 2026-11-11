@@ -1123,7 +1123,14 @@ impl<'a> WindowCx<'a> {
                     }
                     self.core.current = None;
                 }
-                let Some(node) = self.core.scrollers.get(&id).copied() else { continue };
+                // (A scroller laid out for the first time this turn isn't
+                // listed yet, and its ends just came to be: found by its
+                // handle, so what hears of it does. A bar that shows only
+                // while there is something to scroll came, else, only
+                // once its view was scrolled.)
+                let is = |n: &Node| n.scroll.as_ref().is_some_and(|h| h.id() == id);
+                let listed = self.core.scrollers.get(&id).copied().filter(|node| self.core.nodes.get(*node).is_some_and(is));
+                let Some(node) = listed.or_else(|| self.core.nodes.iter().find(|(_, n)| is(n)).map(|(node, _)| node)) else { continue };
                 let Some((offset, listeners)) = self.core.nodes.get(node).and_then(|n| Some((n.scroll.as_ref()?.offset(), n.inter.as_ref()?.scroll_listeners.clone()))) else { continue };
                 self.core.current = Some(node);
                 for listener in listeners {

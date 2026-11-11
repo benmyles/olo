@@ -13986,9 +13986,11 @@ Passwords' setup offers them as a choice and keeps the UUID, which the
 SDK integration takes as the account's name.
 
 Tests never touch the real app. `onepassword-fake [--account NAME]
-[--socket NAME] [--data FILE] [--accounts DIR]` (DIR gets a
+[--socket NAME] [--data FILE] [--accounts DIR] [--items N]` (DIR gets a
 `1password.sqlite` listing it) serves an in-memory account (two vaults of
-sample items, item versions, OTP codes) over the same protocol;
+sample items, item versions, OTP codes; `--items N` adds N made-up
+logins, to measure Passwords with a vault the size of a person's) over
+the same protocol;
 `tests/desktop.rs` drives it. Apps take `OLO_1PASSWORD_SOCKET` to use it.
 
 Passwords is the app: sources (vaults, categories, Archive), a two-line
@@ -13997,38 +13999,72 @@ codes count down), an editor with templates per category, a Password
 Generator panel, and File/Edit/Item/View menus (⌘C username, ⇧⌘C password,
 ⇧⌘O one-time code, ⌘0 All Items, ⌘1–⌘9 the vaults by place, as
 `app_keys` has them). Secrets go to the clipboard with
-`olo_ui::copy::secret` and leave after `clear_seconds` (quit before,
-Passwords runs on without its windows until they do). A field (or website) drags out as text onto
-another app's field (`drag_field`: a one-time password's current code;
+`olo_kit::copy::secret` and leave after `clear_seconds` (quit before,
+Passwords runs on without its windows until they do: `Passwords::quit`
+closes them and ends at the next thing due, the secret's time; opened
+meanwhile, it carries on). A field (or website) drags out as text onto
+another app's field (`Detail::drag`, what goes `Passwords::dragged_field`:
+a one-time password's current code;
 the picture shows the field's name, never the value). It opens locked and locks after
 `lock_minutes` idle, and when the screen locks if `lock_with_screen`
 (`lock.rs`): Touch ID through fprintd, claimed only
 while the locked window has the keyboard, or the account password through
 PAM. Those, and `auto_sync`, are Preferences ▸ Security's
 (`Settings::security.passwords`, followed live through
-`olo_ui::settings::watch`; the screen locking comes from
+`olo_kit::settings::watch`; the screen locking comes from
 `settings::watch_power`, `PowerStatus::locked`; View ▸ Lock After writes
 the same setting with `settings::update`). Its own settings (accounts,
-the generator, the window size) live in `passwords.json`.
+the generator) live in `passwords.json`.
 
-It is on olo-ui: the app's state is a `Passwords` entity, which is the
-main window's view; the menu bar and the three panes are cached parts
-of it (`olo_ui::part`), so a one-time code counting down (a timer on
-the second, only while one shows) draws the item pane alone. Nothing
-ticks: one timer waits for the next thing due (a sync, the auto-lock,
-the status line clearing), set again whenever the app changes
-(`observe_self`). The list is worked out once for each change to the
-items, the source or the search (`visible`). Review Sync, Sync
+It is on olo-kit. Passwords runs with no window (started at login as
+the SSH agent and the keychain, locked) and its window comes and goes,
+so its state and what it does are the app's, not a window's: one
+`Passwords` behind a lock (`app()`, `main.rs`). The app's looper takes
+what the proxy brings (the store's replies, the lock's, other
+programs' requests, settings) with `Passwords::message`; each window's
+view locks it while it says what it shows and again to act, and
+`Passwords::changed` tells the windows to say what they show again.
+Nothing that waits is done under the lock, and nothing calls `app()`
+while holding it (it isn't re-entrant: a handler takes what it needs,
+lets go, then calls the kit). What only a window has (its text fields,
+its list, its scrollers) is its view's; what the app wants of those
+(the password field emptied, the search field given the keyboard, the
+editor's form made again for fields that came or went) it leaves in
+`Ui`, which the views take as they next say what they show
+(`take_asks`). The main window is `view::MainView` (the setup, lock and
+connection panels; the toolbar, sources, items under their filters and
+the status line); the selected item or its editor is a view of its own,
+`view::Detail`, so a one-time code counting down (the pane says what
+it shows again on the second, only while one shows), the pointer
+moving over the fields and typing in the editor draw that pane alone.
+Nothing ticks: the app's looper keeps one timer for the next thing due
+(a sync, the auto-lock, the status line clearing, a copied secret's
+time when it's closing), set again whenever the app changes
+(`next_due` lists only what `tick` would act on, so a time gone by
+never spins), and the main window one for when "Synced a minute ago"
+next reads differently. The list is worked out once for each change to
+the items, the source or the search (`visible`), and its rows keep
+their drawing by what they show (`row_key`). Review Sync, Sync
 Problems, the generator (a panel: it floats, never a tab) and the
-alerts are views of their own that read it; a passkey question closes
-itself when the page gives up. Debug builds only take the PAM test
+passkey question are views in windows of their own that read the app;
+alerts are the app's (`open_app_alert`, answered on the alert's
+looper); a passkey question closes itself when the page gives up.
+Debug builds only take the PAM test
 service, so a release build can't be unlocked in a test session: to
 measure one, build it with `CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true`
 in a scratch `CARGO_TARGET_DIR`. Tests give it a keychain socket of its
 own (`OLO_KEYCHAIN_SOCKET`; the default is the person's Passwords') and
 a fake 1Password on a socket of its own (`onepassword-fake --socket
 NAME --accounts DIR`, `OLO_1PASSWORD_SOCKET=NAME`,
-`OLO_1PASSWORD_DATA=DIR`).
+`OLO_1PASSWORD_DATA=DIR`). `olo-keychain-ask` (an example of
+olo-keychain: `cargo build -p olo-keychain --example olo-keychain-ask`)
+asks a test's Passwords one thing as Chrome's extension would (a
+passkey to make or sign with) and prints the answer's kind alone; it
+wants `OLO_KEYCHAIN_SOCKET`, so it never reaches the person's.
+A test session keeps what its Passwords kept (its dir's `config`), so a
+second start is a locked one; remove `config/olo/passwords.*` and
+`passwords.key` for the setup again. Return on the item list opens the
+item's website in a browser: tests press it only with an alert up.
 
 **Its own store** (`vault.rs`). Every vault and item lives on this
 computer, so the app, Chrome's extension and the palette never wait on
@@ -14145,15 +14181,21 @@ gnome-keyring), then
 -p olo-system secrets -- --ignored`; it refuses any other bus.
 
 ```sh
-target/debug/onepassword-fake --socket olo-fake &
-tools/dev/tsession start pw 2400x1600 --light
-tools/dev/tsession run pw OLO_1PASSWORD_SOCKET=olo-fake OLO_NO_FINGERPRINT=1 \
+target/debug/onepassword-fake --socket olo-fake --accounts $acc &
+tools/dev/tsession start pw 2560x1600 --light --home $home
+tools/dev/tsession run pw HOME=$home OLO_1PASSWORD_SOCKET=olo-fake OLO_1PASSWORD_DATA=$acc \
+    OLO_KEYCHAIN_SOCKET=$sock OLO_NO_FINGERPRINT=1 \
     OLO_PAM_CONFDIR=$dir OLO_PAM_SERVICE=exec target/debug/olo-passwords
 ```
 (`run` doesn't pass `OLO_PAM_*` on by itself; give them as above, with
-`$dir` set up as for the lock screen.) Account: `Olo Test` (choose
-Sync in the setup); password: whatever `check.sh` accepts. Pass
-`--data FILE` to the fake to see what reached "1Password".
+`$dir` set up as for the lock screen; `$acc`, `$home` and `$sock` are
+scratch paths of the test's own, under `/var/tmp`.) Account: `Olo Test`
+(choose Sync in the setup, then Apply in Review Sync); password:
+whatever `check.sh` accepts. Pass `--data FILE` to the fake to see what
+reached "1Password". The same line again while it runs is handed to
+the one running (its window comes back). `olo-op item list` with the
+same `OLO_KEYCHAIN_SOCKET` brings the Allow alert; `olo-keychain-ask`
+a passkey's question.
 
 ### op: 1Password's command line (apps/op)
 

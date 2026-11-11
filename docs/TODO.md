@@ -347,34 +347,53 @@ something nobody here has is in "Blocked", with what it waits for.
      each view, a name's edit ended by clicking another window (it
      ends as the window loses the keyboard, not as the field does),
      dark mode against the old build, the D-Bus file manager.
-     *Next, smallest first:* passwords, terminal, preferences.
-     *How Passwords moves* (2026-11-11, all of main.rs read; the kit
-     has `copy::secret` for it, and needs no `part`: a pane is a child
-     view): it runs with no window (`--agent`: the SSH agent and the
-     keychain, locked) and its window comes and goes, so `Passwords`
-     can't be its window's view. Its state and logic stay one struct,
-     the app's, behind a lock (`Arc<Mutex<Passwords>>`): the app's
-     looper takes what the proxy brings (the store's replies, the
-     lock's, other programs' requests, settings, the timers `Due`
-     kept) and the windows' views lock it to draw and to act. What
-     only a window has leaves it: the text fields (account, lock,
-     search, the editor's form), the list model, the scroll handles,
-     the focus handles; what the logic wants of them (clear the
-     password field, put text in the search, scroll the editor to its
-     end, make the form again, give the generator's password to a
-     field) it leaves as asks the main view takes when told to show
-     again. `cx.notify()` becomes "tell the window" (a `Refresh` to
-     its messenger) and the next thing due set on the app's looper;
-     alerts are the app's (`open_app_alert`), their answers locking it
-     again; `Rc` in it becomes `Arc` (the filters, the list worked
-     out). The main view's panes (sources, items, detail) are child
-     views, so a one-time code counting down shows the detail pane
-     again alone, each second, by its own timer. Review Sync, Sync
-     Problems, the generator and the passkey question are windows of
-     their own that lock the app the same way. Closing the main
-     window quits, as now. Tested as HACKING says: `onepassword-fake`,
-     `OLO_NO_FINGERPRINT=1`, a stand-in PAM service, tsession's key
-     file, a scratch home; never the real vault, account or keyring.
+     **Passwords** (2026-11-11): its state is the app's, behind a
+     lock (it runs with no window, as the SSH agent and the keychain),
+     and its windows are views that read it (HACKING, "Passwords").
+     Old against new, each in a session of its own with a fake
+     1Password, a stand-in PAM check, its own keychain socket and a
+     scratch home: the setup, Review Sync, the items, a field's hover,
+     Show, Copy and its menu, an item with a one-time code, the editor
+     (typed in, a secret shown, scrolled, cancelled), every menu, New
+     Item's, a search, the filters' menu, an item's menu, a category,
+     the generator, locking, a wrong password and the right one, a
+     locked start; a new login (the generator's Use, a field added),
+     saved, undone, redone, deleted, an item archived, changes
+     discarded; a field dragged out, `op` allowed, a passkey made and
+     signed with (and its question closing as its asker went), Sync
+     Problems, a copied secret outliving the window and the app
+     ending once it left, opened again meanwhile, a reload in place:
+     the same to the pixel at 1×, 1.5× and 2×, light and dark, but for
+     a caret's blink, a code's pie and the generator's password, and
+     the same answers to `op` and the passkey client. The review:
+     nothing at any scale in any window, light or dark. What agents
+     read is the same (a secret's dots, never its value). *Measured*
+     (release builds that take the test PAM service, 2×, 508 items,
+     old → new): at rest 0.0% both; a frame as the arrows go down the
+     list 1807 → 810 µs, the list scrolled 1192 → 319, a search typed
+     1520 → 1369, a code counting down 851 → 346, the pointer over an
+     item's fields 1059 → 620, typing in the editor 1923 → 318;
+     resident 104 → 106 MB at rest, 105 → 108 after. (An item's
+     details coming in no longer has the list and every filter worked
+     out again: the arrows were 1101 µs before that.) *Differences,
+     meant:* the item pane's scroll bar is there as a long item opens
+     (it came with the first scroll); "Synced a minute ago" counts the
+     minutes by itself; Escape closes Sync Problems and ⌘N works
+     after an editor is cancelled (nothing had the keyboard); the
+     list loses its focused look at once when the editor takes the
+     keyboard; Sync Problems' icons are level with their items at 1×.
+     *Found on the way, in the kits:* what hears a scroller wasn't
+     told of one laid out for the first time, so a bar that shows only
+     while there is something to scroll came with the first scroll;
+     the review took a scroll bar's arrow for what follows a form's
+     Save, and a thin level bar's edges for crowded lines. *For
+     tests:* `onepassword-fake --items N`, `olo-keychain-ask`. *Not
+     tried:* Touch ID, a security key and a look (a test session
+     leaves the readers alone), a real 1Password, Chrome's extension,
+     the SSH agent signing, the auto-lock's time passing, a link's
+     value opened (it starts a browser), several accounts, Reset, on
+     an agent screen (what's shared with it).
+     *Next, smallest first:* terminal, preferences.
   6. **The build from before all this, on the login screen** (Ben,
      2026-11-11: "when you finish can you also make the pre-refactor
      known good build available as a login option in the display
@@ -417,6 +436,24 @@ something nobody here has is in "Blocked", with what it waits for.
      is opened before the one it's about is closed, or the app ends
      between them; a test that drives a file panel types a name, not
      a path, and checks the file is there before believing the shot.
+     An app that runs with no window keeps its state behind a lock
+     the windows' views take to say what they show and to act
+     (Passwords): never taken while it's held (a handler takes what
+     it needs, lets go, then calls the kit), what's drawn later (a
+     list's cells) drawn from what the view kept, and what the app
+     wants of a view's own things (a field emptied, the keyboard
+     moved) left as asks the view takes in `body`. `olo_kit::quit`
+     ends the program at once: one that must outlive its windows a
+     while (a copied secret) closes them, stays resident and quits at
+     its own time. What reads differently as time passes ("a minute
+     ago", a code's pie) wakes its own view for it (`Due`): nothing
+     draws again by itself. What must hold after an event is over
+     (which field has the keyboard, once a press beside it has taken
+     it) is decided in `body` after an `invalidate`, not in the
+     event's handler. A test session keeps what its app kept between
+     starts; Return on a list opens things (a browser, in a test):
+     press it only with the alert up; a difference from the old
+     build may be the old build's (look before fixing).
 
 ## Not started (highest priority first)
 

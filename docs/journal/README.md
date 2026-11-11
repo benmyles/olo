@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-11
 
+### Passwords on olo-kit
+
+*12:08* — Passwords moved from GPUI to Olo's own kits: its state is the app's, behind a lock, since it runs with no window as the SSH agent and the keychain; the main window, Review Sync, Sync Problems, the generator and a passkey's question are views that read it. The same to the pixel as before at 1×, 1.5× and 2×, light and dark, but for what was wrong: the item pane's scroll bar is there as an item opens (it came with the first scroll), Sync Problems' icons are level with their items at 1×, and “Synced a minute ago” counts the minutes by itself. A frame typing in the editor went from 1.9 ms to 0.3, the arrows down a list of 508 from 1.8 to 0.8.
+
+![Passwords on olo-kit](2026-11-11/120840-passwords-on-olo-kit.png)
+
 ### Activity Monitor: the fans against what they cool
 
 *04:00* — Sensors has a Fans card in place of a small graph a fan: each fan's speed, the processor's temperature and how often it was throttled for heat on one graph (each to its own scale, the fans to one), the fan profile in use and the level Olo's fan service holds, and the throttling counted since the computer started and since the window opened, so a fan curve can be seen to work. (Activity Monitor is on olo-kit as of today.)

@@ -49,7 +49,7 @@ const KEY_ATTRS: &[(&str, &str)] = olo_system::secrets::PASSWORDS_KEY.attributes
 pub const LOCAL: &str = "local-";
 
 pub fn path() -> PathBuf {
-    olo_ui::config_dir().join("passwords.vault")
+    olo_kit::config_dir().join("passwords.vault")
 }
 
 /// What 1Password had of an item when it was last synced.
