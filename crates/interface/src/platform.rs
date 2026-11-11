@@ -24,7 +24,6 @@ use std::time::{Duration, Instant};
 use std::{
     fmt::{self, Debug},
     ops::Range,
-    path::{Path, PathBuf},
     rc::Rc,
     sync::Arc,
 };

@@ -1,10 +1,4 @@
-use std::{
-    env,
-    path::{Path, PathBuf},
-    process::Command,
-    rc::Rc,
-    sync::Arc,
-};
+use std::{env, path::PathBuf, rc::Rc, sync::Arc};
 use std::{
     ffi::OsString,
     fs::File,
@@ -13,10 +7,8 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{Context as _, anyhow};
 use async_task::Runnable;
 use calloop::{LoopSignal, channel::Channel};
-use futures::channel::oneshot;
 use util::ResultExt as _;
 use xkbcommon::xkb::{self, Keycode, Keysym, State};
 

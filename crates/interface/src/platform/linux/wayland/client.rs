@@ -8,7 +8,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use ashpd::WindowIdentifier;
 use ashpd::url::Url;
 use calloop::{
     EventLoop, LoopHandle,

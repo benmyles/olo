@@ -16,9 +16,9 @@ use anyhow::Result;
 use collections::FxHashMap;
 
 use crate::{
-    AtlasTile, Background, BorderStyle, Bounds, BoxShadow, Corners, DevicePixels, Edges, FontId, GlyphId, Hsla, ImageTriangle, IsZero as _, MonochromeSprite, Path, Pixels, PlatformAtlas, Point,
-    PolychromeSprite, Quad, RenderGlyphParams, RenderImage, RenderImageParams, RenderSvgParams, SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ScaledPixels, Scene, Sector, Segment, Shadow, SharedString,
-    StrikethroughStyle, SvgRenderer, TextRendering, TextStyle, TextStyleRefinement, TransformationMatrix, Underline, UnderlineStyle, WindowTextSystem, point, px, size, transparent_black,
+    AtlasTile, Background, BorderStyle, Bounds, BoxShadow, Corners, DevicePixels, Edges, FontId, GlyphId, Hsla, IsZero as _, MonochromeSprite, Path, Pixels, PlatformAtlas, Point, PolychromeSprite,
+    Quad, RenderGlyphParams, RenderImage, RenderImageParams, RenderSvgParams, SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ScaledPixels, Scene, Sector, Segment, Shadow, SharedString, StrikethroughStyle,
+    SvgRenderer, TextRendering, TextStyle, TextStyleRefinement, TransformationMatrix, Underline, UnderlineStyle, WindowTextSystem, point, px, size, transparent_black,
 };
 use refineable::Refineable as _;
 

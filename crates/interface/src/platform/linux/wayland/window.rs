@@ -9,7 +9,6 @@ use std::{
 use blade_graphics as gpu;
 use calloop::LoopHandle;
 use collections::HashMap;
-use futures::channel::oneshot::Receiver;
 
 use anyhow::Context as _;
 use raw_window_handle as rwh;
@@ -31,8 +30,8 @@ use wayland_protocols_plasma::blur::client::org_kde_kwin_blur;
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
 use crate::{
-    Bounds, Decorations, DevicePixels, Globals, GpuSpecs, Modifiers, Output, Pixels, PlatformDisplay, PlatformInput, Point, PromptButton, PromptLevel, RequestFrameOptions, ResizeEdge, Size, Tiling,
-    WaylandClientStatePtr, WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowControls, WindowDecorations, WindowId, WindowParams, px, size,
+    Bounds, Decorations, DevicePixels, Globals, GpuSpecs, Modifiers, Output, Pixels, PlatformDisplay, PlatformInput, Point, RequestFrameOptions, ResizeEdge, Size, Tiling, WaylandClientStatePtr,
+    WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowControls, WindowDecorations, WindowId, WindowParams, px, size,
 };
 use crate::{
     Capslock,

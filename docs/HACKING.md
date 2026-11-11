@@ -2185,7 +2185,16 @@ event reaches it.
   name; ↑↓ and Return; "Always open files like … with it"), a dialog
   over the window in front that closes itself
   (`open_with::window_options()` to open it yourself).
-  `examples/panel.rs` opens each.
+  `examples/panel_gpui.rs` opens each. On olo-kit (`olo_kit::file_panel`,
+  `olo_kit::open_with`) they are the same to the pixel, and a panel is
+  a window on a looper of its own: `file_panel::show(title, panel,
+  on_done)` takes no context, and `on_done` (`FnOnce(Answer) + Send`) is
+  called once on the panel's looper, so it sends the asking view a
+  message (`cx.messenger()`) rather than touching it, as a BFilePanel
+  messages its target; `open_with::run(cmd, kind, paths)` likewise.
+  The kit's `examples/panel.rs` opens each; `tools/dev/kit-compare
+  panel_gpui panel --do "click 50 30" --then Open` compares a panel
+  the steps open (`--then TITLE`).
 - Menu items take icons (`Menu::icon(name)`, an item's or a submenu's):
   a column of them between the check marks and the labels, faded when
   the item can't be chosen.

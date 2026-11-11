@@ -1534,6 +1534,14 @@ impl<'a> WindowCx<'a> {
         self.core.state
     }
 
+    /// A handle another program's window can name to open over this
+    /// one (xdg-foreign: Quick Look over a file panel), handed to `done`
+    /// once the compositor says it, on the display thread; None if
+    /// windows can't be exported.
+    pub fn export_handle(&self, done: impl FnOnce(Option<String>) + Send + 'static) {
+        self.on_display(move |window| window.export_handle(Box::new(done)));
+    }
+
     /// Brings the window forward and gives it the keyboard.
     pub fn activate_window(&mut self) {
         self.on_display(|window| window.activate());

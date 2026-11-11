@@ -9,11 +9,13 @@
 pub mod agent;
 mod app;
 pub mod cut;
+pub mod file_panel;
 pub mod icons;
 mod kept;
 pub mod keys;
 mod lock;
 pub mod menu;
+pub mod open_with;
 pub mod pictures;
 pub mod review;
 pub mod style;

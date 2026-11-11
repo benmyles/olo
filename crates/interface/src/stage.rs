@@ -11,7 +11,7 @@
 
 use std::{
     cell::{Cell, RefCell},
-    rc::{Rc, Weak},
+    rc::Rc,
     sync::Arc,
     time::{Duration, Instant},
 };
