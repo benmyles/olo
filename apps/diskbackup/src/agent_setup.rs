@@ -61,7 +61,7 @@ pub fn start(login: &Shareable) -> Result<String, String> {
     let screen = screen_name();
     running(&screen)?;
     share(&screen, login)?;
-    let settings = olo_ui::settings::current().map(|s| s.ai.claude_code).unwrap_or_default();
+    let settings = olo_kit::settings::current().map(|s| s.ai.claude_code).unwrap_or_default();
     claude(&brief(&screen, login), &settings)?;
     tracing::info!(screen, login = login.title, model = settings.model, "diskbackup: an agent is setting up Google Drive");
     Ok(screen)

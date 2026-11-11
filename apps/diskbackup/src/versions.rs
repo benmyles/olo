@@ -13,28 +13,29 @@ use std::{
 };
 
 use olo_diskbackup::{Progress, Repo};
-use olo_protocol::diskbackup::{Reply, Request, Settings, Version};
-use olo_ui::{
-    Proxy,
-    gpui::{self, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _, Window, div, px},
-    metrics as m, style, theme,
-    widgets::{Button, Column, ColumnListView, ListModel, StringView, alert},
+use olo_kit::{
+    ClickEvent, Cx, Element, ParentElement as _, Styled as _, View, div, metrics as m, px, style, theme,
+    widgets::{Button, Column, ColumnListView, ListModel, StringView, open_alert},
 };
+use olo_protocol::diskbackup::{Reply, Request, Settings, Version};
 
-use crate::{app::Msg, target};
+use crate::target;
 
-/// What a worker tells a Versions window.
+/// What a Versions window is told: by its workers, its alert, and the app.
 pub enum Done {
     Listed(Result<Vec<Version>, String>),
     Progress(u64),
     Restored(Result<String, String>),
+    /// A backup finished: its versions are read again.
+    Reload,
+    /// This version put back as that: the person said which.
+    Run(Version, PathBuf),
 }
 
 pub struct VersionsWindow {
-    proxy: Proxy,
-    pub path: PathBuf,
+    path: PathBuf,
     versions: Vec<Version>,
-    list: Entity<ListModel>,
+    list: ListModel,
     status: (String, bool),
     restoring: Option<Arc<AtomicBool>>,
 }
@@ -69,66 +70,27 @@ fn open() -> Result<(Settings, Repo), String> {
 }
 
 impl VersionsWindow {
-    pub fn new(proxy: Proxy, path: PathBuf, cx: &mut Context<Self>) -> VersionsWindow {
-        let mut w = VersionsWindow { proxy, path, versions: Vec::new(), list: ListModel::new(cx, false), status: ("Looking…".into(), false), restoring: None };
+    pub fn new(path: PathBuf, cx: &mut Cx<Self>) -> VersionsWindow {
+        let w = VersionsWindow { path, versions: Vec::new(), list: ListModel::new(false), status: ("Looking…".into(), false), restoring: None };
         w.reload(cx);
         w
     }
 
     /// Its versions read again, on a worker.
-    pub fn reload(&mut self, _: &mut Context<Self>) {
-        let (at, proxy) = (self.path.clone(), self.proxy.clone());
-        std::thread::spawn(move || {
-            let r = load(&at);
-            proxy.send(Msg::Versions(at, Done::Listed(r)));
-        });
+    fn reload(&self, cx: &mut Cx<Self>) {
+        let at = self.path.clone();
+        cx.work(move || load(&at), Done::Listed);
     }
 
-    pub fn message(&mut self, d: Done, cx: &mut Context<Self>) {
-        match d {
-            Done::Listed(Ok(vs)) => {
-                self.versions = vs;
-                self.status = (
-                    match self.versions.len() {
-                        0 => "The backups have no version of it.".into(),
-                        1 if self.versions[0].current => "The backups have only the version there now.".into(),
-                        _ => String::new(),
-                    },
-                    false,
-                );
-                // The newest that isn't what's there now, chosen.
-                if let Some(i) = self.versions.iter().position(|v| !v.current) {
-                    self.list.update(cx, |m, _| {
-                        m.state.selected = [i].into();
-                        m.state.cursor = Some(i);
-                    });
-                }
-            }
-            Done::Listed(Err(e)) => self.status = (format!("Its versions can’t be read: {e}."), true),
-            Done::Progress(bytes) => {
-                if self.restoring.is_some() {
-                    self.status = (format!("Restoring: {} so far…", crate::app::size(bytes)), false);
-                }
-            }
-            Done::Restored(r) => {
-                self.restoring = None;
-                self.status = match r {
-                    Ok(s) => (s, false),
-                    Err(e) => (e, true),
-                };
-            }
-        }
-        cx.notify();
-    }
-
-    fn chosen(&self, cx: &gpui::App) -> Option<Version> {
-        self.list.read(cx).state.cursor.and_then(|i| self.versions.get(i)).cloned()
+    fn chosen(&self) -> Option<Version> {
+        let at = self.list.state().cursor;
+        at.and_then(|i| self.versions.get(i)).cloned()
     }
 
     /// The chosen version back: asked Keep Both (beside, named with when it
     /// was modified) or Replace, if something's there now.
-    fn restore(&mut self, cx: &mut Context<Self>) {
-        let Some(v) = self.chosen(cx) else { return };
+    fn restore(&mut self, cx: &mut Cx<Self>) {
+        let Some(v) = self.chosen() else { return };
         if v.current || self.restoring.is_some() {
             return;
         }
@@ -139,22 +101,24 @@ impl VersionsWindow {
         let beside = self.path.with_file_name(crate::restore::beside(&name, v.mtime / 1_000_000_000));
         let message =
             format!("“{name}” is there now. Replace it with the version modified {}, or keep both (the restored one named with its time)?", crate::restore::when_said(v.mtime / 1_000_000_000));
-        let (me, here) = (cx.entity(), self.path.clone());
-        alert::open_alert(cx, "Restore", "warning", &message, &["Cancel", "Keep Both", "Replace"], move |choice, cx| match choice {
-            Some(1) => me.update(cx, |w, cx| w.run(v.clone(), beside.clone(), cx)),
-            Some(2) => me.update(cx, |w, cx| w.run(v.clone(), here.clone(), cx)),
-            _ => {}
+        let (to, here) = (cx.messenger(), self.path.clone());
+        open_alert(cx, "Restore", "warning", &message, &["Cancel", "Keep Both", "Replace"], move |choice, _| {
+            match choice {
+                Some(1) => to.send(Done::Run(v.clone(), beside.clone())),
+                Some(2) => to.send(Done::Run(v.clone(), here.clone())),
+                _ => false,
+            };
         });
     }
 
     /// `v` put back as `to`, on a worker (a shared lock held, the index read
     /// again first); its progress every quarter second.
-    fn run(&mut self, v: Version, to: PathBuf, cx: &mut Context<Self>) {
+    fn run(&mut self, v: Version, to: PathBuf, cx: &mut Cx<Self>) {
         let cancel = Arc::new(AtomicBool::new(false));
         self.restoring = Some(cancel.clone());
         self.status = ("Restoring…".into(), false);
-        cx.notify();
-        let (proxy, from) = (self.proxy.clone(), self.path.clone());
+        cx.invalidate();
+        let (proxy, from) = (cx.messenger(), self.path.clone());
         std::thread::spawn(move || {
             let progress = Progress::default();
             let done = AtomicBool::new(false);
@@ -162,7 +126,7 @@ impl VersionsWindow {
                 let reporter = s.spawn(|| {
                     while !done.load(Relaxed) {
                         std::thread::park_timeout(std::time::Duration::from_millis(250));
-                        proxy.send(Msg::Versions(from.clone(), Done::Progress(progress.bytes.load(Relaxed))));
+                        proxy.send(Done::Progress(progress.bytes.load(Relaxed)));
                     }
                 });
                 let r = (|| -> Result<(), String> {
@@ -183,58 +147,87 @@ impl VersionsWindow {
                 Err(e) if e == olo_diskbackup::Error::Cancelled.to_string() => Err("Stopped.".into()),
                 Err(e) => Err(format!("Couldn’t restore: {e}.")),
             };
-            proxy.send(Msg::Versions(from, Done::Restored(out)));
+            proxy.send(Done::Restored(out));
         });
     }
 }
 
-impl Render for VersionsWindow {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let p = theme::palette(cx);
-        let me = cx.entity();
-        let rows = self.versions.clone();
+impl View for VersionsWindow {
+    type Message = Done;
+
+    fn message(&mut self, d: Done, cx: &mut Cx<Self>) {
+        match d {
+            Done::Listed(Ok(vs)) => {
+                self.versions = vs;
+                self.status = (
+                    match self.versions.len() {
+                        0 => "The backups have no version of it.".into(),
+                        1 if self.versions[0].current => "The backups have only the version there now.".into(),
+                        _ => String::new(),
+                    },
+                    false,
+                );
+                // The newest that isn't what's there now, chosen.
+                if let Some(i) = self.versions.iter().position(|v| !v.current) {
+                    let mut state = self.list.state_mut();
+                    state.selected = [i].into();
+                    state.cursor = Some(i);
+                }
+            }
+            Done::Listed(Err(e)) => self.status = (format!("Its versions can’t be read: {e}."), true),
+            Done::Progress(bytes) => {
+                if self.restoring.is_some() {
+                    self.status = (format!("Restoring: {} so far…", crate::app::size(bytes)), false);
+                }
+            }
+            Done::Reload => return self.reload(cx),
+            Done::Run(v, to) => return self.run(v, to, cx),
+            Done::Restored(r) => {
+                self.restoring = None;
+                self.status = match r {
+                    Ok(s) => (s, false),
+                    Err(e) => (e, true),
+                };
+            }
+        }
+        cx.invalidate();
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        let p = theme::palette();
         let when = crate::restore::when;
         let list = ColumnListView::new(
+            cx,
             "versions",
             &self.list,
             vec![Column::new("Modified", 210.0), Column::new("Size", 90.0).right(), Column::new("Backed Up", 230.0)],
-            rows.len(),
-            move |cell, window, cx| {
-                let Some(v) = rows.get(cell.row) else { return };
+            self.versions.len(),
+            move |w: &VersionsWindow, cell, g| {
+                let Some(v) = w.versions.get(cell.row) else { return };
                 match cell.column {
-                    0 => cell.text(window, cx, if v.current { format!("{} (there now)", when(v.mtime / 1_000_000_000)) } else { when(v.mtime / 1_000_000_000) }),
-                    1 => cell.text(window, cx, crate::restore::size(v.size)),
-                    _ => cell.text(window, cx, if v.first == v.time { when(v.time) } else { format!("{} to {}", when(v.first), when(v.time)) }),
+                    0 => cell.text(g, if v.current { format!("{} (there now)", when(v.mtime / 1_000_000_000)) } else { when(v.mtime / 1_000_000_000) }),
+                    1 => cell.text(g, crate::restore::size(v.size)),
+                    _ => cell.text(g, if v.first == v.time { when(v.time) } else { format!("{} to {}", when(v.first), when(v.time)) }),
                 }
             },
         )
-        .on_select({
-            let me = me.clone();
-            move |_, cx| me.update(cx, |_, cx| cx.notify())
-        })
-        .on_open({
-            let me = me.clone();
-            move |_, _, cx| me.update(cx, |w, cx| w.restore(cx))
-        });
+        .on_select(cx.listener(|_: &mut VersionsWindow, _: &(), cx| cx.invalidate()))
+        .on_open(cx.listener(|w: &mut VersionsWindow, _: &usize, cx| w.restore(cx)));
         let shown = self.path.display().to_string().replace(&target::home().display().to_string(), "~");
         let (text, error) = self.status.clone();
-        let status = StringView::new(if text.is_empty() { " ".into() } else { text }).wrap(true).color(if error { style::c(p.failure) } else { style::disabled_text(&p) });
-        let can = self.chosen(cx).is_some_and(|v| !v.current) && self.restoring.is_none();
+        let status = StringView::new(if text.is_empty() { " ".to_owned() } else { text }).wrap(true).color(if error { style::c(p.failure) } else { style::disabled_text(&p) });
+        let can = self.chosen().is_some_and(|v| !v.current) && self.restoring.is_none();
         let mut buttons = div().flex().flex_row().items_center().justify_end().gap(px(m::SPACING));
         if let Some(stop) = self.restoring.clone() {
-            buttons = buttons.child(Button::new("Stop").on_click(move |_, _| stop.store(true, Relaxed)));
+            buttons = buttons.child(Button::new("Stop").on_click(move |_: &ClickEvent, _| stop.store(true, Relaxed)));
         }
-        let here = me.clone();
-        buttons = buttons.child(Button::new("Restore").enabled(can).on_click(move |_, cx| here.update(cx, |w, cx| w.restore(cx))));
+        buttons = buttons.child(Button::new("Restore").enabled(can).on_click(cx.listener(|w: &mut VersionsWindow, _: &ClickEvent, cx| w.restore(cx))));
         div().size_full().flex().flex_col().gap(px(m::SPACING)).p(px(m::WINDOW_INSET)).child(StringView::new(shown)).child(div().flex_1().min_h_0().child(list)).child(status).child(buttons)
     }
 }
 
 /// The window's options (titled with the file's name).
-pub fn options(path: &std::path::Path) -> olo_ui::WindowOptions {
+pub fn options(path: &std::path::Path) -> olo_kit::WindowOptions {
     let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    olo_ui::WindowOptions::new(format!("Versions of {name}"), 600.0, 340.0).min_size(480.0, 240.0).keep_size("versions")
+    olo_kit::WindowOptions::new(format!("Versions of {name}"), 600.0, 340.0).min_size(480.0, 240.0).keep_size("versions")
 }
-
-#[allow(unused_imports)]
-use gpui::AppContext as _;

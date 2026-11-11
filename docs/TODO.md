@@ -110,7 +110,7 @@ something nobody here has is in "Blocked", with what it waits for.
      the model).
      *Next, smallest first:*
      screenshot,
-     diskbackup, portal, deskbar, notifications, doctor, telegram,
+     portal, deskbar, notifications, doctor, telegram,
      activity, viewer, styled-edit, screen, tracker, passwords, terminal,
      preferences.
   5. **Tools, HACKING and the Olo Book**; GPUI and olo-ui leave the

@@ -13,16 +13,15 @@ use std::{
 };
 
 use olo_diskbackup::{Id, Kind, Node, Progress, Repo, Snapshot, restore::find};
-use olo_protocol::diskbackup::Settings;
-use olo_ui::{
-    Proxy,
+use olo_kit::{
+    ClickEvent, Cx, Element, ParentElement as _, Styled as _, View, div,
     file_panel::{self, FilePanel, PanelResult},
-    gpui::{self, App, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _, Window, div, px},
-    metrics as m, style, theme,
-    widgets::{Button, Column, ColumnListView, ListModel, StringView, alert},
+    metrics as m, px, style, theme,
+    widgets::{Button, Column, ColumnListView, ListModel, StringView, open_alert},
 };
+use olo_protocol::diskbackup::Settings;
 
-use crate::{app::Msg, target};
+use crate::target;
 
 /// The backup open, for the window and its workers.
 type Shared = Arc<RwLock<Repo>>;
@@ -34,10 +33,12 @@ pub enum Done {
     Listed(u64, Result<Vec<Node>, String>),
     Progress(u64, u64, String),
     Restored(Result<String, String>),
+    /// Put each (where it was in the snapshot, where it goes) back: the
+    /// person said where.
+    Run(Vec<(PathBuf, PathBuf)>),
 }
 
 pub struct RestoreWindow {
-    proxy: Proxy,
     /// (Its index read again if the backup was tidied since: `retrying`.)
     repo: Option<Arc<RwLock<Repo>>>,
     /// Newest first.
@@ -47,8 +48,8 @@ pub struct RestoreWindow {
     dir: PathBuf,
     nodes: Vec<Node>,
     listing: u64,
-    snaps: Entity<ListModel>,
-    files: Entity<ListModel>,
+    snaps: ListModel,
+    files: ListModel,
     /// What to say (and whether it's an error).
     status: (String, bool),
     /// Putting back: its Stop.
@@ -108,23 +109,10 @@ pub(crate) fn beside(name: &str, time: i64) -> String {
 }
 
 impl RestoreWindow {
-    pub fn new(proxy: Proxy, cx: &mut Context<Self>) -> RestoreWindow {
-        let w = RestoreWindow {
-            proxy: proxy.clone(),
-            repo: None,
-            snapshots: Vec::new(),
-            snap: None,
-            dir: target::home(),
-            nodes: Vec::new(),
-            listing: 0,
-            snaps: ListModel::new(cx, false),
-            files: ListModel::new(cx, true),
-            status: ("Opening the backup…".into(), false),
-            restoring: None,
-        };
+    pub fn new(cx: &mut Cx<Self>) -> RestoreWindow {
         // The backup opened, its index read and its snapshots listed.
-        std::thread::spawn(move || {
-            let r = (|| -> Result<_, String> {
+        cx.work(
+            || -> Result<_, String> {
                 let s = Settings::load();
                 let limits = target::Limits::new();
                 limits.follow(&s);
@@ -133,57 +121,30 @@ impl RestoreWindow {
                 let mut snaps = repo.snapshots().map_err(|e| e.to_string())?;
                 snaps.reverse();
                 Ok((Arc::new(RwLock::new(repo)), snaps))
-            })();
-            proxy.send(Msg::Restore(Done::Opened(r)));
-        });
-        w
-    }
-
-    pub fn message(&mut self, d: Done, cx: &mut Context<Self>) {
-        match d {
-            Done::Opened(Ok((repo, snaps))) => {
-                self.repo = Some(repo);
-                self.snapshots = snaps;
-                self.status = (if self.snapshots.is_empty() { "Nothing backed up yet.".into() } else { String::new() }, false);
-                if !self.snapshots.is_empty() {
-                    self.choose_snapshot(0, cx);
-                }
-            }
-            Done::Opened(Err(e)) => self.status = (format!("The backup can’t be opened: {e}."), true),
-            Done::Listed(n, r) if n == self.listing => match r {
-                Ok(nodes) => {
-                    self.nodes = nodes;
-                    self.files.update(cx, |m, _| m.state.selected.clear());
-                    if self.restoring.is_none() {
-                        self.status = (String::new(), false);
-                    }
-                }
-                Err(e) => self.status = (e, true),
             },
-            Done::Listed(..) => {}
-            Done::Progress(files, bytes, current) => {
-                if self.restoring.is_some() {
-                    let shown = current.replace(&target::home().display().to_string(), "~");
-                    self.status = (format!("Restoring: {files} {}, {} so far. {shown}", if files == 1 { "file" } else { "files" }, size(bytes)), false);
-                }
-            }
-            Done::Restored(r) => {
-                self.restoring = None;
-                self.status = match r {
-                    Ok(s) => (s, false),
-                    Err(e) => (e, true),
-                };
-            }
+            Done::Opened,
+        );
+        RestoreWindow {
+            repo: None,
+            snapshots: Vec::new(),
+            snap: None,
+            dir: target::home(),
+            nodes: Vec::new(),
+            listing: 0,
+            snaps: ListModel::new(false),
+            files: ListModel::new(true),
+            status: ("Opening the backup…".into(), false),
+            restoring: None,
         }
-        cx.notify();
     }
 
-    fn choose_snapshot(&mut self, i: usize, cx: &mut Context<Self>) {
+    fn choose_snapshot(&mut self, i: usize, cx: &mut Cx<Self>) {
         self.snap = Some(i);
-        self.snaps.update(cx, |m, _| {
-            m.state.selected = [i].into();
-            m.state.cursor = Some(i);
-        });
+        {
+            let mut state = self.snaps.state_mut();
+            state.selected = [i].into();
+            state.cursor = Some(i);
+        }
         // Where the home folder was, if it was backed up; else the top.
         let dir = self.dir.clone();
         self.show(dir, cx);
@@ -191,14 +152,14 @@ impl RestoreWindow {
 
     /// Show folder `dir` of the chosen snapshot (its entries read on a
     /// worker; the top if it isn't there).
-    fn show(&mut self, dir: PathBuf, cx: &mut Context<Self>) {
+    fn show(&mut self, dir: PathBuf, cx: &mut Cx<Self>) {
         let (Some(repo), Some((_, snap))) = (self.repo.clone(), self.snap.and_then(|i| self.snapshots.get(i)).cloned()) else { return };
         self.listing += 1;
         let n = self.listing;
         self.dir = dir.clone();
         self.status = ("Reading…".into(), false);
-        cx.notify();
-        let proxy = self.proxy.clone();
+        cx.invalidate();
+        let proxy = cx.messenger();
         std::thread::spawn(move || {
             let r = target::retrying(&repo, |repo| {
                 let mut at = dir.clone();
@@ -216,33 +177,32 @@ impl RestoreWindow {
                 nodes.sort_by(|a, b| (a.kind != Kind::Dir).cmp(&(b.kind != Kind::Dir)).then_with(|| name_of(a).to_lowercase().cmp(&name_of(b).to_lowercase())));
                 Ok(nodes)
             });
-            proxy.send(Msg::Restore(Done::Listed(n, r)));
+            proxy.send(Done::Listed(n, r));
         });
     }
 
-    fn open_row(&mut self, row: usize, cx: &mut Context<Self>) {
+    fn open_row(&mut self, row: usize, cx: &mut Cx<Self>) {
         if let Some(n) = self.nodes.get(row).filter(|n| n.kind == Kind::Dir) {
             let dir = self.dir.join(name_of(n));
             self.show(dir, cx);
         }
     }
 
-    fn up(&mut self, cx: &mut Context<Self>) {
+    fn up(&mut self, cx: &mut Cx<Self>) {
         if let Some(parent) = self.dir.parent().map(Path::to_path_buf) {
             self.show(parent, cx);
         }
     }
 
-    /// The entries chosen (all of them if none is).
-    fn chosen(&self, cx: &App) -> Vec<Node> {
-        let sel = &self.files.read(cx).state.selected;
-        if sel.is_empty() { Vec::new() } else { sel.iter().filter_map(|&i| self.nodes.get(i).cloned()).collect() }
+    /// The entries chosen.
+    fn chosen(&self) -> Vec<Node> {
+        self.files.state().selected.iter().filter_map(|&i| self.nodes.get(i).cloned()).collect()
     }
 
     /// Put the chosen back where they were: asked first if anything is
     /// there now (Replace, or Keep Both: beside it, named with its time).
-    fn restore_here(&mut self, cx: &mut Context<Self>) {
-        let chosen = self.chosen(cx);
+    fn restore_here(&mut self, cx: &mut Cx<Self>) {
+        let chosen = self.chosen();
         let Some((_, snap)) = self.snap.and_then(|i| self.snapshots.get(i)).cloned() else { return };
         if chosen.is_empty() {
             return;
@@ -267,41 +227,41 @@ impl RestoreWindow {
             many => format!("{} of these are there now.", many.len()),
         };
         let message = format!("{what} Replace with the version backed up {}, or keep both (the restored one named with its time)?", when_said(snap.time));
-        let me = cx.entity();
-        alert::open_alert(cx, "Restore", "warning", &message, &["Cancel", "Keep Both", "Replace"], move |choice, cx| match choice {
-            Some(1) => me.update(cx, |w, cx| w.run(both.clone(), cx)),
-            Some(2) => me.update(cx, |w, cx| w.run(replace.clone(), cx)),
-            _ => {}
+        let to = cx.messenger();
+        open_alert(cx, "Restore", "warning", &message, &["Cancel", "Keep Both", "Replace"], move |choice, _| {
+            match choice {
+                Some(1) => to.send(Done::Run(both.clone())),
+                Some(2) => to.send(Done::Run(replace.clone())),
+                _ => false,
+            };
         });
     }
 
     /// Put the chosen into a folder chosen.
-    fn restore_to(&mut self, cx: &mut Context<Self>) {
-        let chosen = self.chosen(cx);
+    fn restore_to(&mut self, cx: &mut Cx<Self>) {
+        let chosen = self.chosen();
         if chosen.is_empty() {
             return;
         }
         let dir = self.dir.clone();
-        let me = cx.entity();
-        cx.defer(move |cx| {
-            file_panel::show(cx, "Restore To", FilePanel::folder(target::home()), move |a, cx| {
-                if let PanelResult::Chosen(to) = a.result {
-                    let pairs = chosen.iter().map(|n| (dir.join(name_of(n)), to.join(name_of(n)))).collect();
-                    me.update(cx, |w, cx| w.run(pairs, cx));
-                }
-            });
+        // (The panel answers on its own looper: it tells this window.)
+        let tell = cx.messenger();
+        file_panel::show("Restore To", FilePanel::folder(target::home()), move |a| {
+            if let PanelResult::Chosen(to) = a.result {
+                tell.send(Done::Run(chosen.iter().map(|n| (dir.join(name_of(n)), to.join(name_of(n)))).collect()));
+            }
         });
     }
 
     /// Put each (where it was in the snapshot, where it goes) back, on a
     /// worker; its progress said every quarter second.
-    fn run(&mut self, pairs: Vec<(PathBuf, PathBuf)>, cx: &mut Context<Self>) {
+    fn run(&mut self, pairs: Vec<(PathBuf, PathBuf)>, cx: &mut Cx<Self>) {
         let (Some(repo), Some((_, snap))) = (self.repo.clone(), self.snap.and_then(|i| self.snapshots.get(i)).cloned()) else { return };
         let cancel = Arc::new(AtomicBool::new(false));
         self.restoring = Some(cancel.clone());
         self.status = ("Restoring…".into(), false);
-        cx.notify();
-        let proxy = self.proxy.clone();
+        cx.invalidate();
+        let proxy = cx.messenger();
         std::thread::spawn(move || {
             let progress = Progress::default();
             let done = AtomicBool::new(false);
@@ -310,7 +270,7 @@ impl RestoreWindow {
                     while !done.load(Relaxed) {
                         std::thread::park_timeout(std::time::Duration::from_millis(250));
                         let current = progress.current.lock().map(|c| c.clone()).unwrap_or_default();
-                        proxy.send(Msg::Restore(Done::Progress(progress.files.load(Relaxed), progress.bytes.load(Relaxed), current)));
+                        proxy.send(Done::Progress(progress.files.load(Relaxed), progress.bytes.load(Relaxed), current));
                     }
                 });
                 // Held while it restores: nobody tidies meanwhile (one
@@ -346,72 +306,111 @@ impl RestoreWindow {
                 Err(olo_diskbackup::Error::Cancelled) => Err("Stopped: what was restored so far is there.".into()),
                 Err(e) => Err(format!("Couldn’t restore: {e}.")),
             };
-            proxy.send(Msg::Restore(Done::Restored(out)));
+            proxy.send(Done::Restored(out));
         });
     }
 }
 
-impl Render for RestoreWindow {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let p = theme::palette(cx);
-        let me = cx.entity();
+impl View for RestoreWindow {
+    type Message = Done;
+
+    fn message(&mut self, d: Done, cx: &mut Cx<Self>) {
+        match d {
+            Done::Opened(Ok((repo, snaps))) => {
+                self.repo = Some(repo);
+                self.snapshots = snaps;
+                self.status = (if self.snapshots.is_empty() { "Nothing backed up yet.".into() } else { String::new() }, false);
+                if !self.snapshots.is_empty() {
+                    self.choose_snapshot(0, cx);
+                }
+            }
+            Done::Opened(Err(e)) => self.status = (format!("The backup can’t be opened: {e}."), true),
+            Done::Listed(n, r) if n == self.listing => match r {
+                Ok(nodes) => {
+                    self.nodes = nodes;
+                    self.files.state_mut().selected.clear();
+                    if self.restoring.is_none() {
+                        self.status = (String::new(), false);
+                    }
+                }
+                Err(e) => self.status = (e, true),
+            },
+            Done::Listed(..) => {}
+            Done::Progress(files, bytes, current) => {
+                if self.restoring.is_some() {
+                    let shown = current.replace(&target::home().display().to_string(), "~");
+                    self.status = (format!("Restoring: {files} {}, {} so far. {shown}", if files == 1 { "file" } else { "files" }, size(bytes)), false);
+                }
+            }
+            Done::Run(pairs) => return self.run(pairs, cx),
+            Done::Restored(r) => {
+                self.restoring = None;
+                self.status = match r {
+                    Ok(s) => (s, false),
+                    Err(e) => (e, true),
+                };
+            }
+        }
+        cx.invalidate();
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        let p = theme::palette();
         // ---- the snapshots.
-        let rows: Vec<(String, String)> = self.snapshots.iter().map(|(_, s)| (when(s.time), format!("{} files, {} new", s.summary.files, size(s.summary.new_bytes)))).collect();
-        let pick = me.clone();
-        let snaps_model = self.snaps.clone();
-        let list_rows = rows.clone();
-        let snaps = ColumnListView::new("snapshots", &self.snaps, vec![Column::new("Backed Up", 130.0), Column::new("What", 150.0)], rows.len(), move |cell, window, cx| {
-            let Some((t, what)) = list_rows.get(cell.row) else { return };
+        let snaps = ColumnListView::new(cx, "snapshots", &self.snaps, vec![Column::new("Backed Up", 130.0), Column::new("What", 150.0)], self.snapshots.len(), |w: &RestoreWindow, cell, g| {
+            let Some((_, s)) = w.snapshots.get(cell.row) else { return };
             match cell.column {
-                0 => cell.text(window, cx, t.clone()),
-                _ => cell.text(window, cx, what.clone()),
+                0 => cell.text(g, when(s.time)),
+                _ => cell.text(g, format!("{} files, {} new", s.summary.files, size(s.summary.new_bytes))),
             }
         })
-        .on_select(move |_, cx| {
-            let i = snaps_model.read(cx).state.cursor;
-            if let Some(i) = i {
-                pick.update(cx, |w, cx| {
-                    if w.snap != Some(i) {
-                        w.choose_snapshot(i, cx);
-                    }
-                });
+        .on_select(cx.listener(|w: &mut RestoreWindow, _: &(), cx| {
+            let i = w.snaps.state().cursor;
+            if let Some(i) = i
+                && w.snap != Some(i)
+            {
+                w.choose_snapshot(i, cx);
             }
-        });
+        }));
         // ---- the snapshot's folder.
-        let nodes = self.nodes.clone();
-        let open = me.clone();
-        let files =
-            ColumnListView::new("files", &self.files, vec![Column::new("Name", 260.0), Column::new("Size", 90.0).right(), Column::new("Modified", 150.0)], nodes.len(), move |cell, window, cx| {
-                let Some(n) = nodes.get(cell.row) else { return };
+        let files = ColumnListView::new(
+            cx,
+            "files",
+            &self.files,
+            vec![Column::new("Name", 260.0), Column::new("Size", 90.0).right(), Column::new("Modified", 150.0)],
+            self.nodes.len(),
+            |w: &RestoreWindow, cell, g| {
+                let Some(n) = w.nodes.get(cell.row) else { return };
                 match cell.column {
-                    0 => cell.icon_text(window, cx, if n.kind == Kind::Dir { "folder" } else { "document" }, "document", name_of(n)),
-                    1 => cell.text(window, cx, if n.kind == Kind::File { size(n.size) } else { String::new() }),
-                    _ => cell.text(window, cx, when(n.mtime / 1_000_000_000)),
+                    0 => cell.icon_text(g, if n.kind == Kind::Dir { "folder" } else { "document" }, "document", name_of(n)),
+                    1 => cell.text(g, if n.kind == Kind::File { size(n.size) } else { String::new() }),
+                    _ => cell.text(g, when(n.mtime / 1_000_000_000)),
                 }
-            })
-            .on_open(move |row, _, cx| open.update(cx, |w, cx| w.open_row(row, cx)));
+            },
+        )
+        // (What's chosen says whether Restore can be pressed.)
+        .on_select(cx.listener(|_: &mut RestoreWindow, _: &(), cx| cx.invalidate()))
+        .on_open(cx.listener(|w: &mut RestoreWindow, row: &usize, cx| w.open_row(*row, cx)));
         let path = self.dir.display().to_string().replace(&target::home().display().to_string(), "~");
-        let up = me.clone();
         let bar = div()
             .flex()
             .flex_row()
             .items_center()
             .gap(px(m::SPACING))
-            .child(Button::new("Up").enabled(self.dir.parent().is_some() && self.repo.is_some()).on_click(move |_, cx| up.update(cx, |w, cx| w.up(cx))))
+            .child(Button::new("Up").enabled(self.dir.parent().is_some() && self.repo.is_some()).on_click(cx.listener(|w: &mut RestoreWindow, _: &ClickEvent, cx| w.up(cx))))
             .child(div().flex_1().min_w_0().child(StringView::new(path)));
-        let any = !self.files.read(cx).state.selected.is_empty() && self.restoring.is_none();
-        let (here, to, stop) = (me.clone(), me.clone(), self.restoring.clone());
+        let any = !self.files.state().selected.is_empty() && self.restoring.is_none();
         // What's going on, a line of its own (it can be long), then the
         // buttons at the right.
         let (text, error) = self.status.clone();
-        let status = StringView::new(if text.is_empty() { " ".into() } else { text }).wrap(true).color(if error { style::c(p.failure) } else { style::disabled_text(&p) });
+        let status = StringView::new(if text.is_empty() { " ".to_owned() } else { text }).wrap(true).color(if error { style::c(p.failure) } else { style::disabled_text(&p) });
         let mut buttons = div().flex().flex_row().items_center().justify_end().gap(px(m::SPACING));
-        if let Some(stop) = stop {
-            buttons = buttons.child(Button::new("Stop").on_click(move |_, _| stop.store(true, Relaxed)));
+        if let Some(stop) = self.restoring.clone() {
+            buttons = buttons.child(Button::new("Stop").on_click(move |_: &ClickEvent, _| stop.store(true, Relaxed)));
         }
         buttons = buttons
-            .child(Button::new("Restore To…").enabled(any).on_click(move |_, cx| to.update(cx, |w, cx| w.restore_to(cx))))
-            .child(Button::new("Restore").enabled(any).on_click(move |_, cx| here.update(cx, |w, cx| w.restore_here(cx))));
+            .child(Button::new("Restore To…").enabled(any).on_click(cx.listener(|w: &mut RestoreWindow, _: &ClickEvent, cx| w.restore_to(cx))))
+            .child(Button::new("Restore").enabled(any).on_click(cx.listener(|w: &mut RestoreWindow, _: &ClickEvent, cx| w.restore_here(cx))));
         // Both lists start level: the snapshots' title on the path's row.
         let top = div()
             .flex()
@@ -435,10 +434,6 @@ impl Render for RestoreWindow {
 }
 
 /// The window's options.
-pub fn options() -> olo_ui::WindowOptions {
-    olo_ui::WindowOptions::new("Restore", 920.0, 560.0).min_size(720.0, 380.0).keep_size("restore")
+pub fn options() -> olo_kit::WindowOptions {
+    olo_kit::WindowOptions::new("Restore", 920.0, 560.0).min_size(720.0, 380.0).keep_size("restore")
 }
-
-/// (`gpui` re-exported names this file uses.)
-#[allow(unused_imports)]
-use gpui::AppContext as _;

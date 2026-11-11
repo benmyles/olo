@@ -17,7 +17,7 @@ olo-system.workspace = true
 olo-kit-base.workspace = true
 olo-xdg.workspace = true
 olo-net.workspace = true
-olo-ui.workspace = true
+olo-kit.workspace = true
 olo-keychain.workspace = true
 chrono = "0.4"
 serde.workspace = true
@@ -27,6 +27,6 @@ tracing-subscriber.workspace = true
 libc = "0.2"
 
 [dev-dependencies]
-olo-ui = { workspace = true, features = ["lint"] }
+olo-kit = { workspace = true, features = ["lint"] }
 base64 = "0.22"
 md-5 = "0.11"
