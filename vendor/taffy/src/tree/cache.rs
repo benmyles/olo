@@ -1,15 +1,52 @@
 //! A cache for storing the results of layout computation
 use crate::geometry::Size;
 use crate::style::AvailableSpace;
-use crate::tree::{LayoutOutput, RunMode};
+use crate::tree::{LayoutInput, LayoutOutput, RunMode, SizingMode};
 
 /// The number of cache entries for each node in the tree
 const CACHE_SIZE: usize = 9;
+
+/// Olo: what a node's layout was worked out in, besides its known size
+/// and the space it had: its parent's size (what its percentages are
+/// of), whether its own style's size counted, and whether its margins
+/// may collapse. A result is only good for the same again. Without it a
+/// child sized by a percentage, laid out once while its parent was being
+/// measured (no height to be a part of: none), was handed that layout
+/// back when the parent had its height: a terminal filling a pane came
+/// out no taller than nothing after its window was laid out a second
+/// time. (Later releases key the cache so; 0.9.0 doesn't.)
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
+pub struct CacheContext {
+    /// The parent's size, where it's known.
+    pub parent_size: Size<Option<f32>>,
+    /// Whether the node's own style's size counts.
+    pub inherent_size: bool,
+    /// Whether its top and bottom margins may collapse.
+    pub collapsible: (bool, bool),
+}
+
+impl CacheContext {
+    /// A context for trees that don't say (their results are told apart
+    /// by known size and space alone, as before).
+    pub const NONE: CacheContext = CacheContext { parent_size: Size { width: None, height: None }, inherent_size: true, collapsible: (false, false) };
+
+    /// The context of a layout asked for with `inputs`.
+    pub fn of(inputs: &LayoutInput) -> CacheContext {
+        CacheContext {
+            parent_size: inputs.parent_size,
+            inherent_size: inputs.sizing_mode == SizingMode::InherentSize,
+            collapsible: (inputs.vertical_margins_are_collapsible.start, inputs.vertical_margins_are_collapsible.end),
+        }
+    }
+}
 
 /// Cached intermediate layout results
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub(crate) struct CacheEntry<T> {
+    /// Olo: what else it was worked out in.
+    context: CacheContext,
     /// The initial cached size of the node itself
     known_dimensions: Size<Option<f32>>,
     /// The initial cached size of the parent's node
@@ -114,12 +151,25 @@ impl Cache {
         available_space: Size<AvailableSpace>,
         run_mode: RunMode,
     ) -> Option<LayoutOutput> {
+        self.get_in(CacheContext::NONE, known_dimensions, available_space, run_mode)
+    }
+
+    /// Olo: [`Self::get`], for a result worked out in `context`.
+    #[inline]
+    pub fn get_in(
+        &self,
+        context: CacheContext,
+        known_dimensions: Size<Option<f32>>,
+        available_space: Size<AvailableSpace>,
+        run_mode: RunMode,
+    ) -> Option<LayoutOutput> {
         match run_mode {
             RunMode::PerformLayout => self
                 .final_layout_entry
                 .filter(|entry| {
                     let cached_size = entry.content.size;
-                    (known_dimensions.width == entry.known_dimensions.width
+                    entry.context == context
+                        && (known_dimensions.width == entry.known_dimensions.width
                         || known_dimensions.width == Some(cached_size.width))
                         && (known_dimensions.height == entry.known_dimensions.height
                             || known_dimensions.height == Some(cached_size.height))
@@ -133,7 +183,8 @@ impl Cache {
                 for entry in self.measure_entries.iter().flatten() {
                     let cached_size = entry.content;
 
-                    if (known_dimensions.width == entry.known_dimensions.width
+                    if entry.context == context
+                        && (known_dimensions.width == entry.known_dimensions.width
                         || known_dimensions.width == Some(cached_size.width))
                         && (known_dimensions.height == entry.known_dimensions.height
                             || known_dimensions.height == Some(cached_size.height))
@@ -160,16 +211,28 @@ impl Cache {
         run_mode: RunMode,
         layout_output: LayoutOutput,
     ) {
+        self.store_in(CacheContext::NONE, known_dimensions, available_space, run_mode, layout_output)
+    }
+
+    /// Olo: [`Self::store`], for a result worked out in `context`.
+    pub fn store_in(
+        &mut self,
+        context: CacheContext,
+        known_dimensions: Size<Option<f32>>,
+        available_space: Size<AvailableSpace>,
+        run_mode: RunMode,
+        layout_output: LayoutOutput,
+    ) {
         match run_mode {
             RunMode::PerformLayout => {
                 self.is_empty = false;
-                self.final_layout_entry = Some(CacheEntry { known_dimensions, available_space, content: layout_output })
+                self.final_layout_entry = Some(CacheEntry { context, known_dimensions, available_space, content: layout_output })
             }
             RunMode::ComputeSize => {
                 self.is_empty = false;
                 let cache_slot = Self::compute_cache_slot(known_dimensions, available_space);
                 self.measure_entries[cache_slot] =
-                    Some(CacheEntry { known_dimensions, available_space, content: layout_output.size });
+                    Some(CacheEntry { context, known_dimensions, available_space, content: layout_output.size });
             }
             RunMode::PerformHiddenLayout => {}
         }

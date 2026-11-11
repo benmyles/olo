@@ -1176,10 +1176,15 @@ impl<'a> WindowCx<'a> {
             if let Some(view) = self.core.pending_focus.take() {
                 self.focus_view(view);
             }
-            if let Some(handle) = self.core.pending_focus_handle.take()
+            // (Asked for before what takes it was there, a view's element
+            // not yet made by its first `body`: kept until it is. Taken
+            // and dropped when it wasn't there yet, Rescue's terminal had
+            // the keyboard on some starts and not on others.)
+            if let Some(handle) = self.core.pending_focus_handle
                 && let Some(node) =
                     self.core.nodes.iter().find(|(id, n)| n.inter.as_ref().is_some_and(|i| i.focus_handle == Some(handle) && !i.disabled) && self.core.is_attached(*id)).map(|(id, _)| id)
             {
+                self.core.pending_focus_handle = None;
                 self.focus_node(Some(node));
             }
             // (Nothing has the keyboard: what takes it then does.)

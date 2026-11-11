@@ -437,6 +437,51 @@ mod tests {
         }
     }
 
+    /// What fills a pane by percentage keeps the pane's size when
+    /// something beside it is laid out again. Rescue's terminal, a view
+    /// filling the pane over its list of processes: the list's rows
+    /// changed, the column was measured again (its panes asked their
+    /// size with no height to be a part of), and the terminal was handed
+    /// back the layout it had been given in that asking: no height
+    /// (taffy 0.9.0 told a node's layouts apart without its parent's
+    /// size).
+    #[test]
+    fn what_fills_a_pane_keeps_its_size_when_a_neighbour_changes() {
+        let mut layout: Layout<u32> = Layout::new();
+        let rem = px(16.0);
+        let mut add = |element: crate::Element, children: &[LayoutId], measured: Option<u32>| {
+            let id = layout.add(&style(element), rem, 1.0, measured);
+            layout.set_children(id, children);
+            id
+        };
+        let screen = add(div().size_full(), &[], None);
+        let fills = add(div().size_full(), &[screen], None);
+        let pane = add(div().flex_1().min_h_0(), &[fills], None);
+        let heading = add(div().w(px(53.0)).h(px(16.0)), &[], None);
+        let shell = add(div().flex_1().min_h_0().flex().flex_col().gap(px(6.0)), &[heading, pane], None);
+        let text = add(div(), &[], Some(1));
+        let row = add(div().flex().items_center().gap(px(8.0)), &[text], None);
+        let list = add(div().flex_1().min_h_0(), &[], None);
+        let processes = add(div().h(px(300.0)).flex_shrink_0().flex().flex_col().gap(px(6.0)), &[list, row], None);
+        let right = add(div().flex_1().min_w_0().flex().flex_col().gap(px(12.0)), &[shell, processes], None);
+        let left = add(div().w(px(300.0)).flex_shrink_0(), &[], None);
+        let both = add(div().flex_1().min_h_0().flex().gap(px(16.0)), &[left, right], None);
+        let root = add(div().size_full().flex().flex_col().p(px(16.0)), &[both], None);
+        let available = size(AvailableSpace::Definite(px(1280.0)), AvailableSpace::Definite(px(800.0)));
+        let mut wide = 40.0;
+        for round in 0..4 {
+            layout.compute(root, available, 1.0, |_, _, _| size(px(wide), px(16.0)));
+            let pane_size = layout.placed(pane, 1.0).0.size;
+            assert!(pane_size.height > px(300.0), "{pane_size:?}");
+            for node in [fills, screen] {
+                assert_eq!(layout.placed(node, 1.0).0.size, pane_size, "round {round}");
+            }
+            // (The note beside the buttons says something else.)
+            wide += 25.0;
+            layout.mark_dirty(text);
+        }
+    }
+
     fn layout_add(layout: &mut Layout<u32>, style: &Style, rem: Pixels) -> LayoutId {
         layout.add(style, rem, 1.0, None)
     }

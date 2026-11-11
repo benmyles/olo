@@ -284,6 +284,10 @@ where
     /// Olo: whether the node being worked out now has laid a child of its
     /// own out, or placed one, since it began (see `compute_child_layout`).
     pub(crate) children_placed: bool,
+    /// Olo: what the node being worked out now is worked out in (its
+    /// parent's size and the rest): what its cache is read and written
+    /// by.
+    pub(crate) context: crate::tree::cache::CacheContext,
 }
 
 // TraversePartialTree impl for TaffyView
@@ -381,6 +385,9 @@ where
         // false as its work begins, true once it lays a child out or
         // places one; what holds it gets its own back after.
         let outer = core::mem::replace(&mut self.children_placed, false);
+        // Olo: (and its cache is read and written by what it's worked out
+        // in: its own while it is, its parent's again after.)
+        let outer_context = core::mem::replace(&mut self.context, crate::tree::cache::CacheContext::of(&inputs));
         let output = compute_cached_layout(self, node, inputs, |tree, node, inputs| {
             let display_mode = tree.taffy.nodes[node.into()].style.display;
             let has_children = tree.child_count(node) > 0;
@@ -416,12 +423,19 @@ where
                 }
             }
         });
-        if inputs.run_mode == RunMode::ComputeSize && self.children_placed {
+        let disturbed = inputs.run_mode == RunMode::ComputeSize && self.children_placed;
+        if disturbed {
             self.taffy.nodes[node.into()].cache.forget_final_layout();
         }
-        // (For what holds this node: laid out, it's a child laid out;
-        // measured, nothing of its own changed.)
-        self.children_placed = outer || inputs.run_mode == RunMode::PerformLayout;
+        // (For what holds this node: laid out, it's a child laid out.
+        // Measured with what it holds left as the measuring had it, what
+        // holds this node has something under it out of place too: its
+        // own kept layout no longer says how everything under it lies,
+        // and so on up. A pane measured inside a column that was only
+        // being measured left the column's kept layout standing, and the
+        // pane's child as the measuring had put it.)
+        self.children_placed = outer || disturbed || inputs.run_mode == RunMode::PerformLayout;
+        self.context = outer_context;
         output
     }
 }
@@ -438,7 +452,7 @@ where
         available_space: Size<AvailableSpace>,
         run_mode: RunMode,
     ) -> Option<LayoutOutput> {
-        self.taffy.nodes[node_id.into()].cache.get(known_dimensions, available_space, run_mode)
+        self.taffy.nodes[node_id.into()].cache.get_in(self.context, known_dimensions, available_space, run_mode)
     }
 
     fn cache_store(
@@ -449,7 +463,7 @@ where
         run_mode: RunMode,
         layout_output: LayoutOutput,
     ) {
-        self.taffy.nodes[node_id.into()].cache.store(known_dimensions, available_space, run_mode, layout_output)
+        self.taffy.nodes[node_id.into()].cache.store_in(self.context, known_dimensions, available_space, run_mode, layout_output)
     }
 
     fn cache_clear(&mut self, node_id: NodeId) {
@@ -939,7 +953,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
             FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> Size<f32>,
     {
         let use_rounding = self.config.use_rounding;
-        let mut taffy_view = TaffyView { taffy: self, measure_function, children_placed: false };
+        let mut taffy_view = TaffyView { taffy: self, measure_function, children_placed: false, context: crate::tree::cache::CacheContext::NONE };
         compute_root_layout(&mut taffy_view, node_id, available_space);
         if use_rounding {
             round_layout(&mut taffy_view, node_id);
@@ -961,7 +975,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
     /// Returns an instance of LayoutTree representing the TaffyTree
     #[cfg(test)]
     pub(crate) fn as_layout_tree(&mut self) -> impl LayoutPartialTree + CacheTree + '_ {
-        TaffyView { taffy: self, measure_function: |_, _, _, _, _| Size::ZERO, children_placed: false }
+        TaffyView { taffy: self, measure_function: |_, _, _, _, _| Size::ZERO, children_placed: false, context: crate::tree::cache::CacheContext::NONE }
     }
 }
 

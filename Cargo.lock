@@ -8352,10 +8352,10 @@ dependencies = [
  "alacritty_terminal",
  "libc",
  "olo-crash",
+ "olo-kit",
  "olo-protocol",
  "olo-system",
  "olo-theme",
- "olo-ui",
  "olo-xdg",
  "tracing",
 ]

@@ -53,7 +53,11 @@ something nobody here has is in "Blocked", with what it waits for.
      and a key); a frame drawn straight from the kept drawings (no copy
      into a scene: ~50 µs of a ~200 µs frame); a scroll bar's knob moved
      by the stage; rows of differing heights (GPUI's `list`); a headless
-     window for the layout lint; moving a window to another display
+     window for the layout lint; nothing worked out or drawn for a
+     window before app_server has given it its size (a layer or lock
+     surface opens 1 × 1 and is laid out and drawn so once: wasted, and
+     the terminal in Rescue has to know not to tell its shell that
+     size); moving a window to another display
      (`moving`); agents' `Menus` of a window by surface is in, `Move`,
      `WindowOver`, `WindowDropped`, `Focus` are not.
   3. **The kit's widgets** on it (everything in olo-ui today). *Done:*
@@ -82,8 +86,10 @@ something nobody here has is in "Blocked", with what it waits for.
      left of a window not yet given its size, and kept those places.
      The polkit agent and its keyring prompts (the same to the pixel;
      typing 381 µs a frame against 602).
-     The supervisor (its alert the same to the pixel).
-     *Next, smallest first:* rescue, emoji-picker, installer,
+     The supervisor (its alert the same to the pixel). Olo Rescue (its
+     shell a session of the program's, shown by whichever display has
+     Rescue; a busy shell 946 µs a frame against 3,468).
+     *Next, smallest first:* emoji-picker, installer,
      pool, drive-setup, disk-usage, chrome, logs, palette, screenshot,
      diskbackup, portal, deskbar, notifications, doctor, telegram,
      activity, viewer, styled-edit, screen, tracker, passwords, terminal,

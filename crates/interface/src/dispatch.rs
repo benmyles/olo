@@ -561,6 +561,11 @@ impl WindowCx<'_> {
     /// Gives the keyboard to a node (or to none).
     pub(crate) fn focus_node(&mut self, to: Option<NodeId>) {
         let from = self.core.focus;
+        // (Something has the keyboard now: what waited to take it once
+        // shown doesn't take it away later.)
+        if to.is_some() {
+            self.core.pending_focus_handle = None;
+        }
         if from == to {
             return;
         }
