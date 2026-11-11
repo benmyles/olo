@@ -3868,5 +3868,11 @@
   "title": "Olo Doctor finds Token Pool running twice",
   "caption": "A Token Pool started beside the one serving, unable to take its port, served nothing for two days while its window showed no requests. Olo Doctor now finds it and quits it; the session starts it again, and it keeps the one serving rather than running beside it.",
   "image": "2026-11-09/215953-olo-doctor-finds-token-pool-running-twice.png"
+ },
+ {
+  "time": "2026-11-11T02:45:15",
+  "title": "Screenshot: New screenshot shows the new picture",
+  "caption": "Screenshot moved to Olo's own kit. Its preview was kept while the picture's size was the same, so New screenshot went on showing the one before; a preview is now of one picture. The region and colour pickers show the screen a pixel to a device pixel at 1.5\u00d7 and 1.75\u00d7 too (the overlay's whole-point size was half a device pixel off the screen's, and the frozen picture was stretched by it).",
+  "image": "2026-11-11/024515-screenshot-new-screenshot-shows-the-new-picture.png"
  }
 ]

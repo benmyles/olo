@@ -3,6 +3,14 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-11-11
+
+### Screenshot: New screenshot shows the new picture
+
+*02:45* — Screenshot moved to Olo's own kit. Its preview was kept while the picture's size was the same, so New screenshot went on showing the one before; a preview is now of one picture. The region and colour pickers show the screen a pixel to a device pixel at 1.5× and 1.75× too (the overlay's whole-point size was half a device pixel off the screen's, and the frozen picture was stretched by it).
+
+![Screenshot: New screenshot shows the new picture](2026-11-11/024515-screenshot-new-screenshot-shows-the-new-picture.png)
+
 ## 2026-11-09
 
 ### Olo Doctor finds Token Pool running twice
