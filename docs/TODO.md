@@ -181,9 +181,11 @@ something nobody here has is in "Blocked", with what it waits for.
      Olo tile was lit). Not tried: files dropped on an application's
      row (needs a drag from another program in the test session); a
      row dragged out was started (the old and the new the same) but
-     dropped nowhere; the power button's alert; a display coming and
-     going while it runs; an upgrade in place keeping the
-     applications' order.
+     dropped nowhere; the power button's alert. Run after: each of
+     two displays unplugged and plugged back (`plug_display`: its bar
+     goes and comes, the other stays), and a reload in place under
+     olo-session (the bar back as it was, its applications in their
+     order).
      *Next, smallest first:*
      telegram,
      viewer, styled-edit, screen, tracker, passwords, terminal,
