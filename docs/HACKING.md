@@ -9922,14 +9922,25 @@ progress; Stop sets its flag, or cancels the UDisks job), shows UDisks'
 own job progress in the status line, and re-reads on every change.
 Destructive steps are behind an alert or form naming the disk and
 device; nothing destructive is offered for the disk or volumes holding
-the running system (`Volume::system`, `Disk::system`). On the GPUI kit
-(olo-ui): the forms (Format, Create, Resize, Rename, Unlock, New
-Partition Table) are `Form` views in dialogs drawn as alerts with
-fields (`AlertFrame`, `paragraph`, `button_row`, the alert's key
-context: Return submits, also from a field, and Escape cancels), each
-window resized to what it shows as fields come and go; the benchmark
-is a window of its own; the map's segments after the first are their
-own grid for the layout review. A periodic re-read that finds nothing
+the running system (`Volume::system`, `Disk::system`). On Olo's own kit
+(olo-kit): the window is a `DriveSetup` view on its own looper, told
+what the disks are by workers (`cx.work`, and UDisks's news and a
+step's progress through `cx.messenger()`); the forms (Format, Create,
+Resize, Rename, Unlock, New Partition Table) are `Form` views in
+windows of the main one's (`open_window_here`), made from plain data
+(`FormSpec`: their fields are made in their own window) and handing
+back what was typed (`Msg::Submit`), drawn as alerts with fields
+(`AlertFrame`, `paragraph`, `button_row`; Return submits, also from a
+field, and Escape cancels, the keyboard kept in the form), each window
+as tall as what it shows as fields come and go (`fits_content`: an
+`AlertFrame` lays what it holds out in flow, so its window knows how
+tall that is; on olo-ui it didn't, and Format's form was cut off at
+its Encrypt box); a resize's form asks what the file system allows on
+a worker of its own; the benchmark is a window on a looper of its own,
+told its samples by its own thread; the map is one canvas keyed by a
+count of what it shows changing, a click found again from the same
+arithmetic that drew it (`map::item_at`), and its segments after the
+first are their own grid for the layout review. A periodic re-read that finds nothing
 changed draws nothing. Agents: `--list` prints
 `Status` as JSON; `--mount`, `--unmount` and `--eject DEVICE` do the safe
 steps.

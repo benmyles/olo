@@ -94,8 +94,11 @@ something nobody here has is in "Blocked", with what it waits for.
      Olo Setup (its pages the same to the pixel).
      Token Pool (both windows the same to the pixel; a window told
      what the app keeps, reading the pool itself).
+     The file panels and Open With, in the kit (the same to the pixel).
+     Drive Setup (its window and its forms that fit the same to the
+     pixel; the forms that didn't fit, Format and Create, now do).
      *Next, smallest first:*
-     drive-setup, disk-usage, chrome, logs, palette, screenshot,
+     disk-usage, chrome, logs, palette, screenshot,
      diskbackup, portal, deskbar, notifications, doctor, telegram,
      activity, viewer, styled-edit, screen, tracker, passwords, terminal,
      preferences.
@@ -105,6 +108,19 @@ something nobody here has is in "Blocked", with what it waits for.
      `tsession review` and `lockcheck` still drive olo-ui's apps.
 
 ## Not started (highest priority first)
+
+- **The NVIDIA GPU's video encoding doesn't show in Activity Monitor or
+  Deskbar's GPU widgets** (Ben, 2026-11-10: "when the nvidia chip is
+  doing video encoding it doesn't properly show up in activity monitor
+  stats or the deskbar widgets whereas normal gpu usage does"). *To do:*
+  find what the GPU figures read for the NVIDIA card (its 3D engine's
+  share only, it seems) and take in its encoder's and decoder's own
+  (NVENC and NVDEC utilisation, which the driver reports apart from
+  the graphics engine's), natively; show them in Activity Monitor's GPU
+  section (the engines apart, and a total that counts them) and in
+  Deskbar's widget; check a screen recording or a call that encodes on
+  the card moves them, and that the Intel GPU's video engines are
+  counted the same way.
 
 - **A fan profile, in Preferences ▸ Power, and the fans in Activity
   Monitor** (Ben, 2026-11-10: "on auto settings the thinkpad is too slow

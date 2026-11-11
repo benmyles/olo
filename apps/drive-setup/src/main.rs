@@ -7,7 +7,9 @@
 //! (`olo_system::disks`) on worker threads; UDisks asks polkit before
 //! privileged steps. Every destructive step is behind an alert naming the
 //! disk, and the disk holding the running system is never offered for one.
-//! On the GPUI kit (olo-ui).
+//! On Olo's own kit (olo-kit): the window is a view on its own looper,
+//! told what the disks are by workers; its forms are windows of its own
+//! that hand back what was typed, and a benchmark is a window by itself.
 //!
 //! For agents: `--list` prints every disk as JSON; `--mount DEVICE`,
 //! `--unmount DEVICE` and `--eject DEVICE` do the safe steps.
@@ -15,8 +17,9 @@
 mod map;
 
 use std::{
-    collections::HashMap,
+    cell::RefCell,
     path::PathBuf,
+    rc::Rc,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -24,26 +27,22 @@ use std::{
     time::Duration,
 };
 
-use olo_system::disks::{self, Disk, Segment, Space, Status, Volume};
-use olo_theme::mix;
-use olo_ui::{
-    Frame, Menu, MenuBar, WindowOptions,
+use olo_kit::{
+    Bounds, Child, ClickEvent, Cx, Element, FocusHandle, FontWeight, InteractiveElement as _, KeyDownEvent, Menu, MenuBar, Messenger, MouseButton, MouseDownEvent, ParentElement as _, Pixels, Point,
+    SharedString, Styled as _, View, WindowOptions, canvas, div,
     file_panel::{self, FilePanel, PanelResult},
     files::format_size,
-    gpui::{
-        self, App, AppContext as _, Bounds, Context, Entity, FocusHandle, Focusable as _, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Point, Render, SharedString,
-        Styled as _, Task, WeakEntity, Window, WindowHandle, canvas, div, point, px, size,
-    },
     icons,
     instance::{self, Launch},
-    menu, metrics as m,
+    menu, metrics as m, point, px, size,
     style::{self, c},
     theme, tracker,
     widgets::{
-        ALERT_TEXT_X, AlertFrame, Button, CheckBox, Column, ColumnListView, ListModel, MenuField, Slider, StatusBar, TextControl, TextField, alert, button_row, level_bar, open_alert, paragraph,
-        paragraph_height, text_field,
+        AlertFrame, Button, CheckBox, Column, ColumnListView, ListModel, MenuField, Slider, StatusBar, TextControl, TextField, TextFieldEvent, button_row, level_bar, open_alert, paragraph, text_field,
     },
 };
+use olo_system::disks::{self, Disk, Segment, Space, Status, Volume};
+use olo_theme::mix;
 use serde::{Deserialize, Serialize};
 
 const APP_ID: &str = "olo.drive-setup";
@@ -65,7 +64,7 @@ const SPACE_EVERY: Duration = Duration::from_secs(5);
 const SLIDER_H: f32 = m::LABEL_ROW * 2.0 + 24.0;
 
 /// Something in the list or on the map.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Hash, Serialize, Deserialize)]
 pub enum Item {
     Disk(String),
     Volume(String),
@@ -77,7 +76,10 @@ struct Row {
     depth: usize,
     icon: Option<&'static str>,
     cells: [String; 6],
-    space: Option<Space>,
+    /// How full it is: what's used and what's free.
+    space: Option<(u64, u64)>,
+    fraction: f32,
+    full: bool,
 }
 
 fn table_name(d: &Disk) -> String {
@@ -115,7 +117,9 @@ fn push_volume(out: &mut Vec<Row>, v: &Volume, depth: usize) {
         depth,
         icon,
         cells: [v.title(), short(&v.device), v.content_name(), format_size(v.size), v.space.map(|s| format_size(s.free)).unwrap_or_default(), v.mount_points.join(", ")],
-        space: v.space,
+        space: v.space.map(|s| (s.used, s.free)),
+        fraction: v.space.map_or(0.0, |s| s.fraction()),
+        full: v.space.is_some_and(|s| nearly_full(&s)),
     });
     if let Some(inner) = &v.cleartext {
         push_volume(out, inner, depth + 1);
@@ -133,6 +137,8 @@ fn rows(status: &Status) -> Vec<Row> {
             icon: Some(disk_icon(d)),
             cells: [d.name(), short(&d.device), table_name(d), format_size(d.size), String::new(), String::new()],
             space: None,
+            fraction: 0.0,
+            full: false,
         });
         for s in d.segments() {
             match s {
@@ -151,6 +157,8 @@ fn rows(status: &Status) -> Vec<Row> {
                     icon: None,
                     cells: ["Free space".into(), String::new(), String::new(), format_size(size), String::new(), String::new()],
                     space: None,
+                    fraction: 0.0,
+                    full: false,
                 }),
             }
         }
@@ -221,9 +229,9 @@ impl FsFields {
 
 /// A new file system's fields in a form.
 struct FsForm {
-    name: Entity<TextField>,
-    pass: Entity<TextField>,
-    again: Entity<TextField>,
+    name: Child<TextField>,
+    pass: Child<TextField>,
+    again: Child<TextField>,
     kind: usize,
     kinds: Vec<(&'static str, &'static str)>,
     encrypt: bool,
@@ -231,13 +239,19 @@ struct FsForm {
 }
 
 impl FsForm {
-    fn new(kinds: Vec<(&'static str, &'static str)>, name: String, cx: &mut App) -> FsForm {
-        let field = text_field(cx, |f| f.name("Name"));
-        field.update(cx, |f, cx| f.set_text(name, cx));
-        FsForm { name: field, pass: text_field(cx, |f| f.name("Passphrase").password(true)), again: text_field(cx, |f| f.name("Again").password(true)), kind: 0, kinds, encrypt: false, erase: false }
+    fn new(kinds: Vec<(&'static str, &'static str)>, name: String, cx: &mut Cx<Form>) -> FsForm {
+        FsForm {
+            name: text_field(cx, |f| f.name("Name").with_text(name)),
+            pass: text_field(cx, |f| f.name("Passphrase").password(true)),
+            again: text_field(cx, |f| f.name("Again").password(true)),
+            kind: 0,
+            kinds,
+            encrypt: false,
+            erase: false,
+        }
     }
 
-    fn values(&self, cx: &App) -> FsFields {
+    fn values(&self, cx: &Cx<Form>) -> FsFields {
         FsFields {
             name: self.name.read(cx).text().to_owned(),
             kind: self.kind,
@@ -248,21 +262,49 @@ impl FsForm {
             erase: self.erase,
         }
     }
+}
 
-    /// The fields' height (`erase`: with the checkbox for zeros).
-    fn height(&self, erase: bool, cx: &App) -> f32 {
-        let mut h = 2.0 * (m::CONTROL_HEIGHT + m::TIGHT) + m::CONTROL_HEIGHT;
-        if self.encrypt {
-            h += 2.0 * (m::CONTROL_HEIGHT + m::TIGHT);
-        }
-        if erase {
-            h += m::CONTROL_HEIGHT;
-        }
-        if self.values(cx).problem().is_some() {
-            h += m::LABEL_ROW;
-        }
-        h
-    }
+/// What a form is opened for: what the window knows, before its fields
+/// are made (in the form's own window).
+enum FormSpec {
+    Format {
+        path: String,
+        release: Option<Volume>,
+        title: String,
+        message: String,
+        kinds: Vec<(&'static str, &'static str)>,
+        label: String,
+    },
+    Create {
+        disk: String,
+        table: String,
+        offset: u64,
+        max: u64,
+        message: String,
+        kinds: Vec<(&'static str, &'static str)>,
+    },
+    /// (`content`: the file system on it, asked what it allows; empty,
+    /// none.)
+    Resize {
+        path: String,
+        title: String,
+        current: u64,
+        max: u64,
+        content: String,
+    },
+    Rename {
+        path: String,
+        title: String,
+        fs: bool,
+        name: String,
+    },
+    Unlock {
+        path: String,
+        title: String,
+    },
+    Table {
+        disk: Box<Disk>,
+    },
 }
 
 /// What a form is for.
@@ -270,21 +312,33 @@ enum FormKind {
     Format { path: String, release: Option<Volume>, title: String, message: String, fs: FsForm },
     Create { disk: String, table: String, offset: u64, max: u64, size: f32, message: String, fs: FsForm },
     Resize { path: String, title: String, current: u64, max: u64, size: f32, has_fs: bool, can: Option<Result<(bool, bool), String>> },
-    Rename { path: String, title: String, fs: bool, name: Entity<TextField> },
-    Unlock { path: String, title: String, pass: Entity<TextField> },
+    Rename { path: String, title: String, fs: bool, name: Child<TextField> },
+    Unlock { path: String, title: String, pass: Child<TextField> },
     Table { disk: Box<Disk>, kind: usize, erase: bool },
 }
 
 /// A form's window: an alert with fields, sized to what it shows.
 struct Form {
-    app: WeakEntity<DriveSetup>,
+    /// The window it was asked in: told what was typed.
+    to: Messenger<Msg>,
     kind: FormKind,
     focus: FocusHandle,
-    /// The field that takes the keyboard first, once.
-    first: Option<FocusHandle>,
     done: bool,
-    /// Return in a field submits (subscribed once the window is there).
-    returns: Vec<gpui::Subscription>,
+}
+
+/// What a form is told.
+enum FormMsg {
+    /// A field typed in.
+    Typed,
+    Encrypt(bool),
+    Erase(bool),
+    /// The file system, or the partition table's type, chosen.
+    Kind(usize),
+    Size(f32),
+    /// What the file system allows of a resize.
+    CanResize(Result<(bool, bool), String>),
+    Cancel,
+    Submit,
 }
 
 /// What a form asks for, as typed: done by [`DriveSetup::submit`].
@@ -298,6 +352,45 @@ enum Submit {
 }
 
 impl Form {
+    fn new(spec: FormSpec, to: Messenger<Msg>, cx: &mut Cx<Self>) -> Form {
+        let kind = match spec {
+            FormSpec::Format { path, release, title, message, kinds, label } => FormKind::Format { path, release, title, message, fs: FsForm::new(kinds, label, cx) },
+            FormSpec::Create { disk, table, offset, max, message, kinds } => {
+                FormKind::Create { disk, table, offset, max, size: (max / MIB) as f32, message, fs: FsForm::new(kinds, String::new(), cx) }
+            }
+            FormSpec::Resize { path, title, current, max, content } => {
+                let has_fs = !content.is_empty();
+                // (What its file system allows is asked of its tools: on
+                // a worker.)
+                if has_fs {
+                    cx.work(move || disks::can_resize(&content), FormMsg::CanResize);
+                }
+                FormKind::Resize { path, title, current, max, size: (current / MIB) as f32, has_fs, can: (!has_fs).then_some(Ok((true, true))) }
+            }
+            FormSpec::Rename { path, title, fs, name } => FormKind::Rename { path, title, fs, name: text_field(cx, |f| f.name("Name").with_text(name)) },
+            FormSpec::Unlock { path, title } => FormKind::Unlock { path, title, pass: text_field(cx, |f| f.name("Passphrase").password(true)) },
+            FormSpec::Table { disk } => FormKind::Table { disk, kind: 0, erase: false },
+        };
+        let form = Form { to, kind, focus: FocusHandle::new(), done: false };
+        // Return in a field (which takes it before the window does)
+        // submits the form; typing there shows what it allows.
+        let fields = form.fields();
+        for field in fields.iter().copied() {
+            cx.subscribe(field, |_: &mut Form, e: &TextFieldEvent, cx| match e {
+                TextFieldEvent::Entered => cx.send(FormMsg::Submit),
+                _ => cx.send(FormMsg::Typed),
+            });
+        }
+        // The keyboard is in the form (Return and Escape are its), on its
+        // first field to begin with.
+        match fields.first() {
+            Some(first) => first.focus(cx),
+            None => form.focus.focus(cx),
+        }
+        cx.activate_window();
+        form
+    }
+
     /// The slider's range for a resize: down only if the file system
     /// shrinks, up only if it grows.
     fn resize_range(current: u64, max: u64, can: &Option<Result<(bool, bool), String>>) -> (f32, f32) {
@@ -310,7 +403,7 @@ impl Form {
     }
 
     /// Whether the default button can be pressed.
-    fn ready(&self, cx: &App) -> bool {
+    fn ready(&self, cx: &Cx<Self>) -> bool {
         match &self.kind {
             FormKind::Format { fs, .. } => fs.values(cx).ready(),
             FormKind::Create { fs, size, .. } => fs.values(cx).ready() && *size >= 1.0,
@@ -320,7 +413,7 @@ impl Form {
         }
     }
 
-    fn submit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn submit(&mut self, cx: &mut Cx<Self>) {
         if self.done || !self.ready(cx) {
             return;
         }
@@ -339,214 +432,214 @@ impl Form {
         if let FormKind::Unlock { pass, .. } = &self.kind {
             pass.update(cx, |f, cx| f.clear_secret(cx));
         }
-        let app = self.app.clone();
-        cx.defer(move |cx| {
-            let _ = app.update(cx, |d, cx| d.submit(s, cx));
-        });
-        window.remove_window();
-    }
-
-    fn cancel(&mut self, window: &mut Window) {
-        self.done = true;
-        window.remove_window();
+        self.to.send(Msg::Submit(Box::new(s)));
+        cx.close_window();
     }
 
     /// A new file system's fields, top down.
-    fn fs_fields(fs: &FsForm, erase: bool, me: &Entity<Form>, cx: &App) -> gpui::Div {
-        let edit = |f: fn(&mut FsForm, bool)| {
-            let me = me.clone();
-            move |v: bool, _: &mut Window, cx: &mut App| {
-                me.update(cx, |form, cx| {
-                    if let FormKind::Format { fs, .. } | FormKind::Create { fs, .. } = &mut form.kind {
-                        f(fs, v);
-                    }
-                    cx.notify();
-                })
-            }
-        };
+    fn fs_fields(fs: &FsForm, erase: bool, cx: &mut Cx<Self>) -> Element {
         let names: Vec<SharedString> = fs.kinds.iter().map(|k| SharedString::from(k.1)).collect();
-        let kind_me = me.clone();
         let mut col = div()
             .flex()
             .flex_col()
-            .child(div().h(px(m::CONTROL_HEIGHT)).child(TextControl::new(fs.name.clone()).label("Name:").divider(DIVIDER)))
+            .child(div().h(px(m::CONTROL_HEIGHT)).child(TextControl::new(cx, &fs.name).label("Name:").divider(DIVIDER)))
             .child(div().h(px(m::TIGHT)))
-            .child(div().h(px(m::CONTROL_HEIGHT)).child(MenuField::new("drive-setup-kind", names, fs.kind).label("File system:").divider(DIVIDER).on_change(move |i, _, cx| {
-                kind_me.update(cx, |form, cx| {
-                    if let FormKind::Format { fs, .. } | FormKind::Create { fs, .. } = &mut form.kind {
-                        fs.kind = i;
-                    }
-                    cx.notify();
-                })
-            })))
+            .child(
+                div().h(px(m::CONTROL_HEIGHT)).child(MenuField::new("drive-setup-kind", names, fs.kind).label("File system:").divider(DIVIDER).on_change(cx.msg_with(|i: &usize| FormMsg::Kind(*i)))),
+            )
             .child(div().h(px(m::TIGHT)))
-            .child(div().h(px(m::CONTROL_HEIGHT)).flex().items_center().child(CheckBox::new("Encrypt it with a passphrase", fs.encrypt).on_toggle(edit(|fs, v| fs.encrypt = v))));
+            .child(div().h(px(m::CONTROL_HEIGHT)).flex().items_center().child(CheckBox::new("Encrypt it with a passphrase", fs.encrypt).on_toggle(cx.msg_with(|on: &bool| FormMsg::Encrypt(*on)))));
         if fs.encrypt {
             col = col
-                .child(div().h(px(m::CONTROL_HEIGHT)).child(TextControl::new(fs.pass.clone()).label("Passphrase:").divider(DIVIDER)))
+                .child(div().h(px(m::CONTROL_HEIGHT)).child(TextControl::new(cx, &fs.pass).label("Passphrase:").divider(DIVIDER)))
                 .child(div().h(px(m::TIGHT)))
-                .child(div().h(px(m::CONTROL_HEIGHT)).child(TextControl::new(fs.again.clone()).label("Again:").divider(DIVIDER)))
+                .child(div().h(px(m::CONTROL_HEIGHT)).child(TextControl::new(cx, &fs.again).label("Again:").divider(DIVIDER)))
                 .child(div().h(px(m::TIGHT)));
         }
         if erase {
-            col = col.child(div().h(px(m::CONTROL_HEIGHT)).flex().items_center().child(CheckBox::new("Overwrite the old data with zeros (slow)", fs.erase).on_toggle(edit(|fs, v| fs.erase = v))));
+            // (Two check boxes, one under the other: apart as the fields
+            // are.)
+            if !fs.encrypt {
+                col = col.child(div().h(px(m::TIGHT)));
+            }
+            col = col.child(
+                div().h(px(m::CONTROL_HEIGHT)).flex().items_center().child(CheckBox::new("Overwrite the old data with zeros (slow)", fs.erase).on_toggle(cx.msg_with(|on: &bool| FormMsg::Erase(*on)))),
+            );
         }
         if let Some(problem) = fs.values(cx).problem() {
             col = col.child(failure(problem));
         }
         col
     }
-}
 
-/// A line in the failure colour.
-fn failure(text: impl Into<SharedString>) -> impl IntoElement {
-    let text = text.into();
-    canvas(
-        |_, _, _| {},
-        move |b, _, window, cx| {
-            let p = theme::palette(cx);
-            style::label_fit(window, cx, b.left(), b.center().y, style::Align::Left, text.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), c(p.failure), b.size.width);
-        },
-    )
-    .w_full()
-    .h(px(m::LABEL_ROW))
-    .flex_shrink_0()
-}
-
-impl Form {
     /// The form's text fields.
-    fn fields(&self) -> Vec<Entity<TextField>> {
+    fn fields(&self) -> Vec<&Child<TextField>> {
         match &self.kind {
-            FormKind::Format { fs, .. } | FormKind::Create { fs, .. } => vec![fs.name.clone(), fs.pass.clone(), fs.again.clone()],
-            FormKind::Rename { name, .. } => vec![name.clone()],
-            FormKind::Unlock { pass, .. } => vec![pass.clone()],
+            FormKind::Format { fs, .. } | FormKind::Create { fs, .. } => vec![&fs.name, &fs.pass, &fs.again],
+            FormKind::Rename { name, .. } => vec![name],
+            FormKind::Unlock { pass, .. } => vec![pass],
             _ => Vec::new(),
         }
     }
 }
 
-impl Render for Form {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let me = cx.entity();
-        // Return in a field (which takes it before the window does)
-        // submits the form; typing there redraws it.
-        if self.returns.is_empty() {
-            for field in self.fields() {
-                self.returns.push(cx.subscribe_in(&field, window, |f, _, e: &olo_ui::widgets::TextFieldEvent, window, cx| match e {
-                    olo_ui::widgets::TextFieldEvent::Entered => f.submit(window, cx),
-                    _ => cx.notify(),
-                }));
+/// One line of words, cut to its width: plain, or in the failure colour;
+/// bold or not.
+fn line(text: impl Into<SharedString>, failing: bool, bold: bool, height: f32) -> Element {
+    let text = text.into();
+    let look = style::key((&text, failing, bold));
+    canvas(move |g, b| {
+        let p = theme::palette();
+        let color = if failing { c(p.failure) } else { c(p.panel_text) };
+        style::label_fit(g, b.left(), b.center().y, style::Align::Left, text.clone(), style::PLAIN_SIZE, style::ui_font(if bold { FontWeight::BOLD } else { FontWeight::NORMAL }), color, b.size.width);
+    })
+    .paint_key(look)
+    .w_full()
+    .h(px(height))
+    .flex_shrink_0()
+}
+
+/// A line in the failure colour.
+fn failure(text: impl Into<SharedString>) -> Element {
+    line(text, true, false, m::LABEL_ROW)
+}
+
+impl View for Form {
+    type Message = FormMsg;
+
+    fn message(&mut self, message: FormMsg, cx: &mut Cx<Self>) {
+        match message {
+            FormMsg::Typed => {}
+            FormMsg::Encrypt(on) => {
+                if let FormKind::Format { fs, .. } | FormKind::Create { fs, .. } = &mut self.kind {
+                    fs.encrypt = on;
+                }
             }
+            FormMsg::Erase(on) => match &mut self.kind {
+                FormKind::Format { fs, .. } | FormKind::Create { fs, .. } => fs.erase = on,
+                FormKind::Table { erase, .. } => *erase = on,
+                _ => {}
+            },
+            FormMsg::Kind(i) => match &mut self.kind {
+                FormKind::Format { fs, .. } | FormKind::Create { fs, .. } => fs.kind = i,
+                FormKind::Table { kind, .. } => *kind = i,
+                _ => {}
+            },
+            FormMsg::Size(v) => {
+                if let FormKind::Create { size, .. } | FormKind::Resize { size, .. } = &mut self.kind {
+                    *size = v;
+                }
+            }
+            FormMsg::CanResize(r) => {
+                if let FormKind::Resize { can, .. } = &mut self.kind {
+                    *can = Some(r);
+                }
+            }
+            FormMsg::Cancel => {
+                self.done = true;
+                return cx.close_window();
+            }
+            FormMsg::Submit => return self.submit(cx),
         }
-        // The keyboard is in the form (Return and Escape are its), on its
-        // first field to begin with.
-        if let Some(first) = self.first.take() {
-            window.focus(&first);
-        } else if !self.focus.contains_focused(window, cx) {
-            window.focus(&self.focus);
-        }
-        let col_w = FORM_W - ALERT_TEXT_X - m::WINDOW_INSET;
-        let slider = |id: &'static str, value: f32, lo: f32, hi: f32| {
-            let me = me.clone();
-            Slider::new(id, value, lo..=hi).step(1.0).label("Size:").value_text(format_size((value as u64) * MIB)).limits(format_size((lo as u64) * MIB), format_size((hi as u64) * MIB)).on_change(
-                move |v, _, cx| {
-                    me.update(cx, |form, cx| {
-                        if let FormKind::Create { size, .. } | FormKind::Resize { size, .. } = &mut form.kind {
-                            *size = v;
-                        }
-                        cx.notify();
-                    })
-                },
-            )
+        cx.invalidate();
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        let slider = |id: &'static str, value: f32, lo: f32, hi: f32, cx: &mut Cx<Self>| {
+            Slider::new(id, value, lo..=hi)
+                .step(1.0)
+                .label("Size:")
+                .value_text(format_size((value as u64) * MIB))
+                .limits(format_size((lo as u64) * MIB), format_size((hi as u64) * MIB))
+                .on_change(cx.msg_with(|v: &f32| FormMsg::Size(*v)))
         };
-        // The icon, the message, the fields and their height, the default
-        // button.
-        let (icon, message, fields, fields_h, button): (&str, String, gpui::Div, f32, &str) = match &self.kind {
-            FormKind::Format { message, fs, .. } => ("warning", message.clone(), Form::fs_fields(fs, true, &me, cx), fs.height(true, cx), "Format"),
+        // The icon, the message, the fields, the default button. (The
+        // window grows or shrinks to what it shows, fields coming and
+        // going: `fits_content`.)
+        let (icon, message, fields, button): (&str, String, Element, &str) = match &self.kind {
+            FormKind::Format { message, fs, .. } => ("warning", message.clone(), Form::fs_fields(fs, true, cx), "Format"),
             FormKind::Create { message, fs, max, size, .. } => {
                 let max_mib = (*max / MIB).max(1) as f32;
                 let fields = div()
                     .flex()
                     .flex_col()
-                    .child(div().h(px(SLIDER_H)).child(slider("drive-setup-size", *size, 1.0, max_mib)))
+                    .child(div().h(px(SLIDER_H)).child(slider("drive-setup-size", *size, 1.0, max_mib, cx)))
                     .child(div().h(px(m::SPACING)))
-                    .child(Form::fs_fields(fs, false, &me, cx));
-                ("drive-setup", message.clone(), fields, SLIDER_H + m::SPACING + fs.height(false, cx), "Create")
+                    .child(Form::fs_fields(fs, false, cx));
+                ("drive-setup", message.clone(), fields, "Create")
             }
             FormKind::Resize { title, current, max, size, can, .. } => {
                 let message = format!("Resize “{title}”, now {}.", format_size(*current));
                 let (lo, hi) = Form::resize_range(*current, *max, can);
-                let (fields, h) = match can {
-                    None => {
-                        let t = "Finding out what this file system allows…";
-                        (div().child(paragraph(t)), paragraph_height(cx, t, col_w))
-                    }
-                    Some(Err(e)) => (div().child(failure(e.clone())), m::LABEL_ROW),
-                    Some(Ok(_)) if hi <= lo => {
-                        let t = "There is no room to grow it, and its file system can't shrink.";
-                        (div().child(paragraph(t)), paragraph_height(cx, t, col_w))
-                    }
-                    Some(Ok(_)) => (div().h(px(SLIDER_H)).child(slider("drive-setup-resize", *size, lo, hi)), SLIDER_H),
+                let fields = match can {
+                    None => div().child(paragraph("Finding out what this file system allows…")),
+                    Some(Err(e)) => div().child(failure(e.clone())),
+                    Some(Ok(_)) if hi <= lo => div().child(paragraph("There is no room to grow it, and its file system can't shrink.")),
+                    Some(Ok(_)) => div().h(px(SLIDER_H)).child(slider("drive-setup-resize", *size, lo, hi, cx)),
                 };
-                ("drive-setup", message, fields, h, "Resize")
+                ("drive-setup", message, fields, "Resize")
             }
-            FormKind::Rename { title, name, .. } => {
-                ("drive-setup", format!("A new name for “{title}”:"), div().h(px(m::CONTROL_HEIGHT)).child(TextControl::new(name.clone())), m::CONTROL_HEIGHT, "Rename")
-            }
-            FormKind::Unlock { title, pass, .. } => {
-                ("vault", format!("“{title}” is encrypted. Its passphrase:"), div().h(px(m::CONTROL_HEIGHT)).child(TextControl::new(pass.clone())), m::CONTROL_HEIGHT, "Unlock")
-            }
+            FormKind::Rename { title, name, .. } => ("drive-setup", format!("A new name for “{title}”:"), div().h(px(m::CONTROL_HEIGHT)).child(TextControl::new(cx, name)), "Rename"),
+            FormKind::Unlock { title, pass, .. } => ("vault", format!("“{title}” is encrypted. Its passphrase:"), div().h(px(m::CONTROL_HEIGHT)).child(TextControl::new(cx, pass)), "Unlock"),
             FormKind::Table { disk, kind, erase } => {
                 let message = format!("A new partition table erases everything on “{}” ({}, {}): every partition on it goes.", disk.name(), disk.device, format_size(disk.size));
-                let (k, e) = (me.clone(), me.clone());
                 let fields = div()
                     .flex()
                     .flex_col()
-                    .child(div().h(px(m::CONTROL_HEIGHT)).child(
-                        MenuField::new("drive-setup-table", vec!["GUID (GPT, for anything recent)".into(), "MBR (for older devices)".into()], *kind).label("Type:").divider(DIVIDER).on_change(
-                            move |i, _, cx| {
-                                k.update(cx, |form, cx| {
-                                    if let FormKind::Table { kind, .. } = &mut form.kind {
-                                        *kind = i;
-                                    }
-                                    cx.notify();
-                                })
-                            },
+                    .child(
+                        div().h(px(m::CONTROL_HEIGHT)).child(
+                            MenuField::new("drive-setup-table", vec!["GUID (GPT, for anything recent)".into(), "MBR (for older devices)".into()], *kind)
+                                .label("Type:")
+                                .divider(DIVIDER)
+                                .on_change(cx.msg_with(|i: &usize| FormMsg::Kind(*i))),
                         ),
-                    ))
+                    )
                     .child(div().h(px(m::TIGHT)))
-                    .child(div().h(px(m::CONTROL_HEIGHT)).flex().items_center().child(CheckBox::new("Overwrite the old data with zeros (slow)", *erase).on_toggle(move |v, _, cx| {
-                        e.update(cx, |form, cx| {
-                            if let FormKind::Table { erase, .. } = &mut form.kind {
-                                *erase = v;
-                            }
-                            cx.notify();
-                        })
-                    })));
-                ("warning", message, fields, 2.0 * m::CONTROL_HEIGHT + m::TIGHT, "Erase")
+                    .child(
+                        div()
+                            .h(px(m::CONTROL_HEIGHT))
+                            .flex()
+                            .items_center()
+                            .child(CheckBox::new("Overwrite the old data with zeros (slow)", *erase).on_toggle(cx.msg_with(|on: &bool| FormMsg::Erase(*on)))),
+                    );
+                ("warning", message, fields, "Erase")
             }
         };
-        // (The window grows or shrinks to what it shows, fields coming
-        // and going: `fits_content`.)
-        let _ = fields_h;
+        // (The keyboard stays in the form: Return and Escape are its,
+        // whatever was last clicked.)
+        self.focus.focus_if_none(cx);
         let ready = self.ready(cx);
-        let (cancel, ok) = (me.clone(), me.clone());
         let buttons = button_row()
-            .child(Button::new("Cancel").on_click(move |window, cx| cancel.update(cx, |f, _| f.cancel(window))))
-            .child(Button::new(button).default(true).enabled(ready).on_click(move |window, cx| ok.update(cx, |f, cx| f.submit(window, cx))));
+            .child(Button::new("Cancel").on_click(cx.msg_with(|_: &ClickEvent| FormMsg::Cancel)))
+            .child(Button::new(button).default(true).enabled(ready).on_click(cx.msg_with(|_: &ClickEvent| FormMsg::Submit)));
         div()
             .size_full()
-            .key_context(alert::CONTEXT)
             .track_focus(&self.focus)
-            .on_action(cx.listener(|f, _: &alert::Default, window, cx| f.submit(window, cx)))
-            .on_action(cx.listener(|f, _: &alert::Cancel, window, _| f.cancel(window)))
-            .child(AlertFrame::new(icon.to_owned()).child(paragraph(message)).child(div().h(px(m::SPACING))).child(fields).child(div().flex_1()).child(buttons))
+            .on_key_down(cx.listener(|f: &mut Self, e: &KeyDownEvent, cx| {
+                if e.keystroke.modifiers.modified() {
+                    return;
+                }
+                match e.keystroke.key.as_str() {
+                    "escape" => cx.send(FormMsg::Cancel),
+                    "enter" => f.submit(cx),
+                    _ => return,
+                }
+                cx.stop_propagation();
+            }))
+            .child(
+                AlertFrame::new(icon.to_owned())
+                    .child(paragraph(message))
+                    .child(div().h(px(m::SPACING)))
+                    .child(fields)
+                    .child(div().h(px(m::SPACING)).flex_shrink_0())
+                    .child(div().flex_grow())
+                    .child(buttons),
+            )
     }
 }
 
 /// The benchmark's window.
 struct Bench {
-    id: u64,
     path: String,
     title: String,
     size: u64,
@@ -557,12 +650,14 @@ struct Bench {
 }
 
 enum BenchMsg {
+    /// Start, or (running) Stop.
+    Start,
     Sample(f64),
     Done(Result<disks::Benchmark, String>),
 }
 
 impl Bench {
-    fn start(&mut self, cx: &mut Context<Self>) {
+    fn start(&mut self, cx: &mut Cx<Self>) {
         if let Some(stop) = &self.stop {
             stop.store(true, Ordering::Relaxed);
             return;
@@ -572,35 +667,62 @@ impl Bench {
         self.samples.clear();
         self.result = None;
         self.error = None;
-        let (path, size, id, proxy) = (self.path.clone(), self.size, self.id, olo_ui::proxy(cx));
+        let (path, size, to) = (self.path.clone(), self.size, cx.messenger());
         std::thread::spawn(move || {
-            let r = disks::benchmark(&path, size, BENCH_SAMPLES, &stop, &mut |_, rate| proxy.send(Msg::Bench(id, BenchMsg::Sample(rate))));
-            proxy.send(Msg::Bench(id, BenchMsg::Done(r)));
+            let r = disks::benchmark(&path, size, BENCH_SAMPLES, &stop, &mut |_, rate| {
+                to.send(BenchMsg::Sample(rate));
+            });
+            to.send(BenchMsg::Done(r));
         });
-        cx.notify();
+        cx.invalidate();
     }
 }
 
-impl Render for Bench {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let me = cx.entity();
+impl View for Bench {
+    type Message = BenchMsg;
+
+    fn message(&mut self, message: BenchMsg, cx: &mut Cx<Self>) {
+        match message {
+            BenchMsg::Start => return self.start(cx),
+            BenchMsg::Sample(rate) => self.samples.push(rate),
+            BenchMsg::Done(r) => {
+                self.stop = None;
+                match r {
+                    Ok(r) => {
+                        self.samples = r.samples.clone();
+                        self.result = Some(r);
+                    }
+                    Err(e) => self.error = Some(e),
+                }
+            }
+        }
+        cx.invalidate();
+    }
+
+    /// Closing it stops it.
+    fn window_closing(&mut self, _: &mut Cx<Self>) {
+        if let Some(stop) = &self.stop {
+            stop.store(true, Ordering::Relaxed);
+        }
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         let intro = format!("How fast “{}” reads, from its start to its end, and how long it takes to find a block. Nothing is written.", self.title);
-        let samples = self.samples.clone();
-        let graph = canvas(
-            |_, _, _| {},
-            move |b, _, window, cx| {
-                let p = theme::palette(cx);
-                let inner = style::inset(window, b, 2.0);
-                style::fill_rect(window, inner, c(p.document_background));
+        let graph = cx
+            .canvas(|bench: &Bench, g, b| {
+                let samples = &bench.samples;
+                let p = theme::palette();
+                let inner = style::inset(g, b, 2.0);
+                style::fill_rect(g, inner, c(p.document_background));
                 let grid = c(mix(p.document_text, p.document_background, 0.9));
                 for k in 1..4 {
                     let gy = inner.top() + inner.size.height * (k as f32 / 4.0);
-                    style::hline(window, inner.left(), inner.right(), gy, grid);
+                    style::hline(g, inner.left(), inner.right(), gy, grid);
                 }
-                let top = olo_ui::widgets::nice_ceiling(samples.iter().copied().fold(0.0, f64::max));
+                let top = olo_kit::widgets::nice_ceiling(samples.iter().copied().fold(0.0, f64::max));
                 if !samples.is_empty() {
                     let faint = c(mix(p.document_text, p.document_background, 0.4));
-                    style::label(window, cx, inner.left() + px(4.0), inner.top() + px(8.0), style::Align::Left, rate_text(top), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), faint);
+                    style::label(g, inner.left() + px(4.0), inner.top() + px(8.0), style::Align::Left, rate_text(top), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), faint);
                 }
                 if samples.len() > 1 {
                     let step = f32::from(inner.size.width) / (BENCH_SAMPLES - 1) as f32;
@@ -608,24 +730,22 @@ impl Render for Bench {
                     let pts: Vec<Point<Pixels>> =
                         samples.iter().enumerate().map(|(i, &v)| point(inner.left() + px(i as f32 * step), inner.bottom() - px(2.0 + (v / top) as f32 * (h - 4.0)))).collect();
                     let ink = c(p.keyboard_navigation);
-                    window.with_content_mask(Some(gpui::ContentMask { bounds: inner }), |window| {
-                        window.paint_layer(inner, |window| {
+                    g.with_content_mask(Some(olo_kit::ContentMask { bounds: inner }), |g| {
+                        g.paint_layer(inner, |g| {
                             for w in pts.windows(2) {
-                                window.paint_segment(w[0], w[1], px(1.5), true, ink);
+                                g.paint_segment(w[0], w[1], px(1.5), true, ink);
                             }
                         });
                     });
                 }
-                style::sunken(window, b, &p, false);
-                olo_ui::agent::record(
-                    window,
-                    cx,
-                    olo_ui::agent::Node { role: "Figure", name: Some("Read speed".into()), value: samples.last().map(|v| rate_text(*v).into()), bounds: b, enabled: true, ..Default::default() },
+                style::sunken(g, b, &p, false);
+                olo_kit::agent::record(
+                    g,
+                    olo_kit::agent::Node { role: "Figure", name: Some("Read speed".into()), value: samples.last().map(|v| rate_text(*v).into()), bounds: b, enabled: true, ..Default::default() },
                 );
-            },
-        )
-        .w_full()
-        .flex_1();
+            })
+            .w_full()
+            .flex_1();
         let text = match (&self.result, &self.error) {
             (_, Some(e)) => e.clone(),
             (Some(r), _) => format!(
@@ -638,18 +758,7 @@ impl Render for Bench {
             (None, _) if self.stop.is_some() => format!("Reading… {} of {BENCH_SAMPLES}", self.samples.len()),
             (None, _) => "Choose Start to measure.".into(),
         };
-        let failed = self.error.is_some();
-        let result = canvas(
-            |_, _, _| {},
-            move |b, _, window, cx| {
-                let p = theme::palette(cx);
-                let color = if failed { c(p.failure) } else { c(p.panel_text) };
-                style::label_fit(window, cx, b.left(), b.center().y, style::Align::Left, text.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), color, b.size.width);
-            },
-        )
-        .w_full()
-        .h(px(m::LABEL_ROW))
-        .flex_shrink_0();
+        let result = line(text, self.error.is_some(), false, m::LABEL_ROW);
         let running = self.stop.is_some();
         div()
             .size_full()
@@ -662,17 +771,40 @@ impl Render for Bench {
             .child(div().h(px(m::TIGHT)))
             .child(result)
             .child(div().h(px(m::SPACING)))
-            .child(button_row().child(Button::new(if running { "Stop" } else { "Start" }).default(!running).on_click(move |_, cx| me.update(cx, |b, cx| b.start(cx)))))
+            .child(button_row().child(Button::new(if running { "Stop" } else { "Start" }).default(!running).on_click(cx.msg_with(|_: &ClickEvent| BenchMsg::Start))))
     }
 }
 
+/// What the window is told: by its workers, its forms and alerts, and
+/// what's in it.
 enum Msg {
     Status(Result<Status, String>),
+    /// UDisks says something changed.
     Changed,
+    /// The free space is read again.
+    Tick,
+    /// A bar with no measure moves on.
+    Sweep,
     Progress(Option<f32>, String),
-    Done { fail: String, result: Result<Option<Item>, String> },
-    CanResize(u64, Result<(bool, bool), String>),
-    Bench(u64, BenchMsg),
+    Done {
+        fail: String,
+        result: Result<Option<Item>, String>,
+    },
+    /// A form's default button.
+    Submit(Box<Submit>),
+    /// A confirmed alert.
+    Act(Box<Action>),
+    /// A disk image chosen to write to this disk.
+    ChoseImage(Box<Disk>, PathBuf),
+    /// The list's selection changed.
+    Selected,
+    /// A row's menu asked for, there.
+    Context(usize, Point<Pixels>),
+    /// A row opened.
+    Open(usize),
+    Command(String),
+    /// The step under way is to stop.
+    Stop,
 }
 
 /// The step under way.
@@ -718,7 +850,6 @@ struct Saved {
 }
 
 struct DriveSetup {
-    window: Option<WindowHandle<Frame>>,
     status: Status,
     loaded: bool,
     error: Option<String>,
@@ -730,33 +861,59 @@ struct DriveSetup {
     /// To select once the list has it (a partition just made).
     pending: Option<Item>,
     reveal: bool,
-    list: Entity<ListModel>,
+    list: ListModel,
+    /// The list's rows, for the status as it is.
+    rows: Rc<Vec<Row>>,
+    /// Counts what the map shows changing (its drawing's key).
+    rev: u64,
     working: Option<Working>,
-    /// Forms waiting on a worker (a resize's limits) and benchmarks, by id.
-    forms: HashMap<u64, WeakEntity<Form>>,
-    benches: HashMap<u64, WeakEntity<Bench>>,
-    next_id: u64,
-    /// Redraws a progress bar with no measure (it sweeps) while a step
-    /// runs.
-    sweep: Option<Task<()>>,
+    /// A bar with no measure is being moved on (`Msg::Sweep`).
+    sweeping: bool,
 }
 
 impl DriveSetup {
-    fn open(&mut self, cx: &mut Context<Self>) {
-        let view = cx.entity();
-        olo_ui::open_or_raise(self.window, cx, WindowOptions::new("DriveSetup", 800.0, 480.0).min_size(480.0, 340.0).keep_size("main"), move |_, _| view, |d, w| d.window = w);
+    fn new(pending: Option<Item>, cx: &mut Cx<Self>) -> DriveSetup {
+        let mut d = DriveSetup {
+            status: Status::default(),
+            loaded: false,
+            error: None,
+            loading: false,
+            again: false,
+            selected: None,
+            sel_disk: None,
+            pending,
+            reveal: false,
+            list: ListModel::new(false),
+            rows: Rc::default(),
+            rev: 0,
+            working: None,
+            sweeping: false,
+        };
+        // UDisks's own news, on a thread that waits for it.
+        let changed = cx.messenger();
+        std::thread::spawn(move || {
+            if let Err(e) = disks::watch(move || {
+                changed.send(Msg::Changed);
+            }) {
+                tracing::warn!("can't watch UDisks: {e}");
+            }
+        });
+        // The free space, again every few seconds while the window is
+        // open (writing files sends UDisks no signal).
+        cx.every(SPACE_EVERY, || Msg::Tick);
+        d.refresh(cx);
+        d
     }
 
     /// Read everything again on a worker (once more after, if asked
     /// while reading).
-    fn refresh(&mut self, cx: &App) {
+    fn refresh(&mut self, cx: &mut Cx<Self>) {
         if self.loading {
             self.again = true;
             return;
         }
         self.loading = true;
-        let proxy = olo_ui::proxy(cx);
-        std::thread::spawn(move || proxy.send(Msg::Status(disks::status().map_err(|e| disks::error_text(&e)))));
+        cx.work(|| disks::status().map_err(|e| disks::error_text(&e)), Msg::Status);
     }
 
     fn select(&mut self, item: Item) {
@@ -766,11 +923,14 @@ impl DriveSetup {
         };
         self.selected = Some(item);
         self.reveal = true;
+        self.rev += 1;
     }
 
     /// Keep the selection on something that still exists.
     fn settle(&mut self) {
-        let rows = rows(&self.status);
+        let rows = Rc::new(rows(&self.status));
+        self.rows = rows.clone();
+        self.rev += 1;
         if let Some(p) = &self.pending
             && rows.iter().any(|r| &r.item == p)
         {
@@ -833,101 +993,68 @@ impl DriveSetup {
         can
     }
 
-    fn alert(&self, message: String, cx: &mut Context<Self>) {
-        cx.defer(move |cx| {
-            open_alert(cx, "DriveSetup", "stop", &message, &["OK"], |_, _| {});
+    fn alert(&self, message: String, cx: &mut Cx<Self>) {
+        open_alert(cx, "DriveSetup", "stop", &message, &["OK"], |_, _| {});
+    }
+
+    fn confirm(&self, message: String, button: &'static str, action: Action, cx: &mut Cx<Self>) {
+        let (to, action) = (cx.messenger(), RefCell::new(Some(action)));
+        open_alert(cx, "DriveSetup", "warning", &message, &["Cancel", button], move |choice, _| {
+            if *choice == Some(1)
+                && let Some(action) = action.borrow_mut().take()
+            {
+                to.send(Msg::Act(Box::new(action)));
+            }
         });
     }
 
-    fn confirm(&self, message: String, button: &'static str, action: Action, cx: &mut Context<Self>) {
-        let me = cx.entity();
-        cx.defer(move |cx| {
-            let action = std::cell::RefCell::new(Some(action));
-            open_alert(cx, "DriveSetup", "warning", &message, &["Cancel", button], move |choice, cx| {
-                if choice == Some(1)
-                    && let Some(action) = action.borrow_mut().take()
-                {
-                    me.update(cx, |d, cx| d.act(action, cx));
-                }
-            });
-        });
-    }
-
-    /// Opens a form; its id (for what a worker says back about it).
-    fn form(&mut self, title: &str, kind: impl FnOnce(&mut App) -> FormKind + 'static, cx: &mut Context<Self>) -> u64 {
-        self.next_id += 1;
-        let id = self.next_id;
-        let me = cx.entity();
-        let title = title.to_owned();
-        cx.defer(move |cx| {
-            let kind = kind(cx);
-            // The first field takes the keyboard.
-            let first = match &kind {
-                FormKind::Format { fs, .. } | FormKind::Create { fs, .. } => Some(fs.name.focus_handle(cx)),
-                FormKind::Rename { name, .. } => Some(name.focus_handle(cx)),
-                FormKind::Unlock { pass, .. } => Some(pass.focus_handle(cx)),
-                _ => None,
-            };
-            let form = cx.new(|cx| Form { app: me.downgrade(), kind, focus: cx.focus_handle(), first, done: false, returns: Vec::new() });
-            me.update(cx, |d, _| d.forms.insert(id, form.downgrade()));
-            let view = form.clone();
-            let options = WindowOptions { fixed: true, ..WindowOptions::new(title, FORM_W, 120.0).dialog() };
-            olo_ui::open_window(cx, options, move |_, _| view);
-        });
-        id
+    /// Opens a form: a window of this one's, which hands back what was
+    /// typed (`Msg::Submit`).
+    fn form(&mut self, title: &str, spec: FormSpec, cx: &mut Cx<Self>) {
+        let to = cx.messenger();
+        let options = WindowOptions { fixed: true, ..WindowOptions::new(title.to_owned(), FORM_W, 120.0).dialog() };
+        olo_kit::open_window_here(cx, options, move |cx| Form::new(spec, to, cx));
     }
 
     /// Do `work` on a worker as the step under way: it can report
     /// progress, and says what to select after. `fail` begins the alert
     /// if it fails.
-    fn run(
-        &mut self,
-        what: String,
-        fail: String,
-        stop: Option<Arc<AtomicBool>>,
-        work: impl FnOnce(&dyn Fn(Option<f32>, String)) -> Result<Option<Item>, String> + Send + 'static,
-        cx: &mut Context<Self>,
-    ) {
+    fn run(&mut self, what: String, fail: String, stop: Option<Arc<AtomicBool>>, work: impl FnOnce(&dyn Fn(Option<f32>, String)) -> Result<Option<Item>, String> + Send + 'static, cx: &mut Cx<Self>) {
         if self.working.is_some() {
             return;
         }
         self.working = Some(Working { what, stop, fraction: None, detail: String::new() });
-        let proxy = olo_ui::proxy(cx);
+        let to = cx.messenger();
         std::thread::spawn(move || {
-            let report = |f: Option<f32>, detail: String| proxy.send(Msg::Progress(f, detail));
+            let report = |f: Option<f32>, detail: String| {
+                to.send(Msg::Progress(f, detail));
+            };
             let result = work(&report);
-            proxy.send(Msg::Done { fail, result });
+            to.send(Msg::Done { fail, result });
         });
-        self.sweeping(cx);
-        cx.notify();
+        self.sweep(cx);
+        cx.invalidate();
+    }
+
+    /// Whether a bar shows with no measure (it sweeps).
+    fn unmeasured(&self) -> bool {
+        self.working.as_ref().is_some_and(|w| w.fraction.is_none()) || (self.working.is_none() && self.status.jobs.first().is_some_and(|j| j.progress.is_none()))
     }
 
     /// While a step runs with no measure, its bar sweeps: ten frames a
     /// second, and none once it's done or measured.
-    fn sweeping(&mut self, cx: &mut Context<Self>) {
-        let unmeasured = self.working.as_ref().is_some_and(|w| w.fraction.is_none()) || (self.working.is_none() && self.status.jobs.first().is_some_and(|j| j.progress.is_none()));
-        if !unmeasured {
-            self.sweep = None;
-            return;
+    fn sweep(&mut self, cx: &mut Cx<Self>) {
+        if self.unmeasured() && !self.sweeping {
+            self.sweeping = true;
+            cx.after(Duration::from_millis(100), Msg::Sweep);
         }
-        if self.sweep.is_some() {
-            return;
-        }
-        self.sweep = Some(cx.spawn(async move |this, cx| {
-            loop {
-                cx.background_executor().timer(Duration::from_millis(100)).await;
-                if this.update(cx, |_, cx| cx.notify()).is_err() {
-                    break;
-                }
-            }
-        }));
     }
 
-    fn command(&mut self, command: &str, cx: &mut Context<Self>) {
+    fn do_command(&mut self, command: &str, cx: &mut Cx<Self>) {
         let can = self.can();
         let Some(s) = self.sel() else {
             if command == "quit" {
-                cx.quit();
+                olo_kit::quit();
             }
             return;
         };
@@ -951,7 +1078,7 @@ impl DriveSetup {
             "unlock" if can.unlock => {
                 let v = volume.unwrap();
                 let title = v.title();
-                self.form("Unlock", move |cx| FormKind::Unlock { path: v.path, title, pass: text_field(cx, |f| f.name("Passphrase").password(true)) }, cx);
+                self.form("Unlock", FormSpec::Unlock { path: v.path, title }, cx);
             }
             "lock" if can.lock => {
                 let v = volume.unwrap();
@@ -970,7 +1097,7 @@ impl DriveSetup {
                 let kinds = disks::formats(&self.status.filesystems);
                 let label = v.label.clone();
                 let release = Some(v.clone()).filter(Volume::in_use);
-                self.form("Format", move |cx| FormKind::Format { path: v.path, release, title, message, fs: FsForm::new(kinds, label, cx) }, cx);
+                self.form("Format", FormSpec::Format { path: v.path, release, title, message, kinds, label }, cx);
             }
             "create" if can.create => {
                 let (offset, size) = free.unwrap();
@@ -978,7 +1105,7 @@ impl DriveSetup {
                 let message = format!("Make a partition in the {} of free space on “{dname}”.", format_size(size));
                 let kinds = disks::formats(&self.status.filesystems);
                 let table = disk.table.clone().unwrap_or_default();
-                self.form("Create Partition", move |cx| FormKind::Create { disk: disk.path, table, offset, max, size: (max / MIB) as f32, message, fs: FsForm::new(kinds, String::new(), cx) }, cx);
+                self.form("Create Partition", FormSpec::Create { disk: disk.path, table, offset, max, message, kinds }, cx);
             }
             "delete" if can.delete => {
                 let v = volume.unwrap();
@@ -997,27 +1124,12 @@ impl DriveSetup {
                     _ => None,
                 });
                 let max = (v.size + after.unwrap_or(0)) / MIB * MIB;
-                let has_fs = !v.content.is_empty();
-                let (path, title, current, kind) = (v.path.clone(), v.title(), v.size, v.content.clone());
-                let id = self.form("Resize", move |_| FormKind::Resize { path, title, current, max, size: (current / MIB) as f32, has_fs, can: (!has_fs).then_some(Ok((true, true))) }, cx);
-                if has_fs {
-                    let proxy = olo_ui::proxy(cx);
-                    std::thread::spawn(move || proxy.send(Msg::CanResize(id, disks::can_resize(&kind))));
-                }
+                self.form("Resize", FormSpec::Resize { path: v.path.clone(), title: v.title(), current: v.size, max, content: v.content.clone() }, cx);
             }
             "rename" if can.rename => {
                 let v = volume.unwrap();
                 let name = if v.mountable { v.label.clone() } else { v.name.clone() };
-                let (path, title, fs) = (v.path.clone(), v.title(), v.mountable);
-                self.form(
-                    "Rename",
-                    move |cx| {
-                        let field = text_field(cx, |f| f.name("Name"));
-                        field.update(cx, |f, cx| f.set_text(name, cx));
-                        FormKind::Rename { path, title, fs, name: field }
-                    },
-                    cx,
-                );
+                self.form("Rename", FormSpec::Rename { path: v.path.clone(), title: v.title(), fs: v.mountable, name }, cx);
             }
             tracker::COMMAND if can.tracker => {
                 let dir = volume.unwrap().mount_points[0].clone();
@@ -1028,37 +1140,28 @@ impl DriveSetup {
             "eject" if can.eject => {
                 self.run(format!("Ejecting “{dname}”…"), format!("“{dname}” couldn't be ejected."), None, move |_| e(disks::eject(&disk)), cx);
             }
-            "new-table" if can.table => {
-                self.form("New Partition Table", move |_| FormKind::Table { disk: Box::new(disk), kind: 0, erase: false }, cx);
-            }
+            "new-table" if can.table => self.form("New Partition Table", FormSpec::Table { disk: Box::new(disk) }, cx),
             "write-image" if can.image => {
                 let home = std::env::var_os("HOME").map_or_else(|| PathBuf::from("/"), PathBuf::from);
-                let me = cx.entity();
-                cx.defer(move |cx| {
-                    file_panel::show(cx, "Write Disk Image", FilePanel::open(home).types(&["iso", "img", "raw", "bin"]), move |a, cx| {
-                        if let PanelResult::Chosen(image) = a.result {
-                            me.update(cx, |d, cx| d.chose_image(disk, image, cx));
-                        }
-                    });
+                // (The panel answers on its own looper: it tells this
+                // window.)
+                let to = cx.messenger();
+                file_panel::show("Write Disk Image", FilePanel::open(home).types(&["iso", "img", "raw", "bin"]), move |a| {
+                    if let PanelResult::Chosen(image) = a.result {
+                        to.send(Msg::ChoseImage(Box::new(disk), image));
+                    }
                 });
             }
             "benchmark" if can.bench => {
-                self.next_id += 1;
-                let id = self.next_id;
-                let (path, size) = (disk.path.clone(), disk.size);
-                let me = cx.entity();
-                cx.defer(move |cx| {
-                    let bench = cx.new(|_| Bench { id, path, title: dname.clone(), size, samples: Vec::new(), result: None, error: None, stop: None });
-                    me.update(cx, |d, _| d.benches.insert(id, bench.downgrade()));
-                    let view = bench.clone();
-                    olo_ui::open_window(cx, WindowOptions::new(format!("Benchmark: {dname}"), 480.0, 320.0).min_size(400.0, 260.0).floating(), move |_, _| view);
-                    // Closing it stops it.
-                    cx.observe_release(&bench, |b, _| {
-                        if let Some(stop) = &b.stop {
-                            stop.store(true, Ordering::Relaxed);
-                        }
-                    })
-                    .detach();
+                let (path, size, title) = (disk.path.clone(), disk.size, dname.clone());
+                olo_kit::open_window(WindowOptions::new(format!("Benchmark: {dname}"), 480.0, 320.0).min_size(400.0, 260.0).floating(), move |_| Bench {
+                    path,
+                    title,
+                    size,
+                    samples: Vec::new(),
+                    result: None,
+                    error: None,
+                    stop: None,
                 });
             }
             "check-health" if can.health => {
@@ -1066,14 +1169,14 @@ impl DriveSetup {
                 let nvme = disk.device.starts_with("/dev/nvme");
                 self.run(format!("Checking “{dname}”…"), format!("“{dname}” couldn't be checked."), None, move |_| e(disks::smart_update(&dr.path, nvme)), cx);
             }
-            "quit" => cx.quit(),
+            "quit" => olo_kit::quit(),
             _ => {}
         }
-        cx.notify();
+        cx.invalidate();
     }
 
     /// A disk image chosen to write: it must fit; then the alert.
-    fn chose_image(&mut self, disk: Disk, image: PathBuf, cx: &mut Context<Self>) {
+    fn chose_image(&mut self, disk: Disk, image: PathBuf, cx: &mut Cx<Self>) {
         let name = disk.name();
         let file = image.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         let len = std::fs::metadata(&image).map(|m| m.len()).unwrap_or(0);
@@ -1085,7 +1188,7 @@ impl DriveSetup {
     }
 
     /// A form's default button.
-    fn submit(&mut self, s: Submit, cx: &mut Context<Self>) {
+    fn submit(&mut self, s: Submit, cx: &mut Cx<Self>) {
         let e = |r: olo_system::Result<()>| r.map(|_| None).map_err(|e| disks::error_text(&e));
         match s {
             Submit::Format { path, release, title, format } => {
@@ -1151,7 +1254,7 @@ impl DriveSetup {
         }
     }
 
-    fn act(&mut self, action: Action, cx: &mut Context<Self>) {
+    fn act(&mut self, action: Action, cx: &mut Cx<Self>) {
         match action {
             Action::Delete { part, release, title } => {
                 self.run(
@@ -1319,13 +1422,13 @@ impl DriveSetup {
 
     /// The status line: the step under way (with Stop), UDisks's own
     /// jobs, or what is selected.
-    fn status_line(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+    fn status_line(&self, cx: &mut Cx<Self>) -> Element {
         let job = self.status.jobs.first();
-        let busy = self.working.as_ref().map(|w| (w.what.clone(), w.fraction, w.detail.clone(), w.stop.clone()));
-        let busy = busy.or_else(|| job.map(|j| (format!("{}…", j.title()), j.progress.map(|f| f as f32), String::new(), None)));
+        let busy = self.working.as_ref().map(|w| (w.what.clone(), w.fraction, w.detail.clone(), w.stop.is_some()));
+        let busy = busy.or_else(|| job.map(|j| (format!("{}…", j.title()), j.progress.map(|f| f as f32), String::new(), false)));
         if let Some((what, fraction, detail, stop)) = busy {
             let fraction = fraction.or(job.and_then(|j| j.progress).map(|f| f as f32));
-            let cancel = job.filter(|j| j.cancelable).map(|j| j.path.clone());
+            let cancel = job.is_some_and(|j| j.cancelable);
             let trailing = match (fraction, detail.is_empty()) {
                 (_, false) => detail,
                 (Some(f), true) => format!("{:.0}%", f * 100.0),
@@ -1335,42 +1438,54 @@ impl DriveSetup {
             let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs_f64();
             let shown = fraction.unwrap_or(((t * 0.6).fract()) as f32);
             let mut row = div().flex().items_center().gap(px(m::SPACING)).h(px(m::CONTROL_HEIGHT)).child(div().flex_1().child(StatusBar::new(shown).label(what).trailing(trailing)));
-            if stop.is_some() || cancel.is_some() {
-                let _ = cx;
-                row = row.child(Button::new("Stop").min_width(80.0).on_click(move |_, _| {
-                    if let Some(stop) = &stop {
-                        stop.store(true, Ordering::Relaxed);
-                    } else if let Some(job) = cancel.clone() {
-                        std::thread::spawn(move || {
-                            if let Err(e) = disks::cancel(&job) {
-                                tracing::warn!("couldn't stop the job: {e}");
-                            }
-                        });
-                    }
-                }));
+            if stop || cancel {
+                row = row.child(Button::new("Stop").min_width(80.0).on_click(cx.msg_with(|_: &ClickEvent| Msg::Stop)));
             }
-            return row.into_any_element();
+            return row;
         }
         let (text, warn) = self.describe();
-        canvas(
-            |_, _, _| {},
-            move |b, _, window, cx| {
-                let p = theme::palette(cx);
-                let color = if warn { c(p.failure) } else { c(p.panel_text) };
-                style::label_fit(window, cx, b.left(), b.center().y, style::Align::Left, text.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), color, b.size.width);
-            },
-        )
-        .w_full()
-        .h(px(m::CONTROL_HEIGHT))
-        .into_any_element()
+        line(text, warn, false, m::CONTROL_HEIGHT)
     }
 
-    fn message(&mut self, message: Box<dyn std::any::Any + Send>, cx: &mut Context<Self>) {
-        if message.is::<Launch>() {
-            return self.open(cx);
+    /// The step under way stops: ours by its flag, UDisks's own job by
+    /// asking it.
+    fn stop(&mut self) {
+        if let Some(stop) = self.working.as_ref().and_then(|w| w.stop.as_ref()) {
+            stop.store(true, Ordering::Relaxed);
+        } else if let Some(job) = self.status.jobs.first().filter(|j| j.cancelable).map(|j| j.path.clone()) {
+            std::thread::spawn(move || {
+                if let Err(e) = disks::cancel(&job) {
+                    tracing::warn!("couldn't stop the job: {e}");
+                }
+            });
         }
-        let Ok(msg) = message.downcast::<Msg>() else { return };
-        match *msg {
+    }
+
+    /// A click on the map: what's there chosen, and (the right button)
+    /// its menu.
+    fn map_click(&mut self, e: &MouseDownEvent, cx: &mut Cx<Self>) {
+        let rect = cx.listener_bounds();
+        let Some(item) = self.sel().and_then(|s| map::item_at(cx.scale_factor(), rect, s.disk, e.position)) else { return };
+        self.select(item);
+        if e.button == MouseButton::Right {
+            let chose = cx.msg_with(|command: &str| Msg::Command(command.to_owned()));
+            menu::context_menu(cx, self.item_menu(), e.position, chose);
+        }
+        cx.invalidate();
+    }
+}
+
+/// What a confirmed alert goes on to do.
+enum Action {
+    Delete { part: String, release: Option<Volume>, title: String },
+    WriteImage { disk: Disk, image: PathBuf },
+}
+
+impl View for DriveSetup {
+    type Message = Msg;
+
+    fn message(&mut self, message: Msg, cx: &mut Cx<Self>) {
+        match message {
             Msg::Status(r) => {
                 self.loading = false;
                 if std::mem::take(&mut self.again) {
@@ -1390,7 +1505,13 @@ impl DriveSetup {
                     Err(e) => self.error = Some(e),
                 }
             }
-            Msg::Changed => self.refresh(cx),
+            Msg::Changed | Msg::Tick => return self.refresh(cx),
+            Msg::Sweep => {
+                self.sweeping = false;
+                if !self.unmeasured() {
+                    return;
+                }
+            }
             Msg::Progress(f, detail) => {
                 if let Some(w) = &mut self.working {
                     w.fraction = f;
@@ -1407,203 +1528,28 @@ impl DriveSetup {
                 }
                 self.refresh(cx);
             }
-            Msg::CanResize(id, r) => {
-                if let Some(form) = self.forms.get(&id).and_then(WeakEntity::upgrade) {
-                    form.update(cx, |f, cx| {
-                        if let FormKind::Resize { can, .. } = &mut f.kind {
-                            *can = Some(r);
-                        }
-                        cx.notify();
-                    });
+            Msg::Submit(s) => self.submit(*s, cx),
+            Msg::Act(action) => self.act(*action, cx),
+            Msg::ChoseImage(disk, image) => self.chose_image(*disk, image, cx),
+            Msg::Selected => {
+                let row = self.list.state().single();
+                if let Some(item) = row.and_then(|i| self.rows.get(i)).map(|r| r.item.clone()) {
+                    self.select(item);
+                    self.reveal = false;
                 }
             }
-            Msg::Bench(id, m) => {
-                if let Some(bench) = self.benches.get(&id).and_then(WeakEntity::upgrade) {
-                    bench.update(cx, |b, cx| {
-                        match m {
-                            BenchMsg::Sample(rate) => b.samples.push(rate),
-                            BenchMsg::Done(r) => {
-                                b.stop = None;
-                                match r {
-                                    Ok(r) => {
-                                        b.samples = r.samples.clone();
-                                        b.result = Some(r);
-                                    }
-                                    Err(e) => b.error = Some(e),
-                                }
-                            }
-                        }
-                        cx.notify();
-                    });
-                }
+            Msg::Context(i, at) => {
+                let Some(item) = self.rows.get(i).map(|r| r.item.clone()) else { return };
+                self.select(item);
+                self.reveal = false;
+                let chose = cx.msg_with(|command: &str| Msg::Command(command.to_owned()));
+                menu::context_menu(cx, self.item_menu(), at, chose);
             }
-        }
-        self.forms.retain(|_, f| f.upgrade().is_some());
-        self.benches.retain(|_, b| b.upgrade().is_some());
-        self.sweeping(cx);
-        cx.notify();
-    }
-
-    fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&Saved { selected: self.selected.clone() }).ok()
-    }
-}
-
-/// What a confirmed alert goes on to do.
-enum Action {
-    Delete { part: String, release: Option<Volume>, title: String },
-    WriteImage { disk: Disk, image: PathBuf },
-}
-
-impl Render for DriveSetup {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let me = cx.entity();
-        let bar_me = me.clone();
-        let bar = MenuBar::of(&me, |d: &Self, _| d.menus(), move |cmd, _, cx| bar_me.update(cx, |d, cx| d.command(cmd, cx)));
-        let root = div().size_full().flex().flex_col().child(bar);
-        if !self.loaded {
-            let error = self.error.clone();
-            return root.child(
-                canvas(
-                    |_, _, _| {},
-                    move |b, _, window, cx| {
-                        if let Some(e) = &error {
-                            let p = theme::palette(cx);
-                            style::label(
-                                window,
-                                cx,
-                                b.center().x,
-                                b.center().y,
-                                style::Align::Center,
-                                format!("Can't see the disks: {e}"),
-                                style::PLAIN_SIZE,
-                                style::ui_font(FontWeight::NORMAL),
-                                c(p.failure),
-                            );
-                        }
-                    },
-                )
-                .flex_1()
-                .w_full(),
-            );
-        }
-
-        // The chosen disk's map, under its name.
-        let disk = self.sel().map(|s| s.disk.clone());
-        let selected = self.selected.clone();
-        let what = disk.as_ref().map(|d| format!("{} ({}), {}, {}", d.name(), d.device, format_size(d.size), table_name(d))).unwrap_or_default();
-        let head = canvas(
-            |_, _, _| {},
-            move |b, _, window, cx| {
-                let p = theme::palette(cx);
-                style::label_fit(window, cx, b.left(), b.center().y, style::Align::Left, what.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), c(p.panel_text), b.size.width);
-            },
-        )
-        .w_full()
-        .h(px(m::LABEL_ROW))
-        .flex_shrink_0();
-        let pick = me.clone();
-        let on_pick: map::OnPick = std::rc::Rc::new(move |item, at, window, cx| {
-            let menu = pick.update(cx, |d, cx| {
-                d.select(item);
-                cx.notify();
-                d.item_menu()
-            });
-            if let Some(at) = at {
-                let to = pick.clone();
-                menu::context_menu(window, cx, menu, at, move |cmd, _, cx| to.update(cx, |d, cx| d.command(cmd, cx)));
-            }
-        });
-        let map_el = canvas(
-            |b, window, _| map::hitbox(window, b),
-            move |b, hitbox, window, cx| {
-                if let Some(disk) = &disk {
-                    map::paint(window, cx, b, &hitbox, disk, selected.as_ref(), on_pick.clone());
-                }
-            },
-        )
-        .w_full()
-        .h(px(MAP_H))
-        .flex_shrink_0();
-
-        // The list.
-        let rows = std::rc::Rc::new(rows(&self.status));
-        let at = self.selected.as_ref().and_then(|s| rows.iter().position(|r| &r.item == s));
-        let reveal = std::mem::take(&mut self.reveal);
-        self.list.update(cx, |l, _| {
-            let want: Vec<usize> = at.into_iter().collect();
-            if l.state.selected.iter().copied().collect::<Vec<_>>() != want {
-                l.state.selected = want.into_iter().collect();
-            }
-            if reveal && let Some(i) = at {
-                l.reveal(i);
-            }
-        });
-        let columns =
-            [Column::new("Name", 200.0), Column::new("Device", 84.0), Column::new("Contents", 120.0), Column::new("Size", 72.0).right(), Column::new("Free", 130.0), Column::new("Mounted At", 140.0)];
-        let (cells, sel_rows, ctx_rows, open_rows) = (rows.clone(), rows.clone(), rows.clone(), rows.clone());
-        let (sel, ctx, open) = (me.clone(), me.clone(), me.clone());
-        let list = ColumnListView::new("drive-setup-list", &self.list, columns, rows.len(), move |cell, window, cx| {
-            let row = &cells[cell.row];
-            let p = theme::palette(cx);
-            if cell.column == 4
-                && let Some(space) = row.space
-            {
-                let left = cell.bounds.left() + px(m::CELL_INSET);
-                let bar = style::snap(window, Bounds { origin: point(left, cell.bounds.center().y - px(USAGE_H / 2.0)), size: size(px(USAGE_W), px(USAGE_H)) });
-                // On panel grey, so its whole bevel shows on the list's
-                // white.
-                let w = style::hairline(window);
-                style::fill_rect(window, Bounds::from_corners(point(bar.left() - w, bar.top() - w), point(bar.right() + w, bar.bottom() + w)), c(p.panel_background));
-                level_bar(window, bar, space.fraction(), nearly_full(&space).then(|| c(p.failure)), &p);
-                cell.bounds = Bounds::from_corners(point(bar.right(), cell.bounds.top()), cell.bounds.bottom_right());
-                return cell.text(window, cx, row.cells[4].clone());
-            }
-            if cell.column != 0 {
-                return cell.text(window, cx, row.cells[cell.column].clone());
-            }
-            let x = cell.bounds.left() + px(m::CELL_INSET + row.depth as f32 * INDENT);
-            if let Some(icon) = row.icon {
-                let r = style::snap_centred(window, point(x + px(ICON / 2.0), cell.bounds.center().y), ICON, ICON);
-                icons::paint(window, r, icon);
-            }
-            cell.bounds = Bounds::from_corners(point(x + px(ICON), cell.bounds.top()), cell.bounds.bottom_right());
-            let free = matches!(row.item, Item::Free { .. });
-            let color = if free && !cell.selected { c(mix(p.list_item_text, p.list_background, 0.45)) } else { cell.text_color };
-            let font = style::ui_font(if row.depth == 0 { FontWeight::BOLD } else { FontWeight::NORMAL });
-            cell.text_with(window, cx, row.cells[0].clone(), font, color);
-        })
-        .empty_text("No disks.")
-        .on_select(move |_, cx| {
-            let r = sel.read(cx).list.read(cx).state.single();
-            if let Some(row) = r.and_then(|i| sel_rows.get(i)) {
-                let item = row.item.clone();
-                sel.update(cx, |d, cx| {
-                    d.select(item);
-                    d.reveal = false;
-                    cx.notify();
-                });
-            }
-        })
-        .on_context(move |i, at, window, cx| {
-            let Some(row) = ctx_rows.get(i) else { return };
-            let item = row.item.clone();
-            let menu = ctx.update(cx, |d, cx| {
-                d.select(item);
-                d.reveal = false;
-                cx.notify();
-                d.item_menu()
-            });
-            let to = ctx.clone();
-            menu::context_menu(window, cx, menu, at, move |cmd, _, cx| to.update(cx, |d, cx| d.command(cmd, cx)));
-        })
-        .on_open(move |i, _, cx| {
-            let Some(row) = open_rows.get(i) else { return };
-            let item = row.item.clone();
-            open.update(cx, |d, cx| {
-                d.select(item);
-                let can = d.can();
-                let cmd = if can.tracker {
+            Msg::Open(i) => {
+                let Some(item) = self.rows.get(i).map(|r| r.item.clone()) else { return };
+                self.select(item);
+                let can = self.can();
+                let command = if can.tracker {
                     tracker::COMMAND
                 } else if can.mount {
                     "mount"
@@ -1614,9 +1560,108 @@ impl Render for DriveSetup {
                 } else {
                     ""
                 };
-                d.command(cmd, cx);
-            });
-        });
+                self.do_command(command, cx);
+            }
+            Msg::Command(command) => self.do_command(&command, cx),
+            Msg::Stop => self.stop(),
+        }
+        self.sweep(cx);
+        cx.invalidate();
+    }
+
+    fn command(&mut self, command: &str, cx: &mut Cx<Self>) -> bool {
+        self.do_command(command, cx);
+        true
+    }
+
+    fn save_state(&mut self, _: &mut Cx<Self>) -> Option<String> {
+        serde_json::to_string(&Saved { selected: self.selected.clone() }).ok()
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        let bar = MenuBar::new(cx, self.menus());
+        let root = div().size_full().flex().flex_col().child(bar);
+        if !self.loaded {
+            let error = self.error.clone();
+            let look = style::key(&error);
+            return root.child(
+                canvas(move |g, b| {
+                    if let Some(e) = &error {
+                        let p = theme::palette();
+                        style::label(g, b.center().x, b.center().y, style::Align::Center, format!("Can't see the disks: {e}"), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), c(p.failure));
+                    }
+                })
+                .paint_key(look)
+                .flex_1()
+                .w_full(),
+            );
+        }
+
+        // The chosen disk's map, under its name.
+        let what = self.sel().map(|s| s.disk).map(|d| format!("{} ({}), {}, {}", d.name(), d.device, format_size(d.size), table_name(d))).unwrap_or_default();
+        let head = line(what, false, true, m::LABEL_ROW);
+        let map_el = cx
+            .canvas(|d: &DriveSetup, g, b| {
+                if let Some(s) = d.sel() {
+                    map::paint(g, b, s.disk, d.selected.as_ref());
+                }
+            })
+            .key_by(|d: &DriveSetup| d.rev)
+            .id("drive-map")
+            .w_full()
+            .h(px(MAP_H))
+            .flex_shrink_0()
+            .on_mouse_down(MouseButton::Left, cx.listener(|d: &mut Self, e: &MouseDownEvent, cx| d.map_click(e, cx)))
+            .on_mouse_down(MouseButton::Right, cx.listener(|d: &mut Self, e: &MouseDownEvent, cx| d.map_click(e, cx)));
+
+        // The list.
+        let at = self.selected.as_ref().and_then(|s| self.rows.iter().position(|r| &r.item == s));
+        let reveal = std::mem::take(&mut self.reveal);
+        {
+            let mut state = self.list.state_mut();
+            let want: Vec<usize> = at.into_iter().collect();
+            if state.selected.iter().copied().collect::<Vec<_>>() != want {
+                state.selected = want.into_iter().collect();
+            }
+        }
+        if reveal && let Some(i) = at {
+            self.list.reveal(cx, i);
+        }
+        let columns =
+            [Column::new("Name", 200.0), Column::new("Device", 84.0), Column::new("Contents", 120.0), Column::new("Size", 72.0).right(), Column::new("Free", 130.0), Column::new("Mounted At", 140.0)];
+        let list = ColumnListView::new(cx, "drive-setup-list", &self.list, columns, self.rows.len(), |d: &DriveSetup, cell, g| {
+            let Some(row) = d.rows.get(cell.row) else { return };
+            let p = theme::palette();
+            if cell.column == 4 && row.space.is_some() {
+                let left = cell.bounds.left() + px(m::CELL_INSET);
+                let bar = style::snap(g, Bounds { origin: point(left, cell.bounds.center().y - px(USAGE_H / 2.0)), size: size(px(USAGE_W), px(USAGE_H)) });
+                // On panel grey, so its whole bevel shows on the list's
+                // white.
+                let w = style::hairline(g);
+                style::fill_rect(g, Bounds::from_corners(point(bar.left() - w, bar.top() - w), point(bar.right() + w, bar.bottom() + w)), c(p.panel_background));
+                level_bar(g, bar, row.fraction, row.full.then(|| c(p.failure)), &p);
+                cell.bounds = Bounds::from_corners(point(bar.right(), cell.bounds.top()), cell.bounds.bottom_right());
+                return cell.text(g, row.cells[4].clone());
+            }
+            if cell.column != 0 {
+                return cell.text(g, row.cells[cell.column].clone());
+            }
+            let x = cell.bounds.left() + px(m::CELL_INSET + row.depth as f32 * INDENT);
+            if let Some(icon) = row.icon {
+                let r = style::snap_centred(g, point(x + px(ICON / 2.0), cell.bounds.center().y), ICON, ICON);
+                icons::paint(g, r, icon);
+            }
+            cell.bounds = Bounds::from_corners(point(x + px(ICON), cell.bounds.top()), cell.bounds.bottom_right());
+            let free = matches!(row.item, Item::Free { .. });
+            let color = if free && !cell.selected { c(mix(p.list_item_text, p.list_background, 0.45)) } else { cell.text_color };
+            let font = style::ui_font(if row.depth == 0 { FontWeight::BOLD } else { FontWeight::NORMAL });
+            cell.text_with(g, row.cells[0].clone(), font, color);
+        })
+        .row_key(|d: &DriveSetup, row| d.rows.get(row).map_or(0, |r| style::key((&r.item, r.depth, r.icon, &r.cells, r.space, r.full))))
+        .empty_text("No disks.")
+        .on_select(cx.msg_with(|_: &()| Msg::Selected))
+        .on_context(cx.msg_with(|(i, at): &(usize, Point<Pixels>)| Msg::Context(*i, *at)))
+        .on_open(cx.msg_with(|i: &usize| Msg::Open(*i)));
 
         let status = self.status_line(cx);
         root.child(
@@ -1705,59 +1750,16 @@ fn main() {
     if instance::forward(APP_ID, &args) {
         return;
     }
-    olo_ui::run(APP_ID, |cx| {
-        instance::listen(APP_ID, olo_ui::proxy(cx));
-        let saved: Saved = olo_ui::restored_state().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
-        let watcher = olo_ui::proxy(cx);
-        std::thread::spawn(move || {
-            let tell = watcher.clone();
-            if let Err(e) = disks::watch(move || tell.send(Msg::Changed)) {
-                tracing::warn!("can't watch UDisks: {e}");
+    olo_kit::run(APP_ID, |app| {
+        instance::listen(APP_ID, olo_kit::proxy());
+        let saved: Saved = olo_kit::restored_state().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+        let window = olo_kit::open_window(WindowOptions::new("DriveSetup", 800.0, 480.0).min_size(480.0, 340.0).keep_size("main"), move |cx| DriveSetup::new(saved.selected, cx));
+        // (Launched again: the one there comes forward.)
+        olo_kit::message_handler(app, move |message, _| {
+            if message.is::<Launch>() {
+                olo_kit::raise(Some(&window));
             }
         });
-        let list = ListModel::new(cx, false);
-        let app = cx.new(|_| DriveSetup {
-            window: None,
-            status: Status::default(),
-            loaded: false,
-            error: None,
-            loading: false,
-            again: false,
-            selected: None,
-            sel_disk: None,
-            pending: saved.selected,
-            reveal: false,
-            list,
-            working: None,
-            forms: HashMap::new(),
-            benches: HashMap::new(),
-            next_id: 0,
-            sweep: None,
-        });
-        app.update(cx, |d, cx| {
-            d.refresh(cx);
-            d.open(cx);
-        });
-        // The free space, again every few seconds while the window is
-        // open (writing files sends UDisks no signal).
-        let ticking = app.downgrade();
-        cx.spawn(async move |cx| {
-            loop {
-                cx.background_executor().timer(SPACE_EVERY).await;
-                let Ok(()) = ticking.update(cx, |d, cx| {
-                    if d.window.is_some() {
-                        d.refresh(cx);
-                    }
-                }) else {
-                    break;
-                };
-            }
-        })
-        .detach();
-        let messages = app.clone();
-        olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |d, cx| d.message(message, cx)));
-        let saving = app.clone();
-        olo_ui::on_upgrade(cx, move |cx| saving.read(cx).save_state());
     });
 }
 

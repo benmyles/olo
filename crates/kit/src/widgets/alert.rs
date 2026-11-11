@@ -69,11 +69,15 @@ impl IntoElement for AlertFrame {
         .paint_key(style::key(&self.icon))
         .absolute()
         .inset_0();
-        div()
-            .relative()
-            .size_full()
-            .child(backdrop)
-            .child(div().absolute().left(px(ALERT_TEXT_X)).right(px(m::WINDOW_INSET)).top(px(m::WINDOW_INSET)).bottom(px(m::WINDOW_INSET)).flex().flex_col().children(self.children))
+        // (What it holds is laid out in the frame, not over it, so the
+        // frame is as tall as it needs: a window that follows what it
+        // shows, `WindowOptions::fits_content`, grows with a form's
+        // fields. In a taller window it fills it.)
+        // (Its margins are boxes of their own, not padding: taffy counts
+        // a flex item's padding twice in the least it may be.)
+        let gap = |w: f32, h: f32| div().w(px(w)).h(px(h)).flex_shrink_0();
+        let column = div().flex_1().min_w_0().flex().flex_col().child(gap(0.0, m::WINDOW_INSET)).children(self.children).child(gap(0.0, m::WINDOW_INSET));
+        div().relative().size_full().flex().child(backdrop).child(gap(ALERT_TEXT_X, 0.0)).child(column).child(gap(m::WINDOW_INSET, 0.0))
     }
 }
 
