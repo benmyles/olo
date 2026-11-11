@@ -213,6 +213,8 @@ pub(crate) struct Interactivity {
     pub(crate) mouse_up_out: SmallVec<[(Option<MouseButton>, Listener<MouseUpEvent>); 1]>,
     pub(crate) mouse_move: SmallVec<[Listener<MouseMoveEvent>; 1]>,
     pub(crate) scroll_wheel: SmallVec<[Listener<ScrollWheelEvent>; 1]>,
+    /// Files dropped on it, dragged from somewhere else.
+    pub(crate) file_drop: SmallVec<[Listener<crate::ExternalPaths>; 1]>,
     pub(crate) click: SmallVec<[Listener<ClickEvent>; 1]>,
     pub(crate) hover: SmallVec<[Listener<bool>; 1]>,
     pub(crate) key_down: SmallVec<[Listener<KeyDownEvent>; 1]>,
@@ -278,7 +280,13 @@ impl Interactivity {
             || self.paints_by_state
             || self.hover_style.is_some()
             || self.active_style.is_some()
-            || !(self.mouse_down.is_empty() && self.mouse_up.is_empty() && self.mouse_move.is_empty() && self.scroll_wheel.is_empty() && self.click.is_empty() && self.hover.is_empty())
+            || !(self.mouse_down.is_empty()
+                && self.mouse_up.is_empty()
+                && self.mouse_move.is_empty()
+                && self.scroll_wheel.is_empty()
+                && self.click.is_empty()
+                && self.hover.is_empty()
+                && self.file_drop.is_empty())
     }
 
     pub(crate) fn hears_window(&self) -> bool {
@@ -523,6 +531,16 @@ pub trait InteractiveElement: Sized {
 
     fn on_scroll_wheel(mut self, listener: impl Fn(&ScrollWheelEvent, &mut WindowCx) + 'static) -> Self {
         self.interactivity().scroll_wheel.push(Rc::new(listener));
+        self
+    }
+
+    /// Files were dropped on it, dragged from another program (or
+    /// another window): the topmost thing under the pointer that takes
+    /// drops gets them, and nothing under it does. While they're over
+    /// the window it's hovered as under the pointer (`on_hover`, its
+    /// hover style), so what would take them can show it.
+    fn on_drop(mut self, listener: impl Fn(&crate::ExternalPaths, &mut WindowCx) + 'static) -> Self {
+        self.interactivity().file_drop.push(Rc::new(listener));
         self
     }
 

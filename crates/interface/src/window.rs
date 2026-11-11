@@ -153,6 +153,9 @@ pub(crate) struct WindowCore {
     pub(crate) modifiers: Modifiers,
     /// What the pointer is over, topmost first.
     pub(crate) hovered: Vec<NodeId>,
+    /// Files being dragged over the window, from somewhere else: handed
+    /// to what they're dropped on (`InteractiveElement::on_drop`).
+    pub(crate) dropping: Option<crate::ExternalPaths>,
     /// What a button went down on, until it's let go.
     pub(crate) pressed: Vec<(NodeId, MouseDownEvent)>,
     pub(crate) focus: Option<NodeId>,
@@ -473,6 +476,7 @@ impl WindowCore {
             mouse: Point::default(),
             modifiers: Modifiers::default(),
             hovered: Vec::new(),
+            dropping: None,
             pressed: Vec::new(),
             focus: None,
             pending_focus: None,

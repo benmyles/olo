@@ -207,7 +207,51 @@ impl WindowCx<'_> {
                 self.core.modifiers = event.modifiers;
                 self.to_focus_path(|i| i.modifiers_changed.iter().cloned().collect(), &event);
             }
-            PlatformInput::Pinch(_) | PlatformInput::FileDrop(_) => {}
+            PlatformInput::FileDrop(event) => self.file_drop(event),
+            PlatformInput::Pinch(_) => {}
+        }
+    }
+
+    /// Files dragged over the window from somewhere else: what's under
+    /// them is hovered as under the pointer, and dropped, they go to
+    /// the topmost thing there that takes drops (`on_drop`).
+    fn file_drop(&mut self, event: crate::FileDropEvent) {
+        use crate::FileDropEvent;
+        match event {
+            FileDropEvent::Entered { position, paths } => {
+                self.core.dropping = Some(paths);
+                self.core.mouse = position;
+                self.update_hover();
+            }
+            FileDropEvent::Pending { position } => {
+                self.core.mouse = position;
+                self.update_hover();
+            }
+            FileDropEvent::Submit { position } => {
+                self.core.mouse = position;
+                self.update_hover();
+                let Some(paths) = self.core.dropping.take() else { return };
+                for id in self.core.hovered.clone() {
+                    let listeners: SmallVec<[Listener<crate::ExternalPaths>; 1]> =
+                        self.core.nodes.get(id).and_then(|n| n.inter.as_ref()).filter(|i| !i.disabled).map(|i| i.file_drop.clone()).unwrap_or_default();
+                    if listeners.is_empty() {
+                        continue;
+                    }
+                    self.core.current = Some(id);
+                    for listener in listeners {
+                        listener(&paths, self);
+                    }
+                    self.core.current = None;
+                    break;
+                }
+            }
+            FileDropEvent::Exited => {
+                self.core.dropping = None;
+                self.pointer_left();
+            }
+            // (What isn't files, offered and taken by the window itself:
+            // nothing in the kit takes those yet.)
+            FileDropEvent::Offered(_) | FileDropEvent::Dropped(_) => {}
         }
     }
 
