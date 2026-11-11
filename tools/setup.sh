@@ -30,7 +30,8 @@ fail() { echo "  ✗ $*" >&2; exit 1; }
 
 # What Olo needs, each as a check and the package that provides it
 # (dnf takes capabilities such as pkgconfig(gbm), so a remix's own builds
-# of a library count). Building: compilers, bindgen's libclang, nasm
+# of a library count). Building: compilers, bindgen's libclang, mold
+# (the linker: .cargo/config.toml), nasm
 # (the AV1 and H.264 decoders' SIMD assembly, built into Olo), the
 # libraries Olo links (PipeWire's and SPA's headers for sound and screen
 # capture) and Git LFS (the voice model built in, the themes' icons and
@@ -39,7 +40,7 @@ fail() { echo "  ✗ $*" >&2; exit 1; }
 # to, and the fonts its look is made of. Developing: Pillow for the
 # system Python (tools/dev/tsession's screenshots, tools/journal.py).
 NEEDS=(
-    "cmd:cc gcc" "cmd:c++ gcc-c++" "cmd:clang clang" "lib:libclang.so clang-libs" "cmd:nasm nasm" "cmd:pkg-config pkgconf-pkg-config"
+    "cmd:cc gcc" "cmd:c++ gcc-c++" "cmd:clang clang" "lib:libclang.so clang-libs" "cmd:nasm nasm" "cmd:mold mold" "cmd:pkg-config pkgconf-pkg-config"
     "cmd:make make" "cmd:perl perl" "cmd:python3 python3" "cmd:m4 m4" "cmd:git git" "cmd:git-lfs git-lfs"
     "pc:wayland-server" "pc:xkbcommon" "pc:libinput" "pc:libudev" "pc:gbm" "pc:egl" "pc:libdrm" "pc:libseat"
     "pc:pixman-1" "pc:libdisplay-info" "pc:freetype2" "pc:harfbuzz" "pc:fontconfig" "pc:zlib" "pc:liblzma" "pc:bzip2"

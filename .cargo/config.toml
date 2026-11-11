@@ -3,3 +3,14 @@
 # and every Preferences panel drawn headlessly at their sizes, light and
 # dark, at 1×, 1.5× and 2×, and checked. tools/install-session.sh runs it.
 ui-lint = "test --release -p olo-ui -p olo-preferences -p olo-diskbackup-app --features olo-ui/lint ui_lint"
+
+# Linked by mold (https://github.com/rui314/mold), not rustc's own LLD
+# (Ben, 2026-11-10: "just change to mold"): tools/setup.sh installs it,
+# and cc finds it as `ld.mold` on PATH. One 227 MB app relinked alone:
+# 0.35 s against LLD's 0.9; eight at once, as a whole build links them,
+# 1.45 s against 0.75 to 1.0 (each mold takes every core).
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-Clinker-features=-lld", "-Clink-arg=-fuse-ld=mold"]
+
+[target.aarch64-unknown-linux-gnu]
+rustflags = ["-Clinker-features=-lld", "-Clink-arg=-fuse-ld=mold"]
