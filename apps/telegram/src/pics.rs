@@ -11,8 +11,8 @@ use std::{
     sync::{Arc, mpsc},
 };
 
+use olo_kit::{Proxy, RenderImage};
 use olo_tg::{Backend, Cmd, Pic};
-use olo_ui::{Proxy, gpui::RenderImage};
 
 /// A picture decoded on a worker (sent to the app).
 pub struct Decoded(pub Pic, pub Result<Arc<RenderImage>, String>);

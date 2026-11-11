@@ -186,8 +186,15 @@ something nobody here has is in "Blocked", with what it waits for.
      goes and comes, the other stays), and a reload in place under
      olo-session (the bar back as it was, its applications in their
      order).
+     **Telegram** (2026-11-11; HACKING's Telegram, "On olo-kit"):
+     the demo account only (no network, a made-up home, a fake sound
+     server). For it the kit got `olo_kit::due`, `Cx::after_do`,
+     `WindowCx::cancel` and `activate_window_with_token`. Not tried:
+     a voice message recorded or played, a file attached or dropped,
+     forwarding, a notification answered, the real account, dark
+     mode, an upgrade in place; its 6 MB more of memory isn't
+     explained; glyphs aren't drawn ahead as the GPUI build's were.
      *Next, smallest first:*
-     telegram,
      viewer, styled-edit, screen, tracker, passwords, terminal,
      preferences.
   5. **Tools, HACKING and the Olo Book**; GPUI and olo-ui leave the

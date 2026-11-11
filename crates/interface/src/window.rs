@@ -1658,6 +1658,14 @@ impl<'a> WindowCx<'a> {
         self.on_display(|window| window.activate());
     }
 
+    /// Brings the window forward with a token another program handed
+    /// over for it (a notification's action: the notification service's
+    /// own, so the compositor lets it take the keyboard).
+    pub fn activate_window_with_token(&mut self, token: &str) {
+        let token = token.to_owned();
+        self.on_display(move |window| window.activate_with_token(&token));
+    }
+
     /// Moves the window with the pointer, as if dragged by its tab,
     /// while a button is held.
     pub fn start_window_move(&mut self) {

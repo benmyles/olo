@@ -22,24 +22,22 @@ use std::{
     time::{Duration, Instant},
 };
 
-use olo_tg::{Backend, Chat, ChatId, ChatKind, Cmd, Contact, Doing, Event, Me, Media, Message, MsgId, Outgoing, Pending, Pic, Status};
-use olo_ui::{
-    Frame, Menu, MenuBar, WindowOptions,
+use olo_kit::{
+    Bounds, Child, ClipboardItem, CursorStyle, Cx, Element, ExternalPaths, FocusHandle, FontWeight, InteractiveElement as _, IntoElement as _, KeyDownEvent, LocalWindow, Menu, MenuBar,
+    MouseMoveEvent, Painter, ParentElement as _, Pixels, Point, ScrollHandle, SharedString, Styled as _, View, ViewRef, WindowCx, WindowOptions, canvas, clipboard, div,
     due::{Due, Notice},
-    file_panel::{self, FilePanel, PanelResult},
-    gpui::{
-        AnyElement, AnyView, App, AppContext as _, Bounds, ClipboardItem, Context, CursorStyle, Div, Entity, EntityId, ExternalPaths, FocusHandle, FontWeight, Hitbox, HitboxBehavior,
-        InteractiveElement as _, IntoElement, KeyDownEvent, MouseMoveEvent, ParentElement as _, Pixels, Point, Render, ScrollHandle, SharedString, Stateful, StatefulInteractiveElement as _,
-        StyleRefinement, Styled as _, Task, WeakEntity, Window, WindowHandle, canvas, div, point, px, size, white,
-    },
+    file_panel::{self, FilePanel},
     instance::{self, Launch},
     metrics as m,
     notify::{Note, NoteEvent, NoteId, NoteKind, Notifier},
+    point, px,
     search::{SearchEvent, SearchField, search_field},
+    size,
     style::{self, Align, c},
-    theme,
-    widgets::{BBox, Button, CheckBox, EmptyState, ScrollView, StatusBar, StringView, TextField, TextFieldEvent, button_row, open_alert, text_field},
+    theme, white,
+    widgets::{BBox, Button, CheckBox, EmptyState, ScrollView, SidePane, StatusBar, StringView, TextField, TextFieldEvent, button_row, open_alert, text_field},
 };
+use olo_tg::{Backend, Chat, ChatId, ChatKind, Cmd, Contact, Doing, Event, Me, Media, Message, MsgId, Outgoing, Pending, Pic, Status};
 use serde::{Deserialize, Serialize};
 
 const APP_ID: &str = "olo.telegram";
@@ -58,11 +56,16 @@ struct Saved {
     list_hidden: bool,
 }
 
+/// What a file panel's choice is for.
+type PanelDone = Box<dyn FnOnce(&mut Tg, Vec<PathBuf>, &mut Cx<Tg>)>;
+
+/// What a file panel chose (nothing: cancelled).
+struct Chosen(Vec<PathBuf>);
+
 /// The Deskbar clock's style (24-hour or not).
 struct Clock(bool);
 
 pub struct Tg {
-    win: Option<WindowHandle<Frame>>,
     backend: Backend,
     store: store::Store,
     pics: pics::Pics,
@@ -74,18 +77,19 @@ pub struct Tg {
     found: list::Found,
     conv: Option<conv::Conv>,
     /// The chat list beside the conversation: its width, or put away.
-    side: Entity<olo_ui::widgets::SidePane>,
+    side: SidePane,
     h24: bool,
     notes: Notifier,
     /// Each chat's notification, updated as more come.
     chat_notes: HashMap<ChatId, (Option<NoteId>, Vec<String>)>,
     note_chats: HashMap<NoteId, (ChatId, MsgId)>,
     /// A file panel or an alert up (one at a time).
-    panel: Option<WindowHandle<Frame>>,
-    alert: Option<WindowHandle<Frame>>,
-    forward: Option<WindowHandle<Frame>>,
-    contacts: Option<(WindowHandle<Frame>, Vec<Contact>)>,
-    info: Option<(WindowHandle<Frame>, ChatId)>,
+    /// What a file panel that's open does with what it's given.
+    panel: Option<PanelDone>,
+    alert: Option<LocalWindow<olo_kit::widgets::Alert>>,
+    forward: Option<LocalWindow<Picker>>,
+    contacts: Option<(LocalWindow<Picker>, Vec<Contact>)>,
+    info: Option<(LocalWindow<Info>, ChatId)>,
     player: Option<(ChatId, MsgId, olo_preview::audio::Player)>,
     /// Play or open this once it's downloaded.
     when_fetched: Option<(Pic, bool)>,
@@ -105,12 +109,12 @@ pub struct Tg {
     banner: Notice,
     /// The search last sent to Telegram, and the pause before the next.
     searched: String,
-    searching: Option<Task<()>>,
+    searching: Option<olo_kit::TimerId>,
     restored: Saved,
     /// The unread count Deskbar was last told.
     badge: u32,
-    search: Entity<SearchField>,
-    field: Entity<TextField>,
+    search: Child<SearchField>,
+    pub field: Child<TextField>,
     /// The area under the pointer (lit).
     hot: Option<SharedString>,
     list_scroll: ScrollHandle,
@@ -128,8 +132,7 @@ pub struct Tg {
     /// message's progress).
     wake: Due,
     title: String,
-    /// The window's panes, each a view of its own, and where they are.
-    panes: Vec<(Kind, Entity<Pane>)>,
+    /// Where the window's panes are.
     list_rect: Bounds<Pixels>,
     conv_rect: Bounds<Pixels>,
     composer_rect: Bounds<Pixels>,
@@ -169,52 +172,6 @@ const QUIT_WAIT: Duration = Duration::from_secs(30);
 /// label, the bar, and room round them.
 const SYNC_H: f32 = 44.0;
 
-/// Which pane.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Kind {
-    List,
-    Conv,
-    Composer,
-}
-
-/// The chat list, the conversation, or the composer under it: each a view
-/// of its own, drawn again only when it changes (the pointer over it, its
-/// scrolling, the account's news), so a caret blinking in the composer or
-/// a row lit in the list leaves the rest of the window as it was drawn.
-pub struct Pane {
-    tg: WeakEntity<Tg>,
-    kind: Kind,
-}
-
-impl Render for Pane {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let Some(tg) = self.tg.upgrade() else { return div().into_any_element() };
-        let kind = self.kind;
-        let vs = window.viewport_size();
-        tg.update(cx, |tg, cx| {
-            let rect = match kind {
-                Kind::List => tg.list_rect,
-                Kind::Conv => tg.conv_rect,
-                Kind::Composer => tg.composer_rect,
-            };
-            let content = match kind {
-                Kind::List => list::render(tg, rect, window, cx),
-                Kind::Conv => conv::render(tg, rect, window, cx),
-                Kind::Composer => conv::composer(tg, rect, window, cx),
-            };
-            // The panes draw in the window's coordinates. (A cached view's
-            // root is laid out as a root, its offsets ignored: the layer
-            // that puts them back is inside it.)
-            div().size_full().child(div().absolute().left(-rect.origin.x).top(-rect.origin.y).w(vs.width).h(vs.height).child(content)).into_any_element()
-        })
-    }
-}
-
-/// `pane` where it goes, kept as drawn until it changes.
-fn pane(pane: &Entity<Pane>, r: Bounds<Pixels>) -> AnyView {
-    AnyView::from(pane.clone()).cached(StyleRefinement::default().absolute().left(r.origin.x).top(r.origin.y).w(r.size.width).h(r.size.height))
-}
-
 pub fn now() -> f64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64())
 }
@@ -228,28 +185,60 @@ pub fn played(p: &olo_preview::audio::Player) -> f32 {
 }
 
 /// An area of the window the pointer can use, at `b` (window
-/// coordinates), lit while it's over it. (Its pointer style has GPUI draw
-/// the pane it's in again as the pointer comes and goes.)
-pub fn hit(tg: &Entity<Tg>, key: &str, b: Bounds<Pixels>) -> Stateful<Div> {
+/// coordinates), lit while it's over it.
+pub fn hit(tg: &ViewRef<Tg>, key: &str, b: Bounds<Pixels>) -> Element {
     let key = SharedString::from(key.to_owned());
-    let (t, k) = (tg.clone(), key.clone());
-    div().id(key).absolute().left(b.origin.x).top(b.origin.y).w(b.size.width).h(b.size.height).cursor(CursorStyle::Arrow).on_hover(move |on: &bool, _, cx| {
-        t.update(cx, |tg, _| {
-            if *on {
-                tg.hot = Some(k.clone());
+    let (t, k) = (*tg, key.clone());
+    div().id(key).absolute().left(b.origin.x).top(b.origin.y).w(b.size.width).h(b.size.height).cursor(CursorStyle::Arrow).on_hover(move |on: &bool, cx| {
+        let (k, on) = (k.clone(), *on);
+        t.update(cx, move |tg, cx| {
+            if on {
+                tg.hot = Some(k);
             } else if tg.hot.as_ref() == Some(&k) {
                 tg.hot = None;
+            } else {
+                return;
             }
+            cx.invalidate();
         })
     })
 }
 
 /// Tells agents of `node` when any of it is in view (a scrolled list's
 /// rows painted beyond its edges aren't).
-pub fn seen(window: &mut Window, cx: &mut App, node: olo_ui::agent::Node) {
-    if window.content_mask().bounds.intersects(&node.bounds) {
-        olo_ui::agent::record(window, cx, node);
+pub fn seen(g: &mut Painter, node: olo_kit::agent::Node) {
+    if g.content_mask().bounds.intersects(&node.bounds) {
+        olo_kit::agent::record(g, node);
     }
+}
+
+/// A click with the left button (or the keyboard's): the kit says a
+/// click for any button, and a right click here opens a menu instead.
+pub trait LeftClick {
+    fn on_left_click(self, f: impl Fn(&olo_kit::ClickEvent, &mut WindowCx) + 'static) -> Self;
+}
+
+impl LeftClick for Element {
+    fn on_left_click(self, f: impl Fn(&olo_kit::ClickEvent, &mut WindowCx) + 'static) -> Self {
+        self.on_click(move |e, cx| {
+            if e.standard_click() {
+                f(e, cx)
+            }
+        })
+    }
+}
+
+/// A pane where it goes: what draws in the window's coordinates,
+/// clipped to its place.
+fn pane(content: Element, r: Bounds<Pixels>, window: olo_kit::Size<Pixels>) -> Element {
+    div()
+        .absolute()
+        .left(r.origin.x)
+        .top(r.origin.y)
+        .w(r.size.width)
+        .h(r.size.height)
+        .overflow_hidden()
+        .child(div().absolute().left(-r.origin.x).top(-r.origin.y).w(window.width).h(window.height).child(content))
 }
 
 fn open_url(url: String) {
@@ -265,50 +254,37 @@ fn home() -> PathBuf {
 }
 
 impl Tg {
-    /// A pane's view, to draw it again alone.
-    pub fn pane(&self, kind: Kind) -> Option<EntityId> {
-        self.panes.iter().find(|p| p.0 == kind).map(|p| p.1.entity_id())
-    }
-
     /// Redraws in `d` (or sooner, if one is due sooner already).
     /// Quit: at once, unless changes are on their way to Telegram; then
     /// once they're sent, or `QUIT_WAIT` on (they're kept on disk and go
     /// next time), showing how they go.
-    fn quit(&mut self, cx: &mut Context<Self>) {
+    fn quit(&mut self, cx: &mut Cx<Self>) {
         if self.sync.0 == 0 || self.quitting.is_some_and(|q| Instant::now() >= q) {
-            return cx.quit();
+            return olo_kit::quit();
         }
         if self.quitting.is_none() {
             self.quitting = Some(Instant::now() + QUIT_WAIT);
-            cx.spawn(async move |tg, cx| {
-                cx.background_executor().timer(QUIT_WAIT).await;
-                let _ = tg.update(cx, |_, cx| cx.quit());
-            })
-            .detach();
+            cx.after_do(QUIT_WAIT, |_, _| olo_kit::quit());
         }
-        cx.notify();
+        cx.invalidate();
     }
 
-    fn wake_in(&mut self, d: Duration, cx: &mut Context<Self>) {
+    fn wake_in(&mut self, d: Duration, cx: &mut Cx<Self>) {
         let mut wake = std::mem::take(&mut self.wake);
         wake.by(Instant::now() + d, cx);
         self.wake = wake;
     }
 
     /// The window's title, when it changes.
-    fn set_title(&mut self, title: String, cx: &mut Context<Self>) {
+    fn set_title(&mut self, title: String, cx: &mut Cx<Self>) {
         if title == self.title {
             return;
         }
         self.title = title.clone();
-        if let Some(w) = self.win {
-            cx.defer(move |cx| {
-                let _ = w.update(cx, |f, window, _| f.set_title(title, window));
-            });
-        }
+        cx.set_window_title(title);
     }
 
-    fn open_chat(&mut self, chat: ChatId, topic: Option<MsgId>, cx: &mut Context<Self>) {
+    fn open_chat(&mut self, chat: ChatId, topic: Option<MsgId>, cx: &mut Cx<Self>) {
         // A voice message being recorded is for the chat it was begun in.
         if self.voice.as_ref().is_some_and(|v| v.chat != chat || v.topic != topic) {
             self.voice_end(false, cx);
@@ -328,11 +304,11 @@ impl Tg {
             }
         }
         let text = self.drafts.remove(&chat).or_else(|| self.store.chats.get(&chat).and_then(|c| c.draft.clone())).unwrap_or_default();
-        self.field.update(cx, |f, cx| {
+        self.field.update(cx, move |f, cx| {
             f.set_text(text, cx);
             f.caret_to_end(cx);
         });
-        let mut c = conv::Conv::new(chat, topic, self.field.clone());
+        let mut c = conv::Conv::new(chat, topic);
         if let Some(i) = self.kept.iter().position(|k| k.0 == chat) {
             c.layouts = self.kept.remove(i).1;
         }
@@ -353,16 +329,16 @@ impl Tg {
         if let Some((Some(id), _)) = self.chat_notes.remove(&chat) {
             self.notes.close(id);
         }
-        cx.notify();
+        cx.invalidate();
     }
 
-    fn send(&mut self, cx: &mut Context<Self>) {
+    fn send(&mut self, cx: &mut Cx<Self>) {
         let text = self.field.read(cx).text().trim_end().to_owned();
         let Some(c) = &mut self.conv else { return };
         if let Some(id) = c.edit.take() {
             self.backend.send(Cmd::Edit { chat: c.chat, id, text, entities: Vec::new() });
-            self.field.update(cx, |f, cx| f.set_text("", cx));
-            cx.notify();
+            self.field.update(cx, move |f, cx| f.set_text("", cx));
+            cx.invalidate();
             return;
         }
         if text.trim().is_empty() && c.files.is_empty() {
@@ -397,35 +373,28 @@ impl Tg {
         c.at_bottom = true;
         self.drafts.remove(&c.chat);
         self.store.pending(pending);
-        self.field.update(cx, |f, cx| f.set_text("", cx));
-        cx.notify();
+        self.field.update(cx, move |f, cx| f.set_text("", cx));
+        cx.invalidate();
     }
 
     /// After `wait`, the frame due for an animated sticker (`stickers.rs`).
-    pub fn sticker_timer(&mut self, (key, wait): (stickers::Key, Duration), cx: &mut Context<Self>) {
-        cx.spawn(async move |tg, cx| {
-            cx.background_executor().timer(wait).await;
-            let _ = tg.update(cx, |tg, cx| {
-                tg.stickers.ask(key, Instant::now());
-                for due in tg.stickers.take_due() {
-                    tg.sticker_timer(due, cx);
-                }
-            });
-        })
-        .detach();
+    pub fn sticker_timer(&mut self, (key, wait): (stickers::Key, Duration), cx: &mut Cx<Self>) {
+        cx.after_do(wait, move |tg, cx| {
+            tg.stickers.ask(key, Instant::now());
+            for due in tg.stickers.take_due() {
+                tg.sticker_timer(due, cx);
+            }
+        });
     }
 
     /// Redraw the composer alone (a voice message's level, ten a second).
-    fn redraw_composer(&self, cx: &mut Context<Self>) {
-        if let Some(p) = self.pane(Kind::Composer) {
-            let app: &mut App = cx;
-            app.notify(p);
-        }
+    fn redraw_composer(&self, cx: &mut Cx<Self>) {
+        cx.invalidate();
     }
 
     /// Start recording a voice message in the chat open: `held` while
     /// the button is held down, else until Send or Cancel.
-    pub fn voice_start(&mut self, held: bool, cx: &mut Context<Self>) {
+    pub fn voice_start(&mut self, held: bool, cx: &mut Cx<Self>) {
         let Some(c) = &self.conv else { return };
         if self.voice.is_some() || c.edit.is_some() {
             return;
@@ -441,12 +410,12 @@ impl Tg {
         if let Some(c) = &mut self.conv {
             c.focus_field = true;
         }
-        voice::start(token, olo_ui::proxy(cx));
-        cx.notify();
+        voice::start(token, olo_kit::proxy());
+        cx.invalidate();
     }
 
     /// The button let go, over it or not.
-    pub fn voice_release(&mut self, over: bool, cx: &mut Context<Self>) {
+    pub fn voice_release(&mut self, over: bool, cx: &mut Cx<Self>) {
         let Some(v) = &mut self.voice else { return };
         if !v.held {
             return;
@@ -460,7 +429,7 @@ impl Tg {
     }
 
     /// End the recording: sent, or thrown away.
-    pub fn voice_end(&mut self, send: bool, cx: &mut Context<Self>) {
+    pub fn voice_end(&mut self, send: bool, cx: &mut Cx<Self>) {
         let Some(mut v) = self.voice.take() else { return };
         if let Some(c) = &mut self.conv {
             c.focus_field = true;
@@ -472,21 +441,21 @@ impl Tg {
             self.backend.send(Cmd::Typing { chat: v.chat, topic: v.topic, doing: Doing::Stopped });
         }
         match v.rec.take() {
-            Some(rec) if send => rec.finish(v.token, olo_ui::proxy(cx)),
+            Some(rec) if send => rec.finish(v.token, olo_kit::proxy()),
             Some(rec) => rec.cancel(),
             // Still opening the microphone: done once it's open.
             None => _ = self.voice_ended.insert(v.token, send),
         }
-        cx.notify();
+        cx.invalidate();
     }
 
-    fn voice_msg(&mut self, msg: voice::Msg, cx: &mut Context<Self>) {
+    fn voice_msg(&mut self, msg: voice::Msg, cx: &mut Cx<Self>) {
         match msg {
             voice::Msg::Started(token, Ok(rec)) => {
                 if let Some(v) = self.voice.as_mut().filter(|v| v.token == token) {
                     v.rec = Some(rec);
                 } else if let Some(send) = self.voice_ended.remove(&token) {
-                    if send { rec.finish(token, olo_ui::proxy(cx)) } else { rec.cancel() }
+                    if send { rec.finish(token, olo_kit::proxy()) } else { rec.cancel() }
                 } else {
                     rec.cancel();
                 }
@@ -497,7 +466,7 @@ impl Tg {
                 if let Some(v) = self.voice.take_if(|v| v.token == token) {
                     self.backend.send(Cmd::Typing { chat: v.chat, topic: v.topic, doing: Doing::Stopped });
                     self.banner.say(format!("The microphone can’t be recorded ({why})."), Duration::from_secs(8));
-                    cx.notify();
+                    cx.invalidate();
                 }
             }
             voice::Msg::Level(token, level, seconds) => {
@@ -525,11 +494,11 @@ impl Tg {
                         let _ = std::fs::remove_file(&note.path);
                         self.backend.send(Cmd::Typing { chat, topic, doing: Doing::Stopped });
                         self.banner.say("Hold the microphone button down while you speak, or click it to record until you click Send.".to_owned(), Duration::from_secs(6));
-                        return cx.notify();
+                        return cx.invalidate();
                     }
                     Err(why) => {
                         self.banner.say(format!("The voice message couldn’t be recorded ({why})."), Duration::from_secs(8));
-                        return cx.notify();
+                        return cx.invalidate();
                     }
                 };
                 self.next_local += 1;
@@ -557,7 +526,7 @@ impl Tg {
                     c.at_bottom = true;
                 }
                 self.store.pending(pending);
-                cx.notify();
+                cx.invalidate();
             }
         }
     }
@@ -592,7 +561,7 @@ impl Tg {
         self.note_chats.insert(shown, (m.chat, m.id));
     }
 
-    fn event(&mut self, e: Event, cx: &mut Context<Self>) {
+    fn event(&mut self, e: Event, cx: &mut Cx<Self>) {
         match e {
             Event::Status(s) => self.status = s,
             Event::Me(m) => self.me = Some(m),
@@ -709,6 +678,7 @@ impl Tg {
                 if let Some((_, l)) = &mut self.contacts {
                     *l = list;
                 }
+                self.feed(cx);
             }
             Event::Resolved { username, chat } => match chat {
                 Some(c) => {
@@ -725,7 +695,7 @@ impl Tg {
             Event::Sync { pending, total, waiting } => {
                 self.sync = (pending, total, waiting);
                 if pending == 0 && self.quitting.is_some() {
-                    cx.quit();
+                    olo_kit::quit();
                 }
             }
         }
@@ -734,12 +704,12 @@ impl Tg {
             self.badge = unread;
             self.notes.badge(unread);
         }
-        cx.notify();
+        cx.invalidate();
     }
 
     /// Talk to the account afresh (the old backend ends once dropped).
-    fn reconnect(&mut self, cx: &mut Context<Self>) {
-        let proxy = olo_ui::proxy(cx);
+    fn reconnect(&mut self, cx: &mut Cx<Self>) {
+        let proxy = olo_kit::proxy();
         self.backend = Backend::start(move |e| proxy.send(e));
         self.backend.send(Cmd::Chats);
         self.store = store::Store::default();
@@ -747,8 +717,8 @@ impl Tg {
         self.kept.clear();
         self.me = None;
         self.status = Status::Connecting;
-        self.pics = pics::Pics::new(olo_ui::proxy(cx));
-        cx.notify();
+        self.pics = pics::Pics::new(olo_kit::proxy());
+        cx.invalidate();
     }
 
     fn play(&mut self, pic: &Pic, path: &std::path::Path) {
@@ -756,7 +726,7 @@ impl Tg {
         self.player = Some((*chat, *id, olo_preview::audio::Player::start(&olo_preview::input::Input::file(path))));
     }
 
-    fn hit(&mut self, id: MsgId, hit: bubble::Hit, cx: &mut Context<Self>) {
+    fn hit(&mut self, id: MsgId, hit: bubble::Hit, cx: &mut Cx<Self>) {
         let Some(c) = &mut self.conv else { return };
         let chat = c.chat;
         match hit {
@@ -786,7 +756,10 @@ impl Tg {
                 }
             }
             bubble::Hit::Hashtag(tag) => {
-                self.search.update(cx, |s, cx| s.set_text(tag.clone(), cx));
+                {
+                    let tag = tag.clone();
+                    self.search.update(cx, |s, cx| s.set_text(tag, cx));
+                }
                 self.view.query = tag.clone();
                 self.searched = tag.clone();
                 self.backend.send(Cmd::Search { query: tag });
@@ -796,7 +769,7 @@ impl Tg {
             }
             bubble::Hit::Media => self.open_media(chat, id),
         }
-        cx.notify();
+        cx.invalidate();
     }
 
     /// A message's picture, file or voice: open or play it.
@@ -828,7 +801,7 @@ impl Tg {
         }
     }
 
-    fn message_command(&mut self, id: MsgId, cmd: &str, window: &mut Window, cx: &mut Context<Self>) {
+    fn message_command(&mut self, id: MsgId, cmd: &str, cx: &mut Cx<Self>) {
         let Some(c) = &mut self.conv else { return };
         let chat = c.chat;
         let Some(m) = self.store.threads.get(&(chat, c.topic)).and_then(|t| t.msgs.get(&id)).cloned() else { return };
@@ -842,12 +815,12 @@ impl Tg {
                 c.edit = Some(id);
                 c.reply = None;
                 c.focus_field = true;
-                self.field.update(cx, |f, cx| {
+                self.field.update(cx, move |f, cx| {
                     f.set_text(m.text.clone(), cx);
                     f.caret_to_end(cx);
                 });
             }
-            "copy" => cx.write_to_clipboard(ClipboardItem::new_string(m.text.clone())),
+            "copy" => clipboard::write(ClipboardItem::new_string(m.text.clone())),
             "forward" => self.open_forward(chat, vec![id], cx),
             "pin" => self.backend.send(Cmd::PinMessage { chat, id, on: !m.pinned }),
             "open" => self.open_media(chat, id),
@@ -884,8 +857,7 @@ impl Tg {
             }
             _ => {}
         }
-        let _ = window;
-        cx.notify();
+        cx.invalidate();
     }
 
     /// The chats chosen together that are still there, in the list's
@@ -896,11 +868,11 @@ impl Tg {
 
     /// `cmd` (`chats:…`) done to every chat chosen together: archived or
     /// not, read, muted or not, deleted (asked first).
-    fn chats_command(&mut self, cmd: &str, cx: &mut Context<Self>) {
+    fn chats_command(&mut self, cmd: &str, cx: &mut Cx<Self>) {
         let chats = self.chosen_chats();
         if self.chats_do(chats, cmd, cx) {
             self.chosen.clear();
-            cx.notify();
+            cx.invalidate();
         }
     }
 
@@ -930,7 +902,7 @@ impl Tg {
 
     /// `cmd` from `group`'s menu, done to all its chats (Unarchive All
     /// asks first, saying how many).
-    pub fn group_command(&mut self, group: list::Group, cmd: &str, cx: &mut Context<Self>) {
+    pub fn group_command(&mut self, group: list::Group, cmd: &str, cx: &mut Cx<Self>) {
         let chats = self.group_chats(group);
         if cmd == "group:unarchive" {
             let n = chats.len();
@@ -945,12 +917,12 @@ impl Tg {
         }
         eprintln!("telegram: {cmd} on {group:?}: {} chats", chats.len());
         self.chats_do(chats, cmd, cx);
-        cx.notify();
+        cx.invalidate();
     }
 
     /// `cmd` (`chats:…`) done to `chats`: false if it wasn't (none, or
     /// it asks first).
-    fn chats_do(&mut self, chats: Vec<Chat>, cmd: &str, cx: &mut Context<Self>) -> bool {
+    fn chats_do(&mut self, chats: Vec<Chat>, cmd: &str, cx: &mut Cx<Self>) -> bool {
         if chats.is_empty() {
             return false;
         }
@@ -1001,7 +973,7 @@ impl Tg {
         menu.separator().item(format!("Delete {n} Chats…"), "chats:delete")
     }
 
-    fn chat_command(&mut self, chat: ChatId, cmd: &str, cx: &mut Context<Self>) {
+    fn chat_command(&mut self, chat: ChatId, cmd: &str, cx: &mut Cx<Self>) {
         let Some(c) = self.store.chats.get(&chat).cloned() else { return };
         match cmd {
             "chat:pin" => self.backend.send(Cmd::PinChat { chat, on: !c.pinned }),
@@ -1017,59 +989,50 @@ impl Tg {
             "chat:archive" => self.backend.send(Cmd::Archive { chat, on: !c.archived }),
             _ => {}
         }
-        cx.notify();
+        cx.invalidate();
     }
 
     /// An alert asking before `cmd` goes (deleting, signing out).
-    fn ask(&mut self, title: &'static str, message: impl Into<String>, yes: &'static str, cmds: Vec<Cmd>, cx: &mut Context<Self>) {
+    fn ask(&mut self, title: &'static str, message: impl Into<String>, yes: &'static str, cmds: Vec<Cmd>, cx: &mut Cx<Self>) {
         let message: String = message.into();
         if let Some(w) = self.alert.take() {
-            cx.close_window(w);
+            w.close(cx);
         }
-        let me = cx.entity();
-        cx.defer(move |cx| {
-            let to = me.clone();
-            let cmds = std::cell::RefCell::new(cmds);
-            let w = open_alert(cx, title, "warning", &message, &["Cancel", yes], move |choice, cx| {
-                to.update(cx, |tg, _| {
-                    tg.alert = None;
-                    if choice == Some(1) {
-                        for cmd in cmds.borrow_mut().drain(..) {
-                            tg.backend.send(cmd);
-                        }
+        let me = cx.view_ref();
+        let cmds = std::cell::RefCell::new(cmds);
+        self.alert = open_alert(cx, title, "warning", &message, &["Cancel", yes], move |choice, cx| {
+            let (yes, cmds) = (*choice == Some(1), cmds.take());
+            me.update(cx, move |tg, _| {
+                tg.alert = None;
+                if yes {
+                    for cmd in cmds {
+                        tg.backend.send(cmd);
                     }
-                })
-            });
-            me.update(cx, |tg, _| tg.alert = w);
+                }
+            })
         });
     }
 
     /// A file panel; `done` gets what was chosen (nothing if cancelled).
-    fn open_panel(&mut self, title: &'static str, panel: FilePanel, done: impl FnOnce(&mut Tg, Vec<PathBuf>, &mut Context<Tg>) + 'static, cx: &mut Context<Self>) {
-        if let Some(w) = self.panel {
-            olo_ui::raise(Some(w), cx);
+    fn open_panel(&mut self, title: &'static str, panel: FilePanel, done: impl FnOnce(&mut Tg, Vec<PathBuf>, &mut Cx<Tg>) + 'static, cx: &mut Cx<Self>) {
+        // (One at a time: the one open is its own window, brought
+        // forward by its own tab.)
+        if self.panel.is_some() {
             return;
         }
-        let me = cx.entity();
-        cx.defer(move |cx| {
-            let to = me.clone();
-            let w = file_panel::show(cx, title, panel, move |a, cx| {
-                to.update(cx, |tg, cx| {
-                    tg.panel = None;
-                    let paths = match a.result {
-                        PanelResult::Chosen(p) => vec![p],
-                        PanelResult::Several(ps) => ps,
-                        PanelResult::Cancelled => Vec::new(),
-                    };
-                    done(tg, paths, cx);
-                    cx.notify();
-                })
-            });
-            me.update(cx, |tg, _| tg.panel = w);
+        self.panel = Some(Box::new(done));
+        let me = cx.messenger();
+        file_panel::show(title, panel, move |a| {
+            let paths = match a.result {
+                file_panel::PanelResult::Chosen(p) => vec![p],
+                file_panel::PanelResult::Several(ps) => ps,
+                file_panel::PanelResult::Cancelled => Vec::new(),
+            };
+            me.send(Box::new(Chosen(paths)));
         });
     }
 
-    fn attach(&mut self, cx: &mut Context<Self>) {
+    fn attach(&mut self, cx: &mut Cx<Self>) {
         if self.conv.is_none() {
             return;
         }
@@ -1089,59 +1052,110 @@ impl Tg {
         );
     }
 
-    fn open_forward(&mut self, from: ChatId, ids: Vec<MsgId>, cx: &mut Context<Self>) {
+    fn open_forward(&mut self, from: ChatId, ids: Vec<MsgId>, cx: &mut Cx<Self>) {
         if let Some(w) = self.forward.take() {
-            cx.close_window(w);
+            w.close(cx);
         }
-        let me = cx.entity();
-        cx.defer(move |cx| {
-            let w = Picker::open(cx, me.clone(), Pick::Forward { from, ids });
-            me.update(cx, |tg, _| tg.forward = w);
-        });
+        self.forward = Picker::open(cx, Pick::Forward { from, ids });
+        self.feed(cx);
     }
 
-    fn open_contacts(&mut self, cx: &mut Context<Self>) {
-        if let Some((w, _)) = &self.contacts {
-            olo_ui::raise(Some(*w), cx);
+    fn open_contacts(&mut self, cx: &mut Cx<Self>) {
+        if let Some((w, _)) = self.contacts.as_ref().filter(|(w, _)| w.is_open(cx)) {
+            w.update(cx, |_, cx| cx.activate_window());
             return;
         }
         self.backend.send(Cmd::Contacts);
-        let me = cx.entity();
-        cx.defer(move |cx| {
-            if let Some(w) = Picker::open(cx, me.clone(), Pick::Contacts) {
-                me.update(cx, |tg, _| tg.contacts = Some((w, Vec::new())));
-            }
-        });
+        self.contacts = Picker::open(cx, Pick::Contacts).map(|w| (w, Vec::new()));
+        self.feed(cx);
     }
 
-    fn open_info(&mut self, chat: ChatId, cx: &mut Context<Self>) {
+    fn open_info(&mut self, chat: ChatId, cx: &mut Cx<Self>) {
         if let Some((w, _)) = self.info.take() {
-            cx.close_window(w);
+            w.close(cx);
         }
         let title = self.store.chats.get(&chat).map_or_else(|| "Info".into(), |c| c.title.clone());
-        let me = cx.entity();
-        cx.defer(move |cx| {
-            let view = cx.new(|cx| {
-                cx.observe(&me, |_, _, cx| cx.notify()).detach();
-                Info { tg: me.clone(), chat, focus: cx.focus_handle() }
-            });
-            let closing = me.clone();
-            let w = olo_ui::open_window(cx, WindowOptions::new(title, 300.0, 420.0).min_size(300.0, 360.0).child(), move |window, cx| {
-                let focus = view.read(cx).focus.clone();
-                window.focus(&focus);
-                window.on_window_should_close(cx, move |_, cx| {
-                    closing.update(cx, |tg, _| tg.info = None);
-                    true
-                });
-                view
-            });
-            if let Some(w) = w {
-                me.update(cx, |tg, _| tg.info = Some((w, chat)));
-            }
+        let main = cx.messenger();
+        let window = olo_kit::open_window_here(cx, WindowOptions::new(title, 300.0, 420.0).min_size(300.0, 360.0).child(), move |cx| {
+            let focus = FocusHandle::new();
+            focus.focus(cx);
+            Info { main, chat, ch: None, pic: None, focus }
         });
+        self.info = window.map(|w| (w, chat));
+        self.feed(cx);
     }
 
-    pub fn list_act(&mut self, a: list::Act, _window: &mut Window, cx: &mut Context<Self>) {
+    /// The windows that show what this one knows (Forward To, Contacts,
+    /// a chat's Info) told it again: as they open, and as the account
+    /// or a picture changes.
+    fn feed(&mut self, cx: &mut Cx<Self>) {
+        if let Some(w) = self.forward.as_ref().filter(|w| w.is_open(cx)) {
+            let rows: Vec<PickRow> = self
+                .store
+                .order
+                .iter()
+                .filter_map(|id| self.store.chats.get(id))
+                .map(|c| PickRow { id: c.id, name: c.title.clone(), detail: String::new(), also: None, pic: if c.photo.is_some() { self.pics.get(&Pic::Avatar(c.id), &self.backend) } else { None } })
+                .collect();
+            w.update(cx, move |p, cx| p.fed(rows, false, cx));
+        }
+        if let Some((w, list)) = self.contacts.as_ref().filter(|(w, _)| w.is_open(cx)) {
+            let rows: Vec<PickRow> = list
+                .iter()
+                .map(|c| PickRow {
+                    id: c.id,
+                    name: c.name.clone(),
+                    detail: c.seen.as_ref().map(|s| s.describe(when::now())).or_else(|| c.phone.clone()).unwrap_or_default(),
+                    also: c.username.clone(),
+                    pic: if c.photo.is_some() { self.pics.get(&Pic::Avatar(c.id), &self.backend) } else { None },
+                })
+                .collect();
+            let loading = list.is_empty();
+            w.update(cx, move |p, cx| p.fed(rows, loading, cx));
+        }
+        if let Some((w, chat)) = self.info.as_ref().filter(|(w, _)| w.is_open(cx)) {
+            let ch = self.store.chats.get(chat).cloned();
+            let pic = ch.as_ref().filter(|c| c.photo.is_some()).and_then(|_| self.pics.get(&Pic::Avatar(*chat), &self.backend));
+            w.update(cx, move |i, cx| {
+                i.ch = ch;
+                i.pic = pic;
+                cx.invalidate();
+            });
+        }
+    }
+
+    /// What a picker's row or an Info window's setting asks.
+    fn picked(&mut self, picked: Picked, cx: &mut Cx<Self>) {
+        match picked {
+            Picked::Forward { from, ids, to } => {
+                self.backend.send(Cmd::Forward { from, ids, to });
+                self.open_chat(to, None, cx);
+                self.forward = None;
+            }
+            Picked::Contact(id) => {
+                if !self.store.chats.contains_key(&id)
+                    && let Some(c) = self.contacts.as_ref().and_then(|(_, l)| l.iter().find(|c| c.id == id)).cloned()
+                {
+                    self.store.put_chat(Chat {
+                        id: c.id,
+                        kind: ChatKind::User,
+                        title: c.name.clone(),
+                        username: c.username.clone(),
+                        photo: c.photo,
+                        contact: true,
+                        seen: c.seen.clone(),
+                        ..Chat::default()
+                    });
+                    self.store.sort();
+                }
+                self.open_chat(id, None, cx);
+                cx.activate_window();
+            }
+            Picked::Chat(chat, cmd) => self.chat_command(chat, cmd, cx),
+        }
+    }
+
+    pub fn list_act(&mut self, a: list::Act, cx: &mut Cx<Self>) {
         match a {
             list::Act::Open(id) => self.open_chat(id, None, cx),
             list::Act::OpenAt(chat, id) => {
@@ -1158,7 +1172,7 @@ impl Tg {
         }
     }
 
-    pub fn conv_act(&mut self, a: conv::Act, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn conv_act(&mut self, a: conv::Act, cx: &mut Cx<Self>) {
         match a {
             conv::Act::Send => self.send(cx),
             conv::Act::Older => {
@@ -1181,7 +1195,7 @@ impl Tg {
                     self.backend.send(Cmd::Read { chat: c.chat, up_to: id });
                 }
             }
-            conv::Act::Message(id, cmd) => self.message_command(id, &cmd, window, cx),
+            conv::Act::Message(id, cmd) => self.message_command(id, &cmd, cx),
             conv::Act::Hit(id, h) => self.hit(id, h, cx),
             conv::Act::Attach => self.attach(cx),
             conv::Act::Info => {
@@ -1197,11 +1211,11 @@ impl Tg {
             conv::Act::CancelReply => {
                 if let Some(c) = &mut self.conv {
                     if c.edit.take().is_some() {
-                        self.field.update(cx, |f, cx| f.set_text("", cx));
+                        self.field.update(cx, move |f, cx| f.set_text("", cx));
                     }
                     c.reply = None;
                 }
-                cx.notify();
+                cx.invalidate();
             }
             conv::Act::Unstage(i) => {
                 if let Some(c) = &mut self.conv
@@ -1209,20 +1223,20 @@ impl Tg {
                 {
                     c.files.remove(i);
                 }
-                cx.notify();
+                cx.invalidate();
             }
             conv::Act::Bottom => {
                 if let Some(c) = &mut self.conv {
                     c.at_bottom = true;
                 }
-                cx.notify();
+                cx.invalidate();
             }
         }
     }
 
     /// The field's text changed: tell the chat we're typing (every five
     /// seconds at most).
-    fn typed(&mut self, cx: &mut Context<Self>) {
+    fn typed(&mut self, cx: &mut Cx<Self>) {
         let empty = self.field.read(cx).text().is_empty();
         if let Some(c) = &mut self.conv
             && !empty
@@ -1233,31 +1247,30 @@ impl Tg {
                 self.backend.send(Cmd::Typing { chat: c.chat, topic: c.topic, doing: Doing::Typing });
             }
         }
-        // (The composer is drawn again as its field changes; the window
-        // takes its new height: nothing else needs telling.)
-        let _ = cx;
+        // (The composer says what it shows again: its button sends once
+        // there's something to, and it's as tall as its lines.)
+        cx.invalidate();
     }
 
     /// The search changed: Telegram is asked after a pause in typing.
-    fn search_changed(&mut self, cx: &mut Context<Self>) {
+    fn search_changed(&mut self, cx: &mut Cx<Self>) {
         self.view.query = self.search.read(cx).text(cx).to_owned();
-        self.searching = None;
+        if let Some(timer) = self.searching.take() {
+            cx.cancel(timer);
+        }
         let q = self.view.query.trim().to_owned();
         if !q.is_empty() && q != self.found.query && q != self.searched {
-            self.searching = Some(cx.spawn(async move |tg, cx| {
-                cx.background_executor().timer(Duration::from_millis(400)).await;
-                let _ = tg.update(cx, |tg, _| {
-                    if tg.view.query.trim() == q {
-                        tg.searched = q.clone();
-                        tg.backend.send(Cmd::Search { query: q });
-                    }
-                });
+            self.searching = Some(cx.after_do(Duration::from_millis(400), move |tg, _| {
+                if tg.view.query.trim() == q {
+                    tg.searched = q.clone();
+                    tg.backend.send(Cmd::Search { query: q });
+                }
             }));
         }
-        cx.notify();
+        cx.invalidate();
     }
 
-    fn menus(&self, cx: &App) -> Vec<Menu> {
+    fn menus(&self) -> Vec<Menu> {
         let ready = matches!(self.status, Status::Online | Status::Updating | Status::Connecting | Status::Offline(_) | Status::Waiting(_));
         let chat = self.conv.as_ref().and_then(|c| self.store.chats.get(&c.chat));
         let file = Menu::new("File").item("Contacts", "contacts").key("k").enabled(ready).separator().item("Close", "close").key("w").item("Quit", "quit").key("q");
@@ -1304,7 +1317,7 @@ impl Tg {
             .item("Next Chat", "next")
             .key("down")
             .separator()
-            .item(if self.side.read(cx).collapsed() { "Show Chat List" } else { "Hide Chat List" }, "sidebar")
+            .item(if self.side.collapsed() { "Show Chat List" } else { "Hide Chat List" }, "sidebar")
             // (Every app's keys for it: `app.sidebar`, ⌥⌘S.)
             .key("s");
         let account = Menu::new("Account")
@@ -1317,12 +1330,12 @@ impl Tg {
         vec![file, edit, chat_menu, view, account]
     }
 
-    fn command(&mut self, command: &str, window: &mut Window, cx: &mut Context<Self>) {
+    fn run(&mut self, command: &str, cx: &mut Cx<Self>) {
         match command {
             "quit" | "close" => self.quit(cx),
-            "quit-now" => cx.quit(),
+            "quit-now" => olo_kit::quit(),
             "contacts" => self.open_contacts(cx),
-            "find" => self.search.update(cx, |s, cx| s.focus(window, cx)),
+            "find" => self.search.update(cx, |s, cx| s.focus(cx)),
             "attach" => self.attach(cx),
             "record-voice" => self.voice_start(false, cx),
             "send-voice" => self.voice_end(true, cx),
@@ -1349,10 +1362,10 @@ impl Tg {
                 self.view.archive = false;
                 self.view.unknown = false;
             }
-            "sidebar" => self.side.update(cx, |s, cx| {
-                s.toggle();
-                cx.notify();
-            }),
+            "sidebar" => {
+                self.side.toggle();
+                cx.invalidate();
+            }
             "archive" => {
                 self.view.archive = true;
                 self.view.unknown = false;
@@ -1388,10 +1401,10 @@ impl Tg {
             "signout" => self.ask("Sign Out", "Sign out of Telegram on this computer? Your chats stay on Telegram.", "Sign Out", vec![Cmd::SignOut], cx),
             _ => {}
         }
-        cx.notify();
+        cx.invalidate();
     }
 
-    fn message(&mut self, message: Box<dyn std::any::Any + Send>, cx: &mut Context<Self>) {
+    fn told(&mut self, message: Box<dyn std::any::Any + Send>, cx: &mut Cx<Self>) {
         let message = match message.downcast::<Event>() {
             Ok(e) => return self.event(*e, cx),
             Err(m) => m,
@@ -1402,9 +1415,8 @@ impl Tg {
                 if let Some(next) = next {
                     self.sticker_timer(next, cx);
                 }
-                if redraw && let Some(p) = self.pane(Kind::Conv) {
-                    let app: &mut App = cx;
-                    app.notify(p);
+                if redraw {
+                    cx.invalidate();
                 }
                 return;
             }
@@ -1417,8 +1429,23 @@ impl Tg {
         let message = match message.downcast::<pics::Decoded>() {
             Ok(d) => {
                 self.pics.decoded(*d);
-                return cx.notify();
+                self.feed(cx);
+                return cx.invalidate();
             }
+            Err(m) => m,
+        };
+        let message = match message.downcast::<Chosen>() {
+            Ok(chosen) => {
+                if let Some(done) = self.panel.take() {
+                    done(self, chosen.0, cx);
+                    cx.invalidate();
+                }
+                return;
+            }
+            Err(m) => m,
+        };
+        let message = match message.downcast::<Picked>() {
+            Ok(picked) => return self.picked(*picked, cx),
             Err(m) => m,
         };
         let message = match message.downcast::<NoteEvent>() {
@@ -1427,13 +1454,9 @@ impl Tg {
                     NoteEvent::Action { id, token, .. } => {
                         if let Some(&(chat, _)) = self.note_chats.get(&id) {
                             self.open_chat(chat, None, cx);
-                            if let Some(w) = self.win {
-                                cx.defer(move |cx| {
-                                    let _ = w.update(cx, |_, window, _| match &token {
-                                        Some(t) => window.activate_window_with_token(t),
-                                        None => window.activate_window(),
-                                    });
-                                });
+                            match &token {
+                                Some(t) => cx.activate_window_with_token(t),
+                                None => cx.activate_window(),
                             }
                         }
                     }
@@ -1462,10 +1485,8 @@ impl Tg {
                     // Preferences signed in or out: start again with the
                     // account as it is.
                     self.reconnect(cx);
-                } else if let Some(w) = self.win {
-                    cx.defer(move |cx| {
-                        olo_ui::raise(Some(w), cx);
-                    });
+                } else {
+                    cx.activate_window();
                 }
                 return;
             }
@@ -1473,30 +1494,59 @@ impl Tg {
         };
         if let Ok(h24) = message.downcast::<Clock>() {
             self.h24 = h24.0;
-            cx.notify();
+            cx.invalidate();
         }
     }
 
-    fn saved(&self, cx: &App) -> Saved {
+    fn saved(&self) -> Saved {
         Saved {
             chat: self.conv.as_ref().map(|c| c.chat),
             topic: self.conv.as_ref().and_then(|c| c.topic),
             folder: self.view.folder,
-            list_width: Some(self.side.read(cx).width()),
-            list_hidden: self.side.read(cx).collapsed(),
+            list_width: Some(self.side.width()),
+            list_hidden: self.side.collapsed(),
         }
     }
 }
 
-impl Render for Tg {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let me = cx.entity();
-        self.focused = window.is_window_active();
-        let bar_me = me.clone();
-        let bar = MenuBar::of(&me, |tg: &Self, cx| tg.menus(cx), move |cmd, window, cx| bar_me.update(cx, |tg, cx| tg.command(cmd, window, cx)));
-        let p = theme::palette(cx);
-        let vs = window.viewport_size();
-        let top = olo_ui::menu::BAR_HEIGHT;
+impl View for Tg {
+    type Message = Box<dyn std::any::Any + Send>;
+
+    fn message(&mut self, message: Self::Message, cx: &mut Cx<Self>) {
+        self.told(message, cx);
+    }
+
+    fn command(&mut self, command: &str, cx: &mut Cx<Self>) -> bool {
+        self.run(command, cx);
+        true
+    }
+
+    /// Closing the main window ends the app, its other windows too:
+    /// once changes still on their way to Telegram are sent.
+    fn close_requested(&mut self, cx: &mut Cx<Self>) -> bool {
+        self.quit(cx);
+        false
+    }
+
+    fn window_activated(&mut self, active: bool, cx: &mut Cx<Self>) {
+        self.focused = active;
+        cx.invalidate();
+    }
+
+    fn save_state(&mut self, _: &mut Cx<Self>) -> Option<String> {
+        serde_json::to_string(&self.saved()).ok()
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        let bar = MenuBar::new(cx, self.menus());
+        let p = theme::palette();
+        let vs = cx.viewport_size();
+        let scale = cx.scale_factor();
+        // (A pane's edges on device pixels.)
+        let snap = |v: Pixels| px((f32::from(v) * scale).round() / scale);
+        let snap_rect = |b: Bounds<Pixels>| Bounds::from_corners(point(snap(b.left()), snap(b.top())), point(snap(b.right()), snap(b.bottom())));
+        let hairline = px(style::line_pixels(scale) / scale);
+        let top = olo_kit::menu::BAR_HEIGHT;
         let full = Bounds { origin: point(px(0.0), px(top)), size: size(vs.width, (vs.height - px(top)).max(px(0.0))) };
         // Who's typing, while it lasts.
         let t = now();
@@ -1533,14 +1583,14 @@ impl Render for Tg {
                 // root of its own, ran a pixel past the window).
                 let fw = f32::from(full.size.width);
                 // (Away: none of it, the conversation the whole width.)
-                let lw = (self.side.read(cx).shown(fw, 320.0) / 2.0).round() * 2.0;
-                let left = style::snap(window, Bounds { origin: full.origin, size: size(px(lw), full.size.height) });
-                let rx = if lw > 0.0 { style::snap_coord(window, px(lw) + style::hairline(window)) } else { full.origin.x };
-                let right = style::snap(window, Bounds::from_corners(point(rx, full.origin.y), full.bottom_right()));
+                let lw = (self.side.shown(fw, 320.0) / 2.0).round() * 2.0;
+                let left = snap_rect(Bounds { origin: full.origin, size: size(px(lw), full.size.height) });
+                let rx = if lw > 0.0 { snap(px(lw) + hairline) } else { full.origin.x };
+                let right = snap_rect(Bounds::from_corners(point(rx, full.origin.y), full.bottom_right()));
                 // Changes on their way to Telegram: a line under the list.
                 let (pending, total, waiting) = self.sync;
                 self.list_rect = if pending > 0 {
-                    let line = Bounds::from_corners(point(left.origin.x, style::snap_coord(window, left.bottom() - px(SYNC_H))), left.bottom_right());
+                    let line = Bounds::from_corners(point(left.origin.x, snap(left.bottom() - px(SYNC_H))), left.bottom_right());
                     let done = total.saturating_sub(pending) as f32 / total.max(1) as f32;
                     let label = if pending == 1 { "Sending a change to Telegram…".to_owned() } else { format!("Sending {pending} changes to Telegram…") };
                     let trailing = match (&self.status, waiting) {
@@ -1559,7 +1609,7 @@ impl Render for Tg {
                             .bg(c(p.panel_background))
                             .px(px(m::SPACING))
                             .pt(px(m::SPACING + 1.0))
-                            .child(canvas(|_, _, _| {}, move |b, _, window, _| style::hline(window, b.left(), b.right(), b.top(), edge)).absolute().inset_0())
+                            .child(canvas(move |g, b| style::hline(g, b.left(), b.right(), b.top(), edge)).absolute().inset_0())
                             .child(StatusBar::new(done).label(label).trailing(trailing).bar_height(6.0)),
                     );
                     Bounds::from_corners(left.origin, point(left.right(), line.top()))
@@ -1567,26 +1617,22 @@ impl Render for Tg {
                     left
                 };
                 if lw > 0.0 {
-                    if let Some((_, p)) = self.panes.iter().find(|p| p.0 == Kind::List) {
-                        layer = layer.child(pane(p, self.list_rect));
-                    }
+                    let list = list::render(self, self.list_rect, cx);
+                    layer = layer.child(pane(list, self.list_rect, vs));
                     let shadow = c(p.shadow);
-                    layer = layer.child(canvas(|_, _, _| {}, move |_, _, window, _| style::vline(window, left.right(), left.origin.y, left.bottom(), shadow)).absolute().inset_0());
+                    layer = layer.child(canvas(move |g, _| style::vline(g, left.right(), left.origin.y, left.bottom(), shadow)).absolute().inset_0());
                 }
                 if self.conv.is_some() {
                     // The conversation over its composer, as tall as its
                     // text (up to eight lines).
-                    let (_, composer_h, _) = conv::composer_size(self, f32::from(right.size.width), window, cx);
-                    let split = style::snap_coord(window, right.bottom() - px(composer_h));
+                    let (_, composer_h, _) = conv::composer_size(self, f32::from(right.size.width), cx);
+                    let split = snap(right.bottom() - px(composer_h));
                     self.conv_rect = Bounds::from_corners(right.origin, point(right.right(), split));
                     self.composer_rect = Bounds::from_corners(point(right.origin.x, split), right.bottom_right());
-                    for (kind, p) in &self.panes {
-                        match kind {
-                            Kind::Conv => layer = layer.child(pane(p, self.conv_rect)),
-                            Kind::Composer => layer = layer.child(pane(p, self.composer_rect)),
-                            Kind::List => {}
-                        }
-                    }
+                    let conv = conv::render(self, self.conv_rect, cx);
+                    layer = layer.child(pane(conv, self.conv_rect, vs));
+                    let composer = conv::composer(self, self.composer_rect, cx);
+                    layer = layer.child(pane(composer, self.composer_rect, vs));
                 } else {
                     let detail = match &self.status {
                         Status::Connecting => "Connecting to Telegram…".to_owned(),
@@ -1611,33 +1657,36 @@ impl Render for Tg {
                 // put it away for the conversation's room (the kit's
                 // SidePane: past its narrowest, a double click, View ▸
                 // Hide Chat List), and out again from the window's edge.
-                layer = layer.child(olo_ui::widgets::side_divider(&self.side, lw, f32::from(full.origin.y), f32::from(full.size.height), "Chat List"));
+                layer = layer.child(olo_kit::widgets::side_divider(
+                    &self.side,
+                    lw,
+                    f32::from(full.origin.y),
+                    f32::from(full.size.height),
+                    "Chat List",
+                    cx.listener(|_: &mut Tg, _: &(), cx| cx.invalidate()),
+                ));
                 // A problem to tell, across the conversation's top.
                 if let (Some(text), Some(until)) = (self.banner.text().cloned(), self.banner.until()) {
                     self.wake_in(until.saturating_duration_since(Instant::now()), cx);
                     let b = Bounds { origin: point(right.origin.x + px(12.0), right.origin.y + px(conv::HEADER + 8.0)), size: size(right.size.width - px(24.0), px(30.0)) };
                     let failure = c(p.failure).opacity(0.92);
                     layer = layer.child(
-                        canvas(
-                            |_, _, _| {},
-                            move |_, _, window, cx| {
-                                let b = style::snap(window, b);
-                                window.paint_quad(olo_ui::gpui::fill(b, failure).corner_radii(px(8.0)));
-                                style::label_fit(
-                                    window,
-                                    cx,
-                                    b.origin.x + px(12.0),
-                                    b.center().y,
-                                    Align::Left,
-                                    text.clone(),
-                                    style::PLAIN_SIZE,
-                                    style::ui_font(FontWeight::NORMAL),
-                                    white(),
-                                    b.size.width - px(24.0),
-                                );
-                                olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Alert", name: Some(text.clone().into()), bounds: b, ..Default::default() });
-                            },
-                        )
+                        canvas(move |g, _| {
+                            let b = style::snap(g, b);
+                            g.paint_quad(olo_kit::fill(b, failure).corner_radii(px(8.0)));
+                            style::label_fit(
+                                g,
+                                b.origin.x + px(12.0),
+                                b.center().y,
+                                Align::Left,
+                                text.clone(),
+                                style::PLAIN_SIZE,
+                                style::ui_font(FontWeight::NORMAL),
+                                white(),
+                                b.size.width - px(24.0),
+                            );
+                            olo_kit::agent::record(g, olo_kit::agent::Node { role: "Alert", name: Some(text.clone().into()), bounds: b, ..Default::default() });
+                        })
                         .absolute()
                         .inset_0(),
                     );
@@ -1656,7 +1705,6 @@ impl Render for Tg {
                 Some(s) => format!("Telegram asks to wait {s} s"),
                 None => format!("quitting in {left_s} s at most"),
             };
-            let quit_now = me.clone();
             let sheet = div()
                 .w(px(360.0))
                 .flex()
@@ -1669,22 +1717,19 @@ impl Render for Tg {
                 .child(StringView::new("Sending your changes to Telegram").bold(true))
                 .child(StringView::new(format!("{what} to chats (archived, read, muted or pinned) still to send. Whatever isn’t sent now is kept and sent when Telegram next opens.")).wrap(true))
                 .child(StatusBar::new(done).trailing(trailing).bar_height(8.0))
-                .child(button_row().child(Button::new("Quit Now").on_click(move |_, cx| quit_now.update(cx, |_, cx| cx.quit()))));
+                .child(button_row().child(Button::new("Quit Now").on_click(|_, _| olo_kit::quit())));
             layer = layer.child(div().absolute().inset_0().flex().items_center().justify_center().bg(c(p.shadow).opacity(0.25)).child(sheet));
         }
-        let t_drop = me.clone();
         div()
             .size_full()
             .relative()
-            .on_drop(move |paths: &ExternalPaths, _, cx| {
-                t_drop.update(cx, |tg, cx| {
-                    if let Some(c) = &mut tg.conv {
-                        c.files.extend(paths.paths().iter().cloned());
-                        c.focus_field = true;
-                        cx.notify();
-                    }
-                })
-            })
+            .on_drop(cx.listener(|tg: &mut Tg, paths: &ExternalPaths, cx| {
+                if let Some(c) = &mut tg.conv {
+                    c.files.extend(paths.paths().iter().cloned());
+                    c.focus_field = true;
+                    cx.invalidate();
+                }
+            }))
             .child(layer)
             .child(bar)
     }
@@ -1698,59 +1743,76 @@ enum Pick {
     Contacts,
 }
 
+/// What a picker's choice, or an Info window's setting, asks of the
+/// main window.
+enum Picked {
+    Forward {
+        from: ChatId,
+        ids: Vec<MsgId>,
+        to: ChatId,
+    },
+    Contact(ChatId),
+    /// A chat's setting ("chat:mute", …).
+    Chat(ChatId, &'static str),
+}
+
+/// A row to pick: a chat or a contact, as the main window knows it.
+#[derive(Clone)]
+struct PickRow {
+    id: ChatId,
+    name: String,
+    detail: String,
+    /// What else a search finds it by (a contact's username).
+    also: Option<String>,
+    pic: Option<std::sync::Arc<olo_kit::RenderImage>>,
+}
+
 /// The Forward To and Contacts windows: a search and a list to pick
-/// from.
+/// from. A window of the main one's, on its looper: told the rows as
+/// they change (`Tg::feed`), telling it what's picked.
 struct Picker {
-    tg: Entity<Tg>,
+    main: olo_kit::Messenger<Box<dyn std::any::Any + Send>>,
     pick: Pick,
-    win: Option<WindowHandle<Frame>>,
-    search: Entity<SearchField>,
+    search: Child<SearchField>,
     scroll: ScrollHandle,
     hover: Option<usize>,
-    /// What the list shows (the search applied), and its rows' top as
-    /// painted.
-    shown: Vec<(ChatId, String, String, bool)>,
+    /// Every row there is, and whether they're still to come.
+    all: Vec<PickRow>,
+    loading: bool,
+    /// How many the list shows (the search applied), and its rows' top
+    /// as painted.
+    shown: Vec<ChatId>,
     top: Rc<Cell<f32>>,
     focus: FocusHandle,
 }
 
 impl Picker {
-    fn open(cx: &mut App, tg: Entity<Tg>, pick: Pick) -> Option<WindowHandle<Frame>> {
+    fn open(cx: &mut Cx<Tg>, pick: Pick) -> Option<LocalWindow<Picker>> {
         let forward = matches!(pick, Pick::Forward { .. });
-        let search = search_field(cx, if forward { "Search chats" } else { "Search contacts" });
-        let view = cx.new(|cx| {
-            cx.observe(&tg, |_, _, cx| cx.notify()).detach();
-            cx.subscribe(&search, |p: &mut Picker, _, e: &SearchEvent, cx| {
-                if let SearchEvent::Changed = e {
-                    p.hover = None;
-                    cx.notify();
-                }
-            })
-            .detach();
-            Picker { tg: tg.clone(), pick, win: None, search: search.clone(), scroll: ScrollHandle::new(), hover: None, shown: Vec::new(), top: Rc::default(), focus: cx.focus_handle() }
-        });
         let (title, w, h) = if forward { ("Forward To", 360.0, 480.0) } else { ("Contacts", 360.0, 520.0) };
         let mut options = WindowOptions::new(title, w, h).min_size(300.0, 320.0);
         if forward {
             options = options.dialog();
         }
-        let (v, closing) = (view.clone(), tg.clone());
-        let win = olo_ui::open_window(cx, options, move |window, cx| {
-            window.on_window_should_close(cx, move |_, cx| {
-                closing.update(cx, |tg, _| {
-                    if forward {
-                        tg.forward = None;
-                    } else {
-                        tg.contacts = None;
-                    }
-                });
-                true
+        let main = cx.messenger();
+        olo_kit::open_window_here(cx, options, move |cx| {
+            let search = search_field(cx, if forward { "Search chats" } else { "Search contacts" });
+            cx.subscribe(&search, |p: &mut Picker, e: &SearchEvent, cx| {
+                if let SearchEvent::Changed = e {
+                    p.hover = None;
+                    cx.invalidate();
+                }
             });
-            search.update(cx, |s, cx| s.focus(window, cx));
-            v
-        })?;
-        view.update(cx, |p, _| p.win = Some(win));
-        Some(win)
+            search.update(cx, |s, cx| s.focus(cx));
+            Picker { main, pick, search, scroll: ScrollHandle::new(), hover: None, all: Vec::new(), loading: !forward, shown: Vec::new(), top: Rc::default(), focus: FocusHandle::new() }
+        })
+    }
+
+    /// The rows, from the main window.
+    fn fed(&mut self, rows: Vec<PickRow>, loading: bool, cx: &mut Cx<Self>) {
+        self.all = rows;
+        self.loading = loading;
+        cx.invalidate();
     }
 
     /// A row's height: a row and the space after it.
@@ -1764,192 +1826,119 @@ impl Picker {
         (y >= 0.0 && (i as usize) < self.shown.len()).then_some(i as usize)
     }
 
-    fn close(&mut self, cx: &mut Context<Self>) {
-        let forward = matches!(self.pick, Pick::Forward { .. });
-        self.tg.update(cx, |tg, _| {
-            if forward {
-                tg.forward = None;
-            } else {
-                tg.contacts = None;
-            }
-        });
-        if let Some(w) = self.win.take() {
-            cx.close_window(w);
-        }
-    }
-
-    fn choose(&mut self, i: usize, cx: &mut Context<Self>) {
-        let Some(&(id, ..)) = self.shown.get(i) else { return };
+    fn choose(&mut self, i: usize, cx: &mut Cx<Self>) {
+        let Some(&id) = self.shown.get(i) else { return };
         match &self.pick {
             Pick::Forward { from, ids } => {
-                let (from, ids) = (*from, ids.clone());
-                self.tg.update(cx, |tg, cx| {
-                    tg.backend.send(Cmd::Forward { from, ids, to: id });
-                    tg.open_chat(id, None, cx);
-                });
-                self.close(cx);
+                self.main.send(Box::new(Picked::Forward { from: *from, ids: ids.clone(), to: id }));
+                cx.close_window();
             }
             Pick::Contacts => {
-                self.tg.update(cx, |tg, cx| {
-                    if !tg.store.chats.contains_key(&id)
-                        && let Some(c) = tg.contacts.as_ref().and_then(|(_, l)| l.iter().find(|c| c.id == id)).cloned()
-                    {
-                        tg.store.put_chat(Chat {
-                            id: c.id,
-                            kind: ChatKind::User,
-                            title: c.name.clone(),
-                            username: c.username.clone(),
-                            photo: c.photo,
-                            contact: true,
-                            seen: c.seen.clone(),
-                            ..Chat::default()
-                        });
-                        tg.store.sort();
-                    }
-                    tg.open_chat(id, None, cx);
-                    if let Some(w) = tg.win {
-                        cx.defer(move |cx| {
-                            olo_ui::raise(Some(w), cx);
-                        });
-                    }
-                });
+                self.main.send(Box::new(Picked::Contact(id)));
             }
         }
     }
 }
 
-impl Render for Picker {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let me = cx.entity();
+impl View for Picker {
+    type Message = ();
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         let q = self.search.read(cx).text(cx).to_lowercase();
         let forward = matches!(self.pick, Pick::Forward { .. });
-        // (id, name, detail, has a photo)
-        let (shown, loading) = {
-            let tg = self.tg.read(cx);
-            if forward {
-                (
-                    tg.store
-                        .order
-                        .iter()
-                        .filter_map(|id| tg.store.chats.get(id))
-                        .filter(|c| q.is_empty() || c.title.to_lowercase().contains(&q))
-                        .map(|c| (c.id, c.title.clone(), String::new(), c.photo.is_some()))
-                        .collect::<Vec<_>>(),
-                    false,
-                )
-            } else {
-                let list = tg.contacts.as_ref().map(|(_, l)| l.as_slice()).unwrap_or_default();
-                (
-                    list.iter()
-                        .filter(|c| q.is_empty() || c.name.to_lowercase().contains(&q) || c.username.as_ref().is_some_and(|u| u.contains(&q)))
-                        .map(|c| (c.id, c.name.clone(), c.seen.as_ref().map(|s| s.describe(when::now())).or_else(|| c.phone.clone()).unwrap_or_default(), c.photo.is_some()))
-                        .collect(),
-                    list.is_empty(),
-                )
-            }
-        };
-        self.shown = shown.clone();
+        let shown: Vec<PickRow> = self.all.iter().filter(|r| q.is_empty() || r.name.to_lowercase().contains(&q) || r.also.as_ref().is_some_and(|u| u.contains(&q))).cloned().collect();
+        self.shown = shown.iter().map(|r| r.id).collect();
         let row_h = self.row_h();
-        let pics: Vec<_> = self.tg.update(cx, |tg, _| shown.iter().map(|(id, _, _, photo)| if *photo { tg.pics.get(&Pic::Avatar(*id), &tg.backend) } else { None }).collect());
         let (hover, top) = (self.hover, self.top.clone());
         let total = shown.len();
-        let rows = canvas(
-            move |b, window, _| window.insert_hitbox(b, HitboxBehavior::Normal),
-            move |b, _: Hitbox, window, cx| {
-                top.set(f32::from(b.origin.y));
-                let p = theme::palette(cx);
-                let ink = c(p.list_item_text);
-                let dark = p.mode == olo_ui::palette::ThemeMode::Dark;
-                let visible = window.content_mask().bounds;
-                for (i, ((id, name, detail, _), pic)) in shown.into_iter().zip(pics).enumerate() {
-                    let r = Bounds { origin: point(b.origin.x, b.origin.y + px(i as f32 * row_h)), size: size(b.size.width, px(row_h)) };
-                    if r.bottom() < visible.origin.y || r.origin.y > visible.bottom() {
-                        continue;
-                    }
-                    if hover == Some(i) {
-                        style::fill_rect(window, r, ink.opacity(0.06));
-                    }
-                    let d = if forward { 30.0 } else { 34.0 };
-                    let at = Bounds { origin: point(r.origin.x + px(if forward { 22.0 } else { 24.0 } - d / 2.0), r.center().y - px(d / 2.0)), size: size(px(d), px(d)) };
-                    bubble::avatar(window, cx, at, id, &name, pic.as_ref(), dark);
-                    let x = at.right() + px(10.0);
-                    let room = r.right() - x - px(m::SPACING);
-                    if forward {
-                        style::label_fit(window, cx, x, r.center().y, Align::Left, name.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), ink, room);
-                    } else {
-                        style::label_fit(window, cx, x, r.center().y - px(7.5), Align::Left, name.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), ink, room);
-                        style::label_fit(window, cx, x, r.center().y + px(7.5), Align::Left, detail, style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p), room);
-                    }
-                    olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "ListItem", name: Some(name.into()), bounds: r, enabled: true, clickable: true, ..Default::default() });
+        let rows = canvas(move |g, b| {
+            top.set(f32::from(b.origin.y));
+            let p = theme::palette();
+            let ink = c(p.list_item_text);
+            let dark = p.mode == olo_kit::palette::ThemeMode::Dark;
+            let visible = g.content_mask().bounds;
+            for (i, row) in shown.iter().enumerate() {
+                let r = Bounds { origin: point(b.origin.x, b.origin.y + px(i as f32 * row_h)), size: size(b.size.width, px(row_h)) };
+                if r.bottom() < visible.origin.y || r.origin.y > visible.bottom() {
+                    continue;
                 }
-            },
-        )
+                if hover == Some(i) {
+                    style::fill_rect(g, r, ink.opacity(0.06));
+                }
+                let d = if forward { 30.0 } else { 34.0 };
+                let at = Bounds { origin: point(r.origin.x + px(if forward { 22.0 } else { 24.0 } - d / 2.0), r.center().y - px(d / 2.0)), size: size(px(d), px(d)) };
+                bubble::avatar(g, at, row.id, &row.name, row.pic.as_ref(), dark);
+                let x = at.right() + px(10.0);
+                let room = r.right() - x - px(m::SPACING);
+                if forward {
+                    style::label_fit(g, x, r.center().y, Align::Left, row.name.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), ink, room);
+                } else {
+                    style::label_fit(g, x, r.center().y - px(7.5), Align::Left, row.name.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), ink, room);
+                    style::label_fit(g, x, r.center().y + px(7.5), Align::Left, row.detail.clone(), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p), room);
+                }
+                olo_kit::agent::record(g, olo_kit::agent::Node { role: "ListItem", name: Some(row.name.clone().into()), bounds: r, enabled: true, clickable: true, ..Default::default() });
+            }
+        })
         .w_full()
         .h(px(total as f32 * row_h));
-        let (t_move, t_click, t_out) = (me.clone(), me.clone(), me.clone());
         let content = div()
             .id("pick-rows")
             .w_full()
             .h(px(total as f32 * row_h))
             .child(rows)
-            .on_mouse_move(move |e: &MouseMoveEvent, _, cx| {
-                t_move.update(cx, |p, cx| {
-                    let i = p.row_at(e.position);
-                    if i != p.hover {
-                        p.hover = i;
-                        cx.notify();
-                    }
-                })
-            })
-            .on_hover(move |on: &bool, _, cx| {
-                if !*on {
-                    t_out.update(cx, |p, cx| {
-                        if p.hover.take().is_some() {
-                            cx.notify();
-                        }
-                    })
+            .on_mouse_move(cx.listener(|p: &mut Picker, e: &MouseMoveEvent, cx| {
+                let i = p.row_at(e.position);
+                if i != p.hover {
+                    p.hover = i;
+                    cx.invalidate();
                 }
-            })
-            .on_click(move |e, _, cx| {
-                let Some(pos) = e.mouse_position() else { return };
-                t_click.update(cx, |p, cx| {
-                    if let Some(i) = p.row_at(pos) {
-                        p.choose(i, cx);
-                    }
-                })
-            });
-        let list: AnyElement =
-            if loading { EmptyState::new("Loading contacts…").icon("people").into_any_element() } else { ScrollView::new("pick-list", &self.scroll).child(content).into_any_element() };
-        let mut col = div().size_full().p(px(m::WINDOW_INSET)).flex().flex_col().gap(px(m::TIGHT + m::SPACING)).child(self.search.clone()).child(div().flex_1().min_h_0().child(list));
+            }))
+            .on_hover(cx.listener(|p: &mut Picker, on: &bool, cx| {
+                if !*on && p.hover.take().is_some() {
+                    cx.invalidate();
+                }
+            }))
+            .on_left_click(cx.listener(|p: &mut Picker, e: &olo_kit::ClickEvent, cx| {
+                let olo_kit::ClickEvent::Mouse(mc) = e else { return };
+                if let Some(i) = p.row_at(mc.up.position) {
+                    p.choose(i, cx);
+                }
+            }));
+        let list: Element = if self.loading { EmptyState::new("Loading contacts…").icon("people").into_any_element() } else { ScrollView::new(&self.scroll).child(content).into_any_element() };
+        let mut col = div().size_full().p(px(m::WINDOW_INSET)).flex().flex_col().gap(px(m::TIGHT + m::SPACING)).child(&self.search).child(div().flex_1().min_h_0().child(list));
         if forward {
-            let cancel = me.clone();
-            col = col.child(div().child(button_row().child(Button::new("Cancel").on_click(move |_, cx| cancel.update(cx, |p, cx| p.close(cx))))));
+            col = col.child(div().child(button_row().child(Button::new("Cancel").on_click(cx.listener(|_: &mut Picker, _: &olo_kit::ClickEvent, cx| cx.close_window())))));
         }
-        let esc = me.clone();
         div()
             .size_full()
             .track_focus(&self.focus)
-            .on_key_down(move |e: &KeyDownEvent, _, cx| {
+            .on_key_down(cx.listener(move |_: &mut Picker, e: &KeyDownEvent, cx| {
                 if e.keystroke.key == "escape" && forward {
-                    esc.update(cx, |p, cx| p.close(cx));
+                    cx.close_window();
                 }
-            })
+            }))
             .child(col)
     }
 }
 
 /// A chat's Info window: its picture, name and status, and its settings.
+/// A window of the main one's, told the chat as it changes
+/// (`Tg::feed`).
 struct Info {
-    tg: Entity<Tg>,
+    main: olo_kit::Messenger<Box<dyn std::any::Any + Send>>,
     chat: ChatId,
+    ch: Option<Chat>,
+    pic: Option<std::sync::Arc<olo_kit::RenderImage>>,
     focus: FocusHandle,
 }
 
-impl Render for Info {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+impl View for Info {
+    type Message = ();
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         let chat = self.chat;
-        let Some(ch) = self.tg.read(cx).store.chats.get(&chat).cloned() else { return div().size_full() };
-        let pic = if ch.photo.is_some() { self.tg.update(cx, |tg, _| tg.pics.get(&Pic::Avatar(chat), &tg.backend)) } else { None };
+        let Some(ch) = self.ch.clone() else { return div().size_full() };
+        let pic = self.pic.clone();
         let sub = match ch.kind {
             ChatKind::User | ChatKind::Bot => ch.seen.as_ref().map(|s| s.describe(when::now())).unwrap_or_default(),
             ChatKind::Channel => ch.members.map(|n| format!("{n} subscribers")).unwrap_or_default(),
@@ -1957,48 +1946,26 @@ impl Render for Info {
             ChatKind::Saved => "Your notes, files and forwarded messages".into(),
         };
         let (title, id) = (ch.title.clone(), ch.id);
-        let head = canvas(
-            |_, _, _| {},
-            move |b, _, window, cx| {
-                let p = theme::palette(cx);
-                let at = Bounds { origin: point(b.center().x - px(48.0), b.origin.y + px(22.0)), size: size(px(96.0), px(96.0)) };
-                bubble::avatar(window, cx, at, id, &title, pic.as_ref(), p.mode == olo_ui::palette::ThemeMode::Dark);
-                let ink = c(p.panel_text);
-                let t = style::label_fit(
-                    window,
-                    cx,
-                    b.center().x,
-                    at.bottom() + px(20.0),
-                    Align::Center,
-                    title.clone(),
-                    16.0,
-                    style::ui_font(FontWeight::BOLD),
-                    ink,
-                    b.size.width - px(2.0 * m::WINDOW_INSET),
-                );
-                olo_ui::agent::record(window, cx, olo_ui::agent::Node::label(title.clone(), t));
-                if !sub.is_empty() {
-                    let s = style::label_fit(
-                        window,
-                        cx,
-                        b.center().x,
-                        at.bottom() + px(40.0),
-                        Align::Center,
-                        sub.clone(),
-                        style::PLAIN_SIZE,
-                        style::ui_font(FontWeight::NORMAL),
-                        style::disabled_text(&p),
-                        b.size.width - px(2.0 * m::WINDOW_INSET),
-                    );
-                    olo_ui::agent::record(window, cx, olo_ui::agent::Node::label(sub.clone(), s));
-                }
-            },
-        )
+        let head = canvas(move |g, b| {
+            let p = theme::palette();
+            let at = Bounds { origin: point(b.center().x - px(48.0), b.origin.y + px(22.0)), size: size(px(96.0), px(96.0)) };
+            bubble::avatar(g, at, id, &title, pic.as_ref(), p.mode == olo_kit::palette::ThemeMode::Dark);
+            let ink = c(p.panel_text);
+            let width = b.size.width - px(2.0 * m::WINDOW_INSET);
+            let t = style::label_fit(g, b.center().x, at.bottom() + px(20.0), Align::Center, title.clone(), 16.0, style::ui_font(FontWeight::BOLD), ink, width);
+            olo_kit::agent::record(g, olo_kit::agent::Node::label(title.clone(), t));
+            if !sub.is_empty() {
+                let s = style::label_fit(g, b.center().x, at.bottom() + px(40.0), Align::Center, sub.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p), width);
+                olo_kit::agent::record(g, olo_kit::agent::Node::label(sub.clone(), s));
+            }
+        })
         .w_full()
         .h(px(22.0 + 96.0 + 60.0));
         let toggle = |label: &'static str, on: bool, cmd: &'static str| {
-            let tg = self.tg.clone();
-            CheckBox::new(label, on).on_toggle(move |_, _, cx| tg.update(cx, |tg, cx| tg.chat_command(chat, cmd, cx)))
+            let main = self.main.clone();
+            CheckBox::new(label, on).on_toggle(move |_, _| {
+                main.send(Box::new(Picked::Chat(chat, cmd)));
+            })
         };
         // Its settings, a space under the username, and the link a
         // space under them.
@@ -2012,26 +1979,20 @@ impl Render for Info {
             "chat:archive",
         ));
         if let Some(u) = ch.username.clone() {
-            body =
-                body.child(div()).child(div().flex().flex_row().child(Button::new("Copy Link").on_click(move |_, cx| cx.write_to_clipboard(ClipboardItem::new_string(format!("https://t.me/{u}"))))));
+            body = body.child(div()).child(div().flex().flex_row().child(Button::new("Copy Link").on_click(move |_, _| clipboard::write(ClipboardItem::new_string(format!("https://t.me/{u}"))))));
         }
         // Escape or ⌘W puts it away.
-        let tg = self.tg.clone();
         div()
             .size_full()
             .flex()
             .flex_col()
             .track_focus(&self.focus)
-            .on_key_down(move |e: &KeyDownEvent, _, cx| {
+            .on_key_down(cx.listener(|_: &mut Info, e: &KeyDownEvent, cx| {
                 let k = &e.keystroke;
                 if (k.key == "escape" && !k.modifiers.modified()) || (k.key == "w" && k.modifiers.control) {
-                    tg.update(cx, |tg, cx| {
-                        if let Some((w, _)) = tg.info.take() {
-                            cx.close_window(w);
-                        }
-                    });
+                    cx.close_window();
                 }
-            })
+            }))
             .child(head)
             .child(body)
     }
@@ -2043,141 +2004,95 @@ fn main() {
     if instance::forward(APP_ID, &args) {
         return;
     }
-    olo_ui::run(APP_ID, |cx| {
-        instance::listen(APP_ID, olo_ui::proxy(cx));
-        let proxy = olo_ui::proxy(cx);
-        let backend = Backend::start(move |e| proxy.send(e));
+    olo_kit::run(APP_ID, |app| {
+        let proxy = olo_kit::proxy();
+        instance::listen(APP_ID, proxy.clone());
+        let events = proxy.clone();
+        let backend = Backend::start(move |e| events.send(e));
         backend.send(Cmd::Chats);
-        let clock = olo_ui::proxy(cx);
-        olo_ui::settings::watch(move |s| clock.send(Clock(s.clock.twenty_four_hour)));
-        let restored: Saved = olo_ui::restored_state().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        let clock = proxy.clone();
+        olo_kit::settings::watch(move |s| clock.send(Clock(s.clock.twenty_four_hour)));
+        let restored: Saved = olo_kit::restored_state().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        let window = olo_kit::open_window(WindowOptions::new("Telegram", 980.0, 660.0).min_size(620.0, 420.0).keep_size("main"), move |cx| Tg::new(backend, restored, cx));
+        // What the account, the pictures' and stickers' workers, the
+        // microphone, notifications and another launch say: the window's.
+        olo_kit::message_handler(app, move |message, _| {
+            window.messenger().send(message);
+        });
+    });
+}
+
+impl Tg {
+    fn new(backend: Backend, restored: Saved, cx: &mut Cx<Self>) -> Tg {
+        let proxy = olo_kit::proxy();
         let search = search_field(cx, "Search");
         let field = text_field(cx, |f| f.multiline(true).font_size(bubble::TEXT).name("Message").hint("Message"));
-        let tg = cx.new(|cx| {
-            cx.subscribe(&search, |tg: &mut Tg, _, e: &SearchEvent, cx| {
-                if let SearchEvent::Changed = e {
-                    tg.search_changed(cx);
-                }
-            })
-            .detach();
-            cx.subscribe(&field, |tg: &mut Tg, _, e: &TextFieldEvent, cx| match e {
-                TextFieldEvent::Entered => {
-                    let can = tg.conv.as_ref().is_some_and(|c| !c.text(cx).trim().is_empty() || !c.files.is_empty());
-                    if can {
-                        tg.send(cx);
-                    }
-                }
-                TextFieldEvent::Changed => tg.typed(cx),
-                TextFieldEvent::Typed(_) => {}
-            })
-            .detach();
-            Tg {
-                win: None,
-                backend,
-                store: store::Store::default(),
-                pics: pics::Pics::new(olo_ui::proxy(cx)),
-                stickers: stickers::Stickers::new(olo_ui::proxy(cx)),
-                status: Status::Connecting,
-                sync: (0, 0, None),
-                quitting: None,
-                me: None,
-                view: list::View { folder: restored.folder, ..list::View::default() },
-                found: list::Found::default(),
-                conv: None,
-                side: {
-                    let side = cx.new(|_| olo_ui::widgets::SidePane::new(list::WIDTH, list::MIN_WIDTH).restored(restored.list_width, restored.list_hidden));
-                    cx.observe(&side, |_, _, cx| cx.notify()).detach();
-                    side
-                },
-                h24: false,
-                notes: Notifier::new(olo_ui::proxy(cx), "Telegram", "olo-telegram"),
-                chat_notes: HashMap::new(),
-                note_chats: HashMap::new(),
-                panel: None,
-                alert: None,
-                forward: None,
-                contacts: None,
-                info: None,
-                player: None,
-                when_fetched: None,
-                next_local: 0,
-                voice: None,
-                voice_token: 0,
-                voice_ended: HashMap::new(),
-                voice_to: HashMap::new(),
-                focused: true,
-                drafts: HashMap::new(),
-                kept: Vec::new(),
-                banner: Notice::default(),
-                searched: String::new(),
-                searching: None,
-                restored,
-                badge: 0,
-                search,
-                field,
-                hot: None,
-                list_scroll: ScrollHandle::new(),
-                list_rows: Vec::new(),
-                chosen: Vec::new(),
-                chosen_from: None,
-                list_hover: None,
-                list_top: Rc::default(),
-                wake: Due::default(),
-                title: "Telegram".into(),
-                panes: Vec::new(),
-                list_rect: Bounds::default(),
-                conv_rect: Bounds::default(),
-                composer_rect: Bounds::default(),
+        cx.subscribe(&search, |tg: &mut Tg, e: &SearchEvent, cx| {
+            if let SearchEvent::Changed = e {
+                tg.search_changed(cx);
             }
         });
-        // The panes, redrawn with the account's news (the model notifies),
-        // else only as they change themselves.
-        let panes = [Kind::List, Kind::Conv, Kind::Composer].map(|kind| {
-            let weak = tg.downgrade();
-            let model = tg.clone();
-            (
-                kind,
-                cx.new(|cx| {
-                    cx.observe(&model, |_, _, cx| cx.notify()).detach();
-                    Pane { tg: weak, kind }
-                }),
-            )
-        });
-        tg.update(cx, |t, _| t.panes = panes.into());
-        let view = tg.clone();
-        let win = olo_ui::open_window(cx, WindowOptions::new("Telegram", 980.0, 660.0).min_size(620.0, 420.0).keep_size("main"), move |window, cx| {
-            // Closing the main window ends the app, its other windows too.
-            let closing = view.clone();
-            window.on_window_should_close(cx, move |_, cx| {
-                // (Changes still on their way: it quits once they're sent.)
-                closing.update(cx, |tg, cx| tg.quit(cx));
-                false
-            });
-            view
-        });
-        tg.update(cx, |t, _| t.win = win);
-        // The conversation's text, drawn ahead (off the UI thread) so the
-        // first chat opened shows it without drawing every glyph new.
-        if let Some(w) = win {
-            let _ = w.update(cx, |_, window, _| {
-                let (normal, bold, mono) = (bubble::font(FontWeight::NORMAL), bubble::font(FontWeight::BOLD), style::mono_font(FontWeight::NORMAL));
-                for (font, size) in [
-                    (&normal, bubble::TEXT),
-                    (&bold, bubble::TEXT),
-                    (&bubble::italic(), bubble::TEXT),
-                    (&mono, bubble::TEXT),
-                    (&bold, bubble::TEXT - 0.5),
-                    (&normal, bubble::META),
-                    (&normal, bubble::META + 0.5),
-                    (&bold, style::SMALL_SIZE),
-                ] {
-                    window.warm_glyphs(font, px(size));
+        cx.subscribe(&field, |tg: &mut Tg, e: &TextFieldEvent, cx| match e {
+            TextFieldEvent::Entered => {
+                let can = tg.conv.as_ref().is_some_and(|c| !tg.field.read(cx).text().trim().is_empty() || !c.files.is_empty());
+                if can {
+                    tg.send(cx);
                 }
-            });
+            }
+            TextFieldEvent::Changed => tg.typed(cx),
+            TextFieldEvent::Typed(_) => {}
+        });
+        Tg {
+            backend,
+            store: store::Store::default(),
+            pics: pics::Pics::new(proxy.clone()),
+            stickers: stickers::Stickers::new(proxy.clone()),
+            status: Status::Connecting,
+            sync: (0, 0, None),
+            quitting: None,
+            me: None,
+            view: list::View { folder: restored.folder, ..list::View::default() },
+            found: list::Found::default(),
+            conv: None,
+            side: SidePane::new(list::WIDTH, list::MIN_WIDTH).restored(restored.list_width, restored.list_hidden),
+            h24: false,
+            notes: Notifier::new(proxy, "Telegram", "olo-telegram"),
+            chat_notes: HashMap::new(),
+            note_chats: HashMap::new(),
+            panel: None,
+            alert: None,
+            forward: None,
+            contacts: None,
+            info: None,
+            player: None,
+            when_fetched: None,
+            next_local: 0,
+            voice: None,
+            voice_token: 0,
+            voice_ended: HashMap::new(),
+            voice_to: HashMap::new(),
+            focused: true,
+            drafts: HashMap::new(),
+            kept: Vec::new(),
+            banner: Notice::default(),
+            searched: String::new(),
+            searching: None,
+            restored,
+            badge: 0,
+            search,
+            field,
+            hot: None,
+            list_scroll: ScrollHandle::new(),
+            list_rows: Vec::new(),
+            chosen: Vec::new(),
+            chosen_from: None,
+            list_hover: None,
+            list_top: Rc::default(),
+            wake: Due::default(),
+            title: "Telegram".into(),
+            list_rect: Bounds::default(),
+            conv_rect: Bounds::default(),
+            composer_rect: Bounds::default(),
         }
-        let messages = tg.clone();
-        olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |t, cx| t.message(message, cx)));
-        let saving = tg.clone();
-        olo_ui::on_upgrade(cx, move |cx| serde_json::to_string(&saving.read(cx).saved(cx)).ok());
-    });
+    }
 }

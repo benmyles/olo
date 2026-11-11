@@ -14683,14 +14683,39 @@ A Telegram client of Olo's own: MTProto in process through grammers
   a window over its chat (`WindowOptions::child`; Escape or ⌘W puts it
   away), Forward To a dialog, Contacts a window of its own; deleting
   and signing out ask in an alert (`open_alert`). The chat, topic,
-  folder and list width are kept over an upgrade (`on_upgrade`).
-* **What a frame costs**: the list, the conversation and the composer
-  are panes, each a view of its own drawn as a cached view
+  folder and list width are kept over an upgrade (`View::save_state`).
+* **On olo-kit**: `Tg` is the window's view, on its window's looper;
+  what the account, the pictures' and stickers' workers, the
+  microphone, notifications and another launch say comes through the
+  app's proxy and is handed to it whole (`View::Message` is the boxed
+  message, `Tg::told`). Info, Forward To and Contacts are windows of
+  the main one's on its looper (`open_window_here`), told what they
+  show as it changes (`Tg::feed`: the rows, a chat, their pictures)
+  and telling it what's picked (`Picked`); a file panel is a window of
+  its own that answers by message (`Chosen`). The list, the
+  conversation and the composer are drawn by `Tg::body` in the
+  window's coordinates, each clipped to its place (`pane`); their
+  clicks are the left button's (`LeftClick`: the kit says a click for
+  any button, and the right one opens a menu here). A conversation is
+  put where it's scrolled to once it's laid out (`reveal_span`: a chat
+  just opened is taller than its scroller knew), on a device pixel.
+  Against the GPUI build (release, 2× headless, the demo account, a
+  chat open): idle 0.0% of a core (0.1), the caret's 0.9 frames a
+  second at 275 µs (937); 80 notches of the wheel 4.2% (4.0), 27
+  frames a second at 978 µs (934); the pointer run down the list 0.6%
+  (0.4), 2.2 frames a second at 942 µs (860); 114 MB (108). The same
+  to the eye and, the times shown apart, to the pixel through a chat
+  opened, scrolled, a message's and a row's menus, text typed, Info,
+  the File and Chat menus, Contacts and a second chat; nothing in the
+  layout review at 1×, 1.5× and 2×.
+* **What a frame cost on the GPUI kit**: the list, the conversation and the composer
+  were panes, each a view of its own drawn as a cached view
   (`AnyView::cached` with its bounds): the account's news (the model
   notifies) draws them all again, but the pointer over a row, a
   scroll, or the caret blinking in the composer draws only its own pane
   (a hover notifies just its pane's view: `cx.notify(id)`), the others
-  replayed from the last frame. The conversation is planned once per
+  replayed from the last frame. On olo-kit one `body` says all three
+  and the window draws again what differs. The conversation is planned once per
   change to its thread (each entry's top and height), so a frame does
   only what's in view; a newly opened chat is laid out newest first,
   3 ms a frame, the rest guessed until the next; the layouts of the
