@@ -126,6 +126,8 @@ pub(crate) struct Commit {
     /// The looper animates: it wants [`WindowEvent::Frame`] as the next
     /// frame starts.
     pub(crate) animating: bool,
+    /// Where other programs' pictures show (`Painter::place_external`).
+    pub(crate) externals: Vec<(u64, Bounds<Pixels>)>,
 }
 
 /// What the display thread tells a window's looper.
@@ -279,6 +281,8 @@ pub(crate) struct Stage {
     /// How app_server held the window, as the looper was last told.
     state: Cell<WindowState>,
     closed: Cell<bool>,
+    /// Where other programs' pictures were last placed.
+    externals: RefCell<Vec<(u64, Bounds<Pixels>)>>,
 }
 
 impl Stage {
@@ -316,6 +320,7 @@ impl Stage {
             scrolled: Latest::new(),
             state: Cell::new(WindowState::default()),
             closed: Cell::new(false),
+            externals: RefCell::default(),
         });
         let weak = Rc::downgrade(&stage);
         let on = |f: fn(&Stage)| {
@@ -590,6 +595,12 @@ impl Stage {
     pub(crate) fn commit(&self, commit: Commit) {
         if self.closed.get() {
             return;
+        }
+        // Other programs' pictures: placed (or hidden) when where they
+        // show changed, with the frame this commit draws.
+        if *self.externals.borrow() != commit.externals {
+            self.with_window(|window| window.place_externals(&commit.externals));
+            *self.externals.borrow_mut() = commit.externals.clone();
         }
         {
             let mut showing = self.showing.borrow_mut();

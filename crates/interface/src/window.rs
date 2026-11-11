@@ -134,6 +134,9 @@ pub(crate) struct WindowCore {
     pub(crate) ended_timers: Vec<olo_app::TimerId>,
     /// Nodes drawn by what can be seen of them.
     pub(crate) by_visible: Vec<NodeId>,
+    /// The nodes whose drawings place another program's pictures
+    /// (`Painter::place_external`), as they were last drawn.
+    pub(crate) with_externals: Vec<NodeId>,
     /// Nodes that hold rows made as they come near what shows.
     pub(crate) row_nodes: Vec<NodeId>,
     /// Nodes layout moved or sized, whose listeners haven't heard.
@@ -470,6 +473,7 @@ impl WindowCore {
             hover_stale: false,
             ended_timers: Vec::new(),
             by_visible: Vec::new(),
+            with_externals: Vec::new(),
             row_nodes: Vec::new(),
             bounds_changed: Vec::new(),
             commit_held: None,
@@ -1378,8 +1382,32 @@ impl<'a> WindowCx<'a> {
         }
         core.commits += 1;
         let started = core.started.take().unwrap_or(flushing);
-        let commit =
-            Commit { size: core.size, scale, items, layers, wheel, started, work: started.elapsed(), everything: std::mem::take(&mut core.everything), animating: !core.next_frame.is_empty() };
+        // Where other programs' pictures show now: where each was drawn,
+        // moved as its node has been since (laid out elsewhere, scrolled).
+        let mut externals = Vec::new();
+        if !core.with_externals.is_empty() {
+            let nodes = std::mem::take(&mut core.with_externals);
+            for id in nodes {
+                let Some(node) = core.nodes.get(id) else { continue };
+                let Some(notes) = node.notes.as_ref().filter(|n| !n.externals.is_empty()) else { continue };
+                let shift = core.shift_at(id);
+                let moved = crate::point(node.bounds.origin.x - node.painted_at.x + shift.x, node.bounds.origin.y - node.painted_at.y + shift.y);
+                externals.extend(notes.externals.iter().map(|(key, b)| (*key, Bounds { origin: crate::point(b.origin.x + moved.x, b.origin.y + moved.y), size: b.size })));
+                core.with_externals.push(id);
+            }
+        }
+        let commit = Commit {
+            size: core.size,
+            scale,
+            items,
+            layers,
+            wheel,
+            started,
+            work: started.elapsed(),
+            everything: std::mem::take(&mut core.everything),
+            animating: !core.next_frame.is_empty(),
+            externals,
+        };
         let id = core.id;
         display().post(move |on| {
             if let Some(stage) = on.stage(id) {
@@ -1638,6 +1666,16 @@ impl<'a> WindowCx<'a> {
             window.headless_input(crate::PlatformInput::MouseDown(crate::MouseDownEvent { button, position: at, modifiers, click_count: 1, first_mouse: false }));
             window.headless_input(crate::PlatformInput::MouseUp(crate::MouseUpEvent { button, position: at, modifiers, click_count: 1 }));
         });
+    }
+
+    /// Shows `buffer` as the picture `key` (another program's memory on
+    /// the GPU, an Agent Screen's frame), in place of the one before,
+    /// where a drawing placed it (`Painter::place_external`), at once,
+    /// with no frame of this window's. The buffer it replaces is
+    /// released (`ExternalBuffer::released`) once the compositor is done
+    /// with it. None lets `key` go with its buffers.
+    pub fn set_external_buffer(&self, key: u64, buffer: Option<crate::ExternalBuffer>) {
+        self.on_display(move |window| window.set_external_buffer(key, buffer));
     }
 
     /// Stops a timer (`Cx::every`, `Cx::after_do`): it doesn't fire

@@ -735,6 +735,9 @@ impl WindowCore {
             }
         }
         let again = notes.again.take();
+        if !notes.externals.is_empty() && !self.with_externals.contains(&id) {
+            self.with_externals.push(id);
+        }
         node.notes = (!notes.is_empty()).then(|| Box::new(notes));
         if let Some(seconds) = again {
             self.clock.ask(id, seconds);

@@ -100,11 +100,14 @@ pub(crate) struct Notes {
     /// (`Painter::paint_again_within`; taken by the window's clock as
     /// the drawing is kept).
     pub(crate) again: Option<f64>,
+    /// Pictures of another program's, shown by the compositor itself
+    /// (`Painter::place_external`): which, and where.
+    pub(crate) externals: Vec<(u64, Bounds<Pixels>)>,
 }
 
 impl Notes {
     pub(crate) fn is_empty(&self) -> bool {
-        !self.unfinished && !self.by_visible && self.agent.is_empty() && self.cursors.is_empty() && self.cuts.is_empty()
+        !self.unfinished && !self.by_visible && self.agent.is_empty() && self.cursors.is_empty() && self.cuts.is_empty() && self.externals.is_empty()
     }
 }
 
@@ -358,6 +361,27 @@ impl<'a> Painter<'a> {
         if seconds.is_finite() {
             self.notes.again = Some(self.notes.again.map_or(seconds, |s| s.min(seconds)).max(0.0));
         }
+    }
+
+    /// A picture of another program's (`WindowCx::set_external_buffer`,
+    /// by `key`: an Agent Screen's frames) shows at `bounds`, put there
+    /// by the compositor itself and never copied: over everything this
+    /// window draws. One not placed as its drawing is made again is
+    /// hidden. It shows at whole logical pixels (a subsurface can't be
+    /// placed finer): draw round it at [`Self::external_bounds`].
+    pub fn place_external(&mut self, key: u64, bounds: Bounds<Pixels>) {
+        self.notes.externals.push((key, bounds));
+    }
+
+    /// Where a picture placed at `bounds` shows, to the device pixel:
+    /// its corners at whole logical pixels, then at the device pixels
+    /// the compositor rounds them to.
+    pub fn external_bounds(&self, bounds: Bounds<Pixels>) -> Bounds<Pixels> {
+        let s = self.scale_factor();
+        let (x, y) = (f32::from(bounds.origin.x).round(), f32::from(bounds.origin.y).round());
+        let (w, h) = (f32::from(bounds.size.width).round().max(1.0), f32::from(bounds.size.height).round().max(1.0));
+        let dev = |v: f32| (v * s).round() / s;
+        Bounds::from_corners(crate::point(crate::px(dev(x)), crate::px(dev(y))), crate::point(crate::px(dev(x + w)), crate::px(dev(y + h))))
     }
 
     /// The pointer's shape while it's over `bounds`.
