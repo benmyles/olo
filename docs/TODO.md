@@ -446,13 +446,12 @@ something nobody here has is in "Blocked", with what it waits for.
      point short where its buffer rounded down (1.25× and 1.75×: 487
      points at 1.75× came out 486, every kit app's), and a box's
      one-point border was a pixel and a half at 1.5× (HACKING,
-     "Fractional scaling"). *Memory:* the 8 MB more
-     at rest is glibc's malloc arenas, one for each thread that
-     allocates (a kit app has a looper for each window and the
-     display's): `MALLOC_ARENA_MAX=2` took Terminal from 104 to 84 MB
-     (the old build: 96), 4 to 91, frames a few percent slower with 2.
-     To set for every kit app (`mallopt` as it starts), measured on a
-     few of them first. *Not tried:* sudo with a fingerprint or a
+     "Fractional scaling"). *Memory:* the kit's looper for each window and the display's
+     thread each had a malloc arena of glibc's (8 MB more at rest than
+     the old build); every kit app keeps four now (`few_arenas`,
+     HACKING "Fast and light"): Terminal at rest 88 MB (the old
+     build: 95), with three tabs 153 → 136, StyledEdit 103 → 96,
+     Tracker 99 → 91, frames the same. *Not tried:* sudo with a fingerprint or a
      security key, New Worktree… (its dialog), Keep It Going and Auto
      Approve answering an agent (they want a real one in the tab), an
      input method,

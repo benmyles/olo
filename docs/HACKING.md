@@ -348,6 +348,15 @@ How Olo keeps it (do the same):
   deadlocked holding one), no sleeping loops.
 * **The GPU draws, the CPU decides.** Upload once and keep textures;
   meshes made once and handed over as they are.
+* **Four malloc arenas a kit app** (`olo_kit::run`, `few_arenas`):
+  glibc gives each thread that allocates an arena of its own, and what
+  a thread frees stays in it; a kit app has a looper for each window,
+  the display's thread and its workers (18 to 29 threads), and rested 7
+  to 17 MB bigger for it (Terminal with three tabs 153 → 136 MB,
+  StyledEdit 103 → 96, Tracker 99 → 91; frames the same). Two saved no
+  more and frames ran slower. `MALLOC_ARENA_MAX=N` in the environment
+  overrides it, to measure another number without a build; compare
+  `RssAnon` in /proc/PID/status (the rest is the program's file).
 
 ## Crash reports (crates/crash, applies to every program)
 

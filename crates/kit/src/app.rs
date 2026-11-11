@@ -802,11 +802,35 @@ pub fn on_displays_changed(f: impl Fn() + Send + Sync + 'static) {
     olo_interface::on_displays_changed(f)
 }
 
+/// How many arenas glibc's malloc keeps for a kit app's threads.
+const ARENAS: libc::c_int = 4;
+
+/// glibc's malloc gives each thread that allocates an arena of its own
+/// (eight for each core, at most), and what a thread frees stays in its
+/// arena: a kit app has a looper for each window, the display's thread
+/// and its workers (18 to 29 threads), and rested 7 to 17 MB bigger for
+/// it than with [`ARENAS`] between them (2026-11-11, release, resident:
+/// Terminal with three tabs 153 → 136 MB, StyledEdit 103 → 96, Tracker
+/// 99 → 91), its frames costing the same (Terminal's 329 → 342 µs,
+/// StyledEdit's 925 → 907, within what two takes differ by). Two saved
+/// no more on Terminal and its frames ran slower (415 µs): threads
+/// waiting on each other's arena.
+/// Not if the environment says how many (`MALLOC_ARENA_MAX`): to
+/// measure another number without a build.
+fn few_arenas() {
+    #[cfg(target_env = "gnu")]
+    if std::env::var_os("MALLOC_ARENA_MAX").is_none() {
+        // SAFETY: sets a number malloc reads as it makes an arena.
+        unsafe { libc::mallopt(libc::M_ARENA_MAX, ARENAS) };
+    }
+}
+
 /// Runs the program as `app_id` ("olo.deskcalc"): its theme, its socket
 /// for agents, and `build`, which opens its windows. It returns when the
 /// program quits: when its last window closes, unless it's
 /// [`stay_resident`].
 pub fn run(app_id: &str, build: impl FnOnce(&mut AppCx)) {
+    few_arenas();
     // Olo's apps render with the GPU the compositor's primary is (the one
     // the computer started on, which the renderer takes first): a device
     // chosen for it (`ZED_DEVICE_ID`), as briefly Olo did and its
