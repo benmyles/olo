@@ -4292,10 +4292,13 @@ workspace, and neither when none of them has a window the lint opens.
 A finding stops it
 (`OLO_SKIP_UI_LINT=1` to push regardless, saying why). Each says how
 long its parts took. With everything built, the commit's lint takes
-8 s and a push 4 s: what's waited for beyond that is compiling (three
-builds are kept: dev, release, and the lint's release tests, which
-have GPUI's test support and so their own GPUI, olo-ui and
-Preferences; Preferences, 32 s alone, is the longest of each). A layout problem
+8 s and a push 4 s: what's waited for beyond that is compiling. The
+lint's tests are built on the dev profile (incremental, sharing what
+everyday builds make; they have GPUI's test support, and so their own
+GPUI, olo-ui and Preferences): under a minute after a change to
+olo-kit-base, which everything is built on, where the release build
+they used to be took seven. Preferences, 32 s alone in a release
+build, is the longest of each. A layout problem
 found by looking that the lint missed is a missing check: add it, and
 show it fires on the old layout.
 

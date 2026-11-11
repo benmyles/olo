@@ -2,7 +2,11 @@
 # The layout lint (docs/HACKING.md, "The layout lint"): the kit's widgets
 # and every Preferences panel drawn headlessly at their sizes, light and
 # dark, at 1×, 1.5× and 2×, and checked. tools/install-session.sh runs it.
-ui-lint = "test --release -p olo-ui -p olo-preferences -p olo-diskbackup-app --features olo-ui/lint ui_lint"
+# On the dev profile (incremental, and sharing what everyday builds make):
+# it checks layout, not speed, and its tests take the same 8 s either
+# way. After a change to olo-kit-base, which everything is built on, it
+# is back in under a minute; as a release build that took seven.
+ui-lint = "test -p olo-ui -p olo-preferences -p olo-diskbackup-app --features olo-ui/lint --tests ui_lint"
 
 # Linked by mold (https://github.com/rui314/mold), not rustc's own LLD
 # (Ben, 2026-11-10: "just change to mold"): tools/setup.sh installs it,
