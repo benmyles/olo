@@ -134,8 +134,18 @@ something nobody here has is in "Blocked", with what it waits for.
      *Olo Doctor and Olo Suggestions* (one window for both) are on it:
      the same to the pixel as before at 1×, 1.5× and 2×, light and
      dark; Ignore, Check Again and the menus tried, no Fix pressed.
+     *Notifications* (the banners and the History window) is on it:
+     what it keeps is one model behind a lock, shared by the app's
+     looper and the two windows; each line and card of the history is
+     a kept drawing of its own, and only those near what shows are in
+     the window. The banners and all four views are the same to the
+     pixel as before at 1×, 1.5× and 2×, light and dark (the times
+     and the fade apart); a 150-note history scrolls at 2.4% of a
+     core against 3.8–4.2%. Not tried: a reply typed in a banner
+     (needs an app that asks for one), a link clicked (it opens the
+     browser), snoozing through its time.
      *Next, smallest first:*
-     deskbar, notifications, telegram,
+     deskbar, telegram,
      activity, viewer, styled-edit, screen, tracker, passwords, terminal,
      preferences.
   5. **Tools, HACKING and the Olo Book**; GPUI and olo-ui leave the
