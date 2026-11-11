@@ -462,7 +462,28 @@ impl Hash for HighlightStyle {
     }
 }
 
+/// Olo: a border `width` points wide, in device pixels at `scale`: a
+/// whole number of them, never less than one, as the kit's lines are
+/// (`style::line_pixels`: a point is one pixel at 1.5×). A one-point
+/// border was a pixel and a half there: a line and a smear beside it,
+/// its clip's edge on the pixels' centres, so which pixels got the
+/// smear was the GPU's rounding (along part of an edge, or none).
+pub fn border_device_pixels(width: Pixels, scale: f32) -> f32 {
+    let w = f32::from(width);
+    // (A hair over, so a width worked out from pixels, 2 / 1.5 points,
+    // isn't a pixel short for its rounding.)
+    if w <= 0.0 { 0.0 } else { (w * scale + 0.01).floor().max(1.0) }
+}
+
 impl Style {
+    /// Olo: the border's widths as laid out, drawn and clipped: whole
+    /// device pixels at `scale` ([`border_device_pixels`]), in points.
+    pub fn border_pixels(&self, rem_size: Pixels, scale: f32) -> Edges<Pixels> {
+        let w = self.border_widths.to_pixels(rem_size);
+        let on = |v: Pixels| Pixels(border_device_pixels(v, scale) / scale);
+        Edges { top: on(w.top), right: on(w.right), bottom: on(w.bottom), left: on(w.left) }
+    }
+
     /// Returns true if the style is visible and the background is opaque.
     pub fn has_opaque_background(&self) -> bool {
         self.background.as_ref().is_some_and(|fill| fill.color().is_some_and(|color| !color.is_transparent()))
@@ -475,7 +496,7 @@ impl Style {
 
     /// Get the content mask for this element style, based on the given bounds.
     /// If the element does not hide its overflow, this will return `None`.
-    pub fn overflow_mask(&self, bounds: Bounds<Pixels>, rem_size: Pixels) -> Option<ContentMask<Pixels>> {
+    pub fn overflow_mask(&self, bounds: Bounds<Pixels>, rem_size: Pixels, scale_factor: f32) -> Option<ContentMask<Pixels>> {
         match self.overflow {
             Point { x: Overflow::Visible, y: Overflow::Visible } => None,
             _ => {
@@ -483,10 +504,11 @@ impl Style {
                 let mut max = bounds.bottom_right();
 
                 if self.border_color.is_some_and(|color| !color.is_transparent()) {
-                    min.x += self.border_widths.left.to_pixels(rem_size);
-                    max.x -= self.border_widths.right.to_pixels(rem_size);
-                    min.y += self.border_widths.top.to_pixels(rem_size);
-                    max.y -= self.border_widths.bottom.to_pixels(rem_size);
+                    let border = self.border_pixels(rem_size, scale_factor);
+                    min.x += border.left;
+                    max.x -= border.right;
+                    min.y += border.top;
+                    max.y -= border.bottom;
                 }
 
                 let bounds = match (self.overflow.x == Overflow::Visible, self.overflow.y == Overflow::Visible) {
@@ -540,7 +562,7 @@ impl Style {
         }
         let rem_size = p.rem_size();
         let corner_radii = self.corner_radii.to_pixels(rem_size).clamp_radii_for_quad_size(bounds.size);
-        let border_widths = self.border_widths.to_pixels(rem_size);
+        let border_widths = self.border_pixels(rem_size, p.scale_factor());
         let max_border_width = border_widths.max();
         let max_corner_radius = corner_radii.max();
 
@@ -1091,6 +1113,25 @@ mod tests {
     use crate::{blue, green, px, red, yellow};
 
     use super::*;
+
+    /// A border is whole device pixels at every scale, a point never
+    /// less than one of them (as the kit's lines).
+    #[test]
+    fn borders_are_whole_device_pixels() {
+        let at = |w: f32, scale: f32| border_device_pixels(Pixels(w), scale);
+        assert_eq!([at(1.0, 1.0), at(1.0, 1.25), at(1.0, 1.5), at(1.0, 1.75), at(1.0, 2.0), at(1.0, 3.0)], [1.0, 1.0, 1.0, 1.0, 2.0, 3.0]);
+        assert_eq!([at(2.0, 1.0), at(2.0, 1.25), at(2.0, 1.5), at(2.0, 1.75), at(2.0, 2.0)], [2.0, 2.0, 3.0, 3.0, 4.0]);
+        // None stays none; a hairline worked out in points is a pixel,
+        // and two pixels' worth isn't one short for its rounding.
+        assert_eq!(at(0.0, 1.5), 0.0);
+        assert_eq!(at(1.0 / 1.5, 1.5), 1.0);
+        assert_eq!(at(2.0 / 1.5, 1.5), 2.0);
+        assert_eq!(at(0.5, 1.0), 1.0);
+        // As the style lays it out and draws it, in points.
+        let style = Style { border_widths: Edges::all(AbsoluteLength::Pixels(Pixels(1.0))), ..Default::default() };
+        let b = style.border_pixels(Pixels(16.0), 1.5);
+        assert!((b.top.0 * 1.5 - 1.0).abs() < 1e-4 && b.top == b.left && b.top == b.bottom && b.top == b.right);
+    }
 
     fn test_basic_highlight_style_combination() {
         let style_a = HighlightStyle::default();

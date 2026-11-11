@@ -316,6 +316,28 @@ How Olo keeps it (do the same):
   cost far less than drawing it.
 * **Only what shows, only what changed**: virtualised lists, per-row
   and per-item caches, damage.
+* **Once a frame, at the last moment** (olo-kit), for a view fed faster
+  than frames are shown: a shell printing, a meter on a stream. A
+  window's looper lays out and paints what changed as soon as its queue
+  runs dry, and its stage draws the latest commit when the compositor
+  asks for the next frame; a view invalidated a hundred times between
+  two frames was laid out and painted a hundred times for one drawn
+  (Terminal in a flood: 15 ms a frame, 0.2 of it seen).
+  `Cx::invalidate_at_frame()` in place of `invalidate()` keeps such a
+  view for the frame: laid out at once while no frame waits to be shown
+  (one change alone is as quick as ever), else when the compositor asks
+  for the next (`stage::FramePace`: the stage, with nothing of its own
+  to draw, asks the looper, `WindowEvent::FrameDue`, and draws its
+  answer at once: 0.45 ms after it was asked, typically, of the 5 to
+  10 ms app_server leaves a client). What's kept also goes with
+  anything else the looper lays out meanwhile and with each step of an
+  animation, and every other frame when the stage has frames of its own
+  to draw (a glide), so it is never left behind; a window that isn't
+  shown is asked for no frame, and its kept views wait until it is (a
+  second at most, if anything else stirs it). `OLO_FRAME_PHASES=1`
+  prints `frame due: drawn N ms after the looper was asked`. Everything
+  else stays `invalidate()`: what changes at the person's pace gains
+  nothing from waiting.
 * **Ask for less**: events by kind (`EventKind`: `OwnWindows`, not every
   window's title), files by inotify, an event written out once for all.
   Something that wakes every app costs every app: an agent's spinning
@@ -2144,11 +2166,18 @@ event reaches it.
   its slot left empty, a mark where it would land; out of the strip
   (`TEAR`) it's torn off (`TearOff`, `TearOffGroup` for a chip). A
   window of the app moved over the strip marks where its tabs would go
-  (`strip::window_over`, from app_server's `WindowOver`), and let go
-  there `strip::on_window_dropped(cx, handler)` gets the place
-  (`strip_place`). The pointer coming to a tab or leaving it redraws
-  (a move listener comparing what's under it with what was painted).
-  What the person did comes to `.on_action(|StripAction, window, cx|)`.
+  (`strip::window_over`, from app_server's `WindowOver`: the strip is
+  told which window it's in, `.in_window(cx.surface_id())`), and let go
+  there `strip::on_window_dropped(handler)` gets the two windows'
+  surfaces and the place (`strip_place`), on the commands socket's
+  thread. It is one drawing: where everything goes is worked out as
+  it's drawn and kept, with the press, the drag and what's under the
+  pointer, in the element's own state (`node_state`), which its
+  handlers go by; the pointer coming to a tab or leaving it (or the
+  strip, for a menu over it) draws it again only when what it's over
+  changes. An icon that turns (`PaintFn`, handed the painter) asks to
+  be drawn again itself (`Painter::paint_again_within`).
+  What the person did comes to `.on_action(|&StripAction, cx|)`.
   Agents read each tab as a `Tab` (its title, status and group in its
   name, `selected`), its close box, the chips and New Tab as buttons.
 - `WindowOptions::max_size(w, h)` (GPUI's `window_max_size`, xdg
@@ -6437,6 +6466,19 @@ Chrome, GTK 4.16 text), and how Olo does it:
   - *Sizes* are on the 2-point grid (whole pixels at 1×, 1.5× and 2×).
     Positions it works out go through `style::snap` or `snap_centred`.
     Lines are `style::line_pixels`.
+  - *A box's border* (olo-kit: `.border_1()`, `.border(…)`) is whole
+    device pixels, laid out, drawn and clipped the same
+    (`Style::border_pixels`, `style::border_device_pixels`: a point is
+    `floor(scale)` pixels, never less than one, as the kit's lines). A
+    one-point border was a pixel and a half at 1.5×: a line with a smear
+    beside it, and where its clip's edge fell on the pixels' centres the
+    smear ran along part of an edge only (sudo's command box).
+  - *A window's viewport* (olo-kit) is its own size in points, while
+    what's laid out is its buffer's (`round(size × scale)` pixels over
+    the scale). Set from the buffer's size cut to whole points, a
+    window whose buffer rounded down was a point short (487 points at
+    1.75× are 852 pixels, 486.86 points: 486), and app_server drew its
+    852 rows in the room of 850.5.
   - *The text caret*, menus' and tips' outlines are hairlines at each
     scale (`style::hairline`): a one-point stroke would be a pixel and a
     half at 1.5× and smear over two.
@@ -10229,10 +10271,33 @@ second; now not at all). Each screen is kept twice (in
 olo-termd and in Terminal), so a full scrollback costs about twice
 what it used to.
 
-**On GPUI.** One `Entity<Terminal>` holds every window by Terminal's
-own `ui::WindowId`; each window's view (`ui::Shell`) renders through it
-(`Terminal::render`), and window work asked for inside an update (open,
-close, activate, resize) is deferred through `ui::WinOps`. A screen is
+**On olo-kit.** One `Terminal` holds every window's state by
+Terminal's own `ui::WindowId`, behind a lock (`ui::terminal()`): the
+kit gives each window a looper of its own, and Terminal's tabs move
+between its windows, so what a window does is decided on Terminal
+alone, whichever looper asks (a handler made with `ui::on` locks it,
+has it do something, lets go; nothing takes the lock while holding it,
+and nothing that waits is done under it). Each window's own view
+(`ui::Shell`) knows which it is and has Terminal say what it shows
+(`Terminal::render`); the window work Terminal asks for (open, close,
+redraw, activate, resize, title) is `ui::Cx`'s, posted to the window,
+so done once what asked is over. What only a window has is its view's:
+its text field (`WindowOptions::field(FieldSpec)`: Find's, a group's
+name, sudo's password, whose text Terminal reads with
+`Cx::field_text`; a password stays the field's until it's sent,
+`Shell::tell_text` then `Cx::take_field_text`) and its list (the
+daemon window's). Terminal's timers are the app looper's (`Cx::later`,
+`Cx::repeating`, which hands back a `Timer` that stops when dropped:
+Keep It Going's, Auto Approve's). A terminal window's screens are a
+view of their own (`ui::Panes`, `Terminal::render_panes`): a shell's
+output (`Cx::redraw_screens`) says them again and nothing else of the
+window, not its menus nor its strip, and once a frame however much it
+prints (`Cx::invalidate_at_frame`, "Fast and light": a flood's frames
+went from 15 ms of laying out each to 0.2, and a window out of sight
+lays out nothing); a key pressed draws nothing
+itself (what it types comes back as output). An agent's spinner in a
+tab's icon and the bell's flash ask to be drawn again themselves
+(`Painter::paint_again_within`), not the window. A screen is
 a canvas painted from its session's emulator (`view::paint`): each row
 kept as it was last drawn (`view::RowCache`: its cells, backgrounds,
 glyphs and box-drawing shapes, and its glyphs' `GlyphRun` where the
@@ -10242,7 +10307,7 @@ Only the lines alacritty says changed are looked at (`Term::damage`,
 taken by the paint); when the screen scrolls (output, the scrollback)
 each row is found where it went, by its cells, so only the rows new to
 the screen are laid out. The rows are painted in one layer
-(`Window::paint_layer`): one place in the scene's order for them all,
+(`Painter::paint_layer`): one place in the scene's order for them all,
 not each glyph's own (2 µs a glyph, 1.4 ms a frame on a big screen at
 1×); the cursor, links, colour emoji and images (cropped, under a
 content mask) over them. A row is laid out only up to its last cell
@@ -10258,7 +10323,7 @@ of painting; a whole screen laid out afresh, 1.2 ms (6.2 shaped).
 **Scrolling.** The normal screen's scrollback scrolls by the point, as
 everything else that scrolls: fingers, their glide and a wheel's eased
 notches move it as far as they go (`view::Smooth`, on the tab's `Pane`),
-past its ends against GPUI's rubber band (`gpui::Elastic`), springing
+past its ends against the kit's rubber band (`olo_kit::Elastic`), springing
 back. alacritty's display offset is its whole rows; the rest, and the
 stretch, slide the rows drawn down or up (on device pixels), the row
 above drawn too when part of it shows (`Pane::shift`, which the mouse's
@@ -10728,7 +10793,7 @@ corner; its name says so ("auto approving: Yes to … in N s"); a
 "needs your answer" notification says when it'll answer; each answer is
 logged ("auto approve: answered Yes", with the question and tab, not
 the command). It's the person's to turn on: asked for through the
-commands socket (`olo_ui::agent::invoking`: an agent, the palette), it
+commands socket (`olo_kit::agent::invoking`: an agent, the palette), it
 asks them in an alert whose Return and Escape are Cancel, so an agent
 can't answer its own questions and a Return typed as it comes doesn't
 say yes; turning it off needs no asking. `OLO_TERMINAL_AUTO_APPROVE_SECS`

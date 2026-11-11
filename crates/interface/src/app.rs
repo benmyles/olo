@@ -506,8 +506,39 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut AppCx)) {
     // region picker's overlays stayed over the screen until the
     // clipboard changed.)
     display.post(|on| on.close_all());
-    display.post(|_| crate::display::display().post(|_| crate::display::display().post(|on| on.stop())));
-    display.wait_until_ended(std::time::Duration::from_secs(2));
+    // With what it copied still on the clipboard it runs on, windowless
+    // and asleep, until that's gone (something else copied, or taken
+    // off): what was copied can be pasted after the program quit, as it
+    // could while it ran.
+    let (said, lingers) = std::sync::mpsc::channel();
+    display.post(move |_| {
+        crate::display::display().post(move |_| {
+            crate::display::display().post(move |on| {
+                let _ = said.send(on.stop_or_linger());
+            })
+        })
+    });
+    if lingers.recv_timeout(std::time::Duration::from_secs(2)).unwrap_or(false) {
+        let hook = BEFORE_LINGERING.lock().unwrap_or_else(|e| e.into_inner()).take();
+        if let Some(hook) = hook {
+            hook();
+        }
+        display.wait_until_ended(None);
+    } else {
+        display.wait_until_ended(Some(std::time::Duration::from_secs(2)));
+    }
+}
+
+/// What to do once the program has quit, if it then runs on for what it
+/// copied (no windows, nothing of it running but the clipboard's
+/// answers): what it would do as it ends (let go of the name it takes
+/// launches by, write what it keeps).
+static BEFORE_LINGERING: Mutex<Option<Box<dyn FnOnce() + Send>>> = Mutex::new(None);
+
+/// Has `f` run when the program has quit but runs on for what it copied
+/// (`run` returns only once that's gone).
+pub fn before_lingering(f: impl FnOnce() + Send + 'static) {
+    *BEFORE_LINGERING.lock().unwrap_or_else(|e| e.into_inner()) = Some(Box::new(f));
 }
 
 /// The size a window is given when nothing says.

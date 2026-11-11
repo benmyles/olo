@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-11
 
+### Terminal on olo-kit
+
+*15:05* — Terminal on Olo's own kit: one Terminal behind a lock, each window a view on a looper of its own, its screens a view of their own drawn once a frame however much a shell prints. The same to the pixel as before at every scale, light and dark; a frame of typing 475 to 240 µs, of steady output 532 to 305 µs.
+
+![Terminal on olo-kit](2026-11-11/150502-terminal-on-olo-kit.png)
+
 ### Passwords on olo-kit
 
 *12:08* — Passwords moved from GPUI to Olo's own kits: its state is the app's, behind a lock, since it runs with no window as the SSH agent and the keychain; the main window, Review Sync, Sync Problems, the generator and a passkey's question are views that read it. The same to the pixel as before at 1×, 1.5× and 2×, light and dark, but for what was wrong: the item pane's scroll bar is there as an item opens (it came with the first scroll), Sync Problems' icons are level with their items at 1×, and “Synced a minute ago” counts the minutes by itself. A frame typing in the editor went from 1.9 ms to 0.3, the arrows down a list of 508 from 1.8 to 0.8.

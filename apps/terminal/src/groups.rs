@@ -4,15 +4,15 @@
 
 use std::path::PathBuf;
 
+use olo_kit::Hsla;
 use olo_theme::{Hue, Palette};
-use olo_ui::gpui::Hsla;
 
 /// The colours a group can have: the look's hues (the saved index into
 /// this stays the same colour from look to look).
 pub const COLORS: [Hue; 8] = [Hue::Red, Hue::Orange, Hue::Yellow, Hue::Green, Hue::Teal, Hue::Blue, Hue::Purple, Hue::Gray];
 
 pub fn color(i: usize, p: &Palette) -> Hsla {
-    olo_ui::style::c(p.hue(COLORS[i % COLORS.len()]))
+    olo_kit::style::c(p.hue(COLORS[i % COLORS.len()]))
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -50,12 +50,12 @@ fn path() -> PathBuf {
 }
 
 pub fn load() -> Vec<Saved> {
-    olo_ui::store::load(&path()).unwrap_or_default()
+    olo_kit::store::load(&path()).unwrap_or_default()
 }
 
 /// Write the saved groups (off the UI thread).
 pub fn store(list: &[Saved]) {
-    olo_ui::store::save(path(), list);
+    olo_kit::store::save(path(), list);
 }
 
 /// A name for a new group: "Group 2" if "Group 1" is taken, and so on.

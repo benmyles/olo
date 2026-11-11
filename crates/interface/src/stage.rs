@@ -12,7 +12,10 @@
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -154,6 +157,9 @@ pub(crate) enum WindowEvent {
     TextRendering(TextRendering),
     /// A frame is starting: what animates takes its next step.
     Frame,
+    /// A frame can be drawn now: what the looper kept for it
+    /// ([`FramePace`]) is laid out, painted and committed.
+    FrameDue,
     /// The display it's on, in points.
     Display(Option<Bounds<Pixels>>),
     /// Where what scrolls is now (the wheel or the touchpad moved it,
@@ -198,6 +204,7 @@ impl WindowLink {
 
 /// What a looper gets back for opening a window.
 pub(crate) struct Opened {
+    pub(crate) pace: Arc<FramePace>,
     pub(crate) size: Size<Pixels>,
     pub(crate) scale: f32,
     pub(crate) atlas: Arc<dyn PlatformAtlas>,
@@ -205,6 +212,34 @@ pub(crate) struct Opened {
     pub(crate) surface_id: Option<u32>,
     pub(crate) gpu: Option<GpuSpecs>,
     pub(crate) display: Option<Bounds<Pixels>>,
+}
+
+/// How a window's looper and its stage agree on drawing something once
+/// a frame, at the last moment ([`crate::Cx::invalidate_at_frame`]): a
+/// view fed faster than frames are shown (a terminal's shell printing)
+/// isn't laid out and painted for frames nobody sees.
+///
+/// The stage draws a commit at once when it's free, and then waits for
+/// the compositor's word that the frame was shown before it draws
+/// another. While it waits, the looper keeps what was invalidated for
+/// the frame, and says so here; as the compositor's word comes and the
+/// stage has nothing of its own to draw, it asks for it
+/// ([`WindowEvent::FrameDue`]), and draws the commit that answers at
+/// once: what shows is as it was when the frame was asked for, as GPUI
+/// drew everything. (Here only what asks to be is kept for it: the rest
+/// is committed as it changes, and the stage draws the latest.) What's
+/// kept also goes with anything else the looper lays out meanwhile, and
+/// with each step of something animating, so it is never behind them.
+#[derive(Default)]
+pub(crate) struct FramePace {
+    /// A commit is on its way to the stage, or drawn and not yet shown:
+    /// the next frame is drawn when the compositor asks for it.
+    pub(crate) waiting: AtomicBool,
+    /// The looper keeps something for that frame.
+    pub(crate) held: AtomicBool,
+    /// Nothing asks this window for frames (it's drawn nowhere: a test's
+    /// window with no display): nothing is kept for one.
+    pub(crate) unpaced: bool,
 }
 
 /// How long a new size waits for the looper to lay out for it before
@@ -283,13 +318,21 @@ pub(crate) struct Stage {
     closed: Cell<bool>,
     /// Where other programs' pictures were last placed.
     externals: RefCell<Vec<(u64, Bounds<Pixels>)>>,
+    pace: Arc<FramePace>,
+    /// When the looper was last asked for what it kept for a frame
+    /// (`OLO_FRAME_PHASES` says how long its answer took to draw).
+    asked: Cell<Option<Instant>>,
+    /// Frames drawn in a row while the looper kept something for one.
+    passed_over: Cell<u8>,
 }
 
 impl Stage {
     pub(crate) fn new(id: WindowId, window: Box<dyn PlatformWindow>, link: WindowLink) -> (Rc<Stage>, Opened) {
         let size = window.content_size();
         let scale = window.scale_factor();
+        let pace = Arc::new(FramePace { unpaced: window.frame_waker().is_none(), ..Default::default() });
         let opened = Opened {
+            pace: pace.clone(),
             size,
             scale,
             atlas: window.sprite_atlas(),
@@ -321,6 +364,9 @@ impl Stage {
             state: Cell::new(WindowState::default()),
             closed: Cell::new(false),
             externals: RefCell::default(),
+            pace,
+            asked: Cell::new(None),
+            passed_over: Cell::new(0),
         });
         let weak = Rc::downgrade(&stage);
         let on = |f: fn(&Stage)| {
@@ -669,6 +715,51 @@ impl Stage {
         if self.closed.get() {
             return false;
         }
+        let asked = self.asked.take();
+        let drew = self.draw_frame(options);
+        // (What's drawn is shown when the compositor says so, and the
+        // next frame drawn then: until it is, the looper keeps what's
+        // invalidated for a frame.)
+        self.pace.waiting.store(drew, Ordering::SeqCst);
+        if drew {
+            if let Some(asked) = asked
+                && crate::stats::frame_phases()
+            {
+                eprintln!("frame due: drawn {:.3} ms after the looper was asked", asked.elapsed().as_secs_f64() * 1000.0);
+            }
+            // What the looper keeps waits for a frame of its own: asked
+            // for now, its answer would wait a frame to be drawn, as it
+            // was when asked, and the one after it too (while a shell
+            // prints, every frame a frame late). Unless frames go by
+            // with something else to draw in each (a scroller gliding):
+            // then it goes in every other.
+            if self.pace.held.load(Ordering::SeqCst) {
+                self.passed_over.set(self.passed_over.get() + 1);
+                if self.passed_over.get() >= 2 {
+                    self.ask_looper();
+                }
+            } else {
+                self.passed_over.set(0);
+            }
+        } else {
+            // Nothing to draw, and nothing waiting to be shown: what
+            // the looper kept for this frame is asked for, and its
+            // commit drawn at once.
+            self.ask_looper();
+        }
+        drew
+    }
+
+    /// Asks the looper for what it kept for a frame, if anything.
+    fn ask_looper(&self) {
+        self.passed_over.set(0);
+        if self.pace.held.swap(false, Ordering::SeqCst) {
+            self.link.send(WindowEvent::FrameDue);
+            self.asked.set(Some(Instant::now()));
+        }
+    }
+
+    fn draw_frame(&self, options: RequestFrameOptions) -> bool {
         let started = Instant::now();
         let mut showing = self.showing.borrow_mut();
         let showing = &mut *showing;

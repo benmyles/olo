@@ -401,7 +401,7 @@ fn codex_server(doc: &mut DocumentMut, url: &str, on: bool) -> bool {
 /// Write `bytes` in place of `path` (a new file put there: one being read
 /// never sees half of it), keeping its permissions.
 fn replace(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    olo_ui::store::write(path, bytes).map_err(|e| format!("{}: {e}", path.display()))
+    olo_kit::store::write(path, bytes).map_err(|e| format!("{}: {e}", path.display()))
 }
 
 fn read_json(path: &Path, on: bool) -> Result<Option<Value>, String> {

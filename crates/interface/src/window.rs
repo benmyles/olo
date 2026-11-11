@@ -197,6 +197,11 @@ pub(crate) struct WindowCore {
     /// The node whose handler is running now.
     pub(crate) current: Option<NodeId>,
     pub(crate) next_frame: Vec<NextFrame>,
+    /// Views invalidated for the next frame (`Cx::invalidate_at_frame`),
+    /// kept while the stage waits to draw one, and since when.
+    pub(crate) at_frame: Vec<ViewId>,
+    pub(crate) held_since: Option<Instant>,
+    pub(crate) pace: Arc<crate::stage::FramePace>,
     /// When what moves with time is drawn again.
     pub(crate) clock: Clock,
     /// The pointer's shape, as last asked for.
@@ -452,6 +457,10 @@ pub(crate) fn count(looper: &Looper) -> usize {
     looper.state::<Windows>().map_or(0, |w| w.map.len())
 }
 
+/// How long what's invalidated for the next frame is kept when no frame
+/// is asked for (the window isn't shown).
+const HELD_AT_MOST: Duration = Duration::from_secs(1);
+
 /// Every window on the looper shows what changed (the looper's queue is
 /// dry).
 fn flush_all(looper: &mut Looper) {
@@ -539,6 +548,9 @@ impl WindowCore {
             default_prevented: false,
             current: None,
             next_frame: Vec::new(),
+            at_frame: Vec::new(),
+            held_since: None,
+            pace: opened.pace,
             clock: Clock::new(),
             cursor: crate::CursorStyle::Arrow,
             recycled: Vec::new(),
@@ -553,6 +565,49 @@ impl WindowCore {
         {
             slot.dirty = true;
             self.dirty_views.push(view);
+        }
+    }
+
+    /// What `view` shows changed, and is wanted in the next frame drawn,
+    /// no sooner (`Cx::invalidate_at_frame`).
+    pub(crate) fn invalidate_view_at_frame(&mut self, view: ViewId) {
+        if self.views.get(view).is_some_and(|slot| !slot.dirty) && !self.at_frame.contains(&view) {
+            self.at_frame.push(view);
+        }
+    }
+
+    /// What was kept for the next frame is laid out and drawn now, if a
+    /// frame can be drawn now (`due`: the stage says so), or it has been
+    /// kept long enough; else the stage is told there is something.
+    fn release_at_frame(&mut self, due: bool) {
+        use std::sync::atomic::Ordering::SeqCst;
+        if self.at_frame.is_empty() {
+            return;
+        }
+        let pace = &self.pace;
+        let now = due
+            || pace.unpaced
+            // (Something else is laid out now: what's kept goes with
+            // it, not a frame behind it.)
+            || !self.dirty_views.is_empty()
+            || !pace.waiting.load(SeqCst)
+            // (A window that isn't shown is never asked for a frame, and
+            // what watches it, an agent reading it, isn't left with what
+            // it showed then for ever.)
+            || self.held_since.is_some_and(|since| since.elapsed() >= HELD_AT_MOST)
+            || {
+                pace.held.store(true, SeqCst);
+                // (The stage began a frame just then, and never saw
+                // that: taken back, unless it did after all and asks.)
+                !pace.waiting.load(SeqCst) && pace.held.swap(false, SeqCst)
+            };
+        if now {
+            self.held_since = None;
+            for view in std::mem::take(&mut self.at_frame) {
+                self.invalidate_view(view);
+            }
+        } else {
+            self.held_since.get_or_insert_with(Instant::now);
         }
     }
 
@@ -830,7 +885,7 @@ impl WindowCore {
         }
         let count = node.children.len();
         if count > 0 {
-            let inner = match node.style.overflow_mask(node.bounds, rem) {
+            let inner = match node.style.overflow_mask(node.bounds, rem, scale) {
                 Some(mask) => clip.intersect(&mask.scale(scale).bounds),
                 None => clip,
             };
@@ -927,7 +982,7 @@ impl WindowCore {
                 out.push(noted);
             }
         }
-        let inner = match node.style.overflow_mask(node.bounds, self.gfx.rem_size) {
+        let inner = match node.style.overflow_mask(node.bounds, self.gfx.rem_size, self.gfx.scale_factor) {
             Some(mask) => clip.intersect(&shown(mask.bounds)),
             None => clip,
         };
@@ -964,7 +1019,7 @@ impl WindowCore {
             }
         }
         let shown = |b: Bounds<Pixels>| Bounds { origin: b.origin + shift, size: b.size };
-        let inner = match node.style.overflow_mask(node.bounds, self.gfx.rem_size) {
+        let inner = match node.style.overflow_mask(node.bounds, self.gfx.rem_size, self.gfx.scale_factor) {
             Some(mask) => clip.intersect(&shown(mask.bounds)),
             None => clip,
         };
@@ -1048,7 +1103,11 @@ impl<'a> WindowCx<'a> {
                 for f in std::mem::take(&mut self.core.next_frame) {
                     f(self);
                 }
+                // (What's kept for a frame goes with what animates.)
+                self.core.release_at_frame(true);
             }
+            // (Drawn as the queue runs dry: `flush`.)
+            WindowEvent::FrameDue => self.core.release_at_frame(true),
             WindowEvent::Scrolled(report) => self.scrolled(report),
             WindowEvent::State(state) => {
                 if self.core.state != state {
@@ -1253,6 +1312,8 @@ impl<'a> WindowCx<'a> {
         if self.core.closed {
             return;
         }
+        // What's kept for the next frame, if one can be drawn now.
+        self.core.release_at_frame(false);
         let flushing = Instant::now();
         let phases = crate::stats::frame_phases();
         let mut turns = 0;
@@ -1486,6 +1547,9 @@ impl<'a> WindowCx<'a> {
             externals,
         };
         let id = core.id;
+        // (On its way to be drawn: what's invalidated for a frame from
+        // here on is for the one after it.)
+        core.pace.waiting.store(true, std::sync::atomic::Ordering::SeqCst);
         display().post(move |on| {
             if let Some(stage) = on.stage(id) {
                 stage.commit(commit);

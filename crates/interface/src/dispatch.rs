@@ -64,7 +64,7 @@ impl WindowCore {
         if node.children.is_empty() {
             return;
         }
-        let inner = match node.style.overflow_mask(node.bounds, self.gfx.rem_size) {
+        let inner = match node.style.overflow_mask(node.bounds, self.gfx.rem_size, self.gfx.scale_factor) {
             Some(mask) => clip.intersect(&mask.bounds),
             None => clip,
         };

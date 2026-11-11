@@ -33,27 +33,27 @@ mod view;
 #[allow(dead_code)]
 mod wire;
 
-use std::{collections::HashMap, path::PathBuf, rc::Rc, sync::Arc, time::Instant};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+    time::Instant,
+};
 
 use alacritty_terminal::grid::Dimensions;
+use olo_kit::{Menu, menu, widgets};
 use olo_kit_base::{
     instance::{self, Launch},
     metrics as m,
     notify::{Note, NoteEvent, NoteId, NoteKind, Notifier},
 };
 use olo_theme::{Palette, ThemeMode, looks};
-use olo_ui::{
-    Menu,
-    gpui::{App, AppContext as _, Entity},
-    menu,
-    widgets::{self, TextField},
-};
 
 use agent::{Agent, State};
 use colors::Scheme;
 use groups::Group;
 use session::{Message, Session, Size, Start, TermEvent};
-use ui::{Cx, WinOps as _, WindowId, WindowOptions};
+use ui::{Cx, FieldSpec, Timer, WindowId, WindowOptions, terminal};
 use view::{Metrics, Mouse};
 
 pub(crate) const APP_ID: &str = "olo.terminal";
@@ -216,7 +216,7 @@ impl Settings {
 
     fn save(&self) {
         // Off the UI thread: the disk can be slow.
-        olo_ui::store::save(settings_path(), self);
+        olo_kit::store::save(settings_path(), self);
     }
 }
 
@@ -225,7 +225,7 @@ pub(crate) struct Tab {
     session: Session,
     mouse: Mouse,
     /// What drawing its screen keeps between frames.
-    pane: Rc<view::Pane>,
+    pane: Arc<Mutex<view::Pane>>,
     /// What its tab says: the program's own title, else what's running.
     title: String,
     /// A visual bell: when it rang.
@@ -272,7 +272,7 @@ pub(crate) struct Tab {
 /// "1. Yes" chosen) answered Yes `AUTO_APPROVE_AFTER` after it shows,
 /// unless the person types in the tab meanwhile (then it's theirs) or
 /// presses Stop. The pane shows it counting down. Turned on by the
-/// person: asked for through the commands socket (`olo_ui::agent::
+/// person: asked for through the commands socket (`olo_kit::agent::
 /// invoking`: an agent, the palette), it asks them first, so an agent
 /// can't answer its own questions.
 pub(crate) struct AutoApprove {
@@ -306,7 +306,7 @@ pub(crate) struct Pending {
     pub(crate) stopped: bool,
     /// Looks once due that didn't find it (a screen read as it's drawn).
     misses: u32,
-    _timer: olo_ui::gpui::Task<()>,
+    _timer: Timer,
 }
 
 /// How long a question shows before it's answered ("after 30s").
@@ -330,7 +330,7 @@ pub(crate) struct KeepGoing {
     /// When it last said so (seconds since the epoch: kept across an
     /// upgrade).
     said: Option<u64>,
-    _timer: olo_ui::gpui::Task<()>,
+    _timer: Timer,
 }
 
 /// How long it waits with nothing happening (Ben: "change it from 60s to
@@ -369,7 +369,7 @@ impl Tab {
         Tab {
             session,
             mouse: Mouse::default(),
-            pane: Rc::default(),
+            pane: Arc::default(),
             title: "Terminal".into(),
             bell: None,
             rang: false,
@@ -443,8 +443,6 @@ pub(crate) struct TermWin {
     active: usize,
     /// Text an input method is composing, at the cursor.
     preedit: Option<String>,
-    /// A redraw is coming for an agent's spinner.
-    spinning: bool,
     /// Tile All Tabs' divider being dragged (`ui::DividerDrag`).
     dragging: Option<ui::DividerDrag>,
     /// Size to snap the window to once real font metrics are known.
@@ -477,7 +475,6 @@ impl TermWin {
             active,
             tabs,
             preedit: None,
-            spinning: false,
             dragging: None,
             snap_to,
             shown_title: String::new(),
@@ -702,7 +699,6 @@ pub(crate) enum Win {
     /// The Find window for a terminal window.
     Find {
         target: WindowId,
-        field: Entity<TextField>,
     },
     /// Terminal ▸ Terminal Daemon…
     Daemon(Box<daemon::DaemonWin>),
@@ -721,7 +717,6 @@ pub(crate) enum Win {
     KeepGoingMessage {
         shell: u64,
         about: String,
-        field: Entity<TextField>,
     },
     /// Name (or rename) a group of a window's (`group`), or make one of
     /// its tab `tab`, and choose its colour.
@@ -729,7 +724,6 @@ pub(crate) enum Win {
         target: WindowId,
         group: Option<usize>,
         tab: u64,
-        name: Entity<TextField>,
         color: usize,
     },
     /// sudo asks for its password (sudo.rs).
@@ -755,9 +749,9 @@ pub(crate) struct Terminal {
     history: undo::Steps,
     /// Tabs whose close an Undo or Redo asked for (asked first if busy):
     /// what their step is when they close.
-    closing_as: HashMap<u64, olo_ui::undo::Purpose>,
+    closing_as: HashMap<u64, olo_kit::undo::Purpose>,
     /// A Redo moving a tab into a window of its own: its step's purpose.
-    detaching_as: Option<olo_ui::undo::Purpose>,
+    detaching_as: Option<olo_kit::undo::Purpose>,
     settings: Settings,
     metrics: Option<Metrics>,
     /// The desktop's palette now (its look, its mode).
@@ -1323,7 +1317,7 @@ impl Terminal {
                 return;
             }
             // Nothing to come back to.
-            self.remember(cx, true);
+            self.remember(true);
             self.link.bye();
             cx.quit();
         }
@@ -1721,7 +1715,7 @@ impl Terminal {
                     && let Some(i) = t.position(shell)
                 {
                     let on = t.tabs[i].auto_approve.is_none();
-                    if on && olo_ui::agent::invoking(cx) {
+                    if on && olo_kit::agent::invoking() {
                         // Not a hand on this display: the person says.
                         let message = format!(
                             "Turn on Auto Approve for \u{201c}{}\u{201d}?\n\nIts coding agent\u{2019}s questions asking leave to go on (\u{201c}Do you want to proceed?\u{201d}) will be answered Yes after {} seconds, unless you type in the tab or press Stop.",
@@ -1798,12 +1792,9 @@ impl Terminal {
             return;
         }
         let (w, h) = (FIND_W as u32, FIND_H as u32);
-        let field = Terminal::field(cx, &self.search.text, |f| f);
-        let id = cx.open_window(WindowOptions::new("Find", w, h).min_size(w, h).max_size(900, h));
-        ui::submit_on_enter(cx, &field, id, |t, cx, id| t.find_done(cx, id, true));
-        let f = field.clone();
-        cx.with_window(id, move |_, window, cx| f.read(cx).focus(window));
-        self.windows.insert(id, Win::Find { target, field });
+        let field = FieldSpec { text: self.search.text.clone(), entered: Some(|t, cx, id| t.find_done(cx, id, true)), ..Default::default() };
+        let id = cx.open_window(WindowOptions::new("Find", w, h).min_size(w, h).max_size(900, h).field(field));
+        self.windows.insert(id, Win::Find { target });
     }
 
     /// Search `win`'s scrollback (its tab showing); the visual bell says
@@ -1826,16 +1817,7 @@ impl Terminal {
         let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return };
         let tab = &mut t.tabs[i];
         tab.keep_going = on.map(|said| {
-            let timer = cx.spawn(async move |me, cx| {
-                let mut wait = keep_going_quiet();
-                loop {
-                    cx.background_executor().timer(wait).await;
-                    match me.update(cx, |t, cx| t.keep_going_turn(cx, shell)) {
-                        Ok(Some(next)) => wait = next,
-                        _ => break,
-                    }
-                }
-            });
+            let timer = cx.repeating(keep_going_quiet(), move |t, cx| t.keep_going_turn(cx, shell));
             KeepGoing { since: Instant::now(), said, _timer: timer }
         });
         tracing::info!(shell, on = tab.keep_going.is_some(), "keep it going");
@@ -1885,29 +1867,33 @@ impl Terminal {
             cx.activate(id);
             return;
         }
-        let field = Terminal::field(cx, &says, |f| f.hint(self.keep_going_says.clone()).name("Keep It Going says"));
+        let field = FieldSpec {
+            text: says,
+            hint: Some(self.keep_going_says.clone()),
+            name: Some("Keep It Going says".into()),
+            select_all: true,
+            entered: Some(|t, cx, id| t.keep_going_message_done(cx, id, true)),
+            ..Default::default()
+        };
         // (As tall as what it says: its frame lays its column out over
         // the window, as an alert's.)
-        let text_w = KEEP_GOING_W as f32 - widgets::ALERT_TEXT_X - m::WINDOW_INSET;
-        let words = widgets::paragraph_height(cx, &about, text_w) + widgets::paragraph_height(cx, &keep_going_note(&self.keep_going_says), text_w);
+        let text_w = KEEP_GOING_W as f32 - widgets::alert::ALERT_TEXT_X - m::WINDOW_INSET;
+        let words = widgets::alert::paragraph_height(&about, text_w) + widgets::alert::paragraph_height(&keep_going_note(&self.keep_going_says), text_w);
         let h = 2.0 * m::WINDOW_INSET + m::LABEL_ROW + 2.0 * m::TIGHT + 2.0 * m::SPACING + 2.0 * m::CONTROL_HEIGHT + words;
-        let id = cx.open_window(WindowOptions::dialog("Keep It Going", KEEP_GOING_W, h.ceil() as u32));
-        ui::submit_on_enter(cx, &field, id, |t, cx, id| t.keep_going_message_done(cx, id, true));
-        field.update(cx, |f, cx| f.select_all_text(cx));
-        let f = field.clone();
-        cx.with_window(id, move |_, window, cx| f.read(cx).focus(window));
-        self.windows.insert(id, Win::KeepGoingMessage { shell, about, field });
+        let id = cx.open_window(WindowOptions::dialog("Keep It Going", KEEP_GOING_W, h.ceil() as u32).field(field));
+        self.windows.insert(id, Win::KeepGoingMessage { shell, about });
     }
 
     /// The Keep It Going window answered: the tab's own message (none, if
     /// left empty or as Preferences has it), Keep It Going on; or not.
     pub(crate) fn keep_going_message_done(&mut self, cx: &mut Cx, window: WindowId, ok: bool) {
-        let Some(Win::KeepGoingMessage { shell, field, .. }) = self.windows.remove(&window) else { return };
+        let Some(Win::KeepGoingMessage { shell, .. }) = self.windows.remove(&window) else { return };
+        // (What its field says, before the window goes.)
+        let says = cx.field_text(window).trim().to_owned();
         cx.close_window(window);
         if !ok {
             return;
         }
-        let says = field.read(cx).text().trim().to_owned();
         let own = (!says.is_empty() && says != self.keep_going_says).then_some(says);
         let Some((win, i)) = self.find_shell(shell) else { return };
         let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return };
@@ -1973,17 +1959,13 @@ impl Terminal {
         tracing::info!(shell, "keep it going: said \"{says}\"");
         // Its Return a moment after, as a person types it (all at once, a
         // TUI may take it as pasted text, the Return a new line in it).
-        cx.spawn(async move |me, cx| {
-            cx.background_executor().timer(std::time::Duration::from_millis(150)).await;
-            let _ = me.update(cx, |t, _| {
-                if let Some((win, i)) = t.find_shell(shell)
-                    && let Some(Win::Term(w)) = t.windows.get(&win)
-                {
-                    w.tabs[i].session.write(b"\r".to_vec());
-                }
-            });
-        })
-        .detach();
+        cx.later(std::time::Duration::from_millis(150), move |t, _| {
+            if let Some((win, i)) = t.find_shell(shell)
+                && let Some(Win::Term(w)) = t.windows.get(&win)
+            {
+                w.tabs[i].session.write(b"\r".to_vec());
+            }
+        });
         self.remember_soon(cx);
         Some(enough)
     }
@@ -2030,20 +2012,13 @@ impl Terminal {
             // Stopped before Terminal restarted: still theirs.
             Some(ask) if a.theirs == Some(ask.key.max(1)) => {
                 tracing::info!(shell, question = ask.question, "auto approve: stopped before the restart; still the person's");
-                a.pending = Some(Pending { key: ask.key, question: ask.question, due: Instant::now(), stopped: true, misses: 0, _timer: olo_ui::gpui::Task::ready(()) });
+                a.pending = Some(Pending { key: ask.key, question: ask.question, due: Instant::now(), stopped: true, misses: 0, _timer: Timer::none() });
             }
             Some(ask) => {
                 a.theirs = None;
                 let key = ask.key;
-                let timer = cx.spawn(async move |me, cx| {
-                    loop {
-                        let wait = match me.update(cx, |t, cx| t.auto_approve_tick(cx, shell, key)) {
-                            Ok(Some(wait)) => wait,
-                            _ => break,
-                        };
-                        cx.background_executor().timer(wait).await;
-                    }
-                });
+                // (Looked at once now, then as often as it says.)
+                let timer = cx.repeating(std::time::Duration::ZERO, move |t, cx| t.auto_approve_tick(cx, shell, key));
                 tracing::info!(shell, question = ask.question, "auto approve: waiting {} s to answer Yes", auto_approve_after().as_secs());
                 a.pending = Some(Pending { key, question: ask.question, due: Instant::now() + auto_approve_after(), stopped: false, misses: 0, _timer: timer });
                 cx.redraw(win);
@@ -2224,20 +2199,16 @@ impl Terminal {
             self.windows.remove(&id);
             cx.close_window(id);
         }
-        let name = Terminal::field(cx, &name, |f| f);
-        let id = cx.open_window(WindowOptions::new("Group", NAME_W as u32, NAME_H as u32).min_size(NAME_W as u32, NAME_H as u32).max_size(NAME_W as u32, NAME_H as u32));
-        ui::submit_on_enter(cx, &name, id, |t, cx, id| t.name_group_done(cx, id, true));
         // The name it would have, selected: typing gives it another.
-        name.update(cx, |f, cx| f.select_all_text(cx));
-        let f = name.clone();
-        cx.with_window(id, move |_, window, cx| f.read(cx).focus(window));
-        self.windows.insert(id, Win::NameGroup { target, group, tab, name, color });
+        let field = FieldSpec { text: name, select_all: true, entered: Some(|t, cx, id| t.name_group_done(cx, id, true)), ..Default::default() };
+        let id = cx.open_window(WindowOptions::new("Group", NAME_W as u32, NAME_H as u32).min_size(NAME_W as u32, NAME_H as u32).max_size(NAME_W as u32, NAME_H as u32).field(field));
+        self.windows.insert(id, Win::NameGroup { target, group, tab, color });
     }
 
     /// The Group window answered: name (or make) the group, or not.
     pub(crate) fn name_group_done(&mut self, cx: &mut Cx, window: WindowId, ok: bool) {
-        let Some(Win::NameGroup { name, color, group, tab, target }) = self.windows.get(&window) else { return };
-        let (name, color, group, tab, target) = (name.read(cx).text().trim().to_owned(), *color, *group, *tab, *target);
+        let Some(Win::NameGroup { color, group, tab, target }) = self.windows.get(&window) else { return };
+        let (name, color, group, tab, target) = (cx.field_text(window).trim().to_owned(), *color, *group, *tab, *target);
         if ok && name.is_empty() {
             return;
         }
@@ -2355,7 +2326,7 @@ impl Terminal {
                     self.sudo_done(cx, id, None);
                 } else {
                     // (The key answered before sudo asked.)
-                    r.answer_with_key(cx);
+                    r.answer_with_key(cx, Some(id));
                     cx.redraw(id);
                 }
             }
@@ -2372,7 +2343,7 @@ impl Terminal {
                     && let Some(Win::Sudo(r)) = self.windows.get_mut(&id)
                 {
                     tracing::info!(what = r.summary(), ok = said.is_ok(), "sudo: the security key answered");
-                    r.key_said(said, cx);
+                    r.key_said(said, cx, Some(id));
                     cx.redraw(id);
                 }
             }
@@ -2396,10 +2367,12 @@ impl Terminal {
     /// Ask the person for sudo's password, in an alert over `over` (else
     /// the front window).
     fn sudo_ask(&mut self, cx: &mut Cx, mut r: sudo::Request, over: Option<WindowId>) {
-        let size = (sudo::WIDTH, r.height(cx));
+        let size = (sudo::WIDTH, r.height());
         let _ = over;
-        let id = cx.open_window(WindowOptions::new("sudo", size.0, size.1).min_size(size.0, size.1).max_size(size.0, size.1));
-        r.focus_field(cx, id);
+        // (Its answer's field is its view's, with the keyboard: Return in
+        // it answers.)
+        let field = FieldSpec { password: true, entered: Some(|t, cx, id| t.sudo_choice(cx, id, sudo::Choice::Authenticate)), ..Default::default() };
+        let id = cx.open_window(WindowOptions::new("sudo", size.0, size.1).min_size(size.0, size.1).max_size(size.0, size.1).field(field));
         r.wait_for_key(cx.proxy());
         self.windows.insert(id, Win::Sudo(Box::new(r)));
         cx.activate(id);
@@ -2411,7 +2384,7 @@ impl Terminal {
             if let Some(reply) = reply {
                 r.reply(&reply);
             }
-            r.clear(cx);
+            r.clear(cx, Some(window));
         }
         cx.close_window(window);
     }
@@ -2496,7 +2469,7 @@ impl Terminal {
         match choice {
             sudo::Choice::Authenticate => {
                 if let Some(Win::Sudo(r)) = self.windows.get_mut(&window) {
-                    r.answer(cx);
+                    r.answer(cx, window);
                     cx.redraw(window);
                 }
             }
@@ -2755,7 +2728,7 @@ impl Terminal {
             "quit" => {
                 // The shells stay in olo-termd for next time, and the
                 // windows on disk.
-                self.remember(cx, true);
+                self.remember(true);
                 self.link.bye();
                 for id in self.windows.keys().copied().collect::<Vec<_>>() {
                     cx.close_window(id);
@@ -2868,7 +2841,7 @@ impl Terminal {
                     self.close_tab_requested(cx, window, shell, "the tab's menu ▸ Close Tab");
                 } else if let Some(shell) = c.strip_prefix("tab-detach:").and_then(|n| n.parse().ok()) {
                     self.detach(cx, window, shell, false);
-                } else if let Some((shell, to)) = c.strip_prefix("tab-screen:").and_then(|r| r.split_once(':')).and_then(|(n, to)| Some((n.parse::<u64>().ok()?, olo_ui::moving::screen_command(to)?)))
+                } else if let Some((shell, to)) = c.strip_prefix("tab-screen:").and_then(|r| r.split_once(':')).and_then(|(n, to)| Some((n.parse::<u64>().ok()?, olo_kit::moving::screen_command(to)?)))
                 {
                     self.tab_to_screen(cx, shell, to);
                 } else if let Some(shell) = c.strip_prefix(olo_kit_base::tracker::COMMAND).and_then(|n| n.strip_prefix(':')?.parse::<u64>().ok()) {
@@ -2977,9 +2950,10 @@ impl Terminal {
         let tab = &mut t.tabs[i];
         match event {
             // A tab that isn't showing is drawn (and woken again) when it is.
+            // (Its screens alone: nothing else of the window shows it.)
             TermEvent::Wakeup => {
                 if showing {
-                    cx.redraw(win);
+                    cx.redraw_screens(win);
                 }
                 self.retitle_soon(cx);
             }
@@ -3009,18 +2983,18 @@ impl Terminal {
         }
     }
 
-    pub(crate) fn save_state(&self, cx: &App) -> Option<String> {
-        serde_json::to_string(&self.layout(cx)).ok()
+    pub(crate) fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&self.layout()).ok()
     }
 
     /// A tab to an agent screen (`screen`; None: a new one): a Terminal
     /// there takes its shell (olo-termd detaching it here, so the tab goes
     /// as it's taken, the shell running on), in a window of its own.
-    fn tab_to_screen(&mut self, cx: &mut Cx, shell: u64, screen: Option<String>) {
+    fn tab_to_screen(&mut self, _: &mut Cx, shell: u64, screen: Option<String>) {
         if std::env::var_os("OLO_SCREEN").is_some() && olo_kit_base::moving::home().is_none() {
             return;
         }
-        let layout = self.layout(cx);
+        let layout = self.layout();
         let Some(w) = layout.windows.iter().find(|w| w.tabs.contains(&shell)) else { return };
         let i = w.tabs.iter().position(|&s| s == shell).unwrap_or(0);
         let one = SavedWindow {
@@ -3054,19 +3028,19 @@ impl Terminal {
     /// (olo-termd detaching them here, so each tab goes as it's taken, its
     /// shell running on), from this display's olo-termd still
     /// (`wire::display`).
-    pub(crate) fn move_window(&mut self, handle: olo_ui::gpui::AnyWindowHandle, cx: &mut Cx) -> Result<olo_ui::WindowMove, String> {
-        let id = ui::window_of(cx, handle).ok_or("it has no such window")?;
+    pub(crate) fn move_window(&mut self, surface: u32) -> Result<olo_kit::WindowMove, String> {
+        let id = ui::window_of(surface).ok_or("it has no such window")?;
         let key = match self.windows.get(&id) {
             Some(Win::Term(t)) => t.key,
             _ => return Err("only terminal windows move".into()),
         };
-        let mut saved = self.layout(cx);
+        let mut saved = self.layout();
         saved.windows.retain(|w| w.key == key);
         if saved.windows.is_empty() {
             return Err("its shells have all ended".into());
         }
         saved.moved = true;
-        Ok(olo_ui::WindowMove { args: Vec::new(), state: serde_json::to_string(&saved).ok(), gone: Box::new(|_| {}) })
+        Ok(olo_kit::WindowMove { args: Vec::new(), state: serde_json::to_string(&saved).ok(), gone: Box::new(|| {}) })
     }
 
     pub(crate) fn window_dropped(&mut self, cx: &mut Cx, window: WindowId, onto: WindowId, place: Option<usize>) {
@@ -3078,7 +3052,7 @@ impl Terminal {
 
 impl Terminal {
     /// Each window's shells, in order, and where they are.
-    fn layout(&self, cx: &App) -> Saved {
+    fn layout(&self) -> Saved {
         let mut ids: Vec<WindowId> = self.windows.keys().copied().collect();
         ids.sort();
         let windows = ids
@@ -3094,7 +3068,7 @@ impl Terminal {
                         shell: tabs[active],
                         tabs,
                         active,
-                        size: ui::window_size(cx, id).unwrap_or((640, 400)),
+                        size: ui::window_size(id).unwrap_or((640, 400)),
                         group: None,
                         tiled: t.tiled,
                         tile_groups: t.tile_groups.clone(),
@@ -3234,20 +3208,16 @@ impl Terminal {
         if std::mem::replace(&mut self.retitling, true) {
             return;
         }
-        cx.spawn(async move |me, cx| {
-            cx.background_executor().timer(RETITLE_AFTER).await;
-            let _ = me.update(cx, |t, cx| {
-                t.retitling = false;
-                let ids: Vec<WindowId> = t.windows.keys().copied().collect();
-                for id in ids {
-                    if let Some(Win::Term(w)) = t.windows.get_mut(&id) {
-                        retitle(cx, id, w);
-                    }
+        cx.later(RETITLE_AFTER, |t, cx| {
+            t.retitling = false;
+            let ids: Vec<WindowId> = t.windows.keys().copied().collect();
+            for id in ids {
+                if let Some(Win::Term(w)) = t.windows.get_mut(&id) {
+                    retitle(cx, id, w);
                 }
-                t.remember_soon(cx);
-            });
-        })
-        .detach();
+            }
+            t.remember_soon(cx);
+        });
     }
 
     /// The windows kept on disk soon: once for a burst of changes.
@@ -3255,18 +3225,14 @@ impl Terminal {
         if std::mem::replace(&mut self.remembering, true) {
             return;
         }
-        cx.spawn(async move |me, cx| {
-            cx.background_executor().timer(REMEMBER_AFTER).await;
-            let _ = me.update(cx, |t, cx| {
-                t.remembering = false;
-                t.keep_agent_snapshot();
-                t.remember(cx, false);
-            });
-        })
-        .detach();
+        cx.later(REMEMBER_AFTER, |t, _| {
+            t.remembering = false;
+            t.keep_agent_snapshot();
+            t.remember(false);
+        });
     }
 
-    fn remember(&mut self, cx: &App, now: bool) {
+    fn remember(&mut self, now: bool) {
         // (Nor once it has quit: kept as it was then. A Terminal that
         // stays on after Quit, holding what was copied for the clipboard,
         // wrote its windows again as they closed, none: all of them, their
@@ -3274,7 +3240,7 @@ impl Terminal {
         if self.link.ended() || self.link.leaving() {
             return;
         }
-        let Ok(text) = serde_json::to_string(&self.layout(cx)) else { return };
+        let Ok(text) = serde_json::to_string(&self.layout()) else { return };
         if self.remembered.as_deref() == Some(text.as_str()) {
             return;
         }
@@ -3347,86 +3313,82 @@ fn main() {
             std::process::exit(1);
         }
     };
-    olo_ui::run(APP_ID, move |cx| {
-        ui::bind_keys(cx);
+    olo_kit::run(APP_ID, move |app| {
         // Launches handed over by another `olo-terminal` (a new window from
         // Deskbar, `--tab`, a coding agent's tab title): without it each
         // started a Terminal of its own, and agents' titles never arrived
         // ("Terminal isn't answering").
-        instance::listen(APP_ID, olo_ui::proxy(cx));
-        sudo::listen(olo_ui::proxy(cx));
-        let proxy = olo_ui::proxy(cx);
-        let look = olo_ui::theme::palette(cx);
-        let state = olo_ui::restored_state();
-        let term = cx.new(|cx: &mut Cx| {
-            let mut t = Terminal {
-                link,
-                windows: HashMap::new(),
-                history: Default::default(),
-                closing_as: HashMap::new(),
-                detaching_as: None,
-                settings: Settings::load(),
-                metrics: None,
-                look: look.clone(),
-                search: find::Search::default(),
-                respawn: false,
-                front: None,
-                saved_groups: groups::load(),
-                agents: agent::Watcher::start(proxy.clone()),
-                git: git::Watcher::start(proxy.clone()),
-                worktrees: HashMap::new(),
-                branches: HashMap::new(),
-                prs: HashMap::new(),
-                worktrees_at: olo_protocol::TerminalSettings::default().worktrees,
-                keep_going_says: olo_protocol::TerminalSettings::KEEP_GOING_SAYS.into(),
-                notifier: Notifier::new(proxy.clone(), "Terminal", "olo-terminal"),
-                notes: HashMap::new(),
-                remembered: None,
-                remembering: false,
-                retitling: false,
-                agent_context: None,
-                agent_snapshot: None,
-                sudo_approved: HashMap::new(),
-            };
-            t.follow(&look);
-            sudo::WINDOW_FOR_TYPED.store(t.settings.sudo_window, std::sync::atomic::Ordering::Relaxed);
-            let saved = state.as_deref().and_then(|s| serde_json::from_str::<Saved>(s).ok());
-            let legacy = state.as_deref().filter(|_| saved.is_none()).and_then(|s| serde_json::from_str::<Legacy>(s).ok());
-            let adopted = legacy.is_some_and(|l| t.adopt(cx, l));
-            // Not an upgrade: the windows as they were when Terminal last
-            // quit (or the session ended), shells that have gone restored.
-            let fresh = state.is_none();
-            let saved = saved.or_else(|| fresh.then(remembered).flatten());
-            let reattached = t.reattach(cx, shells, saved.as_ref(), fresh) || adopted;
-            // Agents' titles back from before: let go if their agents
-            // aren't seen again soon.
-            cx.spawn(async move |me, cx| {
-                cx.background_executor().timer(AGENT_SEEN_WITHIN).await;
-                let _ = me.update(cx, |t, cx| t.expire_agent_titles(cx));
-            })
-            .detach();
-            // Asked for a new window (or there's nothing to show): open one.
-            if !reattached || (state.is_none() && !args.is_empty()) {
-                t.handle_launch(cx, Launch { args, cwd: std::env::current_dir().ok(), taken: None });
-            }
-            t
+        instance::listen(APP_ID, olo_kit::proxy());
+        sudo::listen(olo_kit::proxy());
+        let proxy = olo_kit::proxy();
+        let look = olo_kit::theme::palette();
+        let state = olo_kit::restored_state();
+        let cx = &mut Cx;
+        let mut t = Terminal {
+            link,
+            windows: HashMap::new(),
+            history: Default::default(),
+            closing_as: HashMap::new(),
+            detaching_as: None,
+            settings: Settings::load(),
+            metrics: None,
+            look: look.clone(),
+            search: find::Search::default(),
+            respawn: false,
+            front: None,
+            saved_groups: groups::load(),
+            agents: agent::Watcher::start(proxy.clone()),
+            git: git::Watcher::start(proxy.clone()),
+            worktrees: HashMap::new(),
+            branches: HashMap::new(),
+            prs: HashMap::new(),
+            worktrees_at: olo_protocol::TerminalSettings::default().worktrees,
+            keep_going_says: olo_protocol::TerminalSettings::KEEP_GOING_SAYS.into(),
+            notifier: Notifier::new(proxy.clone(), "Terminal", "olo-terminal"),
+            notes: HashMap::new(),
+            remembered: None,
+            remembering: false,
+            retitling: false,
+            agent_context: None,
+            agent_snapshot: None,
+            sudo_approved: HashMap::new(),
+        };
+        t.follow(&look);
+        sudo::WINDOW_FOR_TYPED.store(t.settings.sudo_window, std::sync::atomic::Ordering::Relaxed);
+        let saved = state.as_deref().and_then(|s| serde_json::from_str::<Saved>(s).ok());
+        let legacy = state.as_deref().filter(|_| saved.is_none()).and_then(|s| serde_json::from_str::<Legacy>(s).ok());
+        let adopted = legacy.is_some_and(|l| t.adopt(cx, l));
+        // Not an upgrade: the windows as they were when Terminal last
+        // quit (or the session ended), shells that have gone restored.
+        let fresh = state.is_none();
+        let saved = saved.or_else(|| fresh.then(remembered).flatten());
+        let reattached = t.reattach(cx, shells, saved.as_ref(), fresh) || adopted;
+        // Agents' titles back from before: let go if their agents
+        // aren't seen again soon.
+        cx.later(AGENT_SEEN_WITHIN, |t, cx| t.expire_agent_titles(cx));
+        // Asked for a new window (or there's nothing to show): open one.
+        if !reattached || (state.is_none() && !args.is_empty()) {
+            t.handle_launch(cx, Launch { args, cwd: std::env::current_dir().ok(), taken: None });
+        }
+        // (Its windows, opened above, wait for it here: `ui::terminal`.)
+        ui::set_terminal(t);
+        // What the proxy brings is Terminal's, taken on the app's looper,
+        // which keeps its timers too.
+        olo_kit::message_handler(app, |message, app| match message.downcast::<ui::Later>() {
+            Ok(later) => ui::set_timer(app, *later),
+            Err(message) => terminal().message(&mut Cx, message),
         });
-        let t = term.clone();
-        olo_ui::message_handler(cx, move |message, cx| t.update(cx, |t, cx| t.message(cx, message)));
-        let t = term.clone();
-        olo_ui::on_upgrade(cx, move |cx| t.read(cx).save_state(cx));
-        let t = term.clone();
-        olo_ui::on_move_window(cx, move |handle, cx| t.update(cx, |t, cx| t.move_window(handle, cx)));
+        olo_kit::on_upgrade(|_| terminal().save_state());
+        olo_kit::on_move_window(|surface| terminal().move_window(surface));
         // Started on an agent screen, its shells are that screen's
         // olo-termd's, which ends with it.
-        olo_ui::refuse_moves_while(cx, |_| {
+        olo_kit::refuse_moves_while(|| {
             (std::env::var_os("OLO_SCREEN").is_some() && olo_kit_base::moving::home().is_none())
                 .then(|| "Terminal's shells here belong to this screen and end with it: open the person's own Terminal for work to keep".to_owned())
         });
-        let t = term.downgrade();
-        widgets::strip::on_window_dropped(cx, move |window, onto, place, cx| {
-            let (Some(window), Some(onto)) = (ui::window_of(cx, window), ui::window_of(cx, onto)) else { return };
-            let _ = t.update(cx, |t, cx| t.window_dropped(cx, window, onto, Some(place)));
+        widgets::strip::on_window_dropped(|window, onto, place| {
+            let (Some(window), Some(onto)) = (ui::window_of(window), ui::window_of(onto)) else { return };
+            terminal().window_dropped(&mut Cx, window, onto, Some(place));
         });
         olo_kit_base::settings::watch(move |s| {
             proxy.send(AgentContext { groups: s.terminal.agent_context, titles: s.terminal.agent_titles, screens: s.terminal.agent_screens });

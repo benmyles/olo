@@ -1576,7 +1576,14 @@ impl WaylandWindowStatePtr {
                 // given its screen, is no viewport at all: a protocol
                 // error, the connection gone, and the app started again,
                 // over and over.)
-                viewport.set_destination((size.width.0 as i32).max(1), (size.height.0 as i32).max(1));
+                // The window's own size in points, not the buffer's
+                // (`size`, what's laid out): where the buffer is the
+                // smaller by its rounding (487 points at 1.75× are
+                // 852.25 pixels: 852, or 486.86 points), cut to whole
+                // points it was a point short, and the compositor drew
+                // 852 rows in the room of 850.5.
+                let own = state.bounds.size;
+                viewport.set_destination((own.width.0.round() as i32).max(1), (own.height.0.round() as i32).max(1));
             }
         }
     }

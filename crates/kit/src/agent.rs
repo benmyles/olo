@@ -206,7 +206,18 @@ fn answer(query: Query) {
             }
             let _ = reply.send(lose);
         }
-        Query::WindowOver(_) | Query::WindowDropped(_) | Query::Focus(_) => {}
+        // app_server says one of the app's windows, being moved, is over
+        // another of its windows, or was let go there: the strip there
+        // marks the place, or takes its tabs.
+        Query::WindowOver(at) => crate::widgets::strip::window_over(at.onto, olo_interface::point(olo_interface::px(at.x as f32), olo_interface::px(at.y as f32))),
+        Query::WindowDropped(at) => {
+            let point = olo_interface::point(olo_interface::px(at.x as f32), olo_interface::px(at.y as f32));
+            match at.onto {
+                Some(onto) => crate::widgets::strip::window_dropped(at.window, onto, point),
+                None => crate::widgets::strip::window_over(None, point),
+            }
+        }
+        Query::Focus(_) => {}
         Query::Move(to, reply) => crate::upgrade::move_to(to, reply),
     }
 }
@@ -232,7 +243,33 @@ fn menus(surface: Option<u32>) -> Menus {
 fn invoke(mut windows: Vec<(bool, olo_interface::WindowId, String)>, _surface: Option<u32>) -> bool {
     windows.sort_by_key(|(active, ..)| !*active);
     let Some((_, id, command)) = windows.into_iter().next() else { return false };
-    olo_interface::ask_windows(WAIT, move |cx| (cx.window_id() == id).then(|| cx.command(&command))).into_iter().next().unwrap_or(false)
+    olo_interface::ask_windows(WAIT, move |cx| {
+        (cx.window_id() == id).then(|| {
+            INVOKING.with(|i| i.set(true));
+            let taken = cx.command(&command);
+            INVOKING.with(|i| i.set(false));
+            taken
+        })
+    })
+    .into_iter()
+    .next()
+    .unwrap_or(false)
+}
+
+thread_local! {
+    /// The command this looper is running came through the commands
+    /// socket ([`invoking`]).
+    static INVOKING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Whether the menu command being run now (`View::command`, on this
+/// looper) was asked for through the commands socket (an agent's
+/// `invoke`, the command palette), not chosen by a hand on this display
+/// (a click, a key). For the few commands a program must not give itself:
+/// Terminal's Auto Approve, which answers its agent's questions for it,
+/// asks the person first when it's turned on this way.
+pub fn invoking() -> bool {
+    INVOKING.with(|i| i.get())
 }
 
 /// Starts answering on the app's socket.

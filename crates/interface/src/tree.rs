@@ -766,7 +766,7 @@ impl WindowCore {
         let mut visible = Bounds { origin: point(px(0.), px(0.)), size: self.size };
         for id in path.iter().rev() {
             let node = &self.nodes[*id];
-            if let Some(mask) = node.style.overflow_mask(node.bounds, self.gfx.rem_size) {
+            if let Some(mask) = node.style.overflow_mask(node.bounds, self.gfx.rem_size, self.gfx.scale_factor) {
                 visible = visible.intersect(&mask.bounds);
             }
             if let Some(handle) = &node.scroll {
@@ -948,8 +948,8 @@ pub(crate) fn view_any(view: &dyn crate::view::AnyView) -> &dyn Any {
 }
 
 /// (Clips are the padding box of what scrolls or hides its overflow.)
-pub(crate) fn clip_of(style: &Style, bounds: Bounds<Pixels>, rem_size: Pixels) -> Option<ContentMask<Pixels>> {
-    style.overflow_mask(bounds, rem_size)
+pub(crate) fn clip_of(style: &Style, bounds: Bounds<Pixels>, rem_size: Pixels, scale_factor: f32) -> Option<ContentMask<Pixels>> {
+    style.overflow_mask(bounds, rem_size, scale_factor)
 }
 
 /// What a recording needs of the window to be made.

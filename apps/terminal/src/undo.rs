@@ -1,6 +1,6 @@
 //! Undo and Redo in Terminal (Ben, 2026-11-07: "we need generally and
 //! unviversally to support undo in all olo apps where it makes sense"), on
-//! the kit's way (`olo_ui::undo`): a window's tabs moved or put in and out
+//! the kit's way (`olo_kit::undo`): a window's tabs moved or put in and out
 //! of groups (their order and groups put back), a tab closed, and
 //! Terminal's settings (text size, colours, where the tabs are). A closed
 //! tab's process can't come back: Undo opens a new shell in its folder,
@@ -12,11 +12,11 @@
 
 use std::path::PathBuf;
 
-use olo_ui::undo::{History, Purpose};
+use olo_kit::undo::{History, Purpose};
 
 use crate::{
     Group, Start, Terminal, Win,
-    ui::{Cx, WinOps as _, WindowId},
+    ui::{Cx, WindowId},
 };
 
 /// What a step holds to take it back.

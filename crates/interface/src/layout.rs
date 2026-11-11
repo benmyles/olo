@@ -144,7 +144,12 @@ impl ToTaffy<taffy::style::Style> for Style {
             aspect_ratio: self.aspect_ratio,
             margin: self.margin.to_taffy(rem_size, scale_factor),
             padding: self.padding.to_taffy(rem_size, scale_factor),
-            border: self.border_widths.to_taffy(rem_size, scale_factor),
+            // Olo: whole device pixels, as it's drawn (`Style::border_pixels`).
+            border: {
+                let w = self.border_widths.to_pixels(rem_size);
+                let on = |v: Pixels| taffy::style::LengthPercentage::length(crate::style::border_device_pixels(v, scale_factor));
+                taffy::Rect { top: on(w.top), right: on(w.right), bottom: on(w.bottom), left: on(w.left) }
+            },
             align_items: self.align_items.map(|x| x.into()),
             align_self: self.align_self.map(|x| x.into()),
             align_content: self.align_content.map(|x| x.into()),

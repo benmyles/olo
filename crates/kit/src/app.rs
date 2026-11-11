@@ -831,6 +831,14 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut AppCx)) {
     let _ = tracing_subscriber::fmt().with_env_filter(filter).with_ansi(ansi).with_writer(std::io::stderr).try_init();
     olo_kit_base::keys::set_app_id(app_id);
     theme::init();
+    // (Quit with what it copied still on the clipboard, it runs on for
+    // that alone: launches start a copy of their own meanwhile, and what
+    // it keeps is on disk.)
+    olo_interface::before_lingering(|| {
+        olo_kit_base::instance::close();
+        crate::kept::write();
+        olo_kit_base::store::flush();
+    });
     olo_interface::run(app_id, |app| {
         crate::agent::init();
         crate::upgrade::init();

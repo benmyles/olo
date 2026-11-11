@@ -1,31 +1,43 @@
-//! Terminal's windows on GPUI. Terminal is one entity holding every window
-//! (`Terminal::windows`, by a `WindowId` of its own); each window's view
-//! (`Shell`) knows only which it is and has Terminal draw it, so the code
-//! that decides what a window does (main.rs) works on Terminal alone, and
-//! the window operations it asks for (open, close, redraw, activate,
-//! resize, title) are `WinOps` on its context, carried out once the update
-//! that asked is over.
+//! Terminal's windows on olo-kit. Terminal is one struct holding every
+//! window's state (`Terminal::windows`, by a `WindowId` of its own),
+//! behind a lock ([`terminal`]): the kit gives each window a looper of
+//! its own, and Terminal's tabs move between its windows, so what a
+//! window does is decided on Terminal alone (main.rs), whichever window's
+//! looper asks. Each window's own view ([`Shell`]) knows only which it is
+//! and has Terminal say what it shows; the window operations Terminal
+//! asks for (open, close, redraw, activate, resize, title) are [`Cx`]'s,
+//! posted to the window, so carried out once what asked is over.
 //!
 //! A terminal window is drawn here: the menu bar, the tab strip (along
-//! the top or down the side), the screen (or, Tile All Tabs, a pane for
-//! each tab with its head, rows split by draggable dividers), the visual
-//! bell. Keys go to the shell unless they're one of Terminal's menu
-//! shortcuts; text typed (and an input method's) comes through
-//! `EntityInputHandler`.
+//! the top or down the side), the screens (one, or, Tile All Tabs, a
+//! pane for each tab with its head, rows split by draggable dividers),
+//! the visual bell. The screens are a view of their own ([`Panes`]):
+//! a shell's output draws them again and nothing else of the window.
+//! Keys go to the shell unless they're one of Terminal's menu shortcuts;
+//! text typed (and an input method's) comes through `TextInput`.
+//!
+//! Nothing that waits is done with Terminal locked, and nothing takes
+//! the lock while holding it (a handler locks it, has it do something,
+//! lets go).
 
-use std::{collections::HashMap, ops::Range, path::PathBuf, rc::Rc, time::Duration};
-
-use olo_ui::{
-    Frame,
-    gpui::{
-        self, AnyElement, App, AppContext as _, Bounds, Context, CursorStyle, DispatchPhase, ElementInputHandler, Entity, EntityId, EntityInputHandler, FocusHandle, Focusable, FontWeight, Hitbox,
-        HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, KeyBinding, KeyDownEvent, KeyUpEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, NoAction, ParentElement as _,
-        Pixels, Render, ScrollWheelEvent, SharedString, Styled as _, UTF16Selection, WeakEntity, Window, WindowHandle, canvas, div, point, px, size,
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    rc::Rc,
+    sync::{
+        Arc, Mutex, MutexGuard, OnceLock,
+        atomic::{AtomicBool, Ordering},
     },
-    icons,
+    time::Duration,
+};
+
+use olo_kit::{
+    Bounds, Child, CursorStyle, DragAction, DropAccept, DropOffer, Dropped, Element, FocusHandle, FontWeight, Hsla, InteractiveElement as _, KeyDownEvent, KeyUpEvent, MouseButton, MouseDownEvent,
+    MouseMoveEvent, MouseUpEvent, Painter, ParentElement as _, PathBuilder, Pixels, Point, Rgba, ScrollWheelEvent, SharedString, Styled as _, TextInput, View, WindowCx, WindowHandle, canvas, div,
+    fill, icons,
     menu::{self, Menu, MenuBar},
-    metrics as m, style, theme,
-    widgets::{self, Button, CheckBox, StripAction, StripGroup, StripTab, TabStrip, TextControl, TextField, TextFieldEvent},
+    metrics as m, outline, point, px, quad, size, style, theme,
+    widgets::{self, Button, CheckBox, ListModel, StripAction, StripGroup, StripTab, TabStrip, TextControl, TextField, TextFieldEvent},
 };
 
 use crate::{
@@ -35,9 +47,30 @@ use crate::{
     view::{Metrics, Mods},
 };
 
+/// A view's context in one of Terminal's windows.
+pub type ShellCx<'a, 'b> = olo_kit::Cx<'a, 'b, Shell>;
+
 /// One of Terminal's windows, by its own count (never reused).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
-pub struct WindowId(u64);
+pub struct WindowId(pub(crate) u64);
+
+/// The text field one of Terminal's small windows has (Find's, a group's
+/// name, a password): made with the window, by its view.
+#[derive(Clone, Default)]
+pub struct FieldSpec {
+    pub text: String,
+    pub name: Option<String>,
+    pub hint: Option<String>,
+    pub password: bool,
+    /// Its text selected as it opens.
+    pub select_all: bool,
+    /// In the fixed-width font (a branch's name).
+    pub mono: bool,
+    /// Return in it: the window's default button.
+    pub entered: Option<fn(&mut Terminal, &mut Cx, WindowId)>,
+    /// Something typed in it (the window is drawn again either way).
+    pub changed: Option<fn(&mut Terminal, &mut Cx, WindowId)>,
+}
 
 /// What a window was opened with (in points).
 #[derive(Clone)]
@@ -55,11 +88,14 @@ pub struct WindowOptions {
     /// What app_server knows the window by when Terminal comes back (the
     /// kit's `restore_key`).
     pub restore_key: Option<String>,
+    /// Its text field, if it has one, and whether it has a list.
+    pub field: Option<FieldSpec>,
+    pub list: bool,
 }
 
 impl WindowOptions {
     pub fn new(title: impl Into<String>, w: u32, h: u32) -> WindowOptions {
-        WindowOptions { title: title.into(), size: (w, h), min_size: None, max_size: None, under_pointer: false, alert: None, dialog: false, restore_key: None }
+        WindowOptions { title: title.into(), size: (w, h), min_size: None, max_size: None, under_pointer: false, alert: None, dialog: false, restore_key: None, field: None, list: false }
     }
 
     /// A dialog `w` wide: fixed, floating, as tall as what it shows needs
@@ -83,68 +119,143 @@ impl WindowOptions {
         self.max_size = Some((w, h));
         self
     }
+
+    /// With a text field (its view's: `Cx::field_text` reads it).
+    pub fn field(mut self, field: FieldSpec) -> Self {
+        self.field = Some(field);
+        self
+    }
+
+    /// With a list (its view's `Shell::list`).
+    pub fn list(mut self) -> Self {
+        self.list = true;
+        self
+    }
 }
 
-/// A window as GPUI has it.
+/// A window as the kit has it, and what Terminal asks of it without
+/// waiting for its looper: its size as last drawn, whether it's on the
+/// workspace showing, its surface, what its text field says.
 struct Handle {
-    window: WindowHandle<Frame>,
-    shell: Entity<Shell>,
-    /// Its content size as last drawn.
+    window: WindowHandle<Shell>,
     size: (u32, u32),
-    /// On the workspace showing (as last drawn; until then, yes).
     here: bool,
+    surface: Option<u32>,
+    text: String,
 }
 
-/// Terminal's windows (a global: window operations are asked for while
-/// Terminal is being updated).
+/// Terminal's windows. (A lock of its own, never held while Terminal's
+/// is taken: window operations are asked for while Terminal is locked.)
 #[derive(Default)]
 struct Wins {
     map: HashMap<WindowId, Handle>,
     next: u64,
 }
 
-impl gpui::Global for Wins {}
-
-/// Terminal's context: its entity's.
-pub type Cx<'a> = Context<'a, Terminal>;
-
-/// Window operations, done once the update asking for them is over (a
-/// window can't be changed while it's handling the event that asked).
-pub trait WinOps {
-    fn open_window(&mut self, options: WindowOptions) -> WindowId;
-    fn close_window(&mut self, id: WindowId);
-    fn redraw(&mut self, id: WindowId);
-    fn redraw_all(&mut self);
-    fn activate(&mut self, id: WindowId);
-    fn activate_with(&mut self, id: WindowId, token: Option<String>);
-    fn resize(&mut self, id: WindowId, size: (u32, u32));
-    fn window_size(&self, id: WindowId) -> Option<(u32, u32)>;
-    /// Whether it's on the workspace showing (else it draws nothing until
-    /// it is, and would jump then if resized now).
-    fn is_shown(&self, id: WindowId) -> bool;
-    fn on_this_workspace(&self, id: WindowId) -> bool;
-    fn copy(&mut self, text: String);
-    fn begin_move(&mut self, id: WindowId);
-    fn proxy(&self) -> olo_kit_base::Proxy;
-    fn set_title(&mut self, id: WindowId, title: String);
-    fn set_path(&mut self, id: WindowId, path: Option<PathBuf>);
-    /// Does `f` with window `id`, after this update.
-    fn with_window(&mut self, id: WindowId, f: impl FnOnce(&mut Frame, &mut Window, &mut Context<Frame>) + 'static);
+fn wins() -> MutexGuard<'static, Wins> {
+    static WINS: OnceLock<Mutex<Wins>> = OnceLock::new();
+    WINS.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner())
 }
 
-impl WinOps for Context<'_, Terminal> {
-    fn open_window(&mut self, o: WindowOptions) -> WindowId {
-        let wins = self.default_global::<Wins>();
-        wins.next += 1;
-        let id = WindowId(wins.next);
+static TERMINAL: OnceLock<Mutex<Terminal>> = OnceLock::new();
+
+/// Terminal, locked: every window's state and what's done with it. (Not
+/// while it's held already, and held for nothing that waits. A window
+/// opened as Terminal starts waits here until it's made.)
+pub fn terminal() -> MutexGuard<'static, Terminal> {
+    TERMINAL.wait().lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Sets a timer of Terminal's on the app's looper: what it's to do then
+/// is done with Terminal locked, and again in as long as it says.
+pub fn set_timer(app: &mut olo_kit::AppCx, later: Later) {
+    let Later { wait, stopped, mut then } = later;
+    app.looper().after(wait, move |looper| {
+        if stopped.load(Ordering::Acquire) {
+            return;
+        }
+        let next = {
+            let mut t = terminal();
+            then(&mut t, &mut Cx)
+        };
+        if let Some(wait) = next {
+            set_timer(&mut olo_kit::AppCx::on(looper), Later { wait, stopped, then });
+        }
+    });
+}
+
+/// Terminal as it starts.
+pub fn set_terminal(t: Terminal) {
+    let _ = TERMINAL.set(Mutex::new(t));
+}
+
+/// A handler that has Terminal do something: locked while it does, and
+/// handed the window's context.
+pub fn on<E: ?Sized + 'static>(f: impl Fn(&mut Terminal, &E, &mut WindowCx) + 'static) -> impl Fn(&E, &mut WindowCx) + 'static {
+    move |e, w| {
+        let mut t = terminal();
+        f(&mut t, e, w)
+    }
+}
+
+/// What a timer of Terminal's does when it's due: how long till it's to
+/// do it again, if it is.
+type Turn = Box<dyn FnMut(&mut Terminal, &mut Cx) -> Option<Duration> + Send>;
+
+/// Something for Terminal to do later, on the app's looper (main.rs sets
+/// the timer and has Terminal do it).
+pub struct Later {
+    pub wait: Duration,
+    pub stopped: Arc<AtomicBool>,
+    pub then: Turn,
+}
+
+/// A timer of Terminal's: dropped, what it was to do isn't done.
+pub struct Timer(Arc<AtomicBool>);
+
+impl Timer {
+    /// One that has nothing to do.
+    pub fn none() -> Timer {
+        Timer(Arc::new(AtomicBool::new(true)))
+    }
+}
+
+impl Drop for Timer {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Release);
+    }
+}
+
+/// What a window's view is told.
+pub enum ShellMsg {
+    /// What it shows changed: all of it said again.
+    Redraw,
+    /// Its screens changed (a shell's output): they alone are.
+    Screens,
+    /// Something to do with the view, on its looper.
+    Do(Box<dyn FnOnce(&mut Shell, &mut ShellCx) + Send>),
+}
+
+/// Terminal's context: what it asks of its windows, each posted to the
+/// window (done once what asked is over: a window can't be changed while
+/// it's handling the event that asked), and of the app.
+pub struct Cx;
+
+impl Cx {
+    pub fn open_window(&mut self, o: WindowOptions) -> WindowId {
+        let id = {
+            let mut wins = wins();
+            wins.next += 1;
+            WindowId(wins.next)
+        };
         let (w, h) = match &o.alert {
             Some(message) => {
-                let w = widgets::alert_width(self, &["Cancel", "Close Anyway"]);
-                (w, widgets::alert_height(self, message, w))
+                let w = widgets::alert::alert_width(&["Cancel", "Close Anyway"]);
+                (w, widgets::alert::alert_height(message, w))
             }
             None => (o.size.0 as f32, o.size.1 as f32),
         };
-        let mut options = if o.alert.is_some() { olo_ui::WindowOptions::alert(o.title.clone(), w, h) } else { olo_ui::WindowOptions::new(o.title.clone(), w, h) };
+        let mut options = if o.alert.is_some() { olo_kit::WindowOptions::alert(o.title.clone(), w, h) } else { olo_kit::WindowOptions::new(o.title.clone(), w, h) };
         options.panel = o.alert.is_some() || !matches!(o.title.as_str(), "Terminal");
         options.min_size = o.min_size.map(|(w, h)| (w as f32, h as f32));
         options.max_size = o.max_size.map(|(w, h)| (w as f32, h as f32));
@@ -157,201 +268,370 @@ impl WinOps for Context<'_, Terminal> {
         }
         options.under_pointer = o.under_pointer;
         options.restore_key = o.restore_key.clone();
-        let me = self.weak_entity();
-        let made: Rc<std::cell::RefCell<Option<Entity<Shell>>>> = Rc::default();
-        let keep = made.clone();
-        let window = olo_ui::open_window(self, options, move |window, cx| {
-            let shell = cx.new(|cx| Shell { me: me.clone(), id, focus: cx.focus_handle() });
-            let focus = shell.read(cx).focus.clone();
-            window.focus(&focus);
-            // Its close box asks Terminal, which may ask "Close anyway?".
-            let closing = me.clone();
-            window.on_window_should_close(cx, move |_, cx| {
-                let _ = closing.update(cx, |t, cx| t.close_requested(cx, id));
-                false
-            });
-            // What's dropped on a screen (accepted in its paint).
-            let dropping = me.clone();
-            window.on_dropped(move |d, _, cx| {
-                let paths = if d.mime == "text/uri-list" { d.paths() } else { Vec::new() };
-                let text = String::from_utf8_lossy(&d.data).into_owned();
-                let _ = dropping.update(cx, |t, cx| t.dropped(cx, id, &paths, Some(&text)));
-            });
-            *keep.borrow_mut() = Some(shell.clone());
-            shell
-        });
-        if let (Some(window), Some(shell)) = (window, made.borrow_mut().take()) {
-            let size = (w as u32, h as u32);
-            self.default_global::<Wins>().map.insert(id, Handle { window, shell, size, here: true });
-        }
+        let (field, list) = (o.field.clone(), o.list);
+        let text = field.as_ref().map(|f| f.text.clone()).unwrap_or_default();
+        let window = olo_kit::open_window(options, move |cx| Shell::new(id, field, list, cx));
+        wins().map.insert(id, Handle { window, size: (w as u32, h as u32), here: true, surface: None, text });
         id
     }
 
-    fn close_window(&mut self, id: WindowId) {
-        if let Some(h) = self.default_global::<Wins>().map.remove(&id) {
-            self.defer(move |cx| {
-                let _ = h.window.update(cx, |_, window, _| window.remove_window());
-            });
+    pub fn close_window(&mut self, id: WindowId) {
+        if let Some(h) = wins().map.remove(&id) {
+            h.window.close();
         }
     }
 
-    fn redraw(&mut self, id: WindowId) {
-        if let Some(e) = self.try_global::<Wins>().and_then(|w| w.map.get(&id)).map(|h| h.shell.entity_id()) {
-            App::notify(self, e);
+    fn tell(&self, id: WindowId, message: ShellMsg) {
+        if let Some(h) = wins().map.get(&id) {
+            h.window.messenger().send(message);
         }
     }
 
-    fn redraw_all(&mut self) {
-        let all: Vec<EntityId> = self.try_global::<Wins>().map(|w| w.map.values().map(|h| h.shell.entity_id()).collect()).unwrap_or_default();
-        for e in all {
-            App::notify(self, e);
+    pub fn redraw(&mut self, id: WindowId) {
+        self.tell(id, ShellMsg::Redraw);
+    }
+
+    /// A shell's output: the window's screens alone are drawn again.
+    pub fn redraw_screens(&mut self, id: WindowId) {
+        self.tell(id, ShellMsg::Screens);
+    }
+
+    pub fn redraw_all(&mut self) {
+        for h in wins().map.values() {
+            h.window.messenger().send(ShellMsg::Redraw);
         }
     }
 
-    fn activate(&mut self, id: WindowId) {
-        self.with_window(id, |_, window, _| window.activate_window());
+    pub fn activate(&mut self, id: WindowId) {
+        self.with_window(id, |_, cx| cx.activate_window());
     }
 
-    fn activate_with(&mut self, id: WindowId, token: Option<String>) {
-        self.with_window(id, move |_, window, _| match &token {
-            Some(t) => window.activate_window_with_token(t),
-            None => window.activate_window(),
+    pub fn activate_with(&mut self, id: WindowId, token: Option<String>) {
+        self.with_window(id, move |_, cx| match &token {
+            Some(t) => cx.activate_window_with_token(t),
+            None => cx.activate_window(),
         });
     }
 
-    fn resize(&mut self, id: WindowId, (w, h): (u32, u32)) {
-        if let Some(handle) = self.default_global::<Wins>().map.get_mut(&id) {
+    pub fn resize(&mut self, id: WindowId, (w, h): (u32, u32)) {
+        if let Some(handle) = wins().map.get_mut(&id) {
             handle.size = (w, h);
         }
-        self.with_window(id, move |_, window, _| window.resize(size(px(w as f32), px(h as f32))));
+        self.with_window(id, move |_, cx| cx.resize_window(size(px(w as f32), px(h as f32))));
     }
 
-    fn window_size(&self, id: WindowId) -> Option<(u32, u32)> {
-        window_size(self, id)
-    }
-
-    fn is_shown(&self, id: WindowId) -> bool {
+    /// Whether it's on the workspace showing (else it draws nothing until
+    /// it is, and would jump then if resized now).
+    pub fn is_shown(&self, id: WindowId) -> bool {
         self.on_this_workspace(id)
     }
 
-    fn on_this_workspace(&self, id: WindowId) -> bool {
-        self.try_global::<Wins>().and_then(|w| w.map.get(&id)).is_some_and(|h| h.here)
+    pub fn on_this_workspace(&self, id: WindowId) -> bool {
+        wins().map.get(&id).is_some_and(|h| h.here)
     }
 
-    fn copy(&mut self, text: String) {
-        self.write_to_clipboard(gpui::ClipboardItem::new_string(text));
+    pub fn copy(&mut self, text: String) {
+        olo_kit::clipboard::write(olo_kit::ClipboardItem::new_string(text));
     }
 
-    fn begin_move(&mut self, id: WindowId) {
-        self.with_window(id, |_, window, _| olo_ui::begin_move(window));
+    pub fn begin_move(&mut self, id: WindowId) {
+        self.with_window(id, |_, cx| olo_kit::begin_move(cx));
     }
 
-    fn proxy(&self) -> olo_kit_base::Proxy {
-        olo_ui::proxy(self)
+    pub fn proxy(&self) -> olo_kit_base::Proxy {
+        olo_kit::proxy()
     }
 
-    fn set_title(&mut self, id: WindowId, title: String) {
-        self.with_window(id, move |frame, window, _| frame.set_title(title, window));
+    pub fn set_title(&mut self, id: WindowId, title: String) {
+        self.with_window(id, move |_, cx| cx.set_window_title(title));
     }
 
-    fn set_path(&mut self, id: WindowId, path: Option<PathBuf>) {
-        self.with_window(id, move |_, window, cx| olo_ui::agent::set_path(window, cx, path));
+    pub fn set_path(&mut self, id: WindowId, path: Option<PathBuf>) {
+        self.with_window(id, move |_, cx| olo_kit::agent::set_path(cx, path));
     }
 
-    fn with_window(&mut self, id: WindowId, f: impl FnOnce(&mut Frame, &mut Window, &mut Context<Frame>) + 'static) {
-        let Some(handle) = self.try_global::<Wins>().and_then(|w| w.map.get(&id)).map(|h| h.window) else { return };
-        self.defer(move |cx| {
-            let _ = handle.update(cx, f);
+    /// Does `f` with window `id`'s view, on its looper, after this.
+    pub fn with_window(&mut self, id: WindowId, f: impl FnOnce(&mut Shell, &mut ShellCx) + Send + 'static) {
+        self.tell(id, ShellMsg::Do(Box::new(f)));
+    }
+
+    /// What window `id`'s text field says (as its view last told).
+    pub fn field_text(&self, id: WindowId) -> String {
+        wins().map.get(&id).map(|h| h.text.clone()).unwrap_or_default()
+    }
+
+    /// What window `id`'s field said, taken (a password: nothing of it
+    /// is left here; whoever takes it wipes it when done).
+    pub fn take_field_text(&mut self, id: WindowId) -> String {
+        wins().map.get_mut(&id).map(|h| std::mem::take(&mut h.text)).unwrap_or_default()
+    }
+
+    /// Has Terminal do `f` in `wait` (on the app's looper).
+    pub fn later(&mut self, wait: Duration, f: impl FnOnce(&mut Terminal, &mut Cx) + Send + 'static) {
+        let mut f = Some(f);
+        olo_kit::proxy().send(Later {
+            wait,
+            stopped: Arc::new(AtomicBool::new(false)),
+            then: Box::new(move |t, cx| {
+                if let Some(f) = f.take() {
+                    f(t, cx);
+                }
+                None
+            }),
         });
+    }
+
+    /// Has Terminal do `f` in `wait`, and again in as long as it says
+    /// each time (None: no more), until the [`Timer`] is dropped.
+    pub fn repeating(&mut self, wait: Duration, f: impl FnMut(&mut Terminal, &mut Cx) -> Option<Duration> + Send + 'static) -> Timer {
+        let stopped = Arc::new(AtomicBool::new(false));
+        olo_kit::proxy().send(Later { wait, stopped: stopped.clone(), then: Box::new(f) });
+        Timer(stopped)
+    }
+
+    pub fn quit(&mut self) {
+        olo_kit::quit();
     }
 }
 
 /// Window `id`'s content size as last drawn.
-pub fn window_size(cx: &App, id: WindowId) -> Option<(u32, u32)> {
-    cx.try_global::<Wins>()?.map.get(&id).map(|h| h.size)
+pub fn window_size(id: WindowId) -> Option<(u32, u32)> {
+    wins().map.get(&id).map(|h| h.size)
 }
 
-/// Which of Terminal's windows a GPUI window is, for a window let go on
-/// another's strip.
-pub fn window_of(cx: &App, handle: gpui::AnyWindowHandle) -> Option<WindowId> {
-    cx.try_global::<Wins>()?.map.iter().find(|(_, h)| gpui::AnyWindowHandle::from(h.window) == handle).map(|(id, _)| *id)
+/// Which of Terminal's windows the one with surface `surface` is, for a
+/// window let go on another's strip.
+pub fn window_of(surface: u32) -> Option<WindowId> {
+    wins().map.iter().find(|(_, h)| h.surface == Some(surface)).map(|(id, _)| *id)
 }
 
-/// Terminal's keys: Tab and ⇧Tab are the shell's in a terminal (not the
-/// window's keyboard navigation).
-pub fn bind_keys(cx: &mut App) {
-    cx.bind_keys([KeyBinding::new("tab", NoAction, Some(SCREEN)), KeyBinding::new("shift-tab", NoAction, Some(SCREEN))]);
-}
-
-/// The key context of a terminal window.
-const SCREEN: &str = "OloTerminal";
-
-/// A window of Terminal's: which one it is; Terminal draws it.
+/// A window of Terminal's: which one it is, and what only a window has
+/// (the keyboard's place, its text field, its list, its screens' view);
+/// Terminal says what it shows.
 pub struct Shell {
-    me: WeakEntity<Terminal>,
-    id: WindowId,
-    focus: FocusHandle,
+    pub id: WindowId,
+    pub focus: FocusHandle,
+    pub field: Option<Child<TextField>>,
+    pub list: Option<ListModel>,
+    /// A terminal window's screens.
+    panes: Option<Child<Panes>>,
+    /// A drop is over its screen (drawn round it).
+    dropping: bool,
 }
 
-impl Focusable for Shell {
-    fn focus_handle(&self, _: &App) -> FocusHandle {
-        self.focus.clone()
+impl Shell {
+    fn new(id: WindowId, field: Option<FieldSpec>, list: bool, cx: &mut ShellCx) -> Shell {
+        let focus = FocusHandle::new();
+        let field = field.map(|spec| {
+            let f = widgets::text_field(cx, |mut f| {
+                if let Some(name) = &spec.name {
+                    f = f.name(name.clone());
+                }
+                if let Some(hint) = &spec.hint {
+                    f = f.hint(hint.clone());
+                }
+                if spec.mono {
+                    f = f.font(style::mono_font(FontWeight::NORMAL));
+                }
+                f.password(spec.password)
+            });
+            let (text, select_all) = (spec.text.clone(), spec.select_all);
+            f.update(cx, |f, cx| {
+                f.set_text(text, cx);
+                if select_all {
+                    f.select_all_text(cx);
+                }
+            });
+            let (entered, changed, secret) = (spec.entered, spec.changed, spec.password);
+            cx.subscribe(&f, move |sh: &mut Shell, e: &TextFieldEvent, cx| match e {
+                TextFieldEvent::Entered => {
+                    sh.tell_text(cx);
+                    if let Some(entered) = entered {
+                        let mut t = terminal();
+                        entered(&mut t, &mut Cx, sh.id);
+                    }
+                }
+                TextFieldEvent::Changed => {
+                    // (A password stays the field's until it's sent.)
+                    if !secret {
+                        sh.tell_text(cx);
+                    }
+                    if let Some(changed) = changed {
+                        let mut t = terminal();
+                        changed(&mut t, &mut Cx, sh.id);
+                    }
+                    cx.invalidate();
+                }
+                TextFieldEvent::Typed(_) => {}
+            });
+            f.focus(cx);
+            f
+        });
+        if field.is_none() {
+            focus.focus(cx);
+        }
+        Shell { id, focus, field, list: list.then(|| ListModel::new(false)), panes: None, dropping: false }
+    }
+
+    /// What the field says, where Terminal reads it (`Cx::field_text`).
+    pub fn tell_text(&mut self, cx: &mut ShellCx) {
+        if let Some(f) = &self.field {
+            let text = f.read(cx).text().to_owned();
+            if let Some(h) = wins().map.get_mut(&self.id) {
+                h.text = text;
+            }
+        }
+    }
+
+    /// The field forgets what was typed in it (a password, sent or
+    /// given up).
+    pub fn clear_field(&mut self, cx: &mut ShellCx) {
+        if let Some(f) = &self.field {
+            f.update(cx, |f, cx| f.clear_secret(cx));
+        }
     }
 }
 
-impl Render for Shell {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let (id, focus, view) = (self.id, self.focus.clone(), cx.entity());
-        if let Some(handle) = cx.default_global::<Wins>().map.get_mut(&id) {
-            let s = window.viewport_size();
-            handle.size = (f32::from(s.width).round() as u32, f32::from(s.height).round() as u32);
-            handle.here = olo_ui::workspaces::here(window).unwrap_or(true);
+impl View for Shell {
+    type Message = ShellMsg;
+
+    fn message(&mut self, message: ShellMsg, cx: &mut ShellCx) {
+        match message {
+            ShellMsg::Redraw => {
+                if let Some(p) = &self.panes {
+                    p.update(cx, |_, cx| cx.invalidate());
+                }
+                cx.invalidate();
+            }
+            // (For the next frame drawn, once: a shell that floods says
+            // so hundreds of times between two frames, and each was laid
+            // out and painted, 15 ms of them a frame.)
+            ShellMsg::Screens => match &self.panes {
+                Some(p) => p.update(cx, |_, cx| cx.invalidate_at_frame()),
+                None => cx.invalidate_at_frame(),
+            },
+            ShellMsg::Do(f) => f(self, cx),
         }
-        self.me.update(cx, |t, cx| t.render(id, focus, view, window, cx)).unwrap_or_else(|_| div().into_any_element())
+    }
+
+    fn command(&mut self, command: &str, _: &mut ShellCx) -> bool {
+        terminal().command(&mut Cx, self.id, command);
+        true
+    }
+
+    /// Its close box asks Terminal, which may ask "Close anyway?".
+    fn close_requested(&mut self, _: &mut ShellCx) -> bool {
+        terminal().close_requested(&mut Cx, self.id);
+        false
+    }
+
+    fn window_activated(&mut self, _: bool, cx: &mut ShellCx) {
+        cx.invalidate();
+    }
+
+    fn takes_drops(&self) -> bool {
+        true
+    }
+
+    /// Files dropped on a screen are typed as their paths, text as if
+    /// pasted.
+    fn drop_over(&mut self, offer: Option<&DropOffer>, at: Point<Pixels>, cx: &mut ShellCx) -> Option<DropAccept> {
+        let over = offer.filter(|o| o.copy).and_then(|o| {
+            let mime = if o.types.iter().any(|t| t == "text/uri-list") {
+                Some("text/uri-list")
+            } else {
+                ["text/plain;charset=utf-8", "UTF8_STRING", "text/plain"].into_iter().find(|t| o.types.iter().any(|x| x == t))
+            }?;
+            terminal().screen_at(self.id, at).then(|| DropAccept { target: "screen".into(), mime: mime.into(), action: DragAction::Copy })
+        });
+        if self.dropping != over.is_some() {
+            self.dropping = over.is_some();
+            if let Some(p) = &self.panes {
+                let on = self.dropping;
+                p.update(cx, |p, cx| {
+                    p.dropping = on;
+                    cx.invalidate();
+                });
+            }
+        }
+        over
+    }
+
+    fn dropped(&mut self, d: Dropped, cx: &mut ShellCx) {
+        self.drop_over(None, d.position, cx);
+        let paths = if d.mime == "text/uri-list" { d.paths() } else { Vec::new() };
+        let text = String::from_utf8_lossy(&d.data).into_owned();
+        terminal().dropped(&mut Cx, self.id, &paths, Some(&text));
+    }
+
+    fn save_state(&mut self, _: &mut ShellCx) -> Option<String> {
+        None
+    }
+
+    fn body(&mut self, cx: &mut ShellCx) -> Element {
+        let s = cx.viewport_size();
+        let surface = cx.surface_id();
+        if let Some(h) = wins().map.get_mut(&self.id) {
+            h.size = (f32::from(s.width).round() as u32, f32::from(s.height).round() as u32);
+            h.surface = surface;
+            h.here = surface.and_then(olo_kit::workspaces::here_surface).unwrap_or(true);
+        }
+        let mut t = terminal();
+        t.render(self, cx)
     }
 }
 
 /// Text typed, and an input method's, for the shell showing.
-impl EntityInputHandler for Shell {
-    fn text_for_range(&mut self, _: Range<usize>, _: &mut Option<Range<usize>>, _: &mut Window, _: &mut Context<Self>) -> Option<String> {
-        None
+impl TextInput for Shell {
+    fn insert_text(&mut self, text: &str, _: &mut ShellCx) {
+        let mut t = terminal();
+        t.set_preedit(&mut Cx, self.id, None);
+        t.typed_text(&mut Cx, self.id, text);
     }
 
-    fn selected_text_range(&mut self, _: bool, _: &mut Window, _: &mut Context<Self>) -> Option<UTF16Selection> {
-        Some(UTF16Selection { range: 0..0, reversed: false })
+    fn set_marked_text(&mut self, text: &str, _: &mut ShellCx) {
+        terminal().set_preedit(&mut Cx, self.id, Some(text.to_owned()));
     }
 
-    fn marked_text_range(&self, _: &mut Window, cx: &mut Context<Self>) -> Option<Range<usize>> {
-        let n = self.me.upgrade()?.read(cx).preedit(self.id).map(|p| p.encode_utf16().count())?;
-        (n > 0).then_some(0..n)
+    fn unmark_text(&mut self, _: &mut ShellCx) {
+        terminal().set_preedit(&mut Cx, self.id, None);
     }
 
-    fn unmark_text(&mut self, _: &mut Window, cx: &mut Context<Self>) {
-        let id = self.id;
-        let _ = self.me.update(cx, |t, cx| t.set_preedit(cx, id, None));
+    fn delete_marked_text(&mut self, _: &mut ShellCx) {
+        terminal().set_preedit(&mut Cx, self.id, None);
     }
+}
 
-    fn replace_text_in_range(&mut self, _: Option<Range<usize>>, text: &str, _: &mut Window, cx: &mut Context<Self>) {
-        let (id, text) = (self.id, text.to_owned());
-        let _ = self.me.update(cx, |t, cx| {
-            t.set_preedit(cx, id, None);
-            t.typed_text(cx, id, &text);
-        });
-    }
+/// A terminal window's screens: one, or a pane for each tab tiled. A
+/// view of its own, so a shell's output draws them again and nothing
+/// else of the window.
+pub struct Panes {
+    id: WindowId,
+    /// The keyboard is in the window's screen.
+    focused: bool,
+    /// A drop is over the screen.
+    dropping: bool,
+    /// Where the input method was last told the cursor is.
+    ime: Option<Bounds<Pixels>>,
+}
 
-    fn replace_and_mark_text_in_range(&mut self, _: Option<Range<usize>>, text: &str, _: Option<Range<usize>>, _: &mut Window, cx: &mut Context<Self>) {
-        let (id, text) = (self.id, text.to_owned());
-        let _ = self.me.update(cx, |t, cx| t.set_preedit(cx, id, Some(text)));
-    }
+impl View for Panes {
+    type Message = ();
 
-    fn bounds_for_range(&mut self, _: Range<usize>, element: Bounds<Pixels>, _: &mut Window, cx: &mut Context<Self>) -> Option<Bounds<Pixels>> {
-        // The cursor's cell, for the input method's window.
-        let t = self.me.upgrade()?;
-        t.read(cx).cursor_bounds(self.id).or(Some(element))
-    }
-
-    fn character_index_for_point(&mut self, _: gpui::Point<Pixels>, _: &mut Window, _: &mut Context<Self>) -> Option<usize> {
-        None
+    fn body(&mut self, cx: &mut olo_kit::Cx<Panes>) -> Element {
+        let mut t = terminal();
+        let screens = t.render_panes(self.id, self.focused, self.dropping, cx);
+        // Where an input method's window goes: the cursor's cell, as it
+        // moves with what's typed (told when it's another).
+        let at = if self.focused { t.cursor_bounds(self.id) } else { None };
+        drop(t);
+        if at != self.ime {
+            self.ime = at;
+            if let Some(at) = at {
+                cx.set_ime_position(at);
+            }
+        }
+        screens
     }
 }
 
@@ -485,53 +765,42 @@ pub fn drag_rows(weights: &[f32], spans: &[(f32, f32)], r: usize, dy: f32, least
 
 /// The colour `t` of the way from `a` to `b`.
 fn lerp(a: Hsla, b: Hsla, t: f32) -> Hsla {
-    let (a, b) = (gpui::Rgba::from(a), gpui::Rgba::from(b));
-    Hsla::from(gpui::Rgba { r: a.r + (b.r - a.r) * t, g: a.g + (b.g - a.g) * t, b: a.b + (b.b - a.b) * t, a: a.a + (b.a - a.a) * t })
+    let (a, b) = (Rgba::from(a), Rgba::from(b));
+    Hsla::from(Rgba { r: a.r + (b.r - a.r) * t, g: a.g + (b.g - a.g) * t, b: a.b + (b.b - a.b) * t, a: a.a + (b.a - a.a) * t })
 }
 
 /// Auto Approve's countdown over `screen`'s bottom right corner: "Yes in
 /// N s" and Stop (the question is then the person's). Agents read it as a
 /// Status, its Stop a button.
-fn auto_approve_box(screen: Bounds<Pixels>, shell: u64, left: u32, me: gpui::WeakEntity<Terminal>) -> AnyElement {
+fn auto_approve_box(screen: Bounds<Pixels>, shell: u64, left: u32) -> Element {
     let text: SharedString = format!("Auto Approve: Yes in {left} s").into();
     let name = text.clone();
-    let back = canvas(
-        |_, _, _| {},
-        move |b, _, window, cx| {
-            let p = theme::palette(cx);
-            widgets::banner_back(window, b, None, &p);
-            olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Status", name: Some(name.clone()), bounds: b, enabled: true, ..Default::default() });
-        },
-    )
+    let back = canvas(move |g, b| {
+        let p = theme::palette();
+        widgets::banner::banner_back(g, b, None, &p);
+        g.agent(olo_kit::agent::Node { role: "Status", name: Some(name.clone()), bounds: b, enabled: true, ..Default::default() });
+    })
+    .paint_key(style::key(&text))
     .absolute()
     .inset_0();
-    let stop = Button::new("Stop").small().id(SharedString::from(format!("auto-approve-stop-{shell}"))).on_click(move |_, cx| {
-        let _ = me.update(cx, |t, cx| t.auto_approve_stop(cx, shell));
-    });
+    let stop = Button::new("Stop").small().id(SharedString::from(format!("auto-approve-stop-{shell}"))).on_click(on(move |t, _: &olo_kit::ClickEvent, _| t.auto_approve_stop(&mut Cx, shell)));
     let inset = px(m::SPACING);
-    div()
-        .absolute()
-        .left(screen.left())
-        .top(screen.top())
-        .w(screen.size.width)
-        .h(screen.size.height)
-        .child(
-            div()
-                .absolute()
-                .right(inset)
-                .bottom(inset)
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap(px(m::SPACING))
-                .pl(px(m::SPACING))
-                .pr(px(m::TIGHT))
-                .py(px(m::TIGHT))
-                .child(back)
-                .child(widgets::StringView::new(text))
-                .child(stop),
-        )
-        .into_any_element()
+    div().absolute().left(screen.left()).top(screen.top()).w(screen.size.width).h(screen.size.height).child(
+        div()
+            .absolute()
+            .right(inset)
+            .bottom(inset)
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(m::SPACING))
+            .pl(px(m::SPACING))
+            .pr(px(m::TIGHT))
+            .py(px(m::TIGHT))
+            .child(back)
+            .child(widgets::StringView::new(text))
+            .child(stop),
+    )
 }
 
 /// A tab's icon: Terminal's, with a badge at its corner: a turning arc
@@ -541,81 +810,75 @@ fn auto_approve_box(screen: Bounds<Pixels>, shell: u64, left: u32, me: gpui::Wea
 /// disc with a "go on" triangle; at its other bottom corner, while Auto
 /// Approve is on, a green one with a check.
 pub fn tab_icon(rang: bool, agent: Option<State>, attention: bool, keep_going: bool, auto_approve: bool) -> widgets::strip::PaintFn {
-    Rc::new(move |window: &mut Window, cx: &mut App, r: Bounds<Pixels>| {
-        icons::paint(window, r, "terminal");
-        let p = theme::palette(cx);
+    Rc::new(move |g: &mut Painter, r: Bounds<Pixels>| {
+        icons::paint(g, r, "terminal");
+        let p = theme::palette();
+        let disc_at = |g: &mut Painter, c: Point<Pixels>, radius: f32, color: Hsla| {
+            let b = Bounds { origin: point(c.x - px(radius), c.y - px(radius)), size: size(px(2.0 * radius), px(2.0 * radius)) };
+            g.paint_quad(fill(b, color).corner_radii(px(radius)));
+        };
         if auto_approve {
             let c = point(r.left() + px(1.5), r.bottom() - px(3.5));
-            let disc = |window: &mut Window, radius: f32, color: Hsla| {
-                let b = Bounds { origin: point(c.x - px(radius), c.y - px(radius)), size: size(px(2.0 * radius), px(2.0 * radius)) };
-                window.paint_quad(gpui::fill(b, color).corner_radii(px(radius)));
-            };
-            disc(window, 5.5, style::c(p.panel_background));
-            disc(window, 4.5, style::c(p.success));
-            let mut path = gpui::PathBuilder::stroke(px(1.25));
+            disc_at(g, c, 5.5, style::c(p.panel_background));
+            disc_at(g, c, 4.5, style::c(p.success));
+            let mut path = PathBuilder::stroke(px(1.25));
             path.move_to(point(c.x - px(2.0), c.y));
             path.line_to(point(c.x - px(0.5), c.y + px(1.5)));
             path.line_to(point(c.x + px(2.0), c.y - px(1.5)));
             if let Ok(path) = path.build() {
-                window.paint_path(path, style::ink_on(p.success));
+                g.paint_path(path, style::ink_on(p.success));
             }
         }
         if keep_going {
             // A disc in the accent colour with a "go on" triangle, as the
             // question's is orange with a "!".
             let c = point(r.right() - px(1.5), r.bottom() - px(3.5));
-            let disc = |window: &mut Window, radius: f32, color: Hsla| {
-                let b = Bounds { origin: point(c.x - px(radius), c.y - px(radius)), size: size(px(2.0 * radius), px(2.0 * radius)) };
-                window.paint_quad(gpui::fill(b, color).corner_radii(px(radius)));
-            };
-            disc(window, 5.5, style::c(p.panel_background));
+            disc_at(g, c, 5.5, style::c(p.panel_background));
             let accent = p.keyboard_navigation;
-            disc(window, 4.5, style::c(accent));
-            let mut path = gpui::PathBuilder::fill();
+            disc_at(g, c, 4.5, style::c(accent));
+            let mut path = PathBuilder::fill();
             path.move_to(point(c.x - px(1.25), c.y - px(2.25)));
             path.line_to(point(c.x + px(2.25), c.y));
             path.line_to(point(c.x - px(1.25), c.y + px(2.25)));
             path.close();
             if let Ok(path) = path.build() {
-                window.paint_path(path, style::ink_on(accent));
+                g.paint_path(path, style::ink_on(accent));
             }
         }
         let at = point(r.right() - px(1.5), r.top() + px(3.5));
         let back = style::c(p.panel_background);
-        let disc = |window: &mut Window, radius: f32, color: Hsla| {
-            let b = Bounds { origin: point(at.x - px(radius), at.y - px(radius)), size: size(px(2.0 * radius), px(2.0 * radius)) };
-            window.paint_quad(gpui::fill(b, color).corner_radii(px(radius)));
-        };
         match agent {
             Some(State::Working) => {
-                disc(window, 5.0, back);
-                // A quarter turn every … : by the clock, so each frame
-                // drawn shows where it is now.
+                disc_at(g, at, 5.0, back);
+                // A quarter turn every … : by the clock, so each time it's
+                // drawn shows where it is now; and drawn again ten times
+                // a second while it turns (it alone: what it's drawn in).
                 let turn = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f32() % 1000.0) * 5.0;
-                let pts: Vec<(gpui::Point<Pixels>, gpui::Point<Pixels>)> = (0..16)
+                let pts: Vec<(Point<Pixels>, Point<Pixels>)> = (0..16)
                     .map(|k| {
                         let a = |k: i32| turn + k as f32 * (1.5 * std::f32::consts::PI / 16.0);
                         let p = |a: f32| point(at.x + px(3.0 * a.cos()), at.y + px(3.0 * a.sin()));
                         (p(a(k)), p(a(k + 1)))
                     })
                     .collect();
-                window.paint_segments(&pts, px(1.5), true, style::c(p.keyboard_navigation));
+                g.paint_segments(&pts, px(1.5), true, style::c(p.keyboard_navigation));
+                g.paint_again_within(0.1);
             }
             Some(State::Blocked) => {
-                disc(window, 5.5, back);
+                disc_at(g, at, 5.5, back);
                 let orange = p.hue(olo_theme::Hue::Orange);
-                disc(window, 4.5, style::c(orange));
+                disc_at(g, at, 4.5, style::c(orange));
                 let white = style::ink_on(orange);
-                window.paint_quad(gpui::fill(Bounds::centered_at(point(at.x, at.y - px(1.0)), size(px(1.5), px(4.0))), white));
-                window.paint_quad(gpui::fill(Bounds::centered_at(point(at.x, at.y + px(2.25)), size(px(1.5), px(1.5))), white));
+                g.paint_quad(fill(Bounds::centered_at(point(at.x, at.y - px(1.0)), size(px(1.5), px(4.0))), white));
+                g.paint_quad(fill(Bounds::centered_at(point(at.x, at.y + px(2.25)), size(px(1.5), px(1.5))), white));
             }
             Some(State::Idle) if attention => {
-                disc(window, 4.0, back);
-                disc(window, 3.0, style::c(p.success));
+                disc_at(g, at, 4.0, back);
+                disc_at(g, at, 3.0, style::c(p.success));
             }
             _ if rang => {
-                disc(window, 3.5, back);
-                disc(window, 2.5, style::c(p.keyboard_navigation));
+                disc_at(g, at, 3.5, back);
+                disc_at(g, at, 2.5, style::c(p.keyboard_navigation));
             }
             _ => {}
         }
@@ -626,39 +889,40 @@ pub fn tab_icon(rang: bool, agent: Option<State>, attention: bool, keep_going: b
 /// with "…"), the one typed into lit as the strip's selected tab is, the
 /// others quiet; its group's chip at its right, so a group's panes show
 /// together; a line around each pane keeps them apart.
-fn pane_head(window: &mut Window, cx: &mut App, pane: Bounds<Pixels>, height: f32, title: &str, icon: &widgets::strip::PaintFn, active: bool, group: Option<(SharedString, Hsla)>) {
-    let p = theme::palette(cx);
+#[allow(clippy::too_many_arguments)]
+fn pane_head(g: &mut Painter, pane: Bounds<Pixels>, height: f32, title: &str, icon: &widgets::strip::PaintFn, active: bool, group: Option<(SharedString, Hsla)>) {
+    let p = theme::palette();
     let dark = p.mode == olo_theme::ThemeMode::Dark;
     let bg = p.panel_background;
     let band = style::shade(&p, bg, 1.06);
-    let edge = if dark { lerp(style::c(bg), gpui::white(), 0.14) } else { style::shade(&p, bg, 1.22) };
+    let edge = if dark { lerp(style::c(bg), olo_kit::white(), 0.14) } else { style::shade(&p, bg, 1.22) };
     let head = Bounds { origin: pane.origin, size: size(pane.size.width, px(height)) };
     let ground = if active { style::c(bg) } else { band };
-    style::fill_rect(window, head, ground);
-    style::hline_above(window, head.left(), head.right(), head.bottom(), edge);
+    style::fill_rect(g, head, ground);
+    style::hline_above(g, head.left(), head.right(), head.bottom(), edge);
     // Lines between panes (the window's frame does the outer edges).
-    let line = style::hairline(window);
-    style::vline(window, pane.right(), pane.top(), pane.bottom() + line, edge);
-    style::hline(window, pane.left(), pane.right() + line, pane.bottom(), edge);
+    let line = style::hairline(g);
+    style::vline(g, pane.right(), pane.top(), pane.bottom() + line, edge);
+    style::hline(g, pane.left(), pane.right() + line, pane.bottom(), edge);
     // Centred on the band above the line under it, as near as the
     // device pixels allow.
     let cy = (head.top() + head.bottom() - line) / 2.0;
     // The icon over the pane's text, as a tab's is over the menu bar's
     // first title.
-    let at = style::snap_centred(window, point(head.left() + px(view::PAD.0 + 8.0), cy), 16.0, 16.0);
-    icon(window, cx, at);
+    let at = style::snap_centred(g, point(head.left() + px(view::PAD.0 + 8.0), cy), 16.0, 16.0);
+    icon(g, at);
     let x = at.right() + px(m::MARK_GAP);
     let mut end = head.right() - px(m::SPACING);
     if let Some((name, color)) = group {
-        let w = widgets::strip::chip_width(window, &name);
-        let r = style::snap_centred(window, point(end - px(w / 2.0), cy), w, widgets::strip::CHIP_HEIGHT);
-        widgets::strip::chip(window, cx, r, &name, color, true, false);
+        let w = widgets::strip::chip_width(&name);
+        let r = style::snap_centred(g, point(end - px(w / 2.0), cy), w, widgets::strip::CHIP_HEIGHT);
+        widgets::strip::chip(g, r, &name, color, true, false);
         end = r.left() - px(m::SPACING);
     }
     let font = style::ui_font(if active { FontWeight::MEDIUM } else { FontWeight::NORMAL });
     let text = style::c(p.panel_text);
     let color = if active { text } else { lerp(text, ground, 0.32) };
-    style::label_fit(window, cx, x, cy, style::Align::Left, title.to_owned(), style::PLAIN_SIZE, font, color, end - x);
+    style::label_fit(g, x, cy, style::Align::Left, title.to_owned(), style::PLAIN_SIZE, font, color, end - x);
 }
 
 /// What a mouse event on a screen is, for Terminal.
@@ -669,7 +933,7 @@ pub enum PaneEvent {
     Wheel(ScrollWheelEvent),
 }
 
-/// What a terminal window lays out each frame.
+/// What a terminal window lays out.
 struct Layout {
     strip: Bounds<Pixels>,
     area: Bounds<Pixels>,
@@ -686,78 +950,88 @@ fn least_pane(side: bool, metrics: &Metrics) -> (f32, f32) {
     (w, pane_head_height(side) + h)
 }
 
-impl Terminal {
-    /// Draws window `id`.
-    fn render(&mut self, id: WindowId, focus: FocusHandle, view: Entity<Shell>, window: &mut Window, cx: &mut Cx) -> AnyElement {
-        match self.windows.get(&id) {
-            Some(Win::Term(_)) => self.render_term(id, focus, view, window, cx),
-            Some(Win::ConfirmClose { message, .. }) => self.render_alert(id, "terminal", message.clone(), &["Cancel", "Close"], focus, cx),
-            Some(Win::ConfirmStartOver { .. }) => self.render_alert(id, "terminal", crate::START_OVER.to_owned(), &["Cancel", "Start Over"], focus, cx),
-            Some(Win::ConfirmAutoApprove { message, .. }) => self.render_alert_with(id, "warning", message.clone(), &["Turn On", "Cancel"], 1, 1, focus, cx),
-            Some(Win::ConfirmRemove { message, .. }) => self.render_alert(id, "warning", message.clone(), &["Cancel", "Remove"], focus, cx),
-            Some(Win::Failed { message }) => self.render_alert(id, "warning", message.clone(), &["OK"], focus, cx),
-            Some(Win::Find { .. }) => self.render_find(id, focus, window, cx),
-            Some(Win::NameGroup { .. }) => self.render_name_group(id, focus, window, cx),
-            Some(Win::KeepGoingMessage { .. }) => self.render_keep_going_message(id, focus, cx),
-            Some(Win::Daemon(_)) => self.render_daemon(id, window, cx),
-            Some(Win::Sudo(_)) => self.render_sudo(id, focus, window, cx),
-            Some(Win::Worktree(_)) => self.render_worktree(id, focus, window, cx),
-            None => div().into_any_element(),
-        }
+/// An alert's keys: Return its default button, Escape its cancel.
+fn alert_key(e: &KeyDownEvent) -> Option<bool> {
+    if e.keystroke.modifiers.modified() {
+        return None;
     }
+    match e.keystroke.key.as_str() {
+        "enter" => Some(true),
+        "escape" => Some(false),
+        _ => None,
+    }
+}
 
-    /// An alert's window: `message` beside `icon`, `buttons` (the last the
-    /// default: Return; Escape the first).
-    fn render_alert(&mut self, id: WindowId, icon: &str, message: String, buttons: &[&str], focus: FocusHandle, cx: &mut Cx) -> AnyElement {
-        let n = buttons.len();
-        self.render_alert_with(id, icon, message, buttons, n.saturating_sub(1), 0, focus, cx)
+impl Terminal {
+    /// Says what window `sh` shows.
+    pub(crate) fn render(&mut self, sh: &mut Shell, cx: &mut ShellCx) -> Element {
+        let id = sh.id;
+        let alert = match self.windows.get(&id) {
+            Some(Win::Term(_)) => return self.render_term(sh, cx),
+            Some(Win::Find { .. }) => return self.render_find(sh, cx),
+            Some(Win::NameGroup { .. }) => return self.render_name_group(sh, cx),
+            Some(Win::KeepGoingMessage { .. }) => return self.render_keep_going_message(sh, cx),
+            Some(Win::Daemon(_)) => return self.render_daemon(sh, cx),
+            Some(Win::Sudo(_)) => return self.render_sudo(sh, cx),
+            Some(Win::Worktree(_)) => return self.render_worktree(sh, cx),
+            Some(Win::ConfirmClose { message, .. }) => ("terminal", message.clone(), &["Cancel", "Close"][..], None),
+            Some(Win::ConfirmStartOver { .. }) => ("terminal", crate::START_OVER.to_owned(), &["Cancel", "Start Over"][..], None),
+            Some(Win::ConfirmAutoApprove { message, .. }) => ("warning", message.clone(), &["Turn On", "Cancel"][..], Some((1, 1))),
+            Some(Win::ConfirmRemove { message, .. }) => ("warning", message.clone(), &["Cancel", "Remove"][..], None),
+            Some(Win::Failed { message }) => ("warning", message.clone(), &["OK"][..], None),
+            None => return div(),
+        };
+        let (icon, message, buttons, keys) = alert;
+        let (default, cancel) = keys.unwrap_or((buttons.len().saturating_sub(1), 0));
+        self.render_alert_with(sh, icon, message, buttons, default, cancel)
     }
 
     /// An alert whose Return chooses button `default` and Escape `cancel`
-    /// (one a program can bring up, as Auto Approve's: Cancel both, so a
-    /// Return typed as it comes doesn't say yes).
-    #[allow(clippy::too_many_arguments)]
-    fn render_alert_with(&mut self, id: WindowId, icon: &str, message: String, buttons: &[&str], default: usize, cancel: usize, focus: FocusHandle, cx: &mut Cx) -> AnyElement {
-        let n = buttons.len();
+    /// (the last and the first, but for one a program can bring up, as
+    /// Auto Approve's: Cancel both, so a Return typed as it comes doesn't
+    /// say yes).
+    fn render_alert_with(&mut self, sh: &mut Shell, icon: &str, message: String, buttons: &[&str], default: usize, cancel: usize) -> Element {
+        let (id, n) = (sh.id, buttons.len());
         let mut row = widgets::button_row();
         for (i, label) in buttons.iter().enumerate() {
-            let choose = cx.listener(move |t, _: &(), _, cx| t.alert_chosen(cx, id, i));
-            row = row.child(Button::new(label.to_string()).default(i == default).on_click(move |window, cx| choose(&(), window, cx)));
+            row = row.child(Button::new(label.to_string()).default(i == default).on_click(on(move |t, _: &olo_kit::ClickEvent, _| t.alert_chosen(&mut Cx, id, i))));
         }
         div()
             .size_full()
-            .key_context(widgets::alert::CONTEXT)
-            .track_focus(&focus)
-            .on_action(cx.listener(move |t, _: &widgets::alert::Default, _, cx| t.alert_chosen(cx, id, default)))
-            .on_action(cx.listener(move |t, _: &widgets::alert::Cancel, _, cx| {
-                if n > 1 {
-                    t.alert_chosen(cx, id, cancel);
+            .track_focus(&sh.focus)
+            .on_key_down(on(move |t, e: &KeyDownEvent, w| match alert_key(e) {
+                Some(true) => {
+                    w.stop_propagation();
+                    t.alert_chosen(&mut Cx, id, default);
                 }
+                Some(false) if n > 1 => {
+                    w.stop_propagation();
+                    t.alert_chosen(&mut Cx, id, cancel);
+                }
+                _ => {}
             }))
             .child(widgets::AlertFrame::new(icon.to_owned()).child(widgets::paragraph(message)).child(div().flex_1()).child(row))
-            .into_any_element()
     }
 
     /// The cell metrics at the window's scale, made again when the text
     /// size or the scale changes (cells snapped to another scale's pixels
     /// can still be whole ones here and put the rows between pixels).
-    pub(crate) fn metrics_for(&mut self, window: &Window) -> Metrics {
+    pub(crate) fn metrics_for(&mut self, scale: f32) -> Metrics {
         let size = self.settings.text_size;
         match self.metrics {
-            Some(m) if m.size == size && m.scale == window.scale_factor() => m,
+            Some(m) if m.size == size && m.scale == scale => m,
             _ => {
-                let m = Metrics::new(window, size);
+                let m = Metrics::new(scale, size);
                 self.metrics = Some(m);
                 m
             }
         }
     }
 
-    /// Where a terminal window's parts go.
-    fn lay_out(&self, id: WindowId, window: &Window, metrics: &Metrics) -> Option<Layout> {
+    /// Where a terminal window's parts go, in a window `vs` at `scale`.
+    fn lay_out(&self, id: WindowId, vs: olo_kit::Size<Pixels>, scale: f32, metrics: &Metrics) -> Option<Layout> {
         let Some(Win::Term(t)) = self.windows.get(&id) else { return None };
-        let vs = window.viewport_size();
-        let top = style::snap_coord(window, px(menu::BAR_HEIGHT));
+        let top = px((menu::BAR_HEIGHT * scale).round() / scale);
         let full = Bounds::from_corners(point(px(0.0), top), point(vs.width, vs.height));
         let side = self.settings.side_tabs;
         let (strip, area) = if side {
@@ -768,7 +1042,6 @@ impl Terminal {
             let h = px(widgets::STRIP_HEIGHT);
             (Bounds { origin: full.origin, size: size(full.size.width, h) }, Bounds::from_corners(point(full.left(), full.top() + h), full.bottom_right()))
         };
-        let scale = window.scale_factor();
         // A row for each group; tabs no groups put in rows, a grid's rows
         // (each kept by its group's key and its place: "build/1").
         let tiles = t.tile_rows();
@@ -806,32 +1079,39 @@ impl Terminal {
         Some(Layout { strip, area, panes, rows })
     }
 
-    fn render_term(&mut self, id: WindowId, focus: FocusHandle, view: Entity<Shell>, window: &mut Window, cx: &mut Cx) -> AnyElement {
+    /// Whether `at` in window `id` is on a screen (for what's dropped).
+    pub(crate) fn screen_at(&self, id: WindowId, at: Point<Pixels>) -> bool {
+        let Some(Win::Term(t)) = self.windows.get(&id) else { return false };
+        t.tabs.iter().any(|tab| tab.pane.lock().unwrap_or_else(|e| e.into_inner()).bounds.get().contains(&at))
+    }
+
+    /// A terminal window: its menu bar, its strip, its screens (a view of
+    /// their own), the dividers between tiles, the bell's flash.
+    fn render_term(&mut self, sh: &mut Shell, cx: &mut ShellCx) -> Element {
+        let id = sh.id;
         // The desktop's look, when it's another.
-        let look = theme::palette(cx);
-        if !std::sync::Arc::ptr_eq(&look, &self.look) {
+        let look = theme::palette();
+        if !Arc::ptr_eq(&look, &self.look) {
             self.follow(&look);
         }
-        let metrics = self.metrics_for(window);
+        let scale = cx.scale_factor();
+        let vs = cx.viewport_size();
+        let metrics = self.metrics_for(scale);
         let scheme = self.scheme();
-        let focused = window.is_window_active() && focus.is_focused(window);
+        let focused = cx.is_window_active() && sh.focus.is_focused(cx);
         if focused {
             self.front = Some(id);
         }
         // (Whatever changed shows here: kept on disk soon.)
-        self.remember_soon(cx);
-        let Some(layout) = self.lay_out(id, window, &metrics) else { return div().into_any_element() };
-        let Some(Win::Term(t)) = self.windows.get_mut(&id) else { return div().into_any_element() };
+        self.remember_soon(&mut Cx);
+        let Some(layout) = self.lay_out(id, vs, scale, &metrics) else { return div() };
+        let Some(Win::Term(t)) = self.windows.get_mut(&id) else { return div() };
         if focused != t.focused {
             t.focused = focused;
             t.tab().report_focus(focused);
         }
         if focused {
             t.tab_mut().attention = false;
-        }
-        // (Every pane drawn has taken its wake-up, the tiles too.)
-        for &(i, _, _) in &layout.panes {
-            t.tabs[i].session.woke();
         }
         {
             let session = &t.tab().session;
@@ -842,7 +1122,7 @@ impl Terminal {
                 let turned = current.dark() != scheme.dark();
                 *current = scheme.clone();
                 drop(current);
-                if turned && session.shared.reports.load(std::sync::atomic::Ordering::Relaxed) {
+                if turned && session.shared.reports.load(Ordering::Relaxed) {
                     session.write(crate::io::light_or_dark(scheme.dark()).to_vec());
                 }
             }
@@ -852,11 +1132,11 @@ impl Terminal {
             let (w, h) = metrics.content_size(cols, rows);
             let (cw, ch) = crate::chrome(&self.settings);
             let want = (w as u32 + cw, h as u32 + ch);
-            if cx.window_size(id) != Some(want) {
-                cx.resize(id, want);
+            if window_size(id) != Some(want) {
+                Cx.resize(id, want);
             }
         }
-        let Some(Win::Term(t)) = self.windows.get_mut(&id) else { return div().into_any_element() };
+        let Some(Win::Term(t)) = self.windows.get_mut(&id) else { return div() };
         let several = layout.panes.len() > 1;
         // Every tab has the window's grid, so a program in one that isn't
         // showing still lays itself out right; tiled, each its pane's.
@@ -870,24 +1150,10 @@ impl Terminal {
                 }
             }
         }
-        if t.tabs.iter().any(|x| matches!(x.agent, Some((_, State::Working)))) && !t.spinning {
-            // The spinner turns, ten times a second.
-            t.spinning = true;
-            cx.spawn_in(window, async move |me, cx| {
-                cx.background_executor().timer(Duration::from_millis(100)).await;
-                let _ = me.update(cx, |t, cx| {
-                    if let Some(Win::Term(t)) = t.windows.get_mut(&id) {
-                        t.spinning = false;
-                    }
-                    cx.redraw(id);
-                });
-            })
-            .detach();
-        }
 
         // The strip.
         let side = self.settings.side_tabs;
-        let Some(Win::Term(t)) = self.windows.get(&id) else { return div().into_any_element() };
+        let Some(Win::Term(t)) = self.windows.get(&id) else { return div() };
         let strip_groups: Vec<StripGroup> = t.groups.iter().map(|g| StripGroup { name: g.name.clone().into(), color: groups::color(g.color, &self.look) }).collect();
         let tabs: Vec<StripTab> = t
             .tabs
@@ -908,7 +1174,7 @@ impl Terminal {
                 }
             })
             .collect();
-        let mut strip = TabStrip::new(format!("terminal-tabs-{}", id.0), tabs, t.active).groups(strip_groups);
+        let mut strip = TabStrip::new(format!("terminal-tabs-{}", id.0), tabs, t.active).groups(strip_groups).in_window(cx.surface_id());
         if t.tiled && t.tabs.len() > 1 {
             // Tile All Tabs: a group's chip chooses which are tiled; each
             // pane has its own head.
@@ -917,154 +1183,40 @@ impl Terminal {
         if side {
             strip = strip.side();
         }
-        let act = cx.listener(move |t, a: &StripAction, window, cx| t.strip_action(id, *a, window, cx));
-        let strip = strip.on_action(move |a, window, cx| act(&a, window, cx));
-        let strip = {
-            let action = strip;
-            div().absolute().left(layout.strip.left()).top(layout.strip.top()).w(layout.strip.size.width).h(layout.strip.size.height).child(action)
-        };
+        let strip = strip.on_action(on(move |t, a: &StripAction, w| t.strip_action(id, *a, w)));
+        let strip = div().absolute().left(layout.strip.left()).top(layout.strip.top()).w(layout.strip.size.width).h(layout.strip.size.height).child(strip);
 
-        // The panes: each a screen, drawn by view.rs.
         // Behind everything, the screen's background: the device pixel a
         // fractional scale leaves past the last pane's edge (at 1.5×, the
         // window's bottom row) is the terminal's colour, not black.
         let behind = view::screen_colors(&t.tab().session, &scheme).0;
-        let mut root = div().size_full().relative().bg(behind).key_context(SCREEN).track_focus(&focus);
-        root = root.on_key_down(cx.listener(move |t, e: &KeyDownEvent, window, cx| t.key_down(id, e, window, cx))).on_key_up(cx.listener(move |t, e: &KeyUpEvent, _, cx| t.key_up(id, e, cx)));
-        let p = theme::palette(cx);
-        let me = cx.weak_entity();
-        let bell = t.tab().bell.map(|at| at.elapsed().as_secs_f32()).filter(|a| *a < 0.15);
-        let flash_color = {
-            let [r, g, b, _] = self.look.panel_text;
-            gpui::Rgba { r: r as f32 / 255.0, g: g as f32 / 255.0, b: b as f32 / 255.0, a: 1.0 }
-        };
-        let group_chips: Vec<(SharedString, Hsla)> = t.groups.iter().map(|g| (SharedString::from(g.name.clone()), groups::color(g.color, &self.look))).collect();
-        let preedit = t.preedit.clone();
-        for &(i, pane, screen) in &layout.panes {
-            let tab = &t.tabs[i];
-            let shell = tab.session.id;
-            let active = i == t.active;
-            let source = tab.session.source();
-            let pane_cache = tab.pane.clone();
-            let hover = tab.mouse.hover.clone();
-            let scheme = scheme.clone();
-            let head = several.then(|| {
-                (
-                    tab.title.clone(),
-                    tab_icon(tab.rang, tab.agent.map(|(_, s)| s), tab.attention, tab.keep_going.is_some(), tab.auto_approve.is_some()),
-                    tab.group.and_then(|g| group_chips.get(g).cloned()),
-                )
-            });
-            let dim = (several && !active).then(|| view::screen_colors(&tab.session, &scheme).0);
-            let preedit = preedit.clone().filter(|_| active);
-            let input = active.then(|| (view.clone(), focus.clone()));
-            let stop_to = me.clone();
-            let me = me.clone();
-            let el = canvas(
-                move |_, window, _| window.insert_hitbox(screen, HitboxBehavior::Normal),
-                move |_, hitbox: Hitbox, window, cx| {
-                    if let Some((title, icon, group)) = &head {
-                        pane_head(window, cx, pane, pane_head_height(side), title, icon, active, group.clone());
-                        // Panes after the first are where dividing the
-                        // window puts them: level with the strip's tabs
-                        // only by chance.
-                        olo_ui::review::own_grid(window, pane);
+        // The screens: a view of their own (`render_panes`).
+        let panes = match &sh.panes {
+            Some(p) => {
+                p.update(cx, |p, cx| {
+                    if p.focused != focused {
+                        p.focused = focused;
+                        cx.invalidate();
                     }
-                    // Its lines are a cell apart, not on the window's grid.
-                    olo_ui::review::own_grid(window, screen);
-                    let paint = view::Paint { source: &source, scheme: &scheme, metrics, focused: focused && active, hover: hover.as_ref(), preedit: preedit.as_deref() };
-                    window.with_content_mask(Some(gpui::ContentMask { bounds: screen }), |window| view::paint(window, cx, screen, paint, &pane_cache));
-                    if let Some(back) = dim {
-                        // The panes not typed into, dimmed a little.
-                        window.paint_quad(gpui::fill(screen, back.opacity(0.3)));
-                    }
-                    if let Some((view, focus)) = &input {
-                        window.handle_input(focus, ElementInputHandler::new(screen, view.clone()), cx);
-                        // Files dropped on it are typed as their paths,
-                        // text as if pasted.
-                        if hitbox.is_hovered(window)
-                            && let Some(o) = window.drop_offer().filter(|o| o.copy)
-                        {
-                            let mime = if o.types.iter().any(|t| t == "text/uri-list") {
-                                Some("text/uri-list")
-                            } else {
-                                ["text/plain;charset=utf-8", "UTF8_STRING", "text/plain"].into_iter().find(|t| o.types.iter().any(|x| x == t))
-                            };
-                            if let Some(mime) = mime {
-                                window.accept_drop("screen", mime, gpui::DragAction::Copy);
-                                let p = theme::palette(cx);
-                                window.paint_quad(gpui::outline(style::inset(window, screen, 1.0), style::c(p.keyboard_navigation), gpui::BorderStyle::Solid).border_widths(px(2.0)));
-                            }
-                        }
-                    }
-                    let link = hover.as_ref().is_some_and(|h| h.target.is_some());
-                    window.set_cursor_style(if link { CursorStyle::PointingHand } else { CursorStyle::IBeam }, &hitbox);
-                    // The pointer: to Terminal, with which shell it's over.
-                    let (m1, h1) = (me.clone(), hitbox.clone());
-                    window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {
-                        if phase == DispatchPhase::Bubble && h1.is_hovered(window) {
-                            let _ = m1.update(cx, |t, cx| t.pane_event(id, shell, screen, PaneEvent::Down(e.clone()), window, cx));
-                        }
-                    });
-                    let m2 = me.clone();
-                    window.on_mouse_event(move |e: &MouseMoveEvent, phase, window, cx| {
-                        if phase == DispatchPhase::Capture {
-                            let _ = m2.update(cx, |t, cx| t.pane_event(id, shell, screen, PaneEvent::Move(e.clone()), window, cx));
-                        }
-                    });
-                    let m3 = me.clone();
-                    window.on_mouse_event(move |e: &MouseUpEvent, phase, window, cx| {
-                        if phase == DispatchPhase::Capture {
-                            let _ = m3.update(cx, |t, cx| t.pane_event(id, shell, screen, PaneEvent::Up(e.clone()), window, cx));
-                        }
-                    });
-                    let (m4, h4) = (me.clone(), hitbox.clone());
-                    window.on_mouse_event(move |e: &ScrollWheelEvent, phase, window, cx| {
-                        if phase == DispatchPhase::Bubble && h4.is_hovered(window) {
-                            let _ = m4.update(cx, |t, cx| t.pane_event(id, shell, screen, PaneEvent::Wheel(e.clone()), window, cx));
-                        }
-                    });
-                },
-            )
-            .absolute()
-            .inset_0();
-            root = root.child(el);
-            // Its scrollback: a slim bar over the screen's right edge, there
-            // when the pointer comes near or it scrolls; its thumb drags the
-            // view, a click in its track pages (Ben, 2026-11-03).
-            let (top, shown, total) = {
-                use alacritty_terminal::grid::Dimensions as _;
-                let term = tab.session.term.lock();
-                let history = term.grid().history_size() as f32;
-                let rows = term.screen_lines() as f32;
-                (history - term.grid().display_offset() as f32, rows, history + rows)
-            };
-            let term = tab.session.term.clone();
-            let bar = widgets::SlimScrollBar::new(("terminal-scroll", shell as usize), top, shown, total).on_scroll(move |to, window, _| {
-                use alacritty_terminal::grid::{Dimensions as _, Scroll};
-                let mut t = term.lock();
-                let history = t.grid().history_size();
-                let (want, now) = (history.saturating_sub(to.round().max(0.0) as usize), t.grid().display_offset());
-                if want != now {
-                    t.scroll_display(Scroll::Delta(want as i32 - now as i32));
-                    drop(t);
-                    window.refresh();
-                }
-            });
-            root = root.child(div().absolute().left(screen.left()).top(screen.top()).w(screen.size.width).h(screen.size.height).child(bar));
-            // Auto Approve waiting on a question: its countdown, in the
-            // pane's corner, with Stop.
-            if let Some(p) = tab.auto_approve.as_ref().and_then(|a| a.pending.as_ref()).filter(|p| !p.stopped) {
-                let left = p.due.saturating_duration_since(std::time::Instant::now()).as_secs_f32().ceil() as u32;
-                root = root.child(auto_approve_box(screen, shell, left, stop_to));
+                });
+                p
             }
-        }
+            None => sh.panes.insert(cx.new_view(|_| Panes { id, focused, dropping: false, ime: None })),
+        };
+        let mut root = div()
+            .size_full()
+            .relative()
+            .bg(behind)
+            .track_focus(&sh.focus)
+            .on_text_input(cx.text_input())
+            .on_key_down(on(move |t, e: &KeyDownEvent, w| t.key_down(id, e, w)))
+            .on_key_up(on(move |t, e: &KeyUpEvent, w| t.key_up(id, e, w)))
+            .child(div().absolute().inset_0().child(panes));
+        let Some(Win::Term(t)) = self.windows.get(&id) else { return div() };
         // Between rows, the divider and the head of the row under it drag
         // the rows' heights (the pointer shows it on the divider); clicked,
         // the pane there is picked. Between panes side by side, the line
-        // drags their widths. (The cursor is on a hitbox of its own: one
-        // set as the window was drawn showed only when the pointer had
-        // been there then.)
+        // drags their widths.
         let dividers: Vec<(Divider, Bounds<Pixels>, Bounds<Pixels>)> = {
             let mut v = Vec::new();
             for (r, row) in layout.rows.iter().enumerate().skip(1) {
@@ -1083,102 +1235,202 @@ impl Terminal {
             v
         };
         for (divider, press, line) in dividers {
-            let me = me.clone();
-            let el = canvas(
-                move |_, window, _| (window.insert_hitbox(press, HitboxBehavior::Normal), window.insert_hitbox(line, HitboxBehavior::Normal)),
-                move |_, (hitbox, line_hitbox): (Hitbox, Hitbox), window, cx| {
-                    let (cursor, name) = match divider {
-                        Divider::Row(r) => (CursorStyle::ResizeUpDown, format!("Row Height {r}")),
-                        Divider::Pane(r, c) => (CursorStyle::ResizeLeftRight, format!("Pane Width {r}.{c}")),
-                    };
-                    window.set_cursor_style(cursor, &line_hitbox);
-                    olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Splitter", name: Some(name.into()), bounds: press, enabled: true, ..Default::default() });
-                    let (m1, h1) = (me.clone(), hitbox.clone());
-                    window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {
-                        if phase == DispatchPhase::Bubble && h1.is_hovered(window) {
-                            cx.stop_propagation();
-                            let _ = m1.update(cx, |t, cx| t.divider_down(id, divider, e.position, e.button, window, cx));
-                        }
-                    });
-                },
-            )
-            .absolute()
-            .inset_0();
-            root = root.child(el);
+            let (cursor, name) = match divider {
+                Divider::Row(r) => (CursorStyle::ResizeUpDown, format!("Row Height {r}")),
+                Divider::Pane(r, c) => (CursorStyle::ResizeLeftRight, format!("Pane Width {r}.{c}")),
+            };
+            let mark = canvas(move |g, _| {
+                g.set_cursor_style(cursor, line);
+                g.agent(olo_kit::agent::Node { role: "Splitter", name: Some(name.clone().into()), bounds: press, enabled: true, ..Default::default() });
+            })
+            .size_full();
+            root = root.child(
+                div()
+                    .absolute()
+                    .left(press.left())
+                    .top(press.top())
+                    .w(press.size.width)
+                    .h(press.size.height)
+                    .on_any_mouse_down(on(move |t, e: &MouseDownEvent, w| {
+                        w.stop_propagation();
+                        t.divider_down(id, divider, e.position, e.button, w);
+                    }))
+                    .child(mark),
+            );
         }
         // A divider being dragged: what it divides follows the pointer
-        // till the button goes up, listened for in each frame while it
-        // lasts (a frame's listeners are that frame's: one taken at the
-        // press followed the first move only).
-        let dragging = match self.windows.get(&id) {
-            Some(Win::Term(t)) => t.dragging.as_ref().map(|d| matches!(d.across, Across::Rows(_))),
-            _ => None,
-        };
-        if let Some(rows) = dragging {
-            let me = me.clone();
-            let el = canvas(
-                |_, _, _| {},
-                move |_, _, window, _| {
-                    window.set_window_cursor_style(if rows { CursorStyle::ResizeUpDown } else { CursorStyle::ResizeLeftRight });
-                    let m1 = me.clone();
-                    window.on_mouse_event(move |e: &MouseMoveEvent, phase, _, cx| {
-                        if phase == DispatchPhase::Capture {
-                            let along = if rows { e.position.y } else { e.position.x };
-                            let _ = m1.update(cx, |t, cx| t.divider_drag(id, e.dragging().then_some(along), cx));
-                        }
-                    });
-                    let m2 = me.clone();
-                    window.on_mouse_event(move |_: &MouseUpEvent, phase, _, cx| {
-                        if phase == DispatchPhase::Capture {
-                            let _ = m2.update(cx, |t, cx| t.divider_drag(id, None, cx));
-                        }
-                    });
-                },
-            )
+        // till the button goes up, wherever in the window it goes.
+        if let Some(rows) = t.dragging.as_ref().map(|d| matches!(d.across, Across::Rows(_))) {
+            let everywhere = canvas(move |g, b| g.set_cursor_style(if rows { CursorStyle::ResizeUpDown } else { CursorStyle::ResizeLeftRight }, b)).absolute().inset_0();
+            root = root
+                .on_window_mouse_move(on(move |t, e: &MouseMoveEvent, _| {
+                    let along = if rows { e.position.y } else { e.position.x };
+                    t.divider_drag(id, (e.pressed_button == Some(MouseButton::Left)).then_some(along));
+                }))
+                .on_window_mouse_up(on(move |t, _: &MouseUpEvent, _| t.divider_drag(id, None)))
+                .child(everywhere);
+        }
+        // Visual bell: a brief flash, fading by the clock (drawn again
+        // each frame while it lasts, it alone).
+        if let Some(rang) = t.tab().bell.filter(|at| at.elapsed().as_secs_f32() < 0.15) {
+            let [r, g, b, _] = self.look.panel_text;
+            let color = Rgba { r: r as f32 / 255.0, g: g as f32 / 255.0, b: b as f32 / 255.0, a: 1.0 };
+            let area = layout.area;
+            root = root.child(
+                canvas(move |g, _| {
+                    let age = rang.elapsed().as_secs_f32();
+                    if age < 0.15 {
+                        let a = (1.0 - age / 0.15) * 60.0 / 255.0 / 2.0;
+                        g.paint_quad(fill(area, Rgba { a, ..color }));
+                        g.paint_again_within(0.0);
+                    }
+                })
+                .absolute()
+                .inset_0(),
+            );
+        }
+        let menus = self.menus(id).unwrap_or_default();
+        let bar = MenuBar::raw(cx, menus);
+        root.child(strip).child(div().absolute().top_0().left_0().right_0().child(bar))
+    }
+
+    /// A terminal window's screens: each drawn by view.rs, with its head
+    /// when they're tiled, its scrollback's bar and Auto Approve's
+    /// countdown; the pointer on each goes to Terminal with which shell
+    /// it's over.
+    pub(crate) fn render_panes(&mut self, id: WindowId, focused: bool, dropping: bool, cx: &mut olo_kit::Cx<Panes>) -> Element {
+        let scale = cx.scale_factor();
+        let vs = cx.viewport_size();
+        let metrics = self.metrics_for(scale);
+        let scheme = self.scheme();
+        let side = self.settings.side_tabs;
+        let Some(layout) = self.lay_out(id, vs, scale, &metrics) else { return div() };
+        let Some(Win::Term(t)) = self.windows.get(&id) else { return div() };
+        // (Every pane drawn has taken its wake-up, the tiles too.)
+        for &(i, _, _) in &layout.panes {
+            t.tabs[i].session.woke();
+        }
+        let several = layout.panes.len() > 1;
+        let group_chips: Vec<(SharedString, Hsla)> = t.groups.iter().map(|g| (SharedString::from(g.name.clone()), groups::color(g.color, &self.look))).collect();
+        let preedit = t.preedit.clone();
+        let mut root = div().size_full().relative();
+        for &(i, pane, screen) in &layout.panes {
+            let tab = &t.tabs[i];
+            let shell = tab.session.id;
+            let active = i == t.active;
+            let source = tab.session.source();
+            let pane_cache = tab.pane.clone();
+            let hover = tab.mouse.hover.clone();
+            let scheme = scheme.clone();
+            let head = several.then(|| {
+                (
+                    tab.title.clone(),
+                    tab_icon(tab.rang, tab.agent.map(|(_, s)| s), tab.attention, tab.keep_going.is_some(), tab.auto_approve.is_some()),
+                    tab.group.and_then(|g| group_chips.get(g).cloned()),
+                )
+            });
+            let dim = (several && !active).then(|| view::screen_colors(&tab.session, &scheme).0);
+            let preedit = preedit.clone().filter(|_| active);
+            let link = hover.as_ref().is_some_and(|h| h.target.is_some());
+            let dropping = dropping && active;
+            let el = canvas(move |g, _| {
+                if let Some((title, icon, group)) = &head {
+                    pane_head(g, pane, pane_head_height(side), title, icon, active, group.clone());
+                    // Panes after the first are where dividing the
+                    // window puts them: level with the strip's tabs
+                    // only by chance.
+                    olo_kit::review::own_grid(g, pane);
+                }
+                // Its lines are a cell apart, not on the window's grid.
+                olo_kit::review::own_grid(g, screen);
+                let paint = view::Paint { source: &source, scheme: &scheme, metrics, focused: focused && active, hover: hover.as_ref(), preedit: preedit.as_deref() };
+                let cache = pane_cache.lock().unwrap_or_else(|e| e.into_inner());
+                g.with_content_mask(Some(olo_kit::ContentMask { bounds: screen }), |g| view::paint(g, screen, paint, &cache));
+                drop(cache);
+                if let Some(back) = dim {
+                    // The panes not typed into, dimmed a little.
+                    g.paint_quad(fill(screen, back.opacity(0.3)));
+                }
+                if dropping {
+                    // Files dropped on it are typed as their paths,
+                    // text as if pasted.
+                    let p = theme::palette();
+                    let inside = style::inset(g, screen, 1.0);
+                    g.paint_quad(outline(inside, style::c(p.keyboard_navigation), olo_kit::BorderStyle::Solid).border_widths(px(2.0)));
+                }
+                g.set_cursor_style(if link { CursorStyle::PointingHand } else { CursorStyle::IBeam }, screen);
+            })
             .absolute()
             .inset_0();
             root = root.child(el);
-        }
-        // Visual bell: a brief flash.
-        if let Some(age) = bell {
-            let a = (1.0 - age / 0.15) * 60.0 / 255.0 / 2.0;
-            let area = layout.area;
-            root = root.child(canvas(|_, _, _| {}, move |_, _, window, _| window.paint_quad(gpui::fill(area, gpui::Rgba { a, ..flash_color }))).absolute().inset_0());
-            window.request_animation_frame();
-        }
-        let menus = self.menus(id).unwrap_or_default();
-        let bar = MenuBar::new(menus, {
-            let me = me.clone();
-            move |cmd, _, cx| {
-                let cmd = cmd.to_owned();
-                let _ = me.update(cx, |t, cx| t.command(cx, id, &cmd));
+            // The pointer on the screen: presses and the wheel over it;
+            // moves and releases wherever in the window (a selection
+            // dragged past its edge, a button let go outside).
+            root = root.child(
+                div()
+                    .absolute()
+                    .left(screen.left())
+                    .top(screen.top())
+                    .w(screen.size.width)
+                    .h(screen.size.height)
+                    .on_any_mouse_down(on(move |t, e: &MouseDownEvent, w| t.pane_event(id, shell, screen, PaneEvent::Down(e.clone()), w)))
+                    .on_window_mouse_move(on(move |t, e: &MouseMoveEvent, w| t.pane_event(id, shell, screen, PaneEvent::Move(e.clone()), w)))
+                    .on_window_mouse_up(on(move |t, e: &MouseUpEvent, w| t.pane_event(id, shell, screen, PaneEvent::Up(e.clone()), w)))
+                    .on_scroll_wheel(on(move |t, e: &ScrollWheelEvent, w| t.pane_event(id, shell, screen, PaneEvent::Wheel(e.clone()), w))),
+            );
+            // Its scrollback: a slim bar over the screen's right edge, there
+            // when the pointer comes near or it scrolls; its thumb drags the
+            // view, a click in its track pages (Ben, 2026-11-03).
+            let (top, shown, total) = {
+                use alacritty_terminal::grid::Dimensions as _;
+                let term = tab.session.term.lock();
+                let history = term.grid().history_size() as f32;
+                let rows = term.screen_lines() as f32;
+                (history - term.grid().display_offset() as f32, rows, history + rows)
+            };
+            let term = tab.session.term.clone();
+            let bar = widgets::SlimScrollBar::new(SharedString::from(format!("terminal-scroll-{shell}")), top, shown, total).on_scroll(move |to: &f32, _| {
+                use alacritty_terminal::grid::{Dimensions as _, Scroll};
+                let mut t = term.lock();
+                let history = t.grid().history_size();
+                let (want, now) = (history.saturating_sub(to.round().max(0.0) as usize), t.grid().display_offset());
+                if want != now {
+                    t.scroll_display(Scroll::Delta(want as i32 - now as i32));
+                    drop(t);
+                    Cx.redraw_screens(id);
+                }
+            });
+            root = root.child(div().absolute().left(screen.left()).top(screen.top()).w(screen.size.width).h(screen.size.height).child(bar));
+            // Auto Approve waiting on a question: its countdown, in the
+            // pane's corner, with Stop.
+            if let Some(p) = tab.auto_approve.as_ref().and_then(|a| a.pending.as_ref()).filter(|p| !p.stopped) {
+                let left = p.due.saturating_duration_since(std::time::Instant::now()).as_secs_f32().ceil() as u32;
+                root = root.child(auto_approve_box(screen, shell, left));
             }
-        })
-        .raw();
-        let _ = p;
-        root.child(strip).child(div().absolute().top_0().left_0().right_0().child(bar)).into_any_element()
+        }
+        root
     }
 
     /// A key pressed in a terminal window.
-    fn key_down(&mut self, id: WindowId, e: &KeyDownEvent, window: &mut Window, cx: &mut Cx) {
+    fn key_down(&mut self, id: WindowId, e: &KeyDownEvent, w: &mut WindowCx) {
         let k = &e.keystroke;
         // The command key (⌘, with a Mac's keys: the right Ctrl, as
         // app_server sends it; with others, Ctrl itself).
-        let command = k.modifiers.control && (gpui::right_control_held() || !olo_kit_base::keys::command_key());
+        let command = k.modifiers.control && (olo_kit::right_control_held() || !olo_kit_base::keys::command_key());
         // ⌘ with a menu shortcut's key is the app's (⌘C arrives as
         // Ctrl+Shift+C): left to the window's menu bar.
-        if command && menu::shortcut_command(window, cx, k).is_some() {
+        if command && menu::shortcut_command(w, k).is_some() {
             return;
         }
         let Some(Win::Term(t)) = self.windows.get_mut(&id) else { return };
         // Ctrl+Tab and Ctrl+Page Up/Down go through the tabs, as in other
         // terminals; the shell never sees them.
-        let step = olo_ui::tab_step(k);
+        let step = olo_kit::tab_step(k);
         if step != 0 && t.tabs.len() > 1 {
             let n = t.tabs.len() as i32;
             t.select((t.active as i32 + step).rem_euclid(n) as usize);
-            cx.stop_propagation();
-            cx.redraw(id);
+            w.stop_propagation();
+            Cx.redraw(id);
             return;
         }
         let mut key = view::Key::of(k);
@@ -1195,23 +1447,27 @@ impl Terminal {
         // (And a question Auto Approve waits on is the person's now.)
         let waiting = tab.auto_approve.as_ref().and_then(|a| a.pending.as_ref()).is_some_and(|p| !p.stopped).then_some(tab.session.id);
         if let Some(shell) = waiting {
-            self.auto_approve_stop(cx, shell);
+            self.auto_approve_stop(&mut Cx, shell);
         }
         let Some(Win::Term(t)) = self.windows.get_mut(&id) else { return };
         let tab = t.tab_mut();
         if view::key(&tab.session, key, true, e.is_held) {
-            tab.mouse.hover = None;
-            cx.stop_propagation();
-            cx.redraw(id);
-            self.typed(cx);
+            let hovered = tab.mouse.hover.take().is_some();
+            w.stop_propagation();
+            // (What it types comes back as the shell's output, which
+            // draws the screen; a link lit under the pointer goes now.)
+            if hovered {
+                Cx.redraw_screens(id);
+            }
+            self.typed(&mut Cx);
         }
     }
 
-    fn key_up(&mut self, id: WindowId, e: &KeyUpEvent, cx: &mut Cx) {
+    fn key_up(&mut self, id: WindowId, e: &KeyUpEvent, w: &mut WindowCx) {
         let Some(Win::Term(t)) = self.windows.get(&id) else { return };
         let key = view::Key::of(&e.keystroke);
         if view::key(&t.tab().session, key, false, false) {
-            cx.stop_propagation();
+            w.stop_propagation();
         }
     }
 
@@ -1229,17 +1485,10 @@ impl Terminal {
         let Some(Win::Term(t)) = self.windows.get_mut(&id) else { return };
         let tab = t.tab_mut();
         view::text(&tab.session, text);
-        tab.mouse.hover = None;
-        cx.redraw(id);
-        self.typed(cx);
-    }
-
-    /// The text an input method is composing in window `id`.
-    pub(crate) fn preedit(&self, id: WindowId) -> Option<&str> {
-        match self.windows.get(&id) {
-            Some(Win::Term(t)) => t.preedit.as_deref(),
-            _ => None,
+        if tab.mouse.hover.take().is_some() {
+            cx.redraw_screens(id);
         }
+        self.typed(cx);
     }
 
     pub(crate) fn set_preedit(&mut self, cx: &mut Cx, id: WindowId, text: Option<String>) {
@@ -1247,7 +1496,7 @@ impl Terminal {
             && t.preedit != text
         {
             t.preedit = text;
-            cx.redraw(id);
+            cx.redraw_screens(id);
         }
     }
 
@@ -1255,7 +1504,7 @@ impl Terminal {
     pub(crate) fn cursor_bounds(&self, id: WindowId) -> Option<Bounds<Pixels>> {
         let Some(Win::Term(t)) = self.windows.get(&id) else { return None };
         let m = self.metrics?;
-        let rect = t.tab().pane.bounds.get();
+        let rect = t.tab().pane.lock().unwrap_or_else(|e| e.into_inner()).bounds.get();
         let term = t.tab().session.term.try_lock_unfair()?;
         let c = term.grid().cursor.point;
         let offset = term.grid().display_offset() as i32;
@@ -1266,7 +1515,7 @@ impl Terminal {
 
     /// The pointer on the screen of tab `shell` of window `id`, drawn in
     /// `rect`.
-    fn pane_event(&mut self, id: WindowId, shell: u64, rect: Bounds<Pixels>, e: PaneEvent, window: &mut Window, cx: &mut Cx) {
+    fn pane_event(&mut self, id: WindowId, shell: u64, rect: Bounds<Pixels>, e: PaneEvent, w: &mut WindowCx) {
         let Some(m) = self.metrics else { return };
         let Some(Win::Term(t)) = self.windows.get_mut(&id) else { return };
         let Some(i) = t.position(shell) else { return };
@@ -1276,7 +1525,7 @@ impl Terminal {
             PaneEvent::Up(e) => e.modifiers,
             PaneEvent::Wheel(e) => e.modifiers,
         };
-        let command = modifiers.control && (gpui::right_control_held() || !olo_kit_base::keys::command_key());
+        let command = modifiers.control && (olo_kit::right_control_held() || !olo_kit_base::keys::command_key());
         let mods = Mods::of(&modifiers, command);
         let mut out = view::Output { paste: false, context_menu: None, open: None };
         // (Only a press asks: a pointer moving costs nothing more.)
@@ -1290,10 +1539,12 @@ impl Terminal {
             }
         };
         let mut redraw = false;
+        let mut picked = false;
         // Where the pointer is over the rows as drawn (scrolled by the
         // point, or stretched: below their places).
-        let shift = px(tab.pane.shift.get());
-        let on_rows = |p: gpui::Point<Pixels>| point(p.x, p.y - shift);
+        let pane = tab.pane.clone();
+        let shift = px(pane.lock().unwrap_or_else(|e| e.into_inner()).shift.get());
+        let on_rows = |p: Point<Pixels>| point(p.x, p.y - shift);
         match e {
             PaneEvent::Down(e) => {
                 tab.mouse.hover_at(&tab.session, &m, rect, Some(on_rows(e.position)), mods.command, &cwd);
@@ -1302,6 +1553,7 @@ impl Terminal {
                 // A press on a pane not typed into picks it.
                 if several && i != t.active {
                     t.select(i);
+                    picked = true;
                 }
             }
             PaneEvent::Move(e) => {
@@ -1312,23 +1564,31 @@ impl Terminal {
                 redraw |= tab.mouse.moved(&tab.session, &m, rect, on_rows(e.position), e.pressed_button == Some(MouseButton::Left), mods);
             }
             PaneEvent::Up(e) => {
+                // (Only what was pressed here, or is over it.)
+                if !rect.contains(&e.position) && !tab.mouse.held() {
+                    return;
+                }
                 tab.mouse.up(&tab.session, &m, rect, on_rows(e.position), e.button, mods);
                 redraw = true;
             }
             PaneEvent::Wheel(e) => {
                 let dy = f32::from(e.delta.pixel_delta(px(m.cell.1)).y);
-                tab.mouse.wheel(&tab.session, &tab.pane, &m, rect, on_rows(e.position), dy, (e.kind, e.touch_phase), mods);
+                let cache = pane.lock().unwrap_or_else(|e| e.into_inner());
+                tab.mouse.wheel(&tab.session, &cache, &m, rect, on_rows(e.position), dy, (e.kind, e.touch_phase), mods);
                 redraw = true;
             }
         }
-        if redraw {
-            cx.redraw(id);
+        if picked {
+            // (The strip's selected tab, the heads: all of it.)
+            Cx.redraw(id);
+        } else if redraw {
+            Cx.redraw_screens(id);
         }
         if let Some(target) = &out.open {
             crate::links::open(target);
         }
         if out.paste {
-            self.paste(cx, id);
+            self.paste(&mut Cx, id);
         }
         if let Some(pos) = out.context_menu {
             let Some(Win::Term(t)) = self.windows.get(&id) else { return };
@@ -1341,46 +1601,42 @@ impl Terminal {
                 .item("Clear Scrollback", "clear")
                 .separator()
                 .item(olo_kit_base::tracker::LABEL, olo_kit_base::tracker::COMMAND);
-            self.popup(id, menu, pos, window, cx);
+            self.popup(id, menu, pos, w);
         }
     }
 
     /// Opens `menu` at `pos` in window `id`; what's chosen is a command.
-    pub(crate) fn popup(&mut self, id: WindowId, mut menu: Menu, pos: gpui::Point<Pixels>, window: &mut Window, cx: &mut Cx) {
+    pub(crate) fn popup(&mut self, id: WindowId, mut menu: Menu, pos: Point<Pixels>, w: &mut WindowCx) {
         // The bar's keys as its MenuBar shows them (raw: Terminal's own).
         if let Some(mut bar) = self.menus(id) {
             menu::resolve(&mut bar, true);
             menu.keys_from(&bar);
         }
-        let me = cx.weak_entity();
-        menu::context_menu(window, cx, menu, pos, move |cmd, _, cx| {
+        menu::context_menu(w, menu, pos, move |cmd, _| {
             let cmd = cmd.to_owned();
-            let _ = me.update(cx, |t, cx| t.command(cx, id, &cmd));
+            terminal().command(&mut Cx, id, &cmd);
         });
     }
 
     /// The clipboard's text into the shell showing in window `id`, once
-    /// it's read (off the UI thread: `paste_item`).
-    pub(crate) fn paste(&mut self, cx: &mut Cx, id: WindowId) {
-        let read = cx.paste_item();
-        cx.spawn(async move |this, cx| {
-            let Some(text) = read.await.and_then(|c| c.text()) else { return };
-            let _ = this.update(cx, |me, cx| {
-                if let Some(Win::Term(t)) = me.windows.get(&id) {
-                    view::paste(&t.tab().session, &text);
-                    cx.redraw(id);
-                }
-            });
-        })
-        .detach();
+    /// it's read (off the looper: `paste_item`).
+    pub(crate) fn paste(&mut self, _: &mut Cx, id: WindowId) {
+        olo_kit::clipboard::paste_item(move |item| {
+            let Some(text) = item.and_then(|c| c.text()) else { return };
+            let t = terminal();
+            if let Some(Win::Term(w)) = t.windows.get(&id) {
+                view::paste(&w.tab().session, &text);
+                Cx.redraw_screens(id);
+            }
+        });
     }
 
     /// A divider in Tile All Tabs pressed: dragged, the rows (or the
     /// panes) either side grow and shrink; a row's clicked, the pane there
     /// is picked; the right button, the row's menu.
-    fn divider_down(&mut self, id: WindowId, divider: Divider, at: gpui::Point<Pixels>, button: MouseButton, window: &mut Window, cx: &mut Cx) {
+    fn divider_down(&mut self, id: WindowId, divider: Divider, at: Point<Pixels>, button: MouseButton, w: &mut WindowCx) {
         let Some(m) = self.metrics else { return };
-        let Some(layout) = self.lay_out(id, window, &m) else { return };
+        let Some(layout) = self.lay_out(id, w.viewport_size(), w.scale_factor(), &m) else { return };
         let least = least_pane(self.settings.side_tabs, &m);
         // (For a group's menu: the windows its tabs could go to.)
         let others = self.other_windows(id);
@@ -1397,7 +1653,7 @@ impl Terminal {
             };
             let menu = menu.item("Reset Pane Sizes", "tile-reset-heights").enabled(changed);
             let menu = if group.is_some() { self.worktrees_menu(id, menu) } else { menu };
-            return self.popup(id, menu, at, window, cx);
+            return self.popup(id, menu, at, w);
         }
         if button != MouseButton::Left {
             return;
@@ -1409,7 +1665,6 @@ impl Terminal {
                     && i != t.active
                 {
                     t.select(i);
-                    cx.redraw(id);
                 }
                 let keys: Vec<String> = layout.rows.iter().map(|row| row.key.clone()).collect();
                 let weights = keys.iter().map(|k| t.tile_heights.get(k).copied().unwrap_or(1.0)).collect();
@@ -1422,20 +1677,19 @@ impl Terminal {
                 DividerDrag { across: Across::Panes(row.key.clone()), at: c, from: f32::from(at.x), spans: row.cols.clone(), weights, least: least.0 }
             }
         };
-        // Followed till the button goes up (`divider_drag`, from the
-        // frames drawn meanwhile).
+        // Followed till the button goes up (`divider_drag`).
         t.dragging = Some(drag);
-        cx.redraw(id);
+        Cx.redraw(id);
     }
 
     /// The divider being dragged in window `id` with the pointer at
     /// `along` (its y between rows, its x between panes); None: let go.
-    fn divider_drag(&mut self, id: WindowId, along: Option<Pixels>, cx: &mut Cx) {
+    fn divider_drag(&mut self, id: WindowId, along: Option<Pixels>) {
         let Some(Win::Term(w)) = self.windows.get_mut(&id) else { return };
         let Some(d) = &w.dragging else { return };
         let Some(along) = along else {
             w.dragging = None;
-            cx.redraw(id);
+            Cx.redraw(id);
             return;
         };
         let new = drag_rows(&d.weights, &d.spans, d.at, f32::from(along) - d.from, d.least);
@@ -1450,12 +1704,12 @@ impl Terminal {
             Across::Panes(key) => w.tile_widths.insert(key.clone(), new.clone()).as_ref() != Some(&new),
         };
         if changed {
-            cx.redraw(id);
+            Cx.redraw(id);
         }
     }
 
     /// What was done to window `id`'s tab strip.
-    fn strip_action(&mut self, id: WindowId, action: StripAction, window: &mut Window, cx: &mut Cx) {
+    fn strip_action(&mut self, id: WindowId, action: StripAction, w: &mut WindowCx) {
         let side = self.settings.side_tabs;
         // (A tab or a group dragged along the strip: a step to undo.)
         let moved = match &action {
@@ -1463,13 +1717,14 @@ impl Terminal {
             StripAction::MoveGroup { .. } => Some(("Move Group", self.tab_order(id))),
             _ => None,
         };
-        self.strip_did(id, action, side, window, cx);
+        self.strip_did(id, action, side, w);
         if let Some((name, before)) = moved {
             self.tabs_moved(id, before, name);
         }
     }
 
-    fn strip_did(&mut self, id: WindowId, action: StripAction, side: bool, window: &mut Window, cx: &mut Cx) {
+    fn strip_did(&mut self, id: WindowId, action: StripAction, side: bool, w: &mut WindowCx) {
+        let cx = &mut Cx;
         // (For a group's menu: the windows its tabs could go to.)
         let others = if matches!(action, StripAction::Group(..)) { self.other_windows(id) } else { Vec::new() };
         let Some(Win::Term(t)) = self.windows.get_mut(&id) else { return };
@@ -1517,7 +1772,7 @@ impl Terminal {
                     menu = menu.item("Reset Pane Sizes", "tile-reset-heights").enabled(t.sizes_changed());
                 }
                 let menu = self.worktrees_menu(id, menu);
-                self.popup(id, menu, pos, window, cx);
+                self.popup(id, menu, pos, w);
             }
             // Pulled out of the strip: a window under the pointer, moving
             // with it till let go (onto another window's strip: in there).
@@ -1579,60 +1834,57 @@ impl Terminal {
                 } else {
                     menu
                 };
-                self.popup(id, menu, pos, window, cx);
+                self.popup(id, menu, pos, w);
             }
         }
     }
 
-    /// The Find window for terminal window `target`.
-    fn render_find(&mut self, id: WindowId, focus: FocusHandle, _: &mut Window, cx: &mut Cx) -> AnyElement {
-        let Some(Win::Find { field, .. }) = self.windows.get(&id) else { return div().into_any_element() };
-        let field = field.clone();
+    /// A small window's keys: Return its default button (`done(true)`),
+    /// Escape its Cancel.
+    fn sheet(sh: &Shell, done: fn(&mut Terminal, &mut Cx, WindowId, bool)) -> Element {
+        let id = sh.id;
+        div().size_full().track_focus(&sh.focus).on_key_down(on(move |t, e: &KeyDownEvent, w| {
+            if let Some(go) = alert_key(e) {
+                w.stop_propagation();
+                done(t, &mut Cx, id, go);
+            }
+        }))
+    }
+
+    /// The Find window for a terminal window.
+    fn render_find(&mut self, sh: &mut Shell, cx: &mut ShellCx) -> Element {
+        let id = sh.id;
+        let Some(field) = &sh.field else { return div() };
         let s = &self.search;
         let ready = !field.read(cx).text().is_empty();
-        let check = |label: &str, on: bool, f: fn(&mut crate::find::Search, bool), cx: &mut Cx| {
-            let set = cx.listener(move |t, v: &bool, _, cx| {
+        let check = |label: &str, on_now: bool, f: fn(&mut crate::find::Search, bool)| {
+            CheckBox::new(label.to_owned(), on_now).on_toggle(on(move |t, v: &bool, _| {
                 f(&mut t.search, *v);
-                cx.redraw(id);
-            });
-            CheckBox::new(label.to_owned(), on).on_toggle(move |v, window, cx| set(&v, window, cx))
+                Cx.redraw(id);
+            }))
         };
         let (case, words, wrap, back) = (s.case, s.words, s.wrap, s.backwards);
         let col = div()
             .flex()
             .flex_col()
             .gap(px(m::TIGHT))
-            .child(TextControl::new(field.clone()).label("Find:").divider(40.0))
+            .child(TextControl::new(cx, field).label("Find:").divider(40.0))
             .child(div().h(px(m::SPACING - m::TIGHT)))
-            .child(check("Case-sensitive", case, |s, v| s.case = v, cx))
-            .child(check("Whole words only", words, |s, v| s.words = v, cx))
-            .child(check("Wrap-around search", wrap, |s, v| s.wrap = v, cx))
-            .child(check("Search backwards", back, |s, v| s.backwards = v, cx));
-        let cancel = cx.listener(move |t, _: &(), _, cx| t.find_done(cx, id, false));
-        let go = cx.listener(move |t, _: &(), _, cx| t.find_done(cx, id, true));
+            .child(check("Case-sensitive", case, |s, v| s.case = v))
+            .child(check("Whole words only", words, |s, v| s.words = v))
+            .child(check("Wrap-around search", wrap, |s, v| s.wrap = v))
+            .child(check("Search backwards", back, |s, v| s.backwards = v));
         let row = widgets::button_row()
-            .child(Button::new("Cancel").on_click(move |window, cx| cancel(&(), window, cx)))
-            .child(Button::new("Find").default(true).enabled(ready).on_click(move |window, cx| go(&(), window, cx)));
-        div()
-            .size_full()
-            .key_context(widgets::alert::CONTEXT)
-            .track_focus(&focus)
-            .on_action(cx.listener(move |t, _: &widgets::alert::Default, _, cx| t.find_done(cx, id, true)))
-            .on_action(cx.listener(move |t, _: &widgets::alert::Cancel, _, cx| t.find_done(cx, id, false)))
-            .p(px(m::WINDOW_INSET))
-            .flex()
-            .flex_col()
-            .child(col)
-            .child(div().flex_1())
-            .child(row)
-            .into_any_element()
+            .child(Button::new("Cancel").on_click(on(move |t, _: &olo_kit::ClickEvent, _| t.find_done(&mut Cx, id, false))))
+            .child(Button::new("Find").default(true).enabled(ready).on_click(on(move |t, _: &olo_kit::ClickEvent, _| t.find_done(&mut Cx, id, true))));
+        Terminal::sheet(sh, Terminal::find_done).p(px(m::WINDOW_INSET)).flex().flex_col().child(col).child(div().flex_1()).child(row)
     }
 
     /// The Find window answered: search (and close it) or just close it.
     pub(crate) fn find_done(&mut self, cx: &mut Cx, id: WindowId, go: bool) {
-        let Some(Win::Find { target, field }) = self.windows.get(&id) else { return };
+        let Some(Win::Find { target }) = self.windows.get(&id) else { return };
         let target = *target;
-        let text = field.read(cx).text().to_owned();
+        let text = cx.field_text(id);
         if go && text.is_empty() {
             return;
         }
@@ -1645,142 +1897,102 @@ impl Terminal {
         }
     }
 
-    /// A text field for one of Terminal's windows, with `text`; Return in
-    /// it is the window's default button.
-    pub(crate) fn field(cx: &mut Cx, text: &str, build: impl FnOnce(TextField) -> TextField) -> Entity<TextField> {
-        let f = widgets::text_field(cx, build);
-        let text = text.to_owned();
-        f.update(cx, |f, cx| f.set_text(text, cx));
-        f
-    }
-
     /// The Group window: a name and a colour for a group.
-    fn render_name_group(&mut self, id: WindowId, focus: FocusHandle, window: &mut Window, cx: &mut Cx) -> AnyElement {
-        let Some(Win::NameGroup { name, color, .. }) = self.windows.get(&id) else { return div().into_any_element() };
-        let (name, color) = (name.clone(), *color);
-        let _ = window;
+    fn render_name_group(&mut self, sh: &mut Shell, cx: &mut ShellCx) -> Element {
+        let id = sh.id;
+        let Some(Win::NameGroup { color, .. }) = self.windows.get(&id) else { return div() };
+        let Some(name) = &sh.field else { return div() };
+        let color = *color;
         let ready = !name.read(cx).text().trim().is_empty();
         let look = self.look.clone();
-        let me = cx.weak_entity();
         // The colours, as swatches; the chosen one on the selection.
-        let swatches = canvas(
-            |_, _, _| {},
-            move |b, _, window, cx| {
-                let p = theme::palette(cx);
-                style::label(window, cx, b.left(), b.center().y, style::Align::Left, "Color:", style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::c(p.panel_text));
-                for i in 0..groups::COLORS.len() {
-                    let r = Bounds { origin: point(b.left() + px(50.0 + i as f32 * (SWATCH + m::SPACING)), b.top()), size: size(px(SWATCH), px(SWATCH)) };
-                    if color == i {
-                        let ring = Bounds::centered_at(r.center(), size(px(SWATCH + 2.0), px(SWATCH + 2.0)));
-                        let (fill, edge) = (style::c(style::lit_ground(&p, p.panel_background)), style::c(p.selection_edge()));
-                        window.paint_quad(gpui::quad(ring, px(SWATCH / 2.0 + 1.0), fill, px(1.0), edge, gpui::BorderStyle::Solid));
-                    }
-                    let dot = Bounds::centered_at(r.center(), size(px(SWATCH - 6.0), px(SWATCH - 6.0)));
-                    window.paint_quad(gpui::fill(dot, groups::color(i, &look)).corner_radii(px(SWATCH / 2.0 - 3.0)));
-                    olo_ui::agent::record(
-                        window,
-                        cx,
-                        olo_ui::agent::Node {
-                            role: "RadioButton",
-                            name: Some(groups::COLORS[i].name().into()),
-                            bounds: r,
-                            enabled: true,
-                            clickable: true,
-                            selected: Some(color == i),
-                            ..Default::default()
-                        },
-                    );
-                    let me = me.clone();
-                    window.on_mouse_event(move |e: &MouseDownEvent, phase, _, cx| {
-                        if phase == DispatchPhase::Bubble && e.button == MouseButton::Left && r.contains(&e.position) {
-                            let _ = me.update(cx, |t, cx| {
-                                if let Some(Win::NameGroup { color, .. }) = t.windows.get_mut(&id) {
-                                    *color = i;
-                                }
-                                cx.redraw(id);
-                            });
-                        }
-                    });
+        let swatch = |b: Bounds<Pixels>, i: usize| Bounds { origin: point(b.left() + px(50.0 + i as f32 * (SWATCH + m::SPACING)), b.top()), size: size(px(SWATCH), px(SWATCH)) };
+        let swatches = canvas(move |g, b| {
+            let p = theme::palette();
+            style::label(g, b.left(), b.center().y, style::Align::Left, "Color:", style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::c(p.panel_text));
+            for i in 0..groups::COLORS.len() {
+                let r = swatch(b, i);
+                if color == i {
+                    let ring = Bounds::centered_at(r.center(), size(px(SWATCH + 2.0), px(SWATCH + 2.0)));
+                    let (ground, edge) = (style::c(style::lit_ground(&p, p.panel_background)), style::c(p.selection_edge()));
+                    g.paint_quad(quad(ring, px(SWATCH / 2.0 + 1.0), ground, px(1.0), edge, olo_kit::BorderStyle::Solid));
                 }
-            },
-        )
+                let dot = Bounds::centered_at(r.center(), size(px(SWATCH - 6.0), px(SWATCH - 6.0)));
+                g.paint_quad(fill(dot, groups::color(i, &look)).corner_radii(px(SWATCH / 2.0 - 3.0)));
+                g.agent(olo_kit::agent::Node {
+                    role: "RadioButton",
+                    name: Some(groups::COLORS[i].name().into()),
+                    bounds: r,
+                    enabled: true,
+                    clickable: true,
+                    selected: Some(color == i),
+                    ..Default::default()
+                });
+            }
+        })
+        .paint_key(style::key(color))
         .h(px(SWATCH))
-        .w_full();
-        let cancel = cx.listener(move |t, _: &(), _, cx| t.name_group_done(cx, id, false));
-        let ok = cx.listener(move |t, _: &(), _, cx| t.name_group_done(cx, id, true));
+        .w_full()
+        .on_mouse_down(
+            MouseButton::Left,
+            on(move |t, e: &MouseDownEvent, w| {
+                let b = w.listener_bounds();
+                let Some(i) = (0..groups::COLORS.len()).find(|&i| swatch(b, i).contains(&e.position)) else { return };
+                if let Some(Win::NameGroup { color, .. }) = t.windows.get_mut(&id) {
+                    *color = i;
+                }
+                Cx.redraw(id);
+            }),
+        );
         let row = widgets::button_row()
-            .child(Button::new("Cancel").on_click(move |window, cx| cancel(&(), window, cx)))
-            .child(Button::new("OK").default(true).enabled(ready).on_click(move |window, cx| ok(&(), window, cx)));
-        div()
-            .size_full()
-            .key_context(widgets::alert::CONTEXT)
-            .track_focus(&focus)
-            .on_action(cx.listener(move |t, _: &widgets::alert::Default, _, cx| t.name_group_done(cx, id, true)))
-            .on_action(cx.listener(move |t, _: &widgets::alert::Cancel, _, cx| t.name_group_done(cx, id, false)))
+            .child(Button::new("Cancel").on_click(on(move |t, _: &olo_kit::ClickEvent, _| t.name_group_done(&mut Cx, id, false))))
+            .child(Button::new("OK").default(true).enabled(ready).on_click(on(move |t, _: &olo_kit::ClickEvent, _| t.name_group_done(&mut Cx, id, true))));
+        Terminal::sheet(sh, Terminal::name_group_done)
             .p(px(m::WINDOW_INSET))
             .flex()
             .flex_col()
-            .child(TextControl::new(name).label("Name:").divider(50.0))
+            .child(TextControl::new(cx, name).label("Name:").divider(50.0))
             .child(div().h(px(2.0 * m::SPACING)))
             .child(swatches)
             .child(div().flex_1())
             .child(row)
-            .into_any_element()
     }
 
     /// Keep It Going ▸ Custom Message…: what Keep It Going says to one
     /// tab's agent, Preferences' for every tab under it.
-    fn render_keep_going_message(&mut self, id: WindowId, focus: FocusHandle, cx: &mut Cx) -> AnyElement {
-        let Some(Win::KeepGoingMessage { about, field, .. }) = self.windows.get(&id) else { return div().into_any_element() };
-        let (about, field) = (about.clone(), field.clone());
-        let p = theme::palette(cx);
+    fn render_keep_going_message(&mut self, sh: &mut Shell, cx: &mut ShellCx) -> Element {
+        let id = sh.id;
+        let Some(Win::KeepGoingMessage { about, .. }) = self.windows.get(&id) else { return div() };
+        let Some(field) = &sh.field else { return div() };
+        let about = about.clone();
+        let p = theme::palette();
         let default = crate::keep_going_note(&self.keep_going_says);
-        let cancel = cx.listener(move |t, _: &(), _, cx| t.keep_going_message_done(cx, id, false));
-        let ok = cx.listener(move |t, _: &(), _, cx| t.keep_going_message_done(cx, id, true));
         let row = widgets::button_row()
-            .child(Button::new("Cancel").on_click(move |window, cx| cancel(&(), window, cx)))
-            .child(Button::new("Keep It Going").default(true).on_click(move |window, cx| ok(&(), window, cx)));
-        div()
-            .size_full()
-            .key_context(widgets::alert::CONTEXT)
-            .track_focus(&focus)
-            .on_action(cx.listener(move |t, _: &widgets::alert::Default, _, cx| t.keep_going_message_done(cx, id, true)))
-            .on_action(cx.listener(move |t, _: &widgets::alert::Cancel, _, cx| t.keep_going_message_done(cx, id, false)))
-            .child(
-                widgets::AlertFrame::new("terminal")
-                    .child(widgets::alert_title("Keep It Going"))
-                    .child(div().h(px(m::TIGHT)).flex_shrink_0())
-                    .child(widgets::paragraph(about))
-                    .child(div().h(px(m::SPACING)).flex_shrink_0())
-                    .child(TextControl::new(field))
-                    .child(div().h(px(m::TIGHT)).flex_shrink_0())
-                    .child(widgets::paragraph(default).text_color(style::disabled_text(&p)))
-                    .child(div().flex_1().min_h(px(m::SPACING)))
-                    .child(row),
-            )
-            .into_any_element()
+            .child(Button::new("Cancel").on_click(on(move |t, _: &olo_kit::ClickEvent, _| t.keep_going_message_done(&mut Cx, id, false))))
+            .child(Button::new("Keep It Going").default(true).on_click(on(move |t, _: &olo_kit::ClickEvent, _| t.keep_going_message_done(&mut Cx, id, true))));
+        Terminal::sheet(sh, Terminal::keep_going_message_done).child(
+            widgets::AlertFrame::new("terminal")
+                .child(widgets::alert::alert_title("Keep It Going"))
+                .child(div().h(px(m::TIGHT)).flex_shrink_0())
+                .child(widgets::paragraph(about))
+                .child(div().h(px(m::SPACING)).flex_shrink_0())
+                .child(TextControl::new(cx, field))
+                .child(div().h(px(m::TIGHT)).flex_shrink_0())
+                .child(widgets::paragraph(default).text_color(style::disabled_text(&p)))
+                .child(div().flex_1().min_h(px(m::SPACING)))
+                .child(row),
+        )
     }
 }
 
 /// A group colour's swatch.
 pub const SWATCH: f32 = 22.0;
 
-/// The keys a field typed into sends its window: Return is the default
-/// button's (`TextFieldEvent::Entered`).
-pub fn submit_on_enter(cx: &mut Cx, field: &Entity<TextField>, id: WindowId, f: fn(&mut Terminal, &mut Cx, WindowId)) {
-    cx.subscribe(field, move |t, _, e: &TextFieldEvent, cx| match e {
-        TextFieldEvent::Entered => f(t, cx, id),
-        TextFieldEvent::Changed => cx.redraw(id),
-        TextFieldEvent::Typed(_) => {}
-    })
-    .detach();
-}
-
 #[cfg(test)]
 mod tile_tests {
-    use olo_ui::gpui::{Bounds, point, px};
+    use olo_kit::{Bounds, point, px};
 
-    fn rect(x0: f32, y0: f32, x1: f32, y1: f32) -> Bounds<olo_ui::gpui::Pixels> {
+    fn rect(x0: f32, y0: f32, x1: f32, y1: f32) -> Bounds<olo_kit::Pixels> {
         Bounds::from_corners(point(px(x0), px(y0)), point(px(x1), px(y1)))
     }
 

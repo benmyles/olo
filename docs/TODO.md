@@ -393,7 +393,74 @@ something nobody here has is in "Blocked", with what it waits for.
      the SSH agent signing, the auto-lock's time passing, a link's
      value opened (it starts a browser), several accounts, Reset, on
      an agent screen (what's shared with it).
-     *Next, smallest first:* terminal, preferences.
+     **Terminal** (2026-11-11): one `Terminal` behind a lock, each
+     window a view that has it say what it shows, a terminal window's
+     screens a view of their own so a shell's output draws them alone
+     (HACKING, "Terminal", "On olo-kit"). For it, in the kit: the
+     grouped tab strip (`widgets::strip`, one drawing with its state in
+     the element's own), a window of the app moved over another's
+     strip (`WindowOver`, `WindowDropped`), `agent::invoking`, and a
+     program that has quit running on, asleep, for what it copied
+     (`olo_interface::before_lingering`: every kit app's, as GPUI's
+     did). Old against new, each in a session of its own with its own
+     olo-termd and a scratch home: output, colours, box drawing and
+     emoji, a long output, the scrollback by the wheel (a notch, five
+     at once), typing back to the end, a selection dragged, single,
+     double and triple clicks, copy and paste, every menu, the screen's
+     and a tab's menus, tabs made, hovered, chosen, dragged along the
+     strip, undone, torn off into a window and let go on another's
+     strip, Tile All Tabs, a pane picked, a divider dragged, Find and
+     a search, tabs down the side, the text bigger and back, Always
+     Dark, the Group window (a name, a colour), a group's menu, a busy
+     tab's "Close it anyway?", the daemon's window, a reload in place,
+     Quit and its windows back the next time; sudo's password window
+     (a stand-in sudo, `OLO_SUDO_REAL`, and a made-up password: asked,
+     a wrong one, the right one, Escape, Cancel, the close box), a
+     working agent's badge and Keep It Going ▸ Custom Message…: the
+     same to the pixel at 1×, 1.5× and 2×, light and dark, but for
+     what is meant below. The review: nothing at 1×, 1.5× and 2× in
+     any of them (sudo's at 1.25× and 1.75× too).
+     *Measured* (release, 2×, back to back on a busy machine, old →
+     new): at rest 0.0% both; a frame with twenty lines a second
+     printed 532 → 305 µs (1.6 → 1.2% of a core), typing 475 → 240 µs
+     (2.0 → 1.6%); the scrollback scrolled 539 → 292 µs; three panes
+     printing 580 → 366 µs; a flood (`seq 1 3000000`, three takes): the
+     same time to print (1.12 → 1.06 s) and the same CPU (1.19 → 1.19
+     s of Terminal's), its frames 643 → 353 µs; resident 91 → 108 MB at
+     rest. *Differences, meant:* the
+     cursor stays solid, and the program isn't told the window lost
+     the keyboard, while the window's own menu is open (the kit's
+     windows stay active under their menus); a key pressed draws
+     nothing itself; sudo's command box has a border of one device
+     pixel at 1.25×, 1.5× and 1.75× (it was a pixel and a smear).
+     *Found on the way, in the kits:* an element that
+     takes the keyboard on a click (`track_focus`) and hears nothing
+     of the pointer itself wasn't under the pointer to a press, so the
+     press gave the keyboard to the window's frame behind it (a
+     terminal clicked in stopped taking keys). A flood's frames cost
+     15.5 ms of laying out each (the old build's 3.1): the looper laid
+     the screens out for every burst of output, a hundred times
+     between two frames; now once a frame, as the compositor asks for
+     it (`Cx::invalidate_at_frame`, HACKING "Fast and light"), and a
+     window out of sight lays out nothing. A window's viewport was a
+     point short where its buffer rounded down (1.25× and 1.75×: 487
+     points at 1.75× came out 486, every kit app's), and a box's
+     one-point border was a pixel and a half at 1.5× (HACKING,
+     "Fractional scaling"). *Memory:* the 8 MB more
+     at rest is glibc's malloc arenas, one for each thread that
+     allocates (a kit app has a looper for each window and the
+     display's): `MALLOC_ARENA_MAX=2` took Terminal from 104 to 84 MB
+     (the old build: 96), 4 to 91, frames a few percent slower with 2.
+     To set for every kit app (`mallopt` as it starts), measured on a
+     few of them first. *Not tried:* sudo with a fingerprint or a
+     security key, New Worktree… (its dialog), Keep It Going and Auto
+     Approve answering an agent (they want a real one in the tab), an
+     input method,
+     files and text dropped on a screen, pictures (kitty, sixel), a
+     link opened, a tab moved to an agent screen, the scroll check
+     (`tools/dev/scroll-check` reads marks the kit's own scrollers
+     make; the scrollback scrolls itself and makes none).
+     *Next:* preferences.
   6. **The build from before all this, on the login screen** (Ben,
      2026-11-11: "when you finish can you also make the pre-refactor
      known good build available as a login option in the display
@@ -454,6 +521,29 @@ something nobody here has is in "Blocked", with what it waits for.
      starts; Return on a list opens things (a browser, in a test):
      press it only with the alert up; a difference from the old
      build may be the old build's (look before fixing).
+     An app whose windows trade what they hold (Terminal's tabs)
+     keeps one state behind a lock too, and its windows' own things
+     (a text field, a list) are made by the window's view from what
+     the app asked for as it opened the window (`FieldSpec`), their
+     text read back through a copy the view keeps current, never a
+     password's (the view says it only as it's sent). What draws
+     often (a screen's output) is a view of its own, so the rest of
+     the window (menus, a strip) isn't said again for it. What turns
+     or fades by the clock asks to be drawn again from its drawing
+     (`paint_again_within`), not by a timer that redraws the window.
+     A widget that is one drawing keeps where it put things in its
+     element's state as it draws, and its handlers go by that. Test
+     keys after a click, not only before: the keyboard's place is
+     what a click changes. What's fed faster than frames (a shell's
+     output) is invalidated for the frame (`invalidate_at_frame`),
+     and its cost measured where it's fed fastest (a flood, by the
+     process's own CPU time around it: `tools/dev/cost` starts too
+     late for a burst) as well as steadily. Old against new at 1.25×
+     and 1.75× too: a window a point short and a border's smear
+     showed only there. Something that asks for a password is tested
+     with a stand-in for what checks it (`OLO_SUDO_REAL`, a made-up
+     password), behind a guard that runs nothing when the stand-in
+     isn't the one in place.
 
 ## Not started (highest priority first)
 

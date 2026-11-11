@@ -464,6 +464,20 @@ impl<'a, 'b, V: View> Cx<'a, 'b, V> {
         self.invalidate()
     }
 
+    /// What the view shows changed, and changes faster than frames are
+    /// shown (a shell printing, a meter fed by a stream): its `body`
+    /// runs again for the next frame drawn, once, at the last moment.
+    /// At once when no frame waits to be shown, so one change alone is
+    /// seen as soon as with [`Cx::invalidate`]; while one waits, when
+    /// the compositor asks for the next, so however much changes
+    /// meanwhile is laid out and painted once, as it is then. (A window
+    /// that isn't shown is asked for no frame: its views run again when
+    /// it is, or within a second.)
+    pub fn invalidate_at_frame(&mut self) {
+        let view = self.view;
+        self.window.core.invalidate_view_at_frame(view);
+    }
+
     /// Makes a view this one owns.
     pub fn new_view<T: View>(&mut self, build: impl FnOnce(&mut Cx<T>) -> T) -> Child<T> {
         self.window.new_view(build)

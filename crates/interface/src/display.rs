@@ -121,6 +121,22 @@ impl OnDisplay {
             common.signal.stop();
         });
     }
+
+    /// Ends the display thread's loop, unless what's on the clipboard is
+    /// the program's: then it runs on, with no windows, until that's
+    /// gone (taken off, `clipboard::withdraw`, or something else copied),
+    /// so what was copied can still be pasted after the program quit.
+    /// Whether it runs on.
+    pub(crate) fn stop_or_linger(&mut self) -> bool {
+        let lingers = match &*self.client {
+            Client::Wayland(c) => LinuxClient::linger_for_clipboard(c),
+            Client::Headless(_) => false,
+        };
+        if !lingers {
+            self.stop();
+        }
+        lingers
+    }
 }
 
 thread_local! {
@@ -146,6 +162,8 @@ pub(crate) struct Display {
 static DISPLAY: OnceLock<Display> = OnceLock::new();
 /// The display thread has ended, its windows and connection gone.
 static ENDED: AtomicBool = AtomicBool::new(false);
+/// Who waits for that (`wait_until_ended`), woken as it ends.
+static WAITING: Mutex<Option<std::thread::Thread>> = Mutex::new(None);
 
 /// The display thread, started the first time it's asked for.
 pub(crate) fn display() -> &'static Display {
@@ -219,6 +237,9 @@ impl Display {
                 });
                 drop(client);
                 ENDED.store(true, Ordering::Release);
+                if let Some(waiting) = WAITING.lock().unwrap_or_else(|e| e.into_inner()).take() {
+                    waiting.unpark();
+                }
             })
             .expect("no thread for the display");
         let (commands, text_system, headless, displays) = ready_rx.recv().expect("the display thread ended as it began");
@@ -226,11 +247,23 @@ impl Display {
     }
 
     /// Waits for the display thread to end (asked to stop), `most` at
-    /// most: a program that's quitting never hangs on it.
-    pub(crate) fn wait_until_ended(&self, most: std::time::Duration) {
-        let until = std::time::Instant::now() + most;
-        while !ENDED.load(Ordering::Acquire) && std::time::Instant::now() < until {
-            std::thread::sleep(std::time::Duration::from_millis(2));
+    /// most: a program that's quitting never hangs on it. (None: however
+    /// long it takes, asleep meanwhile: a program running on for what it
+    /// copied.)
+    pub(crate) fn wait_until_ended(&self, most: Option<std::time::Duration>) {
+        *WAITING.lock().unwrap_or_else(|e| e.into_inner()) = Some(std::thread::current());
+        let until = most.map(|most| std::time::Instant::now() + most);
+        while !ENDED.load(Ordering::Acquire) {
+            match until {
+                None => std::thread::park(),
+                Some(until) => {
+                    let now = std::time::Instant::now();
+                    if now >= until {
+                        break;
+                    }
+                    std::thread::park_timeout(until - now);
+                }
+            }
         }
     }
 

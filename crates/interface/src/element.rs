@@ -282,9 +282,14 @@ pub(crate) struct Interactivity {
 }
 
 impl Interactivity {
-    /// Whether the pointer being over it matters to anything.
+    /// Whether the pointer being over it matters to anything. (What a
+    /// click gives the keyboard, `track_focus`, too, though nothing of
+    /// its own hears the pointer: a press on it found the next thing
+    /// behind that takes the keyboard, the window's frame, and a terminal
+    /// clicked in stopped taking keys.)
     pub(crate) fn takes_pointer(&self) -> bool {
         self.occlude
+            || self.click_focus
             || self.paints_by_state
             || self.hover_style.is_some()
             || self.active_style.is_some()
