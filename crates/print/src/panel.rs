@@ -9,6 +9,11 @@ use crate::Paper;
 #[cfg(feature = "gpui")]
 pub mod view;
 
+/// The panel on olo-kit (the `kit` feature): a window on a looper of
+/// its own.
+#[cfg(feature = "kit")]
+pub mod kit;
+
 /// The panel's size (points), for its window.
 pub const SIZE: (u32, u32) = (380, 196);
 

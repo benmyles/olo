@@ -8332,6 +8332,7 @@ version = "0.1.0"
 dependencies = [
  "fontdb",
  "krilla",
+ "olo-kit",
  "olo-kit-base",
  "olo-sync",
  "olo-theme",
