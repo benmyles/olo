@@ -14,7 +14,7 @@
 //! new where it would go back to), the job says so, plainly, and the step
 //! goes.
 //!
-//! The history is the app's (`olo_ui::undo::History`, as every app's), for
+//! The history is the app's (`olo_kit::undo::History`, as every app's), for
 //! every window (as Finder's): a rename in one window undoes from another.
 
 use std::path::PathBuf;
@@ -77,7 +77,7 @@ impl Change {
     }
 }
 
-pub use olo_ui::undo::{History, Purpose};
+pub use olo_kit::undo::{History, Purpose};
 
 /// What a job of `kind` is called as a step.
 pub fn name_of(kind: Kind) -> &'static str {

@@ -131,7 +131,7 @@ pub fn app_id(e: &Entry) -> Option<String> {
 
 /// Group Windows for `e`'s app: shown when it is an application, checked
 /// while its windows are grouped.
-pub fn grouping_item(menu: olo_ui::Menu, e: Option<&Entry>) -> olo_ui::Menu {
+pub fn grouping_item(menu: olo_kit::Menu, e: Option<&Entry>) -> olo_kit::Menu {
     let Some(app) = e.and_then(app_id) else { return menu };
     let grouped = !UNGROUPED.lock().is_ok_and(|u| u.contains(&app));
     menu.item("Group Windows", "group-windows").checked(grouped)

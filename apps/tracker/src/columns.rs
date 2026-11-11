@@ -3,23 +3,20 @@
 //! preview of a selected file at the end. Browsing happens in place; the
 //! keyboard moves through the hierarchy (←/→ between columns).
 
-use std::{cell::RefCell, collections::HashMap, path::PathBuf, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, path::PathBuf};
 
-use olo_kit_base::list::{ListState, SelectionBand};
-use olo_ui::{
-    gpui::{
-        self, Bounds, Context, Entity, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _,
-        PathBuilder, Pixels, Point, ScrollHandle, StatefulInteractiveElement as _, Styled as _, Window, canvas, div, point, px, size,
-    },
-    icons, metrics as m,
-    palette::mix,
+use olo_kit::{
+    Bounds, Cx, DropAccept, DropOffer, Element, FontWeight, InteractiveElement as _, IntoElement as _, KeyDownEvent, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Painter,
+    ParentElement as _, PathBuilder, Pixels, Point, ScrollHandle, Styled as _, WindowCx, div, icons, metrics as m, point, px, size,
     style::{self, Align},
     theme,
     widgets::{SCROLL_BAR, ScrollBar, ScrollView},
 };
+use olo_kit_base::list::{ListState, SelectionBand};
+use olo_theme::mix;
 
 use crate::{
-    folder::{Action, FolderWin, mods, plain_extra},
+    folder::{FolderMsg, FolderWin, mods, plain_extra},
     fs::{self, Entry, Kind},
     items,
 };
@@ -43,11 +40,20 @@ pub struct Cols {
     scroll: ScrollHandle,
     /// Down each column, by its folder.
     lists: HashMap<PathBuf, ScrollHandle>,
-    geo: Rc<RefCell<Vec<ColGeo>>>,
+    geo: RefCell<Vec<ColGeo>>,
     press: Option<ColPress>,
-    band: Option<(usize, Pixels, SelectionBand)>,
-    /// How wide the columns' view was last drawn.
-    width: Rc<RefCell<Pixels>>,
+    /// A band: its column, where it began (down the column's rows) and
+    /// across, what was selected, and where it reaches now (in the
+    /// window).
+    band: Option<(usize, Pixels, SelectionBand, Point<Pixels>)>,
+}
+
+impl Cols {
+    /// The pointer's press is over (a drag it began ended elsewhere).
+    pub fn end_press(&mut self) {
+        self.press = None;
+        self.band = None;
+    }
 }
 
 /// A column as last drawn: where its rows start (in the window) and where
@@ -131,9 +137,9 @@ impl FolderWin {
     }
 
     /// Scrolls column `k` to `row`, with `around` rows above and below it.
-    fn reveal_row(&mut self, k: usize, row: usize, around: f32) {
+    fn reveal_row(&mut self, k: usize, row: usize, around: f32, cx: &mut WindowCx) {
         let h = self.col_scroll(k);
-        let view = self.cols.geo.borrow().get(k).map_or(px(300.0), |g| g.view.size.height);
+        let view = Some(h.bounds().size.height).filter(|h| *h > px(0.0)).unwrap_or(px(300.0));
         let top = m::TIGHT + row as f32 * m::LIST_ROW;
         let (lo, hi) = (top - m::TIGHT - around * m::LIST_ROW, top + m::LIST_ROW + m::TIGHT + around * m::LIST_ROW);
         let now = -f32::from(h.offset().y);
@@ -144,12 +150,12 @@ impl FolderWin {
         } else {
             return;
         };
-        h.set_offset(point(px(0.0), px(-to)));
+        h.set_offset(cx, point(px(0.0), px(-to)));
     }
 
     /// ↑/↓ move within the active column, → enters the selected folder, ←
     /// goes back to its parent's column, Return opens, typing selects.
-    pub fn column_key(&mut self, e: &KeyDownEvent, _window: &mut Window, cx: &mut Context<Self>) -> bool {
+    pub fn column_key(&mut self, e: &KeyDownEvent, cx: &mut Cx<Self>) -> bool {
         let key = e.keystroke.key.as_str();
         let shift = e.keystroke.modifiers.shift;
         let k = self.active.min(self.panes.len());
@@ -170,13 +176,13 @@ impl FolderWin {
                 if let Some(next) = to {
                     self.column_mut(k).1.move_to(next, true);
                     self.panes.truncate(k);
-                    self.reveal_row(k, next, 0.0);
+                    self.reveal_row(k, next, 0.0, cx);
                 }
             }
             "down" | "up" | "home" | "end" => {
                 if let Some(next) = to {
                     self.choose(k, next);
-                    self.reveal_row(k, next, 0.0);
+                    self.reveal_row(k, next, 0.0, cx);
                 }
             }
             "right" => {
@@ -198,7 +204,7 @@ impl FolderWin {
                 self.panes.truncate(k);
                 self.active = k - 1;
             }
-            "enter" => self.command("open", cx),
+            "enter" => self.run("open", cx),
             _ => {
                 // Typing selects within the active column.
                 let Some(typed) = e.keystroke.key_char.clone().filter(|c| !c.chars().any(char::is_control)) else { return false };
@@ -207,28 +213,41 @@ impl FolderWin {
                 let names: Vec<String> = entries.iter().map(|e| e.name.clone()).collect();
                 if let Some(row) = self.typing.typed(&typed, names.len(), from, |i| names[i].as_str()) {
                     self.choose(k, row);
-                    self.reveal_row(k, row, 0.0);
+                    self.reveal_row(k, row, 0.0, cx);
                 }
             }
         }
         let _ = plain_extra;
         self.record_location();
-        cx.notify();
+        cx.invalidate();
         true
     }
 
     // ---- the pointer -------------------------------------------------------
 
-    fn column_press(&mut self, k: usize, e: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+    /// Column `k`'s content is at `b` now (it scrolls): where its rows
+    /// are, for what the pointer does there.
+    fn place_column(&self, k: usize, b: Bounds<Pixels>, view: Bounds<Pixels>) {
+        let rows = self.column(k).1.len();
+        let mut g = self.cols.geo.borrow_mut();
+        if g.len() <= k {
+            g.resize(k + 1, ColGeo::default());
+        }
+        g[k] = ColGeo { origin: b.origin, top: b.top() + px(m::TIGHT), view, rows };
+    }
+
+    fn column_press(&mut self, k: usize, e: &MouseDownEvent, cx: &mut Cx<Self>) {
         if self.editing.is_some() {
             self.end_rename(true, cx);
         }
-        window.focus(&self.focus);
+        self.focus.focus(cx);
+        let view = self.col_scroll(k).bounds();
+        self.place_column(k, cx.listener_bounds(), view);
         let Some(g) = self.cols.geo.borrow().get(k).copied() else { return };
         let row = g.row_at(e.position);
         if e.button == MouseButton::Left && e.click_count >= 2 {
             if let Some(entry) = row.and_then(|r| self.column(k).1.get(r)).filter(|e| !e.is_dir).cloned() {
-                self.act(Action::Open(entry), cx);
+                self.open(&entry);
             }
             self.cols.press = None;
             return;
@@ -236,13 +255,13 @@ impl FolderWin {
         if e.button == MouseButton::Left && row.is_none() {
             // A selection band, from below the items: ⇧ adds, ⌘ flips.
             let base = self.column(k).2.band(mods(&e.modifiers));
-            self.cols.band = Some((k, e.position.y - g.top, base));
+            self.cols.band = Some((k, e.position.y - g.top, base, e.position));
         }
         self.cols.press = Some(ColPress { col: k, row, at: e.position, button: e.button, mods: e.modifiers, dragging: false });
-        cx.notify();
+        cx.invalidate();
     }
 
-    fn column_move(&mut self, e: &MouseMoveEvent, window: &mut Window, cx: &mut Context<Self>) {
+    fn column_move(&mut self, e: &MouseMoveEvent, cx: &mut Cx<Self>) {
         let Some(press) = &mut self.cols.press else { return };
         if e.pressed_button.is_none() {
             return;
@@ -271,12 +290,12 @@ impl FolderWin {
                     ask,
                     name: entry.name.clone(),
                 };
-                items::start(window, cx, self.key(), d);
-                cx.notify();
+                items::start(cx, self.id, d, || FolderMsg::DragOver);
+                cx.invalidate();
             }
             None if press.button == MouseButton::Left => {
-                self.column_band(e.position);
-                cx.notify();
+                self.column_band(e.position, cx);
+                cx.invalidate();
             }
             _ => {}
         }
@@ -284,8 +303,11 @@ impl FolderWin {
 
     /// The band in column `k` reaches `now`: the rows it covers selected,
     /// and near the column's top or bottom it scrolls on.
-    fn column_band(&mut self, now: Point<Pixels>) {
-        let Some((k, from, base)) = self.cols.band.clone() else { return };
+    fn column_band(&mut self, now: Point<Pixels>, cx: &mut WindowCx) {
+        let Some((k, from, base, _)) = self.cols.band.clone() else { return };
+        if let Some(b) = &mut self.cols.band {
+            b.3 = now;
+        }
         let Some(g) = self.cols.geo.borrow().get(k).copied() else { return };
         let here = now.y - g.top;
         let (y0, y1) = (f32::from(from.min(here)), f32::from(from.max(here)));
@@ -317,15 +339,21 @@ impl FolderWin {
         if step != 0.0 {
             let h = self.col_scroll(k);
             let (o, max) = (h.offset(), f32::from(h.max_offset().height));
-            h.set_offset(point(o.x, px((f32::from(o.y) - step).clamp(-max, 0.0))));
+            let to = (f32::from(o.y) - step).clamp(-max, 0.0);
+            // (Its rows move with it, before it's drawn again.)
+            if let Some(g) = self.cols.geo.borrow_mut().get_mut(k) {
+                g.top += px(to) - o.y;
+                g.origin.y += px(to) - o.y;
+            }
+            h.set_offset(cx, point(o.x, px(to)));
         }
     }
 
-    fn column_release(&mut self, e: &MouseUpEvent, window: &mut Window, cx: &mut Context<Self>) {
+    fn column_release(&mut self, e: &MouseUpEvent, cx: &mut Cx<Self>) {
         let Some(press) = self.cols.press.take() else { return };
         self.cols.band = None;
         if press.dragging {
-            cx.notify();
+            cx.invalidate();
             return;
         }
         let (col, moved) = (press.col, (e.position - press.at).magnitude() >= DRAG_SLOP as f64);
@@ -352,306 +380,291 @@ impl FolderWin {
                         self.active = col;
                     }
                 }
-                self.context_menu(row.is_some(), e.position, window, cx);
+                self.context_menu(row.is_some(), e.position, cx);
             }
             _ => {}
         }
         self.record_location();
-        cx.notify();
+        cx.invalidate();
+    }
+
+    // ---- what's dragged over it ----------------------------------------------
+
+    /// What's dragged over the columns at `at`: onto a folder in a
+    /// column, into a column's folder, or (past the last one) into the
+    /// last one's.
+    pub fn columns_drop_over(&mut self, o: &DropOffer, at: Point<Pixels>, cx: &mut Cx<Self>) -> Option<DropAccept> {
+        let n = 1 + self.panes.len();
+        let view = self.cols.scroll.bounds();
+        if !view.contains(&at) {
+            self.dropping = None;
+            self.rest_on(None, cx);
+            return None;
+        }
+        let col = self.cols.geo.borrow().iter().take(n).position(|g| g.view.contains(&at));
+        let (accept, on, k) = match col {
+            Some(k) => {
+                let g = self.cols.geo.borrow()[k];
+                let r = (f32::from(at.y - g.top) / m::LIST_ROW).floor();
+                let (dir, entries, list) = self.column(k);
+                let over = (r >= 0.0).then_some(r as usize).and_then(|r| entries.get(r).map(|e| (r, e, list.selected.contains(&r))));
+                let (accept, on) = items::item_drop(cx, self.id, o, over, Some(dir));
+                (accept, on, k)
+            }
+            // Past the last column (the preview, or nothing): into its
+            // folder.
+            None => {
+                let last = self.column(n - 1).0.to_owned();
+                (items::item_drop(cx, self.id, o, None, Some(&last)).0, None, n)
+            }
+        };
+        let spring_to = on.filter(|_| accept.is_some() && k < n).and_then(|i| self.column(k).1.get(i)).map(|e| e.path.clone());
+        self.dropping = accept.is_some().then_some((k, on));
+        self.rest_on(spring_to.as_deref(), cx);
+        accept
     }
 
     // ---- drawing -----------------------------------------------------------
 
-    pub fn columns_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    pub fn columns_view(&mut self, cx: &mut Cx<Self>) -> Element {
         let n = 1 + self.panes.len();
         self.active = self.active.min(n - 1);
         let preview = self.previewed();
         let total = n as f32 * COLUMN_WIDTH + preview.as_ref().map_or(0.0, |_| PREVIEW_WIDTH);
-        let width = f32::from(*self.cols.width.borrow());
+        let width = f32::from(self.cols.scroll.bounds().size.width);
         // Selections made in code (Show in Tracker, a new item, columns
         // put back after a reload): into view, with some of what's
         // around them.
         for (k, row) in std::mem::take(&mut self.show) {
             if k < n {
-                let around = self.cols.geo.borrow().get(k).map_or(4.0, |g| ((f32::from(g.view.size.height) / m::LIST_ROW / 2.0).floor() - 1.0).max(0.0));
-                self.reveal_row(k, row, around);
+                let h = f32::from(self.col_scroll(k).bounds().size.height);
+                let around = if h > 0.0 { ((h / m::LIST_ROW / 2.0).floor() - 1.0).max(0.0) } else { 4.0 };
+                self.reveal_row(k, row, around, cx);
             }
         }
         // When the active column or what it opened changes, it is brought
         // into view; otherwise the scroll stays where it was put.
         let focus = (self.active, n, preview.is_some());
-        if self.col_focus != Some(focus) && width > 0.0 {
-            self.col_focus = Some(focus);
-            let mut x = -f32::from(self.cols.scroll.offset().x);
-            let right = ((self.active + 2).min(n) as f32 * COLUMN_WIDTH).max(if self.active + 1 >= n { total } else { 0.0 });
-            let left = self.active as f32 * COLUMN_WIDTH;
-            if right - x > width {
-                x = right - width;
+        if self.col_focus != Some(focus) {
+            if width > 0.0 {
+                self.col_focus = Some(focus);
+                let mut x = -f32::from(self.cols.scroll.offset().x);
+                let right = ((self.active + 2).min(n) as f32 * COLUMN_WIDTH).max(if self.active + 1 >= n { total } else { 0.0 });
+                let left = self.active as f32 * COLUMN_WIDTH;
+                if right - x > width {
+                    x = right - width;
+                }
+                if left < x {
+                    x = left;
+                }
+                let x = x.clamp(0.0, (total - width).max(0.0)).round();
+                self.cols.scroll.set_offset_once_laid_out(cx, point(px(-x), px(0.0)));
+            } else {
+                // (Not laid out yet: once it has been.)
+                cx.after_do(std::time::Duration::ZERO, |_, cx| cx.invalidate());
             }
-            if left < x {
-                x = left;
-            }
-            let x = x.clamp(0.0, (total - width).max(0.0)).round();
-            self.cols.scroll.set_offset(point(px(-x), px(0.0)));
         }
-        let me = cx.entity();
-        let p = theme::palette(cx);
+        let p = theme::palette();
         let mut row = div().flex().flex_row().h_full().w(px(total));
         for k in 0..n {
-            row = row.child(self.column_element(k, &me, window, cx));
+            row = row.child(self.column_element(k, cx));
         }
-        // Past the last column (the preview, or nothing): into its folder.
-        let last = self.column(n - 1).0.to_owned();
-        let past = {
-            let (key, spring) = (self.key(), self.spring.clone());
-            let past_me = me.clone();
-            canvas(
-                |_, _, _| {},
-                move |b, _, window, cx| {
-                    let p = theme::palette(cx);
-                    let clip = window.content_mask().bounds.intersect(&b);
-                    if let Some(o) = window.drop_offer().cloned()
-                        && clip.contains(&window.mouse_position())
-                        && items::item_drop(window, cx, key, &o, None, Some(&last)).0
-                    {
-                        items::outline(window, clip, &p);
-                    }
-                    let _ = (&spring, &past_me);
-                },
-            )
+        // Past the last column: outlined while what's dragged there would
+        // go into its folder.
+        let past = cx
+            .canvas(move |f: &FolderWin, g, b| {
+                if f.dropping == Some((1 + f.panes.len(), None)) {
+                    let clip = g.visible_bounds().intersect(&b);
+                    items::outline(g, clip, &theme::palette());
+                }
+            })
             .absolute()
-            .inset_0()
-        };
+            .inset_0();
         let preview_el = preview.map(|e| {
-            let open_me = me.clone();
             let entry = e.clone();
             div()
-                .id("preview")
                 .w(px(PREVIEW_WIDTH))
                 .h_full()
                 .relative()
-                .on_mouse_down(MouseButton::Left, move |ev, _, cx| {
-                    if ev.click_count >= 2 {
-                        let e = entry.clone();
-                        open_me.update(cx, |f, cx| f.act(Action::Open(e), cx));
-                    }
-                })
-                .child(canvas(|_, _, _| {}, move |b, _, window, cx| draw_preview(window, cx, &e, b)).size_full())
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |f: &mut FolderWin, ev: &MouseDownEvent, _| {
+                        if ev.click_count >= 2 {
+                            f.open(&entry);
+                        }
+                    }),
+                )
+                .child(olo_kit::canvas(move |g, b| draw_preview(g, &e, b)).size_full())
         });
         let rest = div().flex_1().h_full().relative().children(preview_el).child(past);
-        let width_cell = self.cols.width.clone();
-        let measure = canvas(
-            move |b, _, _| {
-                *width_cell.borrow_mut() = b.size.width;
-            },
-            |_, _, _, _| {},
-        )
-        .absolute()
-        .inset_0();
         div()
             .size_full()
             .flex()
             .flex_col()
-            .child(div().id("columns").flex_1().min_h_0().relative().bg(style::c(p.document_background)).overflow_x_scroll().track_scroll(&self.cols.scroll).child(measure).child(row.child(rest)))
-            .child(div().w_full().h(px(SCROLL_BAR)).relative().child(ScrollBar::horizontal("columns-bar", self.cols.scroll.clone())))
+            .child(div().flex_1().min_h_0().relative().bg(style::c(p.document_background)).overflow_x_scroll().track_scroll(&self.cols.scroll).child(row.child(rest)))
+            .child(div().w_full().h(px(SCROLL_BAR)).relative().child(ScrollBar::horizontal(&self.cols.scroll)))
+            .into_any_element()
     }
 
-    fn column_element(&mut self, k: usize, me: &Entity<FolderWin>, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let (path, entries, _) = self.column(k);
+    fn column_element(&mut self, k: usize, cx: &mut Cx<Self>) -> Element {
+        let (_, entries, _) = self.column(k);
         let rows = entries.len();
-        let path = path.to_owned();
         let handle = self.col_scroll(k);
         let height = rows as f32 * m::LIST_ROW + 2.0 * m::TIGHT;
-        let paint_me = me.clone();
-        let geo = self.cols.geo.clone();
-        let spring = self.spring.clone();
         let editing_here = self.editing.as_ref().filter(|_| k == self.active).and_then(|r| self.column(k).1.iter().position(|e| e.path == r.path));
-        // Editing a name, over its row in the active column.
-        let origin = geo.borrow().get(k).map(|g| g.origin);
-        let field_el = match (editing_here, origin, &self.editing) {
-            (Some(row), Some(origin), Some(r)) => {
+        // Editing a name, over its row in the active column (in the
+        // column's content: it scrolls with it).
+        let field_el = match (editing_here, &self.editing) {
+            (Some(row), Some(r)) => {
                 let e = self.column(k).1[row].clone();
-                let cell = Bounds {
-                    origin: point(origin.x + px(m::CELL_INSET - m::TIGHT), origin.y + px(m::TIGHT + row as f32 * m::LIST_ROW)),
-                    size: size(px(COLUMN_WIDTH - 2.0 - m::CELL_INSET), px(m::LIST_ROW)),
-                };
-                let l = items::layout_item(window, cell, e.label(), items::Look::Mini, true, e.is_link);
-                Some(r.element(window, cx, &l, origin))
+                let cell = Bounds { origin: point(px(m::CELL_INSET - m::TIGHT), px(m::TIGHT + row as f32 * m::LIST_ROW)), size: size(px(COLUMN_WIDTH - 2.0 - m::CELL_INSET), px(m::LIST_ROW)) };
+                let l = items::layout_item(cell, e.label(), items::Look::Mini, true, e.is_link);
+                Some(r.element(cx, &l, Point::default()))
             }
             _ => None,
         };
-        let content = canvas(
-            |_, _, _| {},
-            move |b, _, window, cx| {
-                let p = theme::palette(cx);
-                let clip = window.content_mask().bounds.intersect(&b);
+        let content = cx
+            .canvas(move |f: &FolderWin, g, b| {
+                if k > f.panes.len() {
+                    return;
+                }
+                let p = theme::palette();
+                let clip = g.visible_bounds().intersect(&b);
                 let top = b.top() + px(m::TIGHT);
+                let (_, entries, list) = f.column(k);
+                let rows = entries.len();
                 let first = (f32::from(clip.top() - top) / m::LIST_ROW).floor().max(0.0) as usize;
                 let last = ((f32::from(clip.bottom() - top) / m::LIST_ROW).ceil().max(0.0) as usize).min(rows);
-                let (shown, active, key, here) = {
-                    let f = paint_me.read(cx);
-                    let (dir, entries, list) = f.column(k);
-                    let shown: Vec<(usize, Entry, bool)> = (first..last.max(first)).filter_map(|i| Some((i, entries.get(i)?.clone(), list.selected.contains(&i)))).collect();
-                    (shown, f.active == k, f.key(), dir.to_owned())
-                };
-                {
-                    let mut g = geo.borrow_mut();
-                    if g.len() <= k {
-                        g.resize(k + 1, ColGeo::default());
-                    }
-                    g[k] = ColGeo { origin: b.origin, top, view: clip, rows };
-                }
+                let active = f.active == k;
+                f.place_column(k, b, clip);
                 // Selection: solid in the active column, a quieter tint
                 // along the path in the others (as in Finder).
                 let sel_bg = if active { style::c(p.list_selected_background) } else { style::c(mix(p.list_background, p.list_selected_background, 0.5)) };
                 // Something dragged over this column: onto a folder in it,
                 // or into it.
-                let (mut took, mut drop_on, mut spring_to) = (false, None, None);
-                if let Some(o) = window.drop_offer().cloned() {
-                    let at = window.mouse_position();
-                    if clip.contains(&at) {
-                        let r = (f32::from(at.y - top) / m::LIST_ROW).floor();
-                        let over = (r >= 0.0).then_some(r as usize).and_then(|r| shown.iter().find(|s| s.0 == r)).map(|s| (s.0, &s.1, s.2));
-                        (took, drop_on) = items::item_drop(window, cx, key, &o, over, Some(&here));
-                        spring_to = drop_on.filter(|_| took).and_then(|i| shown.iter().find(|s| s.0 == i)).map(|s| s.1.path.clone());
-                    }
-                }
-                let editing = editing_here;
-                window.with_content_mask(Some(gpui::ContentMask { bounds: clip }), |window| {
-                    for (i, e, selected) in &shown {
-                        let r = Bounds { origin: point(b.left(), top + px(*i as f32 * m::LIST_ROW)), size: size(b.size.width, px(m::LIST_ROW)) };
-                        let text_color = if *selected { style::c(p.list_selected_item_text) } else { style::c(p.list_item_text) };
-                        if *selected {
-                            style::fill_rect(window, r, sel_bg);
+                let (took, drop_on) = match f.dropping {
+                    Some((col, on)) if col == k => (true, on),
+                    _ => (false, None),
+                };
+                let editing = f.editing.as_ref().filter(|_| active).and_then(|r| entries.iter().position(|e| e.path == r.path));
+                g.with_content_mask(Some(olo_kit::ContentMask { bounds: clip }), |g| {
+                    for i in first..last.max(first) {
+                        let Some(e) = entries.get(i) else { continue };
+                        let selected = list.selected.contains(&i);
+                        let r = Bounds { origin: point(b.left(), top + px(i as f32 * m::LIST_ROW)), size: size(b.size.width, px(m::LIST_ROW)) };
+                        let text_color = if selected { style::c(p.list_selected_item_text) } else { style::c(p.list_item_text) };
+                        if selected {
+                            style::fill_rect(g, r, sel_bg);
                         }
-                        olo_ui::agent::record(
-                            window,
-                            cx,
-                            olo_ui::agent::Node {
+                        olo_kit::agent::record(
+                            g,
+                            olo_kit::agent::Node {
                                 role: "ListItem",
                                 name: Some(e.name.clone().into()),
                                 bounds: r.intersect(&clip),
                                 enabled: true,
                                 clickable: true,
-                                selected: Some(*selected),
+                                selected: Some(selected),
                                 ..Default::default()
                             },
                         );
                         let icon = Bounds { origin: point(r.left() + px(m::CELL_INSET), r.center().y - px(items::MINI / 2.0)), size: size(px(items::MINI), px(items::MINI)) };
-                        icons::paint(window, icon, items::icon_of(e));
-                        if crate::backups::backed_up(cx, &e.path) {
-                            items::paint_mark(window, cx, icon, e.label(), &p);
+                        icons::paint(g, icon, items::icon_of(e));
+                        if crate::backups::backed_up(&e.path) {
+                            items::paint_mark(g, icon, e.label(), &p);
                         }
                         let x = icon.right() + px(m::MARK_GAP);
                         let right = r.right() - px(if e.is_dir { DISCLOSURE_ROOM } else { m::CELL_INSET });
-                        if editing != Some(*i) {
-                            style::label_fit(window, cx, x, r.center().y, Align::Left, e.label().to_owned(), style::PLAIN_SIZE, items::name_font(e.is_link), text_color, (right - x).max(px(0.0)));
+                        if editing != Some(i) {
+                            style::label_fit(g, x, r.center().y, Align::Left, e.label().to_owned(), style::PLAIN_SIZE, items::name_font(e.is_link), text_color, (right - x).max(px(0.0)));
                         }
-                        if took && drop_on == Some(*i) {
-                            style::frame_rect(window, r, style::c(p.keyboard_navigation));
+                        if took && drop_on == Some(i) {
+                            style::frame_rect(g, r, style::c(p.keyboard_navigation));
                         }
                         if e.is_dir {
                             let tip = point(r.right() - px(m::CELL_INSET), r.center().y);
-                            let color = if *selected { text_color } else { style::disabled_text(&p) };
+                            let color = if selected { text_color } else { style::disabled_text(&p) };
                             let mut path = PathBuilder::fill();
                             path.move_to(point(tip.x - px(DISCLOSURE.0), tip.y - px(DISCLOSURE.1 / 2.0)));
                             path.line_to(tip);
                             path.line_to(point(tip.x - px(DISCLOSURE.0), tip.y + px(DISCLOSURE.1 / 2.0)));
                             path.close();
                             if let Ok(path) = path.build() {
-                                window.paint_path(path, color);
+                                g.paint_path(path, color);
                             }
                         }
                     }
                     if took && drop_on.is_none() {
-                        items::outline(window, clip, &p);
+                        items::outline(g, clip, &p);
                     }
                     // A band, drawn from below the items.
-                    let band = paint_me.read(cx).cols.band.as_ref().filter(|(c, ..)| *c == k).map(|(_, from, _)| *from);
-                    if let Some(from) = band {
-                        let now = window.mouse_position();
-                        let s = point(paint_me.read(cx).cols.press.as_ref().map_or(now.x, |p| p.at.x), from + top);
+                    if let Some((_, from, _, now)) = f.cols.band.as_ref().filter(|(c, ..)| *c == k) {
+                        let s = point(f.cols.press.as_ref().map_or(now.x, |p| p.at.x), *from + top);
                         let r = Bounds::from_corners(point(s.x.min(now.x), s.y.min(now.y)), point(s.x.max(now.x), s.y.max(now.y)));
-                        style::selection_band(window, r.intersect(&clip), &p);
+                        style::selection_band(g, r.intersect(&clip), &p);
                     }
                 });
-                let open = spring.borrow_mut().rest(spring_to.as_deref(), window, cx);
-                if let Some(dir) = open {
-                    paint_me.update(cx, |f, cx| f.act(Action::Spring(dir), cx));
-                }
-                if k == 0 {
-                    let (mv, up) = (paint_me.clone(), paint_me.clone());
-                    window.on_mouse_event(move |e: &MouseMoveEvent, phase, window, cx| {
-                        if phase == gpui::DispatchPhase::Bubble {
-                            mv.update(cx, |f, cx| f.column_move(e, window, cx));
-                        }
-                    });
-                    window.on_mouse_event(move |e: &MouseUpEvent, phase, window, cx| {
-                        if phase == gpui::DispatchPhase::Bubble {
-                            up.update(cx, |f, cx| f.column_release(e, window, cx));
-                        }
-                    });
-                }
-            },
-        )
-        .size_full();
-        let (down, right) = (me.clone(), me.clone());
-        let sep = canvas(
-            |_, _, _| {},
-            |b, _, window, cx| {
-                let p = theme::palette(cx);
-                // Etched on the right edge: the light line right against
-                // the dark one (a point over left a device pixel between
-                // them at 1.5×, where a line is two thirds of a point).
-                let x = b.right() - px(2.0);
-                style::vline(window, x, b.top(), b.bottom(), style::shade(&p, p.document_background, 1.15));
-                style::vline(window, style::snap_coord(window, x) + style::hairline(window), b.top(), b.bottom(), style::c(p.shine));
-            },
-        )
+            })
+            .size_full();
+        let sep = olo_kit::canvas(|g, b| {
+            let p = theme::palette();
+            // Etched on the right edge: the light line right against
+            // the dark one (a point over left a device pixel between
+            // them at 1.5×, where a line is two thirds of a point).
+            let x = b.right() - px(2.0);
+            style::vline(g, x, b.top(), b.bottom(), style::shade(&p, p.document_background, 1.15));
+            let lit = style::snap_coord(g, x) + style::hairline(g);
+            style::vline(g, lit, b.top(), b.bottom(), style::c(p.shine));
+        })
         .absolute()
         .inset_0();
-        div().w(px(COLUMN_WIDTH)).h_full().relative().child(sep).child(
-            div().absolute().top_0().bottom_0().left_0().w(px(COLUMN_WIDTH - 2.0)).child(
-                ScrollView::new(olo_ui::gpui::SharedString::from(format!("col:{}", path.display())), &handle).border(false).auto_hide(true).child(
-                    div()
-                        .id(("col-content", k))
-                        .relative()
-                        .w_full()
-                        .h(px(height))
-                        .min_h_full()
-                        .on_mouse_down(MouseButton::Left, move |e, window, cx| down.update(cx, |f, cx| f.column_press(k, e, window, cx)))
-                        .on_mouse_down(MouseButton::Right, move |e, window, cx| right.update(cx, |f, cx| f.column_press(k, e, window, cx)))
-                        .child(content)
-                        .children(field_el),
-                ),
-            ),
-        )
+        let mut inner = div()
+            .relative()
+            .w_full()
+            .h(px(height))
+            .min_h_full()
+            .on_mouse_down(MouseButton::Left, cx.listener(move |f: &mut FolderWin, e: &MouseDownEvent, cx| f.column_press(k, e, cx)))
+            .on_mouse_down(MouseButton::Right, cx.listener(move |f: &mut FolderWin, e: &MouseDownEvent, cx| f.column_press(k, e, cx)));
+        if k == 0 {
+            // The pointer held down goes on being followed past a
+            // column's edge.
+            inner = inner
+                .on_window_mouse_move(cx.listener(|f: &mut FolderWin, e: &MouseMoveEvent, cx| f.column_move(e, cx)))
+                .on_window_mouse_up(cx.listener(|f: &mut FolderWin, e: &MouseUpEvent, cx| f.column_release(e, cx)));
+        }
+        div()
+            .w(px(COLUMN_WIDTH))
+            .h_full()
+            .relative()
+            .child(sep)
+            .child(div().absolute().top_0().bottom_0().left_0().w(px(COLUMN_WIDTH - 2.0)).child(ScrollView::new(&handle).border(false).auto_hide(true).child(inner.child(content).children(field_el))))
+            .into_any_element()
     }
 }
 
 /// The preview after the last column: the picture itself or a large
 /// icon, the name and kind, and a few facts.
-fn draw_preview(window: &mut Window, cx: &mut olo_ui::gpui::App, e: &Entry, rect: Bounds<Pixels>) {
-    let p = theme::palette(cx);
+fn draw_preview(g: &mut Painter, e: &Entry, rect: Bounds<Pixels>) {
+    let p = theme::palette();
     let area = Bounds::from_corners(point(rect.left() + px(m::WINDOW_INSET), rect.top() + px(m::WINDOW_INSET)), point(rect.right() - px(m::WINDOW_INSET), rect.bottom() - px(m::WINDOW_INSET)));
     let image_box = Bounds { origin: point(area.center().x - px(PREVIEW_IMAGE / 2.0), area.top()), size: size(px(PREVIEW_IMAGE), px(PREVIEW_IMAGE * 0.75)) };
-    let scale = window.scale_factor();
+    let scale = g.scale_factor();
     let thumb = (e.kind == Kind::Image).then(|| crate::thumbs::get(&e.path, (PREVIEW_IMAGE * scale).round() as u32)).flatten();
     match thumb {
         Some(img) => {
             let s = img.size(0);
             let (w, h) = (s.width.0 as f32 / scale, s.height.0 as f32 / scale);
             let k = (PREVIEW_IMAGE / w).min(PREVIEW_IMAGE * 0.75 / h).min(1.0);
-            let shown = style::snap_centred(window, image_box.center(), w * k, h * k);
-            let _ = window.paint_image(shown, Default::default(), img, 0, false);
+            let shown = style::snap_centred(g, image_box.center(), w * k, h * k);
+            let _ = g.paint_image(shown, Default::default(), img, 0, false);
             let edge = Bounds::from_corners(point(shown.left() - px(1.0), shown.top() - px(1.0)), point(shown.right() + px(1.0), shown.bottom() + px(1.0)));
-            style::frame_rect(window, edge, style::shade(&p, p.document_background, 1.15));
+            style::frame_rect(g, edge, style::shade(&p, p.document_background, 1.15));
         }
         None => {
             let icon = Bounds { origin: point(image_box.center().x - px(PREVIEW_ICON / 2.0), image_box.center().y - px(PREVIEW_ICON / 2.0)), size: size(px(PREVIEW_ICON), px(PREVIEW_ICON)) };
-            icons::paint(window, icon, items::icon_of(e));
+            icons::paint(g, icon, items::icon_of(e));
             if let Some(done) = e.progress() {
-                items::paint_progress(window, icon, done, &p);
+                items::paint_progress(g, icon, done, &p);
             }
         }
     }
@@ -659,20 +672,20 @@ fn draw_preview(window: &mut Window, cx: &mut olo_ui::gpui::App, e: &Entry, rect
     // meeting at the centre, keys right-aligned.
     let mut y = image_box.bottom() + px(m::SPACING);
     let bold = style::ui_font(FontWeight::BOLD);
-    for line in items::wrap_lines(window, e.label(), &bold, area.size.width, 3) {
-        let at = style::label(window, cx, area.center().x, y + px(m::LABEL_ROW / 2.0), Align::Center, line.clone(), style::PLAIN_SIZE, bold.clone(), style::c(p.document_text));
-        olo_ui::agent::record(window, cx, olo_ui::agent::Node::label(line, at));
+    for line in items::wrap_lines(e.label(), &bold, area.size.width, 3) {
+        let at = style::label(g, area.center().x, y + px(m::LABEL_ROW / 2.0), Align::Center, line.clone(), style::PLAIN_SIZE, bold.clone(), style::c(p.document_text));
+        olo_kit::agent::record(g, olo_kit::agent::Node::label(line, at));
         y += px(style::PLAIN_SIZE * style::LINE_HEIGHT);
     }
     let plain = style::ui_font(FontWeight::NORMAL);
-    style::label(window, cx, area.center().x, y + px(m::LABEL_ROW / 2.0), Align::Center, e.kind_text(), style::PLAIN_SIZE, plain.clone(), style::disabled_text(&p));
+    style::label(g, area.center().x, y + px(m::LABEL_ROW / 2.0), Align::Center, e.kind_text(), style::PLAIN_SIZE, plain.clone(), style::disabled_text(&p));
     y += px(m::LABEL_ROW + m::SPACING);
     let created = std::fs::metadata(&e.path).ok().and_then(|md| md.created().ok());
     for (k, v) in [("Size", e.size_text()), ("Created", fs::format_time(created)), ("Modified", fs::format_time(e.modified))] {
         let cy = y + px(m::LABEL_ROW / 2.0);
-        style::label(window, cx, area.center().x - px(m::TIGHT), cy, Align::Right, k, style::SMALL_SIZE, plain.clone(), style::disabled_text(&p));
-        let at = style::label(window, cx, area.center().x + px(m::TIGHT), cy, Align::Left, v.clone(), style::SMALL_SIZE, plain.clone(), style::c(p.document_text));
-        olo_ui::agent::record(window, cx, olo_ui::agent::Node::label(v, at));
+        style::label(g, area.center().x - px(m::TIGHT), cy, Align::Right, k, style::SMALL_SIZE, plain.clone(), style::disabled_text(&p));
+        let at = style::label(g, area.center().x + px(m::TIGHT), cy, Align::Left, v.clone(), style::SMALL_SIZE, plain.clone(), style::c(p.document_text));
+        olo_kit::agent::record(g, olo_kit::agent::Node::label(v, at));
         y += px(m::LABEL_ROW);
     }
 }

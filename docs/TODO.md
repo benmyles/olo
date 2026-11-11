@@ -316,8 +316,47 @@ something nobody here has is in "Blocked", with what it waits for.
      change): the text view wants the document's inset under a menu
      bar, or the review to know a document's lines as it knows the
      document.
-     *Next, smallest first:* tracker, passwords, terminal,
-     preferences.
+     **Tracker** (2026-11-11): every window its own view on a looper
+     of its own, the app's looper a hub (HACKING, "Tracker"). For it,
+     in the kit: drops a window's view takes part by part
+     (`View::takes_drops`, `drop_over`, `dropped`), `workspaces`
+     (kit-base), `on_move_window` and agents' `Move`. Old against new
+     at 2× on a made-up home: a folder as icons, mini icons, a list
+     and columns, typing to select, every menu, both context menus, a
+     folder opened, columns browsed; New Folder and its name edited,
+     Duplicate, Copy and Paste, Trash, Undo, a name edited, a file
+     dragged onto a folder, Quick Look (and its arrows), Get Info,
+     Find, Go to File or Folder; the desktop, an icon selected, its
+     menus, a file dragged out of a window onto it, Undo, and a
+     reload in place: the same to the pixel but for what a run makes
+     its own (a file's creation time, the free space, the order
+     Find's workers answer in), and the same files on disk. The
+     review: nothing at 1×, 1.5× and 2× in any of its windows.
+     *Measured* (release, 2×, a folder of 5,000, old → new): at rest
+     0.0% both; a frame scrolling as icons 514 → 370 µs, as mini
+     icons 825 → 517, as a list 781 → 342; the arrows in a list 826
+     → 669 µs; resident 98 → 102 MB at rest, 100 → 112 after. (Its
+     first build drew every item once, not those in view: 1,400 µs
+     a frame and 124 MB.) *Difference, meant:* Home and the volumes
+     can be moved about the desktop (they said "can't go inside
+     itself": taken as going into ~/Desktop). *Not tried:* a window
+     moved to another display (the kit's `Move` is in, untested),
+     Tracker Status (a long job), spring-loaded folders, a
+     secondary-button drag's menu, text and pictures dropped from
+     other programs, Open With, the list view's drag, a band in
+     each view, a name's edit ended by clicking another window (it
+     ends as the window loses the keyboard, not as the field does),
+     dark mode against the old build, the D-Bus file manager.
+     *Next, smallest first:* passwords, terminal, preferences.
+  6. **The build from before all this, on the login screen** (Ben,
+     2026-11-11: "when you finish can you also make the pre-refactor
+     known good build available as a login option in the display
+     manager so that if there are any problems i can go back to that").
+     When the port is done: the last commit before the kits (find it:
+     the parent of the first `crates/interface` commit) built into a
+     prefix of its own, with its own session entry beside Olo's
+     (`tools/install-session.sh` shows what an entry needs), named so
+     it can't be taken for the current one; say how to remove it.
   5. **Tools, HACKING and the Olo Book**; GPUI and olo-ui leave the
      workspace (the `browser` and `olo-coder` branches build on them:
      they stay until those have moved). `tools/dev/bench`, `ui-lint`,

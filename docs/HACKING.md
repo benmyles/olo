@@ -11907,10 +11907,35 @@ of a core, its watch thread 1 wakeup/s). A file's menu has Older
 Versions… (while DiskBackup is set up), which opens DiskBackup's window
 of its versions (`olo-diskbackup --versions-window PATH`).
 
-On Olo's GPUI. The `Tracker` entity (main.rs) keeps the windows (each
-known by its view's entity id) and does what opens windows or touches
-files: opening folders (a folder's window on this workspace is brought
-forward, else one opens here: `olo_ui::workspaces`; File ▸ New Window,
+On olo-kit. Every window is its own view on a looper of its own
+(`FolderWin`, `Desktop`, `InfoWin`, `FindWin`, `GoToWin`, `StatusWin`,
+`QuickLook`), and does what it can by itself: it lists its folder on
+workers that answer through its messenger, selects, takes the keyboard,
+drags out, edits a name, makes a new folder, pastes, and takes what's
+dragged over it (`View::drop_over` says where and how, a folder in it or
+its own; `dropped` gets it with its data: `crate::dropped_into` moves,
+copies, asks, links or saves it). What opens other windows or changes
+files it asks of the app's looper, the hub (`Hub`, main.rs), through the
+proxy (`ToHub`): a folder to open, a job to run, a name to change, Undo.
+The hub tells windows what happened by a message (`FolderMsg`,
+`DesktopMsg`, `InfoMsg`, `FindMsg`, `QuickMsg`): changes seen on disk
+(one `Arc` of them to every window, each taking what's its own), a
+reload, items to select, Quick Look's next item. What they all read is
+the app's, behind locks: Undo's and Redo's names, the places, the jobs
+running (Tracker Status draws them), whether hidden files show, the
+sort orders, DiskBackup's marks, the drag of ours under way; and each
+window says what it shows when that changes (`publish`: a `WinInfo`
+with its folders to watch, its one selected item for Quick Look, what
+an upgrade keeps), so the hub never asks a window anything and never
+waits for one. A view's drawing only looks, and draws what
+`Painter::visible_bounds` shows (a folder of 5,000 as icons is the
+few dozen in view); where its content is it learns as it's drawn and
+from `cx.listener_bounds()` in its pointer handlers. Quick Look's
+window holds its first frame until its preview has come and it has
+taken its size (`hold_commit`), or 120 ms. The `Hub` keeps the windows
+(each known by a number it gives it) and does what opens windows or
+touches files: opening folders (a folder's window on this workspace is
+brought forward, else one opens here: `olo_kit::workspaces`; File ▸ New Window,
 ⌘N, the `new` command, always opens another, on the folder it's pressed
 in, Home from the desktop or for `--new-window`; New Folder is ⇧⌘N, as
 Finder has them, both by `app_keys`' Tracker entries; Go ▸ Back and

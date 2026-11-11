@@ -8,7 +8,7 @@
 
 use std::{collections::BTreeMap, path::Path};
 
-use olo_ui::gpui::{App, Global};
+use olo_sync::Mutex;
 
 use crate::model::{Order, SortKey};
 
@@ -19,35 +19,37 @@ struct Sorts {
     chosen: BTreeMap<String, (SortKey, bool)>,
 }
 
-impl Global for Sorts {}
+/// (Every window's: each on its own looper.)
+static SORTS: Mutex<Option<Sorts>> = Mutex::new(None);
 
 fn file() -> std::path::PathBuf {
     olo_xdg::state_dir().join("tracker").join("sorts.json")
 }
 
-fn sorts(cx: &mut App) -> &mut Sorts {
-    if !cx.default_global::<Sorts>().read {
-        let chosen = olo_ui::store::load(&file()).unwrap_or_default();
-        let s = cx.global_mut::<Sorts>();
-        (s.read, s.chosen) = (true, chosen);
+fn with<R>(f: impl FnOnce(&mut Sorts) -> R) -> R {
+    let mut s = SORTS.lock().unwrap_or_else(|e| e.into_inner());
+    let s = s.get_or_insert_with(Sorts::default);
+    if !s.read {
+        (s.read, s.chosen) = (true, olo_kit::store::load(&file()).unwrap_or_default());
     }
-    cx.global_mut::<Sorts>()
+    f(s)
 }
 
 /// The order folder `dir` was last put in by hand (None: Olo's own).
-pub fn of(cx: &mut App, dir: &Path) -> Order {
-    sorts(cx).chosen.get(&*dir.to_string_lossy()).copied()
+pub fn of(dir: &Path) -> Order {
+    with(|s| s.chosen.get(&*dir.to_string_lossy()).copied())
 }
 
 /// Folder `dir` was put in `order` by hand (None: back to Olo's own).
-pub fn remember(cx: &mut App, dir: &Path, order: Order) {
+pub fn remember(dir: &Path, order: Order) {
     let key = dir.to_string_lossy().into_owned();
-    let s = sorts(cx);
-    let changed = match order {
-        Some(o) => s.chosen.insert(key, o) != Some(o),
-        None => s.chosen.remove(&key).is_some(),
-    };
-    if changed {
-        olo_ui::store::save(file(), &s.chosen);
-    }
+    with(|s| {
+        let changed = match order {
+            Some(o) => s.chosen.insert(key, o) != Some(o),
+            None => s.chosen.remove(&key).is_some(),
+        };
+        if changed {
+            olo_kit::store::save(file(), &s.chosen);
+        }
+    })
 }

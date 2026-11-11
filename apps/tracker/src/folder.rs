@@ -1,38 +1,38 @@
 //! A folder window: its menu bar, the folder shown as icons, mini icons,
-//! a list or columns, and the count along the bottom. What it can do
-//! itself (selecting, the keyboard, dragging out, editing a name) it
-//! does; what opens windows or touches files goes to the [`Tracker`].
+//! a list or columns, and the count along the bottom. Its window's own
+//! view, on a looper of its own: it lists its folder (on workers),
+//! selects, takes the keyboard, drags out, takes what's dropped on it,
+//! edits a name; what opens other windows or changes files it asks of
+//! the app ([`crate::ToHub`]), which tells it what happened
+//! ([`FolderMsg`]).
 
 use std::{
     cell::RefCell,
-    path::PathBuf,
+    path::{Path, PathBuf},
     rc::Rc,
     sync::{Arc, atomic::AtomicU64},
     time::{Duration, Instant},
 };
 
-use olo_kit_base::list::{ListState, Mods, SelectionBand, TypeSelect};
-use olo_ui::{
-    Menu, MenuBar,
-    gpui::Focusable as _,
-    gpui::{
-        self, App, Bounds, Context, Entity, EntityId, FocusHandle, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent,
-        MouseUpEvent, ParentElement as _, Pixels, Point, Render, ScrollHandle, Styled as _, Task, WeakEntity, Window, canvas, div, point, px, size,
-    },
-    menu, metrics as m,
+use olo_kit::{
+    Bounds, Cx, DropAccept, DropOffer, Dropped, Element, FocusHandle, FontWeight, InteractiveElement as _, IntoElement as _, KeyDownEvent, Menu, MenuBar, Modifiers, MouseButton, MouseDownEvent,
+    MouseMoveEvent, MouseUpEvent, Painter, ParentElement as _, Pixels, Point, ScrollHandle, SharedString, Styled as _, View, WindowCx, canvas, div, menu, metrics as m, point, px, size,
     style::{self, Align},
     theme,
     widgets::{
-        SCROLL_BAR, ScrollView, TextFieldEvent,
-        list::{Column, ColumnListView, ListModel},
+        SCROLL_BAR, ScrollView,
+        list::{Cell, Column, ColumnListView, ListModel},
+        open_alert,
     },
 };
+use olo_kit_base::list::{ListState, Mods, SelectionBand, TypeSelect};
 
 use crate::{
-    Tracker, ViewMode, columns,
+    SavedFolder, ToHub, ViewMode, WinInfo, columns,
     fs::{self, Entry},
-    items::{self, ItemLayout, Look, Rename, Spring},
+    items::{self, DropTarget, Look, Rename, Spring},
     model::{Loader, Order, Pane, SortKey},
+    ops, to_hub, undo, watch,
 };
 
 /// How long after a click on a selected item's name editing starts (a
@@ -41,14 +41,35 @@ const EDIT_DELAY: Duration = Duration::from_millis(600);
 /// How far a press moves before it's a drag.
 const DRAG_SLOP: f32 = 3.0;
 
-/// What a folder window asks of the Tracker.
-pub enum Action {
-    Open(Entry),
-    Command(String),
-    /// A name edited in place was committed.
-    Rename(PathBuf, String),
-    /// A drag rested on a folder: open it, so the drag can go on in.
-    Spring(PathBuf),
+/// What a folder window is told: by its workers, by the app, by itself
+/// later.
+pub enum FolderMsg {
+    /// A folder listed (asked as request `generation`).
+    Listed {
+        path: PathBuf,
+        generation: u64,
+        result: Result<Vec<Entry>, String>,
+    },
+    /// Changes seen on disk.
+    Changed(Arc<Vec<watch::Change>>),
+    /// List everything again (hidden files shown or not, now).
+    Reload(bool),
+    /// These, selected (as their listing brings them in).
+    Select(Vec<PathBuf>),
+    /// Opened from this folder's window: Back goes there.
+    CameFrom(PathBuf),
+    /// Something it shows that isn't its own changed (Undo's name, the
+    /// places, a backup's marks, a thumbnail): shown again.
+    Refresh,
+    /// Quick Look's arrows: the selection a step on, and shown there.
+    Step(isize),
+    /// What a Paste found on the clipboard, for the folder asked in.
+    Pasted(PathBuf, Option<(String, Vec<u8>)>),
+    /// A drag out of it is over.
+    DragOver,
+    /// Forward (its tab chosen from a notification), with a token.
+    Activate(Option<String>),
+    Close,
 }
 
 pub struct FolderWin {
@@ -94,19 +115,26 @@ pub struct FolderWin {
     /// Selections made in code, to scroll into view: (column, row).
     pub show: Vec<(usize, usize)>,
 
-    pub app: WeakEntity<Tracker>,
+    /// The app's number for this window.
+    pub id: u64,
     /// The window's surface, as last drawn (which workspace it's on),
     /// and its size (kept for an upgrade).
     pub surface: Option<u32>,
     pub size: (u32, u32),
     pub focus: FocusHandle,
     scroll: ScrollHandle,
-    geo: Rc<RefCell<IconGeo>>,
+    geo: RefCell<IconGeo>,
     press: Option<Press>,
     band: Option<(Point<Pixels>, SelectionBand)>,
+    /// Where the band reaches now (in the window).
+    band_at: Point<Pixels>,
     pub typing: TypeSelect,
-    pub spring: Rc<RefCell<Spring>>,
-    list_model: Entity<ListModel>,
+    pub spring: Spring,
+    /// Where what's dragged over it would go: the column and item it
+    /// would be dropped on (None: into the column's folder), if it's
+    /// taken there.
+    pub dropping: Option<(usize, Option<usize>)>,
+    list_model: ListModel,
     pub cols: columns::Cols,
     path_said: bool,
     /// The keyboard goes back to the view (a name's edit ended).
@@ -115,47 +143,41 @@ pub struct FolderWin {
     focused_view: Option<ViewMode>,
     /// Bumped whenever the items change (`names` follows it).
     pub stamp: u64,
-    names: (u64, Rc<[olo_ui::gpui::SharedString]>),
-    edit_timer: Option<Task<()>>,
-    poll: Option<Task<()>>,
+    names: (u64, Rc<[SharedString]>),
+    polling: bool,
     /// The free space under the count, and when it was read.
     free: RefCell<Option<(Instant, PathBuf, Option<u64>)>>,
+    /// What the app was last told of this window.
+    told: Option<WinInfo>,
 }
 
-/// The icon view as last drawn: where its content is, how it's laid out,
-/// and the items that showed (in the window's coordinates).
-#[derive(Default)]
+/// The icon view as last laid out and drawn: where its content is (in
+/// the window: it scrolls), what of it shows, and its grid.
+#[derive(Default, Clone, Copy)]
 struct IconGeo {
     origin: Point<Pixels>,
     view: Bounds<Pixels>,
     cols: usize,
     cell: (f32, f32),
     inset: f32,
-    items: Vec<(usize, ItemLayout)>,
 }
 
 impl IconGeo {
-    fn hit(&self, p: Point<Pixels>) -> Option<usize> {
-        self.items.iter().find(|(_, l)| l.hit().contains(&p)).map(|(i, _)| *i)
-    }
-
     /// Item `i`'s cell, in the window.
     fn cell_at(&self, i: usize) -> Bounds<Pixels> {
         let (c, r) = (i % self.cols.max(1), i / self.cols.max(1));
         Bounds { origin: point(self.origin.x + px(self.inset + c as f32 * self.cell.0), self.origin.y + px(self.inset + r as f32 * self.cell.1)), size: size(px(self.cell.0), px(self.cell.1)) }
     }
-}
 
-/// An item that shows in the icon view this frame, laid out.
-struct Shown {
-    i: usize,
-    layout: ItemLayout,
-    icon: &'static str,
-    selected: bool,
-    /// How far along a download being written is.
-    progress: Option<f32>,
-    /// Backed up as it is now (DiskBackup's tick).
-    marked: bool,
+    /// The item whose cell `p` is in, of `n`.
+    fn index_at(&self, p: Point<Pixels>, n: usize) -> Option<usize> {
+        let (x, y) = (f32::from(p.x - self.origin.x) - self.inset, f32::from(p.y - self.origin.y) - self.inset);
+        if x < 0.0 || y < 0.0 || self.cols == 0 {
+            return None;
+        }
+        let (c, r) = ((x / self.cell.0.max(1.0)) as usize, (y / self.cell.1.max(1.0)) as usize);
+        (c < self.cols).then_some(r * self.cols + c).filter(|i| *i < n)
+    }
 }
 
 /// A press in the icon view: where (in the window and the content), with
@@ -177,11 +199,10 @@ pub fn mods(m: &Modifiers) -> Mods {
 }
 
 impl FolderWin {
-    pub fn new(path: PathBuf, view: ViewMode, hidden: bool, app: WeakEntity<Tracker>, cx: &mut Context<Self>) -> Self {
-        let loader = Loader { win: cx.entity_id(), proxy: olo_ui::proxy(cx) };
-        let list_model = ListModel::new(cx, true);
-        cx.observe(&list_model, |_, _, cx| cx.notify()).detach();
-        let sort = crate::sorts::of(cx, &path);
+    pub fn new(id: u64, path: PathBuf, view: ViewMode, hidden: bool, cx: &mut Cx<Self>) -> Self {
+        let loader = Loader { to: cx.messenger() };
+        let list_model = ListModel::new(true);
+        let sort = crate::sorts::of(&path);
         let mut w = FolderWin {
             history: vec![path.clone()],
             at: 0,
@@ -205,16 +226,18 @@ impl FolderWin {
             listed: Arc::default(),
             pending_select: Vec::new(),
             show: Vec::new(),
-            app,
+            id,
             surface: None,
             size: (560, 380),
-            focus: cx.focus_handle(),
+            focus: FocusHandle::new(),
             scroll: ScrollHandle::new(),
-            geo: Rc::default(),
+            geo: RefCell::default(),
             press: None,
             band: None,
+            band_at: Point::default(),
             typing: TypeSelect::default(),
-            spring: Rc::default(),
+            spring: Spring::default(),
+            dropping: None,
             list_model,
             cols: columns::Cols::default(),
             path_said: false,
@@ -222,16 +245,12 @@ impl FolderWin {
             focused_view: None,
             stamp: 0,
             names: (u64::MAX, Rc::from(Vec::new())),
-            edit_timer: None,
-            poll: None,
+            polling: false,
             free: RefCell::new(None),
+            told: None,
         };
         w.reload(hidden);
         w
-    }
-
-    pub fn key(&self) -> EntityId {
-        self.loader.win
     }
 
     /// Opened from `from`'s window: Back goes there.
@@ -273,13 +292,13 @@ impl FolderWin {
     /// Back (`by` −1) or Forward (+1) through the places it was: in this
     /// window, the folder it comes back out of selected. In column view,
     /// a place inside its folder is the columns opened down to it.
-    pub fn go(&mut self, by: isize, cx: &mut Context<Self>) {
+    pub fn go(&mut self, by: isize, cx: &mut Cx<Self>) {
         let Some(to) = self.at.checked_add_signed(by).filter(|&i| i < self.history.len()) else { return };
         let (from, path) = (self.location(), self.history[to].clone());
         self.at = to;
         if self.view == ViewMode::Columns && path.starts_with(&self.path) {
             self.show_in_columns(&path, &from);
-            cx.notify();
+            cx.invalidate();
             return;
         }
         self.show_folder(path.clone(), cx);
@@ -333,14 +352,14 @@ impl FolderWin {
 
     /// Show `path` in this window: listed afresh, sorted as it's sorted,
     /// nothing selected, the window titled for it.
-    fn show_folder(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+    fn show_folder(&mut self, path: PathBuf, cx: &mut Cx<Self>) {
         let places = path.clone();
         std::thread::spawn(move || olo_kit_base::places::visited(&places));
-        self.sort = crate::sorts::of(cx, &path);
+        self.sort = crate::sorts::of(&path);
         self.path = path;
         self.entries.clear();
         self.list = ListState { multiple: true, ..Default::default() };
-        self.list_model.update(cx, |m, _| m.state.selected.clear());
+        self.list_model.state_mut().selected.clear();
         self.error = None;
         self.editing = None;
         self.pending_edit = None;
@@ -349,38 +368,37 @@ impl FolderWin {
         self.col_focus = None;
         self.pending_select.clear();
         self.show.clear();
-        self.scroll.set_offset(Point::default());
+        self.scroll.set_offset(cx, Point::default());
         self.path_said = false;
         self.request(None);
-        cx.notify();
+        cx.invalidate();
     }
 
-    /// Hands `a` to the Tracker, after this update (it may change this
-    /// window too).
-    pub fn act(&self, a: Action, cx: &mut Context<Self>) {
-        let (app, key) = (self.app.clone(), self.key());
-        cx.defer(move |cx| {
-            if let Some(app) = app.upgrade() {
-                app.update(cx, |t, cx| t.folder_action(key, a, cx));
-            }
-        });
+    /// Opens `e`: a folder's window (whose Back comes back here), a
+    /// file by what opens its kind.
+    pub fn open(&self, e: &Entry) {
+        if e.is_dir {
+            to_hub(ToHub::Open { path: e.path.clone(), from: Some(self.path.clone()) });
+        } else {
+            fs::open(e);
+        }
     }
 
-    pub fn command(&self, cmd: &str, cx: &mut Context<Self>) {
-        self.act(Action::Command(cmd.to_owned()), cx);
+    fn error(&self, message: String, cx: &mut Cx<Self>) {
+        let _ = open_alert(cx, "Tracker", "about", &message, &["OK"], |_, _| {});
     }
 
     /// Ends editing a name: renamed to what's in the field (`commit`), or
     /// left as it was.
-    pub fn end_rename(&mut self, commit: bool, cx: &mut Context<Self>) {
+    pub fn end_rename(&mut self, commit: bool, cx: &mut Cx<Self>) {
         let Some(r) = self.editing.take() else { return };
         if commit {
             let name = r.text(cx);
-            self.act(Action::Rename(r.path, name), cx);
+            to_hub(ToHub::Rename { win: Some(self.id), path: r.path, name });
         }
         // The keyboard back to the view.
         self.focus_after_edit = true;
-        cx.notify();
+        cx.invalidate();
     }
 
     /// The menus' and the views' items as the window shows them now.
@@ -594,20 +612,19 @@ impl FolderWin {
 
     /// Shows a context menu at `at`: the items' if `on_item`, else the
     /// folder's.
-    pub fn context_menu(&self, on_item: bool, at: Point<Pixels>, window: &mut Window, cx: &mut Context<Self>) {
-        let can_paste = crate::can_paste(cx);
+    pub fn context_menu(&self, on_item: bool, at: Point<Pixels>, cx: &mut Cx<Self>) {
+        let can_paste = crate::can_paste();
         let menu = if on_item { self.item_menu() } else { self.background_menu(can_paste) };
-        let (app, key) = (self.app.clone(), self.key());
-        menu::context_menu(window, cx, menu, at, move |cmd, _, cx| {
-            if let Some(app) = app.upgrade() {
-                app.update(cx, |t, cx| t.folder_command(key, cmd, cx));
-            }
+        let me = cx.view_ref();
+        menu::context_menu(cx, menu, at, move |cmd, cx| {
+            let cmd = cmd.to_owned();
+            me.update(cx, move |f, cx| f.run(&cmd, cx));
         });
     }
 
     // ---- keyboard --------------------------------------------------------
 
-    fn key_down(&mut self, e: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+    fn key_down(&mut self, e: &KeyDownEvent, cx: &mut Cx<Self>) {
         let k = &e.keystroke;
         if self.editing.is_some() {
             if k.key == "escape" {
@@ -623,29 +640,29 @@ impl FolderWin {
         let command = k.modifiers.control || k.modifiers.platform;
         if command {
             if k.key == "down" {
-                self.command("open", cx);
+                self.run("open", cx);
                 cx.stop_propagation();
             }
             return;
         }
         // Space is Quick Look, unless it goes on with a name being typed.
         let typing = match self.view {
-            ViewMode::List => self.list_model.read(cx).typing(),
+            ViewMode::List => self.list_model.typing(),
             _ => self.typing.typing(),
         };
         if k.key == "space" && !typing {
-            self.command("quick-look", cx);
+            self.run("quick-look", cx);
             cx.stop_propagation();
             return;
         }
         match k.key.as_str() {
             "delete" if plain_extra("trash", "delete") => {
-                self.command("trash", cx);
+                self.run("trash", cx);
                 cx.stop_propagation();
                 return;
             }
             "f2" if plain_extra("rename", "f2") => {
-                self.command("rename", cx);
+                self.run("rename", cx);
                 cx.stop_propagation();
                 return;
             }
@@ -655,7 +672,7 @@ impl FolderWin {
             // The list takes its own keys.
             ViewMode::List => {}
             ViewMode::Columns => {
-                if self.column_key(e, window, cx) {
+                if self.column_key(e, cx) {
                     cx.stop_propagation();
                 }
             }
@@ -670,7 +687,7 @@ impl FolderWin {
     /// The icon views' keys: the arrows, Page Up and Down, Home and End
     /// move (with ⇧, grow or shrink the selection from the anchor), Return
     /// opens, typing selects.
-    fn icon_key(&mut self, e: &KeyDownEvent, cx: &mut Context<Self>) -> bool {
+    fn icon_key(&mut self, e: &KeyDownEvent, cx: &mut Cx<Self>) -> bool {
         let n = self.entries.len();
         if n == 0 {
             return false;
@@ -678,7 +695,7 @@ impl FolderWin {
         let k = &e.keystroke;
         let (cols, rows_in_view) = {
             let g = self.geo.borrow();
-            (g.cols.max(1), ((f32::from(g.view.size.height) - 2.0 * g.inset) / g.cell.1.max(1.0)).floor().max(1.0) as isize)
+            (g.cols.max(1), ((f32::from(self.scroll.bounds().size.height) - 2.0 * g.inset) / g.cell.1.max(1.0)).floor().max(1.0) as isize)
         };
         let page = rows_in_view * cols as isize;
         let list = &self.list;
@@ -692,7 +709,7 @@ impl FolderWin {
             "home" => Some(0),
             "end" => Some(n - 1),
             "enter" => {
-                self.command("open", cx);
+                self.run("open", cx);
                 return true;
             }
             _ => None,
@@ -709,19 +726,19 @@ impl FolderWin {
         };
         let Some(to) = to else { return k.key_char.is_some() };
         self.list.move_to(to, extend);
-        self.reveal_icon(to, 0.0);
-        cx.notify();
+        self.reveal_icon(to, 0.0, cx);
+        cx.invalidate();
         true
     }
 
     /// Scrolls the icon view so item `i` shows, with `around` rows' room
     /// round it.
-    fn reveal_icon(&self, i: usize, around: f32) {
-        let g = self.geo.borrow();
+    fn reveal_icon(&self, i: usize, around: f32, cx: &mut WindowCx) {
+        let g = *self.geo.borrow();
         if g.cols == 0 {
             return;
         }
-        let view = f32::from(g.view.size.height);
+        let view = f32::from(self.scroll.bounds().size.height);
         let top = g.inset + (i / g.cols) as f32 * g.cell.1;
         let (lo, hi) = (top - g.inset - around * g.cell.1, top + g.cell.1 + g.inset + around * g.cell.1);
         let now = -f32::from(self.scroll.offset().y);
@@ -733,22 +750,38 @@ impl FolderWin {
             return;
         };
         let max = f32::from(self.scroll.max_offset().height);
-        self.scroll.set_offset(point(px(0.0), px(-to.clamp(0.0, max.max(0.0)))));
+        self.scroll.set_offset(cx, point(px(0.0), px(-to.clamp(0.0, max.max(0.0)))));
+    }
+
+    /// The icon view's look and grid.
+    fn icon_look(&self) -> Look {
+        if self.view == ViewMode::Icons { Look::Icons } else { Look::Mini }
+    }
+
+    /// Item `i` of the icon view, laid out where it is in the window.
+    fn icon_layout(&self, i: usize) -> Option<items::ItemLayout> {
+        let e = self.entries.get(i)?;
+        Some(items::layout_item(self.geo.borrow().cell_at(i), e.label(), self.icon_look(), self.list.selected.contains(&i), e.is_link))
+    }
+
+    /// The item of the icon view at `p` (on its icon or its label).
+    fn icon_hit(&self, p: Point<Pixels>) -> Option<usize> {
+        let i = self.geo.borrow().index_at(p, self.entries.len())?;
+        self.icon_layout(i).filter(|l| l.hit().contains(&p)).map(|_| i)
     }
 
     // ---- the icon views ----------------------------------------------------
 
-    fn icon_press(&mut self, e: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+    fn icon_press(&mut self, e: &MouseDownEvent, cx: &mut Cx<Self>) {
         if self.editing.is_some() {
             self.end_rename(true, cx);
         }
-        window.focus(&self.focus);
+        self.focus.focus(cx);
+        // (Where the content is now: it scrolls.)
+        self.geo.borrow_mut().origin = cx.listener_bounds().origin;
         let pos = e.position;
-        let (hit, on_label) = {
-            let g = self.geo.borrow();
-            let hit = g.hit(pos);
-            (hit, hit.and_then(|i| g.items.iter().find(|(j, _)| *j == i)).is_some_and(|(_, l)| l.highlight().contains(&pos)))
-        };
+        let hit = self.icon_hit(pos);
+        let on_label = hit.and_then(|i| self.icon_layout(i)).is_some_and(|l| l.highlight().contains(&pos));
         let m = mods(&e.modifiers);
         if e.button == MouseButton::Left && e.click_count >= 2 {
             if let Some(i) = hit
@@ -756,7 +789,7 @@ impl FolderWin {
             {
                 self.pending_edit = None;
                 self.press = None;
-                self.act(Action::Open(entry), cx);
+                self.open(&entry);
             }
             return;
         }
@@ -777,6 +810,7 @@ impl FolderWin {
                 if e.button == MouseButton::Left {
                     let origin = self.geo.borrow().origin;
                     self.band = Some((point(pos.x - origin.x, pos.y - origin.y), self.list.band(m)));
+                    self.band_at = pos;
                 }
                 if !(m.command || m.shift) {
                     self.list.selected.clear();
@@ -787,13 +821,13 @@ impl FolderWin {
             && let Some(e) = self.entries.get(i)
         {
             // The icon's picture ready by the time a drag starts.
-            let _ = olo_ui::icons::bitmap(items::icon_of(e), 0);
+            let _ = olo_kit::icons::bitmap(items::icon_of(e), 0);
         }
         self.press = Some(Press { at: pos, button: e.button, item: hit, was_selected, on_label, mods: e.modifiers, dragging: false });
-        cx.notify();
+        cx.invalidate();
     }
 
-    fn icon_move(&mut self, e: &MouseMoveEvent, window: &mut Window, cx: &mut Context<Self>) {
+    fn icon_move(&mut self, e: &MouseMoveEvent, cx: &mut Cx<Self>) {
         let Some(press) = &mut self.press else { return };
         if e.pressed_button.is_none() {
             return;
@@ -806,7 +840,7 @@ impl FolderWin {
                 let at = press.at;
                 self.pending_edit = None;
                 let Some(entry) = self.entries.get(i) else { return };
-                let icon = self.geo.borrow().items.iter().find(|(j, _)| *j == i).map(|(_, l)| l.icon).unwrap_or_default();
+                let icon = self.icon_layout(i).map(|l| l.icon).unwrap_or_default();
                 let d = items::Drag {
                     paths: self.selected_paths(),
                     icon: items::icon_of(entry),
@@ -815,12 +849,12 @@ impl FolderWin {
                     ask,
                     name: entry.name.clone(),
                 };
-                items::start(window, cx, self.key(), d);
-                cx.notify();
+                items::start(cx, self.id, d, || FolderMsg::DragOver);
+                cx.invalidate();
             }
             None if press.button == MouseButton::Left => {
-                self.band_to(e.position, window);
-                cx.notify();
+                self.band_to(e.position, cx);
+                cx.invalidate();
             }
             _ => {}
         }
@@ -829,10 +863,11 @@ impl FolderWin {
     /// The band now reaches `now` (in the window): what it covers is
     /// selected (every item in the rows it crosses, not only those
     /// showing), and near the top or bottom it scrolls on.
-    fn band_to(&mut self, now: Point<Pixels>, window: &mut Window) {
+    fn band_to(&mut self, now: Point<Pixels>, cx: &mut WindowCx) {
         let Some((start, base)) = self.band.clone() else { return };
-        let look = if self.view == ViewMode::Icons { Look::Icons } else { Look::Mini };
-        let g = self.geo.borrow();
+        self.band_at = now;
+        let look = self.icon_look();
+        let g = *self.geo.borrow();
         let here = point(now.x - g.origin.x, now.y - g.origin.y);
         let r = Bounds::from_corners(point(start.x.min(here.x), start.y.min(here.y)), point(start.x.max(here.x), start.y.max(here.y)));
         let r = Bounds { origin: point(r.origin.x + g.origin.x, r.origin.y + g.origin.y), size: r.size };
@@ -842,12 +877,11 @@ impl FolderWin {
         let mut covered = Vec::new();
         for i in range {
             let e = &self.entries[i];
-            if items::layout_item(window, g.cell_at(i), e.label(), look, false, e.is_link).hit().intersects(&r) {
+            if items::layout_item(g.cell_at(i), e.label(), look, false, e.is_link).hit().intersects(&r) {
                 covered.push(i);
             }
         }
-        let (view, cell_h) = (g.view, g.cell.1);
-        drop(g);
+        let (view, cell_h) = (self.scroll.bounds(), g.cell.1);
         self.list.selected = base.over(covered);
         // Near or past the top or bottom: scroll on.
         let edge = px(cell_h / 4.0);
@@ -861,15 +895,17 @@ impl FolderWin {
         if step != 0.0 {
             let o = self.scroll.offset();
             let max = f32::from(self.scroll.max_offset().height);
-            self.scroll.set_offset(point(o.x, px((f32::from(o.y) - step).clamp(-max, 0.0))));
+            let to = (f32::from(o.y) - step).clamp(-max, 0.0);
+            self.geo.borrow_mut().origin.y += px(to) - o.y;
+            self.scroll.set_offset(cx, point(o.x, px(to)));
         }
     }
 
-    fn icon_release(&mut self, e: &MouseUpEvent, window: &mut Window, cx: &mut Context<Self>) {
+    fn icon_release(&mut self, e: &MouseUpEvent, cx: &mut Cx<Self>) {
         let Some(press) = self.press.take() else { return };
         self.band = None;
         if press.dragging {
-            cx.notify();
+            cx.invalidate();
             return;
         }
         match (press.button, press.item) {
@@ -880,40 +916,40 @@ impl FolderWin {
                 if plain && press.on_label && self.list.selected.len() == 1 {
                     if let Some(entry) = self.entries.get(i) {
                         self.pending_edit = Some((entry.path.clone(), Instant::now()));
-                        self.edit_timer = Some(cx.spawn(async move |me, cx| {
-                            cx.background_executor().timer(EDIT_DELAY).await;
-                            let _ = me.update(cx, |f, cx| f.edit_if_still_pending(cx));
-                        }));
+                        cx.after_do(EDIT_DELAY, |f, cx| f.edit_if_still_pending(cx));
                     }
                 } else {
                     self.pending_edit = None;
                 }
                 self.list.click(i, mods(&press.mods));
             }
-            (MouseButton::Right, item) => self.context_menu(item.is_some(), e.position, window, cx),
+            (MouseButton::Right, item) => self.context_menu(item.is_some(), e.position, cx),
             _ => self.pending_edit = None,
         }
-        cx.notify();
+        cx.invalidate();
     }
 
     /// The moment after a click on a selected name passed with no double
     /// click: edit it, if it's still the one selected.
-    fn edit_if_still_pending(&mut self, cx: &mut Context<Self>) {
+    fn edit_if_still_pending(&mut self, cx: &mut Cx<Self>) {
         let Some((path, at)) = self.pending_edit.take() else { return };
         if at.elapsed() >= EDIT_DELAY - Duration::from_millis(20) && self.list.selected.len() == 1 && self.selected_paths().first() == Some(&path) {
             self.edit_name(&path, cx);
-            cx.notify();
+            cx.invalidate();
+        } else if at.elapsed() < EDIT_DELAY - Duration::from_millis(20) {
+            // (A later click's moment: its own timer comes.)
+            self.pending_edit = Some((path, at));
         }
     }
 
-    fn icon_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let look = if self.view == ViewMode::Icons { Look::Icons } else { Look::Mini };
+    fn icon_view(&mut self, cx: &mut Cx<Self>) -> Element {
+        let look = self.icon_look();
         let (cell, inset) = if look == Look::Icons { (items::ICON_CELL, m::SPACING) } else { (items::MINI_CELL, m::TIGHT) };
-        // As wide as the view less its bar: known from the last frame (the
-        // window's width before the first).
+        // As wide as the view less its bar (the window's width, before
+        // it's been laid out).
         let view_w = {
-            let g = self.geo.borrow();
-            if g.view.size.width > px(0.0) { f32::from(g.view.size.width) } else { f32::from(window.viewport_size().width) - SCROLL_BAR }
+            let w = f32::from(self.scroll.bounds().size.width);
+            if w > 0.0 { w - SCROLL_BAR } else { f32::from(cx.viewport_size().width) - SCROLL_BAR }
         };
         let cols = (((view_w - 2.0 * inset) / cell.0).floor() as usize).max(1);
         let rows = self.entries.len().div_ceil(cols);
@@ -927,8 +963,11 @@ impl FolderWin {
         // A selection made in code (Show in Tracker, a new item, one put
         // back after a reload): into view, with some of what's around it.
         if let Some(row) = self.take_show() {
-            let around = ((f32::from(self.geo.borrow().view.size.height) / cell.1 / 2.0).floor() - 1.0).max(0.0);
-            self.reveal_icon(row, around);
+            let around = ((f32::from(self.scroll.bounds().size.height) / cell.1 / 2.0).floor() - 1.0).max(0.0);
+            self.reveal_icon(row, around, cx);
+        }
+        if self.editing.as_ref().is_some_and(|r| !self.entries.iter().any(|e| e.path == r.path)) {
+            self.editing = None; // the item went away
         }
         // Editing a name: the field over its label, where it is in the
         // content (it scrolls with it).
@@ -936,123 +975,83 @@ impl FolderWin {
             let i = self.entries.iter().position(|e| e.path == r.path)?;
             let e = &self.entries[i];
             let c = Bounds { origin: point(px(inset + (i % cols) as f32 * cell.0), px(inset + (i / cols) as f32 * cell.1)), size: size(px(cell.0), px(cell.1)) };
-            let origin = self.geo.borrow().origin;
-            let c = Bounds { origin: point(c.origin.x + origin.x, c.origin.y + origin.y), size: c.size };
-            let l = items::layout_item(window, c, e.label(), look, true, e.is_link);
-            Some(r.element(window, cx, &l, origin))
+            let l = items::layout_item(c, e.label(), look, true, e.is_link);
+            Some(r.element(cx, &l, Point::default()))
         });
-        if self.editing.as_ref().is_some_and(|r| !self.entries.iter().any(|e| e.path == r.path)) {
-            self.editing = None; // the item went away
-        }
-        let me = cx.entity();
-        let paint_me = me.clone();
-        let geo = self.geo.clone();
-        let spring = self.spring.clone();
-        let p = theme::palette(cx);
-        let ground = p.document_background;
-        let content = canvas(
-            |_, _, _| {},
-            move |b, _, window, cx| {
-                let clip = window.content_mask().bounds.intersect(&b);
-                // What shows (and only that), taken out of the window's
-                // state so it can be drawn.
+        let ground = theme::palette().document_background;
+        let content = cx
+            .canvas(move |f: &FolderWin, g, b| {
+                let p = theme::palette();
+                let clip = g.visible_bounds().intersect(&b);
+                {
+                    let mut geo = f.geo.borrow_mut();
+                    geo.origin = b.origin;
+                    geo.view = clip;
+                }
+                // What shows, and only that.
                 let first = ((f32::from(clip.top() - b.top()) - inset) / cell.1).floor().max(0.0) as usize * cols;
                 let last = (((f32::from(clip.bottom() - b.top()) - inset) / cell.1).ceil().max(0.0) as usize + 1) * cols;
                 let cell_at =
                     |i: usize| Bounds { origin: point(b.left() + px(inset + (i % cols) as f32 * cell.0), b.top() + px(inset + (i / cols) as f32 * cell.1)), size: size(px(cell.0), px(cell.1)) };
-                // (Laid out from the window's entries where they are: no
-                // copies of what shows, a frame's worth of allocations.)
-                let (layouts, editing, band, took, drop_on, spring_to) = {
-                    let f = paint_me.read(cx);
-                    let range = first.min(f.entries.len())..last.min(f.entries.len());
-                    let layouts: Vec<Shown> = range
-                        .map(|i| {
-                            let e = &f.entries[i];
-                            let selected = f.list.selected.contains(&i);
-                            let marked = crate::backups::backed_up(cx, &e.path);
-                            Shown { i, layout: items::layout_item(window, cell_at(i), e.label(), look, selected, e.is_link), icon: items::icon_of(e), selected, progress: e.progress(), marked }
-                        })
-                        .collect();
-                    let editing = f.editing.as_ref().and_then(|r| layouts.iter().find(|s| f.entries[s.i].path == r.path)).map(|s| s.i);
-                    let band = f.band.clone().zip(f.press.as_ref().filter(|p| p.item.is_none() && p.button == MouseButton::Left)).map(|((start, _), _)| start);
-                    // Something dragged over it: onto a folder in it, or into it.
-                    let (mut took, mut drop_on, mut spring_to) = (false, None, None);
-                    if let Some(o) = window.drop_offer().cloned() {
-                        let at = window.mouse_position();
-                        if clip.contains(&at) {
-                            let over = layouts.iter().find(|s| s.layout.hit().contains(&at)).map(|s| (s.i, &f.entries[s.i], s.selected));
-                            (took, drop_on) = items::item_drop(window, cx, f.key(), &o, over, Some(&f.current_dir()));
-                            spring_to = drop_on.filter(|_| took).map(|i| f.entries[i].path.clone());
-                        }
-                    }
-                    (layouts, editing, band, took, drop_on, spring_to)
+                let editing = f.editing.as_ref().and_then(|r| f.entries.iter().position(|e| e.path == r.path));
+                let (took, drop_on) = match f.dropping {
+                    Some((_, on)) => (true, on),
+                    None => (false, None),
                 };
-                let mut drawn = Vec::with_capacity(layouts.len());
-                window.with_content_mask(Some(gpui::ContentMask { bounds: clip }), |window| {
-                    for s in layouts {
-                        items::paint_item(window, cx, &s.layout, s.icon, s.selected || drop_on == Some(s.i), false, editing != Some(s.i), &p);
-                        if let Some(done) = s.progress {
-                            items::paint_progress(window, s.layout.icon, done, &p);
+                g.with_content_mask(Some(olo_kit::ContentMask { bounds: clip }), |g| {
+                    for i in first.min(f.entries.len())..last.min(f.entries.len()) {
+                        let e = &f.entries[i];
+                        let selected = f.list.selected.contains(&i);
+                        let l = items::layout_item(cell_at(i), e.label(), look, selected, e.is_link);
+                        items::paint_item(g, &l, items::icon_of(e), selected || drop_on == Some(i), false, editing != Some(i), &p);
+                        if let Some(done) = e.progress() {
+                            items::paint_progress(g, l.icon, done, &p);
                         }
-                        if s.marked {
-                            items::paint_mark(window, cx, s.layout.icon, &s.layout.name, &p);
+                        if crate::backups::backed_up(&e.path) {
+                            items::paint_mark(g, l.icon, &l.name, &p);
                         }
-                        drawn.push((s.i, s.layout));
                     }
                     if took && drop_on.is_none() {
-                        items::outline(window, clip, &p);
+                        items::outline(g, clip, &p);
                     }
-                    if let Some(start) = band {
-                        let now = window.mouse_position();
+                    if let Some((start, _)) = f.band.as_ref().filter(|_| f.press.as_ref().is_some_and(|p| p.item.is_none() && p.button == MouseButton::Left)) {
+                        let now = f.band_at;
                         let s = point(start.x + b.left(), start.y + b.top());
                         let r = Bounds::from_corners(point(s.x.min(now.x), s.y.min(now.y)), point(s.x.max(now.x), s.y.max(now.y)));
-                        style::selection_band(window, r.intersect(&clip), &p);
+                        style::selection_band(g, r.intersect(&clip), &p);
                     }
                 });
-                {
-                    let mut g = geo.borrow_mut();
-                    g.origin = b.origin;
-                    g.view = clip;
-                    g.items = drawn;
-                }
-                let open = spring.borrow_mut().rest(spring_to.as_deref(), window, cx);
-                if let Some(dir) = open {
-                    paint_me.update(cx, |f, cx| f.act(Action::Spring(dir), cx));
-                }
-                // The pointer held down goes on being followed past the
-                // view's edge.
-                let (mv, up) = (paint_me.clone(), paint_me.clone());
-                window.on_mouse_event(move |e: &MouseMoveEvent, phase, window, cx| {
-                    if phase == gpui::DispatchPhase::Bubble {
-                        mv.update(cx, |f, cx| f.icon_move(e, window, cx));
-                    }
-                });
-                window.on_mouse_event(move |e: &MouseUpEvent, phase, window, cx| {
-                    if phase == gpui::DispatchPhase::Bubble {
-                        up.update(cx, |f, cx| f.icon_release(e, window, cx));
-                    }
-                });
-            },
-        )
-        .size_full();
-        let (down, right) = (me.clone(), me.clone());
-        ScrollView::new("icons", &self.scroll).border(false).background(ground).child(
-            div()
-                .id("icons-content")
-                .relative()
-                .w_full()
-                .h(px(height))
-                .min_h_full()
-                .on_mouse_down(MouseButton::Left, move |e, window, cx| down.update(cx, |f, cx| f.icon_press(e, window, cx)))
-                .on_mouse_down(MouseButton::Right, move |e, window, cx| right.update(cx, |f, cx| f.icon_press(e, window, cx)))
-                .child(content)
-                .children(field),
-        )
+            })
+            .size_full();
+        ScrollView::new(&self.scroll)
+            .border(false)
+            .background(ground)
+            .child(
+                div()
+                    .relative()
+                    .w_full()
+                    .h(px(height))
+                    .min_h_full()
+                    .on_mouse_down(MouseButton::Left, cx.listener(|f: &mut FolderWin, e: &MouseDownEvent, cx| f.icon_press(e, cx)))
+                    .on_mouse_down(MouseButton::Right, cx.listener(|f: &mut FolderWin, e: &MouseDownEvent, cx| f.icon_press(e, cx)))
+                    // The pointer held down goes on being followed past the
+                    // view's edge.
+                    .on_window_mouse_move(cx.listener(|f: &mut FolderWin, e: &MouseMoveEvent, cx| {
+                        if f.press.is_some() {
+                            f.geo.borrow_mut().origin = cx.listener_bounds().origin;
+                            f.icon_move(e, cx);
+                        }
+                    }))
+                    .on_window_mouse_up(cx.listener(|f: &mut FolderWin, e: &MouseUpEvent, cx| f.icon_release(e, cx)))
+                    .child(content)
+                    .children(field),
+            )
+            .into_any_element()
     }
 
     // ---- the list view -----------------------------------------------------
 
-    fn list_view(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn list_view(&mut self, cx: &mut Cx<Self>) -> Element {
         let key_col = |k: SortKey| match k {
             SortKey::Name => 0,
             SortKey::Size => 1,
@@ -1063,85 +1062,71 @@ impl FolderWin {
         let sort = Some(self.sort.map_or((key_col(SortKey::Modified), false), |(k, asc)| (key_col(k), asc)));
         let reveal = self.take_show();
         // The window's selection is the list's.
-        let list = self.list.clone();
-        self.list_model.update(cx, |m, _| {
-            if m.state.selected != list.selected || m.state.anchor != list.anchor || m.state.cursor != list.cursor || m.state.sort != sort {
-                m.state.selected = list.selected;
-                m.state.anchor = list.anchor;
-                m.state.cursor = list.cursor;
-                m.state.sort = sort;
+        {
+            let mut st = self.list_model.state_mut();
+            if st.selected != self.list.selected || st.anchor != self.list.anchor || st.cursor != self.list.cursor || st.sort != sort {
+                st.selected = self.list.selected.clone();
+                st.anchor = self.list.anchor;
+                st.cursor = self.list.cursor;
+                st.sort = sort;
             }
-            if let Some(row) = reveal {
-                m.reveal(row);
-            }
-        });
-        let me = cx.entity();
+        }
+        if let Some(row) = reveal {
+            self.list_model.reveal(cx, row);
+        }
         let cols = [Column::new("Name", 220.0), Column::new("Size", 80.0).right(), Column::new("Modified", 160.0), Column::new("Kind", 120.0)];
-        let (cell_me, select_me, sort_me, open_me, context_me, drag_me) = (me.clone(), me.clone(), me.clone(), me.clone(), me.clone(), me.clone());
         // Names for typing to select, made again only when the items change.
         if self.names.0 != self.stamp {
-            self.names = (self.stamp, self.entries.iter().map(|e| olo_ui::gpui::SharedString::from(e.name.clone())).collect());
+            self.names = (self.stamp, self.entries.iter().map(|e| SharedString::from(e.name.clone())).collect());
         }
         let names = self.names.1.clone();
-        let model = self.list_model.clone();
-        let (select_model, sort_model, drag_model) = (model.clone(), model.clone(), model.clone());
-        let editing = self.editing.as_ref().map(|r| r.path.clone());
-        ColumnListView::new("list", &self.list_model, cols, self.entries.len(), move |cell, window, cx| {
-            let Some(e) = cell_me.read(cx).entries.get(cell.row).cloned() else { return };
+        ColumnListView::new(cx, "list", &self.list_model, cols, self.entries.len(), |f: &FolderWin, cell, g| {
+            let Some(e) = f.entries.get(cell.row) else { return };
+            let editing = f.editing.as_ref().is_some_and(|r| r.path == e.path);
             match cell.column {
-                0 => name_cell(cell, window, cx, &e, editing.as_ref() != Some(&e.path)),
-                1 => cell.text(window, cx, e.size_text()),
-                2 => cell.text(window, cx, fs::format_time(e.modified)),
-                _ => cell.text(window, cx, e.kind_text()),
+                0 => name_cell(cell, g, e, !editing),
+                1 => cell.text(g, e.size_text()),
+                2 => cell.text(g, fs::format_time(e.modified)),
+                _ => cell.text(g, e.kind_text()),
             }
         })
-        .type_select(move |i| names.get(i).cloned().unwrap_or_default())
-        .on_select(move |_, cx| {
-            let s = select_model.read(cx).state.clone();
-            select_me.update(cx, |f, cx| {
-                f.list.selected = s.selected;
-                f.list.anchor = s.anchor;
-                f.list.cursor = s.cursor;
-                if f.editing.is_some() {
-                    f.end_rename(true, cx);
-                }
-                cx.notify();
-            });
-        })
-        .on_sort(move |_, cx| {
-            let Some((col, asc)) = sort_model.read(cx).state.sort else { return };
+        .type_select(move |_, i| names.get(i).cloned().unwrap_or_default())
+        .on_select(cx.listener(|f: &mut FolderWin, _: &(), cx| {
+            let s = f.list_model.state().clone();
+            f.list.selected = s.selected;
+            f.list.anchor = s.anchor;
+            f.list.cursor = s.cursor;
+            if f.editing.is_some() {
+                f.end_rename(true, cx);
+            }
+            cx.invalidate();
+        }))
+        .on_sort(cx.listener(|f: &mut FolderWin, _: &(), cx| {
+            let Some((col, asc)) = f.list_model.state().sort else { return };
             let key = [SortKey::Name, SortKey::Size, SortKey::Modified, SortKey::Kind][col.min(3)];
-            sort_me.update(cx, |f, cx| {
-                if f.sort != Some((key, asc)) {
-                    f.sort = Some((key, asc));
-                    crate::sorts::remember(cx, &f.path, f.sort);
-                    f.resort();
-                    cx.notify();
-                }
-            });
-        })
-        .on_open(move |row, _, cx| {
-            open_me.update(cx, |f, cx| {
-                // What's selected, if it's one of them.
-                if f.list.selected.contains(&row) {
-                    f.command("open", cx);
-                } else if let Some(e) = f.entries.get(row).cloned() {
-                    f.act(Action::Open(e), cx);
-                }
-            });
-        })
-        .on_context(move |_, at, window, cx| context_me.update(cx, |f, cx| f.context_menu(true, at, window, cx)))
-        .on_drag(move |row, window, cx| {
-            let paths: Vec<PathBuf> = {
-                let st = &drag_model.read(cx).state;
-                let f = drag_me.read(cx);
-                st.selected.iter().filter_map(|&i| f.entries.get(i)).map(|e| e.path.clone()).collect()
-            };
-            let Some(e) = drag_me.read(cx).entries.get(row).cloned() else { return };
-            let key = drag_me.entity_id();
+            if f.sort != Some((key, asc)) {
+                f.sort = Some((key, asc));
+                crate::sorts::remember(&f.path, f.sort);
+                f.resort();
+                cx.invalidate();
+            }
+        }))
+        .on_open(cx.listener(|f: &mut FolderWin, row: &usize, cx| {
+            // What's selected, if it's one of them.
+            if f.list.selected.contains(row) {
+                f.run("open", cx);
+            } else if let Some(e) = f.entries.get(*row).cloned() {
+                f.open(&e);
+            }
+        }))
+        .on_context(cx.listener(|f: &mut FolderWin, (_, at): &(usize, Point<Pixels>), cx| f.context_menu(true, *at, cx)))
+        .on_drag(cx.listener(|f: &mut FolderWin, row: &usize, cx| {
+            let paths: Vec<PathBuf> = f.list_model.state().selected.iter().filter_map(|&i| f.entries.get(i)).map(|e| e.path.clone()).collect();
+            let Some(e) = f.entries.get(*row).cloned() else { return };
             let d = items::Drag { paths, icon: items::icon_of(&e), size: items::MINI, hotspot: point(px(items::MINI / 2.0), px(items::MINI / 2.0)), ask: false, name: e.name.clone() };
-            items::start(window, cx, key, d);
-        })
+            items::start(cx, f.id, d, || FolderMsg::DragOver);
+        }))
+        .into_any_element()
     }
 
     // ---- the window --------------------------------------------------------
@@ -1153,7 +1138,7 @@ impl FolderWin {
     /// is two lines of device pixels, so what's under it is the scroll
     /// bar's height at every scale (at 1.5× it was a pixel taller), and
     /// it's that the text is centred in.
-    fn count_bar(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn count_bar(&self, cx: &WindowCx) -> Element {
         let (entries, list) = self.current();
         let n = entries.len();
         let loading = self.loading && self.entries.is_empty() && self.error.is_none();
@@ -1164,38 +1149,35 @@ impl FolderWin {
             (n, s) => format!("{s} of {n} selected"),
         };
         let free = self.free_space();
-        let _ = cx;
         // (The list view's own sunken frame edges it: an etched edge
         // under that one too crowded the two, a line apart.)
         let etched = self.view != ViewMode::List;
-        canvas(
-            |_, _, _| {},
-            move |b, _, window, cx| {
-                let p = theme::palette(cx);
-                let line = style::hairline(window);
-                if etched {
-                    style::hline(window, b.left(), b.right(), b.top(), style::shade(&p, p.panel_background, 1.3));
-                    style::hline(window, b.left(), b.right(), b.top() + line, style::c(p.shine));
-                } else {
-                    style::fill_rect(window, Bounds::from_corners(b.origin, point(b.right(), b.top() + line * 2.0)), style::c(p.panel_background));
-                }
-                // Below the two-line etched edge.
-                let under = Bounds::from_corners(point(b.left(), b.top() + line * 2.0), b.bottom_right());
-                style::fill_rect(window, under, style::c(p.panel_background));
-                let cy = under.center().y;
-                let font = style::ui_font(FontWeight::NORMAL);
-                // In line with the list's first column (its icons) above.
-                let at = style::label(window, cx, b.left() + px(m::CELL_INSET), cy, Align::Left, count.clone(), style::SMALL_SIZE, font.clone(), style::c(p.panel_text));
-                olo_ui::agent::record(window, cx, olo_ui::agent::Node::label(count.clone(), at));
-                if let Some(free) = free {
-                    let text = format!("{} free", fs::format_size(free));
-                    let at = style::label(window, cx, b.right() - px(m::CELL_INSET), cy, Align::Right, text.clone(), style::SMALL_SIZE, font, style::disabled_text(&p));
-                    olo_ui::agent::record(window, cx, olo_ui::agent::Node::label(text, at));
-                }
-            },
-        )
+        canvas(move |g, b| {
+            let p = theme::palette();
+            let line = style::hairline(g);
+            if etched {
+                style::hline(g, b.left(), b.right(), b.top(), style::shade(&p, p.panel_background, 1.3));
+                style::hline(g, b.left(), b.right(), b.top() + line, style::c(p.shine));
+            } else {
+                style::fill_rect(g, Bounds::from_corners(b.origin, point(b.right(), b.top() + line * 2.0)), style::c(p.panel_background));
+            }
+            // Below the two-line etched edge.
+            let under = Bounds::from_corners(point(b.left(), b.top() + line * 2.0), b.bottom_right());
+            style::fill_rect(g, under, style::c(p.panel_background));
+            let cy = under.center().y;
+            let font = style::ui_font(FontWeight::NORMAL);
+            // In line with the list's first column (its icons) above.
+            let at = style::label(g, b.left() + px(m::CELL_INSET), cy, Align::Left, count.clone(), style::SMALL_SIZE, font.clone(), style::c(p.panel_text));
+            olo_kit::agent::record(g, olo_kit::agent::Node::label(count.clone(), at));
+            if let Some(free) = free {
+                let text = format!("{} free", fs::format_size(free));
+                let at = style::label(g, b.right() - px(m::CELL_INSET), cy, Align::Right, text.clone(), style::SMALL_SIZE, font, style::disabled_text(&p));
+                olo_kit::agent::record(g, olo_kit::agent::Node::label(text, at));
+            }
+        })
         .w_full()
-        .h(px(Self::count_bar_height(window.scale_factor())))
+        .h(px(Self::count_bar_height(cx.scale_factor())))
+        .into_any_element()
     }
 
     /// The count bar's height in points at `scale`, whole device pixels:
@@ -1226,48 +1208,317 @@ impl FolderWin {
         v
     }
 
-    /// Listing a big folder shows its count growing: drawn again a few
+    /// Listing a big folder shows its count growing: shown again a few
     /// times a second while it lists.
-    fn poll_while_loading(&mut self, cx: &mut Context<Self>) {
+    fn poll_while_loading(&mut self, cx: &mut Cx<Self>) {
         let loading = self.loading && self.entries.is_empty() && self.error.is_none();
-        if !loading {
-            self.poll = None;
+        if !loading || self.polling {
             return;
         }
-        if self.poll.is_some() {
-            return;
+        self.polling = true;
+        cx.after_do(Duration::from_millis(100), |f, cx| {
+            f.polling = false;
+            cx.invalidate();
+        });
+    }
+
+    // ---- what's dragged over it, and dropped ---------------------------------
+
+    /// The folder a drag would spring open, if it rests there: looked at
+    /// again when it would be due.
+    pub fn rest_on(&mut self, dir: Option<&Path>, cx: &mut Cx<Self>) {
+        if self.spring.rest(dir) {
+            cx.after_do(items::SPRING + Duration::from_millis(10), |f, _| {
+                if let Some(dir) = f.spring.due() {
+                    to_hub(ToHub::Open { path: dir, from: None });
+                }
+            });
         }
-        self.poll = Some(cx.spawn(async move |me, cx| {
-            loop {
-                cx.background_executor().timer(Duration::from_millis(100)).await;
-                let go_on = me.update(cx, |f, cx| {
-                    cx.notify();
-                    f.loading && f.entries.is_empty() && f.error.is_none()
-                });
-                if !matches!(go_on, Ok(true)) {
-                    let _ = me.update(cx, |f, _| f.poll = None);
-                    return;
+    }
+
+    /// What's dragged over the icon view at `at`.
+    fn icon_drop_over(&mut self, o: &DropOffer, at: Point<Pixels>, cx: &mut Cx<Self>) -> Option<DropAccept> {
+        if !self.geo.borrow().view.contains(&at) {
+            self.dropping = None;
+            self.rest_on(None, cx);
+            return None;
+        }
+        let over = self.icon_hit(at).map(|i| (i, &self.entries[i], self.list.selected.contains(&i)));
+        let (accept, on) = items::item_drop(cx, self.id, o, over, Some(&self.current_dir()));
+        let spring_to = on.filter(|_| accept.is_some()).map(|i| self.entries[i].path.clone());
+        self.dropping = accept.is_some().then_some((0, on));
+        self.rest_on(spring_to.as_deref(), cx);
+        accept
+    }
+
+    /// Files or text dropped on the folder, or on a folder in it.
+    fn take_dropped(&mut self, drop: Dropped, cx: &mut Cx<Self>) {
+        let Some(target) = DropTarget::parse(&drop.target) else { return };
+        let paths = drop.paths();
+        let dest = match target {
+            DropTarget::Trash => {
+                let trash = fs::trash_files();
+                let paths: Vec<PathBuf> = paths.into_iter().filter(|p| !p.starts_with(&trash)).collect();
+                if !paths.is_empty() {
+                    to_hub(ToHub::Job { kind: ops::Kind::Trash, sources: paths, dest: None, origin: Some(self.id) });
+                }
+                return;
+            }
+            DropTarget::Place => return,
+            DropTarget::Folder(dest) => dest,
+        };
+        if let Err(e) = crate::dropped_into(&drop, paths, dest, Some(self.id), cx) {
+            self.error(e, cx);
+        }
+    }
+
+    // ---- commands ------------------------------------------------------------
+
+    /// A command from the menus, a context menu, a key, an agent.
+    pub fn run(&mut self, cmd: &str, cx: &mut Cx<Self>) {
+        let (selected, entries, dir) = (self.selected_paths(), self.selected_entries(), self.current_dir());
+        let job = |kind: ops::Kind, sources: Vec<PathBuf>, id: u64| to_hub(ToHub::Job { kind, sources, dest: None, origin: Some(id) });
+        match cmd {
+            "quick-look" => to_hub(ToHub::QuickLook(self.id)),
+            "open" => {
+                for e in &entries {
+                    self.open(e);
                 }
             }
-        }));
+            // The folder it's in, with this one selected (to go on from).
+            "parent" => to_hub(ToHub::Reveal(dir, true)),
+            "new-folder" => match fs::new_folder(&dir) {
+                Ok(p) => {
+                    to_hub(ToHub::Done("New Folder".into(), undo::Change::Made(vec![p.clone()])));
+                    self.add_entry(&p);
+                    self.edit_name(&p, cx);
+                }
+                Err(e) => self.error(format!("Couldn't create a folder: {e}"), cx),
+            },
+            "terminal" => fs::open_in_terminal(&dir),
+            "back" => self.go(-1, cx),
+            "forward" => self.go(1, cx),
+            // File ▸ New Window (⌘N): another window on this folder, as
+            // it shows it, beside this one (always a new one).
+            "new" => to_hub(ToHub::NewWindow(dir, Some(self.view))),
+            "new-window" => {
+                if let Some(app) = entries.first().and_then(fs::running_app) {
+                    fs::new_window(app);
+                }
+            }
+            "group-windows" => fs::toggle_grouping(entries.first()),
+            "terminal-selected" => {
+                for e in entries.iter().filter(|e| e.is_dir) {
+                    fs::open_in_terminal(&e.path);
+                }
+            }
+            "older-versions" => {
+                if let Some(e) = entries.iter().find(|e| !e.is_dir) {
+                    crate::backups::older_versions(&e.path);
+                }
+            }
+            "info" => {
+                let of = if entries.is_empty() { fs::entry(&dir).into_iter().collect() } else { entries };
+                to_hub(ToHub::GetInfo(of));
+            }
+            "rename" => {
+                if let [p] = selected.as_slice() {
+                    let p = p.clone();
+                    self.edit_name(&p, cx);
+                }
+            }
+            "duplicate" => {
+                if !selected.is_empty() {
+                    job(ops::Kind::Duplicate, selected, self.id);
+                }
+            }
+            "link" => {
+                let made: Vec<PathBuf> = selected.iter().filter_map(|p| fs::make_link(p).ok()).collect();
+                to_hub(ToHub::Done(if made.len() == 1 { "Create Link" } else { "Create Links" }.into(), undo::Change::Made(made)));
+                to_hub(ToHub::ReloadAll);
+            }
+            "undo" => to_hub(ToHub::UndoRedo(false, Some(self.id))),
+            "redo" => to_hub(ToHub::UndoRedo(true, Some(self.id))),
+            "trash" => {
+                if !selected.is_empty() {
+                    job(ops::Kind::Trash, selected, self.id);
+                }
+            }
+            "restore" => {
+                let top = fs::trash_files();
+                let items: Vec<PathBuf> = selected.into_iter().filter(|p| p.parent() == Some(top.as_path())).collect();
+                if !items.is_empty() {
+                    job(ops::Kind::Restore, items, self.id);
+                }
+            }
+            "empty-trash" => crate::confirm_empty_trash(cx),
+            "cut" | "copy" => {
+                // As file managers copy files, so they paste into Chrome,
+                // Slack, GTK's and Qt's apps and other file managers too.
+                if !selected.is_empty() {
+                    crate::copy_clip(olo_kit_base::clipboard::files(&selected, cmd == "cut"));
+                }
+            }
+            "paste" => {
+                let to = cx.messenger();
+                olo_kit::clipboard::paste_as(crate::PASTEABLE.iter().map(|s| s.to_string()).collect(), move |found| {
+                    to.send(FolderMsg::Pasted(dir, found));
+                });
+                return;
+            }
+            "select-all" => {
+                let (entries, list) = self.current_mut();
+                list.select_all(entries.len());
+            }
+            "invert" => {
+                let (entries, list) = self.current_mut();
+                list.invert(entries.len());
+            }
+            "view-icons" => self.set_view(ViewMode::Icons),
+            "view-mini" => self.set_view(ViewMode::MiniIcons),
+            "view-list" => self.set_view(ViewMode::List),
+            "view-columns" => self.set_view(ViewMode::Columns),
+            "hidden" => to_hub(ToHub::Hidden),
+            "sort-default" => {
+                self.sort = None;
+                crate::sorts::remember(&self.path, None);
+                self.resort();
+            }
+            "sort-name" | "sort-size" | "sort-modified" | "sort-kind" => {
+                let key = match cmd {
+                    "sort-size" => SortKey::Size,
+                    "sort-modified" => SortKey::Modified,
+                    "sort-kind" => SortKey::Kind,
+                    _ => SortKey::Name,
+                };
+                self.sort = Some(match self.sort {
+                    Some((k, asc)) if k == key => (key, !asc),
+                    _ => (key, true),
+                });
+                crate::sorts::remember(&self.path, self.sort);
+                self.resort();
+            }
+            "go-home" => to_hub(ToHub::Open { path: fs::home(), from: None }),
+            "go-desktop" => to_hub(ToHub::Open { path: fs::home().join("Desktop"), from: None }),
+            "go-root" => to_hub(ToHub::Open { path: PathBuf::from("/"), from: None }),
+            "go-trash" => {
+                let t = fs::trash_files();
+                let _ = std::fs::create_dir_all(&t);
+                to_hub(ToHub::Open { path: t, from: None });
+            }
+            "favorite-on" | "favorite-off" => {
+                let on = cmd == "favorite-on";
+                std::thread::spawn(move || {
+                    olo_kit_base::places::set_favorite(&dir, on);
+                    crate::places_changed();
+                });
+                return;
+            }
+            "go-to" => to_hub(ToHub::GoTo(dir)),
+            // (Agents': straight there.)
+            c if c.starts_with("go-to:") => {
+                if let Some(p) = crate::goto::parse(&c["go-to:".len()..], &dir) {
+                    to_hub(ToHub::Reveal(p, false));
+                }
+            }
+            // Open With ▸ an app (Always: and make it the kind's).
+            c if olo_kit::open_with::is_command(c) => crate::open_with(c, &entries),
+            c if c.starts_with("go-place:") => {
+                let dir = PathBuf::from(&c["go-place:".len()..]);
+                if dir.is_dir() {
+                    to_hub(ToHub::Open { path: dir, from: None });
+                }
+            }
+            "find" => to_hub(ToHub::Find),
+            "close" => cx.close_window(),
+            "quit" => to_hub(ToHub::Quit),
+            _ => {}
+        }
+        cx.invalidate();
+    }
+
+    /// What a Paste found on the clipboard: files (copied, or cut to move
+    /// them), a picture (a file of it), or text (a clipping, as a drop of
+    /// text makes).
+    fn pasted(&mut self, dir: &Path, mime: &str, data: &[u8], cx: &mut Cx<Self>) {
+        if let Some((paths, cut)) = olo_kit_base::clipboard::copied_files(mime, data) {
+            // Nothing goes into itself.
+            if let Some(p) = paths.iter().find(|p| p.is_dir() && dir.starts_with(p)) {
+                let name = p.file_name().unwrap_or_default().to_string_lossy().into_owned();
+                return self.error(format!("“{name}” can't go inside itself."), cx);
+            }
+            if cut {
+                // Moved: the clipboard has them where they are now, copied.
+                let moved: Vec<PathBuf> = paths.iter().filter_map(|p| Some(dir.join(p.file_name()?))).collect();
+                crate::copy_clip(olo_kit_base::clipboard::files(&moved, false));
+            }
+            let kind = if cut { ops::Kind::Move } else { ops::Kind::Copy };
+            return to_hub(ToHub::Job { kind, sources: paths, dest: Some(dir.to_owned()), origin: Some(self.id) });
+        }
+        let saved = if let Some(kind) = mime.strip_prefix("image/") {
+            fs::pasted_picture(dir, kind, data)
+        } else if mime.starts_with("text/") || mime == "UTF8_STRING" {
+            let text = String::from_utf8_lossy(data);
+            if text.trim().is_empty() {
+                return;
+            }
+            fs::clipping(dir, &text)
+        } else {
+            return;
+        };
+        match saved {
+            Ok(p) => {
+                to_hub(ToHub::Done("Paste".into(), undo::Change::Made(vec![p])));
+                to_hub(ToHub::ReloadAll);
+            }
+            Err(e) => self.error(format!("Couldn't paste: {e}"), cx),
+        }
+    }
+
+    /// What the app knows of this window, told when it changes: its
+    /// folders (to watch), its one selected item (Quick Look follows
+    /// it), what an upgrade keeps of it.
+    fn tell_app(&mut self) {
+        let info = WinInfo {
+            path: self.path.clone(),
+            surface: self.surface,
+            watched: self.watched().map(Path::to_owned).collect(),
+            selected: {
+                let mut sel = self.selected_entries().into_iter();
+                sel.next().filter(|_| sel.next().is_none())
+            },
+            folder: Some(SavedFolder {
+                path: self.path.clone(),
+                size: self.size,
+                view: self.view,
+                sort: self.sort.unwrap_or((SortKey::Name, true)),
+                own_sort: self.sort.is_some(),
+                selected: self.selected_paths(),
+            }),
+            find: false,
+        };
+        if self.told.as_ref().is_none_or(|t| !t.same(&info)) {
+            crate::publish(self.id, info.clone());
+            self.told = Some(info);
+        }
     }
 }
 
 /// A list cell with a 16-point icon before the name (`text`: and the
 /// name, unless it's being edited).
-pub fn name_cell(cell: &mut olo_ui::widgets::list::Cell, window: &mut Window, cx: &mut App, e: &Entry, text: bool) {
+pub fn name_cell(cell: &mut Cell, g: &mut Painter, e: &Entry, text: bool) {
     let b = cell.bounds;
     let icon = Bounds { origin: point(b.left() + px(m::CELL_INSET), b.center().y - px(items::MINI / 2.0)), size: size(px(items::MINI), px(items::MINI)) };
-    olo_ui::icons::paint(window, icon, items::icon_of(e));
-    if crate::backups::backed_up(cx, &e.path) {
-        items::paint_mark(window, cx, icon, e.label(), &olo_ui::theme::palette(cx));
+    olo_kit::icons::paint(g, icon, items::icon_of(e));
+    if crate::backups::backed_up(&e.path) {
+        items::paint_mark(g, icon, e.label(), &theme::palette());
     }
     let rest = Bounds::from_corners(point(icon.right() + px(m::MARK_GAP - m::CELL_INSET), b.top()), b.bottom_right());
     let saved = cell.bounds;
     cell.bounds = rest;
     if text {
         let color = cell.text_color;
-        cell.text_with(window, cx, e.label().to_owned(), items::name_font(e.is_link), color);
+        cell.text_with(g, e.label().to_owned(), items::name_font(e.is_link), color);
     } else {
         cell.say(e.label().to_owned());
     }
@@ -1278,101 +1529,174 @@ pub fn name_cell(cell: &mut olo_ui::widgets::list::Cell, window: &mut Window, cx
 /// unless they are the menus' keys for it already (Windows'), which would
 /// do it twice.
 pub fn plain_extra(command: &str, key: &str) -> bool {
-    olo_kit_base::keys::shortcut(command).is_none_or(|s| !(s.key == olo_ui::keys::evdev(key) && !s.command && !s.alt && !s.shift))
+    olo_kit_base::keys::shortcut(command).is_none_or(|s| !(s.key == olo_kit::keys::evdev(key) && !s.command && !s.alt && !s.shift))
 }
 
-impl Render for FolderWin {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.surface = window.surface_id().or(self.surface);
-        let vs = window.viewport_size();
+impl View for FolderWin {
+    type Message = FolderMsg;
+
+    fn message(&mut self, message: FolderMsg, cx: &mut Cx<Self>) {
+        match message {
+            FolderMsg::Listed { path, generation, result } => self.listed(&path, generation, result),
+            FolderMsg::Changed(changes) => {
+                let touched = changes.iter().any(|c| match c {
+                    watch::Change::Item { dir, .. } | watch::Change::Rescan(dir) => self.watched().any(|w| w == dir),
+                    watch::Change::Mounts => false,
+                });
+                if !touched {
+                    return;
+                }
+                self.apply(&changes);
+            }
+            FolderMsg::Reload(hidden) => self.reload(hidden),
+            FolderMsg::Select(paths) => self.select_paths(&paths),
+            FolderMsg::CameFrom(from) => self.came_from(from),
+            FolderMsg::Refresh => {}
+            FolderMsg::Step(d) => {
+                if let Some(e) = self.step_selection(d) {
+                    let row = self.current().0.iter().position(|x| x.path == e.path);
+                    self.show.extend(row.map(|r| (self.active, r)));
+                    to_hub(ToHub::Look(self.id, e));
+                }
+            }
+            FolderMsg::Pasted(dir, found) => {
+                if let Some((mime, data)) = found {
+                    self.pasted(&dir, &mime, &data, cx);
+                }
+            }
+            FolderMsg::DragOver => {
+                self.press = None;
+                self.cols.end_press();
+            }
+            FolderMsg::Activate(token) => {
+                match token {
+                    Some(t) => cx.activate_window_with_token(&t),
+                    None => cx.activate_window(),
+                }
+                return;
+            }
+            FolderMsg::Close => return cx.close_window(),
+        }
+        cx.invalidate();
+    }
+
+    fn command(&mut self, command: &str, cx: &mut Cx<Self>) -> bool {
+        self.run(command, cx);
+        true
+    }
+
+    fn window_activated(&mut self, active: bool, cx: &mut Cx<Self>) {
+        // (A name being edited is taken when the person goes elsewhere.)
+        if !active && self.editing.is_some() {
+            self.end_rename(true, cx);
+        }
+    }
+
+    fn window_closing(&mut self, _: &mut Cx<Self>) {
+        to_hub(ToHub::Closed(self.id));
+    }
+
+    fn save_state(&mut self, _: &mut Cx<Self>) -> Option<String> {
+        self.told.as_ref().and_then(|t| serde_json::to_string(&crate::SavedWindow::Folder(t.folder.clone()?)).ok())
+    }
+
+    fn takes_drops(&self) -> bool {
+        true
+    }
+
+    fn drop_over(&mut self, offer: Option<&DropOffer>, at: Point<Pixels>, cx: &mut Cx<Self>) -> Option<DropAccept> {
+        let was = self.dropping;
+        let accept = match (offer, self.view) {
+            (None, _) | (_, ViewMode::List) => {
+                self.dropping = None;
+                self.rest_on(None, cx);
+                None
+            }
+            (Some(o), ViewMode::Columns) => self.columns_drop_over(o, at, cx),
+            (Some(o), _) if self.error.is_none() => self.icon_drop_over(o, at, cx),
+            _ => None,
+        };
+        if self.dropping != was {
+            cx.invalidate();
+        }
+        accept
+    }
+
+    fn dropped(&mut self, dropped: Dropped, cx: &mut Cx<Self>) {
+        self.take_dropped(dropped, cx);
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        self.surface = cx.surface_id().or(self.surface);
+        let vs = cx.viewport_size();
         self.size = (f32::from(vs.width).round() as u32, f32::from(vs.height).round() as u32);
         if !self.path_said {
             self.path_said = true;
-            olo_ui::agent::set_path(window, cx, Some(self.path.clone()));
-            window.set_window_title(&fs::display_name(&self.path));
+            olo_kit::agent::set_path(cx, Some(self.path.clone()));
+            cx.set_window_title(fs::display_name(&self.path));
         }
-        // The keyboard: an edited name's field, else the view.
-        if let Some(r) = &mut self.editing {
-            if !r.focused {
-                r.focused = true;
-                let field = r.field.clone();
-                field.read(cx).focus(window);
-                cx.subscribe_in(&field, window, |f, _, e: &TextFieldEvent, _, cx| {
-                    if matches!(e, TextFieldEvent::Entered) {
-                        f.end_rename(true, cx);
-                    } else {
-                        cx.notify();
-                    }
-                })
-                .detach();
-                let handle = field.read(cx).focus_handle(cx);
-                cx.on_focus_out(&handle, window, |f, _, _, cx| f.end_rename(true, cx)).detach();
-            }
-        } else if self.focus_after_edit || window.focused(cx).is_none() || self.focused_view != Some(self.view) {
-            // (Shown another way, the keyboard goes with it.)
-            self.focus_after_edit = false;
-            self.focused_view = Some(self.view);
-            match self.view {
-                ViewMode::List => self.list_model.read(cx).focus(window),
-                _ => window.focus(&self.focus),
+        // The keyboard: an edited name's field has it (given as the edit
+        // began), else the view.
+        if self.editing.is_none() {
+            if self.focus_after_edit || self.focused_view != Some(self.view) {
+                // (Shown another way, the keyboard goes with it.)
+                self.focus_after_edit = false;
+                self.focused_view = Some(self.view);
+                match self.view {
+                    ViewMode::List => self.list_model.focus(cx),
+                    _ => self.focus.focus(cx),
+                }
+            } else if self.view != ViewMode::List {
+                self.focus.focus_if_none(cx);
             }
         }
         self.poll_while_loading(cx);
-        let places = crate::places(cx);
-        let can_paste = crate::can_paste(cx);
-        let undo = self.app.upgrade().map(|a| {
-            let h = &a.read(cx).history;
-            [(h.undo_label(), h.can_undo()), (h.redo_label(), h.can_redo())]
-        });
-        let menus = self.menus(can_paste, &places, &undo.unwrap_or_else(|| [("Undo".into(), false), ("Redo".into(), false)]));
-        let (app, key) = (self.app.clone(), self.key());
-        let bar = MenuBar::new(menus, move |cmd, _, cx| {
-            if let Some(app) = app.upgrade() {
-                app.update(cx, |t, cx| t.folder_command(key, cmd, cx));
-            }
-        });
-        let p = theme::palette(cx);
-        let body = match (&self.error, self.view) {
+        self.tell_app();
+        let places = crate::places();
+        let can_paste = crate::can_paste();
+        let undo = crate::undo_names();
+        let menus = self.menus(can_paste, &places, &undo);
+        let bar = MenuBar::new(cx, menus);
+        let body: Element = match (&self.error, self.view) {
             (Some(err), _) => {
                 let err = err.clone();
-                canvas(
-                    |_, _, _| {},
-                    move |b, _, window, cx| {
-                        style::fill_rect(window, b, style::c(p.document_background));
-                        let at = style::label(window, cx, b.center().x, b.center().y, Align::Center, err.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
-                        olo_ui::agent::record(window, cx, olo_ui::agent::Node::label(err.clone(), at));
-                    },
-                )
+                canvas(move |g, b| {
+                    let p = theme::palette();
+                    style::fill_rect(g, b, style::c(p.document_background));
+                    let at = style::label(g, b.center().x, b.center().y, Align::Center, err.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
+                    olo_kit::agent::record(g, olo_kit::agent::Node::label(err.clone(), at));
+                })
                 .size_full()
                 .into_any_element()
             }
-            (None, ViewMode::List) => self.list_view(cx).into_any_element(),
-            (None, ViewMode::Columns) => self.columns_view(window, cx).into_any_element(),
-            (None, _) => self.icon_view(window, cx).into_any_element(),
+            (None, ViewMode::List) => self.list_view(cx),
+            (None, ViewMode::Columns) => self.columns_view(cx),
+            (None, _) => self.icon_view(cx),
         };
-        use olo_ui::gpui::{MouseButton, NavigationDirection};
+        use olo_kit::NavigationDirection;
         div()
             .size_full()
             .flex()
             .flex_col()
             .track_focus(&self.focus)
-            .on_key_down(cx.listener(Self::key_down))
+            .on_key_down(cx.listener(|f: &mut FolderWin, e: &KeyDownEvent, cx| f.key_down(e, cx)))
             // The mouse's back and forward buttons.
-            .on_mouse_down(MouseButton::Navigate(NavigationDirection::Back), cx.listener(|f, _, _, cx| f.go(-1, cx)))
-            .on_mouse_down(MouseButton::Navigate(NavigationDirection::Forward), cx.listener(|f, _, _, cx| f.go(1, cx)))
+            .on_mouse_down(MouseButton::Navigate(NavigationDirection::Back), cx.listener(|f: &mut FolderWin, _: &MouseDownEvent, cx| f.go(-1, cx)))
+            .on_mouse_down(MouseButton::Navigate(NavigationDirection::Forward), cx.listener(|f: &mut FolderWin, _: &MouseDownEvent, cx| f.go(1, cx)))
             .child(bar)
             .child(div().flex_1().min_h_0().relative().flex().flex_col().child(body))
-            .child(self.count_bar(window, cx))
+            .child(self.count_bar(cx))
+            .into_any_element()
     }
 }
 
-/// Open With ▸ for `entries` of one kind (`olo_ui::open_with`: the
+/// Open With ▸ for `entries` of one kind (`olo_kit::open_with`: the
 /// apps worked out as the folder was listed; none yet, no submenu).
 pub fn open_with_menu(entries: &[Entry]) -> Option<Menu> {
-    olo_ui::open_with::menu(&open_with_kind(entries)?)
+    olo_kit::open_with::menu(&open_with_kind(entries)?)
 }
 
 /// The kind `entries` all are, for Open With (None: none, or mixed).
 pub fn open_with_kind(entries: &[Entry]) -> Option<String> {
-    olo_ui::open_with::kind_of(entries.iter().map(|e| (e.name.as_str(), e.is_dir)))
+    olo_kit::open_with::kind_of(entries.iter().map(|e| (e.name.as_str(), e.is_dir)))
 }
