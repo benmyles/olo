@@ -8839,7 +8839,11 @@ On olo-kit against the GPUI build (release, 2× on a headless screen,
 0.9 in both, on two threads now, the display's and the window's), the
 same 11.9 frames a second at 472 µs each (598); Processes 5.1 (5.2),
 its once-a-second frame 1.68 ms (1.67); 77.5 MB resident (77.9) and
-78.9 (78.3). The sampler thread is the same code, and most of either.
+78.9 (78.3); CPU 4.0 (4.8), 23.3 frames a second at 512 µs (22.5 at
+920); Sensors, with its Fans card, 3.9 (3.8), 23.1 frames a second at
+455 µs (11.4 at 686: two graphs the window's width there now, each
+moving a device pixel at a time). The sampler thread is the same code,
+and most of either.
 
 Against the egui Activity Monitor (release, 2× on a headless screen,
 each section 20 s, the UI thread alone; the sampler thread is the same
