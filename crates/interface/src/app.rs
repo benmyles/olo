@@ -219,6 +219,11 @@ pub fn refresh_all_windows() {
     all_windows(|cx| cx.refresh());
 }
 
+/// Whether the program stays running with no windows ([`stay_resident`]).
+pub fn is_resident() -> bool {
+    shared().is_some_and(|shared| shared.resident.load(Ordering::Acquire))
+}
+
 /// Keeps the program running with no windows (a service; something that
 /// opens windows when it's asked to).
 pub fn stay_resident() {

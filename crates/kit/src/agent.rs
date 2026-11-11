@@ -207,9 +207,7 @@ fn answer(query: Query) {
             let _ = reply.send(lose);
         }
         Query::WindowOver(_) | Query::WindowDropped(_) | Query::Focus(_) => {}
-        Query::Move(_, reply) => {
-            drop(reply);
-        }
+        Query::Move(to, reply) => crate::upgrade::move_to(to, reply),
     }
 }
 

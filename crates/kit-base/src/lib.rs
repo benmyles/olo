@@ -27,6 +27,7 @@ pub mod spell;
 pub mod store;
 pub mod tracker;
 pub mod watch;
+pub mod workspaces;
 
 use std::{any::Any, sync::Arc};
 

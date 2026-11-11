@@ -96,6 +96,9 @@ pub(crate) struct WindowCore {
     pub(crate) commits: u64,
     /// The window it belongs to (a menu's, a tip's): it closes with it.
     pub(crate) owner: Option<WindowId>,
+    /// A surface of the desktop's own (a layer's, the lock screen's):
+    /// it stays with its display.
+    pub(crate) shell: bool,
     /// A menu (a popup that takes the keyboard): its owner is as active
     /// as it was while this is open ([`WindowCx::is_window_active`]).
     pub(crate) menu: bool,
@@ -167,6 +170,11 @@ pub(crate) struct WindowCore {
     /// Files being dragged over the window, from somewhere else: handed
     /// to what they're dropped on (`InteractiveElement::on_drop`).
     pub(crate) dropping: Option<crate::ExternalPaths>,
+    /// What's dragged over the window now (its types and what its
+    /// source allows), and what the display thread was last told the
+    /// window takes it as (`View::drop_over`).
+    pub(crate) drop_offer: Option<crate::DropOffer>,
+    pub(crate) drop_accept_sent: Option<Option<crate::DropAccept>>,
     /// What a button went down on, until it's let go.
     pub(crate) pressed: Vec<(NodeId, MouseDownEvent)>,
     pub(crate) focus: Option<NodeId>,
@@ -404,8 +412,10 @@ pub(crate) fn deliver_to_view_if<V: View>(looper: &mut Looper, window: WindowId,
 pub(crate) fn open<V: View>(looper: &mut Looper, id: WindowId, params: WindowParams, title: SharedString, build: impl FnOnce(&mut Cx<V>) -> V) -> anyhow::Result<WindowId> {
     let display = display();
     let link = WindowLink { looper: looper.handle(), id };
+    let shell = params.layer_shell.is_some() || matches!(params.kind, crate::WindowKind::LayerShell | crate::WindowKind::SessionLock);
     let opened = display.open_window(id, params, link)?;
     let mut core = Box::new(WindowCore::new(id, opened, title));
+    core.shell = shell;
     {
         let mut cx = WindowCx { core: &mut core, looper };
         let root = cx.new_view(build);
@@ -480,6 +490,7 @@ impl WindowCore {
             main_view: None,
             commits: 0,
             owner: None,
+            shell: false,
             menu: false,
             gfx,
             size: opened.size,
@@ -514,6 +525,8 @@ impl WindowCore {
             modifiers: Modifiers::default(),
             hovered: Vec::new(),
             dropping: None,
+            drop_offer: None,
+            drop_accept_sent: None,
             pressed: Vec::new(),
             focus: None,
             pending_focus: None,
@@ -2004,6 +2017,12 @@ impl<'a> WindowCx<'a> {
     /// The display the window is on, in points (None until it's known).
     pub fn display_bounds(&self) -> Option<Bounds<Pixels>> {
         self.core.display
+    }
+
+    /// Whether the window is a surface of the desktop's own (a layer's,
+    /// the lock screen's): it belongs to its display.
+    pub fn is_shell_surface(&self) -> bool {
+        self.core.shell
     }
 
     /// The window's `wl_surface` id, which app_server names it by.

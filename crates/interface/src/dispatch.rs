@@ -216,6 +216,8 @@ impl WindowCx<'_> {
             PlatformInput::ModifiersChanged(event) => {
                 self.core.modifiers = event.modifiers;
                 self.to_focus_path(|i| i.modifiers_changed.iter().cloned().collect(), &event);
+                // (A key held changes how a drag would be taken: ⌥ copies.)
+                self.ask_drop();
             }
             PlatformInput::FileDrop(event) => self.file_drop(event),
             PlatformInput::Pinch(event) => {
@@ -238,14 +240,17 @@ impl WindowCx<'_> {
                 self.core.dropping = Some(paths);
                 self.core.mouse = position;
                 self.update_hover();
+                self.ask_drop();
             }
             FileDropEvent::Pending { position } => {
                 self.core.mouse = position;
                 self.update_hover();
+                self.ask_drop();
             }
             FileDropEvent::Submit { position } => {
                 self.core.mouse = position;
                 self.update_hover();
+                self.end_drop();
                 let Some(paths) = self.core.dropping.take() else { return };
                 for id in self.core.hovered.clone() {
                     let listeners: SmallVec<[Listener<crate::ExternalPaths>; 1]> =
@@ -263,11 +268,66 @@ impl WindowCx<'_> {
             }
             FileDropEvent::Exited => {
                 self.core.dropping = None;
+                self.end_drop();
                 self.pointer_left();
             }
-            // (What isn't files, offered and taken by the window itself:
-            // nothing in the kit takes those yet.)
-            FileDropEvent::Offered(_) | FileDropEvent::Dropped(_) => {}
+            // What's dragged over it, whatever it is: the window's own
+            // view says where it would take it (`View::drop_over`).
+            FileDropEvent::Offered(offer) => {
+                self.core.drop_offer = Some(offer);
+                self.core.drop_accept_sent = None;
+                self.ask_drop();
+            }
+            // Dropped where the view took it, its data read.
+            FileDropEvent::Dropped(dropped) => {
+                self.end_drop();
+                if let Some(view) = self.core.main_view.or(self.core.root_view) {
+                    self.with_any_view(view, |v, id, cx| v.dropped(id, dropped, cx));
+                }
+            }
+        }
+    }
+
+    /// Asks the window's own view where it would take what's dragged
+    /// over it, and tells the display thread when that changes (what
+    /// the pointer shows, and what the source is told).
+    pub(crate) fn ask_drop(&mut self) {
+        let Some(offer) = self.core.drop_offer.clone() else { return };
+        let Some(view) = self.core.main_view.or(self.core.root_view) else { return };
+        let at = self.core.mouse;
+        let Some(accept) = self.with_any_view(view, |v, id, cx| v.takes_drops().then(|| v.drop_over(id, Some(&offer), at, cx))).flatten() else { return };
+        if self.core.drop_accept_sent.as_ref() != Some(&accept) {
+            self.core.drop_accept_sent = Some(accept.clone());
+            self.on_display(move |window| window.set_drop_accept(accept));
+        }
+    }
+
+    /// What's dragged over the window now, if anything.
+    pub fn drop_offer(&self) -> Option<&crate::DropOffer> {
+        self.core.drop_offer.as_ref()
+    }
+
+    /// Asks the window's own view again where it would take what's
+    /// dragged over it: what's under the pointer changed with the
+    /// pointer still (it scrolled, a folder sprang open).
+    pub fn reconsider_drop(&mut self) {
+        self.ask_drop();
+    }
+
+    /// The drag has left or been dropped: the view is told nothing is
+    /// over it.
+    fn end_drop(&mut self) {
+        if self.core.drop_offer.take().is_none() {
+            return;
+        }
+        self.core.drop_accept_sent = None;
+        let at = self.core.mouse;
+        if let Some(view) = self.core.main_view.or(self.core.root_view) {
+            self.with_any_view(view, |v, id, cx| {
+                if v.takes_drops() {
+                    v.drop_over(id, None, at, cx);
+                }
+            });
         }
     }
 

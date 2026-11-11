@@ -40,6 +40,8 @@ extern "C" fn on_signal(_: libc::c_int) {
 type Save = Arc<dyn Fn(Vec<String>) -> Option<String> + Send + Sync>;
 type Due = Arc<dyn Fn() + Send + Sync>;
 type Busy = Arc<dyn Fn() -> bool + Send + Sync>;
+type MoveWindow = Arc<dyn Fn(u32) -> Result<WindowMove, String> + Send + Sync>;
+type Refusing = Arc<dyn Fn() -> Option<String> + Send + Sync>;
 
 /// What the app said it does about becoming another version.
 #[derive(Default)]
@@ -47,6 +49,8 @@ struct Hooks {
     save: Option<Save>,
     due: Option<Due>,
     busy: Option<Busy>,
+    move_window: Option<MoveWindow>,
+    refusing: Option<Refusing>,
 }
 
 fn hooks() -> &'static Mutex<Hooks> {
@@ -76,6 +80,101 @@ pub fn on_upgrade_due(f: impl Fn() + Send + Sync + 'static) {
 /// says no (asked four times a second while one is due).
 pub fn upgrade_waits_while(busy: impl Fn() -> bool + Send + Sync + 'static) {
     hooks().lock().unwrap_or_else(|e| e.into_inner()).busy = Some(Arc::new(busy));
+}
+
+/// What a copy of the app on another display needs to open one of its
+/// windows as it is here ([`on_move_window`]).
+pub struct WindowMove {
+    /// The copy's arguments.
+    pub args: Vec<String>,
+    /// The state it finds in [`restored_state`].
+    pub state: Option<String>,
+    /// Lets the window go here once the copy has started, the app's own
+    /// way (without what closing it would end: a Terminal's shell).
+    pub gone: Box<dyn FnOnce() + Send>,
+}
+
+/// How the app moves one of its windows to another display (an agent
+/// screen's) while it keeps the others: what a copy of it there needs to
+/// open the window whose surface is given ([`WindowMove`]), or why that
+/// one can't go. Asked on the agents' thread (it may wait for a window's
+/// answer, never from a looper). Without it, only an app with one
+/// window can move (all of it).
+pub fn on_move_window(f: impl Fn(u32) -> Result<WindowMove, String> + Send + Sync + 'static) {
+    hooks().lock().unwrap_or_else(|e| e.into_inner()).move_window = Some(Arc::new(f));
+}
+
+/// While `why` says something, the app stays on its display, whole or a
+/// window of it (Terminal started on an agent screen: its shells end
+/// with the screen).
+pub fn refuse_moves_while(why: impl Fn() -> Option<String> + Send + Sync + 'static) {
+    hooks().lock().unwrap_or_else(|e| e.into_inner()).refusing = Some(Arc::new(why));
+}
+
+/// Go to another display (`commands`' `move`): one window, by a copy of
+/// the app there, or the whole app, re-executed there with its state.
+/// (On the agents' thread: the windows are asked, and waited for.)
+pub(crate) fn move_to(to: olo_kit_base::moving::MoveTo, reply: std::sync::mpsc::Sender<olo_kit_base::moving::Moved>) {
+    use olo_kit_base::moving::{self, Moved};
+    let env = moving::env_for(&to, |k| std::env::var(k).ok());
+    let (move_window, refusing) = {
+        let hooks = hooks().lock().unwrap_or_else(|e| e.into_inner());
+        (hooks.move_window.clone(), hooks.refusing.clone())
+    };
+    if let Some(why) = refusing.and_then(|r| r()) {
+        let _ = reply.send(Moved::failed(why));
+        return;
+    }
+    // Its windows now: each one's surface, and whether it is the
+    // desktop's own (menus and tips aren't windows to count).
+    let windows =
+        olo_interface::ask_windows(Duration::from_secs(1), |cx| (!cx.window_state::<crate::review::NotReviewed>().0 || cx.is_shell_surface()).then(|| (cx.surface_id(), cx.is_shell_surface())));
+    let window = to.surface.filter(|s| windows.iter().any(|(id, _)| *id == Some(*s)));
+    if to.surface.is_some() && window.is_none() {
+        let _ = reply.send(Moved::failed("it has no such window"));
+        return;
+    }
+    let shell = windows.iter().any(|(_, shell)| *shell);
+    let others = windows.iter().filter(|(id, _)| *id != window).count();
+    let stays = shell || olo_interface::is_resident();
+    if let Some(surface) = window
+        && (others > 0 || stays)
+    {
+        // One of several: a copy there opens it.
+        let made = match &move_window {
+            Some(f) => f(surface),
+            None => Err("it can't move one of its windows by itself yet".into()),
+        };
+        let made = match made {
+            Ok(m) => m,
+            Err(why) => {
+                let _ = reply.send(Moved::failed(why));
+                return;
+            }
+        };
+        match moving::start_copy(&made.args, made.state.as_deref(), &env) {
+            Ok(pid) => {
+                (made.gone)();
+                let _ = reply.send(Moved { ok: true, error: None, pid: Some(pid) });
+            }
+            Err(e) => {
+                let _ = reply.send(Moved::failed(format!("a copy of it couldn't be started there: {e}")));
+            }
+        }
+        return;
+    }
+    if stays {
+        let _ = reply.send(Moved::failed("it is part of the desktop here, so it stays whole: move its windows one by one"));
+        return;
+    }
+    // The whole app: said first (it is under way), then re-executed there
+    // with its state, once the answer has gone.
+    let _ = reply.send(Moved { ok: true, error: None, pid: Some(std::process::id()) });
+    tracing::info!("moving to another display");
+    let binary = Binary::current();
+    std::thread::sleep(Duration::from_millis(150));
+    let state = saved_state();
+    binary.exec_with(state, false, Some(&env));
 }
 
 /// The state the previous version left (once; None if it left none).

@@ -69,6 +69,30 @@ pub trait View: Sized + 'static {
     /// thing it's told.
     fn window_closing(&mut self, _cx: &mut Cx<Self>) {}
 
+    /// Whether the window takes what's dragged over it part by part
+    /// (for the window's own view): it is then asked where
+    /// ([`View::drop_over`]) and handed what's dropped
+    /// ([`View::dropped`]). A window that doesn't takes files alone,
+    /// copied, wherever an element takes them
+    /// (`InteractiveElement::on_drop`).
+    fn takes_drops(&self) -> bool {
+        false
+    }
+
+    /// Something is dragged over the window, at `at` (asked as it comes,
+    /// as it moves and as a modifier key changes; `offer` None: it left,
+    /// or was dropped): the part that would take it there, as which of
+    /// its types and how, or None to refuse it. The part's name comes
+    /// back with the drop. Nothing is drawn for it: a view that shows
+    /// where it would go keeps that and invalidates itself when it
+    /// changes.
+    fn drop_over(&mut self, _offer: Option<&crate::DropOffer>, _at: crate::Point<crate::Pixels>, _cx: &mut Cx<Self>) -> Option<crate::DropAccept> {
+        None
+    }
+
+    /// What was dropped where [`View::drop_over`] took it, its data read.
+    fn dropped(&mut self, _dropped: crate::Dropped, _cx: &mut Cx<Self>) {}
+
     /// A display came, went or changed (for the window's first view and
     /// its own): `displays()` lists them now.
     fn displays_changed(&mut self, _cx: &mut Cx<Self>) {}
@@ -109,6 +133,9 @@ pub(crate) trait AnyView: 'static {
     fn window_closing(&mut self, id: ViewId, cx: &mut WindowCx);
     fn displays_changed(&mut self, id: ViewId, cx: &mut WindowCx);
     fn save_state(&mut self, id: ViewId, cx: &mut WindowCx) -> Option<String>;
+    fn takes_drops(&self) -> bool;
+    fn drop_over(&mut self, id: ViewId, offer: Option<&crate::DropOffer>, at: crate::Point<crate::Pixels>, cx: &mut WindowCx) -> Option<crate::DropAccept>;
+    fn dropped(&mut self, id: ViewId, dropped: crate::Dropped, cx: &mut WindowCx);
     fn type_name(&self) -> &'static str;
 }
 
@@ -135,6 +162,18 @@ impl<V: View> AnyView for V {
 
     fn window_activated(&mut self, id: ViewId, active: bool, cx: &mut WindowCx) {
         View::window_activated(self, active, &mut Cx::new(cx, id))
+    }
+
+    fn takes_drops(&self) -> bool {
+        View::takes_drops(self)
+    }
+
+    fn drop_over(&mut self, id: ViewId, offer: Option<&crate::DropOffer>, at: crate::Point<crate::Pixels>, cx: &mut WindowCx) -> Option<crate::DropAccept> {
+        View::drop_over(self, offer, at, &mut Cx::new(cx, id))
+    }
+
+    fn dropped(&mut self, id: ViewId, dropped: crate::Dropped, cx: &mut WindowCx) {
+        View::dropped(self, dropped, &mut Cx::new(cx, id))
     }
 
     fn save_state(&mut self, id: ViewId, cx: &mut WindowCx) -> Option<String> {
