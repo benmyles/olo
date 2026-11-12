@@ -360,6 +360,11 @@ impl WindowCore {
         };
         let asked = node.scroll.as_ref().filter(|h| h.asked()).cloned();
         if node.scroll.as_ref().map(|h| h.id()) != was {
+            // (Its view's own, kept while it wasn't shown: the scale may
+            // have changed meanwhile.)
+            if let Some(handle) = &node.scroll {
+                handle.snap(self.gfx.scale_factor);
+            }
             self.reshaped();
         }
         // (Asked to go somewhere by whoever built it: once it's laid

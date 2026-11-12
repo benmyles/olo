@@ -6530,6 +6530,17 @@ Chrome, GTK 4.16 text), and how Olo does it:
     one-point border was a pixel and a half at 1.5×: a line with a smear
     beside it, and where its clip's edge fell on the pixels' centres the
     smear ran along part of an edge only (sudo's command box).
+  - *What's scrolled is on whole device pixels* (olo-kit). Where a
+    scroller is is read by what draws its rows, by agents and by the
+    review, so it's kept on the scale's pixels wherever it comes from:
+    asked to go somewhere once laid out (`ScrollHandle::settle`: a
+    view needn't be whole points tall, nor half of what's left of it
+    round a row), when the scale changes, and when a node takes a
+    scroller its view kept while it wasn't shown (`ScrollHandle::snap`,
+    from `follow_scroll`). A list on a tab that wasn't showing when the
+    scale changed came back a third of a point off, every row between
+    pixels (the live lint, Date & Time's Time Zone list, which centres
+    the zone in use).
   - *A drawing kept lands where a fresh one would* (olo-kit). What a
     node drew is kept and moved with it when layout puts it elsewhere,
     if that's by whole device pixels; a drawing of the app's own (a

@@ -1232,11 +1232,7 @@ impl<'a> WindowCx<'a> {
                 // was on the old scale's grid is a fraction of a pixel
                 // on the new one's, and every row with it.)
                 if let Some(handle) = &node.scroll {
-                    let at = handle.offset();
-                    let to = point(px((at.x.0 * scale).round() / scale), px((at.y.0 * scale).round() / scale));
-                    if to != at {
-                        handle.put(to);
-                    }
+                    handle.snap(scale);
                 }
                 core.layout.set_style(node.layout, &node.style, rem, scale);
                 if let NodeKind::Text(text) = &mut node.kind {
@@ -1451,7 +1447,7 @@ impl<'a> WindowCx<'a> {
             let core = &mut *self.core;
             // What was asked to scroll somewhere once it was laid out.
             for handle in std::mem::take(&mut core.scroll_asks) {
-                let ways = handle.settle();
+                let ways = handle.settle(core.gfx.scale_factor);
                 if ways != 0 {
                     core.scroll_moved(handle.id(), ways);
                 }

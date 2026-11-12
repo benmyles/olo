@@ -260,9 +260,23 @@ impl ScrollHandle {
         self.0.epoch.set(self.0.epoch.get().wrapping_add(1));
     }
 
-    /// Does what was asked of it that waited for layout. Which ways it
-    /// moved (0: it didn't).
-    pub(crate) fn settle(&self) -> u8 {
+    /// Puts it on whole device pixels at `scale`, as it's drawn there
+    /// (what's scrolled is read from where it's scrolled to: a fraction
+    /// of a pixel off, and every row is). Its offset is from another
+    /// scale's pixels after the scale changes, and its view's while it
+    /// wasn't shown (a list on a tab that isn't showing).
+    pub(crate) fn snap(&self, scale: f32) {
+        let at = self.0.offset.get();
+        let whole = |v: Pixels| px((v.0 * scale).round() / scale);
+        let to = point(whole(at.x), whole(at.y));
+        if to != at {
+            self.put(to);
+        }
+    }
+
+    /// Does what was asked of it that waited for layout, on a display
+    /// of `scale`. Which ways it moved (0: it didn't).
+    pub(crate) fn settle(&self, scale: f32) -> u8 {
         let max = self.0.max.get();
         let at = self.0.offset.get();
         let mut to = self.0.to_offset.take().unwrap_or(at);
@@ -302,6 +316,13 @@ impl ScrollHandle {
                 to.y = -(top - (view - (bottom - top)) / 2.).max(px(0.));
             }
         }
+        // On whole device pixels, as it's drawn there (a view's height
+        // needn't be whole points, nor half what's left of it round a
+        // row: a list's chosen row brought to its middle sat a third of
+        // a point down, between pixels to everything that reads where
+        // it is).
+        let whole = |v: Pixels| px((v.0 * scale).round() / scale);
+        let to = if to == at { to } else { point(whole(to.x), whole(to.y)) };
         let to = point(to.x.clamp(-max.width, px(0.)), to.y.clamp(-max.height, px(0.)));
         if to != at {
             self.put(to);
@@ -332,13 +353,34 @@ mod tests {
     fn to_the_bottom_once_laid_out() {
         let h = handle(400., 200.);
         h.0.to_bottom.set(true);
-        assert_eq!(h.settle(), DOWN);
+        assert_eq!(h.settle(1.0), DOWN);
         assert_eq!(h.offset().y, px(-400.));
         // (The stage is to be told, as a move of the looper's own.)
         assert!(h.0.set.get());
         assert_eq!(h.0.epoch.get(), 1);
         // Nothing more asked: nothing moves.
-        assert_eq!(h.settle(), 0);
+        assert_eq!(h.settle(1.0), 0);
+    }
+
+    #[test]
+    fn where_it_goes_is_on_whole_device_pixels() {
+        // A row brought to the middle of a view that isn't whole points
+        // tall (125⅓, 188 pixels at 1.5×): on a pixel, not half of what's
+        // left round it.
+        let h = handle(400., 125.0 + 1.0 / 3.0);
+        h.0.to_middle.set(Some((px(300.), px(320.))));
+        assert_ne!(h.settle(1.5), 0);
+        let y = h.offset().y.0 * 1.5;
+        assert!((y - y.round()).abs() < 1e-3, "{y}");
+        assert!((h.offset().y.0 + 247.33).abs() < 0.01, "{:?}", h.offset());
+        // On another scale's pixels (the scale changed; or it wasn't
+        // shown while it did, and is shown again): put on this one's.
+        h.snap(2.0);
+        assert_eq!(h.offset().y, px(-247.5));
+        // Already on them: it stays, and the stage isn't told again.
+        let epoch = h.0.epoch.get();
+        h.snap(2.0);
+        assert_eq!(h.0.epoch.get(), epoch);
     }
 
     #[test]
@@ -346,18 +388,18 @@ mod tests {
         let h = handle(400., 200.);
         // Below the view: its bottom comes to the view's bottom.
         h.0.to_item.set(Some(10));
-        assert_ne!(h.settle(), 0);
+        assert_ne!(h.settle(1.0), 0);
         assert_eq!(h.offset().y, px(-(330. - 200.)));
         // Already showing: it stays.
         h.0.to_item.set(Some(8));
-        assert_eq!(h.settle(), 0);
+        assert_eq!(h.settle(1.0), 0);
         // Above the view: its top comes to the view's top.
         h.0.to_item.set(Some(1));
-        assert_ne!(h.settle(), 0);
+        assert_ne!(h.settle(1.0), 0);
         assert_eq!(h.offset().y, px(-30.));
         // Never past an end.
         h.0.to_item.set(Some(19));
-        assert_ne!(h.settle(), 0);
+        assert_ne!(h.settle(1.0), 0);
         assert_eq!(h.offset().y, px(-400.));
     }
 }
