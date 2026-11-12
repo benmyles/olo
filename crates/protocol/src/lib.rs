@@ -13,6 +13,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+pub mod airplay;
 pub mod airpods;
 pub mod app_keys;
 pub mod color;

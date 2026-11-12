@@ -5373,7 +5373,8 @@ workspace's: a click opens the modes for that display's workspace
 `arrange_menu`), `menu_output` and `menu_workspace` saying which. Agents
 find the headings as `Button`s ("D1 Workspace 2", `selected` for the
 one showing).
-The tray's status icons (upgrade, agent screens, battery, Ethernet,
+The tray's status icons (upgrade, a recording, DiskBackup, a share, a
+film playing on an AirPlay receiver ("AirPlay"), agent screens, battery, Ethernet,
 Wi-Fi, volume, notifications, the Caffeinated cup and the approval key,
 `status::draw_key`, `approve.rs`: see "Approving without asking") sit on
 a 22 px grid in a recessed well, in as many rows as they need, shared
@@ -9552,6 +9553,29 @@ the receivers**, **pairing with one** and **playing a film on one**.
   `--json`: a line of JSON each), ends when the film does, and stops
   it at the receiver on Ctrl-C or when told to end (the signals are
   waited for by a thread: nothing polls).
+- **While a film plays**, its play is that process, and it says how it
+  goes in a file of its own, `$XDG_RUNTIME_DIR/olo-airplay/<pid>.json`
+  (`olo_protocol::airplay::Playing`: the receiver, what plays, loading,
+  playing or paused, where in the film it was and when that was, how
+  long the film is). It's written when what the play is doing changes
+  or where it is jumps, never as it goes (`position_now` reckons where
+  it is by now), and gone when the play is; a file whose process isn't
+  an `olo-airplay` any more counts for nothing (`alive`). A play is the
+  session's, not a display's: the receiver is in the room, whoever
+  asked. `olo-airplay playing [--json]` lists the plays;
+  `olo-airplay stop|pause|resume [NAME] [--pid N]` tell them (every
+  one, those on a receiver, or the one of that process), by a signal
+  to the play's process (SIGTERM, SIGUSR1, SIGUSR2), which its signal
+  thread acts on. **Deskbar's tray** follows the folder (inotify) and,
+  while anything plays, has a screen with a play mark on it
+  (`status::draw_airplay`: two bars while every play is paused, a
+  count for more than one; the mark placed in device pixels inside the
+  screen's frame, so it's centred at every scale), its tip and menu
+  saying what plays where, with Pause (or Resume) and Stop for each
+  and Stop All (`airplay:stop|pause|resume:PID`, which run the
+  commands above). Measured with a film playing (release, a headless
+  session): Deskbar 0.0% of a core and no frames, as with none; the
+  play itself 0.0% of a core, one wakeup a second (its keep-alive).
 
 **Tests answer their own questions**: a responder of the test's own on
 the loopback (`Via { to, from }` says where a question goes; `Via::lan`
@@ -9565,8 +9589,14 @@ session, asks the time, speaks on the event channel, fetches the film
 from the address it's given, a part and then the whole, and "plays"
 it for as long as the test says, in the newer way or only the older;
 it can refuse, never come for the film, or leave; it keeps what it
-was asked and what it fetched). No test asks the network it happens
-to be on, and nothing is ever sent to a real receiver by a test:
+was asked and what it fetched). To look at what shows while a film
+plays, `cargo run --release -p olo-airplay --example fake-receiver`
+is that receiver run by hand (the loopback only; it prints where to
+pair with it and where to play to it), with `OLO_AIRPLAY_DIR` (where
+plays are said, in place of the runtime folder's, which is the
+person's too) and `XDG_STATE_HOME` (the pairings) set to folders of
+the test's own for the commands and for the Deskbar looked at. No
+test asks the network it happens to be on, and nothing is ever sent to a real receiver by a test:
 pairing with one and playing to one are the person's to do, at the
 receiver. **So neither the pairing nor the play has yet met a real
 receiver**: the pairing follows HomeKit's published protocol and the

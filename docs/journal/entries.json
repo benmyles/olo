@@ -3940,5 +3940,11 @@
   "title": "Activity Monitor: an NVIDIA card's encoder and decoder",
   "caption": "The card's video encoder and decoder are engines of their own, which its library counts apart from graphics: a screen recording encoding on it read as an idle GPU. Each is a series now (here a 4K encode: the encoder at half, graphics at a seventh), and the card, in Activity Monitor and Deskbar's widget, is as busy as its busiest engine. Intel's render and media engines the same.",
   "image": "2026-11-12/135642-activity-monitor-an-nvidia-card-s-encoder-and-de.png"
+ },
+ {
+  "time": "2026-11-12T15:43:56",
+  "title": "Deskbar: a film playing on an AirPlay receiver",
+  "caption": "While olo-airplay plays a film on a receiver, Deskbar's tray has a screen with a play mark on it (two bars while paused, a count when there are several). Its menu says what plays where, with Pause (or Resume) and Stop for each, and Stop All. The mark is placed in device pixels inside the screen's frame: centred at 1\u00d7, 1.25\u00d7, 1.5\u00d7, 1.75\u00d7 and 2\u00d7. Tried against a receiver of the test's own, on the loopback.",
+  "image": "2026-11-12/154356-deskbar-a-film-playing-on-an-airplay-receiver.png"
  }
 ]

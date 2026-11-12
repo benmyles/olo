@@ -584,10 +584,16 @@ something nobody here has is in "Blocked", with what it waits for.
        one of their own, both ways): Ben's to try after pairing, with
        `--trace` so that what a real one answers is seen. What a
        receiver doesn't play by itself (Matroska, WebM, AVI, Ogg) is
-       refused with the reason. *Next:* "Play On" in the Viewer and
-       Tracker (the receivers found; a tray item while one plays,
-       with pause and Stop), then live windows, workspaces and agent
-       screens as HLS (which also carries the kinds of film a
+       refused with the reason.
+     - *Then what shows while one plays, 2026-11-12:* each play says
+       how it goes (`olo_protocol::airplay`), `olo-airplay playing`,
+       `stop`, `pause` and `resume` act on plays from anywhere, and
+       Deskbar's tray has a screen with a play mark while a film
+       plays, its menu Pause (Resume) and Stop. *Next:* pairing for
+       people (Preferences ▸ AirPlay: the receivers found, Pair… with
+       the code, Forget), "Play On" in the Viewer and Tracker (the
+       receivers paired with), then live windows, workspaces and
+       agent screens as HLS (which also carries the kinds of film a
        receiver doesn't play by itself).
      - *Ben's to say:* (1) which receiver it's for (an Apple TV and
        its tvOS, a television with AirPlay built in, something else):

@@ -76,6 +76,8 @@ pub struct Status {
     pub sharing: Vec<olo_protocol::sharing::Share>,
     /// A recording of this display going (olo-screenshot's recorder).
     pub recording: Option<olo_protocol::recording::Going>,
+    /// Films playing on AirPlay receivers (`olo-airplay play`'s).
+    pub airplay: Vec<olo_protocol::airplay::Playing>,
     /// The supervisor (Preferences ▸ Performance), if it is installed.
     pub supervisor: Option<Supervisor>,
     /// AirPods connected (olo-airpods' state).
@@ -325,11 +327,12 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
     let (backup_state, backup_settings) = (olo_protocol::diskbackup::State::path(), olo_protocol::diskbackup::Settings::path());
     let display = olo_protocol::recording::this_display();
     let recording = olo_protocol::recording::path_for(&display);
+    let airplay = olo_protocol::airplay::dir();
     let installed = olo_xdg::find_program("olo-supervisor").is_some();
     let read = {
         let (notes, screens, upgrades, sharing, shared) = (notes.clone(), screens.clone(), upgrades.clone(), sharing.clone(), shared.clone());
         let (perf, supervising, pods, voice, doctor) = (perf.clone(), supervising.clone(), pods.clone(), voice.clone(), doctor.clone());
-        let (recording, display) = (recording.clone(), display.clone());
+        let (recording, display, airplay) = (recording.clone(), display.clone(), airplay.clone());
         let (backup_state, backup_settings) = (backup_state.clone(), backup_settings.clone());
         move |changed: &[PathBuf]| {
             let all = changed.is_empty();
@@ -343,12 +346,17 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
             let voice_settings = (all || changed.contains(&voice)).then(olo_protocol::voice::Settings::load);
             let found = (all || changed.contains(&doctor)).then(olo_protocol::doctor::DoctorFound::load);
             let recorded = (all || changed.contains(&recording)).then(|| olo_protocol::recording::going_on(&display));
+            // (Each play says how it goes in a file of its own in the folder.)
+            let plays = (all || changed.iter().any(|p| p.starts_with(&airplay))).then(olo_protocol::airplay::all);
             let backed_up = (all || changed.contains(&backup_state) || changed.contains(&backup_settings)).then(backup);
             let supervisor =
                 (installed && (all || changed.contains(&perf) || changed.contains(&supervising))).then(|| Supervisor { on: PerformanceSettings::load().enabled, state: SupervisorState::load() });
             publish(&shared, |s| {
                 if let Some(r) = recorded {
                     s.recording = r;
+                }
+                if let Some(p) = plays {
+                    s.airplay = p;
                 }
                 if let Some(b) = backed_up {
                     s.backup = b;
@@ -384,7 +392,9 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
     read(&[]);
     let read = Arc::new(read);
     let on_change = read.clone();
-    if let Some(w) = olo_kit::watch::watch([notes, screens, upgrades, sharing, perf, supervising, pods, voice, doctor, recording, backup_state, backup_settings], move |changed| on_change(changed)) {
+    if let Some(w) =
+        olo_kit::watch::watch([notes, screens, upgrades, sharing, perf, supervising, pods, voice, doctor, recording, backup_state, backup_settings, airplay], move |changed| on_change(changed))
+    {
         // Deskbar's for as long as it runs.
         std::mem::forget(w);
     }
@@ -400,7 +410,7 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
                 // before reading: `read` takes it again to publish.
                 let again = {
                     let g = counted.lock().unwrap();
-                    !g.0.agent_screens.is_empty() || !g.0.sharing.is_empty() || g.0.recording.is_some()
+                    !g.0.agent_screens.is_empty() || !g.0.sharing.is_empty() || g.0.recording.is_some() || !g.0.airplay.is_empty()
                 };
                 if again {
                     read(&[]);
@@ -840,6 +850,49 @@ pub fn draw_sharing(g: &mut Painter, r: Bounds<Pixels>, p: &Palette) {
     let at = (f32::from(at.x), f32::from(at.y));
     disc(g, at, 3.4, c(p.panel_background));
     disc(g, at, 2.5, c(p.failure));
+}
+
+/// A film playing on an AirPlay receiver: a screen with the mark of
+/// what it's doing on it (playing, or paused), and how many when there
+/// is more than one.
+pub fn draw_airplay(g: &mut Painter, r: Bounds<Pixels>, p: &Palette, paused: bool, count: usize) {
+    let screen = monitor(g, r, p, c(p.success).opacity(0.22));
+    // The mark is placed in device pixels inside the screen's frame, so it
+    // sits in the middle at every scale: as many pixels above as below,
+    // left as right.
+    let s = g.scale_factor();
+    let hair = (f32::from(style::hairline(g)) * s).round();
+    let (left, top) = ((f32::from(screen.left()) * s).round() + hair, (f32::from(screen.top()) * s).round() + hair);
+    let (wide, tall) = ((f32::from(screen.size.width) * s).round() - 2.0 * hair, (f32::from(screen.size.height) * s).round() - 2.0 * hair);
+    let above = (tall / 6.0).round().max(1.0);
+    let high = tall - 2.0 * above;
+    let at = |x: f32, y: f32| ((left + x) / s, (top + y) / s);
+    if paused {
+        // Two bars; the gap between them a pixel wider where the middle
+        // would otherwise fall off-centre.
+        let bar = (2.0 * s).round();
+        let mut gap = s.round().max(1.0);
+        if (wide - 2.0 * bar - gap) % 2.0 != 0.0 {
+            gap += 1.0;
+        }
+        let side = (wide - 2.0 * bar - gap) / 2.0;
+        for x in [side, side + bar + gap] {
+            let (x, y) = at(x, above);
+            style::fill_rect(g, rect(x, y, bar / s, high / s), ink(p));
+        }
+    } else {
+        // (A pixel wider where that puts as much room on its left as on
+        // its right.)
+        let mut across = (high * 0.85).round();
+        if (wide - across) % 2.0 != 0.0 {
+            across += 1.0;
+        }
+        let side = (wide - across) / 2.0;
+        polygon(g, &[at(side, above), at(side, above + high), at(side + across, above + high / 2.0)], ink(p));
+    }
+    if count > 1 {
+        badge(g, r, p, count, c(p.success));
+    }
 }
 
 /// DiskBackup (its app icon's hard disk and arrow, in ink): a drive in a

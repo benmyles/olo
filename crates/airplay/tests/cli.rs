@@ -10,8 +10,17 @@ use std::{
 
 use olo_airplay::{pairing::fake, play};
 
+/// The command, with its pairings and its plays said in folders of the
+/// test's own (never the person's: a film of theirs may be playing).
 fn run(state: &std::path::Path, args: &[&str]) -> (bool, String) {
-    let out = Command::new(env!("CARGO_BIN_EXE_olo-airplay")).args(args).env("XDG_STATE_HOME", state).env_remove("WAYLAND_DISPLAY").env_remove("OLO_SOCKET").output().expect("olo-airplay runs");
+    let out = Command::new(env!("CARGO_BIN_EXE_olo-airplay"))
+        .args(args)
+        .env("XDG_STATE_HOME", state)
+        .env("XDG_RUNTIME_DIR", state.join("run"))
+        .env_remove("WAYLAND_DISPLAY")
+        .env_remove("OLO_SOCKET")
+        .output()
+        .expect("olo-airplay runs");
     (out.status.success(), format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr)))
 }
 
@@ -115,12 +124,19 @@ fn a_film_played_and_one_stopped() {
     assert!(!run(&state, &["play", "Front Room"]).0);
     assert!(!run(&state, &["play", "Front Room", film, "--from", "later", "--at", "127.0.0.1:9"]).0);
 
-    // A long one, told to end while it plays: stopped at the receiver.
+    // Nothing is playing now, and nothing is left saying one is.
+    assert_eq!(run(&state, &["playing"]), (true, "Nothing is playing.\n".into()));
+    assert_eq!(std::fs::read_dir(state.join("run/olo-airplay")).unwrap().count(), 0);
+    assert!(!run(&state, &["stop"]).0 && !run(&state, &["pause", "Front Room"]).0);
+
+    // A long one: said to be playing, paused and gone on with from
+    // another command, and stopped by one.
     tv.lock().unwrap().film = std::time::Duration::from_secs(120);
     tv.lock().unwrap().asked.clear();
     let mut child = Command::new(env!("CARGO_BIN_EXE_olo-airplay"))
-        .args(["play", "Front Room", film, "--at", &at(&tv)])
+        .args(["play", "Front Room", film, "--from", "2:00", "--at", &at(&tv)])
         .env("XDG_STATE_HOME", &state)
+        .env("XDG_RUNTIME_DIR", state.join("run"))
         .env_remove("WAYLAND_DISPLAY")
         .env_remove("OLO_SOCKET")
         .stdout(std::process::Stdio::piped())
@@ -128,14 +144,33 @@ fn a_film_played_and_one_stopped() {
         .expect("olo-airplay runs");
     let mut out = BufReader::new(child.stdout.take().unwrap());
     let mut said = String::new();
-    while !said.contains("Playing on Front Room") {
-        assert!(out.read_line(&mut said).unwrap() > 0, "it ended before playing: {said}");
-    }
-    assert_eq!(unsafe { libc::kill(child.id() as i32, libc::SIGTERM) }, 0);
+    // (Read on until it has said this, this many times.)
+    let mut until = |said: &mut String, what: &str, times: usize| {
+        while said.matches(what).count() < times {
+            assert!(out.read_line(said).unwrap() > 0, "it ended before saying {what:?}: {said}");
+        }
+    };
+    until(&mut said, "Playing on Front Room, from 2:00 (it is 10:00 long).", 1);
+    let (ok, listed) = run(&state, &["playing"]);
+    assert!(ok && listed.starts_with("A film.mp4 on Front Room: playing, 2:0") && listed.ends_with(" of 10:00\n"), "{listed}");
+    let (_, listed) = run(&state, &["playing", "--json"]);
+    let listed: serde_json::Value = serde_json::from_str(&listed).unwrap();
+    assert_eq!((listed[0]["pid"].as_u64(), listed[0]["receiver"].as_str(), listed[0]["path"].as_str()), (Some(u64::from(child.id())), Some("Front Room"), Some(film)));
+    // (Another receiver's plays: none. This one's, by the start of its name.)
+    assert!(!run(&state, &["pause", "Den"]).0);
+    assert!(!run(&state, &["pause", "--pid", "1"]).0 && !run(&state, &["pause", "--pid", "that one"]).0);
+    assert_eq!(run(&state, &["pause", "--pid", &child.id().to_string()]), (true, "Paused A film.mp4 on Front Room.\n".into()));
+    until(&mut said, "Paused at 2:0", 1);
+    assert!(run(&state, &["playing"]).1.contains(": paused, 2:0"));
+    assert_eq!(run(&state, &["resume", "front"]), (true, "Going on with A film.mp4 on Front Room.\n".into()));
+    until(&mut said, "Playing on Front Room, from 2:0", 2);
+    assert!(run(&state, &["playing"]).1.contains(": playing, 2:0"));
+    assert_eq!(run(&state, &["stop", "Front Room"]), (true, "Stopped A film.mp4 on Front Room.\n".into()));
     let mut rest = String::new();
     std::io::Read::read_to_string(&mut out, &mut rest).unwrap();
     assert!(child.wait().unwrap().success());
-    assert_eq!(rest, "Stopped.\n");
+    assert!(rest.ends_with("Stopped.\n"), "{rest}");
     assert_eq!(tv.lock().unwrap().asked.last().map(String::as_str), Some("TEARDOWN"));
+    assert_eq!(run(&state, &["playing"]).1, "Nothing is playing.\n");
     let _ = std::fs::remove_dir_all(&state);
 }

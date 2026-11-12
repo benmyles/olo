@@ -18,6 +18,12 @@
 //!       begins at a place (seconds, or 1:02:03); --json says it as a
 //!       line of JSON for each change; --trace says each step and what
 //!       the receiver answered (for finding out why one won't play)
+//!   olo-airplay playing [--json]
+//!       the films playing: what, where, and how far along
+//!   olo-airplay stop [NAME] | pause [NAME] | resume [NAME]
+//!       stop, pause or go on with what plays on a receiver (on every
+//!       one, with no name; --pid N: the one play of that process,
+//!       as `playing --json` numbers them)
 //!   olo-airplay paired
 //!       the receivers paired with
 //!   olo-airplay unpair NAME
@@ -40,17 +46,21 @@ use olo_airplay::{
     pairing::{Error, Http, Setup, verify},
     play::{Now, Options, Play, State, Trace, What},
 };
+use olo_protocol::airplay::{self, Playing};
 
 const USAGE: &str = "usage: olo-airplay list [--json] [--wait SECONDS]
        olo-airplay pair NAME [--code CODE] [--at HOST:PORT]
        olo-airplay check NAME [--at HOST:PORT]
        olo-airplay play NAME FILE|ADDRESS [--from TIME] [--json] [--trace] [--at HOST:PORT]
+       olo-airplay playing [--json]
+       olo-airplay stop [NAME] | pause [NAME] | resume [NAME]
        olo-airplay paired
        olo-airplay unpair NAME
   list     the AirPlay receivers on the network: name, kind, what each takes
   pair     pair with one: the code it shows on its screen is typed here, once
   check    whether one paired with still knows this computer
   play     play a film on one: a file here or an address on the web; Ctrl-C stops it
+  playing  the films playing; stop, pause and resume act on them
   paired   the receivers paired with
   unpair   forget a pairing here";
 
@@ -65,6 +75,10 @@ fn main() -> ExitCode {
         Some("pair") => pair(&args[1..]),
         Some("check") => check(&args[1..]),
         Some("play") => play(&args[1..]),
+        Some("playing") => playing(&args[1..]),
+        Some("stop") => tell_plays(&args[1..], libc::SIGTERM),
+        Some("pause") => tell_plays(&args[1..], libc::SIGUSR1),
+        Some("resume") => tell_plays(&args[1..], libc::SIGUSR2),
         Some("paired") => {
             let all = kept::all();
             if all.is_empty() {
@@ -114,7 +128,7 @@ fn words_in(args: &[String]) -> Vec<&str> {
             continue;
         }
         if a.starts_with("--") {
-            skip = matches!(a.as_str(), "--code" | "--at" | "--wait" | "--from");
+            skip = matches!(a.as_str(), "--code" | "--at" | "--wait" | "--from" | "--pid");
         } else {
             words.push(a.as_str());
         }
@@ -279,13 +293,14 @@ fn play(args: &[String]) -> Result<(), String> {
         let title = path.file_name().map_or_else(|| what.to_owned(), |n| n.to_string_lossy().into_owned());
         (What::File(path), title)
     };
-    // Ctrl-C (and being told to end) stops the film at the receiver: the
-    // signals are waited for by a thread of their own, kept from every
-    // other (the play's are made after this).
+    // Ctrl-C (and being told to end) stops the film at the receiver, and
+    // `olo-airplay pause` and `resume` reach this play as signals too:
+    // they are waited for by a thread of their own, kept from every other
+    // (the play's are made after this).
     let signals = unsafe {
         let mut set: libc::sigset_t = std::mem::zeroed();
         libc::sigemptyset(&mut set);
-        for signal in [libc::SIGINT, libc::SIGTERM, libc::SIGHUP] {
+        for signal in [libc::SIGINT, libc::SIGTERM, libc::SIGHUP, libc::SIGUSR1, libc::SIGUSR2] {
             libc::sigaddset(&mut set, signal);
         }
         libc::pthread_sigmask(libc::SIG_BLOCK, &set, std::ptr::null_mut());
@@ -293,12 +308,58 @@ fn play(args: &[String]) -> Result<(), String> {
     };
     let trace: Option<Trace> = trace.then(|| Arc::new(|line: &str| eprintln!("  {line}")) as Trace);
     let play = Play::begin(at, &credentials, &what, &Options { from, name: our_name(), trace, ..Options::default() }).map_err(|e| e.to_string())?;
-    let interrupter = play.interrupter();
+    let remote = play.remote();
     std::thread::spawn(move || {
-        let mut signal = 0;
-        unsafe { libc::sigwait(&signals, &mut signal) };
-        interrupter.interrupt();
+        loop {
+            let mut signal = 0;
+            unsafe { libc::sigwait(&signals, &mut signal) };
+            match signal {
+                libc::SIGUSR1 => drop(remote.pause(true)),
+                libc::SIGUSR2 => drop(remote.pause(false)),
+                _ => return remote.interrupt(),
+            }
+        }
     });
+    // How it goes, where Deskbar and `olo-airplay playing` find it:
+    // written when what it's doing changes or where it is jumps, not as
+    // it goes.
+    let (pid, started) = (std::process::id(), airplay::now_ms() / 1000);
+    let path = match &what {
+        What::File(path) => Some(path.clone()),
+        What::Address(_) => None,
+    };
+    let mut written: Option<Playing> = None;
+    let mut publish = |now: &Now| {
+        let state = match now.state {
+            State::Loading => "loading",
+            State::Playing => "playing",
+            State::Paused => "paused",
+            State::Ended | State::Left | State::Failed => return,
+        };
+        let new = Playing {
+            pid,
+            receiver: name.clone(),
+            title: title.clone(),
+            path: path.clone(),
+            state: state.into(),
+            position: now.position_now(),
+            duration: now.duration,
+            rate: now.rate,
+            as_of: airplay::now_ms(),
+            started,
+        };
+        let same = written.as_ref().is_some_and(|old| {
+            let near = match (old.position_now(), new.position) {
+                (Some(a), Some(b)) => (a - b).abs() < 1.5,
+                (a, b) => a == b,
+            };
+            (&old.state, old.duration, old.rate) == (&new.state, new.duration, new.rate) && near
+        });
+        if !same {
+            let _ = new.write();
+            written = Some(new);
+        }
+    };
     let said = |now: &Now| {
         if json {
             let state = match now.state {
@@ -328,15 +389,18 @@ fn play(args: &[String]) -> Result<(), String> {
     };
     let mut now = play.now();
     said(&now);
+    publish(&now);
     while !now.state.over() && !play.interrupted() {
         let next = play.next(&now, None);
         // (Said when what it is doing changes, not each time it says where it is.)
         if next.state != now.state {
             said(&next);
         }
+        publish(&next);
         now = next;
     }
     let stopped = !now.state.over();
+    let _ = std::fs::remove_file(airplay::path_of(pid));
     drop(play);
     if stopped {
         if json {
@@ -351,9 +415,81 @@ fn play(args: &[String]) -> Result<(), String> {
     }
 }
 
+/// How a play goes, in a line: "A film.mp4 on Front Room: playing, 2:03 of 1:32:10".
+fn in_a_line(p: &Playing) -> String {
+    let place = match (p.position_now(), p.duration) {
+        (Some(at), Some(all)) => format!(", {} of {}", time(at), time(all)),
+        (Some(at), None) => format!(", at {}", time(at)),
+        _ => String::new(),
+    };
+    format!("{} on {}: {}{place}", p.title, p.receiver, p.state)
+}
+
+fn playing(args: &[String]) -> Result<(), String> {
+    let all = airplay::all();
+    if args.iter().any(|a| a == "--json") {
+        println!("{}", serde_json::to_string_pretty(&all).unwrap_or_else(|_| "[]".into()));
+    } else if all.is_empty() {
+        println!("Nothing is playing.");
+    } else {
+        for p in &all {
+            println!("{}", in_a_line(p));
+        }
+    }
+    Ok(())
+}
+
+/// Stop, pause or go on with the plays on a receiver (on every one, for
+/// no name): each play is a process of this program, told by a signal.
+fn tell_plays(args: &[String], signal: i32) -> Result<(), String> {
+    let name = name_in(args);
+    let mut plays = name.as_deref().map_or_else(airplay::all, airplay::on);
+    // (One play exactly, by its process: Deskbar's menu.)
+    if let Some(pid) = option(args, "--pid") {
+        let pid = pid.parse::<u32>().map_err(|_| format!("{pid} isn't a play's number"))?;
+        plays.retain(|p| p.pid == pid);
+    }
+    if plays.is_empty() {
+        return Err(name.map_or_else(|| "nothing is playing".to_owned(), |name| format!("nothing is playing on {name}")));
+    }
+    for p in plays {
+        // (Only a play: never whatever has its number by now.)
+        if airplay::alive(p.pid) && unsafe { libc::kill(p.pid as i32, signal) } == 0 {
+            let done = match signal {
+                libc::SIGUSR1 => "Paused",
+                libc::SIGUSR2 => "Going on with",
+                _ => "Stopped",
+            };
+            println!("{done} {} on {}.", p.title, p.receiver);
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_play_in_a_line() {
+        let mut p = Playing {
+            pid: 1,
+            receiver: "Front Room".into(),
+            title: "A film.mp4".into(),
+            path: None,
+            state: "paused".into(),
+            position: Some(123.0),
+            duration: Some(5530.0),
+            rate: 0.0,
+            as_of: 1,
+            started: 0,
+        };
+        assert_eq!(in_a_line(&p), "A film.mp4 on Front Room: paused, 2:03 of 1:32:10");
+        p.duration = None;
+        assert_eq!(in_a_line(&p), "A film.mp4 on Front Room: paused, at 2:03");
+        (p.position, p.state) = (None, "loading".into());
+        assert_eq!(in_a_line(&p), "A film.mp4 on Front Room: loading");
+    }
 
     #[test]
     fn times_typed_and_said() {

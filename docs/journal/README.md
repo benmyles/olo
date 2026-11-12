@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-12
 
+### Deskbar: a film playing on an AirPlay receiver
+
+*15:43* — While olo-airplay plays a film on a receiver, Deskbar's tray has a screen with a play mark on it (two bars while paused, a count when there are several). Its menu says what plays where, with Pause (or Resume) and Stop for each, and Stop All. The mark is placed in device pixels inside the screen's frame: centred at 1×, 1.25×, 1.5×, 1.75× and 2×. Tried against a receiver of the test's own, on the loopback.
+
+![Deskbar: a film playing on an AirPlay receiver](2026-11-12/154356-deskbar-a-film-playing-on-an-airplay-receiver.png)
+
 ### Activity Monitor: an NVIDIA card's encoder and decoder
 
 *13:56* — The card's video encoder and decoder are engines of their own, which its library counts apart from graphics: a screen recording encoding on it read as an idle GPU. Each is a series now (here a 4K encode: the encoder at half, graphics at a seventh), and the card, in Activity Monitor and Deskbar's widget, is as busy as its busiest engine. Intel's render and media engines the same.

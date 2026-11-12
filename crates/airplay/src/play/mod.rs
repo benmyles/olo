@@ -274,15 +274,26 @@ pub struct Play {
     timing: Option<Timing>,
 }
 
-/// Wakes whoever waits in [`Play::next`], from another thread (a signal's).
+/// A play's controls for another thread (a signal's): it wakes whoever
+/// waits in [`Play::next`], and pauses.
 #[derive(Clone)]
-pub struct Interrupter(Arc<Shared>);
+pub struct Remote {
+    shared: Arc<Shared>,
+    control: Arc<Mutex<Control>>,
+}
 
-impl Interrupter {
+impl Remote {
+    /// Whoever waits in [`Play::next`] is woken, to stop the play.
     pub fn interrupt(&self) {
-        let _now = self.0.now.lock().unwrap();
-        self.0.stop.store(true, Relaxed);
-        self.0.changed.notify_all();
+        let _now = self.shared.now.lock().unwrap();
+        self.shared.stop.store(true, Relaxed);
+        self.shared.changed.notify_all();
+    }
+
+    /// Pause it, or go on (the receiver says when it has).
+    pub fn pause(&self, paused: bool) -> Result<(), Error> {
+        let answer = self.control.lock().unwrap().rate(if paused { 0.0 } else { 1.0 })?;
+        if answer.status < 300 { Ok(()) } else { Err(Error::Refused(if paused { "to pause" } else { "to go on" }, answer.status)) }
     }
 }
 
@@ -468,8 +479,8 @@ impl Play {
         }
     }
 
-    pub fn interrupter(&self) -> Interrupter {
-        Interrupter(self.shared.clone())
+    pub fn remote(&self) -> Remote {
+        Remote { shared: self.shared.clone(), control: self.control.clone() }
     }
 
     pub fn interrupted(&self) -> bool {
@@ -478,8 +489,7 @@ impl Play {
 
     /// Pause it, or go on (the receiver says when it has).
     pub fn pause(&self, paused: bool) -> Result<(), Error> {
-        let answer = self.control.lock().unwrap().rate(if paused { 0.0 } else { 1.0 })?;
-        if answer.status < 300 { Ok(()) } else { Err(Error::Refused(if paused { "to pause" } else { "to go on" }, answer.status)) }
+        self.remote().pause(paused)
     }
 
     /// How many bytes of the file the receiver has fetched (None: it
@@ -1046,10 +1056,10 @@ mod tests {
         let began = Instant::now();
         assert_eq!(play.next(&now, Some(Duration::from_millis(80))), now);
         assert!(began.elapsed() >= Duration::from_millis(80) && !play.interrupted());
-        let interrupter = play.interrupter();
+        let remote = play.remote();
         let waker = std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(50));
-            interrupter.interrupt();
+            remote.interrupt();
         });
         assert_eq!(play.next(&now, None), now);
         assert!(play.interrupted());

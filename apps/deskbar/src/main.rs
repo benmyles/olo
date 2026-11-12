@@ -1133,6 +1133,13 @@ impl Deskbar {
                 }
             }
             Some(("share", session)) => spawn(&format!("olo-portal --stop {session}")),
+            // A film on an AirPlay receiver: its play is told (a process
+            // of olo-airplay's, by its number), or every one.
+            Some(("airplay", told)) => match told.split_once(':') {
+                Some((verb @ ("stop" | "pause" | "resume"), "all")) => spawn(&format!("olo-airplay {verb}")),
+                Some((verb @ ("stop" | "pause" | "resume"), pid)) if pid.parse::<u32>().is_ok() => spawn(&format!("olo-airplay {verb} --pid {pid}")),
+                _ => {}
+            },
             Some(("sound", "mute")) => {
                 status::toggle_mute();
                 if let Some(v) = &mut self.status.volume {
@@ -1650,6 +1657,34 @@ fn backup_menu(clock: &olo_protocol::ClockSettings) -> Menu {
     m = if busy { m.item(stop, "backup:stop") } else { m.item("Back Up Now", "backup:now").enabled(st.pid != 0 && s.enabled) };
     m = if s.enabled { m.item("Pause Backups", "backup:enabled=off") } else { m.item("Resume Backups", "backup:enabled=on") };
     m.separator().item("Restore Files…", "run:olo-diskbackup --restore-window").item("DiskBackup…", "run:olo-diskbackup")
+}
+
+/// What a play is, in a line: "A film.mp4 on Front Room".
+fn play_said(p: &olo_protocol::airplay::Playing) -> String {
+    let doing = match p.state.as_str() {
+        "paused" => " (paused)",
+        "loading" => " (loading)",
+        _ => "",
+    };
+    format!("{} on {}{doing}", p.title, p.receiver)
+}
+
+/// The films playing on AirPlay receivers: each with Pause (or Resume)
+/// and Stop.
+fn airplay_menu(plays: &[olo_protocol::airplay::Playing]) -> Menu {
+    let mut m = Menu::new("AirPlay");
+    for (i, p) in plays.iter().enumerate() {
+        if i > 0 {
+            m = m.separator();
+        }
+        m = m.item(play_said(p), "").enabled(false);
+        m = if p.paused() { m.item("Resume", format!("airplay:resume:{}", p.pid)) } else { m.item("Pause", format!("airplay:pause:{}", p.pid)).enabled(p.state == "playing") };
+        m = m.item("Stop", format!("airplay:stop:{}", p.pid));
+    }
+    if plays.len() > 1 {
+        m = m.separator().item("Stop All", "airplay:stop:all");
+    }
+    m
 }
 
 fn sharing_menu(shares: &[olo_protocol::sharing::Share]) -> Menu {
@@ -2335,6 +2370,7 @@ impl Deskbar {
                 st.recording.is_some(),
                 st.backup.is_some(),
                 !st.sharing.is_empty(),
+                !st.airplay.is_empty(),
                 st.airpods.is_some(),
                 !st.agent_screens.is_empty(),
                 st.supervisor.is_some(),
@@ -2623,6 +2659,24 @@ impl Deskbar {
                 if matches!(button(e), MouseButton::Left | MouseButton::Right) {
                     let mm = m.clone();
                     open_menu(cx, &v, "tray:sharing", r, sharing_menu(&shares), move |cmd, cx| run(&mm, cmd, cx));
+                }
+            }));
+        }
+        // A film playing on an AirPlay receiver: what, where, and Pause
+        // and Stop.
+        if !st.airplay.is_empty() {
+            let tip_text = match st.airplay.as_slice() {
+                [one] if one.paused() => format!("{}. Click to resume or stop.", play_said(one)),
+                [one] => format!("{}. Click to pause or stop.", play_said(one)),
+                many => format!("{} films playing on AirPlay receivers. Click to pause or stop them.", many.len()),
+            };
+            let (paused, count) = (st.airplay.iter().all(|p| p.paused()), st.airplay.len());
+            let (r, h) = tray_item(&mut d, "airplay", tip_text, Box::new(move |g, r| status::draw_airplay(g, r, &theme::palette(), paused, count)));
+            let (m, v, plays) = (model.clone(), view.clone(), st.airplay.clone());
+            d.hits.push(h.on_any_button(move |e, cx| {
+                if matches!(button(e), MouseButton::Left | MouseButton::Right) {
+                    let mm = m.clone();
+                    open_menu(cx, &v, "tray:airplay", r, airplay_menu(&plays), move |cmd, cx| run(&mm, cmd, cx));
                 }
             }));
         }
