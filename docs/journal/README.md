@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-12
 
+### Preferences ▸ Performance: the scheduler
+
+*04:38* — A Scheduler tab (Ben: "add to olo the ability to pick a custom scheduler in preferences -> performance and the recommendation should be scx_lavd"): the kernel's own or LAVD (recommended), what each is for, and what is scheduling now as the kernel says it. Choosing one has Olo Doctor install and start it, or stop it (an administrator's password). Shown with a made-up kernel in a scratch folder.
+
+![Preferences ▸ Performance: the scheduler](2026-11-12/043804-preferences-performance-the-scheduler.png)
+
 ### Preferences ▸ Power: the fan profile
 
 *04:20* — Battery & Idle has a Fans box on a ThinkPad (Ben: "have in the power prefs the option for the default auto and this new cooler/louder auto profile"): Automatic, the firmware's own curve, or Cool, Olo's olo-fans running the fans ahead of the heat so the processor isn't throttled, with what the fans are doing now under it. Choosing one asks Olo Doctor to set it (an administrator's password). Shown with a made-up ThinkPad in a scratch folder.

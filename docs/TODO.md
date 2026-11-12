@@ -838,45 +838,46 @@ something nobody here has is in "Blocked", with what it waits for.
   in preferences -> performance and the recommendation should be
   scx_lavd and if the user enables it then olo should handle installing
   (if we can vendor it great and then just install and activate it if
-  the user enables)"). Found so far, on the ThinkPad (Fedora 45, kernel
-  7.2.15): the kernel has sched_ext (`/sys/kernel/sched_ext/state` says
-  `disabled`: none loaded); Fedora's own repositories have only
-  `scx_layered`, `scx_rustland` and `scx_rusty`, old builds, and no
-  `scx_lavd` nor `scx-scheds` (those come from a COPR), so it can't be
-  installed from Fedora: it's to be vendored. `scx_lavd` is a Rust
-  program with a BPF part (GPL-2.0, sched-ext/scx; on crates.io), built
-  with clang's BPF target and libbpf. *To work out:* building it with
-  Olo (what tools/setup.sh must add; the build's cost); where a program
-  that runs as root is installed and what starts it (Olo's own are in
-  the home folder: a root service must not run a file the person can
-  write, so Doctor's privileged helper puts it in a root-owned place
-  with a unit, as olo-login's parts are); the setting
-  (`performance.json`), the panel's choice with what each scheduler is
-  for and why LAVD is recommended, its state read from
-  `/sys/kernel/sched_ext` (what's loaded now, whoever loaded it), and
-  falling back by itself if it won't load or is thrown out (the kernel
-  does that; Olo says so). app_server's and the windows' asking for a
-  fast core while they draw (`util_floor`) is to be measured under it:
-  LAVD decides by its own measure of latency-criticality. It can't be
-  switched on from a test session (root, and the whole machine's
-  scheduler): what's tested without Ben is the build, the helper's
-  steps against a fake root, and the panel.
-  *Put in by hand meanwhile* (Ben, the same evening: "install scx_lavd
-  and enable for me now as part of your test and leave it enabled so
-  that i don't have to wait"): `scx_lavd` 1.1.4 built from crates.io
-  (`cargo install scx_lavd --locked`; with clang 23 and
-  elfutils-libelf-devel it built as Fedora 45 comes, nothing added: it
-  carries its own libbpf and vmlinux.h), copied root-owned to
-  `/usr/local/libexec/olo/scx_lavd`, with
-  `/etc/systemd/system/olo-scheduler.service` (ExecStart that, no
-  options: its autopilot; Restart=on-failure, three tries in two
-  minutes), enabled and started at 22:19. The kernel says
-  `enabled`, `lavd_1.1.4_x86_64_unknown_linux_gnu`. Olo's own install
-  takes this unit's name and place over, so what's there now is
-  replaced, not left beside it. To go back:
-  `sudo systemctl disable --now olo-scheduler.service`. (Costs measured
-  from here on are under LAVD, not the kernel's EEVDF: an app is
-  compared with its GPUI build in the same sitting, as before.)
+  the user enables)"). *Done 2026-11-12* (HACKING, "The scheduler"):
+  Preferences ▸ Performance ▸ Scheduler, the kernel's own or LAVD
+  (recommended), with what is scheduling now as the kernel says it;
+  choosing has Olo Doctor install, enable and start it, or stop it
+  (`olo-doctor --scheduler kernel|lavd`, for agents too);
+  `tools/build-scheduler.sh` builds scx_lavd 1.1.4 from its published
+  source and puts it beside Olo's programs (`olo-scx-lavd`), built
+  once here: an upgrade carries it. Tried only against a made-up
+  kernel in a scratch folder (`OLO_SCHEDULER_ROOT`). On Ben's
+  ThinkPad the panel will show LAVD chosen and scheduling, as it was
+  put in by hand on 2026-11-10 (`olo-scheduler.service`: the same
+  name, place and unit, so Olo's choice takes it over as it is); the
+  kernel's own and back hasn't been chosen there (it's his machine's
+  scheduler: his to try). To go back by hand:
+  `sudo systemctl disable --now olo-scheduler.service`.
+  *Left, each Ben's to decide or needing his machine:*
+  - **In a release or not.** scx_lavd is GPL-2.0, Olo is MIT: it's a
+    separate program, so carrying it is allowed, but whoever passes
+    its binary on must pass its source on too. For now a release
+    leaves it out (`tools/release.sh`) and the Installer's Olo says
+    "LAVD isn't with this copy of Olo". To carry it: the exact source
+    (the crates of 1.1.4 and their lock file) put beside the release,
+    with its licence; or its source vendored in the tree as others'
+    work is (`vendor/`), which is the "vendor it" asked for and is
+    its six crates, 84,000 lines of someone else's GPL code (Rust
+    and C, counted in the published crates) in the repository.
+  - tools/setup.sh has what it needs to build (libelf's headers
+    added) but doesn't run `tools/build-scheduler.sh`: two minutes
+    and 4 GB more for a setup, for something off by default. To be
+    run by setup, or by Doctor's "LAVD isn't here" as an offer.
+  - Olo Doctor saying when root's copy is older than the one beside
+    it, as for the login screen's parts; and a finding when LAVD is
+    chosen and the kernel has put it out (`nr_rejected`, the unit
+    failed), with what its log said.
+  - app_server's and the windows' asking for a fast core while they
+    draw (`util_floor`) measured under LAVD against the kernel's own
+    (LAVD decides by its own measure of latency-criticality): needs
+    the scheduler switched on the real machine, with Ben.
+  (Costs measured since 2026-11-10 are under LAVD, not EEVDF: an app
+  is compared with its other build in the same sitting.)
 
 - **What a restart undoes, Olo sets again by itself as the session
   starts** (Ben, 2026-11-10, with a picture of Olo Doctor: "this comes

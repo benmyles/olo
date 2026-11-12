@@ -9342,6 +9342,75 @@ Automatic refused by a folder made read-only (said in red), the panel
 reviewed at 1×, 1.25×, 1.5×, 1.75× and 2×, light and dark. On the
 real computer it has not been chosen from the panel yet.
 
+## The scheduler (`scx_lavd`, tools/build-scheduler.sh)
+
+Which scheduler the computer runs under is the person's to choose
+(Ben, 2026-11-10: "add to olo the ability to pick a custom scheduler in
+preferences -> performance and the recommendation should be scx_lavd
+and if the user enables it then olo should handle installing"): the
+kernel's own (EEVDF), or LAVD, `scx_lavd` of sched-ext/scx (GPL-2.0;
+the Latency-criticality Aware Virtual Deadline scheduler), loaded over
+the kernel's through sched_ext (Linux 6.12 and later). LAVD is made
+for a computer someone is sitting at: what is being waited for runs
+first, long work around it. If it stops, or the kernel puts it out,
+the kernel's own takes over again by itself.
+
+It is built as the fans' profile is, in the same three parts:
+
+- `olo_system::scheduler` reads what there is, as anyone: whether the
+  kernel can load one at all (`look` is None without
+  `/sys/kernel/sched_ext`), what starts with the computer (LAVD when
+  its program and unit are installed and systemd's link to the unit
+  is there, `multi-user.target.wants/olo-scheduler.service`), and what
+  is loaded now, whoever loaded it (`state`, `root/ops`: "Now: LAVD
+  1.1.4 is scheduling."; another's is named and said to be not Olo's;
+  chosen but not loaded is said, with where to look).
+- Olo Doctor sets it (`apps/doctor/src/scheduler.rs`):
+  `olo-doctor --scheduler` says what there is, `olo-doctor
+  --scheduler kernel|lavd` sets it, through the helper and pkexec, in
+  the person's own session only. LAVD: the `olo-scx-lavd` beside
+  Doctor copied to `/usr/local/libexec/olo/scx_lavd` (a root service
+  must not run a file the person can write), its unit
+  (`data/systemd/olo-scheduler.service`, carried in the program),
+  enabled, and started (again, if either changed). With no
+  `olo-scx-lavd` beside Doctor, root's copy serves if there is one;
+  else it says LAVD isn't with this copy of Olo. The kernel's own:
+  the unit disabled and stopped (LAVD unloads itself as it ends), its
+  parts left for the next time.
+- Preferences ▸ Performance has a Scheduler tab: the two as radio
+  buttons, each with what it's for, what is scheduling now (read
+  again every five seconds while the panel is open), and that it's
+  the computer's, so choosing asks for an administrator's password
+  ("Setting it…", the buttons dimmed; refused or failed, back on
+  what's in force with why in red). Where the kernel can't load one
+  the tab says so. `olo-preferences performance --tab Scheduler`
+  opens it there.
+
+**The program isn't Olo's and isn't in Olo's workspace.**
+`tools/build-scheduler.sh` builds one named version (1.1.4) from its
+published source (`cargo install --locked`, with the lock file it was
+published with: it carries its own libbpf and vmlinux.h, and wants
+clang and libelf's headers, which tools/setup.sh installs) and puts it
+in `target/release` as `olo-scx-lavd`, so what carries Olo's programs
+carries it: tools/install-session.sh and an upgrade from the Deskbar.
+Nothing runs it from there. Two minutes the first time (1 min 47 s
+here), and 4 GB while it builds (removed after); nothing when that
+version is built already. Olo builds and runs without it. A release doesn't carry it
+(`tools/release.sh` leaves it out): a GPL program is passed on with
+its source, which is the publisher's to arrange (TODO).
+
+`OLO_SCHEDULER_ROOT=DIR` puts every one of those places under DIR,
+for tests: a made-up kernel is one file (`sys/kernel/sched_ext/state`
+holding `disabled`), Doctor writes its steps there as the person (an
+empty file stands for systemd's link), and `state` and `root/ops`
+written by hand show in the panel. The whole of it was driven so
+(2026-11-12): LAVD chosen from the panel (the built program, the unit
+and the link under DIR), chosen-but-not-loaded said, then loaded,
+the kernel's own again; the tab reviewed at 1×, 1.25×, 1.5×, 1.75×
+and 2×, light and dark. **Never choose a scheduler on the real
+computer from a test**: it is the whole machine's, and everything
+running on it (the person's work, every measurement) changes with it.
+
 ## Olo Doctor (apps/doctor)
 
 Looks the computer over for what gets in Olo's way and fixes it with a
@@ -9354,7 +9423,8 @@ signal a process), all done in process. From a terminal or an agent:
 with a fix, by id), `olo-doctor --fix all|ID…` (what the buttons do: root
 steps through the helper and pkexec, or, under sudo, run there with the
 scan made for the sudo user), `olo-doctor --fans [auto|cool]` (the fan
-profile: "The fans", above). What it looks for:
+profile: "The fans", above), `olo-doctor --scheduler [kernel|lavd]`
+("The scheduler", above). What it looks for:
 
 - **DiskBackup** (`diskbackup`, from its settings and its service's
   state file): not set up ("Nothing is backed up": said, no button,

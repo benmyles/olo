@@ -42,6 +42,7 @@ pub mod priority;
 pub mod procs;
 pub mod recording;
 pub mod rfkill;
+pub mod scheduler;
 pub mod secrets;
 pub mod shaping;
 pub mod systemd;

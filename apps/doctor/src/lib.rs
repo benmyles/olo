@@ -13,6 +13,7 @@ pub mod ignored;
 pub mod login_screen;
 pub mod notify;
 pub mod releases;
+pub mod scheduler;
 pub mod suggest;
 
 pub use app::{Kind, run};

@@ -104,6 +104,30 @@ static PREFS: OnceLock<Mutex<Prefs>> = OnceLock::new();
 /// What every window shares. Held briefly: to read what a window shows,
 /// to change a setting. Never taken while it's held, nor held across a
 /// call into the kit that waits on a window.
+/// Have the Olo Doctor beside us do something that's the computer's
+/// (`olo-doctor --fans cool`, `--scheduler lavd`: it asks for an
+/// administrator's password through polkit, in the person's own
+/// session) and wait for it: what it said at the end, or why it didn't.
+/// Off the looper: it waits for the person.
+pub fn ask_doctor(args: &[&str]) -> Result<String, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let exe = std::path::PathBuf::from(exe.to_string_lossy().trim_end_matches(" (deleted)"));
+    let doctor = exe.with_file_name("olo-doctor");
+    let out = std::process::Command::new(&doctor).args(args).stdin(std::process::Stdio::null()).output().map_err(|e| format!("{}: {e}", doctor.display()))?;
+    let last = |bytes: &[u8]| String::from_utf8_lossy(bytes).lines().rev().find(|l| !l.trim().is_empty()).unwrap_or_default().trim().to_owned();
+    if out.status.success() {
+        return Ok(last(&out.stdout));
+    }
+    let why = last(&out.stderr);
+    let why = why.strip_prefix("olo-doctor: ").unwrap_or(&why);
+    // (As a sentence of its own.)
+    let mut c = why.chars();
+    Err(match c.next() {
+        Some(first) => first.to_uppercase().chain(c).collect(),
+        None => "Olo Doctor couldn't set it.".to_owned(),
+    })
+}
+
 pub fn prefs() -> MutexGuard<'static, Prefs> {
     PREFS.get().expect("Preferences is running").lock().unwrap_or_else(|e| e.into_inner())
 }
@@ -382,6 +406,7 @@ impl View for PanelView {
                     match &mut self.state {
                         panel::State::Network(st) => network::show_tab(st, tab),
                         panel::State::Power(st) => power::show_tab(st, tab),
+                        panel::State::Performance(st) => performance::show_tab(st, tab),
                         panel::State::Security(st) => security::show_tab(st, tab),
                         _ => {}
                     }

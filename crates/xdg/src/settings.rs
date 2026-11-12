@@ -163,6 +163,8 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "performance", tab: "Supervisor", group: "Supervisor", name: "Keep the desktop responsive", role: "CheckBox" },
     Setting { panel: "performance", tab: "Supervisor", group: "Priorities", name: "Lower background work", role: "CheckBox" },
     Setting { panel: "performance", tab: "Supervisor", group: "Priorities", name: "Lower to nice", role: "Slider" },
+    Setting { panel: "performance", tab: "Scheduler", group: "Scheduler", name: "The kernel's own", role: "RadioButton" },
+    Setting { panel: "performance", tab: "Scheduler", group: "Scheduler", name: "LAVD (recommended)", role: "RadioButton" },
     Setting { panel: "performance", tab: "Watchdog", group: "Watchdog", name: "Watch for stuck processes, leaks and memory hogs", role: "CheckBox" },
     Setting { panel: "performance", tab: "Watchdog", group: "Watchdog", name: "Ask what to do about urgent ones", role: "CheckBox" },
     Setting { panel: "performance", tab: "Watchdog", group: "Watchdog", name: "Busy at least", role: "Slider" },

@@ -135,7 +135,7 @@ fn set_fans(shared: Arc<Mutex<Fans>>, proxy: olo_kit::Proxy, profile: Profile) {
     std::thread::Builder::new()
         .name("fans-apply".into())
         .spawn(move || {
-            let said = ask_doctor(profile);
+            let said = crate::ask_doctor(&["--fans", profile.word()]);
             let now = fans::look(&fans::Places::here());
             let mut f = shared.lock().unwrap();
             f.applying = None;
@@ -145,27 +145,6 @@ fn set_fans(shared: Arc<Mutex<Fans>>, proxy: olo_kit::Proxy, profile: Profile) {
             proxy.send(Msg::Redraw);
         })
         .expect("thread");
-}
-
-/// `olo-doctor --fans WORD`, the Doctor beside us: what it said.
-fn ask_doctor(profile: Profile) -> Result<String, String> {
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let exe = std::path::PathBuf::from(exe.to_string_lossy().trim_end_matches(" (deleted)"));
-    let doctor = exe.with_file_name("olo-doctor");
-    let out = std::process::Command::new(&doctor).arg("--fans").arg(profile.word()).stdin(std::process::Stdio::null()).output().map_err(|e| format!("{}: {e}", doctor.display()))?;
-    let last = |bytes: &[u8]| String::from_utf8_lossy(bytes).lines().rev().find(|l| !l.trim().is_empty()).unwrap_or_default().trim().to_owned();
-    if out.status.success() {
-        Ok(last(&out.stdout))
-    } else {
-        let why = last(&out.stderr);
-        let why = why.strip_prefix("olo-doctor: ").unwrap_or(&why);
-        // (As a sentence of its own.)
-        let mut c = why.chars();
-        Err(match c.next() {
-            Some(first) => first.to_uppercase().chain(c).collect(),
-            None => "Olo Doctor couldn't set it.".to_owned(),
-        })
-    }
 }
 
 /// Read the battery's charge limit (UPower's), on a thread.

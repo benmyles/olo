@@ -4,6 +4,13 @@
 //! (`performance.json`), which the supervisor and Deskbar's item follow;
 //! a watcher thread keeps the panel current when they change it (Deskbar
 //! turning it on, an alert's Ignore This Process).
+//!
+//! And the scheduler the computer runs under, where its kernel can load
+//! one (sched_ext): the kernel's own or LAVD (`scx_lavd`, recommended),
+//! with what is scheduling now as the kernel says it. That isn't a
+//! setting of the person's but the computer's: choosing one has Olo
+//! Doctor set it (`olo-doctor --scheduler`, as root through polkit), and
+//! what's shown is read from the system (`olo_system::scheduler`).
 
 use std::{
     sync::{
@@ -14,15 +21,31 @@ use std::{
 };
 
 use olo_kit::{
-    Child, Cx, ParentElement as _, SharedString, Styled as _, WindowCx, div, metrics as m, px,
-    widgets::{Button, CheckBox, Slider, StringView, TabView, TextControl, TextField, TextFieldEvent, heading},
+    Child, Cx, ParentElement as _, SharedString, Styled as _, WindowCx, div, metrics as m, px, style, theme,
+    widgets::{Button, CheckBox, RadioButton, Slider, StringView, TabView, TextControl, TextField, TextFieldEvent, heading},
 };
 use olo_protocol::performance::{PerformanceSettings, Thresholds};
+use olo_sync::Mutex;
+use olo_system::scheduler::{self, Choice};
 
 use crate::{Msg, PanelView, form::Ui, panel};
 
+/// The scheduler as last read, and a change of it under way.
+#[derive(Clone, Default)]
+struct Scheduler {
+    /// None until read; Some(None): this kernel can't load one (nothing
+    /// is shown).
+    state: Option<Option<scheduler::State>>,
+    /// The one being put in force (the administrator's password asked,
+    /// the steps run): shown as chosen meanwhile.
+    applying: Option<Choice>,
+    /// How the last change went, until the next.
+    said: Option<Result<String, String>>,
+}
+
 pub struct State {
     settings: Option<PerformanceSettings>,
+    scheduler: Arc<Mutex<Scheduler>>,
     rx: Receiver<PerformanceSettings>,
     /// Our own last change: the watcher's echoes of older files are
     /// ignored for a moment after it.
@@ -30,7 +53,7 @@ pub struct State {
     /// The background programs (comma separated).
     background: Child<TextField>,
     _watch: Option<olo_kit::watch::Watch>,
-    /// The tab shown: 0 Supervisor, 1 Watchdog.
+    /// The tab shown (`TABS`).
     tab: usize,
 }
 
@@ -61,8 +84,109 @@ impl State {
             change(v, |s| s.background = text.split(',').map(|n| n.trim().to_owned()).filter(|n| !n.is_empty()).collect());
             cx.notify();
         });
-        State { settings, rx, edited: None, background, _watch: watch, tab: 0 }
+        // The scheduler: read as the panel opens and again every few
+        // seconds while it's open (the kernel can put one out at any
+        // time). Tests: LAVD chosen and scheduling.
+        let scheduler: Arc<Mutex<Scheduler>> = Default::default();
+        if cfg!(test) {
+            scheduler.lock().unwrap().state = Some(Some(scheduler::State { chosen: Choice::Lavd, installed: true, loaded: Some("lavd_1.1.4_x86_64_unknown_linux_gnu".into()) }));
+        } else {
+            let (out, proxy) = (Arc::downgrade(&scheduler), olo_kit::proxy());
+            std::thread::Builder::new()
+                .name("scheduler".into())
+                .spawn(move || {
+                    let places = scheduler::Places::here();
+                    // Ends once the panel (the only strong reference) has closed.
+                    while let Some(shared) = out.upgrade() {
+                        let now = scheduler::look(&places);
+                        {
+                            let mut s = shared.lock().unwrap();
+                            if s.state.as_ref() != Some(&now) {
+                                s.state = Some(now);
+                                proxy.send(Msg::Redraw);
+                            }
+                        }
+                        drop(shared);
+                        std::thread::sleep(Duration::from_secs(5));
+                    }
+                })
+                .expect("thread");
+        }
+        State { settings, scheduler, rx, edited: None, background, _watch: watch, tab: 0 }
     }
+}
+
+/// Performance's tabs.
+pub const TABS: [&str; 3] = ["Supervisor", "Watchdog", "Scheduler"];
+
+/// Performance shown on tab `name` (`--tab`).
+pub fn show_tab(st: &mut State, name: &str) {
+    if let Some(i) = TABS.iter().position(|t| t.eq_ignore_ascii_case(name)) {
+        st.tab = i;
+    }
+}
+
+/// Put `choice` in force: Olo Doctor does it (`olo-doctor --scheduler`:
+/// its helper, as root through polkit, which asks for the password), on
+/// a thread; how it went is said under the choices.
+fn set_scheduler(shared: Arc<Mutex<Scheduler>>, proxy: olo_kit::Proxy, choice: Choice) {
+    {
+        let mut s = shared.lock().unwrap();
+        if s.applying.is_some() || s.state.as_ref().and_then(|s| s.as_ref()).is_some_and(|s| s.chosen == choice) {
+            return;
+        }
+        s.applying = Some(choice);
+        s.said = None;
+    }
+    proxy.send(Msg::Redraw);
+    std::thread::Builder::new()
+        .name("scheduler-apply".into())
+        .spawn(move || {
+            let said = crate::ask_doctor(&["--scheduler", choice.word()]);
+            // (A moment for it to load, so "now" says so.)
+            if said.is_ok() {
+                std::thread::sleep(Duration::from_millis(1500));
+            }
+            let now = scheduler::look(&scheduler::Places::here());
+            let mut s = shared.lock().unwrap();
+            s.applying = None;
+            s.said = Some(said);
+            s.state = Some(now);
+            drop(s);
+            proxy.send(Msg::Redraw);
+        })
+        .expect("thread");
+}
+
+/// The Scheduler tab: which scheduler the computer starts with, what
+/// each is for, and what is scheduling now.
+fn scheduler_tab(ui: &mut Ui, shared: &Arc<Mutex<Scheduler>>) {
+    let sch = shared.lock().unwrap().clone();
+    ui.bbox("Scheduler", |ui| {
+        let state = match sch.state {
+            None => return ui.note("Reading…"),
+            Some(None) => return ui.note("This computer's kernel can't load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel's own schedules."),
+            Some(Some(state)) => state,
+        };
+        let shown = sch.applying.unwrap_or(state.chosen);
+        for choice in Choice::ALL {
+            let (shared, proxy) = (shared.clone(), olo_kit::proxy());
+            ui.add(
+                RadioButton::new(choice.label(), shown == choice)
+                    .id(format!("scheduler-{}", choice.word()))
+                    .enabled(sch.applying.is_none())
+                    .on_select(move |_, _| set_scheduler(shared.clone(), proxy.clone(), choice)),
+            );
+            // (Under the label, past the mark.)
+            ui.add(div().pl(px(m::MARK_SIZE + m::MARK_GAP)).child(StringView::new(choice.about()).dim(true).wrap(true)));
+        }
+        match (&sch.applying, &sch.said) {
+            (Some(_), _) => ui.note("Setting it: an administrator's password is asked…"),
+            (None, Some(Err(why))) => ui.add(StringView::new(format!("Not changed. {why}")).wrap(true).color(style::c(theme::palette().failure))),
+            _ => ui.note(state.now()),
+        }
+        ui.note("Chosen for the whole computer and kept across restarts. It's the computer's, not this account's, so choosing asks for an administrator's password.");
+    });
 }
 
 fn state_of(v: &mut PanelView) -> Option<&mut State> {
@@ -140,10 +264,14 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         return;
     };
     let background = &st.background;
-    // Two tabs, so it fits a laptop's screen: what the supervisor does, and
-    // the watchdog's thresholds.
+    // Tabs, so it fits a laptop's screen: what the supervisor does, the
+    // watchdog's thresholds, and the computer's scheduler.
     let tab = st.tab;
+    let scheduler = st.scheduler.clone();
     let items = ui.collect(|ui| {
+        if tab == 2 {
+            return scheduler_tab(ui, &scheduler);
+        }
         if tab == 0 {
             // The power mode is Power's; found from here too.
             let open = ui.on_view(|_v, _: &(), _cx| {
@@ -234,7 +362,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         }
         cx.notify();
     });
-    let tabs: Vec<SharedString> = ["Supervisor", "Watchdog"].into_iter().map(SharedString::from).collect();
+    let tabs: Vec<SharedString> = TABS.into_iter().map(SharedString::from).collect();
     ui.add(
         div()
             .flex_1()

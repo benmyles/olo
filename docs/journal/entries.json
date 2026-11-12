@@ -3916,5 +3916,11 @@
   "title": "Preferences \u25b8 Power: the fan profile",
   "caption": "Battery & Idle has a Fans box on a ThinkPad (Ben: \"have in the power prefs the option for the default auto and this new cooler/louder auto profile\"): Automatic, the firmware's own curve, or Cool, Olo's olo-fans running the fans ahead of the heat so the processor isn't throttled, with what the fans are doing now under it. Choosing one asks Olo Doctor to set it (an administrator's password). Shown with a made-up ThinkPad in a scratch folder.",
   "image": "2026-11-12/042022-preferences-power-the-fan-profile.png"
+ },
+ {
+  "time": "2026-11-12T04:38:04",
+  "title": "Preferences \u25b8 Performance: the scheduler",
+  "caption": "A Scheduler tab (Ben: \"add to olo the ability to pick a custom scheduler in preferences -> performance and the recommendation should be scx_lavd\"): the kernel's own or LAVD (recommended), what each is for, and what is scheduling now as the kernel says it. Choosing one has Olo Doctor install and start it, or stop it (an administrator's password). Shown with a made-up kernel in a scratch folder.",
+  "image": "2026-11-12/043804-preferences-performance-the-scheduler.png"
  }
 ]
