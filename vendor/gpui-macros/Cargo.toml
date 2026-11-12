@@ -20,21 +20,15 @@ autobins = false
 autoexamples = false
 autotests = false
 autobenches = false
-description = "Macros used by gpui"
+description = "The Styled helpers' macros, from gpui-macros (what Olo keeps of it)"
 readme = false
 license = "Apache-2.0"
-
-[features]
-inspector = []
 
 [lib]
 name = "gpui_macros"
 path = "src/gpui_macros.rs"
 doctest = true
 proc-macro = true
-
-[dependencies.heck]
-version = "0.5"
 
 [dependencies.proc-macro2]
 version = "1.0.93"

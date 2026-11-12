@@ -4,9 +4,6 @@
 #![allow(missing_docs)]
 #![allow(unused_mut)] // (False positives in the Wayland client.)
 
-// (The style macros name their types by this crate's old name.)
-extern crate self as gpui;
-
 pub mod agent;
 mod app;
 mod asset_cache;

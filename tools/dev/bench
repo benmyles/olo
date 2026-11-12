@@ -8,7 +8,8 @@ below 120 frames a second.
         [--size WxH] [--json FILE] [--keep] [--list] [--env K=V ...]
 
 `--env K=V` (again for more) is given to every app: an A/B of a switch
-without a rebuild (`--env OLO_PAINT_MEMO=0`).
+without a rebuild (`--env OLO_FRAME_PHASES=1`: where each frame went,
+in the app's log under /var/tmp/olo-dev/bench with `--keep`).
 
 Build first: `cargo build --release --workspace` (the apps), then
 `cargo build --release -p olo-kit --examples` (the kit's gallery). A

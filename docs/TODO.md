@@ -707,13 +707,16 @@ something nobody here has is in "Blocked", with what it waits for.
        thread makes the surface and renderer (2 to 3 ms of a menu's
        4): the looper could build the view meanwhile.
      Also left:
-     Smithay's `winit` dev-dependency
-     pulls winit-x11 into test builds (no X11 code runs, but the rule
-     is no X11 dependencies: drop the winit backend from the vendored
-     Smithay); `vendor/gpui-macros` still holds GPUI's macros for
-     actions, `Render` and tests, unused (cut it down to `styles.rs`);
-     olo-interface's `extern crate self as gpui` (the style macros name
-     their types by it) goes with that.
+     *Done 2026-11-12:* the vendored Smithay asked winit for its
+     "x11" feature, which built winit-x11, x11rb and x11-dl into
+     app_server itself (not only its tests, as was thought): winit is
+     Wayland alone now, and no X11 crate is in any build
+     (`cargo tree -i x11rb`: none; the name stays in Cargo.lock as
+     Smithay's optional dependency for a backend nothing turns on).
+     `vendor/gpui-macros` is the style helpers alone (GPUI's macros
+     for actions, `Render`, contexts, tests and the inspector, 1,300
+     lines, removed), generating `crate::` paths, so olo-interface's
+     `extern crate self as gpui` is gone too.
      *For the Book, learned porting (each cost a bug):* a drawing only
      looks (`Cx::canvas(|v: &V, g, b|)`): what it lacks it asks of its
      view by a message, and what it finds (where something went) goes

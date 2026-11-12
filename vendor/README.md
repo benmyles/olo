@@ -156,9 +156,13 @@ its own folder, changed as Olo needs and never synced with upstream:
 - **gpui_collections 0.2.2** (Apache-2.0): the hash maps and sets'
   aliases.
 - **gpui-macros 0.2.2** (Apache-2.0): the `Styled` helpers (`.flex()`,
-  `.p_2()`, `.border_1()`…), generated as GPUI's are. Its other macros
-  (actions, `Render`, test contexts) are GPUI's and unused; its tests
-  needed GPUI and went with it.
+  `.p_2()`, `.border_1()`…), generated as GPUI's are (`styles.rs`, as
+  published but for the name its generated code calls the crate by:
+  `crate::`, olo-interface being its one user, where upstream's says
+  `gpui::`). Its other macros (actions, `Render`, the app and window
+  contexts, test contexts, the inspector) were GPUI's own and are
+  removed, with their dependency on heck; its tests needed GPUI and
+  went with it.
 - **gpui_refineable 0.2.2** and **gpui_derive_refineable 0.2.2**
   (Apache-2.0): a style laid over another (`Refineable`).
 - **gpui_util 0.2.2** (Apache-2.0): the few helpers GPUI used from
