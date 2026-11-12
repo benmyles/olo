@@ -1,0 +1,179 @@
+#!/usr/bin/env python3
+"""Terminal's ⌘C and ⌘V, pressed, end to end.
+
+  terminal-copy-check [TERMINAL]
+
+(TERMINAL: the program to try, target/release/olo-terminal if not said.)
+
+Starts a headless session of its own ("tmcopy", HOME a folder of its own
+under /var/tmp) with Terminal in it, and does what a person does:
+
+  echoes a word, double-clicks it, presses ⌘C;
+  runs `cat > FILE`, presses ⌘V, ends it: the file holds the word;
+  the same with ⌘C pressed and let go in one burst, so that ⌘ is up
+  again before Terminal gets to the C;
+  with nothing selected, presses ⌘C on a `sleep`: it's interrupted (a
+  shortcut whose menu item is off is the shell's, as Ctrl+C).
+
+Two things once sent ⌘C to the shell as Ctrl+C with text selected (Ben,
+2026-11-12: "shortcut isn't working -- right click menu works"), and
+neither would have been found by choosing the menu's item; pressing the
+keys finds both. A shortcut is its menu's item's, and an item that's off
+has none: Terminal's menus weren't said again when a selection appeared,
+so Copy was still off. And whether ⌘ was held was read when the key was
+handled, not as it was when pressed: let go first (quick fingers, or a
+Terminal busy drawing), it wasn't ⌘C any more.
+"""
+import json, os, shutil, subprocess, sys, time
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+TS = [sys.executable, os.path.join(ROOT, "tools/dev/tsession")]
+N = "tmcopy"
+SCRATCH = f"/var/tmp/olo-terminal-copy-{os.getpid()}"
+HOME = os.path.join(SCRATCH, "home")
+BIN = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "target/release/olo-terminal")
+WORD = "copyme-123"
+BURST = "burst-456"
+# evdev's codes.
+ENTER, CTRL, CMD, C, D, L, V = "28", "29", "125", "46", "32", "38", "47"
+
+
+def ts(*a):
+    return subprocess.run(TS + list(a), capture_output=True, text=True, env=dict(os.environ, TSESSION_PROFILE="release"))
+
+
+def ipc(r):
+    return json.loads(ts("ipc", N, json.dumps(r)).stdout or "{}")
+
+
+def synth(*events):
+    ipc({"type": "synthetic", "events": list(events)})
+
+
+def double_click(x, y):
+    synth({"type": "move", "x": x - 1, "y": y})
+    time.sleep(0.1)
+    synth({"type": "move", "x": x, "y": y})
+    time.sleep(0.1)
+    # (Both clicks in one message: each `synth` is a program started,
+    # and on a busy computer two of them are further apart than a
+    # double-click's two clicks may be.)
+    press, release = {"type": "button", "button": 0x110, "pressed": True}, {"type": "button", "button": 0x110, "pressed": False}
+    synth(press, release, press, release)
+
+
+def line(text):
+    ts("type", N, text)
+    ts("key", N, ENTER)
+
+
+def wait_for(path, within=6.0):
+    end = time.time() + within
+    while time.time() < end:
+        if os.path.exists(path):
+            return True
+        time.sleep(0.15)
+    return False
+
+
+def main():
+    if not os.path.exists(BIN):
+        sys.exit("build first: cargo build --release -p olo-terminal")
+    os.makedirs(HOME, exist_ok=True)
+    # (A prompt of one line, whatever the person's shell says.)
+    open(os.path.join(HOME, ".bashrc"), "w").write("PS1='$ '\n")
+    failures = []
+
+    def check(ok, what):
+        print(("  ok  " if ok else "  FAIL ") + what)
+        if not ok:
+            failures.append(what)
+
+    try:
+        print(ts("start", N, "1600x1000", "--home", HOME).stdout.strip())
+        ts("run", N, "env", "SHELL=/bin/bash", BIN, "-w", HOME)
+        frame = None
+        for _ in range(40):
+            time.sleep(0.25)
+            windows = ipc({"type": "list_windows"}).get("windows", [])
+            if windows:
+                frame = windows[0]["frame"]
+                break
+        check(frame is not None, "Terminal's window is up")
+        if frame is None:
+            return
+        time.sleep(1.5)
+        ready = os.path.join(SCRATCH, "ready")
+        line(f"touch {ready}")
+        check(wait_for(ready), "its shell takes what's typed")
+
+        def copied(word, burst):
+            """Echoes `word`, double-clicks it, presses ⌘C (`burst`: down
+            and up in one message), pastes into a file: what it holds."""
+            # The word on a screen's second line: the first is the prompt's.
+            ts("key", N, CTRL, L)
+            time.sleep(0.4)
+            line(f"echo {word}")
+            time.sleep(1.5)
+            # (Where the window is now: a new window can still be on its
+            # way to its place when it's first listed.)
+            at = ipc({"type": "list_windows"})["windows"][0]["frame"]
+            double_click(at["x"] + 9 + 48, at["y"] + 116)
+            time.sleep(0.5)
+            if burst:
+                down = lambda k, pressed: {"type": "key", "key": int(k), "pressed": pressed}
+                synth(down(CMD, True), down(C, True), down(C, False), down(CMD, False))
+                time.sleep(0.1)
+            else:
+                ts("key", N, CMD, C)
+            time.sleep(0.5)
+            out = os.path.join(SCRATCH, f"pasted-{word}")
+            line(f"cat > {out}")
+            time.sleep(0.5)
+            ts("key", N, CMD, V)
+            time.sleep(0.6)
+            ts("key", N, ENTER)
+            ts("key", N, CTRL, D)
+            wait_for(out)
+            time.sleep(0.4)
+            return open(out).read().strip() if os.path.exists(out) else None
+
+        print("⌘C with a word selected, ⌘V into a file:")
+        got = copied(WORD, False)
+        check(got == WORD, f"the file holds the word ({got!r})")
+
+        print("⌘C pressed and let go in one burst (⌘ is up before Terminal takes the C):")
+        got = copied(BURST, True)
+        check(got == BURST, f"the file holds the word ({got!r})")
+
+        print("⌘C with nothing selected:")
+        # (A click in the empty part of the screen takes the selection
+        # away: the word stays selected through what's typed after it.)
+        synth({"type": "move", "x": frame["x"] + 400, "y": frame["y"] + 300})
+        time.sleep(0.1)
+        synth({"type": "button", "button": 0x110, "pressed": True})
+        time.sleep(0.03)
+        synth({"type": "button", "button": 0x110, "pressed": False})
+        time.sleep(0.4)
+        after = os.path.join(SCRATCH, "after")
+        # (`&&`: a shell that goes on with a list after its command is
+        # interrupted, as brush does with `;`, leaves no mark either.)
+        line(f"sleep 30 && touch {after}.slept")
+        time.sleep(0.6)
+        ts("key", N, CMD, C)
+        time.sleep(0.4)
+        line(f"touch {after}")
+        check(wait_for(after, 4.0) and not os.path.exists(after + ".slept"), "the sleep was interrupted, as by Ctrl+C")
+        # (A picture of how it ended, for whoever is finding out why.)
+        if failures and os.environ.get("OLO_CHECK_SHOT"):
+            ts("shot", N, os.environ["OLO_CHECK_SHOT"])
+    finally:
+        ts("stop", N)
+        shutil.rmtree(SCRATCH, ignore_errors=True)
+    if failures:
+        sys.exit(f"{len(failures)} failed")
+    print("all as they should be")
+
+
+if __name__ == "__main__":
+    main()

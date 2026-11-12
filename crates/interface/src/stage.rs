@@ -144,10 +144,13 @@ pub(crate) struct Commit {
 /// What the display thread tells a window's looper.
 #[derive(Debug)]
 pub(crate) enum WindowEvent {
-    /// Input, and its number among what this window's stage has sent
-    /// its looper (0: not from the stage): what the looper commits says
-    /// how far through them it has got (`Commit::answered`).
-    Input(PlatformInput, u64),
+    /// Input, its number among what this window's stage has sent its
+    /// looper (0: not from the stage): what the looper commits says how
+    /// far through them it has got (`Commit::answered`); and whether the
+    /// right Ctrl (app_server's ⌘) was held as it was made, which by the
+    /// time the looper takes it may no longer be so
+    /// (`right_control_held`).
+    Input(PlatformInput, u64, bool),
     Ime(ImeInput),
     /// The window is this size now, at this scale: laid out again and
     /// committed for it.
@@ -324,7 +327,7 @@ pub(crate) struct Stage {
     waker: RefCell<Option<Rc<dyn Fn()>>>,
     /// Pointer motion not yet taken by the looper: the latest stands for
     /// all of it.
-    motion: RefCell<Latest<(PlatformInput, u64)>>,
+    motion: RefCell<Latest<(PlatformInput, u64, bool)>>,
     /// Where the scrollers are, not yet taken by the looper.
     scrolled: Latest<Vec<ScrollReport>>,
     /// How app_server held the window, as the looper was last told.
@@ -569,13 +572,16 @@ impl Stage {
 
     fn input(&self, input: PlatformInput) {
         let id = self.id;
+        // (This thread heard the keys: as they are now is as they were
+        // when this was made.)
+        let command = crate::platform::right_control_now();
         match input {
             PlatformInput::MouseMove(_) => {
                 // (Motion gathers on its way: the last of it has the
                 // number that answers for all it stood in for.)
                 let number = self.input_sent();
                 let motion = self.motion.borrow().clone();
-                motion.put(&self.link.looper, (input, number), move |looper, (input, number)| crate::window::deliver(looper, id, WindowEvent::Input(input, number)));
+                motion.put(&self.link.looper, (input, number, command), move |looper, (input, number, command)| crate::window::deliver(looper, id, WindowEvent::Input(input, number, command)));
             }
             // The wheel and the touchpad scroll here, at once: the
             // looper hears where things got to. What nothing here
@@ -599,13 +605,13 @@ impl Stage {
                     }
                     self.break_motion();
                     let number = self.input_sent();
-                    self.link.send(WindowEvent::Input(PlatformInput::ScrollWheel(event), number));
+                    self.link.send(WindowEvent::Input(PlatformInput::ScrollWheel(event), number, command));
                 }
             }
             other => {
                 self.break_motion();
                 let number = self.input_sent();
-                self.link.send(WindowEvent::Input(other, number));
+                self.link.send(WindowEvent::Input(other, number, command));
             }
         }
     }

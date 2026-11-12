@@ -1114,11 +1114,13 @@ struct Bar {
     shared: Rc<BarShared>,
     /// The bar's element, to draw again when the open menu changes.
     node: Option<NodeRef>,
+    /// Its keys are a terminal-style window's ([`MenuBar::raw`]).
+    raw: bool,
 }
 
 impl Default for Bar {
     fn default() -> Bar {
-        Bar { menus: Vec::new(), on_command: Rc::new(on_command), open: None, pressed: false, closed: None, shared: Rc::default(), node: None }
+        Bar { menus: Vec::new(), on_command: Rc::new(on_command), open: None, pressed: false, closed: None, shared: Rc::default(), node: None, raw: false }
     }
 }
 
@@ -1164,9 +1166,25 @@ impl MenuBar {
         let titles = menus.iter().map(|m| (SharedString::from(m.title.clone()), f32::from(style::text_width(m.title.clone(), style::PLAIN_SIZE, font.clone())) + 2.0 * BAR_PAD)).collect();
         let bar = cx.window_state::<Bar>();
         bar.menus = menus;
+        bar.raw = raw;
         bar.on_command = Rc::new(on_command);
         MenuBar { titles, shared: bar.shared.clone() }
     }
+}
+
+/// The window's bar's menus as things are now, said outside its body and
+/// without drawing it: BeOS's `MenusBeginning`, for a view that looks a
+/// shortcut up itself ([`shortcut_command`]). A bar's menus are as the
+/// window's last body left them, and an item that's off has no
+/// shortcut, so its keystroke goes on to whatever takes it next. Where
+/// an item's `enabled` goes by something that may have changed a moment
+/// ago (Terminal's Copy, by a selection just made), asking for the
+/// window's body isn't soon enough on a busy computer: say the menus
+/// first, then look. The bar's titles are as they were.
+pub fn menus_beginning(cx: &mut WindowCx, mut menus: Vec<Menu>) {
+    let bar = cx.window_state::<Bar>();
+    resolve(&mut menus, bar.raw);
+    bar.menus = menus;
 }
 
 /// Where each title is in a bar at `b`.

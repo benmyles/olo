@@ -560,11 +560,83 @@ impl Dropped {
 /// Olo: whether the right Ctrl is held: app_server's command key (⌘),
 /// which it sends as the right one (either Ctrl and Caps Lock are the
 /// left), so a terminal can tell ⌘ from the program's Ctrl.
+///
+/// As it was when the input being handled was made, not as it is now:
+/// the display thread hears the keys and a window's looper takes them
+/// later, and "now" is after ⌘ was let go for anyone who lets go
+/// quickly, or whose window was busy. A terminal drawing a build's
+/// output took ⌘C's C with ⌘ already up, as Ctrl+C: nothing copied and
+/// the build interrupted (Ben, 2026-11-12: "copy/paste isn't working in
+/// terminal"). So each input is sent with how the key was
+/// (`WindowEvent::Input`), and a looper answers by the last it took.
 pub fn right_control_held() -> bool {
+    AS_TAKEN.with(|taken| taken.get()).unwrap_or_else(right_control_now)
+}
+
+/// The right Ctrl as the display thread last heard it: what an input
+/// made now is sent with.
+pub(crate) fn right_control_now() -> bool {
     RIGHT_CONTROL.load(std::sync::atomic::Ordering::Relaxed)
 }
 
+/// This thread (a window's looper) is taking an input made with the
+/// right Ctrl so: what [`right_control_held`] says here until the next.
+pub(crate) fn taking_input(right_control: bool) {
+    AS_TAKEN.with(|taken| taken.set(Some(right_control)));
+}
+
 pub(crate) static RIGHT_CONTROL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+thread_local! {
+    /// The right Ctrl as the last input this thread took was made (None:
+    /// it has taken none; the display thread's own, by what it hears).
+    static AS_TAKEN: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
+}
+
+#[cfg(test)]
+mod right_control_tests {
+    use super::*;
+
+    /// ⌘ is as the input was made, on the thread that takes it; another
+    /// thread (the display's) goes by what it last heard.
+    #[test]
+    fn held_as_the_input_was_made() {
+        std::thread::spawn(|| {
+            RIGHT_CONTROL.store(false, std::sync::atomic::Ordering::Relaxed);
+            assert!(!right_control_held());
+            // ⌘ down, C down, C up, ⌘ up, all heard before the looper
+            // takes the C: it was made with ⌘ held.
+            taking_input(true);
+            assert!(right_control_held(), "⌘C's C, taken after ⌘ was let go");
+            taking_input(false);
+            assert!(!right_control_held());
+            // Held now, and the input being taken was made before it was.
+            RIGHT_CONTROL.store(true, std::sync::atomic::Ordering::Relaxed);
+            assert!(!right_control_held());
+            let elsewhere = std::thread::spawn(right_control_held).join().unwrap();
+            assert!(elsewhere, "a thread that takes no input goes by now");
+            RIGHT_CONTROL.store(false, std::sync::atomic::Ordering::Relaxed);
+        })
+        .join()
+        .unwrap();
+    }
+
+    /// What it adds to each input (the display thread's read, the
+    /// looper's note): `… right_control_costs --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn right_control_costs() {
+        let n = 50_000_000u32;
+        let began = std::time::Instant::now();
+        let mut held = 0u32;
+        for i in 0..n {
+            let now = std::hint::black_box(right_control_now());
+            taking_input(std::hint::black_box(now ^ (i & 1 == 0)));
+            held += right_control_held() as u32;
+        }
+        println!("an input's read, note and one asking: {:.2} ns ({held})", began.elapsed().as_secs_f64() * 1e9 / n as f64);
+    }
+}
 
 /// Olo: the path a `file://` URI names (its host, if any, left out; its
 /// %-escapes undone).

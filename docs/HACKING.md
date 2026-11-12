@@ -2823,7 +2823,18 @@ it.
   card's paper and shadow; `style::thousands(n)` writes "12,345".
 - `menu::shortcut_command(cx, keystroke)`: the menu bar command
   a keystroke chooses, for a view that takes the keys itself and lets
-  one through (Agent Screens' ⌘K while controlling).
+  one through (Agent Screens' ⌘K while controlling). An item that's
+  off has no shortcut, so the keystroke is the view's to do with as it
+  would any other: the menus have to be as things are *now*. A window
+  says its menus when its body runs, so whatever an item's `enabled`
+  goes by must ask for that body when it changes (Terminal's Copy goes
+  by the selection, which draws the screens alone: `Panes` says
+  `Cx.redraw(window)` when there being a selection changes).
+- `menu::menus_beginning(cx, menus)`: the bar's menus as things are
+  now, said outside a body and without drawing it (BeOS's
+  `MenusBeginning`), for just before `shortcut_command`: asking for
+  the window's body isn't soon enough for a keystroke that follows the
+  change at once.
 - `code` (source code in the editor; see "Source code" above): `Code`
   (`spans`, `edit`, `reset`, `job`/`done`) and `code::parse`; re-exports
   `olo_syntax`'s `detect`, `by_name`, `Language`, `Edit`, `Class`.
@@ -10876,7 +10887,22 @@ and the bell; nothing is drawn on a timer except an agent's spinner
 while one spins. Keys come raw: ⌘ is Ctrl with the right Ctrl held in
 the Mac profile (`olo_kit::right_control_held`), menu shortcuts go to the
 menus first (`menu::shortcut_command`), typed text and input methods
-through the view's `EntityInputHandler`. The window's titles are
+through the view's `EntityInputHandler`. A shortcut whose item is off
+goes to the shell (⌘C with nothing selected is Ctrl+C, as a terminal's
+is), so the menus are said again whenever a selection appears or goes
+(`Panes::selection`), and looked up as things are at the keystroke
+(`menu::menus_beginning`, BeOS's MenusBeginning, before
+`shortcut_command`): while they weren't, ⌘C with text selected found
+Copy off, interrupted the shell and copied nothing, and ⌘V then pasted
+whatever was copied before (Ben, 2026-11-12: "shortcut isn't working --
+right click menu works"). And ⌘ is as it was when the key was pressed
+(`olo_interface::right_control_held`: each input is sent to the looper
+with it), not as it is when the looper gets to the key: read "now", a
+⌘C whose ⌘ was let go before a busy Terminal took the C (drawing a
+build's output, say) was Ctrl+C. `tools/dev/terminal-copy-check`
+presses all of it: a word double-clicked and ⌘C, ⌘V into a file, ⌘C
+pressed and let go in one burst, and ⌘C with nothing selected
+(interrupts, as a terminal's does). The window's titles are
 retitled 400 ms after typing or output settles (`retitle_soon`), and
 the windows remembered 2 s after a change (`remember_soon`), not by
 polling.

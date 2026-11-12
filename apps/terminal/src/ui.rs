@@ -613,6 +613,9 @@ pub struct Panes {
     dropping: bool,
     /// Where the input method was last told the cursor is.
     ime: Option<Bounds<Pixels>>,
+    /// Whether there was a selection when the screens were last said:
+    /// the window's menus are said again when that changes.
+    selection: bool,
 }
 
 impl View for Panes {
@@ -624,12 +627,23 @@ impl View for Panes {
         // Where an input method's window goes: the cursor's cell, as it
         // moves with what's typed (told when it's another).
         let at = if self.focused { t.cursor_bounds(self.id) } else { None };
+        let selection = t.has_selection(self.id);
         drop(t);
         if at != self.ime {
             self.ime = at;
             if let Some(at) = at {
                 cx.set_ime_position(at);
             }
+        }
+        // The window's menus say whether there's something to copy (Copy
+        // and Find Selection are off without a selection, and a shortcut
+        // is its menu's item's): said again when that changes. Selecting
+        // draws the screens alone, so nothing else tells the window: with
+        // text selected ⌘C found Copy still off, and went to the shell as
+        // Ctrl+C.
+        if selection != self.selection {
+            self.selection = selection;
+            Cx.redraw(self.id);
         }
         screens
     }
@@ -1201,7 +1215,7 @@ impl Terminal {
                 });
                 p
             }
-            None => sh.panes.insert(cx.new_view(|_| Panes { id, focused, dropping: false, ime: None })),
+            None => sh.panes.insert(cx.new_view(|_| Panes { id, focused, dropping: false, ime: None, selection: false })),
         };
         let mut root = div()
             .size_full()
@@ -1418,9 +1432,21 @@ impl Terminal {
         // app_server sends it; with others, Ctrl itself).
         let command = k.modifiers.control && (olo_kit::right_control_held() || !olo_kit_base::keys::command_key());
         // ⌘ with a menu shortcut's key is the app's (⌘C arrives as
-        // Ctrl+Shift+C): left to the window's menu bar.
-        if command && menu::shortcut_command(w, k).is_some() {
-            return;
+        // Ctrl+Shift+C): left to the window's menu bar. By the menus as
+        // things are this instant (BeOS's MenusBeginning), not as the
+        // window's last body left them: Copy is off without a selection
+        // and a shortcut whose item is off is the shell's, so ⌘C pressed
+        // before the window had drawn a selection just made went to the
+        // shell as Ctrl+C, interrupting what ran there and copying
+        // nothing (half a second after a double-click, with every core
+        // busy building).
+        if command {
+            if let Some(menus) = self.menus(id) {
+                menu::menus_beginning(w, menus);
+            }
+            if menu::shortcut_command(w, k).is_some() {
+                return;
+            }
         }
         let Some(Win::Term(t)) = self.windows.get_mut(&id) else { return };
         // Ctrl+Tab and Ctrl+Page Up/Down go through the tabs, as in other
@@ -1498,6 +1524,12 @@ impl Terminal {
             t.preedit = text;
             cx.redraw_screens(id);
         }
+    }
+
+    /// Whether the tab showing in window `id` has text selected (what its
+    /// menus' Copy goes by).
+    pub(crate) fn has_selection(&self, id: WindowId) -> bool {
+        matches!(self.windows.get(&id), Some(Win::Term(t)) if t.tab().session.has_selection())
     }
 
     /// Where the cursor is in window `id` (for an input method's window).

@@ -862,6 +862,22 @@ other side.
   cause began, not when it was drawn. (Fixed in the kit.) The lesson:
   when a number looks too good or too bad, read how it's made before
   believing it.
+- **A shortcut that did something else**, because its menu item was
+  off when it shouldn't have been: Terminal's Copy went by the
+  selection as it was when the menus were last said, and selecting
+  didn't say them again, so ⌘C went to the shell as Ctrl+C. A window's
+  menus are as its last body left them: when what an item's `enabled`
+  reads changes, ask for the window's body (`Cx.redraw`), whatever
+  else that change draws. Test a shortcut by pressing it, with the
+  state it needs made the way a person makes it (a double-click, not a
+  call), not by choosing its item.
+- **A key read as it is "now"**, by a thread that takes it later. The
+  display thread hears the keys; a window's looper handles them when
+  it gets to them. Whether ⌘ was held was a global the looper read at
+  that moment: ⌘C let go quickly, or taken by a busy window, was
+  Ctrl+C. What an event needs to be understood travels with the event
+  (its modifiers, its time, its number); nothing about "then" is asked
+  of "now".
 - **A service that was running, useless, and reported as not
   running.** Three mistakes in a row. Something was set by hand to get
   going (a driver loaded with an option) and nothing kept it, so a

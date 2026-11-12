@@ -1125,8 +1125,9 @@ impl<'a> WindowCx<'a> {
     fn handle(&mut self, event: WindowEvent) {
         self.core.started.get_or_insert_with(Instant::now);
         match event {
-            WindowEvent::Input(input, number) => {
+            WindowEvent::Input(input, number, command) => {
                 self.core.answered = self.core.answered.max(number);
+                crate::platform::taking_input(command);
                 self.dispatch_input(input)
             }
             WindowEvent::Ime(ime) => self.dispatch_ime(ime),
@@ -1971,7 +1972,7 @@ impl<'a> WindowCx<'a> {
             crate::PlatformInput::MouseDown(crate::MouseDownEvent { button, position: at, modifiers, click_count: 1, first_mouse: false }),
             crate::PlatformInput::MouseUp(crate::MouseUpEvent { button, position: at, modifiers, click_count: 1 }),
         ] {
-            self.looper.defer(move |looper| deliver(looper, id, WindowEvent::Input(input, 0)));
+            self.looper.defer(move |looper| deliver(looper, id, WindowEvent::Input(input, 0, false)));
         }
     }
 
