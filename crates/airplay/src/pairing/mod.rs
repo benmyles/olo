@@ -14,14 +14,14 @@
 mod channel;
 #[doc(hidden)]
 pub mod fake;
-mod hap;
+pub(crate) mod hap;
 mod http;
 pub mod srp;
 pub mod tlv8;
 
 pub use channel::{Cipher, NotTheirs};
 pub use hap::{Credentials, Error, Paired, Post, Session, Setup, verify};
-pub use http::Http;
+pub use http::{Answer, Closer, Http};
 
 #[cfg(test)]
 mod tests {

@@ -566,10 +566,29 @@ something nobody here has is in "Blocked", with what it waits for.
        list`, then `olo-airplay pair "ITS NAME"` and the code it
        shows; `olo-airplay check "ITS NAME"` then says whether it
        knows the computer. What it says if it fails is what's needed
-       to fix it. *Next:* a video file played by its address (the
-       event channel, `/play`, a server for the file for the length
-       of the play), then the Viewer's and Deskbar's "Send to", then
-       live screens as HLS. The keys could move into Passwords.
+       to fix it. The keys could move into Passwords.
+     - *Then a film played by its address, 2026-11-12* (HACKING,
+       "AirPlay"): `olo-airplay play "ITS NAME" film.mp4` (or an
+       address on the web; `--from 1:02:03`; Ctrl-C stops it there).
+       The receiver fetches the file from this computer, by ranges,
+       for the length of the play, and plays its own picture and
+       sound. Reading on found that **today's tvOS no longer takes
+       pyatv's released way** (26.2 answers `/playback-info` with
+       500, 27.0 with 403: pyatv issues 2821 and 2906), and that the
+       way it does take (commands on a stream of their own, state by
+       events: pyatv's pull request 2846 and its rework, reported
+       working on tvOS 26.5 and 27.0, Apple TV 4K of the 2nd and 3rd
+       generations, and a 2025 Samsung) is unmerged there; Olo does
+       the newer way first and the older where a receiver doesn't
+       take it. **Never yet tried on a real receiver** (tests play to
+       one of their own, both ways): Ben's to try after pairing, with
+       `--trace` so that what a real one answers is seen. What a
+       receiver doesn't play by itself (Matroska, WebM, AVI, Ogg) is
+       refused with the reason. *Next:* "Play On" in the Viewer and
+       Tracker (the receivers found; a tray item while one plays,
+       with pause and Stop), then live windows, workspaces and agent
+       screens as HLS (which also carries the kinds of film a
+       receiver doesn't play by itself).
      - *Ben's to say:* (1) which receiver it's for (an Apple TV and
        its tvOS, a television with AirPlay built in, something else):
        it has to be tried against the real one, paired by him at the

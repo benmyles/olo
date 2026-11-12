@@ -10,6 +10,14 @@
 //!       typed here (or given with --code); once for each receiver
 //!   olo-airplay check NAME [--at HOST:PORT]
 //!       whether a receiver paired with still knows this computer
+//!   olo-airplay play NAME FILE|ADDRESS [--from TIME] [--json] [--trace] [--at HOST:PORT]
+//!       play a film (or sound) on a receiver paired with: a file here,
+//!       which it fetches from this computer while it plays, or
+//!       something on the web (http, https). It says how the play goes
+//!       and ends when the film does; Ctrl-C stops it there. --from
+//!       begins at a place (seconds, or 1:02:03); --json says it as a
+//!       line of JSON for each change; --trace says each step and what
+//!       the receiver answered (for finding out why one won't play)
 //!   olo-airplay paired
 //!       the receivers paired with
 //!   olo-airplay unpair NAME
@@ -23,22 +31,26 @@ use std::{
     io::{BufRead as _, Write as _},
     net::{SocketAddr, ToSocketAddrs as _},
     process::ExitCode,
+    sync::Arc,
     time::Duration,
 };
 
 use olo_airplay::{
     Kind, Receiver, kept,
     pairing::{Error, Http, Setup, verify},
+    play::{Now, Options, Play, State, Trace, What},
 };
 
 const USAGE: &str = "usage: olo-airplay list [--json] [--wait SECONDS]
        olo-airplay pair NAME [--code CODE] [--at HOST:PORT]
        olo-airplay check NAME [--at HOST:PORT]
+       olo-airplay play NAME FILE|ADDRESS [--from TIME] [--json] [--trace] [--at HOST:PORT]
        olo-airplay paired
        olo-airplay unpair NAME
   list     the AirPlay receivers on the network: name, kind, what each takes
   pair     pair with one: the code it shows on its screen is typed here, once
   check    whether one paired with still knows this computer
+  play     play a film on one: a file here or an address on the web; Ctrl-C stops it
   paired   the receivers paired with
   unpair   forget a pairing here";
 
@@ -52,6 +64,7 @@ fn main() -> ExitCode {
         Some("list") => list(&args[1..]),
         Some("pair") => pair(&args[1..]),
         Some("check") => check(&args[1..]),
+        Some("play") => play(&args[1..]),
         Some("paired") => {
             let all = kept::all();
             if all.is_empty() {
@@ -92,8 +105,8 @@ fn option<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).map(String::as_str)
 }
 
-/// What isn't an option or its value: the receiver's name.
-fn name_in(args: &[String]) -> Option<String> {
+/// What isn't an option or its value.
+fn words_in(args: &[String]) -> Vec<&str> {
     let mut words = Vec::new();
     let mut skip = false;
     for a in args {
@@ -101,11 +114,17 @@ fn name_in(args: &[String]) -> Option<String> {
             continue;
         }
         if a.starts_with("--") {
-            skip = matches!(a.as_str(), "--code" | "--at" | "--wait");
+            skip = matches!(a.as_str(), "--code" | "--at" | "--wait" | "--from");
         } else {
             words.push(a.as_str());
         }
     }
+    words
+}
+
+/// The receiver's name: the words that aren't options.
+fn name_in(args: &[String]) -> Option<String> {
+    let words = words_in(args);
     (!words.is_empty()).then(|| words.join(" "))
 }
 
@@ -169,7 +188,9 @@ fn find(name: &str, args: &[String]) -> Result<(SocketAddr, String, String), Str
         ([], []) => return Err(format!("no receiver called {name} answered (olo-airplay list says who did)")),
         _ => return Err(format!("more than one receiver is called {name}: say more of its name")),
     };
-    let addr = r.addrs.first().ok_or_else(|| format!("{} didn't say where it is", r.name))?;
+    // (Its IPv4 address where it has one: a film's address is given to it
+    // with ours in it, and a link-local IPv6 one means nothing over there.)
+    let addr = r.addrs.iter().find(|a| a.is_ipv4()).or(r.addrs.first()).ok_or_else(|| format!("{} didn't say where it is", r.name))?;
     Ok((SocketAddr::new(*addr, r.port), r.device_id.clone(), r.name.clone()))
 }
 
@@ -221,4 +242,136 @@ fn check(args: &[String]) -> Result<(), String> {
 fn our_name() -> String {
     let host = std::fs::read_to_string("/proc/sys/kernel/hostname").map(|h| h.trim().to_owned()).unwrap_or_default();
     if host.is_empty() { "Olo".into() } else { format!("Olo on {host}") }
+}
+
+/// "90", "1:30" or "1:02:03" as seconds.
+fn seconds_of(text: &str) -> Option<f64> {
+    let parts: Vec<f64> = text.split(':').map(|p| p.parse::<f64>().ok().filter(|n| *n >= 0.0 && n.is_finite())).collect::<Option<_>>()?;
+    (1..=3).contains(&parts.len()).then(|| parts.iter().fold(0.0, |all, part| all * 60.0 + part))
+}
+
+/// Seconds as a film's time: "2:03", "1:02:03".
+fn time(seconds: f64) -> String {
+    let s = seconds.max(0.0) as u64;
+    if s >= 3600 { format!("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60) } else { format!("{}:{:02}", s / 60, s % 60) }
+}
+
+/// To the millisecond: as near as a place in a film is known.
+fn thousandths(seconds: f64) -> f64 {
+    (seconds * 1000.0).round() / 1000.0
+}
+
+fn play(args: &[String]) -> Result<(), String> {
+    let (json, trace) = (args.iter().any(|a| a == "--json"), args.iter().any(|a| a == "--trace"));
+    let from = match option(args, "--from") {
+        Some(text) => seconds_of(text).ok_or_else(|| format!("{text} isn't a time (seconds, or 1:02:03)"))?,
+        None => 0.0,
+    };
+    let mut words = words_in(args);
+    let (Some(what), false) = (words.pop(), words.is_empty()) else { return Err(USAGE.into()) };
+    let (at, device_id, name) = find(&words.join(" "), args)?;
+    let kept = kept::of(&device_id, &name).ok_or_else(|| format!("{name} isn't paired with (olo-airplay pair)"))?;
+    let credentials = kept.credentials().ok_or("its pairing here can't be read: pair with it again")?;
+    let (what, title) = if what.starts_with("http://") || what.starts_with("https://") {
+        (What::Address(what.to_owned()), what.to_owned())
+    } else {
+        let path = std::fs::canonicalize(what).map_err(|e| format!("{what}: {e}"))?;
+        let title = path.file_name().map_or_else(|| what.to_owned(), |n| n.to_string_lossy().into_owned());
+        (What::File(path), title)
+    };
+    // Ctrl-C (and being told to end) stops the film at the receiver: the
+    // signals are waited for by a thread of their own, kept from every
+    // other (the play's are made after this).
+    let signals = unsafe {
+        let mut set: libc::sigset_t = std::mem::zeroed();
+        libc::sigemptyset(&mut set);
+        for signal in [libc::SIGINT, libc::SIGTERM, libc::SIGHUP] {
+            libc::sigaddset(&mut set, signal);
+        }
+        libc::pthread_sigmask(libc::SIG_BLOCK, &set, std::ptr::null_mut());
+        set
+    };
+    let trace: Option<Trace> = trace.then(|| Arc::new(|line: &str| eprintln!("  {line}")) as Trace);
+    let play = Play::begin(at, &credentials, &what, &Options { from, name: our_name(), trace, ..Options::default() }).map_err(|e| e.to_string())?;
+    let interrupter = play.interrupter();
+    std::thread::spawn(move || {
+        let mut signal = 0;
+        unsafe { libc::sigwait(&signals, &mut signal) };
+        interrupter.interrupt();
+    });
+    let said = |now: &Now| {
+        if json {
+            let state = match now.state {
+                State::Loading => "loading",
+                State::Playing => "playing",
+                State::Paused => "paused",
+                State::Ended => "ended",
+                State::Left => "left",
+                State::Failed => "failed",
+            };
+            println!("{}", serde_json::json!({ "state": state, "position": now.position_now().map(thousandths), "duration": now.duration, "rate": now.rate, "why": now.why }));
+            return;
+        }
+        let at = now.position_now().unwrap_or(0.0);
+        match now.state {
+            State::Loading => println!("{name} is fetching {title}."),
+            State::Playing => println!(
+                "Playing on {name}{}{}.",
+                if at >= 1.0 { format!(", from {}", time(at)) } else { String::new() },
+                now.duration.map(|d| format!(" (it is {} long)", time(d))).unwrap_or_default()
+            ),
+            State::Paused => println!("Paused at {}.", time(at)),
+            State::Ended => println!("It played to its end."),
+            State::Left => println!("It was left at {}: {}.", time(at), now.why.as_deref().unwrap_or("the receiver went on to something else")),
+            State::Failed => {}
+        }
+    };
+    let mut now = play.now();
+    said(&now);
+    while !now.state.over() && !play.interrupted() {
+        let next = play.next(&now, None);
+        // (Said when what it is doing changes, not each time it says where it is.)
+        if next.state != now.state {
+            said(&next);
+        }
+        now = next;
+    }
+    let stopped = !now.state.over();
+    drop(play);
+    if stopped {
+        if json {
+            println!("{}", serde_json::json!({ "state": "stopped", "position": now.position_now().map(thousandths), "duration": now.duration, "rate": 0.0, "why": null }));
+        } else {
+            println!("Stopped.");
+        }
+    }
+    match now.state {
+        State::Failed => Err(now.why.unwrap_or_else(|| "it didn't play".into())),
+        _ => Ok(()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn times_typed_and_said() {
+        assert_eq!(seconds_of("90"), Some(90.0));
+        assert_eq!(seconds_of("1:30"), Some(90.0));
+        assert_eq!(seconds_of("1:02:03.5"), Some(3723.5));
+        for not in ["", "soon", "1:2:3:4", "-5", "1::2"] {
+            assert_eq!(seconds_of(not), None, "{not}");
+        }
+        assert_eq!((time(0.4), time(123.9), time(3723.0)), ("0:00".to_owned(), "2:03".to_owned(), "1:02:03".to_owned()));
+    }
+
+    #[test]
+    fn the_words_that_arent_options() {
+        let args: Vec<String> = ["Front", "Room", "--from", "1:30", "film.mp4", "--json", "--at", "127.0.0.1:7000"].map(String::from).to_vec();
+        assert_eq!(words_in(&args), ["Front", "Room", "film.mp4"]);
+        assert_eq!(option(&args, "--from"), Some("1:30"));
+        assert_eq!(name_in(&args[..2]).as_deref(), Some("Front Room"));
+        assert_eq!(name_in(&args[5..]), None);
+    }
 }

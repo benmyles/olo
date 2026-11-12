@@ -103,7 +103,7 @@ impl Credentials {
     }
 }
 
-pub(super) fn derive(secret: &[u8], salt: &str, info: &str) -> [u8; 32] {
+pub(crate) fn derive(secret: &[u8], salt: &str, info: &str) -> [u8; 32] {
     let mut key = [0u8; 32];
     Hkdf::<Sha512>::new(Some(salt.as_bytes()), secret).expand(info.as_bytes(), &mut key).expect("32 bytes of HKDF");
     key
@@ -124,7 +124,7 @@ pub(super) fn open(key: &[u8; 32], label: &[u8; 8], sealed: &[u8]) -> Option<Vec
     ChaCha20Poly1305::new(key.into()).decrypt(&named(label), sealed).ok()
 }
 
-pub(super) fn random<const N: usize>() -> [u8; N] {
+pub(crate) fn random<const N: usize>() -> [u8; N] {
     let mut out = [0u8; N];
     getrandom::fill(&mut out).expect("the system's randomness");
     out

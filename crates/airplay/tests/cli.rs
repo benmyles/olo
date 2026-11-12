@@ -1,14 +1,14 @@
-//! `olo-airplay`'s pairing commands, run as a person runs them, against
-//! a receiver of the test's own on the loopback (`--at`): never the
-//! network, never a real receiver. Its pairings go to a folder of the
-//! test's own.
+//! `olo-airplay`'s pairing and playing commands, run as a person runs
+//! them, against a receiver of the test's own on the loopback (`--at`):
+//! never the network, never a real receiver. Its pairings go to a folder
+//! of the test's own.
 
 use std::{
     process::Command,
     sync::{Arc, Mutex},
 };
 
-use olo_airplay::pairing::fake;
+use olo_airplay::{pairing::fake, play};
 
 fn run(state: &std::path::Path, args: &[&str]) -> (bool, String) {
     let out = Command::new(env!("CARGO_BIN_EXE_olo-airplay")).args(args).env("XDG_STATE_HOME", state).env_remove("WAYLAND_DISPLAY").env_remove("OLO_SOCKET").output().expect("olo-airplay runs");
@@ -62,5 +62,80 @@ fn paired_checked_listed_and_forgotten() {
     let (ok, said) = run(&state, &["pair", "Gone", "--code", "1", "--at", "127.0.0.1:9"]);
     assert!(!ok && said.contains("couldn't be reached"), "{said}");
     assert!(!run(&state, &["pair"]).0);
+    let _ = std::fs::remove_dir_all(&state);
+}
+
+/// A film played from the command line: paired with, asked, fetched by
+/// the receiver, said as it goes (in words and as JSON), and stopped
+/// there when the command is told to end.
+#[test]
+fn a_film_played_and_one_stopped() {
+    use std::io::{BufRead as _, BufReader};
+    let state = std::path::PathBuf::from(format!("/var/tmp/olo-airplay-cli-play-test-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&state);
+    std::fs::create_dir_all(&state).unwrap();
+    let mut bytes = b"\0\0\0\x20ftypisom\0\0\x02\0isomiso2avc1mp41".to_vec();
+    bytes.extend((0..30_000u32).map(|i| (i % 249) as u8));
+    let film = state.join("A film.mp4");
+    std::fs::write(&film, &bytes).unwrap();
+    let film = film.to_str().unwrap();
+
+    let pairing = Arc::new(Mutex::new(fake::Receiver::new("4321")));
+    let (ok, said) = run(&state, &["pair", "Front Room", "--code", "4321", "--at", &fake::serve(pairing.clone()).to_string()]);
+    assert!(ok, "{said}");
+    let tv = Arc::new(Mutex::new(play::fake::Tv::new(pairing)));
+    let at = |tv: &Arc<Mutex<play::fake::Tv>>| play::fake::serve(tv.clone()).to_string();
+
+    // In words.
+    let (ok, said) = run(&state, &["play", "front", "room", film, "--at", &at(&tv)]);
+    assert!(ok && said.ends_with("Playing on front room (it is 10:00 long).\nIt played to its end.\n"), "{said}");
+    assert!(tv.lock().unwrap().fetched == bytes && tv.lock().unwrap().sender.starts_with("Olo"));
+    assert_eq!(tv.lock().unwrap().asked.last().map(String::as_str), Some("TEARDOWN"));
+
+    // As JSON, from a place, with each step said beside it.
+    tv.lock().unwrap().asked.clear();
+    let (ok, said) = run(&state, &["play", "Front Room", film, "--from", "1:30", "--json", "--trace", "--at", &at(&tv)]);
+    assert!(ok, "{said}");
+    let lines: Vec<serde_json::Value> = said.lines().filter(|l| l.starts_with('{')).map(|l| serde_json::from_str(l).unwrap()).collect();
+    let states: Vec<&str> = lines.iter().map(|l| l["state"].as_str().unwrap()).filter(|s| *s != "loading").collect();
+    assert_eq!(states, ["playing", "ended"], "{said}");
+    assert_eq!((lines.iter().find(|l| l["state"] == "playing").unwrap()["duration"].as_f64(), tv.lock().unwrap().from), (Some(600.0), 90.0));
+    assert!(said.contains("  SETUP: 200") && said.contains("  insertPlayQueueItem: 200") && said.contains("  it says: "), "{said}");
+    // (What the trace says doesn't say where the film is.)
+    assert!(!said.contains("/film.mp4"), "{said}");
+
+    // Not paired with; not a film; no film named.
+    let (ok, said) = run(&state, &["play", "Den", film, "--at", "127.0.0.1:9"]);
+    assert!(!ok && said.contains("Den isn't paired with"), "{said}");
+    std::fs::write(state.join("film.mkv"), [0x1a, 0x45, 0xdf, 0xa3, 1, 2, 3, 4]).unwrap();
+    let (ok, said) = run(&state, &["play", "Front Room", state.join("film.mkv").to_str().unwrap(), "--at", "127.0.0.1:9"]);
+    assert!(!ok && said.contains("Matroska"), "{said}");
+    let (ok, said) = run(&state, &["play", "Front Room", "/var/tmp/olo-airplay-no-such-film.mp4", "--at", "127.0.0.1:9"]);
+    assert!(!ok && said.contains("No such file"), "{said}");
+    assert!(!run(&state, &["play", "Front Room"]).0);
+    assert!(!run(&state, &["play", "Front Room", film, "--from", "later", "--at", "127.0.0.1:9"]).0);
+
+    // A long one, told to end while it plays: stopped at the receiver.
+    tv.lock().unwrap().film = std::time::Duration::from_secs(120);
+    tv.lock().unwrap().asked.clear();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_olo-airplay"))
+        .args(["play", "Front Room", film, "--at", &at(&tv)])
+        .env("XDG_STATE_HOME", &state)
+        .env_remove("WAYLAND_DISPLAY")
+        .env_remove("OLO_SOCKET")
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("olo-airplay runs");
+    let mut out = BufReader::new(child.stdout.take().unwrap());
+    let mut said = String::new();
+    while !said.contains("Playing on Front Room") {
+        assert!(out.read_line(&mut said).unwrap() > 0, "it ended before playing: {said}");
+    }
+    assert_eq!(unsafe { libc::kill(child.id() as i32, libc::SIGTERM) }, 0);
+    let mut rest = String::new();
+    std::io::Read::read_to_string(&mut out, &mut rest).unwrap();
+    assert!(child.wait().unwrap().success());
+    assert_eq!(rest, "Stopped.\n");
+    assert_eq!(tv.lock().unwrap().asked.last().map(String::as_str), Some("TEARDOWN"));
     let _ = std::fs::remove_dir_all(&state);
 }

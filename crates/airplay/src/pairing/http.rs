@@ -40,12 +40,28 @@ impl Http {
 
     /// A request and its answer: the status and the body.
     pub fn request(&mut self, method: &str, path: &str, content_type: &str, body: &[u8]) -> Result<(u16, Vec<u8>), Error> {
-        let mut message = format!(
-            "{method} {path} HTTP/1.1\r\nHost: {}\r\nUser-Agent: AirPlay/320.20\r\nConnection: keep-alive\r\nX-Apple-HKP: 3\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n\r\n",
-            self.host,
-            body.len()
-        )
-        .into_bytes();
+        let host = self.host.clone();
+        let head = [
+            ("Host", host.as_str()),
+            ("User-Agent", "AirPlay/320.20"),
+            ("Connection", "keep-alive"),
+            ("X-Apple-HKP", "3"),
+            ("Content-Type", content_type),
+            ("Content-Length", &body.len().to_string()),
+        ];
+        let answer = self.exchange(&format!("{method} {path} HTTP/1.1"), &head, body)?;
+        Ok((answer.status, answer.body))
+    }
+
+    /// A message as given (its first line, "SETUP rtsp://… RTSP/1.0",
+    /// its headers and its body) and the receiver's answer to it.
+    pub fn exchange(&mut self, first: &str, head: &[(&str, &str)], body: &[u8]) -> Result<Answer, Error> {
+        let mut message = String::from(first);
+        for (name, value) in head {
+            message.push_str(&format!("\r\n{name}: {value}"));
+        }
+        message.push_str("\r\n\r\n");
+        let mut message = message.into_bytes();
         message.extend(body);
         let message = match &mut self.cipher {
             Some(cipher) => cipher.seal(&message),
@@ -53,9 +69,9 @@ impl Http {
         };
         self.stream.write_all(&message).map_err(io)?;
         loop {
-            if let Some((status, body, used)) = whole(&self.came)? {
+            if let Some((answer, used)) = whole(&self.came)? {
                 self.came.drain(..used);
-                return Ok((status, body));
+                return Ok(answer);
             }
             let mut buf = [0u8; 4096];
             let n = self.stream.read(&mut buf).map_err(io)?;
@@ -68,21 +84,69 @@ impl Http {
             }
         }
     }
+
+    /// This end's address on the connection: the one the receiver
+    /// reaches this computer by.
+    pub fn local(&self) -> Option<SocketAddr> {
+        self.stream.local_addr().ok()
+    }
+
+    /// The receiver's address.
+    pub fn peer(&self) -> Option<SocketAddr> {
+        self.stream.peer_addr().ok()
+    }
+
+    /// How long an answer is waited for from here on.
+    pub fn wait(&mut self, wait: Duration) {
+        let _ = self.stream.set_read_timeout(Some(wait));
+        let _ = self.stream.set_write_timeout(Some(wait));
+    }
+
+    /// Something to close the connection with from another thread (a
+    /// request waiting on it then ends with [`Error::Io`]).
+    pub fn closer(&self) -> Option<Closer> {
+        self.stream.try_clone().ok().map(Closer)
+    }
 }
 
-/// A whole answer at the start of `came`, if it's all there: its
-/// status, its body, and how many bytes it was.
-fn whole(came: &[u8]) -> Result<Option<(u16, Vec<u8>, usize)>, Error> {
+/// Closes a connection from elsewhere ([`Http::closer`]).
+pub struct Closer(TcpStream);
+
+impl Closer {
+    pub fn close(&self) {
+        let _ = self.0.shutdown(std::net::Shutdown::Both);
+    }
+}
+
+/// A receiver's answer to a request.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Answer {
+    pub status: u16,
+    /// Its headers, names in lower case.
+    pub head: Vec<(String, String)>,
+    pub body: Vec<u8>,
+}
+
+impl Answer {
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.head.iter().find(|(n, _)| n == name).map(|(_, v)| v.as_str())
+    }
+}
+
+/// A whole answer at the start of `came`, if it's all there, and how
+/// many bytes it was.
+fn whole(came: &[u8]) -> Result<Option<(Answer, usize)>, Error> {
     let Some(head_end) = came.windows(4).position(|w| w == b"\r\n\r\n") else {
         return if came.len() > 16384 { Err(Error::Unexpected("no end to its answer's head")) } else { Ok(None) };
     };
-    let head = String::from_utf8_lossy(&came[..head_end]);
-    let mut lines = head.split("\r\n");
+    let text = String::from_utf8_lossy(&came[..head_end]);
+    let mut lines = text.split("\r\n");
     // ("HTTP/1.1 200 OK"; AirPlay also answers as RTSP.)
     let status = lines.next().and_then(|l| l.split(' ').nth(1)).and_then(|c| c.parse::<u16>().ok()).ok_or(Error::Unexpected("not HTTP"))?;
-    let length = lines.filter_map(|l| l.split_once(':')).find(|(k, _)| k.trim().eq_ignore_ascii_case("content-length")).and_then(|(_, v)| v.trim().parse::<usize>().ok()).unwrap_or(0);
+    let head: Vec<(String, String)> = lines.filter_map(|l| l.split_once(':')).map(|(k, v)| (k.trim().to_ascii_lowercase(), v.trim().to_owned())).collect();
+    let length = head.iter().find(|(k, _)| k == "content-length").and_then(|(_, v)| v.parse::<usize>().ok()).unwrap_or(0);
     let (from, to) = (head_end + 4, head_end + 4 + length);
-    Ok(came.get(from..to).map(|body| (status, body.to_vec(), to)))
+    Ok(came.get(from..to).map(|body| (Answer { status, head, body: body.to_vec() }, to)))
 }
 
 impl Post for Http {
@@ -103,10 +167,12 @@ mod tests {
         let answer = b"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\ncontent-length: 5\r\n\r\nhelloHTTP/1.1";
         assert_eq!(whole(&answer[..20]).unwrap(), None);
         assert_eq!(whole(&answer[..answer.len() - 10]).unwrap(), None);
-        let (status, body, used) = whole(answer).unwrap().unwrap();
-        assert_eq!((status, body.as_slice(), &answer[used..]), (200, &b"hello"[..], &b"HTTP/1.1"[..]));
+        let (got, used) = whole(answer).unwrap().unwrap();
+        assert_eq!((got.status, got.body.as_slice(), &answer[used..]), (200, &b"hello"[..], &b"HTTP/1.1"[..]));
+        assert_eq!(got.header("content-type"), Some("application/octet-stream"));
         // No body, as RTSP, and what isn't an answer at all.
-        assert_eq!(whole(b"RTSP/1.0 470 Connection Authorization Required\r\n\r\n").unwrap(), Some((470, Vec::new(), 50)));
+        let (got, used) = whole(b"RTSP/1.0 470 Connection Authorization Required\r\nCSeq: 3\r\n\r\n").unwrap().unwrap();
+        assert_eq!((got.status, got.header("cseq"), got.body.len(), used), (470, Some("3"), 0, 59));
         assert!(whole(b"gibberish\r\n\r\n").is_err());
     }
 }

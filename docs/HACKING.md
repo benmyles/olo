@@ -9463,8 +9463,8 @@ gauge menu use it; with a copy running, both are handed to it).
 Sending to an AirPlay receiver (Ben, 2026-11-12: a window, a
 workspace, an agent screen or a video file, "high quality video and
 audio"). docs/TODO.md has the plan and what a sender that isn't
-Apple's may and may not do. So far, the first two parts: **finding the
-receivers** and **pairing with one**.
+Apple's may and may not do. So far, the first three parts: **finding
+the receivers**, **pairing with one** and **playing a film on one**.
 
 - `olo_airplay::receivers(wait)` asks the networks the computer is on
   who offers `_airplay._tcp`, by mDNS, itself (`dns`: a question
@@ -9512,6 +9512,46 @@ receivers** and **pairing with one**.
   the computer is removed there). NAME is a receiver's name or the
   start of it, in any case; `--at` says where it is without asking
   the network.
+- **Playing a film** (`play`): the receiver is told where the film is
+  and fetches and plays it itself, so the picture and sound are the
+  file's own (nothing is decoded or encoded here, and a play costs
+  this computer the file's reading). `Play::begin(at, credentials,
+  what, options)` asks, and returns when the receiver has taken the
+  request; `Play::next(seen, wait)` waits for how it goes on (`Now`:
+  `Loading`, `Playing`, `Paused`, `Ended`, `Left`, `Failed` with why;
+  where it is and how long it is); `pause(bool)`; dropping it stops
+  the film there. It blocks while the receiver answers: off a looper.
+  What it does, in order: connects and proves each side (`verify`),
+  SETUP of the session, the *event channel* (`events`: a second
+  connection the receiver speaks on, each thing answered or it closes
+  the session within half a minute), RECORD, then asks for the film
+  **the newer way** (what tvOS 26 and 27 take: SETUP of a stream of
+  commands, then `POST /command` with `insertPlayQueueItem`,
+  `setProperty` and `setRate`, and the receiver's `playbackState`
+  events say how it goes) and, where a receiver doesn't take that,
+  **the older way** (`POST /play`, then `GET /playback-info` asked
+  every second). `/feedback` every two seconds keeps the session, as
+  Apple's senders do; a receiver that asks the time is answered
+  (`timing`). None of this is published: it follows pyatv (and the
+  rework of its `play_url` for tvOS 26, its pull request 2846), and
+  `Options::trace` (the command's `--trace`) says each step and what
+  the receiver answered, for when a real one differs.
+- **The film's file** (`serve`) is served to the receiver for the
+  length of the play from a port on the address the receiver reaches
+  this computer by: one file, whole or by Range (a receiver seeks by
+  them), at a path of 128 random bits told only over the enciphered
+  connection; anything else asked there is "not found"; gone when the
+  play is. The file crosses the network in the clear, as every film
+  played by its address does. What a receiver plays by itself is told
+  by how the file begins (`play::kind_of`: MP4, QuickTime, MPEG-TS,
+  MP3, AAC, WAV, AIFF, FLAC); Matroska, WebM, AVI and Ogg are refused
+  with the reason, before anything is sent (converting on the way is
+  the live path's work, not here yet).
+- `olo-airplay play NAME FILE|ADDRESS [--from TIME] [--json] [--trace]`
+  plays and says how it goes (a line when what it's doing changes;
+  `--json`: a line of JSON each), ends when the film does, and stops
+  it at the receiver on Ctrl-C or when told to end (the signals are
+  waited for by a thread: nothing polls).
 
 **Tests answer their own questions**: a responder of the test's own on
 the loopback (`Via { to, from }` says where a question goes; `Via::lan`
@@ -9520,14 +9560,21 @@ to pair with (`pairing::fake::Receiver`, the other side of every
 message, with a code, a memory of who paired and a `reset`;
 `fake::serve` puts it on a loopback port, which `tests/cli.rs` runs
 the built `olo-airplay` against by `--at`, its pairings in a state
-folder of its own). No test asks the network it happens to be on, and
-nothing is ever sent to a real receiver by a test: pairing with one
-and playing to one are the person's to do, at the receiver. **So the
-pairing has not yet met a real receiver**: it follows HomeKit's
-published protocol and the paths and headers pyatv uses with Apple
-TVs, and the first `olo-airplay pair` at a real screen is its real
-test (a receiver that doesn't sign its key as HomeKit says is paired
-with all the same, and said: `Paired::signed`).
+folder of its own), and to play to (`play::fake::Tv`: it sets up the
+session, asks the time, speaks on the event channel, fetches the film
+from the address it's given, a part and then the whole, and "plays"
+it for as long as the test says, in the newer way or only the older;
+it can refuse, never come for the film, or leave; it keeps what it
+was asked and what it fetched). No test asks the network it happens
+to be on, and nothing is ever sent to a real receiver by a test:
+pairing with one and playing to one are the person's to do, at the
+receiver. **So neither the pairing nor the play has yet met a real
+receiver**: the pairing follows HomeKit's published protocol and the
+paths and headers pyatv uses with Apple TVs, the play follows pyatv's
+two ways, and the first `olo-airplay pair` and `olo-airplay play
+--trace` at a real screen are their real test (a receiver that
+doesn't sign its key as HomeKit says is paired with all the same, and
+said: `Paired::signed`).
 
 ## The fans (apps/fans, `olo-fans`)
 

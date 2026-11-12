@@ -5,12 +5,14 @@
 //! display/receiver". docs/TODO.md has the plan and what is and isn't
 //! open to a sender that isn't Apple's.
 //!
-//! So far: finding the receivers, and pairing with one. They announce
-//! themselves by mDNS (`_airplay._tcp`), which this asks itself
-//! ([`dns`], [`browse`]: no Avahi, no tool), and each says in its
-//! announcement what it is and what it takes ([`Receiver`]). Every one
-//! of today's wants to be paired with before it takes anything
-//! ([`pairing`]: HomeKit's, with the code it shows).
+//! So far: finding the receivers, pairing with one, and playing a film
+//! on one. They announce themselves by mDNS (`_airplay._tcp`), which
+//! this asks itself ([`dns`], [`browse`]: no Avahi, no tool), and each
+//! says in its announcement what it is and what it takes ([`Receiver`]).
+//! Every one of today's wants to be paired with before it takes anything
+//! ([`pairing`]: HomeKit's, with the code it shows). A film is played by
+//! its address ([`play`]): the receiver fetches it, from this computer
+//! or from the web, and plays the file's own picture and sound.
 //!
 //! Nothing here is ever tried against a real receiver by a test, nor
 //! against the network a test happens to be on: a test answers its own
@@ -20,6 +22,7 @@ pub mod browse;
 pub mod dns;
 pub mod kept;
 pub mod pairing;
+pub mod play;
 mod receiver;
 
 pub use browse::{Service, Via, browse};
