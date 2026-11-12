@@ -597,6 +597,16 @@ something nobody here has is in "Blocked", with what it waits for.
        `finish` swapping the glyphs' list in when the runs are in
        order already; a list's rows of text keeping their recordings
        when only their width grew.
+       Where a frame's time goes (Logs resized live, 2×, 40 frames,
+       `OLO_FRAME_PHASES=1`, 2026-11-12): the looper 1.39 ms (the
+       views' bodies 0.35, layout 0.24, painting 81 of 108 nodes
+       0.80: some 2,900 glyphs recorded again though no row's text
+       changed, nothing shaped or rasterized), the display thread
+       0.41 (putting the recordings in the frame 0.19, drawing 0.19),
+       and some 0.4 ms a frame that neither counts (2.2 ms a frame
+       by the process's own time). Recordings' buffers are reused
+       already (`tree.rs`: `recycled`). No one part is the
+       difference; the row recordings are the largest.
      - What's first shown as a program starts: StyledEdit's code
        395 → 525 ms (100,000 lines coloured), the emoji picker
        258 → 353; a few milliseconds more in most (Tracker 2 → 13,
@@ -765,17 +775,25 @@ something nobody here has is in "Blocked", with what it waits for.
 
 - **The lowest brightness is off** (Ben, 2026-11-12: "putting the
   screen on min brightness should turn the screen off: right now it
-  just gets dim but not off"). The brightness-down key (and the level
-  indicator's slider, Preferences ▸ Display's) at the bottom step
-  turns the panel's backlight off, as a MacBook's does; the next
-  brightness-up, a key or the pointer brings it back to the first step
-  (it isn't the display asleep: nothing locks, windows stay where they
-  are, an external display is untouched). app_server's `power.rs`
-  holds the panel's steps and the least it goes to: find why the least
-  is above nothing (a floor kept so a dark room's screen can't be lost,
-  or the backlight's own minimum) and make the last step off by the
-  backlight's `bl_power` (or 0 where the driver takes it), with the
-  level indicator saying "Off".
+  just gets dim but not off"). *Done 2026-11-12, waiting for Ben to
+  try on the real panel* (HACKING, "The bottom of the built-in
+  display's brightness is off"): the last step down switches the
+  built-in panel off ("Display off"), in HDR too; it stays off until
+  the brightness is raised (the key, a slider, an agent), then is back
+  at the first step; a session never starts with it off, and once the
+  displays have slept for idleness the first touch brings it back. Found: the
+  bottom step already wrote 0 to the backlight (`to_raw(0.0)`), which
+  the ThinkPad's panel shows as its dimmest, and in HDR the keys stop
+  at SDR white's least: neither is off, so the panel is switched off
+  as it is for idleness, by itself. Tried in a headless session only
+  (a test screen named as the built-in one: the steps, the state, the
+  indicator, back after a minute's idle sleep). *Not tried, and it can only be tried on the computer's
+  own screen:* that the panel goes dark and comes back with the next
+  brightness-up (it's the call idle display sleep makes and undoes
+  every day, for one display instead of all); the lid closed and
+  opened, a suspend, an external display plugged in while it's off.
+  If it didn't come back: brightness up again, then a restart of the
+  session, where it starts lit.
 - **A fan profile, in Preferences ▸ Power, and the fans in Activity
   Monitor** (Ben, 2026-11-10: "on auto settings the thinkpad is too slow
   to ramp up the fans, it gets behind the thermal curve and then starts

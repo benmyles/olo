@@ -1731,6 +1731,10 @@ pub trait Backend {
     /// output's current mode on success.
     /// Turn the screens off (DPMS) for idleness, or back on.
     fn set_displays_on(&mut self, _on: bool) {}
+    /// Turn one screen off, or back on: the built-in panel at the bottom
+    /// of its brightness. It stays the display it was (its windows where
+    /// they are); nothing is drawn on it meanwhile.
+    fn set_output_on(&mut self, _output: &Output, _on: bool) {}
     /// Scale the screens' gamma ramps by these red, green, blue gains
     /// (night light; `[1.0; 3]` is neutral).
     fn set_white_point(&mut self, _gains: [f64; 3]) {}

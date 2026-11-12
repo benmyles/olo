@@ -131,6 +131,9 @@ pub struct UdevData {
     /// The screens are off for idleness: nothing is rendered (a frame
     /// would turn them back on).
     displays_off: bool,
+    /// Displays switched off one by one, by connector (the built-in
+    /// panel at the bottom of its brightness: `set_output_on`).
+    outputs_off: std::collections::HashSet<String>,
     loop_handle: smithay::reexports::calloop::LoopHandle<'static, AnvilState<UdevData>>,
     /// libinput and its event source (started again when Olo's touch
     /// filter changes: `touch_filter`).
@@ -569,6 +572,30 @@ impl Backend for UdevData {
             }
         }
         info!("displays off");
+    }
+
+    fn set_output_on(&mut self, output: &Output, on: bool) {
+        let name = output.name();
+        // (As it is already.)
+        if on != self.outputs_off.contains(&name) {
+            return;
+        }
+        let Some(id) = output.user_data().get::<UdevOutputId>().copied() else { return };
+        if on {
+            self.outputs_off.remove(&name);
+            // The next frame on it turns it back on, as after the
+            // displays slept.
+            self.loop_handle.insert_idle(move |state| state.render(id.device_id, Some(id.crtc), state.clock.now()));
+            info!(name, "display on");
+            return;
+        }
+        self.outputs_off.insert(name.clone());
+        if let Some(surface) = self.backends.get_mut(&id.device_id).and_then(|b| b.surfaces.get_mut(&id.crtc))
+            && let Err(e) = surface.drm_output.with_compositor(|c| c.clear())
+        {
+            warn!(?e, name, "couldn't turn the display off");
+        }
+        info!(name, "display off");
     }
 
     fn set_white_point(&mut self, gains: [f64; 3]) {
@@ -1138,6 +1165,7 @@ pub fn run_udev() {
         input_settings: None,
         white_point: [1.0; 3],
         displays_off: false,
+        outputs_off: Default::default(),
         loop_handle: event_loop.handle(),
         libinput: None,
         touch_filter: None,
@@ -2469,6 +2497,11 @@ impl AnvilState<UdevData> {
             // somehow we got called with an invalid output
             return;
         };
+        // Switched off by itself (the panel at the bottom of its
+        // brightness): nothing is drawn on it. (What mirrors it draws.)
+        if self.backend_data.outputs_off.contains(&screen.name()) {
+            return;
+        }
         // (Something of ours moving: it doesn't rest.)
         let awake = self.keeps_awake();
         // A mirror draws its source's frame, fitted to its own mode.

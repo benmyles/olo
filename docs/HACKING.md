@@ -6544,6 +6544,36 @@ app in front and can be shortcuts); the brightness keys act on the
 display under the pointer when its brightness can be set, else the
 built-in one.
 
+**The bottom of the built-in display's brightness is off** (Ben,
+2026-11-12: "putting the screen on min brightness should turn the
+screen off: right now it just gets dim but not off"), as a MacBook's.
+The last step down (`power::off_at`: level 0, from the keys, a slider
+or an agent's `set_brightness`) switches the panel off, and the
+indicator says "Display off"; it stays off until its brightness is
+raised, when it's back at the first step. Off lasts while whoever
+chose it is there: once the displays have slept for idleness (or
+the computer was put to sleep for it), the first touch brings the panel back
+at the first step too (`panel_back_on`), so nobody comes back to a
+dark screen and can't tell why. It isn't the displays asleep: nothing locks, its windows stay where they are (it's still
+the display it was), other displays are untouched, what mirrors it
+goes on drawing. In HDR, where the keys move SDR's white and not the
+backlight (`step_sdr_white`), the bottom step is off the same way,
+the least of SDR's white being still light. A brightness kept as off
+isn't how a session starts (`power::starting_level`: the first step),
+so nobody sits down to a dark screen and can't tell why.
+`PowerStatus::panel_off` says so to whoever asks. The backend does it
+(`Backend::set_output_on`): on DRM, the same call that puts displays
+to sleep for idleness, for the one display (its planes cleared, which
+turns the CRTC off), nothing drawn on it meanwhile
+(`UdevData::outputs_off`, looked at in `render_surface`), and the
+next frame drawn on it turns it back on. In a test session the
+built-in panel is whichever headless screen `OLO_INTERNAL_OUTPUT`
+names, and the backend only says what it would do ("a display
+(simulated)"): 16 steps down from full reach it, another changes
+nothing, one up brings it back at 1/16; left off for a minute's
+idleness (the displays asleep), a key brings it back at 1/16. On a
+real panel it hasn't been tried.
+
 A **human presence sensor** (a ThinkPad P1 Gen 9's, in its camera
 module: the HID sensor hub's IIO device "prox", `proximity0` someone
 there, `attention` looking; `olo_system::presence`) locks the screen
