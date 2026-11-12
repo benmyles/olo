@@ -11,11 +11,9 @@ below 120 frames a second.
 without a rebuild (`--env OLO_PAINT_MEMO=0`).
 
 Build first: `cargo build --release --workspace` (the apps), then
-`cargo build --release -p olo-ui --examples` (the kit's gallery), apart:
-built in one go, cargo gives the apps the examples' dev-dependencies'
-features (GPUI's test support), and apps built so mark no frames, so
-nothing is measured; a launch with no frames marked fails, saying so.
-A build older than the sources is named before anything runs.
+`cargo build --release -p olo-kit --examples` (the kit's gallery). A
+launch with no frames marked fails, saying so (nothing it did would be
+measured). A build older than the sources is named before anything runs.
 It starts a session of its own ("bench", the shell's Deskbar and
 desktop, a sandbox home under /var/tmp/olo-bench filled with what makes
 apps work: a 20,000-line document, a folder of 3,000 files, photos, 200
@@ -375,12 +373,17 @@ class Bench:
         self.s, self.budget_us, self.hz = s, budget_ms * 1000, hz
         self.results = []
 
-    def measure(self, app, step, pids, act, transition=False):
+    def measure(self, app, step, pids, act, transition=False, since_us=None):
         """Do `act`, collecting the frames `pids` drew meanwhile and
-        app_server's timings, and judge them."""
+        app_server's timings, and judge them. `since_us`: the frames
+        they drew from then on count too (an app's first frames, drawn
+        before its window was listed: with nothing to load it draws once
+        and is done)."""
         st = Step(app, step, transition)
         for p in pids:
-            self.s.marks(p)
+            early = self.s.marks(p)
+            if since_us is not None:
+                st.frames += [m for m in early if m["at_us"] >= since_us]
         self.s.timings()
         t0 = now_us()
         try:
@@ -398,7 +401,7 @@ class Bench:
         if step == "launch and load" and not st.frames:
             # (A window up, and not one frame marked: nothing it does
             # will be measured.)
-            st.failures.append("no frames marked: built with the examples in one go (GPUI's test support)? Build the apps alone")
+            st.failures.append("no frames marked since it was started: nothing it does can be measured")
         if st.transition:
             worst = max(st.frames, key=lambda m: m["us"], default=None)
             if worst and worst["us"] > self.budget_us:
@@ -557,6 +560,7 @@ def run_app(b, app, scale):
     s = b.s
     before = {w["id"] for w in s.windows()}
     t0 = time.monotonic()
+    started_us = now_us()
     tsession("run", NAME, *app.env, *EXTRA_ENV, *app.cmd)
     if app.key == "notifications":
         time.sleep(1.0)
@@ -588,7 +592,7 @@ def run_app(b, app, scale):
             s.req({"type": "toggle_zoom", "id": wid})
         time.sleep(app.settle)
 
-    b.measure(tag, "launch and load", [pid], settle, transition=True)
+    b.measure(tag, "launch and load", [pid], settle, transition=True, since_us=started_us)
     # (A window just zoomed may be listed before its new frame is.)
     c = None
     for _ in range(20):
@@ -903,10 +907,10 @@ def main():
     only = set(only.split(",")) if only else None
     for exe in ("olo-app-server", "olo-session", "olo-deskbar", os.path.join("examples", "gallery")):
         if not os.path.exists(os.path.join(RELEASE, exe)):
-            sys.exit(f"no target/release/{exe}: cargo build --release --workspace, then cargo build --release -p olo-ui --examples")
+            sys.exit(f"no target/release/{exe}: cargo build --release --workspace, then cargo build --release -p olo-kit --examples")
     stale = stale_builds()
     if stale:
-        print(f"warning: older than the sources (cargo build --release --workspace, then -p olo-ui --examples): {', '.join(stale)}", flush=True)
+        print(f"warning: older than the sources (cargo build --release --workspace, then -p olo-kit --examples): {', '.join(stale)}", flush=True)
     os.makedirs(SCRATCH, exist_ok=True)
     print("fixtures…", flush=True)
     fixtures()

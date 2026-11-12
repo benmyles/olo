@@ -14,11 +14,11 @@ use std::{
     },
 };
 
-use olo_system::face::Status;
-use olo_ui::{
-    gpui::{Context, Entity, IntoElement as _, SharedString},
+use olo_kit::{
+    Child, ClickEvent, Cx, IntoElement as _, SharedString, WindowCx,
     widgets::{Button, StatusBar, StringView, TextControl, TextField, TextFieldEvent},
 };
+use olo_system::face::Status;
 use zeroize::Zeroizing;
 
 use crate::{Msg, PanelView, form::Ui, integrations::buttons, panel};
@@ -73,7 +73,7 @@ fn as_root(faced: &Path, args: &[&str]) -> Result<(), String> {
     }
 }
 
-fn link(proxy: olo_ui::Proxy) -> &'static Link {
+fn link(proxy: olo_kit::Proxy) -> &'static Link {
     static LINK: OnceLock<Link> = OnceLock::new();
     LINK.get_or_init(|| {
         let shared: Arc<Mutex<Shared>> = Default::default();
@@ -161,25 +161,24 @@ enum Asking {
 pub struct State {
     link: &'static Link,
     asking: Option<Asking>,
-    password: Entity<TextField>,
+    password: Child<TextField>,
 }
 
 impl State {
-    pub fn new(cx: &mut Context<PanelView>) -> State {
-        let password = olo_ui::widgets::text_field(cx, |f| f.password(true));
-        cx.subscribe(&password, |v, _, e: &TextFieldEvent, cx| {
+    pub fn new(cx: &mut Cx<PanelView>) -> State {
+        let password = crate::form::text_field(cx, |f| f.password(true));
+        cx.subscribe(&password, |v, e: &TextFieldEvent, cx| {
             if matches!(e, TextFieldEvent::Entered)
                 && let Some(st) = state_of(v)
             {
                 st.go(cx);
                 cx.notify();
             }
-        })
-        .detach();
-        State { link: link(olo_ui::proxy(cx)), asking: None, password }
+        });
+        State { link: link(olo_kit::proxy()), asking: None, password }
     }
 
-    fn go(&mut self, cx: &mut Context<PanelView>) {
+    fn go(&mut self, cx: &mut Cx<PanelView>) {
         let typed = Zeroizing::new(self.password.read(cx).text().to_owned());
         let Some(asking) = self.asking else { return };
         if typed.is_empty() {
@@ -201,10 +200,10 @@ fn state_of(v: &mut PanelView) -> Option<&mut State> {
     }
 }
 
-fn act(ui: &Ui, f: impl Fn(&mut State, &mut olo_ui::gpui::Window, &mut Context<PanelView>) + 'static) -> impl Fn(&mut olo_ui::gpui::Window, &mut olo_ui::gpui::App) + 'static {
-    ui.on_click_view(move |v, window, cx| {
+fn act(ui: &Ui, f: impl Fn(&mut State, &mut Cx<PanelView>) + 'static) -> impl Fn(&ClickEvent, &mut WindowCx) + 'static {
+    ui.on_click_view(move |v, cx| {
         if let Some(st) = state_of(v) {
-            f(st, window, cx);
+            f(st, cx);
         }
         cx.notify();
     })
@@ -223,17 +222,17 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             Button::new(label)
                 .id(format!("face-{label}"))
                 .enabled(!busy)
-                .on_click(act(ui, move |st, window, cx| {
+                .on_click(act(ui, move |st, cx| {
                     st.asking = Some(what);
-                    st.password.update(cx, |f, _| f.focus(window));
+                    st.password.focus(cx);
                 }))
-                .into_any_element()
+                .into_element()
         };
         match &status {
             None => ui.note("Asking…"),
             Some(s) if !s.installed => {
                 ui.add(StringView::new("Face unlock isn't installed.").wrap(true));
-                ui.add(buttons(vec![Button::new("Install…").enabled(!busy).on_click(move |_, _| drop(link.tx.send(Request::Install))).into_any_element()]));
+                ui.add(buttons(vec![Button::new("Install…").enabled(!busy).on_click(move |_, _| drop(link.tx.send(Request::Install))).into_element()]));
             }
             Some(s) if !s.camera => ui.add(StringView::new("There's no infrared camera.").wrap(true)),
             Some(s) if s.enrolled == 0 => {
@@ -247,7 +246,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                 ui.add(StringView::new(format!("Set up ({} looks).", s.enrolled)).wrap(true));
                 if st.asking.is_none() {
                     let (again, forget) = (ask(ui, Asking::Enroll, "Set Up Again…"), ask(ui, Asking::Forget, "Forget…"));
-                    ui.add(buttons(vec![again, forget, Button::new("Remove").id("face-remove").enabled(!busy).on_click(move |_, _| drop(link.tx.send(Request::Uninstall))).into_any_element()]));
+                    ui.add(buttons(vec![again, forget, Button::new("Remove").id("face-remove").enabled(!busy).on_click(move |_, _| drop(link.tx.send(Request::Uninstall))).into_element()]));
                 }
             }
         }
@@ -259,16 +258,16 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                 })
                 .wrap(true),
             );
-            ui.add(TextControl::new(st.password.clone()).label("Password:"));
+            ui.add(TextControl::new(ui.cx, &st.password).label("Password:"));
             let typed = !st.password.read(ui.cx).text().is_empty();
             ui.add(buttons(vec![
-                Button::new(if what == Asking::Enroll { "Set Up" } else { "Forget" }).default(true).enabled(typed).on_click(act(ui, |st, _, cx| st.go(cx))).into_any_element(),
+                Button::new(if what == Asking::Enroll { "Set Up" } else { "Forget" }).default(true).enabled(typed).on_click(act(ui, |st, cx| st.go(cx))).into_element(),
                 Button::new("Cancel")
-                    .on_click(act(ui, |st, _, cx| {
+                    .on_click(act(ui, |st, cx| {
                         st.asking = None;
                         st.password.update(cx, |f, cx| f.clear_secret(cx));
                     }))
-                    .into_any_element(),
+                    .into_element(),
             ]));
         }
         if let Some((got, of)) = looks {

@@ -1,7 +1,10 @@
 #!/usr/bin/python3
-"""Compares two builds of the same window pixel for pixel: an app on the
-GPUI kit (olo-ui) and the same app on Olo's own (olo-kit), while apps
-move from one to the other.
+"""Compares two builds of the same window pixel for pixel: an app or a
+kit example before a change and after it (a build kept from before,
+`cp --reflink=always` into /var/tmp, against the one in target/), to
+show a change to something global (hinting, a kit size, how a control
+draws) changes what was meant and nothing else. (Made to move the apps
+from the GPUI kit to Olo's own, each compared with what it had been.)
 
   kit-compare OLD NEW [ARGS...] [--scales 1,1.5,2] [--themes light,dark]
               [--size WxH] [--out DIR] [--tolerance N] [--settle SECONDS]

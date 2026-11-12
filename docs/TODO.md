@@ -459,7 +459,42 @@ something nobody here has is in "Blocked", with what it waits for.
      link opened, a tab moved to an agent screen, the scroll check
      (`tools/dev/scroll-check` reads marks the kit's own scrollers
      make; the scrollback scrolls itself and makes none).
-     *Next:* preferences.
+     **Preferences** (2026-11-11): `Prefs` behind a lock, each panel's
+     window a view on a looper of its own that takes it to say what it
+     shows and to change a setting; the panels' `ui` functions built
+     through `form::Ui` as before, its callbacks in the kit's shapes
+     (HACKING, "Preferences", "On olo-kit"). Its sub-windows (the palm
+     trainer, Try Voice Processing, a Wi-Fi network's enterprise sheet)
+     are views of their own, told by their own messengers. For it, in
+     the kit: `olo_kit::spotlight` (a control lit, drawn by the
+     window's `Frame`), `pictures::thumbnail_soon` (a picture for a
+     view's own `body`), and a control that counts the keyboard as its
+     own while it's inside (`focus_within`) made anew round the field
+     that has it is found to have it (a field's ring went as its panel
+     was laid out again round it). Two things look different on
+     purpose: the launcher's cells are 120 wide (at 104 "Touchpad &
+     Mouse" and "About Olo Desktop" ran into the cell beside them),
+     and Notifications' From/to row lines up with the check box's
+     words above it. Not tried live, since they act on the real
+     computer: Bluetooth and AirPods (opening Bluetooth starts the
+     adapter looking), a fingerprint or a face enrolled, Power ▸
+     Apply, an integration connected, Backup's import, About's
+     restart, a display mode kept (the headless output has one mode).
+     *Next:* the tools (bench, ui-lint, lockcheck), then HACKING and
+     the Olo Book.
+  7. **The installer, as BeOS's Installer** (Ben, 2026-11-11: "also can
+     you redo the installer to be reminiscent of the beos installer
+     instead of windows 95"). `apps/installer` (Olo Setup, on olo-kit)
+     is a wizard of pages with Back and Next, as Windows 95's Setup.
+     BeOS R5's Installer is one small window: what's said at the top
+     (a status line and a scrolling text of what it's doing), "Install
+     from" and "Onto" as pop-up menus, the choices to make under a
+     "More Options" that opens the window downward (its list of
+     optional parts with their sizes), a bar that fills, and one
+     button, Begin, which becomes Stop. Redo Olo Setup so: one window,
+     everything chosen in it before Begin, what it's doing said in
+     place as it goes, the mascot kept; then its checks again (the lint,
+     old against new, the installer check in a VM). After Preferences.
   6. **The build from before all this, on the login screen** (Ben,
      2026-11-11: "when you finish can you also make the pre-refactor
      known good build available as a login option in the display
@@ -470,9 +505,29 @@ something nobody here has is in "Blocked", with what it waits for.
      (`tools/install-session.sh` shows what an entry needs), named so
      it can't be taken for the current one; say how to remove it.
   5. **Tools, HACKING and the Olo Book**; GPUI and olo-ui leave the
-     workspace (the `browser` and `olo-coder` branches build on them:
-     they stay until those have moved). `tools/dev/bench`, `ui-lint`,
-     `tsession review` and `lockcheck` still drive olo-ui's apps.
+     workspace as soon as the last app and the tools are off them (Ben,
+     2026-11-11: "you can also remove GPUI and olo-ui as soon as you're
+     done we don't need to wait for the coder and browser branches":
+     those branches build on them, and move when they're merged up).
+     Done (2026-11-11): the kit's own `gallery`, `hdr_probe`,
+     `hdr_card`, `lines` and `layer` examples (bench and hdr-check use
+     them), olo-ui's two tests the kit lacked, and the frame marks
+     bench and scroll-check read made right on olo-kit (scroll places
+     in them, marked when drawn, nothing left by a commit that drew
+     nothing). *Left:* a view that scrolls itself (the kit's editor,
+     Terminal's scrollback) says where it is in its frames' marks, as
+     GPUI's `Window::note_scroll` let it (bench's "didn't scroll" for
+     StyledEdit: its scroll can't be judged); the whole benchmark run
+     on a quiet machine, and what it fails fixed (StyledEdit's 20,000
+     lines: a menu's frame 8.8 ms, typing 8.3, with the machine busy);
+     `cargo ui-lint` and the hooks' lists
+     (`tools/hooks/lint-covers`, pre-push) without olo-ui;
+     `lockcheck reentry` and `tools/reentry` go with GPUI (a `Child`
+     has one owner, so nothing reaches a view that's busy);
+     `crates/preview`, `print` and `screensavers` lose their `gpui`
+     features; the crates olo-interface uses from `gpui/`
+     (collections, macros, refineable, util, blade-graphics,
+     blade-util) move beside it; then `crates/ui` and `gpui/gpui` go.
      *For the Book, learned porting (each cost a bug):* a drawing only
      looks (`Cx::canvas(|v: &V, g, b|)`): what it lacks it asks of its
      view by a message, and what it finds (where something went) goes
@@ -542,9 +597,34 @@ something nobody here has is in "Blocked", with what it waits for.
      showed only there. Something that asks for a password is tested
      with a stand-in for what checks it (`OLO_SUDO_REAL`, a made-up
      password), behind a guard that runs nothing when the stand-in
-     isn't the one in place.
+     isn't the one in place. GPUI drew a window's whole view again
+     whenever anything shown in it changed (a field typed in, a list's
+     choice); a kit view says what it shows again when it's told:
+     what a view shows by a child's state (a Save enabled by a field's
+     text) needs the child's event (`subscribe`, `on_select`). A
+     drawing that took the pointer itself in GPUI (`on_mouse_event` in
+     its paint) only draws in the kit: its element has the listeners,
+     and they go by where the drawing put things (a `Rc<RefCell>` it
+     fills) or by `listener_bounds`. A name the old code used for a
+     colour's green (`g`) is the painter's now: look for what a
+     mechanical rename shadows. A port that compiles is compared
+     before it's believed: a script that opened nothing compared two
+     empty desktops and found them the same.
 
 ## Not started (highest priority first)
+
+- **Two windows of one app can swap in the stacking after an upgrade**
+  (found 2026-11-11, testing Preferences' hand-over): Appearance,
+  Keyboard and the launcher open, the launcher in front; upgraded in
+  place (each program told to become its new version, app_server
+  reloaded), all three come back at their places and sizes, the
+  launcher in front, but Appearance and Keyboard have changed places
+  under it. The GPUI build of Preferences does it too (old to old), so
+  it's app_server's restacking of returning windows (`layout.rs`,
+  `restack_returning`, `Placement::stacking`), not the kit: look at
+  what it goes by when two windows of one client return together.
+  `tools/dev/upgrade-check` compares places, not the stacking: have it
+  compare `stack` too.
 
 - **The NVIDIA GPU's video encoding doesn't show in Activity Monitor or
   Deskbar's GPU widgets** (Ben, 2026-11-10: "when the nvidia chip is

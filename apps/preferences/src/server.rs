@@ -8,8 +8,8 @@ use std::{
     time::Duration,
 };
 
+use olo_kit::Proxy;
 use olo_protocol::{Client, Event, EventKind, OutputConfig, Reply, Request, Settings};
-use olo_ui::Proxy;
 
 use crate::Msg;
 

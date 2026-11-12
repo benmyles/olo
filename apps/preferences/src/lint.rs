@@ -6,12 +6,11 @@
 //! app_server and no devices: the panels' links answer with their test
 //! data (`cfg(test)`).
 
-use olo_protocol::{Mode, OutputInfo, PowerStatus, Settings};
-use olo_ui::{
+use olo_kit::{
     WindowOptions,
-    gpui::AppContext as _,
     lint::{Lint, assert_clean},
 };
+use olo_protocol::{Mode, OutputInfo, PowerStatus, Settings};
 
 use crate::{PanelView, Prefs, panel::Panel, server::Server};
 
@@ -89,8 +88,11 @@ fn outputs() -> Vec<OutputInfo> {
     ]
 }
 
-fn prefs() -> Prefs {
-    Prefs {
+/// What every window shares, as the lint has it: the defaults, the
+/// made-up displays. (One lint works at a time: `Lint::new` waits.)
+fn fresh() {
+    crate::form::EVERY_RESET.store(false, std::sync::atomic::Ordering::Relaxed);
+    crate::set_for_tests(Prefs {
         settings: Some(Settings::default()),
         outputs: outputs(),
         outputs_in: true,
@@ -99,18 +101,19 @@ fn prefs() -> Prefs {
         server: Server::detached(),
         windows: Vec::new(),
         history: Default::default(),
-    }
+    });
 }
 
 #[test]
 fn ui_lint_every_panel() {
     let mut lint = Lint::new();
+    fresh();
     let mut found = Vec::new();
     // (AirPods isn't in the launcher's grid, but is a panel all the same.
     // Then again with every box's Reset showing, as when changed.)
     let panels = Panel::ALL.iter().chain(&[Panel::AirPods]);
     for (&panel, every_reset) in panels.clone().map(|p| (p, false)).chain(panels.filter(|p| p.resettable()).map(|p| (p, true))) {
-        crate::form::EVERY_RESET.with(|c| c.set(every_reset));
+        crate::form::EVERY_RESET.store(every_reset, std::sync::atomic::Ordering::Relaxed);
         let (w, h) = panel.size();
         // (As Preferences opens it: following what it shows.)
         let options = WindowOptions::new(panel.title(), w as f32, h as f32).fits_content();
@@ -120,12 +123,9 @@ fn ui_lint_every_panel() {
             Panel::Security => lint.keeps_room(100.0, "a finger being enrolled in Touch ID: what to do, a progress bar and Cancel"),
             _ => &mut lint,
         };
-        for f in lint.window(&options, move |window, cx| {
-            let prefs = cx.new(|_| prefs());
-            cx.new(|cx| PanelView::new(prefs, panel, Settings::default(), window, cx))
-        }) {
+        for f in lint.window(&options, move |cx| PanelView::new(panel, Settings::default(), cx)) {
             let with = if every_reset { " (every Reset showing)" } else { "" };
-            found.push(olo_ui::lint::Found { text: format!("{}{with}: {}", panel.title(), f.text), ..f });
+            found.push(olo_kit::lint::Found { text: format!("{}{with}: {}", panel.title(), f.text), ..f });
         }
     }
     assert_clean("Preferences' panels", &found);
@@ -136,16 +136,14 @@ fn ui_lint_every_panel() {
 #[test]
 fn ui_lint_display_colour() {
     let mut lint = Lint::new();
+    fresh();
     let (w, h) = Panel::Display.size();
     let options = WindowOptions::new(Panel::Display.title(), w as f32, h as f32).fits_content();
-    let found = lint.window(&options, move |window, cx| {
-        let prefs = cx.new(|_| prefs());
-        let view = cx.new(|cx| PanelView::new(prefs, Panel::Display, Settings::default(), window, cx));
-        view.update(cx, |v, _| {
-            if let crate::panel::State::Display(st) = &mut v.state {
-                crate::display::colour_tab(st);
-            }
-        });
+    let found = lint.window(&options, move |cx| {
+        let mut view = PanelView::new(Panel::Display, Settings::default(), cx);
+        if let crate::panel::State::Display(st) = &mut view.state {
+            crate::display::colour_tab(st);
+        }
         view
     });
     assert_clean("Display's Colour tab", &found);
@@ -157,16 +155,14 @@ fn ui_lint_display_colour() {
 #[test]
 fn ui_lint_keyboards_tab() {
     let mut lint = Lint::new();
+    fresh();
     let (w, h) = Panel::Keyboard.size();
     let options = WindowOptions::new(Panel::Keyboard.title(), w as f32, h as f32).fits_content();
-    let found = lint.window(&options, move |window, cx| {
-        let prefs = cx.new(|_| prefs());
-        let view = cx.new(|cx| PanelView::new(prefs, Panel::Keyboard, Settings::default(), window, cx));
-        view.update(cx, |v, _| {
-            if let crate::panel::State::Keyboard(st) = &mut v.state {
-                crate::keyboard::keyboards_tab(st);
-            }
-        });
+    let found = lint.window(&options, move |cx| {
+        let mut view = PanelView::new(Panel::Keyboard, Settings::default(), cx);
+        if let crate::panel::State::Keyboard(st) = &mut view.state {
+            crate::keyboard::keyboards_tab(st);
+        }
         view
     });
     assert_clean("Keyboard's Keyboards tab", &found);
@@ -177,16 +173,16 @@ fn ui_lint_keyboards_tab() {
 #[test]
 fn ui_lint_command_suggestions() {
     let mut lint = Lint::new();
+    fresh();
     let mut found = Vec::new();
     for (v, name) in crate::complete::lint_states().into_iter().enumerate() {
         let (w, h) = Panel::Terminal.size();
         let options = WindowOptions::new(Panel::Terminal.title(), w as f32, h as f32);
-        for f in lint.window(&options, move |window, cx| {
+        for f in lint.window(&options, move |cx| {
             crate::complete::LINT.with(|l| l.set(v));
-            let prefs = cx.new(|_| prefs());
-            cx.new(|cx| PanelView::new(prefs, Panel::Terminal, Settings::default(), window, cx))
+            PanelView::new(Panel::Terminal, Settings::default(), cx)
         }) {
-            found.push(olo_ui::lint::Found { text: format!("Terminal, {name}: {}", f.text), ..f });
+            found.push(olo_kit::lint::Found { text: format!("Terminal, {name}: {}", f.text), ..f });
         }
     }
     assert_clean("Terminal's command suggestions", &found);
@@ -198,15 +194,13 @@ fn ui_lint_command_suggestions() {
 #[test]
 fn ui_lint_the_palm_trainer() {
     let mut lint = Lint::new();
+    fresh();
     let mut found = Vec::new();
     for (w, h) in [(1280.0, 800.0), (1512.0, 982.0)] {
         for (name, step, v) in crate::palm_trainer::lint_states() {
             let options = WindowOptions::new("Train for Your Palm", w, h).fullscreen();
-            for f in lint.window(&options, move |_, cx| {
-                let prefs = cx.new(|_| prefs());
-                cx.new(|cx| crate::palm_trainer::TrainerWindow::for_lint(prefs, step, v, cx))
-            }) {
-                found.push(olo_ui::lint::Found { text: format!("{w}×{h}, {name}: {}", f.text), ..f });
+            for f in lint.window(&options, move |cx| crate::palm_trainer::TrainerWindow::for_lint(step, v, cx)) {
+                found.push(olo_kit::lint::Found { text: format!("{w}×{h}, {name}: {}", f.text), ..f });
             }
         }
     }
@@ -218,14 +212,12 @@ fn ui_lint_the_palm_trainer() {
 #[test]
 fn ui_lint_try_voice() {
     let mut lint = Lint::new();
+    fresh();
     let mut found = Vec::new();
     for (name, phase) in crate::voice_try::lint_states() {
         let options = WindowOptions::new("Try Voice Processing", 760.0, 600.0);
-        for f in lint.window(&options, move |_, cx| {
-            let prefs = cx.new(|_| prefs());
-            cx.new(|cx| crate::voice_try::TryWindow::for_lint(prefs, phase, cx))
-        }) {
-            found.push(olo_ui::lint::Found { text: format!("{name}: {}", f.text), ..f });
+        for f in lint.window(&options, move |cx| crate::voice_try::TryWindow::for_lint(phase, cx)) {
+            found.push(olo_kit::lint::Found { text: format!("{name}: {}", f.text), ..f });
         }
     }
     assert_clean("Try Voice Processing", &found);
@@ -262,19 +254,17 @@ fn ui_lint_settings_index() {
     use std::fmt::Write as _;
     const ROLES: &[&str] = &["CheckBox", "RadioButton", "Slider", "ComboBox", "TextInput", "Button", "ColorWell"];
     let mut lint = Lint::new();
+    fresh();
     let mut rows: Vec<(String, String, String, String, String)> = Vec::new();
     for &panel in Panel::ALL.iter().filter(|p| **p != Panel::About) {
         let (w, h) = panel.size();
         // (As Preferences opens it: following what it shows.)
         let options = WindowOptions::new(panel.title(), w as f32, h as f32).fits_content();
-        let trees = lint.trees(&options, move |window, cx| {
-            let prefs = cx.new(|_| prefs());
-            cx.new(|cx| PanelView::new(prefs, panel, Settings::default(), window, cx))
-        });
+        let trees = lint.trees(&options, move |cx| PanelView::new(panel, Settings::default(), cx));
         let tabs = trees.len();
         let mut found: Vec<(String, String, String, String)> = Vec::new();
         for (tab, nodes) in trees {
-            let inside = |n: &olo_ui::commands::UiNode, o: &olo_ui::commands::UiNode| {
+            let inside = |n: &olo_kit::commands::UiNode, o: &olo_kit::commands::UiNode| {
                 let (cx, cy) = (n.x + n.width / 2.0, n.y + n.height / 2.0);
                 o.x <= cx && cx <= o.x + o.width && o.y <= cy && cy <= o.y + o.height
             };
@@ -282,14 +272,19 @@ fn ui_lint_settings_index() {
                 let name = n.name.as_deref().unwrap_or("").trim().trim_end_matches(':').trim().to_owned();
                 // (A list's rows are what's in it, not settings: a device's
                 // buttons, a made-up one's name.)
-                if name.is_empty() || nodes.iter().any(|o| matches!(o.role.as_str(), "Row" | "ListItem") && inside(n, o)) {
+                // (A row scrolled out of sight is under nothing: the kit
+                // keeps a list's drawing whole, and says which rows show.)
+                if name.is_empty() || nodes.iter().any(|o| matches!(o.role.as_str(), "Row" | "ListItem") && !o.offscreen && inside(n, o)) {
                     continue;
                 }
                 // Not settings: a scroll bar's arrows, every panel's
                 // Defaults and Revert, a field's own Use Default, a state
                 // shown as a button, a problem's fix (there only while it
                 // is), the made-up displays' buttons.
-                if (n.role == "Button" && (name.starts_with("Scroll ") || matches!(name.as_str(), "Defaults" | "Revert" | "Use Default" | "Searching…" | "Fix in Olo Doctor…"))) || this_machines(&name)
+                // (And the screen saver's Test, which the index never had:
+                // on GPUI it lay under a module's row scrolled out of sight.)
+                if (n.role == "Button" && (name.starts_with("Scroll ") || matches!(name.as_str(), "Defaults" | "Revert" | "Use Default" | "Searching…" | "Fix in Olo Doctor…" | "Test")))
+                    || this_machines(&name)
                 {
                     continue;
                 }

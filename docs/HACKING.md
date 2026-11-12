@@ -278,7 +278,10 @@ message):
   `--env OLO_PAINT_MEMO=0`),
   `tools/dev/scroll-check` (smoothness and the first frame's latency;
   `--trace` for each frame), `tools/dev/perf-fuzz` (stalls, slow
-  answers, growth).
+  answers, growth). Not beside a build: with cargo on every core the
+  same gallery that scrolls 0.95 to 1.04 times as far as the fingers,
+  no frame skipped, read 0.00 to 2.20 with five skipped. Look at
+  `uptime` first, and wait for a build to end.
 * Where a GPUI app's frame goes: `OLO_FRAME_PHASES=1` prints each
   frame's layout, paint, scene finish and present (which waits for the
   previous frame's GPU work), how many sprites, quads and paint
@@ -794,8 +797,10 @@ fn main() {
   socket answers, per window, the frames drawn since the last ask and
   the slowest and total time drawing them (`FrameTimes`, microseconds
   from taking input to handing the frame to the GPU), each frame's mark
-  (when, how long, where its scroll views were: `Window::note_scroll`,
-  which a ScrollView and a ColumnListView each call as they paint)
+  (when, how long, where its scroll views were: on olo-kit, each
+  scroller's place as the display thread drew it, kept by its `Stage`;
+  on GPUI `Window::note_scroll`, which a ScrollView and a
+  ColumnListView each called as they painted)
   and the GPU drawing them. The UI thread answers it, so how long the
   answer takes is how long the app would keep a person waiting
   (`tools/dev/perf-fuzz`).
@@ -1141,6 +1146,14 @@ goes: held, one timer wakes the window for its going, and once gone
 nothing runs. False if there's no such control. Preferences uses it
 for `--show` (the command palette's settings); an agent can use it to
 show the person what it's talking about.
+
+On olo-kit it is `olo_kit::spotlight::show(cx, group, name)`, for the
+window `cx` is: the same ring, drawn by the window's `Frame` over all
+else (a drawing that asks to be drawn again only while it comes and
+goes, and once for its going). It clicks no tab: the app shows the tab
+first (Preferences tells its panel, `PanelMsg::Show`) and lights the
+control once that has drawn (and tries again a few times while a panel
+still waits for what it shows).
 
 ### What every app does the same way
 
@@ -2048,7 +2061,10 @@ event reaches it.
   with the row (for the app to carry it: DiskUsage's Collector). Columns
   wider together than the view scroll sideways under a horizontal bar.
   `ListModel::reveal(row)` scrolls a row selected in code into the
-  middle; `typing()` says a name is being typed (a space is part of
+  middle (olo-kit: `reveal(cx, row)`, once the list is next laid out,
+  `ScrollHandle::reveal_in_middle`: a list not yet shown has no view to
+  centre it in, and a time zone's list opened at its top);
+  `typing()` says a name is being typed (a space is part of
   it). Agents read `Row`s (named by their cells' text, selected or
   not) and `ColumnHeader`s (one scrolled out of view sideways is none
   wide at the view's edge, not clickable). `row_key(|row, cx| u64)`:
@@ -3539,12 +3555,21 @@ for a day.
 Each headless screen draws at its mode's rate (60 or 120 Hz), on time:
 check anything that moves at 120 Hz too. Every kit app's `{"frames":true}`
 (on its `olo-menus-PID.sock`) answers with each frame it drew since the
-last ask, the last 1200 (`FrameMark`): when it began (CLOCK_MONOTONIC
-µs, app_server's clock), how long it took, its parts (`ui_us`, laying
-out and painting: the app's code and GPUI's; `submit_us`, the rest:
-recording, submitting and presenting), and where
+last ask, the last 1200 (`FrameMark`): when it began to be drawn
+(CLOCK_MONOTONIC µs, app_server's clock), how long it took, its parts
+(`ui_us`, laying out and painting: the app's code and the kit's, on
+olo-kit the looper's work on what the frame shows; `submit_us`, the
+rest: recording, submitting and presenting), and where
 each scroll view showed its content from and how far it scrolls
 (`[x, y, max x, max y]`: past either end, it's pulled past its edge).
+On olo-kit the display thread makes the marks (`Stage::draw_frame`,
+`FrameStats`): a frame is marked when it's drawn, not when what led to
+it began (a scroll's event, the looper taking input), since how evenly
+frames come is read from the marks; and commits that changed nothing
+to draw leave nothing behind for the next frame's mark (it once said
+it began when they had, and counted their work as its own: a frame
+after an idle second read as a late one, and the benchmark found no
+frame at all in a launch).
 
 `tools/dev/scroll-check NAME --app NAME` measures scrolling with them: on
 a long list under the pointer it drives a steady two-finger scroll (at a
@@ -4042,10 +4067,8 @@ frame that first draws them, and app_server's memory the same).
 
 `tools/dev/bench` is the speed benchmark, every app against the 120 Hz
 budget (rule 9). On release builds (`cargo build --release --workspace`,
-then `cargo build --release -p olo-ui --examples` for the kit's gallery,
-apart: in one go cargo builds the apps with GPUI's test support, and
-those mark no frames; `TSESSION_PROFILE=release` makes tsession run
-them) it
+then `cargo build --release -p olo-kit --examples` for the kit's
+gallery; `TSESSION_PROFILE=release` makes tsession run them) it
 starts a session of its own ("bench": a 3456×2234 screen, a 16" MacBook
 Pro's, at 120 Hz, with the shell) and a sandbox home under
 /var/tmp/olo-bench filled with what makes apps work (a 20,000-line
@@ -4057,7 +4080,9 @@ Preferences, the palette, the emoji picker (shown, typed in, walked,
 wheeled, hidden and shown again: a resident picker's usual open),
 Passwords, Screenshot, Telegram with a pretend
 account of 3,000 chats) through what people
-do: launched and zoomed to fill the screen, left to load, idle for a
+do: launched and zoomed to fill the screen, left to load (its frames
+from when it was started: an app with nothing to load draws once,
+before its window is listed, and is done), idle for a
 second (it should draw nothing), the pointer swept over it, each scroll
 view scrolled (fingers, a flick and its glide, wheel notches, judged as
 scroll-check does), its tabs clicked, its menus opened and walked, a
@@ -4419,10 +4444,32 @@ launcher lists them. The panel list Deskbar shows is
 `olo_xdg::apps::PREFERENCE_PANELS`; a unit test keeps it in step with
 `panel::Panel`.
 
-On Olo's GPUI. The `Prefs` entity (main.rs) keeps the settings,
-app_server's displays and power state, and the windows; each panel's
+On olo-kit. `Prefs` (main.rs) keeps the settings, app_server's
+displays and power state, the undo history and the windows, behind a
+lock (`prefs()`): each window is a view on a looper of its own, and
+takes it to say what it shows and to change a setting (`Prefs::edit_as`
+sends the settings and tells every window to say what it shows again),
+never while it's held, letting go before it calls the kit. Each panel's
 window is a `PanelView` (its panel, the settings as they were when it
-opened, its own `panel::State` and text fields).
+opened, its own `panel::State` and text fields); the launcher a view of
+its own. A panel is built by its `ui(&mut Ui, …)` function through
+`form::Ui`, which hands a control its callback (`edit`, `bind`,
+`on_view`, `on_click_view`: the kit's shapes, a value by reference and
+the window's context). What a panel's worker finds comes as
+`Msg::Redraw` through `olo_kit::proxy()` (every window says what it
+shows again); a window of its own (the palm trainer, Try Voice
+Processing, a Wi-Fi network's enterprise sheet) is told by its own
+messenger. A file panel answers on its own looper: its callback reaches
+the panel's view by `Cx::doer`. A text field is its panel's (`Child`);
+what a callback keeps of it is a `ViewRef`, and a field's text is read
+from the panel's state in the callback (`on_click_view`). A drawing
+that takes the pointer itself (the display arrangement, the calendar,
+a corner's monitor, the shortcuts) only draws, and leaves where it put
+things in a cell its element's listeners read (`on_mouse_down`, and
+`on_window_mouse_move`/`up` for a drag), or they go by
+`cx.listener_bounds()`. The layout lint's windows are made on loopers
+too, so what its tests share is the same `Prefs` (`set_for_tests`, one
+lint at a time).
 
 * Settings that live in app_server come over IPC (`server.rs`): a watcher
   thread follows `SettingsChanged` / `OutputsChanged`, a writer thread sends
@@ -4437,7 +4484,8 @@ opened, its own `panel::State` and text fields).
   Backup by theirs). Undo puts back just those settings and Redo makes
   them what they became, so what changed meanwhile elsewhere (Deskbar, an
   agent, another panel) stays. A slider dragged or a field typed in is one
-  step. ⌘Z and ⇧⌘Z in any panel's window (no menu bar: `undo::keys`), and
+  step. ⌘Z and ⇧⌘Z in any panel's window (no menu bar: the kit's
+  `Frame` hands them to the view's `command`, "undo" and "redo"), and
   Edit ▸ Undo and Redo for the command palette and agents
   (`agent::set_menus`; `{"invoke":"undo"}`). One history for every panel.
 * Each panel module has `ui(ui: &mut form::Ui, ..)`: `form.rs` collects the
@@ -4515,7 +4563,7 @@ opened, its own `panel::State` and text fields).
   `generic_group` names their boxes as on any computer). The command
   palette lists them; `olo-preferences PANEL --tab TAB --group BOX
   --show NAME` opens the panel (or brings it forward) with the control
-  lit (`olo_ui::spotlight`), once the window has drawn.
+  lit (`olo_kit::spotlight`), once the window has drawn.
 * **Integrations** (`integrations.rs`) is where every service Olo works
   with is connected, and only there: one box per service with its own
   icon (the service's mark made an Olo object, drawn for every theme as
@@ -6482,6 +6530,16 @@ Chrome, GTK 4.16 text), and how Olo does it:
     one-point border was a pixel and a half at 1.5×: a line with a smear
     beside it, and where its clip's edge fell on the pixels' centres the
     smear ran along part of an edge only (sudo's command box).
+  - *A drawing kept lands where a fresh one would* (olo-kit). What a
+    node drew is kept and moved with it when layout puts it elsewhere,
+    if that's by whole device pixels; a drawing of the app's own (a
+    canvas) only if by whole points too, else it's drawn again
+    (`WindowCore::place`). What a drawing rounds to a point (a check
+    box's square: its middle less 6.5 points, rounded) comes out a
+    pixel elsewhere half a point along at 2×: moved, a square sat a
+    pixel off its label until something drew it again. (What scrolls
+    moves as one in its layer, by device pixels, and isn't drawn again:
+    nothing in it jitters.)
   - *A window's viewport* (olo-kit) is its own size in points, while
     what's laid out is its buffer's (`round(size × scale)` pixels over
     the scale). Set from the buffer's size cut to whole points, a

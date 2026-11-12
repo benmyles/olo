@@ -4,12 +4,11 @@
 //! (address, router), with DNS servers of its own, applied at once
 //! without disconnecting (`nm::set_addressing_in`, then `Reapply`).
 
-use olo_system::network::{self as nm, Device, Kind, Status};
-use olo_ui::{
-    gpui::{Context, Entity, IntoElement, ParentElement as _, SharedString, Styled as _, div, px},
-    metrics as m,
+use olo_kit::{
+    Child, Cx, IntoElement, ParentElement as _, SharedString, Styled as _, WindowCx, div, metrics as m, px,
     widgets::{Button, MenuField, StringView, TextControl, TextField},
 };
+use olo_system::network::{self as nm, Device, Kind, Status};
 
 use super::{Extra, Request, State, field, state_of};
 use crate::{PanelView, form::Ui};
@@ -21,18 +20,18 @@ const DIVIDER: f32 = 132.0;
 pub struct Edit {
     device: usize,
     manual: bool,
-    address: Entity<TextField>,
-    gateway: Entity<TextField>,
-    dns: Entity<TextField>,
+    address: Child<TextField>,
+    gateway: Child<TextField>,
+    dns: Child<TextField>,
     ipv6: nm::Ipv6,
-    mtu: Entity<TextField>,
+    mtu: Child<TextField>,
     /// What the fields were filled from (the link, its connection's
     /// settings): filled again as that changes, not as it's typed in.
     loaded: Option<(String, nm::Addressing)>,
 }
 
 impl Edit {
-    pub fn new(cx: &mut Context<PanelView>) -> Edit {
+    pub fn new(cx: &mut Cx<PanelView>) -> Edit {
         Edit {
             device: 0,
             manual: false,
@@ -48,7 +47,7 @@ impl Edit {
     /// The settings as the fields have them (from DHCP, the address and
     /// router shown are DHCP's, not settings); Err if the MTU isn't a
     /// number.
-    fn edited(&self, cx: &olo_ui::gpui::App) -> Result<nm::Addressing, String> {
+    fn edited(&self, cx: &WindowCx) -> Result<nm::Addressing, String> {
         let dns = self.dns.read(cx).text().split([',', ' ']).map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned).collect();
         let mtu = match self.mtu.read(cx).text().trim() {
             "" => 0,
@@ -96,9 +95,9 @@ pub fn ui(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: boo
     e.device = e.device.min(wired.len() - 1);
     if wired.len() > 1 {
         let names: Vec<SharedString> = wired.iter().map(|d| SharedString::from(d.interface.clone())).collect();
-        let pick = ui.on_view(|v, i: usize, _, cx| {
+        let pick = ui.on_view(|v, i: &usize, cx| {
             if let Some(st) = state_of(v) {
-                st.eth.device = i;
+                st.eth.device = *i;
             }
             cx.notify();
         });
@@ -141,30 +140,30 @@ pub fn ui(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: boo
     let edited = e.edited(ui.cx);
     let valid = edited.as_ref().map_err(String::clone).and_then(|a| a.check().map_err(|e| format!("{}{}.", e[..1].to_uppercase(), &e[1..])));
     let changed = (profile.is_some() && edited.as_ref().is_ok_and(|a| *a != saved)) || edited.is_err();
-    let (address, gateway, dns, mtu, ipv6) = (e.address.clone(), e.gateway.clone(), e.dns.clone(), e.mtu.clone(), e.ipv6);
+    let (address, gateway, dns, mtu, ipv6) = (&e.address, &e.gateway, &e.dns, &e.mtu, e.ipv6);
     ui.bbox("TCP/IP", |ui| {
         let how: Vec<SharedString> = ["Using DHCP", "Manually"].into_iter().map(SharedString::from).collect();
-        let choose = ui.on_view(|v, i: usize, _, cx| {
+        let choose = ui.on_view(|v, i: &usize, cx| {
             if let Some(st) = state_of(v) {
-                st.eth.manual = i == 1;
+                st.eth.manual = *i == 1;
             }
             cx.notify();
         });
         ui.add(MenuField::new("ethernet-ipv4", how, usize::from(manual)).label("Configure IPv4:").divider(DIVIDER).enabled(profile.is_some()).on_change(choose));
-        ui.add(TextControl::new(address).label("IP address:").divider(DIVIDER));
-        ui.add(TextControl::new(gateway).label("Router:").divider(DIVIDER));
-        ui.add(TextControl::new(dns).label("DNS servers:").divider(DIVIDER));
+        ui.add(TextControl::new(ui.cx, address).label("IP address:").divider(DIVIDER));
+        ui.add(TextControl::new(ui.cx, gateway).label("Router:").divider(DIVIDER));
+        ui.add(TextControl::new(ui.cx, dns).label("DNS servers:").divider(DIVIDER));
         let choices = ipv6_choices(ipv6);
         let names: Vec<SharedString> = choices.iter().map(|(_, n)| SharedString::from(*n)).collect();
         let at = choices.iter().position(|(c, _)| *c == ipv6).unwrap_or(0);
-        let pick6 = ui.on_view(move |v, i: usize, _, cx| {
-            if let (Some(st), Some((c, _))) = (state_of(v), choices.get(i)) {
+        let pick6 = ui.on_view(move |v, i: &usize, cx| {
+            if let (Some(st), Some((c, _))) = (state_of(v), choices.get(*i)) {
                 st.eth.ipv6 = *c;
             }
             cx.notify();
         });
         ui.add(MenuField::new("ethernet-ipv6", names, at).label("Configure IPv6:").divider(DIVIDER).enabled(profile.is_some()).on_change(pick6));
-        ui.add(TextControl::new(mtu).label("MTU:").divider(DIVIDER));
+        ui.add(TextControl::new(ui.cx, mtu).label("MTU:").divider(DIVIDER));
         ui.note(if profile.is_none() {
             "Connect it once to have settings of its own."
         } else {
@@ -173,14 +172,14 @@ pub fn ui(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: boo
         if let (true, Err(why)) = (changed, &valid) {
             ui.label(why.clone());
         }
-        let revert = ui.on_click_view(|v, _, cx| {
+        let revert = ui.on_click_view(|v, cx| {
             if let Some(st) = state_of(v) {
                 st.eth.loaded = None;
             }
             cx.notify();
         });
         let (profile, device) = (profile.clone(), d.path.clone());
-        let apply = ui.on_click_view(move |v, _, cx| {
+        let apply = ui.on_click_view(move |v, cx| {
             let Some(st) = state_of(v) else { return };
             if let (Some(profile), Ok(ipv4)) = (profile.clone(), st.eth.edited(cx))
                 && ipv4.check().is_ok()
@@ -197,10 +196,10 @@ pub fn ui(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: boo
                 .child(div().flex_1())
                 .child(Button::new("Revert").enabled(changed && !busy).on_click(revert))
                 .child(Button::new("Apply").default(changed).enabled(changed && valid.is_ok() && !busy).on_click(apply))
-                .into_any_element(),
+                .into_element(),
         );
     });
     let none = "—".to_owned();
-    let traffic = nm::traffic(&d.interface).map(|(r, s)| format!("{} received, {} sent", olo_ui::files::format_size(r), olo_ui::files::format_size(s))).unwrap_or_else(|| none.clone());
+    let traffic = nm::traffic(&d.interface).map(|(r, s)| format!("{} received, {} sent", olo_kit::files::format_size(r), olo_kit::files::format_size(s))).unwrap_or_else(|| none.clone());
     super::rows(ui, DIVIDER, &[("Hardware address:", if d.hw_address.is_empty() { none.clone() } else { d.hw_address.clone() }), ("Interface:", d.interface.clone()), ("Traffic:", traffic)]);
 }

@@ -8,15 +8,15 @@ use std::{
         Arc, OnceLock,
         mpsc::{Sender, channel},
     },
-    time::{Duration, Instant},
+    time::Instant,
 };
 
-use olo_sync::Mutex;
-use olo_system::audio::{self, Devices, Kind};
-use olo_ui::{
-    gpui::{Context, ParentElement as _, SharedString, Styled as _, div, px},
+use olo_kit::{
+    Cx, ParentElement as _, SharedString, Styled as _, div, px,
     widgets::{Button, CheckBox, EmptyState, MenuField, Slider},
 };
+use olo_sync::Mutex;
+use olo_system::audio::{self, Devices, Kind};
 
 use crate::{Msg, PanelView, form::Ui, panel};
 use olo_protocol::voice;
@@ -94,7 +94,7 @@ fn test_devices() -> Devices {
 
 /// The sound server's watcher and the worker that changes it (one for
 /// the app), telling the windows through `proxy` when anything changes.
-fn link(proxy: olo_ui::Proxy) -> &'static Link {
+fn link(proxy: olo_kit::Proxy) -> &'static Link {
     static LINK: OnceLock<Link> = OnceLock::new();
     LINK.get_or_init(|| {
         let devices: Shared = Default::default();
@@ -117,7 +117,7 @@ fn link(proxy: olo_ui::Proxy) -> &'static Link {
                 }
             }
         };
-        if let Some(w) = olo_ui::watch::watch([voice::State::path(), voice::Settings::path()], read) {
+        if let Some(w) = olo_kit::watch::watch([voice::State::path(), voice::Settings::path()], read) {
             // The app's, for as long as it runs.
             std::mem::forget(w);
         }
@@ -180,8 +180,8 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(cx: &mut Context<PanelView>) -> State {
-        State { dragging: None, link: link(olo_ui::proxy(cx)) }
+    pub fn new(_cx: &mut Cx<PanelView>) -> State {
+        State { dragging: None, link: link(olo_kit::proxy()) }
     }
 }
 
@@ -199,7 +199,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         Some(None) => return ui.add(EmptyState::new("No sound server is running.").icon("sound")),
         Some(Some(d)) => d,
     };
-    if st.dragging.as_ref().is_some_and(|(.., at)| at.elapsed() > Duration::from_millis(600)) {
+    if st.dragging.as_ref().is_some_and(|(.., at)| at.elapsed() > crate::form::HELD) {
         st.dragging = None;
     }
     // (Two columns: the devices, and what's done to the voice.)
@@ -232,16 +232,12 @@ fn voice_section(ui: &mut Ui, st: &mut State, devices: &Devices) {
     let save = move |s: voice::Settings| _ = tx.send(Change::Voice(s));
     ui.bbox("Voice Processing", |ui| {
         let s2 = save.clone();
-        ui.add(CheckBox::new("Clean up the microphone's sound", settings.enabled).on_toggle(move |on, _, _| s2(voice::Settings { enabled: on, ..settings })));
+        ui.add(CheckBox::new("Clean up the microphone's sound", settings.enabled).on_toggle(move |on, _| s2(voice::Settings { enabled: *on, ..settings })));
         let modes: Vec<SharedString> = voice::Mode::ALL.iter().map(|m| SharedString::from(m.label())).collect();
         let at = voice::Mode::ALL.iter().position(|m| *m == settings.mode).unwrap_or(0);
         let s2 = save.clone();
         ui.add(
-            MenuField::new("voice-mode", modes, at)
-                .label("Tuned for:")
-                .divider(130.0)
-                .enabled(settings.enabled)
-                .on_change(move |i, _, _| s2(voice::Settings { mode: voice::Mode::ALL[i], ..settings })),
+            MenuField::new("voice-mode", modes, at).label("Tuned for:").divider(130.0).enabled(settings.enabled).on_change(move |i, _| s2(voice::Settings { mode: voice::Mode::ALL[*i], ..settings })),
         );
         let levels: Vec<SharedString> = voice::Noise::ALL.iter().map(|n| SharedString::from(n.label())).collect();
         let at = voice::Noise::ALL.iter().position(|n| *n == settings.noise).unwrap_or(0);
@@ -251,7 +247,7 @@ fn voice_section(ui: &mut Ui, st: &mut State, devices: &Devices) {
                 .label("Background noise:")
                 .divider(130.0)
                 .enabled(settings.enabled)
-                .on_change(move |i, _, _| s2(voice::Settings { noise: voice::Noise::ALL[i], ..settings })),
+                .on_change(move |i, _| s2(voice::Settings { noise: voice::Noise::ALL[*i], ..settings })),
         );
         // Which model takes it out: the voice 20 ms sooner with the
         // low-delay one.
@@ -263,18 +259,16 @@ fn voice_section(ui: &mut Ui, st: &mut State, devices: &Devices) {
                 .label("Noise model:")
                 .divider(130.0)
                 .enabled(settings.enabled && settings.noise != voice::Noise::Off)
-                .on_change(move |i, _, _| s2(voice::Settings { model: voice::Model::ALL[i], ..settings })),
+                .on_change(move |i, _| s2(voice::Settings { model: voice::Model::ALL[*i], ..settings })),
         );
         let s2 = save.clone();
-        ui.add(
-            CheckBox::new("Cancel echo from the speakers", settings.echo_cancellation).enabled(settings.enabled).on_toggle(move |on, _, _| s2(voice::Settings { echo_cancellation: on, ..settings })),
-        );
+        ui.add(CheckBox::new("Cancel echo from the speakers", settings.echo_cancellation).enabled(settings.enabled).on_toggle(move |on, _| s2(voice::Settings { echo_cancellation: *on, ..settings })));
         let s2 = save.clone();
         // Trying it on your own voice (each setting, heard and measured) at
         // the last setting's right: alone at the box's foot it sat nearly
         // level with the other column's controls. As tall as the button,
         // the check box's text shares its baseline.
-        let (prefs, microphone) = (ui.prefs(), state.microphone.clone());
+        let microphone = state.microphone.clone();
         ui.add(
             div()
                 .flex()
@@ -282,15 +276,13 @@ fn voice_section(ui: &mut Ui, st: &mut State, devices: &Devices) {
                 .items_center()
                 .child(
                     CheckBox::new("Even out the voice's level", settings.normalize)
-                        .height(olo_ui::metrics::CONTROL_HEIGHT)
+                        .height(olo_kit::metrics::CONTROL_HEIGHT)
                         .enabled(settings.enabled)
-                        .on_toggle(move |on, _, _| s2(voice::Settings { normalize: on, ..settings })),
+                        .on_toggle(move |on, _| s2(voice::Settings { normalize: *on, ..settings })),
                 )
                 .child(div().flex_1())
                 .child(Button::new("Try It…").on_click(move |_, cx| {
-                    if let Some(p) = prefs.upgrade() {
-                        crate::voice_try::open(p, settings, microphone.clone(), cx);
-                    }
+                    crate::voice_try::open(settings, microphone.clone(), cx);
                 })),
         );
         ui.note(voice_note(&state, &settings, devices));
@@ -346,19 +338,18 @@ fn airpods_output(ui: &mut Ui, dev: &audio::Device) {
         let address = address.clone();
         ui.add(div().flex().flex_row().child(Button::new("Use Music Quality").on_click(move |_, cx| crate::airpods::ask(cx, Request::Quality { address: address.clone(), high: true }))));
     }
-    let mut row = div().flex().flex_row().items_center().gap(px(olo_ui::metrics::SPACING));
+    let mut row = div().flex().flex_row().items_center().gap(px(olo_kit::metrics::SPACING));
     if a.abilities.noise_control && a.linked {
         let modes: Vec<ListeningMode> = ListeningMode::ALL.into_iter().filter(|m| *m != ListeningMode::Adaptive || a.abilities.adaptive).collect();
         let names: Vec<SharedString> = modes.iter().map(|m| SharedString::from(m.label())).collect();
         let at = a.settings.listening_mode.and_then(|m| modes.iter().position(|x| *x == m)).unwrap_or(0);
         let address = address.clone();
-        row = row.child(MenuField::new("sound-noise-control", names, at).label("Noise control:").on_change(move |i, _, cx| {
-            crate::airpods::ask(cx, Request::Set { address: address.clone(), change: Change::ListeningMode(modes[i]) });
+        row = row.child(MenuField::new("sound-noise-control", names, at).label("Noise control:").on_change(move |i, cx| {
+            crate::airpods::ask(cx, Request::Set { address: address.clone(), change: Change::ListeningMode(modes[*i]) });
         }));
     }
-    let prefs = ui.prefs();
-    row = row.child(div().flex_1()).child(Button::new("AirPods Settings…").on_click(move |_, cx| {
-        let _ = prefs.update(cx, |p, cx| p.open("airpods", cx));
+    row = row.child(div().flex_1()).child(Button::new("AirPods Settings…").on_click(move |_, _cx| {
+        crate::prefs().open("airpods");
     }));
     ui.add(row);
 }
@@ -377,9 +368,9 @@ fn airpods_input(ui: &mut Ui) {
         MicrophoneChoice::Computer | MicrophoneChoice::AirPods => "AirPods keep playing at music quality while you record.",
         MicrophoneChoice::AirPodsHeadset => "AirPods play at call quality while their microphone is used.",
     };
-    ui.add(MenuField::new("sound-airpods-mic", names, at).label("With AirPods:").divider(130.0).on_change(move |i, _, cx| {
+    ui.add(MenuField::new("sound-airpods-mic", names, at).label("With AirPods:").divider(130.0).on_change(move |i, cx| {
         let mut s = settings.clone();
-        s.microphone = choices[i].0;
+        s.microphone = choices[*i].0;
         crate::airpods::save_settings(cx, s);
     }));
     ui.note(note);
@@ -411,9 +402,9 @@ fn section(ui: &mut Ui, st: &mut State, devices: &Devices, kind: Kind) {
         }
         let current = if none_first && (devices.no_output || list.is_empty()) { 0 } else { list.iter().position(|d| d.is_default).unwrap_or(0) + usize::from(none_first) };
         let tx2 = tx.clone();
-        ui.add(MenuField::new(format!("sound-device-{title}"), names, current).label(menu_label).divider(130.0).on_change(move |i, _, _| {
-            if i != current {
-                let _ = tx2.send(Change::Default(kind, names_of[i].clone()));
+        ui.add(MenuField::new(format!("sound-device-{title}"), names, current).label(menu_label).divider(130.0).on_change(move |i, _| {
+            if *i != current {
+                let _ = tx2.send(Change::Default(kind, names_of[*i].clone()));
             }
         }));
         // Bluetooth devices connected with nothing playing through them:
@@ -424,7 +415,7 @@ fn section(ui: &mut Ui, st: &mut State, devices: &Devices, kind: Kind) {
                 if let Some(profile) = u.profile.clone() {
                     let (tx3, card) = (tx.clone(), u.card.clone());
                     let id = format!("sound-play-{card}");
-                    ui.add(olo_ui::widgets::Button::new("Play Sound Through It").id(id).on_click(move |_, _| _ = tx3.send(Change::CardProfile(card.clone(), profile.clone()))));
+                    ui.add(olo_kit::widgets::Button::new("Play Sound Through It").id(id).on_click(move |_, _| _ = tx3.send(Change::CardProfile(card.clone(), profile.clone()))));
                 }
             }
         }
@@ -439,19 +430,20 @@ fn section(ui: &mut Ui, st: &mut State, devices: &Devices, kind: Kind) {
         };
         let label = if kind == Kind::Output { "Volume" } else { "Input level" };
         let (name, channels, tx2) = (dev.name.clone(), dev.channels, tx.clone());
-        let on = ui.on_view(move |v, level: f32, _, cx| {
+        let on = ui.on_view(move |v, level: &f32, cx| {
             if let Some(st) = state_of(v) {
-                st.dragging = Some((kind, name.clone(), level, Instant::now()));
+                st.dragging = Some((kind, name.clone(), *level, Instant::now()));
             }
-            let _ = tx2.send(Change::Volume(kind, name.clone(), level, channels));
+            let _ = tx2.send(Change::Volume(kind, name.clone(), *level, channels));
+            crate::form::again_once_let_go(cx);
             cx.notify();
         });
         ui.add(Slider::new(format!("volume-{title}"), level, 0.0..=1.0).step(0.01).label(label).value_text(format!("{:.0}%", level * 100.0)).enabled(!dev.volume.muted).on_change(on));
         let name = dev.name.clone();
         // (An id of its own: the output's and the input's Mute, one id,
         // lost their clicks.)
-        ui.add(CheckBox::new("Mute", dev.volume.muted).id(format!("mute-{title}")).on_toggle(move |muted, _, _| {
-            let _ = tx.send(Change::Mute(kind, name.clone(), muted));
+        ui.add(CheckBox::new("Mute", dev.volume.muted).id(format!("mute-{title}")).on_toggle(move |muted, _| {
+            let _ = tx.send(Change::Mute(kind, name.clone(), *muted));
         }));
         if kind == Kind::Output {
             airpods_output(ui, &dev);

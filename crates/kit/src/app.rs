@@ -297,6 +297,8 @@ pub struct Frame {
     scroll: ScrollHandle,
     /// The window follows what it shows (`WindowOptions::fits_content`).
     fit: Option<Fit>,
+    /// A control lit to say "here" (`spotlight`): where, and since when.
+    lit: Option<(Bounds<Pixels>, Instant)>,
 }
 
 /// A window that follows what it shows: its size as designed, what its
@@ -330,6 +332,10 @@ pub enum FrameMessage {
     Displays,
     /// What it shows needs this height (`set_content_height`).
     ContentHeight(Option<f32>),
+    /// A control here is lit for a moment (`spotlight::show`).
+    Light(Bounds<Pixels>),
+    /// The lit control's moment is over.
+    Unlit,
 }
 
 /// The longest a window that fits what it shows holds back what it
@@ -536,6 +542,18 @@ impl View for Frame {
                     cx.invalidate();
                 }
             }
+            FrameMessage::Light(bounds) => {
+                self.lit = Some((bounds, Instant::now()));
+                cx.after(crate::spotlight::LIT, FrameMessage::Unlit);
+                cx.invalidate();
+            }
+            // (Lit again since: that one's own end comes.)
+            FrameMessage::Unlit => {
+                if self.lit.is_some_and(|(_, since)| since.elapsed() >= crate::spotlight::LIT) {
+                    self.lit = None;
+                    cx.invalidate();
+                }
+            }
         }
     }
 
@@ -549,6 +567,18 @@ impl View for Frame {
     }
 
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        let shown = self.shown(cx);
+        // Over all of it: a control lit to say "here" (`spotlight`).
+        match self.lit {
+            Some((bounds, since)) => shown.relative().child(crate::spotlight::ring(bounds, since)),
+            None => shown,
+        }
+    }
+}
+
+impl Frame {
+    /// The window's ground, its keys, and what it shows.
+    fn shown(&mut self, cx: &mut Cx<Self>) -> Element {
         let p = theme::palette();
         let mut root = div()
             .size_full()
@@ -756,6 +786,7 @@ fn framed<V: View, B: FnOnce(&mut Cx<V>) -> V>(mut options: WindowOptions, build
             content_height,
             scroll: ScrollHandle::new(),
             fit: fit_content.then(|| Fit { design, fixed, need: None, asked: None, resizing: None, scrolls: false, first }),
+            lit: None,
         }
     };
     (spec, frame)

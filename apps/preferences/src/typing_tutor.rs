@@ -8,12 +8,8 @@
 
 use std::time::Instant;
 
+use olo_kit::{Bounds, FontWeight, IntoElement, Painter, Pixels, Styled as _, agent, canvas, point, px, size, style};
 use olo_theme::{Hue, Palette, Rgba, mix, readable};
-use olo_ui::{
-    agent,
-    gpui::{App, Bounds, FontWeight, IntoElement, Pixels, Styled as _, Window, canvas, point, px, size},
-    style,
-};
 
 /// What to type, in turn: whole sentences, lower case, the letters
 /// spread over every finger.
@@ -123,7 +119,7 @@ fn rows() -> [Vec<Key>; 5] {
     [r0, r1, r2, r3, r4]
 }
 
-fn c(p: Rgba) -> olo_ui::gpui::Hsla {
+fn c(p: Rgba) -> olo_kit::Hsla {
     style::c(p)
 }
 
@@ -144,63 +140,50 @@ pub fn lesson(tutor: &Tutor) -> impl IntoElement {
         (None, Some(a)) => format!("{:.0}% right", a * 100.0),
         _ => "Start typing".to_owned(),
     };
-    canvas(
-        |_, _, _| {},
-        move |b, _, window, cx| {
-            let p = olo_ui::theme::palette(cx);
-            let r = style::snap(window, b);
-            let sheet = paper(&p);
-            style::fill_rect(window, r, c(sheet));
-            style::sunken(window, r, &p, false);
-            let inner = style::inset(window, r, 2.0);
-            let size_pt = 22.0;
-            let font = style::mono_font(FontWeight::NORMAL);
-            let baseline_y = inner.top() + px(f32::from(inner.size.height) * 0.48);
-            // The rule under the line, and the margin.
-            let rule = mix(sheet, p.hue(Hue::Blue), 0.35);
-            style::fill_rect(window, style::snap(window, Bounds::new(point(inner.left(), baseline_y + px(size_pt * 0.42)), size(inner.size.width, px(1.0)))), c(rule));
-            let margin_x = inner.left() + px(48.0);
-            style::fill_rect(window, style::snap(window, Bounds::new(point(margin_x, inner.top()), size(px(1.0), inner.size.height))), c(mix(sheet, p.hue(Hue::Red), 0.45)));
-            let ink = readable(p.document_text, sheet, 7.0);
-            let pale = mix(ink, sheet, 0.6);
-            let mut x = margin_x + px(16.0);
-            let (done, rest) = text.split_at(typed);
-            let mut chars = rest.chars();
-            let next = chars.next();
-            let after: String = chars.collect();
-            let y = baseline_y - px(size_pt * style::CAP_HEIGHT / 2.0);
-            if !done.is_empty() {
-                x = style::label(window, cx, x, y, style::Align::Left, done.to_owned(), size_pt, font.clone(), c(ink)).right();
-            }
-            if let Some(n) = next {
-                let shown = if n == ' ' { "␣".to_owned() } else { n.to_string() };
-                let w = style::text_width(window, "m", size_pt, font.clone());
-                let mark = if wrong { p.failure } else { p.hue(Hue::Yellow) };
-                let block = style::snap(window, Bounds::new(point(x - px(1.0), y - px(size_pt * 0.62)), size(w + px(2.0), px(size_pt * 1.24))));
-                style::fill_rect(window, block, c(mix(sheet, mark, 0.55)));
-                // The caret under it.
-                style::fill_rect(window, style::snap(window, Bounds::new(point(block.left(), block.bottom() - px(2.0)), size(block.size.width, px(2.0)))), c(readable(mark, sheet, 3.0)));
-                let r = style::label(window, cx, x, y, style::Align::Left, shown, size_pt, font.clone(), c(ink));
-                x = r.left() + w;
-            }
-            if !after.is_empty() {
-                style::label(window, cx, x, y, style::Align::Left, after.clone(), size_pt, font.clone(), c(pale));
-            }
-            // Speed and accuracy, small at the lower right.
-            style::label(
-                window,
-                cx,
-                inner.right() - px(12.0),
-                inner.bottom() - px(12.0),
-                style::Align::Right,
-                speed.clone(),
-                style::SMALL_SIZE,
-                style::ui_font(FontWeight::NORMAL),
-                c(mix(ink, sheet, 0.35)),
-            );
-            agent::record(window, cx, agent::Node { role: "Label", name: Some("Type this".into()), value: Some(text.into()), bounds: b, enabled: true, ..Default::default() });
-        },
-    )
+    canvas(move |g, b| {
+        let p = olo_kit::theme::palette();
+        let r = style::snap(g, b);
+        let sheet = paper(&p);
+        style::fill_rect(g, r, c(sheet));
+        style::sunken(g, r, &p, false);
+        let inner = style::inset(g, r, 2.0);
+        let size_pt = 22.0;
+        let font = style::mono_font(FontWeight::NORMAL);
+        let baseline_y = inner.top() + px(f32::from(inner.size.height) * 0.48);
+        // The rule under the line, and the margin.
+        let rule = mix(sheet, p.hue(Hue::Blue), 0.35);
+        style::fill_rect(g, style::snap(g, Bounds::new(point(inner.left(), baseline_y + px(size_pt * 0.42)), size(inner.size.width, px(1.0)))), c(rule));
+        let margin_x = inner.left() + px(48.0);
+        style::fill_rect(g, style::snap(g, Bounds::new(point(margin_x, inner.top()), size(px(1.0), inner.size.height))), c(mix(sheet, p.hue(Hue::Red), 0.45)));
+        let ink = readable(p.document_text, sheet, 7.0);
+        let pale = mix(ink, sheet, 0.6);
+        let mut x = margin_x + px(16.0);
+        let (done, rest) = text.split_at(typed);
+        let mut chars = rest.chars();
+        let next = chars.next();
+        let after: String = chars.collect();
+        let y = baseline_y - px(size_pt * style::CAP_HEIGHT / 2.0);
+        if !done.is_empty() {
+            x = style::label(g, x, y, style::Align::Left, done.to_owned(), size_pt, font.clone(), c(ink)).right();
+        }
+        if let Some(n) = next {
+            let shown = if n == ' ' { "␣".to_owned() } else { n.to_string() };
+            let w = style::text_width("m", size_pt, font.clone());
+            let mark = if wrong { p.failure } else { p.hue(Hue::Yellow) };
+            let block = style::snap(g, Bounds::new(point(x - px(1.0), y - px(size_pt * 0.62)), size(w + px(2.0), px(size_pt * 1.24))));
+            style::fill_rect(g, block, c(mix(sheet, mark, 0.55)));
+            // The caret under it.
+            style::fill_rect(g, style::snap(g, Bounds::new(point(block.left(), block.bottom() - px(2.0)), size(block.size.width, px(2.0)))), c(readable(mark, sheet, 3.0)));
+            let r = style::label(g, x, y, style::Align::Left, shown, size_pt, font.clone(), c(ink));
+            x = r.left() + w;
+        }
+        if !after.is_empty() {
+            style::label(g, x, y, style::Align::Left, after.clone(), size_pt, font.clone(), c(pale));
+        }
+        // Speed and accuracy, small at the lower right.
+        style::label(g, inner.right() - px(12.0), inner.bottom() - px(12.0), style::Align::Right, speed.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), c(mix(ink, sheet, 0.35)));
+        agent::record(g, agent::Node { role: "Label", name: Some("Type this".into()), value: Some(text.into()), bounds: b, enabled: true, ..Default::default() });
+    })
     .w_full()
     .h(px(96.0))
 }
@@ -208,11 +191,11 @@ pub fn lesson(tutor: &Tutor) -> impl IntoElement {
 /// The keyboard, each finger's keys in its colour, the next key (`next`)
 /// lit; the fingers resting on the home row (the one for the next key
 /// ringed) and the heels of the hands below, on the pad.
-pub fn keyboard(window: &mut Window, cx: &mut App, b: Bounds<Pixels>, next: Option<char>, p: &Palette) {
-    let r = style::snap(window, b);
-    style::sunken(window, r, p, false);
-    let deck = style::inset(window, r, 2.0);
-    style::fill_rect(window, deck, style::shade(p, p.panel_background, 0.94));
+pub fn keyboard(g: &mut Painter, b: Bounds<Pixels>, next: Option<char>, p: &Palette) {
+    let r = style::snap(g, b);
+    style::sunken(g, r, p, false);
+    let deck = style::inset(g, r, 2.0);
+    style::fill_rect(g, deck, style::shade(p, p.panel_background, 0.94));
     let (dw, dh) = (f32::from(deck.size.width), f32::from(deck.size.height));
     let u = (dw * 0.92 / 14.5).min(dh * 0.62 / 5.0);
     let left = deck.left() + px((dw - u * 14.5) / 2.0);
@@ -220,11 +203,11 @@ pub fn keyboard(window: &mut Window, cx: &mut App, b: Bounds<Pixels>, next: Opti
     let font = style::ui_font(FontWeight::NORMAL);
     let label_pt = (u * 0.4).clamp(8.0, 13.0);
     let next_finger = next.map(finger);
-    let mut homes: Vec<(usize, olo_ui::gpui::Point<Pixels>)> = Vec::new();
+    let mut homes: Vec<(usize, olo_kit::Point<Pixels>)> = Vec::new();
     for (row, keys) in rows().iter().enumerate() {
         let mut x = 0.0;
         for &(ch, label, w) in keys {
-            let k = style::snap(window, Bounds::new(point(left + px(x * u + 1.5), top + px(row as f32 * u + 1.5)), size(px(w * u - 3.0), px(u - 3.0))));
+            let k = style::snap(g, Bounds::new(point(left + px(x * u + 1.5), top + px(row as f32 * u + 1.5)), size(px(w * u - 3.0), px(u - 3.0))));
             x += w;
             let hue = match ch {
                 Some(ch) => p.hue(FINGER_HUES[finger(ch)]),
@@ -232,18 +215,18 @@ pub fn keyboard(window: &mut Window, cx: &mut App, b: Bounds<Pixels>, next: Opti
             };
             let lit = ch.is_some() && ch == next;
             let fill = if lit { hue } else { mix(p.control_background, hue, if ch.is_some() { 0.32 } else { 0.14 }) };
-            style::fill_rect(window, k, c(fill));
-            style::raised(window, k, p);
+            style::fill_rect(g, k, c(fill));
+            style::raised(g, k, p);
             if lit {
-                style::frame_rect(window, style::inset(window, k, -2.0), c(p.keyboard_navigation));
+                style::frame_rect(g, style::inset(g, k, -2.0), c(p.keyboard_navigation));
             }
             let ink = readable(p.control_text, fill, 4.5);
             let pt = if label.chars().count() > 1 { label_pt * 0.75 } else { label_pt };
-            style::label(window, cx, k.center().x, k.center().y, style::Align::Center, label.to_owned(), pt, font.clone(), c(ink));
+            style::label(g, k.center().x, k.center().y, style::Align::Center, label.to_owned(), pt, font.clone(), c(ink));
             // The home keys' bumps, and where the fingers rest.
             if let Some(ch) = ch {
                 if matches!(ch, 'f' | 'j') {
-                    style::fill_rect(window, style::snap(window, Bounds::new(point(k.center().x - px(u * 0.15), k.bottom() - px(u * 0.2)), size(px(u * 0.3), px(1.5)))), c(ink));
+                    style::fill_rect(g, style::snap(g, Bounds::new(point(k.center().x - px(u * 0.15), k.bottom() - px(u * 0.2)), size(px(u * 0.3), px(1.5)))), c(ink));
                 }
                 if "asdfjkl;".contains(ch) || (ch == ' ' && row == 4) {
                     homes.push((finger(ch), k.center()));
@@ -255,12 +238,12 @@ pub fn keyboard(window: &mut Window, cx: &mut App, b: Bounds<Pixels>, next: Opti
     // one for the next key ringed.
     for (f, at) in homes {
         let at = if f == 8 { at } else { point(at.x, at.y - px(u * 0.05)) };
-        let tips: Vec<olo_ui::gpui::Point<Pixels>> = if f == 8 { vec![point(at.x - px(u * 1.2), at.y), point(at.x + px(u * 1.2), at.y)] } else { vec![at] };
+        let tips: Vec<olo_kit::Point<Pixels>> = if f == 8 { vec![point(at.x - px(u * 1.2), at.y), point(at.x + px(u * 1.2), at.y)] } else { vec![at] };
         for t in tips {
             let ink = c(p.hue(FINGER_HUES[f])).opacity(0.55);
-            crate::palm_trainer::ellipse(window, t, u * 0.22, u * 0.22, ink);
+            crate::palm_trainer::ellipse(g, t, u * 0.22, u * 0.22, ink);
             if next_finger == Some(f) {
-                crate::palm_trainer::ring(window, t, u * 0.34, u * 0.34, c(p.keyboard_navigation));
+                crate::palm_trainer::ring(g, t, u * 0.34, u * 0.34, c(p.keyboard_navigation));
             }
         }
     }
@@ -268,7 +251,7 @@ pub fn keyboard(window: &mut Window, cx: &mut App, b: Bounds<Pixels>, next: Opti
     let heel_y = top + px(5.0 * u + (dh * 0.94 - 5.0 * u) * 0.55);
     for side in [-1.0f32, 1.0] {
         let at = point(deck.center().x + px(side * u * 3.4), heel_y);
-        crate::palm_trainer::ellipse(window, at, u * 1.5, u * 0.75, c(p.warning).opacity(0.75));
+        crate::palm_trainer::ellipse(g, at, u * 1.5, u * 0.75, c(p.warning).opacity(0.75));
     }
 }
 

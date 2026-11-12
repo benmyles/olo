@@ -119,9 +119,8 @@ pub(crate) struct Commit {
     pub(crate) items: Vec<Item>,
     pub(crate) layers: Vec<Layer>,
     pub(crate) wheel: Vec<WheelRegion>,
-    /// When the looper took what led to this (input), and how long it
-    /// worked on it: for the frame's times.
-    pub(crate) started: Instant,
+    /// How long the looper worked on it, from taking what led to it
+    /// (input): the frame's `ui` time.
     pub(crate) work: Duration,
     /// Everything is to be drawn again whatever matches (the look or the
     /// text's rendering changed what the same drawings mean).
@@ -278,10 +277,9 @@ struct Showing {
     scrollers: FxHashMap<u64, Scroller>,
     /// Something changed since the last frame drawn.
     dirty: bool,
-    /// When what the next frame shows began (the looper took what led
-    /// to its commit, or the wheel turned here), and how long the looper
-    /// worked on it: the frame's times.
-    since: Option<(Instant, Duration)>,
+    /// How long the looper worked on what the next frame shows (its
+    /// commits since the last frame drawn): the frame's `ui` time.
+    work: Duration,
     /// What changed, in device pixels (empty with `dirty`: all of it).
     damage: Vec<Bounds<ScaledPixels>>,
     /// The size the window is now, and since when the commit hasn't
@@ -350,7 +348,7 @@ impl Stage {
                 commit: None,
                 scrollers: FxHashMap::default(),
                 dirty: false,
-                since: None,
+                work: Duration::ZERO,
                 damage: Vec::new(),
                 size,
                 scale,
@@ -595,7 +593,6 @@ impl Stage {
         }
         if let Some(rect) = moved {
             add_damage(&mut showing.dirty, &mut showing.damage, rect);
-            showing.since.get_or_insert((Instant::now(), Duration::ZERO));
             self.report(&showing.scrollers);
             self.wake();
         }
@@ -691,10 +688,7 @@ impl Stage {
             if commit.size == showing.size && commit.scale == showing.scale {
                 showing.resized_at = None;
             }
-            showing.since = Some(match showing.since {
-                Some((began, work)) => (began.min(commit.started), work + commit.work),
-                None => (commit.started, commit.work),
-            });
+            showing.work += commit.work;
             showing.commit = Some(commit);
         }
         self.wake();
@@ -808,6 +802,9 @@ impl Stage {
             }
         }
         if !showing.dirty {
+            // (Commits that changed nothing to draw made no frame: the
+            // next one that does doesn't take their work for its own.)
+            showing.work = Duration::ZERO;
             if animating {
                 self.link.send(WindowEvent::Frame);
             }
@@ -818,9 +815,7 @@ impl Stage {
         // image keeps what it last held, so most frames draw a small
         // part of the window, and tell app_server only that changed.
         let changed = showing.damage.iter().copied().reduce(|a, b| a.union(&b));
-        // (A frame of the stage's own, an end springing back, began
-        // with itself.)
-        let (began, work) = showing.since.take().unwrap_or((started, Duration::ZERO));
+        let work = std::mem::take(&mut showing.work);
         {
             let window = self.window.borrow();
             let Some(window) = window.as_ref() else { return false };
@@ -862,7 +857,17 @@ impl Stage {
         showing.dirty = false;
         showing.damage.clear();
         let whole = work + started.elapsed();
-        showing.stats.record(began, work, whole, Vec::new());
+        // Where each scroller showed its content in this frame (none: no
+        // allocation).
+        let scrolls = match &showing.commit {
+            Some(commit) if !showing.scrollers.is_empty() => {
+                commit.layers.iter().filter_map(|layer| showing.scrollers.get(&layer.id).map(|s| [s.shown.x.0, s.shown.y.0, -layer.max.width.0, -layer.max.height.0])).collect()
+            }
+            _ => Vec::new(),
+        };
+        // (Marked when it was drawn, not when what led to it began: how
+        // evenly frames come is read from these.)
+        showing.stats.record(started, work, whole, scrolls);
         if animating {
             self.link.send(WindowEvent::Frame);
         }

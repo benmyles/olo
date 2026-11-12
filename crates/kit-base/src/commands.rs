@@ -183,13 +183,17 @@ pub const MARKS: usize = 1200;
 /// One frame a window drew.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct FrameMark {
-    /// When it took its input, in CLOCK_MONOTONIC microseconds (the
-    /// clock app_server and input events go by).
+    /// When it began to be drawn (olo-kit: by the display thread, with
+    /// what had come in by then), in CLOCK_MONOTONIC microseconds (the
+    /// clock app_server and input events go by): how evenly frames come
+    /// is read from these (`tools/dev/scroll-check`, the benchmark).
     pub at_us: u64,
-    /// How long it took to draw, to handing it to the GPU.
+    /// How long it took, to handing it to the GPU (olo-kit: the
+    /// looper's work on what it shows, and the display thread's drawing
+    /// of it).
     pub us: u32,
     /// Of that, the toolkit's and the app's own code (laying out and
-    /// painting).
+    /// painting: on olo-kit, the looper's work).
     #[serde(default)]
     pub ui_us: u32,
     /// Setting the GPU surface up (made, or its swapchain configured

@@ -7,6 +7,12 @@
 //! workspaces, displays) are read and written over its IPC: a watcher
 //! thread keeps our copy current and a writer thread sends changes,
 //! newest first, so dragging a slider never blocks the UI.
+//!
+//! Each window is a view on a looper of its own (olo-kit). What they
+//! share (the settings, the displays, the undo history, which windows
+//! are open) is [`Prefs`], behind a lock ([`prefs`]): a window's view
+//! takes it to say what it shows and to change a setting, never while
+//! it's held, and lets go before it calls the kit.
 
 mod about;
 mod ai;
@@ -50,17 +56,17 @@ mod voice_try;
 mod windows;
 mod workspaces;
 
-use olo_protocol::{OutputInfo, PowerStatus, Settings};
-use olo_ui::{
-    WindowOptions,
-    gpui::{
-        AnyWindowHandle, AppContext as _, Bounds, Context, Entity, FontWeight, Hsla, InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, Pixels, Render, SharedString, Styled as _,
-        Window, canvas, div, point, px, size,
-    },
-    icons,
-    instance::{self, Launch},
-    metrics as m, style, theme,
+use std::{
+    sync::{Mutex, MutexGuard, OnceLock},
+    time::Duration,
 };
+
+use olo_kit::{
+    Bounds, Cx, Element, FontWeight, Hsla, InteractiveElement as _, MouseButton, ParentElement as _, Styled as _, View, WindowHandle, WindowOptions, canvas, div, fill, icons,
+    instance::{self, Launch},
+    metrics as m, point, px, size, style, theme,
+};
+use olo_protocol::{OutputInfo, PowerStatus, Settings};
 
 use form::Fields;
 use panel::Panel;
@@ -82,35 +88,83 @@ pub struct Prefs {
     /// app_server told its displays (perhaps none).
     pub outputs_in: bool,
     /// Windows not shown until the settings and displays are in, briefly
-    /// (`olo_ui::hold_first_show`).
-    pub holds: Vec<olo_ui::FirstShowHold>,
+    /// (`olo_kit::hold_first_show`).
+    pub holds: Vec<olo_kit::FirstShowHold>,
     /// app_server's power state (caffeinated, brightness), once known.
     pub power: Option<PowerStatus>,
     pub server: server::Server,
     windows: Vec<Shown>,
     /// Edit ▸ Undo and Redo for the changes made here (`undo.rs`), for
     /// every panel: ⌘Z in any of them, the palette's and agents' Edit menu.
-    pub history: olo_ui::undo::History<Vec<undo::Diff>>,
+    pub history: olo_kit::undo::History<Vec<undo::Diff>>,
 }
 
-/// A window open: a panel's (and its view), or the launcher.
-struct Shown {
-    panel: Option<Panel>,
-    handle: AnyWindowHandle,
-    view: Option<Entity<PanelView>>,
+static PREFS: OnceLock<Mutex<Prefs>> = OnceLock::new();
+
+/// What every window shares. Held briefly: to read what a window shows,
+/// to change a setting. Never taken while it's held, nor held across a
+/// call into the kit that waits on a window.
+pub fn prefs() -> MutexGuard<'static, Prefs> {
+    PREFS.get().expect("Preferences is running").lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// The lint's shared state (its tests' windows are made on loopers of
+/// their own, as the app's are).
+#[cfg(test)]
+pub(crate) fn set_for_tests(p: Prefs) {
+    if let Err(p) = PREFS.set(Mutex::new(p)) {
+        *prefs() = p.into_inner().unwrap_or_else(|e| e.into_inner());
+    }
+}
+
+/// A window open: a panel's, or the launcher.
+enum Shown {
+    Panel(Panel, WindowHandle<PanelView>),
+    Launcher(WindowHandle<Launcher>),
+}
+
+impl Shown {
+    fn panel(&self) -> Option<Panel> {
+        match self {
+            Shown::Panel(p, _) => Some(*p),
+            Shown::Launcher(_) => None,
+        }
+    }
+
+    fn is_open(&self) -> bool {
+        match self {
+            Shown::Panel(_, w) => w.is_open(),
+            Shown::Launcher(w) => w.is_open(),
+        }
+    }
+
+    fn raise(&self) {
+        match self {
+            Shown::Panel(_, w) => olo_kit::raise(Some(w)),
+            Shown::Launcher(w) => olo_kit::raise(Some(w)),
+        };
+    }
+
+    /// It says what it shows again.
+    fn redraw(&self) {
+        match self {
+            Shown::Panel(_, w) => w.messenger().send(PanelMsg::Redraw),
+            Shown::Launcher(w) => w.messenger().send(()),
+        };
+    }
 }
 
 impl Prefs {
     /// Changes the settings: app_server is sent them, and every window
     /// showing them is drawn again. (Not connected yet: nothing to change.)
-    pub fn edit(&mut self, cx: &mut Context<Self>, f: impl FnOnce(&mut Settings)) {
-        self.edit_as(cx, "", "Change", f);
+    pub fn edit(&mut self, f: impl FnOnce(&mut Settings)) {
+        self.edit_as("", "Change", f);
     }
 
     /// `edit`, kept for Undo as `name` (Edit ▸ Undo “Volume”); with a
     /// `run` key, part of a run of it (a slider dragged, a field typed in:
     /// one step).
-    pub fn edit_as(&mut self, cx: &mut Context<Self>, run: &str, name: &str, f: impl FnOnce(&mut Settings)) {
+    pub fn edit_as(&mut self, run: &str, name: &str, f: impl FnOnce(&mut Settings)) {
         let Some(s) = self.settings.as_mut() else { return };
         let before = s.clone();
         f(s);
@@ -124,13 +178,13 @@ impl Prefs {
                 }
             }
             self.server.set_settings(s.clone());
-            cx.notify();
+            self.redraw();
         }
     }
 
     /// Edit ▸ Undo (or Redo): the last step's settings back as they were
     /// (or as they became), the rest as they are.
-    pub fn undo_redo(&mut self, redo: bool, cx: &mut Context<Self>) {
+    pub fn undo_redo(&mut self, redo: bool) {
         let step = if redo { self.history.take_redo() } else { self.history.take_undo() };
         let Some(step) = step else { return };
         if let Some(s) = self.settings.as_mut()
@@ -139,97 +193,62 @@ impl Prefs {
             *s = new;
             self.server.set_settings(s.clone());
         }
-        let purpose = if redo { olo_ui::undo::Purpose::Redo } else { olo_ui::undo::Purpose::Undo };
+        let purpose = if redo { olo_kit::undo::Purpose::Redo } else { olo_kit::undo::Purpose::Undo };
         self.history.record(purpose, step.name, step.change);
-        cx.notify();
+        self.redraw();
     }
 
-    fn open(&mut self, name: &str, cx: &mut Context<Self>) {
+    /// Every window says what it shows again.
+    pub fn redraw(&mut self) {
+        self.windows.retain(Shown::is_open);
+        for w in &self.windows {
+            w.redraw();
+        }
+    }
+
+    /// `panel`'s window, if it's open.
+    fn window_of(&self, panel: Panel) -> Option<WindowHandle<PanelView>> {
+        self.windows.iter().find_map(|w| match w {
+            Shown::Panel(p, w) if *p == panel && w.is_open() => Some(w.clone()),
+            _ => None,
+        })
+    }
+
+    pub fn open(&mut self, name: &str) {
         let Some(panel) = Panel::from_arg(name) else {
             tracing::warn!("no preference panel called {name}");
             return;
         };
+        self.windows.retain(Shown::is_open);
         // One window per panel: bring an open one forward.
-        if let Some(w) = self.windows.iter().find(|w| w.panel == Some(panel)) {
-            olo_ui::raise(Some(w.handle), cx);
+        if let Some(w) = self.windows.iter().find(|w| w.panel() == Some(panel)) {
+            w.raise();
             return;
         }
         // As tall as what it shows needs (its size at least), and no
         // taller than the screen, where it scrolls (`fits_content`).
         let (w, h) = panel.size();
-        let prefs = cx.entity();
         let opened = self.settings.clone().unwrap_or_default();
         let options = WindowOptions { fixed: true, ..WindowOptions::new(panel.title(), w as f32, h as f32).fits_content() };
-        // (Once this update is over: the window draws as it opens, and its
-        // panel reads the settings.)
-        cx.defer(move |cx| {
-            let made = std::rc::Rc::new(std::cell::RefCell::new(None));
-            let out = made.clone();
-            let p = prefs.clone();
-            let Some(handle) = olo_ui::open_window(cx, options, move |window, cx| {
-                // ⌘Z and ⇧⌘Z: the app's Undo and Redo (a text field's own
-                // first).
-                let undoer = p.downgrade();
-                olo_ui::undo::keys(window, cx, move |redo, _, cx| {
-                    let _ = undoer.update(cx, |p, cx| p.undo_redo(redo, cx));
-                });
-                let view = cx.new(|cx| PanelView::new(p, panel, opened, window, cx));
-                *out.borrow_mut() = Some(view.clone());
-                view
-            }) else {
-                return;
-            };
-            let view = made.borrow_mut().take();
-            prefs.update(cx, |p, cx| p.register(Some(panel), handle.into(), view, cx));
-        });
+        let window = olo_kit::open_window(options, move |cx| PanelView::new(panel, opened, cx));
+        self.windows.push(Shown::Panel(panel, window));
     }
 
-    fn open_launcher(&mut self, cx: &mut Context<Self>) {
-        if let Some(w) = self.windows.iter().find(|w| w.panel.is_none()) {
-            olo_ui::raise(Some(w.handle), cx);
+    fn open_launcher(&mut self) {
+        self.windows.retain(Shown::is_open);
+        if let Some(w) = self.windows.iter().find(|w| w.panel().is_none()) {
+            w.raise();
             return;
         }
         let rows = Panel::ALL.len().div_ceil(LAUNCHER_COLUMNS) as f32;
         let w = 2.0 * m::WINDOW_INSET + LAUNCHER_COLUMNS as f32 * LAUNCHER_CELL.0;
         let h = 2.0 * m::WINDOW_INSET + rows * LAUNCHER_CELL.1;
-        let prefs = cx.entity();
         let options = WindowOptions { fixed: true, ..WindowOptions::new("Preferences", w, h).min_size(w, h).floating() };
-        cx.defer(move |cx| {
-            let p = prefs.clone();
-            let Some(handle) = olo_ui::open_window(cx, options, move |window, cx| {
-                let undoer = p.downgrade();
-                olo_ui::undo::keys(window, cx, move |redo, _, cx| {
-                    let _ = undoer.update(cx, |p, cx| p.undo_redo(redo, cx));
-                });
-                cx.new(|_| Launcher { prefs: p })
-            }) else {
-                return;
-            };
-            prefs.update(cx, |p, cx| p.register(None, handle.into(), None, cx));
-        });
+        let window = olo_kit::open_window(options, |_| Launcher { hovered: None });
+        self.windows.push(Shown::Launcher(window));
     }
 
-    /// Follows the window: when it closes it leaves the list, and the
-    /// app ends with the last.
-    fn register(&mut self, panel: Option<Panel>, handle: AnyWindowHandle, view: Option<Entity<PanelView>>, cx: &mut Context<Self>) {
-        let me = cx.weak_entity();
-        let _ = handle.update(cx, |_, window, cx| {
-            window.on_window_should_close(cx, move |_, cx| {
-                if let Some(p) = me.upgrade() {
-                    p.update(cx, |p, cx| {
-                        p.windows.retain(|w| w.handle != handle);
-                        if p.windows.is_empty() {
-                            cx.quit();
-                        }
-                    });
-                }
-                true
-            })
-        });
-        self.windows.push(Shown { panel, handle, view });
-    }
-
-    fn handle_args(&mut self, args: &[String], cx: &mut Context<Self>) {
+    fn handle_args(&mut self, args: &[String]) {
         // A setting to show (the command palette's, `olo_xdg::settings`):
         // its panel opens with it lit, on its tab, in its box.
         let (mut show, mut tab, mut group, mut rest) = (None, None, None, Vec::new());
@@ -245,10 +264,10 @@ impl Prefs {
         let (files, panels): (Vec<&String>, Vec<&String>) =
             rest.iter().filter(|a| !a.starts_with('-')).partition(|a| [backup::EXTENSION, backup::OLD_EXTENSION].iter().any(|x| a.ends_with(&format!(".{x}"))));
         if panels.is_empty() && files.is_empty() {
-            self.open_launcher(cx);
+            self.open_launcher();
         }
         for p in &panels {
-            self.open(p, cx);
+            self.open(p);
         }
         // A tab alone: the panel opens on it (Deskbar's Ethernet menu:
         // `network --tab Ethernet`; the GPUs panel's old names, Power's
@@ -258,70 +277,32 @@ impl Prefs {
             .or_else(|| matches!(last, Some("gpus" | "gpu" | "graphics" | "nvidia")).then(|| "Graphics".to_owned()))
             // (Security's Passwords tab by its old names.)
             .or_else(|| matches!(last, Some("passwords" | "privacy")).then(|| "Passwords".to_owned()));
-        if let (None, Some(tab), Some(panel @ (Panel::Network | Panel::Power | Panel::Security))) = (&show, &tab, last.and_then(Panel::from_arg)) {
-            let (me, tab) = (cx.entity(), tab.clone());
-            cx.defer(move |cx| {
-                let view = me.read(cx).windows.iter().find(|w| w.panel == Some(panel)).and_then(|w| w.view.clone());
-                if let Some(view) = view {
-                    view.update(cx, |v, cx| {
-                        match &mut v.state {
-                            panel::State::Network(st) => network::show_tab(st, &tab),
-                            panel::State::Power(st) => power::show_tab(st, &tab),
-                            panel::State::Security(st) => security::show_tab(st, &tab),
-                            _ => {}
-                        }
-                        cx.notify();
-                    });
-                }
-            });
-        }
-        if let (Some(name), Some(panel)) = (show, panels.last().and_then(|p| Panel::from_arg(p))) {
-            // (Once the panel's window, opened after this update, has
-            // drawn: what's lit is found in what it drew.)
-            let me = cx.entity();
-            cx.defer(move |cx| {
-                let Some(handle) = me.read(cx).windows.iter().find(|w| w.panel == Some(panel)).map(|w| w.handle) else { return };
-                let _ = handle.update(cx, |_, window, _| {
-                    window.on_next_frame(move |window, cx| {
-                        let handle = window.window_handle();
-                        cx.defer(move |cx| {
-                            olo_ui::spotlight::show(handle, tab.as_deref(), group.as_deref(), &name, cx);
-                        });
-                    });
-                    // (A frame for it now: the window may have drawn already.)
-                    window.refresh();
-                });
-            });
+        // (Told once its view is made: its window's looper takes what
+        // it's sent in turn.)
+        if let Some(window) = last.and_then(Panel::from_arg).and_then(|panel| self.window_of(panel))
+            && (tab.is_some() || show.is_some())
+        {
+            window.messenger().send(PanelMsg::Show { tab, group, name: show });
         }
         // A backup opened from Tracker: what it holds, ready to import
-        // (once the panel's window, opened after this update, is there).
-        // (Waiting for the panel made for it, or taken by the one there.)
+        // (waiting for the panel made for it, or taken by the one there).
         if let Some(file) = files.last() {
             backup::open_later(std::path::PathBuf::from(file.as_str()));
-            self.open("backup", cx);
-            let me = cx.entity();
-            cx.defer(move |cx| {
-                let view = me.read(cx).windows.iter().find(|w| w.panel == Some(Panel::Backup)).and_then(|w| w.view.clone());
-                if let Some(view) = view {
-                    view.update(cx, |v, cx| {
-                        if let panel::State::Backup(b) = &mut v.state {
-                            b.take_opened();
-                        }
-                        cx.notify();
-                    });
-                }
-            });
+            self.open("backup");
+            if let Some(window) = self.window_of(Panel::Backup) {
+                window.messenger().send(PanelMsg::TakeOpened);
+            }
         }
     }
 
-    fn message(&mut self, msg: Msg, cx: &mut Context<Self>) {
+    fn message(&mut self, msg: Msg) {
         match msg {
             Msg::Settings(s) => {
                 // The first copy is also what Revert goes back to.
                 if self.settings.is_none() {
                     for w in &self.windows {
-                        if let Some(view) = &w.view {
-                            view.update(cx, |v, _| v.opened = (*s).clone());
+                        if let Shown::Panel(_, w) = w {
+                            w.messenger().send(PanelMsg::Opened(s.clone()));
                         }
                     }
                 }
@@ -337,11 +318,12 @@ impl Prefs {
         if self.settings.is_some() && self.outputs_in {
             self.holds.clear();
         }
-        cx.notify();
+        self.redraw();
     }
 
-    fn save_state(&self) -> Option<String> {
-        let open: Vec<&str> = self.windows.iter().map(|w| w.panel.map_or("", Panel::arg)).collect();
+    fn save_state(&mut self) -> Option<String> {
+        self.windows.retain(Shown::is_open);
+        let open: Vec<&str> = self.windows.iter().map(|w| w.panel().map_or("", Panel::arg)).collect();
         serde_json::to_string(&open).ok()
     }
 }
@@ -349,85 +331,173 @@ impl Prefs {
 /// A panel's window: the panel, the settings as they were when it opened
 /// (for Revert), and what it keeps of its own.
 pub struct PanelView {
-    pub prefs: Entity<Prefs>,
     pub panel: Panel,
     pub opened: Settings,
     pub state: panel::State,
     pub fields: Fields,
 }
 
+/// What a panel's window is told.
+pub enum PanelMsg {
+    /// What it shows changed (the settings, what a worker found).
+    Redraw,
+    /// The settings as app_server first said them: what Revert goes
+    /// back to.
+    Opened(Box<Settings>),
+    /// On tab `tab`, with the setting called `name` lit, in its box.
+    Show { tab: Option<String>, group: Option<String>, name: Option<String> },
+    /// The setting is looked for once its tab has drawn (and again,
+    /// while its panel waits for what it shows).
+    Light { tab: Option<String>, group: Option<String>, name: String, tries: u8 },
+    /// A backup opened from Tracker is waiting (`backup::open_later`).
+    TakeOpened,
+}
+
 impl PanelView {
-    fn new(prefs: Entity<Prefs>, panel: Panel, opened: Settings, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        cx.observe(&prefs, |_, _, cx| cx.notify()).detach();
-        let state = panel::State::new(panel, window, cx);
-        PanelView { prefs, panel, opened, state, fields: Fields::default() }
+    pub(crate) fn new(panel: Panel, opened: Settings, cx: &mut Cx<Self>) -> Self {
+        let state = panel::State::new(panel, cx);
+        PanelView { panel, opened, state, fields: Fields::default() }
     }
 }
 
-impl Render for PanelView {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        panel::render(self, window, cx)
+impl View for PanelView {
+    type Message = PanelMsg;
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        // Edit ▸ Undo and Redo for the command palette and agents (the
+        // windows have no menu bar).
+        let edit = prefs().history.edit_items(olo_kit::Menu::new("Edit"));
+        olo_kit::menu::set_menus(cx, vec![edit]);
+        panel::render(self, cx)
+    }
+
+    fn message(&mut self, message: PanelMsg, cx: &mut Cx<Self>) {
+        match message {
+            PanelMsg::Redraw => {}
+            PanelMsg::Opened(s) => self.opened = *s,
+            PanelMsg::Show { tab, group, name } => {
+                // A tab alone: the panel opens on it, by its state (its
+                // old names too: Power's Graphics, Security's Passwords).
+                if let (Some(tab), None) = (&tab, &name) {
+                    match &mut self.state {
+                        panel::State::Network(st) => network::show_tab(st, tab),
+                        panel::State::Power(st) => power::show_tab(st, tab),
+                        panel::State::Security(st) => security::show_tab(st, tab),
+                        _ => {}
+                    }
+                }
+                if let Some(name) = name {
+                    cx.after(LIGHT_AFTER, PanelMsg::Light { tab, group, name, tries: 20 });
+                }
+            }
+            // (What's lit is found in what the window drew: its tab
+            // chosen first, as a click would, if it isn't the one
+            // showing; then the control, once that has drawn.)
+            PanelMsg::Light { tab, group, name, tries } => {
+                let on_tab = tab.as_deref().is_none_or(|t| t.is_empty() || !olo_kit::spotlight::show_tab(cx, t) || olo_kit::spotlight::tab_selected(cx, t));
+                if !(on_tab && olo_kit::spotlight::show(cx, group.as_deref(), &name)) && tries > 0 {
+                    cx.after(LIGHT_AFTER, PanelMsg::Light { tab, group, name, tries: tries - 1 });
+                }
+                return;
+            }
+            PanelMsg::TakeOpened => {
+                if let panel::State::Backup(b) = &mut self.state {
+                    b.take_opened();
+                }
+            }
+        }
+        cx.invalidate();
+    }
+
+    /// ⌘Z and ⇧⌘Z (a text field's own first), and the Edit menu's: the
+    /// app's Undo and Redo.
+    fn command(&mut self, command: &str, _: &mut Cx<Self>) -> bool {
+        undo_command(command)
+    }
+}
+
+/// How long after a panel is told to show a setting it looks for it (it
+/// has drawn by then, on its tab), and how long between tries while it
+/// isn't there yet (a panel waiting for app_server's settings).
+const LIGHT_AFTER: Duration = Duration::from_millis(150);
+
+fn undo_command(command: &str) -> bool {
+    match command {
+        "undo" | "redo" => {
+            prefs().undo_redo(command == "redo");
+            true
+        }
+        _ => false,
     }
 }
 
 const LAUNCHER_COLUMNS: usize = 5;
-const LAUNCHER_CELL: (f32, f32) = (104.0, 64.0);
+/// (Wide enough for the longest names, "Touchpad & Mouse" and "About Olo
+/// Desktop": at 104 they ran past their cells, into the next.)
+const LAUNCHER_CELL: (f32, f32) = (120.0, 64.0);
 
 /// The launcher: every panel's icon and name; a click opens it.
 struct Launcher {
-    prefs: Entity<Prefs>,
+    /// The cell the pointer is over.
+    hovered: Option<usize>,
 }
 
-impl Render for Launcher {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+impl View for Launcher {
+    type Message = ();
+
+    fn message(&mut self, _: (), cx: &mut Cx<Self>) {
+        cx.invalidate();
+    }
+
+    fn command(&mut self, command: &str, _: &mut Cx<Self>) -> bool {
+        undo_command(command)
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        let edit = prefs().history.edit_items(olo_kit::Menu::new("Edit"));
+        olo_kit::menu::set_menus(cx, vec![edit]);
         let mut grid = div().relative().size_full();
         for (i, panel) in Panel::ALL.iter().copied().enumerate() {
             let (col, row) = (i % LAUNCHER_COLUMNS, i / LAUNCHER_COLUMNS);
             let (x, y) = (m::WINDOW_INSET + col as f32 * LAUNCHER_CELL.0, m::WINDOW_INSET + row as f32 * LAUNCHER_CELL.1);
-            let prefs = self.prefs.clone();
+            let hovered = self.hovered == Some(i);
             let cell = div()
-                .id(SharedString::from(panel.arg()))
                 .absolute()
                 .left(px(x))
                 .top(px(y))
                 .w(px(LAUNCHER_CELL.0))
                 .h(px(LAUNCHER_CELL.1))
                 .child(
-                    canvas(
-                        |_, _, _| {},
-                        move |b: Bounds<Pixels>, _, window, cx| {
-                            let p = theme::palette(cx);
-                            let hovered = b.contains(&window.mouse_position());
-                            if hovered {
-                                let shade: Hsla = style::shade(&p, p.panel_background, 1.08);
-                                window.paint_quad(olo_ui::gpui::fill(style::inset(window, b, 2.0), shade).corner_radii(px(3.0)));
-                            }
-                            let icon = Bounds { origin: point(b.center().x - px(16.0), b.top() + px(4.0)), size: size(px(32.0), px(32.0)) };
-                            icons::paint(window, icon, panel.icon());
-                            style::label(
-                                window,
-                                cx,
-                                b.center().x,
-                                icon.bottom() + px(12.0),
-                                style::Align::Center,
-                                panel.title(),
-                                style::PLAIN_SIZE,
-                                style::ui_font(FontWeight::NORMAL),
-                                style::c(p.panel_text),
-                            );
-                            olo_ui::agent::record(
-                                window,
-                                cx,
-                                olo_ui::agent::Node { role: "Button", name: Some(panel.title().into()), bounds: b, enabled: true, clickable: true, ..Default::default() },
-                            );
-                        },
-                    )
+                    canvas(move |g, b| {
+                        let p = theme::palette();
+                        if hovered {
+                            let shade: Hsla = style::shade(&p, p.panel_background, 1.08);
+                            g.paint_quad(fill(style::inset(g, b, 2.0), shade).corner_radii(px(3.0)));
+                        }
+                        let icon = Bounds { origin: point(b.center().x - px(16.0), b.top() + px(4.0)), size: size(px(32.0), px(32.0)) };
+                        icons::paint(g, icon, panel.icon());
+                        style::label(g, b.center().x, icon.bottom() + px(12.0), style::Align::Center, panel.title(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::c(p.panel_text));
+                        olo_kit::agent::record(g, olo_kit::agent::Node::button(panel.title(), b));
+                        // (Each name centred under its icon: not lined up
+                        // on the left with the one under it.)
+                        olo_kit::review::own_grid(g, b);
+                    })
                     .size_full(),
                 )
-                .on_mouse_move(|_, window, _| window.refresh())
-                .on_mouse_down(MouseButton::Left, move |_, _, cx| {
-                    prefs.update(cx, |p, cx| p.open(panel.arg(), cx));
-                });
+                .on_hover(cx.listener(move |v: &mut Launcher, over: &bool, cx| {
+                    let now = if *over {
+                        Some(i)
+                    } else if v.hovered == Some(i) {
+                        None
+                    } else {
+                        v.hovered
+                    };
+                    if v.hovered != now {
+                        v.hovered = now;
+                        cx.invalidate();
+                    }
+                }))
+                .on_mouse_down(MouseButton::Left, move |_, _| prefs().open(panel.arg()));
             grid = grid.child(cell);
         }
         grid
@@ -536,45 +606,36 @@ fn main() {
     if instance::forward(APP_ID, &args) {
         return;
     }
-    olo_ui::run(APP_ID, move |cx| {
-        instance::listen(APP_ID, olo_ui::proxy(cx));
-        let server = server::Server::start(olo_ui::proxy(cx));
-        let prefs = cx.new(|_| Prefs { settings: None, outputs: Vec::new(), outputs_in: false, holds: Vec::new(), power: None, server, windows: Vec::new(), history: Default::default() });
-        let restored = olo_ui::restored_state().and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok()).filter(|o| !o.is_empty());
-        prefs.update(cx, |p, cx| match restored {
-            Some(open) => {
-                for name in open {
-                    if name.is_empty() {
-                        p.open_launcher(cx);
-                    } else {
-                        p.open(&name, cx);
+    olo_kit::run(APP_ID, move |cx| {
+        let proxy = olo_kit::proxy();
+        instance::listen(APP_ID, proxy.clone());
+        let server = server::Server::start(proxy);
+        let _ = PREFS.set(Mutex::new(Prefs { settings: None, outputs: Vec::new(), outputs_in: false, holds: Vec::new(), power: None, server, windows: Vec::new(), history: Default::default() }));
+        let restored = olo_kit::restored_state().and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok()).filter(|o| !o.is_empty());
+        {
+            let mut p = prefs();
+            match restored {
+                Some(open) => {
+                    for name in open {
+                        if name.is_empty() {
+                            p.open_launcher();
+                        } else {
+                            p.open(&name);
+                        }
                     }
                 }
+                None => p.handle_args(&args),
             }
-            None => p.handle_args(&args, cx),
-        });
-        // Edit ▸ Undo and Redo for the command palette and agents (the
-        // windows have no menu bar).
-        let (shown, chosen) = (prefs.downgrade(), prefs.downgrade());
-        olo_ui::agent::set_menus(
-            cx,
-            move |cx| shown.upgrade().map(|p| p.read(cx).history.edit_items(olo_ui::menu::Menu::new("Edit")).entries(APP_ID)).unwrap_or_default(),
-            move |command, cx| match command {
-                "undo" | "redo" => chosen.update(cx, |p, cx| p.undo_redo(command == "redo", cx)).is_ok(),
-                _ => false,
-            },
-        );
-        let messages = prefs.clone();
-        olo_ui::message_handler(cx, move |message, cx| {
+        }
+        olo_kit::message_handler(cx, move |message, _| {
             let message = match message.downcast::<Launch>() {
-                Ok(launch) => return messages.update(cx, |p, cx| p.handle_args(&launch.args, cx)),
+                Ok(launch) => return prefs().handle_args(&launch.args),
                 Err(m) => m,
             };
             if let Ok(msg) = message.downcast::<Msg>() {
-                messages.update(cx, |p, cx| p.message(*msg, cx));
+                prefs().message(*msg);
             }
         });
-        let saving = prefs.clone();
-        olo_ui::on_upgrade(cx, move |cx| saving.read(cx).save_state());
+        olo_kit::on_upgrade(|_| prefs().save_state());
     });
 }

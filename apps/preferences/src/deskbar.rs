@@ -11,19 +11,19 @@
 
 use std::sync::{Arc, Mutex};
 
-use olo_protocol::deskbar::{Look, Measure, Place, Size, Widget};
-use olo_system::meters::{self, Sources};
-use olo_ui::{
-    gpui::{Context, Entity, ParentElement as _, SharedString, Styled as _, div, px},
-    metrics as m,
+use olo_kit::{
+    Cx, ParentElement as _, SharedString, Styled as _, WindowCx, div, metrics as m,
     palette::Hue,
+    px,
     widgets::{BBox, Button, Column, ColumnListView, ListModel, MenuField},
 };
+use olo_protocol::deskbar::{Look, Measure, Place, Size, Widget};
+use olo_system::meters::{self, Sources};
 
 use crate::{PanelView, form::Ui, panel};
 
 pub struct State {
-    list: Entity<ListModel>,
+    list: ListModel,
     /// What there is to measure, read off the UI thread as the panel
     /// opens.
     sources: Arc<Mutex<Option<Sources>>>,
@@ -32,14 +32,14 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(cx: &mut Context<PanelView>) -> State {
+    pub fn new(_cx: &mut Cx<PanelView>) -> State {
         let sources = Arc::new(Mutex::new(None));
-        let (found, proxy) = (sources.clone(), olo_ui::proxy(cx));
+        let (found, proxy) = (sources.clone(), olo_kit::proxy());
         std::thread::spawn(move || {
             *found.lock().unwrap_or_else(|e| e.into_inner()) = Some(meters::sources());
             proxy.send(crate::Msg::Redraw);
         });
-        State { list: ListModel::new(cx, false), sources, add: 0 }
+        State { list: ListModel::new(false), sources, add: 0 }
     }
 }
 
@@ -83,21 +83,21 @@ fn shares(widgets: &[Widget], i: usize) -> bool {
 pub fn ui(ui: &mut Ui, st: &mut State) {
     let widgets = ui.s.deskbar.widgets.clone();
     let sources = st.sources.lock().unwrap_or_else(|e| e.into_inner()).clone().unwrap_or_default();
-    let selected = st.list.read(ui.cx).state.single().filter(|i| *i < widgets.len());
+    let selected = st.list.state().single().filter(|i| *i < widgets.len());
     let list_model = st.list.clone();
     let left = ui.collect(|ui| {
         let rows: Vec<String> = widgets.iter().enumerate().map(|(i, w)| summary(w, shares(&widgets, i), &sources)).collect();
         let n = rows.len();
-        let list = ColumnListView::new("deskbar-widgets", &list_model, vec![Column::new("Widget", 290.0)], n, move |cell, window, cx| cell.text(window, cx, rows[cell.row].clone()))
+        let list = ColumnListView::new(ui.cx, "deskbar-widgets", &list_model, vec![Column::new("Widget", 290.0)], n, move |_: &PanelView, cell, g| cell.text(g, rows[cell.row].clone()))
             .no_header()
             .empty_text("No widgets: add one below.")
-            .on_select(|_, cx| cx.refresh_windows());
+            .on_select(ui.cx.listener(|_: &mut PanelView, _: &(), cx| cx.notify()));
         // Add: one of the chosen kind, after the chosen widget (else at
         // the end), chosen.
         let kinds: Vec<SharedString> = Measure::kinds().iter().map(|k| SharedString::from(k.kind_name())).collect();
-        let pick = ui.on_view(|v, i: usize, _, cx| {
+        let pick = ui.on_view(|v, i: &usize, cx| {
             if let Some(st) = state_of(v) {
-                st.add = i;
+                st.add = *i;
             }
             cx.notify();
         });
@@ -111,9 +111,9 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         });
         let select_after_add = {
             let n = widgets.len();
-            move |cx: &mut olo_ui::gpui::App| {
+            move |_cx: &mut WindowCx| {
                 let at = selected.map_or(n, |i| i + 1);
-                lm2.update(cx, |l, _| l.state.select(at));
+                lm2.state_mut().select(at);
             }
         };
         let remove = ui.edit_click(move |s| {
@@ -148,12 +148,12 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                         .gap(px(m::SPACING))
                         .child(Button::new("Remove").enabled(selected.is_some()).on_click(move |window, cx| {
                             remove(window, cx);
-                            lm3.update(cx, |l, _| l.state.selected.clear());
+                            lm3.state_mut().selected.clear();
                         }))
                         .child(Button::new("Move Up").enabled(selected.is_some_and(|i| i > 0)).on_click(move |window, cx| {
                             up(window, cx);
                             if let Some(i) = selected.filter(|i| *i > 0) {
-                                lm4.update(cx, |l, _| l.state.select(i - 1));
+                                lm4.state_mut().select(i - 1);
                             }
                         }))
                         .child(Button::new("Move Down").enabled(selected.is_some_and(|i| i + 1 < count)).on_click({
@@ -161,7 +161,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                             move |window, cx| {
                                 down(window, cx);
                                 if let Some(i) = selected.filter(|i| i + 1 < count) {
-                                    lm.update(cx, |l, _| l.state.select(i + 1));
+                                    lm.state_mut().select(i + 1);
                                 }
                             }
                         })),

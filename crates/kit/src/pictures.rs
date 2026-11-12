@@ -27,6 +27,10 @@ enum Slot {
 
 static CACHE: Mutex<Option<HashMap<Key, Slot>>> = Mutex::new(None);
 
+/// What's told when a picture it asked for is made ([`thumbnail_soon`]).
+type Again = Box<dyn FnOnce() + Send>;
+static WAITING: Mutex<Vec<(Key, Again)>> = Mutex::new(Vec::new());
+
 /// The worker's queue (the worker starts with the first picture asked
 /// for).
 fn loader() -> &'static Mutex<mpsc::Sender<Key>> {
@@ -36,9 +40,19 @@ fn loader() -> &'static Mutex<mpsc::Sender<Key>> {
         let _ = std::thread::Builder::new().name("pictures".into()).spawn(move || {
             for key in rx {
                 let img = if key.2 == 0 { make(&key.0, key.1) } else { make_fitted(&key.0, (key.1, key.2)) };
-                CACHE.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).insert(key, Slot::Ready(img));
-                // What was drawn without it is drawn again.
+                CACHE.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).insert(key.clone(), Slot::Ready(img));
+                // What was drawn without it is drawn again, and what
+                // waits to hand it on is told.
                 olo_interface::all_windows(|cx| cx.repaint_unfinished());
+                let waiting: Vec<Again> = {
+                    let mut w = WAITING.lock().unwrap_or_else(|e| e.into_inner());
+                    let (mine, rest) = std::mem::take(&mut *w).into_iter().partition(|(k, _)| *k == key);
+                    *w = rest;
+                    mine.into_iter().map(|(_, again)| again).collect()
+                };
+                for again in waiting {
+                    again();
+                }
             }
         });
         Mutex::new(tx)
@@ -61,6 +75,34 @@ fn make(path: &Path, px: u32) -> Option<Arc<RenderImage>> {
 /// when it has been), or if it isn't a picture that can be read.
 pub fn thumbnail(g: &mut Painter, path: &Path, px: u32) -> Option<Arc<RenderImage>> {
     get(g, path, (px, 0))
+}
+
+/// [`thumbnail`] for a view that hands its pictures on as it says what
+/// it shows (a `ThumbnailPicker`'s choices), not a drawing: None while
+/// it's made, and `again` is called once it has been, on the pictures'
+/// thread (a view's `Cx::invalidator`, so it says what it shows again).
+pub fn thumbnail_soon(path: &Path, px: u32, again: impl FnOnce() + Send + 'static) -> Option<Arc<RenderImage>> {
+    let mtime = std::fs::metadata(path).and_then(|m| m.modified()).ok();
+    let key: Key = (path.to_owned(), px, 0, mtime);
+    {
+        let mut c = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        let map = c.get_or_insert_with(HashMap::new);
+        match map.get(&key) {
+            Some(Slot::Ready(img)) => return img.clone(),
+            Some(Slot::Loading) => {
+                WAITING.lock().unwrap_or_else(|e| e.into_inner()).push((key, Box::new(again)));
+                return None;
+            }
+            None => {}
+        }
+        if map.len() > 64 {
+            map.retain(|_, s| matches!(s, Slot::Loading));
+        }
+        map.insert(key.clone(), Slot::Loading);
+        WAITING.lock().unwrap_or_else(|e| e.into_inner()).push((key.clone(), Box::new(again)));
+    }
+    let _ = loader().lock().unwrap_or_else(|e| e.into_inner()).send(key);
+    None
 }
 
 /// The picture at `path` fitted whole within `place` device pixels, its

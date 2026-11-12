@@ -18,19 +18,16 @@ use jiff::{
     civil::{Date, Time},
     tz::TimeZone,
 };
-use olo_protocol::ClockSettings;
-use olo_sync::Mutex;
-use olo_system::time::{self as systime, TimeStatus};
-use olo_ui::{
-    gpui::{
-        AppContext as _, Bounds, Context, DispatchPhase, Entity, FontWeight, Hsla, MouseButton, MouseDownEvent, ParentElement as _, PathBuilder, Pixels, Point, SharedString, Styled as _, Window,
-        canvas, div, point, px, size,
-    },
-    metrics as m,
+use olo_kit::{
+    Bounds, Child, Cx, FontWeight, Hsla, InteractiveElement as _, MouseButton, MouseDownEvent, Painter, ParentElement as _, PathBuilder, Pixels, Point, SharedString, Styled as _, WindowCx, canvas,
+    div, metrics as m, point, px, size,
     style::{self, c},
     theme,
     widgets::{Button, Column, ColumnListView, ListModel, StringView, TabView, TextControl, TextField, TextFieldEvent},
 };
+use olo_protocol::ClockSettings;
+use olo_sync::Mutex;
+use olo_system::time::{self as systime, TimeStatus};
 
 use crate::{Msg, PanelView, form::Ui, panel};
 
@@ -55,7 +52,7 @@ struct Shared {
     busy: bool,
     error: Option<String>,
     /// Windows not shown until the status is in (let go as it comes).
-    holds: Vec<olo_ui::FirstShowHold>,
+    holds: Vec<olo_kit::FirstShowHold>,
 }
 
 struct Link {
@@ -65,7 +62,7 @@ struct Link {
 
 /// The worker that talks to timedated (one for the app), telling the
 /// windows through `proxy` when anything changes.
-fn link(proxy: olo_ui::Proxy) -> &'static Link {
+fn link(proxy: olo_kit::Proxy) -> &'static Link {
     static LINK: OnceLock<Link> = OnceLock::new();
     LINK.get_or_init(|| {
         let shared: Arc<Mutex<Shared>> = Default::default();
@@ -167,9 +164,9 @@ pub struct State {
     edit: Option<(Date, String)>,
     /// The date shown when nothing is picked (today, where the clock is).
     today: Option<Date>,
-    time: Entity<TextField>,
-    search: Entity<TextField>,
-    zones: Entity<ListModel>,
+    time: Child<TextField>,
+    search: Child<TextField>,
+    zones: ListModel,
     /// The zone list's rows (indices into the shared list) for a search.
     filtered: Option<(String, Arc<Vec<String>>, Arc<Vec<usize>>)>,
     /// The current zone was selected when the list first showed.
@@ -180,32 +177,30 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(cx: &mut Context<PanelView>) -> State {
-        let time = cx.new(TextField::new);
-        let search = olo_ui::widgets::text_field(cx, |f| f.hint("City or region"));
+    pub fn new(cx: &mut Cx<PanelView>) -> State {
+        let time = cx.new_view(|_| TextField::new());
+        let search = olo_kit::widgets::text_field(cx, |f| f.hint("City or region"));
         // Typing a time picks it, on the day shown.
-        cx.subscribe(&time, |v, field, e: &TextFieldEvent, cx| {
+        cx.subscribe(&time, |v, e: &TextFieldEvent, cx| {
             if !matches!(e, TextFieldEvent::Changed) {
                 return;
             }
-            let text = field.read(cx).text().to_owned();
             if let Some(st) = state_of(v) {
+                let text = st.time.read(cx).text().to_owned();
                 let date = st.edit.as_ref().map(|(d, _)| *d).or(st.today);
                 if let Some(date) = date {
                     st.edit = Some((date, text));
                 }
             }
             cx.notify();
-        })
-        .detach();
-        cx.subscribe(&search, |_, _, e: &TextFieldEvent, cx| {
+        });
+        cx.subscribe(&search, |_, e: &TextFieldEvent, cx| {
             if matches!(e, TextFieldEvent::Changed) {
                 cx.notify();
             }
-        })
-        .detach();
-        let zones = ListModel::new(cx, false);
-        State { tab: 0, month: None, edit: None, today: None, time, search, zones, filtered: None, zone_selected: false, ticking: false, link: link(olo_ui::proxy(cx)) }
+        });
+        let zones = ListModel::new(false);
+        State { tab: 0, month: None, edit: None, today: None, time, search, zones, filtered: None, zone_selected: false, ticking: false, link: link(olo_kit::proxy()) }
     }
 }
 
@@ -222,7 +217,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         // (Not shown until the status is in, briefly: it's most of what
         // the panel shows.)
         if sh.status.is_none()
-            && let Some(hold) = olo_ui::hold_first_show(ui.window)
+            && let Some(hold) = olo_kit::hold_first_show(ui.cx)
         {
             sh.holds.push(hold);
         }
@@ -233,17 +228,12 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         st.ticking = true;
         let ns = Timestamp::now().subsec_nanosecond();
         let wait = Duration::from_nanos((1_000_000_000 - ns.max(0)) as u64 + 5_000_000);
-        ui.cx
-            .spawn(async move |view, cx| {
-                cx.background_executor().timer(wait).await;
-                let _ = view.update(cx, |v, cx| {
-                    if let Some(st) = state_of(v) {
-                        st.ticking = false;
-                    }
-                    cx.notify();
-                });
-            })
-            .detach();
+        ui.cx.after_do(wait, |v, cx| {
+            if let Some(st) = state_of(v) {
+                st.ticking = false;
+            }
+            cx.notify();
+        });
     }
 
     let status = match status {
@@ -274,9 +264,9 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             ui.label(e.clone());
         }
     });
-    let pick = ui.on_view(|v, i: usize, _, cx| {
+    let pick = ui.on_view(|v, i: &usize, cx| {
         if let Some(st) = state_of(v) {
-            st.tab = i;
+            st.tab = *i;
         }
         cx.notify();
     });
@@ -304,7 +294,7 @@ fn date_time(ui: &mut Ui, clock: &ClockSettings, st: &mut State, status: Option<
         None => Some(now.time()),
     };
     // The field shows the time going by until it's typed in.
-    let focused = st.time.read(ui.cx).is_focused(ui.window);
+    let focused = st.time.is_focused(ui.cx);
     if st.edit.is_none() && !focused {
         let text = time_text(now.time(), clock);
         st.time.update(ui.cx, |f, cx| {
@@ -317,32 +307,41 @@ fn date_time(ui: &mut Ui, clock: &ClockSettings, st: &mut State, status: Option<
 
     let month = st.month.unwrap_or_else(|| date.first_of_month());
     let clock_text = time_text(now.time(), clock);
-    let pick_day: std::rc::Rc<dyn Fn(Date, &mut Window, &mut olo_ui::gpui::App)> = std::rc::Rc::new(ui.on_view(move |v, day: Date, _, cx| {
+    let pick_day: std::rc::Rc<dyn Fn(&Date, &mut WindowCx)> = std::rc::Rc::new(ui.on_view(move |v, day: &Date, cx| {
         if let Some(st) = state_of(v) {
             let text = st.edit.take().map_or_else(|| clock_text.clone(), |(_, t)| t);
-            st.edit = Some((day, text));
+            st.edit = Some((*day, text));
         }
         cx.notify();
     }));
-    let step: std::rc::Rc<dyn Fn(i8, &mut Window, &mut olo_ui::gpui::App)> = std::rc::Rc::new(ui.on_view(move |v, dir: i8, _, cx| {
+    let step: std::rc::Rc<dyn Fn(&i8, &mut WindowCx)> = std::rc::Rc::new(ui.on_view(move |v, dir: &i8, cx| {
         if let Some(st) = state_of(v) {
-            st.month = month.checked_add(jiff::Span::new().months(dir)).ok();
+            st.month = month.checked_add(jiff::Span::new().months(*dir)).ok();
         }
         cx.notify();
     }));
     let today = now.date();
-    let cal = canvas(|_, _, _| {}, move |b, _, window, cx| calendar(window, cx, b, month, date, today, manual, &pick_day, &step)).w(px(CELL_W * 7.0 + 4.0)).h(px(CALENDAR_H)).flex_shrink_0();
+    let found = CalendarPlaces::default();
+    let places = found.clone();
+    let cal = canvas(move |g, b| calendar(g, b, month, date, today, manual, &places)).w(px(CELL_W * 7.0 + 4.0)).h(px(CALENDAR_H)).flex_shrink_0().on_mouse_down(
+        MouseButton::Left,
+        move |e: &MouseDownEvent, cx| match calendar_press(&found, e.position) {
+            Some(Ok(dir)) => step(&dir, cx),
+            Some(Err(day)) => pick_day(&day, cx),
+            None => {}
+        },
+    );
     let live = !manual;
-    let face = canvas(|_, _, _| {}, move |b, _, window, cx| paint_face(window, b, &theme::palette(cx), shown_time, live)).w(px(FACE)).h(px(FACE));
-    let field = TextControl::new(st.time.clone()).label("Time:").width(FACE);
+    let face = canvas(move |g, b| paint_face(g, b, &theme::palette(), shown_time, live)).w(px(FACE)).h(px(FACE));
+    let field = TextControl::new(ui.cx, &st.time).label("Time:").width(FACE);
     ui.add(div().flex().flex_row().gap(px(m::SPACING * 3.0)).child(cal).child(div().flex().flex_col().child(face).child(div().h(px(CALENDAR_H - FACE - m::CONTROL_HEIGHT))).child(field)));
 
     let can_ntp = status.is_some_and(|s| s.can_ntp);
     let tx = st.link.tx.clone();
     ui.enabled_if(can_ntp && !busy, |ui| {
         let tx = tx.clone();
-        ui.add(olo_ui::widgets::CheckBox::new("Set date and time automatically", ntp).enabled(ui.enabled()).on_toggle(move |on, _, _| {
-            let _ = tx.send(Request::Ntp(on));
+        ui.add(olo_kit::widgets::CheckBox::new("Set date and time automatically", ntp).enabled(ui.enabled()).on_toggle(move |on, _| {
+            let _ = tx.send(Request::Ntp(*on));
         }));
     });
     let note = match status {
@@ -356,7 +355,7 @@ fn date_time(ui: &mut Ui, clock: &ClockSettings, st: &mut State, status: Option<
     if let Some((day, text)) = st.edit.clone() {
         let when = parse_time(&text).and_then(|t| day.to_datetime(t).to_zoned(now.time_zone().clone()).ok());
         let at = when.as_ref().map(|w| w.timestamp().as_microsecond());
-        let set = ui.on_click_view(move |v, _, cx| {
+        let set = ui.on_click_view(move |v, cx| {
             if let (Some(st), Some(at)) = (state_of(v), at) {
                 let _ = st.link.tx.send(Request::Time(at));
                 st.edit = None;
@@ -364,7 +363,7 @@ fn date_time(ui: &mut Ui, clock: &ClockSettings, st: &mut State, status: Option<
             }
             cx.notify();
         });
-        let cancel = ui.on_click_view(|v, _, cx| {
+        let cancel = ui.on_click_view(|v, cx| {
             if let Some(st) = state_of(v) {
                 st.edit = None;
                 st.month = None;
@@ -391,24 +390,14 @@ const CALENDAR_H: f32 = CAL_HEADER + 18.0 + CELL_H * 6.0 + 6.0;
 /// R5's month calendar: the month and year with arrows to step through
 /// them over a grid of days; a click on a day picks it.
 #[allow(clippy::too_many_arguments)]
-fn calendar(
-    window: &mut Window,
-    cx: &mut olo_ui::gpui::App,
-    rect: Bounds<Pixels>,
-    month: Date,
-    date: Date,
-    today: Date,
-    enabled: bool,
-    pick: &std::rc::Rc<dyn Fn(Date, &mut Window, &mut olo_ui::gpui::App)>,
-    step: &std::rc::Rc<dyn Fn(i8, &mut Window, &mut olo_ui::gpui::App)>,
-) {
-    let p = theme::palette(cx);
+fn calendar(g: &mut Painter, rect: Bounds<Pixels>, month: Date, date: Date, today: Date, enabled: bool, found: &CalendarPlaces) {
+    let p = theme::palette();
     let ink = if enabled { c(p.panel_text) } else { style::disabled_text(&p) };
     let bold = style::ui_font(FontWeight::BOLD);
     let plain = style::ui_font(FontWeight::NORMAL);
     let head = Bounds { origin: rect.origin, size: size(rect.size.width, px(CAL_HEADER)) };
     let title = format!("{} {}", MONTHS[month.month() as usize - 1], month.year());
-    style::label(window, cx, head.center().x, head.center().y, style::Align::Center, title, style::PLAIN_SIZE, bold.clone(), ink);
+    style::label(g, head.center().x, head.center().y, style::Align::Center, title, style::PLAIN_SIZE, bold.clone(), ink);
     let arrows = [(point(head.left() + px(10.0), head.center().y), -1i8), (point(head.right() - px(10.0), head.center().y), 1)];
     for (centre, dir) in arrows {
         let d = dir as f32 * 3.5;
@@ -418,20 +407,20 @@ fn calendar(
         tri.line_to(point(centre.x + px(d), centre.y));
         tri.close();
         if let Ok(path) = tri.build() {
-            window.paint_path(path, ink);
+            g.paint_path(path, ink);
         }
     }
 
     let well = Bounds::from_corners(point(rect.left(), head.bottom()), rect.bottom_right());
-    style::fill_rect(window, style::inset(window, well, 2.0), if enabled { c(p.document_background) } else { c(p.panel_background) });
-    style::sunken(window, well, &p, false);
+    style::fill_rect(g, style::inset(g, well, 2.0), if enabled { c(p.document_background) } else { c(p.panel_background) });
+    style::sunken(g, well, &p, false);
     let text = if enabled { c(p.document_text) } else { style::disabled_text(&p) };
-    let grid = style::inset(window, well, 2.0);
+    let grid = style::inset(g, well, 2.0);
     for (i, d) in ["S", "M", "T", "W", "T", "F", "S"].iter().enumerate() {
         let x = grid.left() + px(CELL_W * (i as f32 + 0.5));
-        style::label(window, cx, x, grid.top() + px(9.0), style::Align::Center, *d, style::SMALL_SIZE, bold.clone(), text);
+        style::label(g, x, grid.top() + px(9.0), style::Align::Center, *d, style::SMALL_SIZE, bold.clone(), text);
     }
-    style::hline(window, grid.left() + px(4.0), grid.right() - px(4.0), grid.top() + px(18.0), style::shade(&p, p.document_background, 1.15));
+    style::hline(g, grid.left() + px(4.0), grid.right() - px(4.0), grid.top() + px(18.0), style::shade(&p, p.document_background, 1.15));
     let lead = month.weekday().to_sunday_zero_offset() as i16;
     let mut cells = Vec::new();
     for day in 1..=month.days_in_month() {
@@ -440,17 +429,16 @@ fn calendar(
         let this = month.with().day(day).build().unwrap_or(month);
         let mut color = text;
         if this == date {
-            window.paint_quad(olo_ui::gpui::fill(style::inset(window, cell, 1.0), c(p.list_selected_background)).corner_radii(px(2.0)));
+            g.paint_quad(olo_kit::fill(style::inset(g, cell, 1.0), c(p.list_selected_background)).corner_radii(px(2.0)));
             color = if enabled { c(p.list_selected_item_text) } else { text };
         }
         let font = if this == today { bold.clone() } else { plain.clone() };
-        style::label(window, cx, cell.center().x, cell.center().y, style::Align::Center, day.to_string(), style::PLAIN_SIZE, font, color);
+        style::label(g, cell.center().x, cell.center().y, style::Align::Center, day.to_string(), style::PLAIN_SIZE, font, color);
         cells.push((cell, this));
     }
-    olo_ui::agent::record(
-        window,
-        cx,
-        olo_ui::agent::Node {
+    olo_kit::agent::record(
+        g,
+        olo_kit::agent::Node {
             role: "Calendar",
             name: Some(format!("{} {}", MONTHS[month.month() as usize - 1], month.year()).into()),
             value: Some(date.to_string().into()),
@@ -460,70 +448,68 @@ fn calendar(
             ..Default::default()
         },
     );
-    if !enabled {
-        return;
-    }
-    let (pick, step) = (pick.clone(), step.clone());
-    window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {
-        if phase != DispatchPhase::Bubble || e.button != MouseButton::Left || !rect.contains(&e.position) {
-            return;
-        }
-        let near = |c: Point<Pixels>| (f32::from(e.position.x - c.x)).abs() <= 9.0 && (f32::from(e.position.y - c.y)).abs() <= 9.0;
-        if let Some((_, dir)) = arrows.iter().find(|(c, _)| near(*c)) {
-            step(*dir, window, cx);
-        } else if let Some((_, day)) = cells.iter().find(|(r, _)| r.contains(&e.position)) {
-            pick(*day, window, cx);
-        }
-    });
+    // (Where a press finds its arrows and days: `calendar_press`.)
+    *found.borrow_mut() = if enabled { (arrows.to_vec(), cells) } else { Default::default() };
+}
+
+/// Where the calendar last drew its arrows (each with the way it steps)
+/// and its days: what a press on it goes by.
+type CalendarPlaces = std::rc::Rc<std::cell::RefCell<(Vec<(Point<Pixels>, i8)>, Vec<(Bounds<Pixels>, Date)>)>>;
+
+/// A press on the calendar: an arrow steps the month, a day is picked.
+fn calendar_press(found: &CalendarPlaces, at: Point<Pixels>) -> Option<Result<i8, Date>> {
+    let found = found.borrow();
+    let near = |c: Point<Pixels>| (f32::from(at.x - c.x)).abs() <= 9.0 && (f32::from(at.y - c.y)).abs() <= 9.0;
+    if let Some((_, dir)) = found.0.iter().find(|(c, _)| near(*c)) { Some(Ok(*dir)) } else { found.1.iter().find(|(r, _)| r.contains(&at)).map(|(_, day)| Err(*day)) }
 }
 
 /// A straight line from `a` to `b`, `w` wide.
-fn line(window: &mut Window, a: Point<Pixels>, b: Point<Pixels>, w: Pixels, color: Hsla) {
+fn line(g: &mut Painter, a: Point<Pixels>, b: Point<Pixels>, w: Pixels, color: Hsla) {
     let mut path = PathBuilder::stroke(w);
     path.move_to(a);
     path.line_to(b);
     if let Ok(path) = path.build() {
-        window.paint_path(path, color);
+        g.paint_path(path, color);
     }
 }
 
 /// The clock face: hour and minute hands, and a red second hand. `None`
 /// (a time being typed that doesn't read yet) shows no hands.
-fn paint_face(window: &mut Window, b: Bounds<Pixels>, p: &olo_ui::palette::Palette, time: Option<Time>, live: bool) {
+fn paint_face(g: &mut Painter, b: Bounds<Pixels>, p: &olo_kit::palette::Palette, time: Option<Time>, live: bool) {
     let centre = b.center();
     let r = FACE / 2.0 - 2.0;
-    let disc = |window: &mut Window, at: Point<Pixels>, r: f32, fill: Hsla| window.paint_quad(olo_ui::gpui::fill(Bounds::centered_at(at, size(px(2.0 * r), px(2.0 * r))), fill).corner_radii(px(r)));
-    let ring = |window: &mut Window, r: f32, color: Hsla| {
-        window.paint_quad(olo_ui::gpui::outline(Bounds::centered_at(centre, size(px(2.0 * r), px(2.0 * r))), color, olo_ui::gpui::BorderStyle::Solid).corner_radii(px(r)));
+    let disc = |g: &mut Painter, at: Point<Pixels>, r: f32, fill: Hsla| g.paint_quad(olo_kit::fill(Bounds::centered_at(at, size(px(2.0 * r), px(2.0 * r))), fill).corner_radii(px(r)));
+    let ring = |g: &mut Painter, r: f32, color: Hsla| {
+        g.paint_quad(olo_kit::outline(Bounds::centered_at(centre, size(px(2.0 * r), px(2.0 * r))), color, olo_kit::BorderStyle::Solid).corner_radii(px(r)));
     };
-    disc(window, point(centre.x + px(1.0), centre.y + px(1.5)), r, c(p.shadow).opacity(0.35));
-    disc(window, centre, r, c(p.document_background));
-    ring(window, r, style::shade(p, p.panel_background, 1.6));
-    ring(window, r - 2.0, c(p.shine).opacity(0.5));
+    disc(g, point(centre.x + px(1.0), centre.y + px(1.5)), r, c(p.shadow).opacity(0.35));
+    disc(g, centre, r, c(p.document_background));
+    ring(g, r, style::shade(p, p.panel_background, 1.6));
+    ring(g, r - 2.0, c(p.shine).opacity(0.5));
     let ink = c(p.document_text);
     let at = |dir: (f32, f32), d: f32| point(centre.x + px(dir.0 * d), centre.y + px(dir.1 * d));
     for i in 0..60 {
         let a = i as f32 / 60.0 * std::f32::consts::TAU;
         let dir = (a.sin(), -a.cos());
         let (inner, w) = if i % 5 == 0 { (r - 10.0, 2.0) } else { (r - 5.0, 1.0) };
-        line(window, at(dir, inner), at(dir, r - 3.0), px(w), ink);
+        line(g, at(dir, inner), at(dir, r - 3.0), px(w), ink);
     }
     let Some(t) = time else { return };
     let (h, mi, s) = (t.hour() as f32, t.minute() as f32, t.second() as f32);
-    let hand = |window: &mut Window, turns: f32, len: f32, w: Pixels, color: Hsla| {
+    let hand = |g: &mut Painter, turns: f32, len: f32, w: Pixels, color: Hsla| {
         let a = turns * std::f32::consts::TAU;
         let dir = (a.sin(), -a.cos());
-        line(window, at(dir, -len * 0.15), at(dir, len), w, color);
+        line(g, at(dir, -len * 0.15), at(dir, len), w, color);
     };
-    hand(window, ((h % 12.0) + mi / 60.0) / 12.0, r * 0.5, px(3.5), ink);
-    hand(window, (mi + s / 60.0) / 60.0, r * 0.75, px(2.5), ink);
+    hand(g, ((h % 12.0) + mi / 60.0) / 12.0, r * 0.5, px(3.5), ink);
+    hand(g, (mi + s / 60.0) / 60.0, r * 0.75, px(2.5), ink);
     if live || s != 0.0 {
         // Whole device pixels, so it is crisp when it points straight up
         // or down.
-        let hair = style::hairline(window);
-        hand(window, s / 60.0, r * 0.82, hair, c(p.failure));
+        let hair = style::hairline(g);
+        hand(g, s / 60.0, r * 0.82, hair, c(p.failure));
     }
-    disc(window, centre, 3.0, ink);
+    disc(g, centre, 3.0, ink);
 }
 
 const MONTHS: [&str; 12] = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -576,22 +562,25 @@ fn offset_text(tz: &TimeZone, at: Timestamp) -> String {
 }
 
 fn time_zone(ui: &mut Ui, clock: &ClockSettings, st: &mut State, current: &str, zones: &Arc<Vec<String>>, busy: bool) {
-    ui.add(TextControl::new(st.search.clone()).label("Search:"));
+    ui.add(TextControl::new(ui.cx, &st.search).label("Search:"));
     let search = st.search.read(ui.cx).text().to_owned();
     let stale = st.filtered.as_ref().is_none_or(|(q, z, _)| *q != search || !Arc::ptr_eq(z, zones));
     if stale {
         let q = search.to_lowercase();
-        let selected = st.filtered.as_ref().and_then(|(_, z, rows)| st.zones.read(ui.cx).state.single().and_then(|i| rows.get(i)).map(|&r| z[r].clone()));
+        let selected = st.filtered.as_ref().and_then(|(_, z, rows)| st.zones.state().single().and_then(|i| rows.get(i)).map(|&r| z[r].clone()));
         let rows: Vec<usize> = (0..zones.len()).filter(|&i| zone_label(&zones[i]).to_lowercase().contains(&q) || zones[i].to_lowercase().contains(&q)).collect();
         let keep = selected.or_else(|| (!st.zone_selected).then(|| current.to_owned()));
         let at = keep.and_then(|k| rows.iter().position(|&r| zones[r] == k));
-        st.zones.update(ui.cx, |l, _| {
-            l.state.selected.clear();
+        {
+            let mut l = st.zones.state_mut();
+            l.selected.clear();
             if let Some(i) = at {
-                l.state.select(i);
-                l.reveal(i);
+                l.select(i);
             }
-        });
+        }
+        if let Some(i) = at {
+            st.zones.reveal(ui.cx, i);
+        }
         if at.is_some() {
             st.zone_selected = true;
         }
@@ -604,23 +593,23 @@ fn time_zone(ui: &mut Ui, clock: &ClockSettings, st: &mut State, current: &str, 
     let columns = vec![Column::new("Time zone", 186.0), Column::new("Offset", 84.0), Column::new("Time", 84.0).right()];
     let now = Timestamp::now();
     let (zones2, rows2, clock2) = (zones.clone(), rows.clone(), clock.clone());
-    let list = ColumnListView::new("zones", &st.zones, columns, rows.len(), move |cell, window, cx| {
+    let list = ColumnListView::new(ui.cx, "zones", &st.zones, columns, rows.len(), move |_: &PanelView, cell, g| {
         let name = &zones2[rows2[cell.row]];
         let tz = TimeZone::get(name);
         match (cell.column, tz) {
-            (0, _) => cell.text(window, cx, zone_label(name)),
-            (1, Ok(tz)) => cell.text(window, cx, offset_text(&tz, now)),
+            (0, _) => cell.text(g, zone_label(name)),
+            (1, Ok(tz)) => cell.text(g, offset_text(&tz, now)),
             (2, Ok(tz)) => {
                 let t = now.to_zoned(tz);
                 let c = ClockSettings { show_seconds: false, ..clock2.clone() };
-                cell.text(window, cx, c.format(t.hour() as u32, t.minute() as u32, 0, t.weekday().to_sunday_zero_offset() as u32));
+                cell.text(g, c.format(t.hour() as u32, t.minute() as u32, 0, t.weekday().to_sunday_zero_offset() as u32));
             }
             _ => {}
         }
     })
-    .on_select(|_, cx| cx.refresh_windows());
+    .on_select(ui.cx.listener(|_: &mut PanelView, _: &(), cx| cx.notify()));
     ui.add(div().flex_1().min_h(px(100.0)).child(list));
-    let chosen = st.zones.read(ui.cx).state.single().and_then(|i| rows.get(i)).map(|&r| zones[r].clone());
+    let chosen = st.zones.state().single().and_then(|i| rows.get(i)).map(|&r| zones[r].clone());
     let can = !busy && chosen.as_deref().is_some_and(|z| z != current);
     let tx = st.link.tx.clone();
     ui.add(

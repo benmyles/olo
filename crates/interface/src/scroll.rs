@@ -103,6 +103,7 @@ pub(crate) struct Shared {
     /// A span of its content to show (down it: top, bottom).
     pub(crate) to_span: Cell<Option<(Pixels, Pixels)>>,
     pub(crate) to_offset: Cell<Option<Point<Pixels>>>,
+    pub(crate) to_middle: Cell<Option<(Pixels, Pixels)>>,
     /// Where each thing it holds is, in its content.
     pub(crate) children: RefCell<Vec<Bounds<Pixels>>>,
 }
@@ -133,6 +134,7 @@ impl ScrollHandle {
             to_item: Cell::new(None),
             to_span: Cell::new(None),
             to_offset: Cell::new(None),
+            to_middle: Cell::new(None),
             children: RefCell::default(),
         }))
     }
@@ -234,9 +236,19 @@ impl ScrollHandle {
         cx.core.scroll_asked(self.clone());
     }
 
+    /// Scrolls so its content from `top` to `bottom` (points down it)
+    /// shows in the middle of its view, if it doesn't show already, once
+    /// what it holds is next laid out (a list's chosen row brought into
+    /// view with what's round it, before the list has ever been laid
+    /// out: its view's height isn't known until then).
+    pub fn reveal_in_middle(&self, cx: &mut WindowCx, top: Pixels, bottom: Pixels) {
+        self.0.to_middle.set(Some((top, bottom)));
+        cx.core.scroll_asked(self.clone());
+    }
+
     /// Whether something was asked of it that waits for layout.
     pub(crate) fn asked(&self) -> bool {
-        self.0.to_bottom.get() || self.0.to_item.get().is_some() || self.0.to_span.get().is_some() || self.0.to_offset.get().is_some()
+        self.0.to_bottom.get() || self.0.to_item.get().is_some() || self.0.to_span.get().is_some() || self.0.to_offset.get().is_some() || self.0.to_middle.get().is_some()
     }
 
     /// Puts it somewhere, from the looper's side: the stage is told with
@@ -282,6 +294,12 @@ impl ScrollHandle {
                 to.y = -top;
             } else if bottom > -to.y + view {
                 to.y = -(bottom - view);
+            }
+        }
+        if let Some((top, bottom)) = self.0.to_middle.take() {
+            let view = self.0.bounds.get().size.height;
+            if top < -to.y || bottom > -to.y + view {
+                to.y = -(top - (view - (bottom - top)) / 2.).max(px(0.));
             }
         }
         let to = point(to.x.clamp(-max.width, px(0.)), to.y.clamp(-max.height, px(0.)));

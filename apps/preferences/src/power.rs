@@ -18,16 +18,15 @@
 
 use std::{sync::Arc, time::Duration};
 
+use olo_kit::{
+    Cx, ParentElement as _, SharedString, Styled as _, WindowCx, div, metrics as m, px,
+    widgets::{CheckBox, RadioButton, StringView, TabView},
+};
 use olo_protocol::{PowerStatus, Settings};
 use olo_sync::Mutex;
 use olo_system::{
     battery::{self, Battery, State as Charge},
     power_profile::{self, Mode, Modes},
-};
-use olo_ui::{
-    gpui::{Context, ParentElement as _, SharedString, Styled as _, div, px},
-    metrics as m,
-    widgets::{CheckBox, RadioButton, StringView, TabView},
 };
 
 use crate::{
@@ -73,7 +72,7 @@ pub fn show_tab(st: &mut State, name: &str) {
 type Modes_ = Arc<Mutex<Option<Option<Modes>>>>;
 
 impl State {
-    pub fn new(cx: &mut Context<PanelView>) -> State {
+    pub fn new(_cx: &mut Cx<PanelView>) -> State {
         // The power modes, as the daemon says, kept up to date by its
         // signals (a ThinkPad's Fn+L/M/H too). Tests: made up.
         let modes: Modes_ = Default::default();
@@ -81,7 +80,7 @@ impl State {
         if cfg!(test) {
             *modes.lock().unwrap() = Some(Some(Modes { active: Mode::Balanced, available: Mode::ALL.to_vec(), degraded: None, drivers: vec!["intel_pstate".into(), "platform_profile".into()] }));
         } else {
-            let (into, proxy, follow) = (modes.clone(), olo_ui::proxy(cx), gpus_follow.clone());
+            let (into, proxy, follow) = (modes.clone(), olo_kit::proxy(), gpus_follow.clone());
             power_profile::watch(move |m| {
                 let on = std::path::Path::new("/etc/systemd/system/olo-gpu-follow.service").exists();
                 follow.store(on, std::sync::atomic::Ordering::Relaxed);
@@ -90,15 +89,15 @@ impl State {
             });
         }
         let limit: Arc<Mutex<Option<battery::ChargeLimit>>> = Default::default();
-        read_limit(&limit, olo_ui::proxy(cx));
+        read_limit(&limit, olo_kit::proxy());
         // (Tests: a ThinkPad's, readable.)
         let presence = if cfg!(test) { Some(true) } else { olo_system::presence::sensor().map(|s| olo_system::presence::readable(&s)) };
-        State { battery: poll(olo_ui::proxy(cx)), modes, limit, presence, gpus_follow, tab: 0, gpus: crate::gpus::State::new() }
+        State { battery: poll(olo_kit::proxy()), modes, limit, presence, gpus_follow, tab: 0, gpus: crate::gpus::State::new() }
     }
 }
 
 /// Read the battery's charge limit (UPower's), on a thread.
-fn read_limit(into: &Arc<Mutex<Option<battery::ChargeLimit>>>, proxy: olo_ui::Proxy) {
+fn read_limit(into: &Arc<Mutex<Option<battery::ChargeLimit>>>, proxy: olo_kit::Proxy) {
     // Tests (the layout lint): a ThinkPad's.
     if cfg!(test) {
         *into.lock().unwrap() = Some(battery::ChargeLimit { enabled: false, start: 75, end: 80, path: String::new() });
@@ -112,7 +111,7 @@ fn read_limit(into: &Arc<Mutex<Option<battery::ChargeLimit>>>, proxy: olo_ui::Pr
     });
 }
 
-fn poll(proxy: olo_ui::Proxy) -> Shared {
+fn poll(proxy: olo_kit::Proxy) -> Shared {
     let battery: Shared = Default::default();
     // Tests (the layout lint): a battery with all there is to say, and
     // not this machine's.
@@ -233,7 +232,7 @@ fn power_mode(ui: &mut Ui, modes: Option<Option<Modes>>, shared: &Modes_, gpus_f
         };
         for mode in Mode::ALL.into_iter().filter(|m| modes.available.contains(m)) {
             let shared = shared.clone();
-            let pick = ui.on_view(move |_, _: (), _, cx| {
+            let pick = ui.on_view(move |_, _: &(), cx| {
                 // (Shown at once; the daemon's signal confirms it.)
                 if let Some(Some(m)) = shared.lock().unwrap().as_mut() {
                     m.active = mode;
@@ -245,7 +244,7 @@ fn power_mode(ui: &mut Ui, modes: Option<Option<Modes>>, shared: &Modes_, gpus_f
                 });
                 cx.notify();
             });
-            ui.add(RadioButton::new(mode.label(), modes.active == mode).id(format!("power-{}", mode.id())).on_select(move |window, cx| pick((), window, cx)));
+            ui.add(RadioButton::new(mode.label(), modes.active == mode).id(format!("power-{}", mode.id())).on_select(move |_window, cx| pick(&(), cx)));
             // (Under the label, past the mark.)
             ui.add(div().pl(px(m::MARK_SIZE + m::MARK_GAP)).child(StringView::new(mode.about()).dim(true).wrap(true)));
         }
@@ -267,9 +266,9 @@ pub fn ui(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut St
         1 => crate::gpus::graphics(ui, &mut st.gpus),
         _ => battery_and_idle(ui, power, server, st),
     });
-    let pick = ui.on_view(|v, i: usize, _, cx| {
+    let pick = ui.on_view(|v, i: &usize, cx| {
         if let crate::panel::State::Power(st) = &mut v.state {
-            st.tab = i;
+            st.tab = *i;
         }
         cx.notify();
     });
@@ -293,7 +292,7 @@ fn battery_and_idle(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, s
         idle_boxes(ui, power, server);
         presence_box(ui, presence);
     });
-    let column = |items: Vec<olo_ui::gpui::AnyElement>| div().flex_1().min_w_0().flex().flex_col().gap(px(m::SPACING)).children(items);
+    let column = |items: Vec<olo_kit::Element>| div().flex_1().min_w_0().flex().flex_col().gap(px(m::SPACING)).children(items);
     ui.add(div().flex().flex_row().items_start().gap(px(m::SPACING)).child(column(left)).child(column(right)));
 }
 
@@ -316,9 +315,9 @@ fn battery_box(ui: &mut Ui, battery: Option<Option<Battery>>, st: &State) {
             // Charging stopped short, to spare a battery that's mostly
             // plugged in (UPower's threshold: a ThinkPad's).
             if let Some(l) = st.limit.lock().unwrap().clone() {
-                let (shared, proxy, it) = (st.limit.clone(), olo_ui::proxy(ui.cx), l.clone());
-                let toggle = move |on: bool, _: &mut olo_ui::gpui::Window, _: &mut olo_ui::gpui::App| {
-                    let (l, shared, proxy) = (it.clone(), shared.clone(), proxy.clone());
+                let (shared, proxy, it) = (st.limit.clone(), olo_kit::proxy(), l.clone());
+                let toggle = move |on: &bool, _: &mut WindowCx| {
+                    let (l, shared, proxy, on) = (it.clone(), shared.clone(), proxy.clone(), *on);
                     std::thread::spawn(move || {
                         if let Err(e) = battery::set_charge_limit(&l, on) {
                             tracing::warn!("charge limit: {e}");
@@ -339,7 +338,7 @@ fn idle_boxes(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server) {
     ui.bbox("When Idle", |ui| {
         const OFF: &str = "Turn the display off after:";
         const SLEEP_AFTER: &str = "Put the computer to sleep after:";
-        let divider = divider_for(ui.window, &[OFF, SLEEP_AFTER]);
+        let divider = divider_for(&[OFF, SLEEP_AFTER]);
         minutes_menu(ui, "display-off", OFF, divider, DISPLAY_OFF, p.display_off_minutes, |s, m| s.power.display_off_minutes = m);
         minutes_menu(ui, "sleep", SLEEP_AFTER, divider, SLEEP, p.sleep_minutes, |s, m| s.power.sleep_minutes = m);
         ui.enabled_if(p.sleep_minutes > 0, |ui| ui.check("Only on battery power", p.sleep_on_battery_only, |s, v| s.power.sleep_on_battery_only = v));
@@ -352,7 +351,7 @@ fn idle_boxes(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server) {
             return;
         };
         let server = server.clone();
-        ui.add(CheckBox::new("Stay awake: no display sleep, sleep, screen saver or lock", status.caffeinated).on_toggle(move |on, _, _| server.set_caffeinated(on)));
+        ui.add(CheckBox::new("Stay awake: no display sleep, sleep, screen saver or lock", status.caffeinated).on_toggle(move |on, _| server.set_caffeinated(*on)));
         let note = match status.app_inhibitors {
             0 => "Also from the Deskbar: click the cup.".to_owned(),
             1 => "An application is keeping the display awake.".to_owned(),
@@ -381,7 +380,7 @@ fn presence_box(ui: &mut Ui, sensor: Option<bool>) {
     let p = ui.s.power.clone();
     ui.bbox("Presence", |ui| {
         const LOCK: &str = "Lock when you walk away:";
-        let divider = divider_for(ui.window, &[LOCK]);
+        let divider = divider_for(&[LOCK]);
         let mut choices: Vec<u32> = AWAY.to_vec();
         if !choices.contains(&p.lock_when_away_seconds) {
             choices.push(p.lock_when_away_seconds);

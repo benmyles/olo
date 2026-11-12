@@ -1,6 +1,9 @@
 //! How a window keeps up: its frames' times, and the work each did.
 
-use std::time::{Duration, Instant};
+use std::{
+    collections::VecDeque,
+    time::{Duration, Instant},
+};
 
 /// How a window kept up, for agents and tools (the kit's
 /// `{"frames":true}`): frames drawn since last taken, their total and
@@ -16,11 +19,14 @@ pub struct FrameStats {
     pub slowest_us: u64,
     /// Each frame: when it started (CLOCK_MONOTONIC microseconds), how
     /// long laying out and painting took, and the whole frame.
-    pub marks: Vec<(u64, u32, u32)>,
-    /// Each mark's scroll views, as they were drawn in it (where
-    /// each showed its content from, x and y, and the furthest it goes):
-    /// as the display thread drew them.
-    pub scrolls: Vec<Vec<[f32; 4]>>,
+    pub marks: VecDeque<(u64, u32, u32)>,
+    /// Each mark's scrollers, as the display thread drew them in it, in
+    /// the order they're drawn: where each showed its content (x and y
+    /// at its top left: zero at its start, down to minus how far it
+    /// goes; past either end, its content pulled past its edge) and the
+    /// furthest it goes (x, y). What `tools/dev/scroll-check` and the
+    /// benchmark judge a scroll by.
+    pub scrolls: VecDeque<Vec<[f32; 4]>>,
 }
 
 impl FrameStats {
@@ -32,13 +38,15 @@ impl FrameStats {
         self.frames += 1;
         self.total_us += us;
         self.slowest_us = self.slowest_us.max(us);
+        // (A ring: a window nobody asks about drops its oldest mark with
+        // every frame, without moving the rest.)
         if self.marks.len() == Self::MARKS {
-            self.marks.remove(0);
-            self.scrolls.remove(0);
+            self.marks.pop_front();
+            self.scrolls.pop_front();
         }
         let at = monotonic_us().saturating_sub(started.elapsed().as_micros() as u64);
-        self.marks.push((at, drawn.as_micros() as u32, us as u32));
-        self.scrolls.push(scrolls);
+        self.marks.push_back((at, drawn.as_micros() as u32, us as u32));
+        self.scrolls.push_back(scrolls);
     }
 }
 

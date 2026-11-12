@@ -8,25 +8,22 @@
 //! composed by the GPU it's wired to).
 
 use std::{
-    cell::Cell,
+    cell::{Cell, RefCell},
     rc::Rc,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
-use olo_protocol::{
-    Client, GpuInfo, Mode, OutputConfig, OutputInfo, PowerStatus, Reply, Request,
-    color::{self, ColorMode},
-};
-use olo_ui::{
-    gpui::{
-        Bounds, Context, DispatchPhase, FontWeight, IntoElement as _, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, SharedString, Styled as _,
-        WindowHandle, canvas, div, point, px, rgb, size,
-    },
-    metrics as m,
+use olo_kit::{
+    Bounds, Cx, FontWeight, InteractiveElement as _, IntoElement as _, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Painter, ParentElement as _, Pixels, Point, SharedString,
+    Styled as _, WindowCx, canvas, div, metrics as m, point, px, rgb, size,
     style::{self, c},
     theme,
     widgets::{Button, CheckBox, EmptyState, MenuField, Slider, StringView, TabView, Timeout, open_timed_alert},
+};
+use olo_protocol::{
+    Client, GpuInfo, Mode, OutputConfig, OutputInfo, PowerStatus, Reply, Request,
+    color::{self, ColorMode},
 };
 
 use crate::{PanelView, form::Ui, panel, server::Server};
@@ -65,7 +62,7 @@ struct Confirm {
     name: String,
     undo: Undo,
     until: Rc<Cell<Instant>>,
-    alert: Option<WindowHandle<olo_ui::Frame>>,
+    alert: Option<olo_kit::LocalWindow<olo_kit::widgets::Alert>>,
 }
 
 /// How a change waiting to be kept is undone.
@@ -79,7 +76,7 @@ enum Undo {
 
 /// Ask app_server for the GPUs, on a thread (the window not shown until
 /// they're in, briefly: `hold`).
-fn ask_gpus(st: &State, proxy: olo_ui::Proxy, hold: Option<olo_ui::FirstShowHold>) {
+fn ask_gpus(st: &State, proxy: olo_kit::Proxy, hold: Option<olo_kit::FirstShowHold>) {
     // Tests (the layout lint): a hybrid laptop's two.
     if cfg!(test) {
         let gpu = |pci: &str, name: &str, driver: &str, boot: bool, connectors: &[&str]| GpuInfo {
@@ -205,7 +202,7 @@ pub fn ui(ui: &mut Ui, outputs: &[OutputInfo], power: Option<&PowerStatus>, serv
 /// A pop-up menu that does something other than change the settings.
 fn menu(ui: &mut Ui, id: String, names: Vec<String>, selected: usize, label: &str, divider: f32, on: impl Fn(usize) + 'static) {
     let names = names.into_iter().map(SharedString::from).collect();
-    let f = MenuField::new(id, names, selected).label(SharedString::from(label.to_owned())).divider(divider).enabled(ui.enabled()).on_change(move |i, _, _| on(i));
+    let f = MenuField::new(id, names, selected).label(SharedString::from(label.to_owned())).divider(divider).enabled(ui.enabled()).on_change(move |i, _| on(*i));
     ui.add(f);
 }
 
@@ -223,7 +220,7 @@ fn panel(ui: &mut Ui, outputs: &[OutputInfo], power: Option<&PowerStatus>, serve
         let source = all.iter().find(|x| Some(&x.name) == mirror.mirror_of.as_ref()).map(|x| shown_name(x, all)).unwrap_or_default();
         let shown = st.selected.as_deref() == Some(&mirror.name);
         let name = mirror.name.clone();
-        let pick = ui.on_click_view(move |v, _, cx| {
+        let pick = ui.on_click_view(move |v, cx| {
             if let Some(st) = state_of(v) {
                 st.selected = Some(name.clone());
                 cx.notify();
@@ -252,9 +249,9 @@ fn panel(ui: &mut Ui, outputs: &[OutputInfo], power: Option<&PowerStatus>, serve
     let facts = if has_color {
         let tab = st.side_tab.min(1);
         let items = ui.collect(|ui| if tab == 0 { panel_box(ui, &o, label_w, server) } else { color_box(ui, &o, &title, label_w, server, st) });
-        let pick = ui.on_view(|v, i: usize, _, cx| {
+        let pick = ui.on_view(|v, i: &usize, cx| {
             if let Some(st) = state_of(v) {
-                st.side_tab = i;
+                st.side_tab = *i;
             }
             cx.notify();
         });
@@ -264,12 +261,12 @@ fn panel(ui: &mut Ui, outputs: &[OutputInfo], power: Option<&PowerStatus>, serve
                 .grows()
                 .on_select(pick)
                 .child(div().flex_1().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING)).children(items))
-                .into_any_element(),
+                .into_element(),
         ]
     } else {
         ui.collect(|ui| ui.bbox("Panel", |ui| panel_box(ui, &o, label_w, server)))
     };
-    let column = |items: Vec<olo_ui::gpui::AnyElement>| div().flex_1().min_w_0().flex().flex_col().children(items);
+    let column = |items: Vec<olo_kit::Element>| div().flex_1().min_w_0().flex().flex_col().children(items);
     ui.add(div().flex().flex_row().items_start().gap(px(m::SPACING)).child(column(settings)).child(column(facts)));
     forget_gone(ui, outputs, st);
     graphics(ui, outputs, st);
@@ -284,14 +281,20 @@ fn map(ui: &mut Ui, all: &[OutputInfo], server: &Server, st: &State) {
     let selected = st.selected.clone();
     let drag = st.drag.clone();
     let colour = ui.s.workspace_color(0);
-    let view = ui.cx.entity().downgrade();
     let server = server.clone();
-    let paint = move |map: Bounds<Pixels>, window: &mut olo_ui::gpui::Window, cx: &mut olo_ui::gpui::App| {
-        let p = theme::palette(cx);
-        style::fill_rect(window, map, c(p.document_background));
-        style::sunken(window, map, &p, false);
+    // Where each display was drawn, and the map's scale: what a press
+    // and a drag go by (the drawing finds them, its element's listeners
+    // read them).
+    let found: Rc<RefCell<(Vec<(String, Bounds<Pixels>)>, f32)>> = Rc::default();
+    let draggable = placed.len() > 1;
+    let (drawn, of_map) = (found.clone(), placed.clone());
+    let paint = move |g: &mut Painter, map: Bounds<Pixels>| {
+        let placed = &of_map;
+        let p = theme::palette();
+        style::fill_rect(g, map, c(p.document_background));
+        style::sunken(g, map, &p, false);
         let (mut x0, mut y0, mut x1, mut y1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
-        for o in &placed {
+        for o in placed.iter() {
             let (w, h) = logical(o);
             x0 = x0.min(o.position.0 as f64);
             y0 = y0.min(o.position.1 as f64);
@@ -315,85 +318,71 @@ fn map(ui: &mut Ui, all: &[OutputInfo], server: &Server, st: &State) {
         let mut hits = Vec::new();
         for i in order {
             let o = &placed[i];
-            let mut r = style::snap(window, rect_of(o));
+            let mut r = style::snap(g, rect_of(o));
             hits.push((o.name.clone(), r));
             if let Some((n, from, to)) = &drag
                 && *n == o.name
             {
                 let moved = Bounds { origin: point(r.origin.x + (to.x - from.x), r.origin.y + (to.y - from.y)), size: r.size };
-                r = style::snap(window, moved.intersect(&map.dilate(px(-2.0))));
+                r = style::snap(g, moved.intersect(&map.dilate(px(-2.0))));
             }
             let chosen = selected.as_deref() == Some(&o.name);
             let [rr, gg, bb] = colour;
-            style::fill_rect(window, r, rgb((u32::from(rr) << 16) | (u32::from(gg) << 8) | u32::from(bb)).into());
+            style::fill_rect(g, r, rgb((u32::from(rr) << 16) | (u32::from(gg) << 8) | u32::from(bb)).into());
             let border = if chosen { c(p.keyboard_navigation) } else { c(p.frame_focused[0]) };
-            style::frame_rect(window, r, border);
+            style::frame_rect(g, r, border);
             if chosen {
-                style::frame_rect(window, style::inset(window, r, 1.0), border);
+                style::frame_rect(g, style::inset(g, r, 1.0), border);
             }
             // A strip along the top for Deskbar: every display has its own.
-            let line = style::hairline(window) * if chosen { 2.0 } else { 1.0 };
+            let line = style::hairline(g) * if chosen { 2.0 } else { 1.0 };
             let bar = Bounds { origin: point(r.left() + line, r.top() + line), size: size(r.size.width - line * 2.0, px(4.0)) };
-            style::fill_rect(window, bar, c(p.panel_background));
+            style::fill_rect(g, bar, c(p.panel_background));
             // (Cut short to its screen, which may be small beside a big one.)
             let room = (r.size.width - px(2.0 * m::TIGHT)).max(px(0.0));
-            style::label_fit(window, cx, r.center().x, r.center().y, style::Align::Center, names[i].clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), c(p.desktop_text), room);
-            olo_ui::agent::record(
-                window,
-                cx,
-                olo_ui::agent::Node { role: "Button", name: Some(names[i].clone().into()), bounds: r, enabled: true, clickable: true, selected: Some(chosen), ..Default::default() },
+            style::label_fit(g, r.center().x, r.center().y, style::Align::Center, names[i].clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), c(p.desktop_text), room);
+            olo_kit::agent::record(
+                g,
+                olo_kit::agent::Node { role: "Button", name: Some(names[i].clone().into()), bounds: r, enabled: true, clickable: true, selected: Some(chosen), ..Default::default() },
             );
         }
-        let draggable = placed.len() > 1;
-        let (down, moved, up) = (view.clone(), view.clone(), view.clone());
-        window.on_mouse_event(move |e: &MouseDownEvent, phase, _, cx| {
-            if phase != DispatchPhase::Bubble || e.button != MouseButton::Left || !map.contains(&e.position) {
-                return;
-            }
-            let Some((name, _)) = hits.iter().rev().find(|(_, r)| r.contains(&e.position)).cloned() else { return };
-            let _ = down.update(cx, |v, cx| {
-                if let Some(st) = state_of(v) {
-                    st.selected = Some(name.clone());
-                    if draggable {
-                        st.drag = Some((name, e.position, e.position));
-                    }
-                    cx.notify();
-                }
-            });
-        });
-        window.on_mouse_event(move |e: &MouseMoveEvent, phase, _, cx| {
-            if phase != DispatchPhase::Bubble {
-                return;
-            }
-            let _ = moved.update(cx, |v, cx| {
-                if let Some(st) = state_of(v)
-                    && let Some(d) = st.drag.as_mut()
-                {
-                    d.2 = e.position;
-                    cx.notify();
-                }
-            });
-        });
-        let placed = placed.clone();
-        let server = server.clone();
-        window.on_mouse_event(move |e: &MouseUpEvent, phase, _, cx| {
-            if phase != DispatchPhase::Bubble || e.button != MouseButton::Left {
-                return;
-            }
-            let _ = up.update(cx, |v, cx| {
-                if let Some(st) = state_of(v)
-                    && let Some((name, from, to)) = st.drag.take()
-                {
-                    let d = (f32::from(to.x - from.x), f32::from(to.y - from.y));
-                    if d != (0.0, 0.0) {
-                        rearrange(&placed, &name, d, k, &server);
-                    }
-                    cx.notify();
-                }
-            });
-        });
+        *drawn.borrow_mut() = (hits, k);
     };
-    ui.add(canvas(|_, _, _| {}, move |b, _, window, cx| paint(b, window, cx)).w_full().h(px(150.0)).flex_shrink_0());
+    let at = found.clone();
+    let down = ui.cx.listener(move |v: &mut PanelView, e: &MouseDownEvent, cx| {
+        let Some((name, _)) = at.borrow().0.iter().rev().find(|(_, r)| r.contains(&e.position)).cloned() else { return };
+        if let Some(st) = state_of(v) {
+            st.selected = Some(name.clone());
+            if draggable {
+                st.drag = Some((name, e.position, e.position));
+            }
+            cx.notify();
+        }
+    });
+    let moved = ui.cx.listener(|v: &mut PanelView, e: &MouseMoveEvent, cx| {
+        if let Some(st) = state_of(v)
+            && let Some(d) = st.drag.as_mut()
+        {
+            d.2 = e.position;
+            cx.notify();
+        }
+    });
+    let up = ui.cx.listener(move |v: &mut PanelView, e: &MouseUpEvent, cx| {
+        if e.button != MouseButton::Left {
+            return;
+        }
+        if let Some(st) = state_of(v)
+            && let Some((name, from, to)) = st.drag.take()
+        {
+            let d = (f32::from(to.x - from.x), f32::from(to.y - from.y));
+            if d != (0.0, 0.0) {
+                rearrange(&placed, &name, d, found.borrow().1, &server);
+            }
+            cx.notify();
+        }
+    });
+    // (The press on the map; the drag wherever the pointer goes.)
+    ui.add(canvas(paint).w_full().h(px(150.0)).flex_shrink_0().on_mouse_down(MouseButton::Left, down).on_window_mouse_move(moved).on_window_mouse_up(up));
 }
 
 /// The chosen display's resolution, refresh rate, scale, rotation, use,
@@ -413,7 +402,7 @@ fn display_box(ui: &mut Ui, o: &OutputInfo, outputs: &[OutputInfo], power: Optio
     // after several changes).
     let change = {
         let (name, shown, current, server) = (o.name.clone(), shown_name(o, outputs), current.clone(), server.clone());
-        move |v: &mut PanelView, chosen: Mode, cx: &mut Context<PanelView>| {
+        move |v: &mut PanelView, chosen: Mode, cx: &mut Cx<PanelView>| {
             if chosen == current {
                 return;
             }
@@ -424,8 +413,8 @@ fn display_box(ui: &mut Ui, o: &OutputInfo, outputs: &[OutputInfo], power: Optio
     let change = std::rc::Rc::new(change);
     {
         let (modes, sizes, current, change) = (o.modes.clone(), sizes.clone(), current.clone(), change.clone());
-        let on = ui.on_view(move |v, i: usize, _, cx| {
-            let (w, h) = sizes[i];
+        let on = ui.on_view(move |v, i: &usize, cx| {
+            let (w, h) = sizes[*i];
             // Keep the refresh rate if the new size offers it, else the fastest.
             let chosen = modes.iter().filter(|m| (m.width, m.height) == (w, h)).min_by_key(|m| ((m.refresh - current.refresh).abs(), -m.refresh)).cloned().unwrap_or(current.clone());
             change(v, chosen, cx);
@@ -442,8 +431,8 @@ fn display_box(ui: &mut Ui, o: &OutputInfo, outputs: &[OutputInfo], power: Optio
     let several = rates.len() > 1;
     {
         let (rates, current, change) = (rates.clone(), current.clone(), change.clone());
-        let on = ui.on_view(move |v, i: usize, _, cx| {
-            change(v, Mode { refresh: rates[i], ..current.clone() }, cx);
+        let on = ui.on_view(move |v, i: &usize, cx| {
+            change(v, Mode { refresh: rates[*i], ..current.clone() }, cx);
             cx.notify();
         });
         ui.add(MenuField::new(format!("hz-{}", o.name), rate_names, ri).label("Refresh rate:").divider(label_w).enabled(several).on_change(on));
@@ -452,8 +441,7 @@ fn display_box(ui: &mut Ui, o: &OutputInfo, outputs: &[OutputInfo], power: Optio
     // it comes, within its range.
     if let Some(vrr) = o.vrr {
         let (name, to) = (o.name.clone(), server.clone());
-        let check =
-            CheckBox::new("Variable refresh rate", vrr).id(format!("vrr-{}", o.name)).on_toggle(move |on, _, _| to.configure_output(&name, OutputConfig { vrr: Some(on), ..Default::default() }));
+        let check = CheckBox::new("Variable refresh rate", vrr).id(format!("vrr-{}", o.name)).on_toggle(move |on, _| to.configure_output(&name, OutputConfig { vrr: Some(*on), ..Default::default() }));
         ui.add(div().pl(px(label_w)).child(check));
     }
 
@@ -474,7 +462,7 @@ fn display_box(ui: &mut Ui, o: &OutputInfo, outputs: &[OutputInfo], power: Optio
     // (on by default; a pen goes on working).
     if let Some(touch) = o.touch {
         let (name, to) = (o.name.clone(), server.clone());
-        let check = CheckBox::new("Touch screen", touch).id(format!("touch-{}", o.name)).on_toggle(move |on, _, _| to.configure_output(&name, OutputConfig { touch: Some(on), ..Default::default() }));
+        let check = CheckBox::new("Touch screen", touch).id(format!("touch-{}", o.name)).on_toggle(move |on, _| to.configure_output(&name, OutputConfig { touch: Some(*on), ..Default::default() }));
         ui.add(div().pl(px(label_w)).child(check));
     }
     // Extend the desktop, or show another display's picture.
@@ -513,9 +501,9 @@ fn display_box(ui: &mut Ui, o: &OutputInfo, outputs: &[OutputInfo], power: Optio
         let server = server.clone();
         // The note under the fields' text, the check box under the fields.
         let left = if o.main {
-            div().pl(px(m::TEXT_INSET)).child(StringView::new("Main display: the desktop is here.").dim(true)).into_any_element()
+            div().pl(px(m::TEXT_INSET)).child(StringView::new("Main display: the desktop is here.").dim(true)).into_element()
         } else {
-            CheckBox::new("Make this the main display", false).on_toggle(make_main).into_any_element()
+            CheckBox::new("Make this the main display", false).on_toggle(make_main).into_element()
         };
         ui.add(div().flex().flex_row().items_center().pl(px(label_w)).child(div().flex_1().child(left)).child(Button::new("Identify").on_click(move |_, _| server.identify_outputs())));
     }
@@ -524,16 +512,17 @@ fn display_box(ui: &mut Ui, o: &OutputInfo, outputs: &[OutputInfo], power: Optio
     // one's backlight, monitors controlled over USB).
     let builtin = power.and_then(|p| p.brightness).filter(|_| display_name(o) == "Built-in Display" || outputs.len() == 1);
     if let Some(level) = o.brightness.or(builtin) {
-        if st.brightness.as_ref().is_some_and(|(_, _, at)| at.elapsed() > Duration::from_millis(600)) {
+        if st.brightness.as_ref().is_some_and(|(_, _, at)| at.elapsed() > crate::form::HELD) {
             st.brightness = None;
         }
         let v = st.brightness.as_ref().filter(|(n, ..)| *n == o.name).map_or(level, |(_, l, _)| *l);
         let (name, server) = (o.name.clone(), server.clone());
-        let on = ui.on_view(move |view, v: f32, _, cx| {
+        let on = ui.on_view(move |view, v: &f32, cx| {
             if let Some(st) = state_of(view) {
-                st.brightness = Some((name.clone(), v, Instant::now()));
+                st.brightness = Some((name.clone(), *v, Instant::now()));
             }
-            server.set_output_brightness(&name, v);
+            server.set_output_brightness(&name, *v);
+            crate::form::again_once_let_go(cx);
             cx.notify();
         });
         ui.add(Slider::new(format!("brightness-{}", o.name), v, 0.0..=1.0).step(1.0 / 64.0).label("Brightness").value_text(format!("{:.0}%", v * 100.0)).on_change(on));
@@ -679,22 +668,23 @@ fn color_box(ui: &mut Ui, o: &OutputInfo, shown: &str, label_w: f32, server: &Se
         // HDR, kept only once seen to work (an alert asks, and reverts it).
         if let Some(hdr) = o.hdr {
             let (name, shown, to) = (o.name.clone(), shown.to_owned(), server.clone());
-            let on = ui.on_view(move |v, on: bool, _, cx| {
-                if on {
+            let on = ui.on_view(move |v, on: &bool, cx| {
+                if *on {
                     ask_to_keep(v, cx, &name, &shown, Undo::Hdr, &to);
                 }
-                to.configure_output(&name, OutputConfig { hdr: Some(on), ..Default::default() });
+                to.configure_output(&name, OutputConfig { hdr: Some(*on), ..Default::default() });
                 cx.notify();
             });
             ui.add(div().pl(px(label_w)).child(CheckBox::new("High dynamic range (HDR)", hdr).id(format!("hdr-{}", o.name)).on_toggle(on)));
             if hdr {
                 let (name, to) = (o.name.clone(), server.clone());
-                let nits = st.sdr_nits.as_ref().filter(|(n, _, at)| *n == o.name && at.elapsed() < Duration::from_millis(600)).map_or(o.sdr_nits, |(_, v, _)| *v);
-                let set = ui.on_view(move |view, v: f32, _, cx| {
+                let nits = st.sdr_nits.as_ref().filter(|(n, _, at)| *n == o.name && at.elapsed() < crate::form::HELD).map_or(o.sdr_nits, |(_, v, _)| *v);
+                let set = ui.on_view(move |view, v: &f32, cx| {
                     if let Some(st) = state_of(view) {
-                        st.sdr_nits = Some((name.clone(), v, Instant::now()));
+                        st.sdr_nits = Some((name.clone(), *v, Instant::now()));
                     }
-                    to.configure_output(&name, OutputConfig { sdr_nits: Some(v), ..Default::default() });
+                    to.configure_output(&name, OutputConfig { sdr_nits: Some(*v), ..Default::default() });
+                    crate::form::again_once_let_go(cx);
                     cx.notify();
                 });
                 ui.add(
@@ -745,7 +735,7 @@ fn rearrange(outputs: &[OutputInfo], name: &str, delta: (f32, f32), k: f32, serv
 /// while it asks (another resolution), it asks on with the time renewed,
 /// undone to what worked before the first change; another change (another
 /// display, HDR) keeps the first and asks about the new one.
-fn ask_to_keep(v: &mut PanelView, cx: &mut Context<PanelView>, name: &str, shown: &str, undo: Undo, server: &Server) {
+fn ask_to_keep(v: &mut PanelView, cx: &mut Cx<PanelView>, name: &str, shown: &str, undo: Undo, server: &Server) {
     let Some(st) = state_of(v) else { return };
     let until = Instant::now() + Duration::from_secs(KEEP_SECS);
     if let Some(c) = &st.confirm
@@ -756,9 +746,7 @@ fn ask_to_keep(v: &mut PanelView, cx: &mut Context<PanelView>, name: &str, shown
         return;
     }
     if let Some(alert) = st.confirm.take().and_then(|c| c.alert) {
-        cx.defer(move |cx| {
-            let _ = alert.update(cx, |_, window, _| window.remove_window());
-        });
+        alert.close(cx);
     }
     let until = Rc::new(Cell::new(until));
     let question = match undo {
@@ -766,19 +754,20 @@ fn ask_to_keep(v: &mut PanelView, cx: &mut Context<PanelView>, name: &str, shown
         Undo::Hdr => format!("Keep HDR on for {shown}?"),
     };
     let says = Rc::new(|left: u64| if left == 1 { "Reverting in 1 second.".to_owned() } else { format!("Reverting in {left} seconds.") });
-    let view = cx.weak_entity();
+    let view = cx.view_ref();
     let answered = {
         let (name, undo, until, server) = (name.to_owned(), undo.clone(), until.clone(), server.clone());
-        move |choice: Option<usize>, cx: &mut olo_ui::gpui::App| {
+        move |choice: &Option<usize>, cx: &mut WindowCx| {
             // Keep is the second button; Revert, Escape, the alert closed
             // or the time up undo it.
-            if choice != Some(1) {
+            if *choice != Some(1) {
                 match &undo {
                     Undo::Mode(previous) => server.configure_output(&name, OutputConfig { mode: Some(previous.clone()), ..Default::default() }),
                     Undo::Hdr => server.configure_output(&name, OutputConfig { hdr: Some(false), ..Default::default() }),
                 }
             }
-            let _ = view.update(cx, |v, cx| {
+            let until = until.clone();
+            view.update(cx, move |v, cx| {
                 if let Some(st) = state_of(v)
                     && st.confirm.as_ref().is_some_and(|c| Rc::ptr_eq(&c.until, &until))
                 {
@@ -799,9 +788,7 @@ fn forget_gone(ui: &mut Ui, outputs: &[OutputInfo], st: &mut State) {
     if st.confirm.as_ref().is_some_and(|c| !outputs.iter().any(|o| o.name == c.name))
         && let Some(alert) = st.confirm.take().and_then(|c| c.alert)
     {
-        ui.cx.defer(move |cx| {
-            let _ = alert.update(cx, |_, window, _| window.remove_window());
-        });
+        alert.close(ui.cx);
     }
 }
 
@@ -810,8 +797,8 @@ fn forget_gone(ui: &mut Ui, outputs: &[OutputInfo], st: &mut State) {
 fn graphics(ui: &mut Ui, outputs: &[OutputInfo], st: &mut State) {
     if !st.asked_gpus {
         st.asked_gpus = true;
-        let hold = olo_ui::hold_first_show(ui.window);
-        ask_gpus(st, olo_ui::proxy(ui.cx), hold);
+        let hold = olo_kit::hold_first_show(ui.cx);
+        ask_gpus(st, olo_kit::proxy(), hold);
     }
     let Some(gpus) = st.gpus.lock().unwrap().clone() else { return };
     if gpus.len() < 2 {

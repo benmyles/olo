@@ -13,12 +13,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use olo_protocol::performance::{PerformanceSettings, Thresholds};
-use olo_ui::{
-    gpui::{Context, Entity, ParentElement as _, SharedString, Styled as _, Window, div, px},
-    metrics as m,
+use olo_kit::{
+    Child, Cx, ParentElement as _, SharedString, Styled as _, WindowCx, div, metrics as m, px,
     widgets::{Button, CheckBox, Slider, StringView, TabView, TextControl, TextField, TextFieldEvent, heading},
 };
+use olo_protocol::performance::{PerformanceSettings, Thresholds};
 
 use crate::{Msg, PanelView, form::Ui, panel};
 
@@ -29,39 +28,39 @@ pub struct State {
     /// ignored for a moment after it.
     edited: Option<Instant>,
     /// The background programs (comma separated).
-    background: Entity<TextField>,
-    _watch: Option<olo_ui::watch::Watch>,
+    background: Child<TextField>,
+    _watch: Option<olo_kit::watch::Watch>,
     /// The tab shown: 0 Supervisor, 1 Watchdog.
     tab: usize,
 }
 
 impl State {
-    pub fn new(cx: &mut Context<PanelView>) -> State {
+    pub fn new(cx: &mut Cx<PanelView>) -> State {
         let (tx, rx) = channel();
         // Tests (the layout lint): the defaults, not this account's file.
         let (settings, watch) = if cfg!(test) {
             drop(tx);
             (Some(PerformanceSettings::default()), None)
         } else {
-            let proxy = olo_ui::proxy(cx);
+            let proxy = olo_kit::proxy();
             let read = Arc::new(move || {
                 let _ = tx.send(PerformanceSettings::load());
                 proxy.send(Msg::Redraw);
             });
             let now = read.clone();
             std::thread::Builder::new().name("performance-read".into()).spawn(move || now()).expect("thread");
-            (None, olo_ui::watch::watch([PerformanceSettings::path()], move |_| read()))
+            (None, olo_kit::watch::watch([PerformanceSettings::path()], move |_| read()))
         };
-        let background = olo_ui::widgets::text_field(cx, |f| f.hint("Program names, comma separated"));
-        cx.subscribe(&background, |v, field, e: &TextFieldEvent, cx| {
+        let background = olo_kit::widgets::text_field(cx, |f| f.hint("Program names, comma separated"));
+        cx.subscribe(&background, |v, e: &TextFieldEvent, cx| {
             if !matches!(e, TextFieldEvent::Changed) {
                 return;
             }
-            let text = field.read(cx).text().to_owned();
+            let panel::State::Performance(st) = &v.state else { return };
+            let text = st.background.read(cx).text().to_owned();
             change(v, |s| s.background = text.split(',').map(|n| n.trim().to_owned()).filter(|n| !n.is_empty()).collect());
             cx.notify();
-        })
-        .detach();
+        });
         State { settings, rx, edited: None, background, _watch: watch, tab: 0 }
     }
 }
@@ -92,9 +91,9 @@ fn change(v: &mut PanelView, f: impl FnOnce(&mut PerformanceSettings)) {
 }
 
 /// A control's change to the settings.
-fn set<T: 'static>(ui: &Ui, f: impl Fn(&mut PerformanceSettings, T) + 'static) -> impl Fn(T, &mut Window, &mut olo_ui::gpui::App) + 'static {
-    ui.on_view(move |v, value: T, _, cx| {
-        change(v, |s| f(s, value));
+fn set<T: Clone + 'static>(ui: &Ui, f: impl Fn(&mut PerformanceSettings, T) + 'static) -> impl Fn(&T, &mut WindowCx) + 'static {
+    ui.on_view(move |v, value: &T, cx| {
+        change(v, |s| f(s, value.clone()));
         cx.notify();
     })
 }
@@ -140,15 +139,15 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         ui.note("Reading…");
         return;
     };
-    let background = st.background.clone();
+    let background = &st.background;
     // Two tabs, so it fits a laptop's screen: what the supervisor does, and
     // the watchdog's thresholds.
     let tab = st.tab;
     let items = ui.collect(|ui| {
         if tab == 0 {
             // The power mode is Power's; found from here too.
-            let open = ui.on_view(|v, _: (), _, cx| {
-                v.prefs.update(cx, |p, cx| p.open("power", cx));
+            let open = ui.on_view(|_v, _: &(), _cx| {
+                crate::prefs().open("power");
             });
             ui.add(
                 div()
@@ -157,7 +156,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                     .items_center()
                     .gap(px(m::SPACING))
                     .child(div().flex_1().min_w_0().child(StringView::new("The power mode (Power Saver, Balanced or Performance) is set in Power.").wrap(true)))
-                    .child(Button::new("Open Power").on_click(move |window, cx| open((), window, cx))),
+                    .child(Button::new("Open Power").on_click(move |_, cx| open(&(), cx))),
             );
             ui.bbox("Supervisor", |ui| {
                 check(ui, "Keep the desktop responsive", s.enabled, |s, v| s.enabled = v);
@@ -173,7 +172,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                     let enabled = ui.enabled();
                     ui.add(div().flex().flex_row().gap(px(m::SPACING * 2.0)).child(div().flex_1().child(Slider::new("perf-nice", nice, 1.0..=19.0).label("Lower to nice").value_text(format!("{nice:.0}")).step(1.0).enabled(enabled).on_change(on))).child(div().flex_1()));
                     background.update(ui.cx, |f, cx| f.set_enabled(enabled, cx));
-                    ui.add(TextControl::new(background.clone()).label("Background:"));
+                    ui.add(TextControl::new(ui.cx, background).label("Background:"));
                     ui.note("A terminal’s job busy for a minute and more is lowered too. Batch scheduling and idle I/O are put back when this is turned off; a raised nice stays until the program ends.");
                 });
                 ui.bbox("Never Warned About", |ui| {
@@ -186,7 +185,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                                 s.ignored.remove(i);
                             }
                         });
-                        ui.add(div().flex().flex_row().items_center().child(div().flex_1().child(StringView::new(name.clone()))).child(Button::new("Remove").min_width(72.0).on_click(move |window, cx| remove((), window, cx))));
+                        ui.add(div().flex().flex_row().items_center().child(div().flex_1().child(StringView::new(name.clone()))).child(Button::new("Remove").min_width(72.0).on_click(move |_, cx| remove(&(), cx))));
                     }
                 });
                 return;
@@ -217,7 +216,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                     pair(ui, ("Unreaped for", th.zombie_minutes, 0.5..=60.0, 0.5, format!("{:.1} min", th.zombie_minutes), |t, v| t.zombie_minutes = v), Some(("By a parent leaving", th.zombie_least as f32, 1.0..=20.0, 1.0, format!("{} of them", th.zombie_least), |t, v| t.zombie_least = v as u32)));
                     pair(ui, ("Urgent at", th.zombie_count as f32, 5.0..=500.0, 5.0, format!("{} of them", th.zombie_count), |t, v| t.zombie_count = v as u32), None);
                 });
-                let column = |items: Vec<olo_ui::gpui::AnyElement>| div().flex_1().min_w_0().flex().flex_col().gap(px(m::SPACING)).children(items);
+                let column = |items: Vec<olo_kit::Element>| div().flex_1().min_w_0().flex().flex_col().gap(px(m::SPACING)).children(items);
                 for (a, b) in [(stuck, leaks), (memory, zombies)] {
                     ui.add(div().flex().flex_row().gap(px(m::SPACING * 3.0)).child(column(a)).child(column(b)));
                 }
@@ -225,13 +224,13 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                 let changed = *th != Thresholds::default();
                 let reset = set(ui, |s, _: ()| s.thresholds = Thresholds::default());
                 let enabled = ui.enabled();
-                ui.add(Button::new("Reset Thresholds").enabled(changed && enabled).on_click(move |window, cx| reset((), window, cx)));
+                ui.add(Button::new("Reset Thresholds").enabled(changed && enabled).on_click(move |_, cx| reset(&(), cx)));
             });
         });
     });
-    let pick = ui.on_view(|v, i: usize, _, cx| {
+    let pick = ui.on_view(|v, i: &usize, cx| {
         if let Some(st) = state_of(v) {
-            st.tab = i;
+            st.tab = *i;
         }
         cx.notify();
     });

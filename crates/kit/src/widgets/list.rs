@@ -136,14 +136,12 @@ impl ListModel {
 
     /// Scrolls so `row` shows, in the middle when it didn't (a selection
     /// made in code: what's round it shows too).
+    /// (Once its rows are laid out: a list that hasn't been shown yet,
+    /// or whose rows changed in the same turn, has its view and ends
+    /// only then.)
     pub fn reveal(&self, cx: &mut WindowCx, row: usize) {
         let (scroll, row_h) = (self.scroll(), self.0.borrow().row_height);
-        let view = f32::from(scroll.bounds().size.height);
-        let top_now = -f32::from(scroll.offset().y);
-        let (top, bottom) = (row as f32 * row_h, (row + 1) as f32 * row_h);
-        if top < top_now || bottom > top_now + view {
-            scroll.set_offset(cx, point(scroll.offset().x, px(-(top - (view - row_h) / 2.0).max(0.0))));
-        }
+        scroll.reveal_in_middle(cx, px(row as f32 * row_h), px((row + 1) as f32 * row_h));
     }
 
     /// Whether its last row shows (scrolled to the end, or all fit): a

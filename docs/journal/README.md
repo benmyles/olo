@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-11
 
+### Preferences on olo-kit
+
+*22:34* — Preferences, every panel, on Olo's own kits: each panel's window a view on a looper of its own. The same to the pixel as it was but for two things meant: the launcher's cells are wider (the longest names ran into the cell beside them) and Notifications' From and to line up with the words above them. Typing in a field draws in a quarter of the time, a slider in half.
+
+![Preferences on olo-kit](2026-11-11/223417-preferences-on-olo-kit.png)
+
 ### Terminal on olo-kit
 
 *15:05* — Terminal on Olo's own kit: one Terminal behind a lock, each window a view on a looper of its own, its screens a view of their own drawn once a frame however much a shell prints. The same to the pixel as before at every scale, light and dark; a frame of typing 475 to 240 µs, of steady output 532 to 305 µs.

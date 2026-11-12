@@ -216,6 +216,9 @@ impl WindowCore {
         style.refine(&refinement);
         let layout = self.layout.add(&style, self.gfx.rem_size, self.gfx.scale_factor, None);
         let hears = inter.as_ref().is_some_and(|i| i.hears_window());
+        // (Made round what may have the keyboard already: `flush` says
+        // whether it's within it.)
+        self.within_stale |= inter.as_ref().is_some_and(|i| i.focus_within);
         let id = self.nodes.insert(Node {
             parent,
             children: Vec::new(),

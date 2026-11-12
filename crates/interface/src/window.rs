@@ -134,6 +134,12 @@ pub(crate) struct WindowCore {
     /// What the pointer is over may have changed under it (something
     /// scrolled).
     pub(crate) hover_stale: bool,
+    /// An element that counts the keyboard as its own while it's inside
+    /// (`focus_within`: a text control's well) was made anew: whether
+    /// it's within it is found out (`flush`), not only when the keyboard
+    /// next moves. (A panel laid out again round a field being typed in,
+    /// a box gaining its Reset: the field's ring went.)
+    pub(crate) within_stale: bool,
     /// The timers of views that ended (`Cx::every`'s), to be cancelled
     /// once there's a looper to hand (`with_window`): a caret's blink
     /// went on waking the window twice a second after its field's dialog
@@ -519,6 +525,7 @@ impl WindowCore {
             scroll_changed: Vec::new(),
             scroll_asks: Vec::new(),
             hover_stale: false,
+            within_stale: false,
             ended_timers: Vec::new(),
             by_visible: Vec::new(),
             with_externals: Vec::new(),
@@ -714,7 +721,19 @@ impl WindowCore {
                 let d = (a.0 - b.0) * scale;
                 (d - d.round()).abs() > 0.01
             };
-            repaint = off(bounds.origin.x, node.painted_at.x) || off(bounds.origin.y, node.painted_at.y);
+            // A drawing of the app's own, by whole points too: what it
+            // rounds to a point (a check box's square, its middle less
+            // 6.5 points) comes out a pixel elsewhere drawn afresh half
+            // a point along at 2×, and moved, it stayed a pixel off its
+            // label until something drew it again.
+            let off_points = |a: Pixels, b: Pixels| {
+                let d = a.0 - b.0;
+                (d - d.round()).abs() > 0.01
+            };
+            let drawn = matches!(node.kind, NodeKind::Canvas(_));
+            repaint = off(bounds.origin.x, node.painted_at.x)
+                || off(bounds.origin.y, node.painted_at.y)
+                || (drawn && (off_points(bounds.origin.x, node.painted_at.x) || off_points(bounds.origin.y, node.painted_at.y)));
         }
         if moved {
             // (And the pointer may be over something else now.)
@@ -1366,6 +1385,21 @@ impl<'a> WindowCx<'a> {
             if let Some(view) = self.core.pending_focus.take() {
                 self.focus_view(view);
             }
+            // What was made anew round what has the keyboard has it
+            // within it.
+            if std::mem::take(&mut self.core.within_stale)
+                && let Some(focus) = self.core.focus
+            {
+                let mut at = self.core.nodes.get(focus).and_then(|n| n.parent);
+                while let Some(id) = at {
+                    let Some(node) = self.core.nodes.get_mut(id) else { break };
+                    at = node.parent;
+                    if node.inter.as_ref().is_some_and(|i| i.focus_within) && !node.focused {
+                        node.focused = true;
+                        self.core.state_changed(id);
+                    }
+                }
+            }
             // (Asked for before what takes it was there, a view's element
             // not yet made by its first `body`: kept until it is. Taken
             // and dropped when it wasn't there yet, Rescue's terminal had
@@ -1534,18 +1568,8 @@ impl<'a> WindowCx<'a> {
                 core.with_externals.push(id);
             }
         }
-        let commit = Commit {
-            size: core.size,
-            scale,
-            items,
-            layers,
-            wheel,
-            started,
-            work: started.elapsed(),
-            everything: std::mem::take(&mut core.everything),
-            animating: !core.next_frame.is_empty(),
-            externals,
-        };
+        let commit =
+            Commit { size: core.size, scale, items, layers, wheel, work: started.elapsed(), everything: std::mem::take(&mut core.everything), animating: !core.next_frame.is_empty(), externals };
         let id = core.id;
         // (On its way to be drawn: what's invalidated for a frame from
         // here on is for the one after it.)
@@ -1833,6 +1857,24 @@ impl<'a> WindowCx<'a> {
     #[doc(hidden)]
     pub fn set_headless_scale(&self, scale: f32) {
         self.on_display(move |window| window.set_headless_scale(scale));
+    }
+
+    /// A click at `at` (in the window), as if the person made it there,
+    /// once what's running now is done: for showing someone where
+    /// something is (a control on a tab that isn't showing: its tab is
+    /// chosen as a click would choose it, `olo_kit::spotlight`). The
+    /// pointer itself isn't moved, and what's under it is found again
+    /// when it next moves.
+    pub fn click_at(&mut self, at: Point<Pixels>) {
+        let id = self.core.id;
+        let (button, modifiers) = (crate::MouseButton::Left, crate::Modifiers::default());
+        for input in [
+            crate::PlatformInput::MouseMove(crate::MouseMoveEvent { position: at, pressed_button: None, modifiers }),
+            crate::PlatformInput::MouseDown(crate::MouseDownEvent { button, position: at, modifiers, click_count: 1, first_mouse: false }),
+            crate::PlatformInput::MouseUp(crate::MouseUpEvent { button, position: at, modifiers, click_count: 1 }),
+        ] {
+            self.looper.defer(move |looper| deliver(looper, id, WindowEvent::Input(input)));
+        }
     }
 
     /// A click at `at` handed to a window with no display, as if the
