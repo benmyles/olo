@@ -197,6 +197,7 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "power", tab: "Power Modes", group: "What Each Mode Sets", name: "NVIDIA RTX PRO 2000 on battery", role: "ComboBox" },
     Setting { panel: "power", tab: "Power Modes", group: "", name: "Apply", role: "Button" },
     Setting { panel: "power", tab: "Battery & Idle", group: "Battery", name: "Stop charging at 80% (and start again below 75%)", role: "CheckBox" },
+    Setting { panel: "power", tab: "Battery & Idle", group: "Fans", name: "Fan profile", role: "ComboBox" },
     Setting { panel: "power", tab: "Battery & Idle", group: "When Idle", name: "Turn the display off after", role: "ComboBox" },
     Setting { panel: "power", tab: "Battery & Idle", group: "When Idle", name: "Put the computer to sleep after", role: "ComboBox" },
     Setting { panel: "power", tab: "Battery & Idle", group: "When Idle", name: "Only on battery power", role: "CheckBox" },

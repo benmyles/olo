@@ -79,6 +79,38 @@ pub fn run_steps_with(steps: &[Step], progress: &mut dyn FnMut(String)) -> Vec<R
     results
 }
 
+/// Run `steps` as root and wait for them: here if this is root already
+/// (under sudo), else through a helper of our own, asked for now and
+/// gone when they're done (pkexec asks for the password, in the
+/// person's own session only; as `OLO_DOCTOR_HELPER` says in a test).
+/// Err: root wasn't given, or isn't asked for here.
+pub fn run_as_root(steps: &[Step], progress: &mut dyn FnMut(String)) -> Result<Vec<Result<(), String>>, String> {
+    // SAFETY: geteuid has no preconditions.
+    if unsafe { libc::geteuid() } == 0 {
+        return Ok(run_steps_with(steps, progress));
+    }
+    // (Never asked for from a test session or an agent's screen: `way`.)
+    let way = way();
+    if way == Way::Off {
+        return Err("this is set in the person's own session, where the administrator's password is asked.".into());
+    }
+    let (tx, rx) = std::sync::mpsc::channel();
+    let helper = Helper::start(way, move |m| _ = tx.send(m)).map_err(|e| format!("can't run as the administrator: {e}"))?;
+    // Ready once the password is given.
+    if !matches!(rx.recv(), Ok(Some(FromHelper::Ready))) {
+        return Err("an administrator's password is needed.".into());
+    }
+    helper.send(&ToHelper::Run { id: 1, steps: steps.to_vec() });
+    loop {
+        match rx.recv() {
+            Ok(Some(FromHelper::Done { id: 1, results })) => return Ok(results),
+            Ok(Some(FromHelper::Progress { text, .. })) => progress(text),
+            Ok(Some(_)) => continue,
+            _ => return Err("the administrator's helper stopped.".into()),
+        }
+    }
+}
+
 /// Be the helper for the app on the other end of stdin and stdout.
 pub fn serve() -> ! {
     serve_on(BufReader::new(std::io::stdin()), std::io::stdout());

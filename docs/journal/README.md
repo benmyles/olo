@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-12
 
+### Preferences ▸ Power: the fan profile
+
+*04:20* — Battery & Idle has a Fans box on a ThinkPad (Ben: "have in the power prefs the option for the default auto and this new cooler/louder auto profile"): Automatic, the firmware's own curve, or Cool, Olo's olo-fans running the fans ahead of the heat so the processor isn't throttled, with what the fans are doing now under it. Choosing one asks Olo Doctor to set it (an administrator's password). Shown with a made-up ThinkPad in a scratch folder.
+
+![Preferences ▸ Power: the fan profile](2026-11-12/042022-preferences-power-the-fan-profile.png)
+
 ### The Installer
 
 *03:59* — As it opens once the licence is agreed to: what will happen, where from and onto what, More Options closed, About, Quit and Begin. BeOS's Installer for Olo, in place of the Windows 95 wizard of five pages.

@@ -809,19 +809,29 @@ something nobody here has is in "Blocked", with what it waits for.
   level 5 "because 8 W"): the status grown, below, is to say what set
   the level and each zone over its trip. Found: the firmware's
   `auto` had the fans at 2,880 rpm with the package at 89–91 °C and
-  SEN1 at 67 °C, over its trip; level 7 is about 5,070 rpm. *To do:*
-  Fan Profile in Preferences ▸ Power (Auto: the firmware's; Cool:
-  cooler and louder), which installs the service itself (Doctor's
-  helper, as the login screen's parts) and writes `/etc/olo/fans`
-  through it, offered only where `/proc/acpi/ibm/fan` takes levels
-  (thinkpad_acpi with `fan_control=1`: the helper sets that too);
-  the service's status (`/run/olo-fans/status`) grown to what the
-  panels need (profile, level, why, each sensor's reading and room),
-  written only while something reads it; the curve's numbers
-  tuned from that (where each kind of sensor starts the fans and has
-  them at full speed: `span`), and other machines by their hwmon
-  `pwm*`. Agents: the same through `olo-preferences`' documented way
-  in, and `olo-fans --status`.
+  SEN1 at 67 °C, over its trip; level 7 is about 5,070 rpm.
+  *Done 2026-11-12:* Fan Profile in Preferences ▸ Power ▸ Battery &
+  Idle (Automatic: the firmware's; Cool: cooler and louder), shown
+  only where the fans can be set, with what they're doing now;
+  choosing one has Olo Doctor set it (`olo-doctor --fans auto|cool`,
+  the way in for agents too: its helper installs `olo-fans` and its
+  unit as root where they're missing or older, tells thinkpad_acpi to
+  take levels where it doesn't, writes `/etc/olo/fans`, enables and
+  starts the service); HACKING, "The fans". Tried only on a made-up
+  ThinkPad in a scratch folder (`OLO_FANS_ROOT`). *Not tried:* chosen
+  from the panel on the real computer (the service there was put in
+  by hand on 2026-11-10 and says `cool`; the first choice of Cool
+  from the panel will ask for the password and replace root's copy of
+  the program with this build's), and a computer whose driver doesn't
+  take levels yet. *To do:* the service's status
+  (`/run/olo-fans/status`) grown to what the panels need (each
+  sensor's reading and room, what set the level), written only while
+  something reads it; the curve's numbers tuned from that (where each
+  kind of sensor starts the fans and has them at full speed: `span`),
+  and other machines by their hwmon `pwm*`; Olo Doctor saying when
+  root's copy of `olo-fans` is older than the build's, as it does for
+  the login screen's; Activity Monitor reading through
+  `olo_system::fans` (it has a reader of its own).
 
 - **A scheduler of the person's choosing, in Preferences ▸ Performance**
   (Ben, 2026-11-10: "add to olo the ability to pick a custom scheduler

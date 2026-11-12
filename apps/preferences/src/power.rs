@@ -9,23 +9,26 @@
 //!   (`gpus::modes`).
 //! - Graphics: each GPU, its Custom settings, and what records and plays
 //!   video (`gpus::graphics`).
-//! - Battery & Idle: the battery, when an idle machine turns its display
-//!   off and sleeps, caffeinated mode (stay awake until turned off; also
-//!   the cup in the Deskbar) and presence.
+//! - Battery & Idle: the battery, the fans' profile (a ThinkPad's: the
+//!   firmware's own curve, or Olo's `olo-fans` running them ahead of the
+//!   heat), when an idle machine turns its display off and sleeps,
+//!   caffeinated mode (stay awake until turned off; also the cup in the
+//!   Deskbar) and presence.
 //!
-//! The battery is read on a thread every few seconds; the modes follow
-//! the daemon's signals.
+//! The battery and the fans' keeper are read on a thread every few
+//! seconds; the modes follow the daemon's signals.
 
 use std::{sync::Arc, time::Duration};
 
 use olo_kit::{
-    Cx, ParentElement as _, SharedString, Styled as _, WindowCx, div, metrics as m, px,
-    widgets::{CheckBox, RadioButton, StringView, TabView},
+    Cx, ParentElement as _, SharedString, Styled as _, WindowCx, div, metrics as m, px, style, theme,
+    widgets::{CheckBox, MenuField, RadioButton, StringView, TabView},
 };
 use olo_protocol::{PowerStatus, Settings};
 use olo_sync::Mutex;
 use olo_system::{
     battery::{self, Battery, State as Charge},
+    fans::{self, Profile},
     power_profile::{self, Mode, Modes},
 };
 
@@ -38,9 +41,24 @@ use crate::{
 /// What the poller last read: None until it has; Some(None) for no battery.
 type Shared = Arc<Mutex<Option<Option<Battery>>>>;
 
+/// The fans' keeper as the poller last read it, and a change of profile
+/// under way.
+#[derive(Clone, Default)]
+struct Fans {
+    /// None until read; Some(None): this computer's fans can't be set
+    /// (nothing is shown).
+    state: Option<Option<fans::State>>,
+    /// The profile being put in force (the administrator's password
+    /// asked, the steps run): shown as chosen meanwhile.
+    applying: Option<Profile>,
+    /// How the last change went, until the next.
+    said: Option<Result<String, String>>,
+}
+
 /// The battery, read on a thread of its own while the panel is open.
 pub struct State {
     battery: Shared,
+    fans: Arc<Mutex<Fans>>,
     /// The power modes: None while being read, then the daemon's (None:
     /// there is none).
     modes: Modes_,
@@ -92,7 +110,61 @@ impl State {
         read_limit(&limit, olo_kit::proxy());
         // (Tests: a ThinkPad's, readable.)
         let presence = if cfg!(test) { Some(true) } else { olo_system::presence::sensor().map(|s| olo_system::presence::readable(&s)) };
-        State { battery: poll(olo_kit::proxy()), modes, limit, presence, gpus_follow, tab: 0, gpus: crate::gpus::State::new() }
+        // (Tests: a ThinkPad's fans kept cool, at work.)
+        let fans: Arc<Mutex<Fans>> = Default::default();
+        if cfg!(test) {
+            fans.lock().unwrap().state = Some(Some(fans::State { profile: Profile::Cool, installed: true, control: true, held: Some(("4".into(), "19 W".into())) }));
+        }
+        State { battery: poll(olo_kit::proxy(), fans.clone()), fans, modes, limit, presence, gpus_follow, tab: 0, gpus: crate::gpus::State::new() }
+    }
+}
+
+/// Put `profile` in force: Olo Doctor does it (`olo-doctor --fans`: its
+/// helper, as root through polkit, which asks for the password), on a
+/// thread; how it went is said under the menu.
+fn set_fans(shared: Arc<Mutex<Fans>>, proxy: olo_kit::Proxy, profile: Profile) {
+    {
+        let mut f = shared.lock().unwrap();
+        if f.applying.is_some() {
+            return;
+        }
+        f.applying = Some(profile);
+        f.said = None;
+    }
+    proxy.send(Msg::Redraw);
+    std::thread::Builder::new()
+        .name("fans-apply".into())
+        .spawn(move || {
+            let said = ask_doctor(profile);
+            let now = fans::look(&fans::Places::here());
+            let mut f = shared.lock().unwrap();
+            f.applying = None;
+            f.said = Some(said);
+            f.state = Some(now);
+            drop(f);
+            proxy.send(Msg::Redraw);
+        })
+        .expect("thread");
+}
+
+/// `olo-doctor --fans WORD`, the Doctor beside us: what it said.
+fn ask_doctor(profile: Profile) -> Result<String, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let exe = std::path::PathBuf::from(exe.to_string_lossy().trim_end_matches(" (deleted)"));
+    let doctor = exe.with_file_name("olo-doctor");
+    let out = std::process::Command::new(&doctor).arg("--fans").arg(profile.word()).stdin(std::process::Stdio::null()).output().map_err(|e| format!("{}: {e}", doctor.display()))?;
+    let last = |bytes: &[u8]| String::from_utf8_lossy(bytes).lines().rev().find(|l| !l.trim().is_empty()).unwrap_or_default().trim().to_owned();
+    if out.status.success() {
+        Ok(last(&out.stdout))
+    } else {
+        let why = last(&out.stderr);
+        let why = why.strip_prefix("olo-doctor: ").unwrap_or(&why);
+        // (As a sentence of its own.)
+        let mut c = why.chars();
+        Err(match c.next() {
+            Some(first) => first.to_uppercase().chain(c).collect(),
+            None => "Olo Doctor couldn't set it.".to_owned(),
+        })
     }
 }
 
@@ -111,7 +183,7 @@ fn read_limit(into: &Arc<Mutex<Option<battery::ChargeLimit>>>, proxy: olo_kit::P
     });
 }
 
-fn poll(proxy: olo_kit::Proxy) -> Shared {
+fn poll(proxy: olo_kit::Proxy, fans: Arc<Mutex<Fans>>) -> Shared {
     let battery: Shared = Default::default();
     // Tests (the layout lint): a battery with all there is to say, and
     // not this machine's.
@@ -133,12 +205,23 @@ fn poll(proxy: olo_kit::Proxy) -> Shared {
         .name("battery".into())
         .spawn(move || {
             // Ends once the panel (the only strong reference) has closed.
+            let places = fans::Places::here();
             while let Some(shared) = out.upgrade() {
                 let b = battery::battery();
                 {
                     let mut slot = shared.lock().unwrap();
                     if slot.as_ref() != Some(&b) {
                         *slot = Some(b);
+                        proxy.send(Msg::Redraw);
+                    }
+                }
+                // The fans' keeper with it (a few small files): the
+                // level it holds changes as the computer works.
+                let now = fans::look(&places);
+                {
+                    let mut f = fans.lock().unwrap();
+                    if f.state.as_ref() != Some(&now) {
+                        f.state = Some(now);
                         proxy.send(Msg::Redraw);
                     }
                 }
@@ -286,7 +369,10 @@ pub fn ui(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut St
 /// and when idle, caffeinated and presence beside it.
 fn battery_and_idle(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut State) {
     let battery = st.battery.lock().unwrap().clone();
-    let left = ui.collect(|ui| battery_box(ui, battery, st));
+    let left = ui.collect(|ui| {
+        battery_box(ui, battery, st);
+        fans_box(ui, st);
+    });
     let presence = st.presence;
     let right = ui.collect(|ui| {
         idle_boxes(ui, power, server);
@@ -329,6 +415,33 @@ fn battery_box(ui: &mut Ui, battery: Option<Option<Battery>>, st: &State) {
                 ui.add(CheckBox::new(label, l.enabled).on_toggle(toggle));
                 ui.add(div().pl(px(m::MARK_SIZE + m::MARK_GAP)).child(StringView::new("A battery kept full wears faster: for a computer that's mostly plugged in.").dim(true).wrap(true)));
             }
+        }
+    });
+}
+
+/// The fans' profile, where they can be set (a ThinkPad's): the
+/// firmware's own curve or Olo's, and what the fans are doing now.
+/// Choosing one asks for an administrator's password (the service is
+/// the system's).
+fn fans_box(ui: &mut Ui, st: &State) {
+    let f = st.fans.lock().unwrap().clone();
+    let Some(Some(state)) = f.state else { return };
+    ui.bbox("Fans", |ui| {
+        let shown = f.applying.unwrap_or(state.profile);
+        let names: Vec<SharedString> = Profile::ALL.iter().map(|p| p.label().into()).collect();
+        let chosen = Profile::ALL.iter().position(|p| *p == shown).unwrap_or(0);
+        let (shared, proxy) = (st.fans.clone(), olo_kit::proxy());
+        let pick = move |i: &usize, _: &mut WindowCx| {
+            if let Some(&profile) = Profile::ALL.get(*i) {
+                set_fans(shared.clone(), proxy.clone(), profile);
+            }
+        };
+        ui.add(div().flex().child(MenuField::new("fan-profile", names, chosen).label("Fan profile:").enabled(f.applying.is_none()).on_change(pick)));
+        ui.note(shown.about());
+        match (&f.applying, &f.said) {
+            (Some(_), _) => ui.note("Setting it: an administrator's password is asked…"),
+            (None, Some(Err(why))) => ui.add(StringView::new(format!("Not changed. {why}")).wrap(true).color(style::c(theme::palette().failure))),
+            _ => ui.note(state.now()),
         }
     });
 }

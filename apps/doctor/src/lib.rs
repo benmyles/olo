@@ -6,6 +6,7 @@
 mod app;
 pub mod checks;
 pub mod crashes;
+pub mod fans;
 pub mod fix;
 pub mod helper;
 pub mod ignored;

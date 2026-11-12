@@ -7258,7 +7258,8 @@ configurable with reasonable defaults"), in three tabs:
   given one, a laptop's can't, and persistence, its driver kept ready so
   it never sleeps), then Screen Recordings and Video Playback (with
   "Automatic wakes NVIDIA's GPU on battery too", on by default).
-- Battery & Idle: the battery and its charge limit, when idle,
+- Battery & Idle: the battery and its charge limit, the fans' profile
+  on a ThinkPad ("The fans", below), when idle,
   caffeinated and presence; the panel's Defaults and Revert are this
   tab's (the others have Apply and Revert of their own, for the
   computer).
@@ -9287,10 +9288,59 @@ the firmware takes the fans back within 30 seconds; ending, it hands
 them back itself. `olo-fans --status` prints what it reads and would
 do, changing nothing (as anyone); `/run/olo-fans/status` is a line of
 `level=… why=…`, written when the level changes (Activity Monitor ▸
-Sensors reads it). Its source's doc comment has the rest. It is put in
-by hand for now (TODO: Preferences ▸ Power's Fan Profile installs it
-and writes the profile through a helper). Never run the service, or
-write a fan level, from a test: `--status` and its unit tests only.
+Sensors reads it). Its source's doc comment has the rest. Never run
+the service, or write a fan level, from a test: `--status` and its
+unit tests only.
+
+**Choosing the profile** (Ben, 2026-11-10: "have in the power prefs
+the option for the default auto and this new cooler/louder auto
+profile"). Three parts, each knowing only its own:
+
+- `olo_system::fans` reads what there is, as anyone: whether the fans
+  can be set at all (`look` is None without a ThinkPad's
+  `/proc/acpi/ibm/fan`), the profile in force (`/etc/olo/fans`' while
+  the service is installed, else the firmware's), whether
+  thinkpad_acpi takes levels (`fan_control`), and the level the
+  service holds and why (`State::now`: "Now: level 4 of 7, for 19 W.").
+  It changes nothing.
+- Olo Doctor sets it (`apps/doctor/src/fans.rs`), as it does the login
+  screen's parts: `fans::steps(profile, bin, places)` are root steps
+  for only what isn't so already. Cool: `olo-fans` copied from beside
+  Doctor to `/usr/local/libexec/olo` (root's copy: an upgrade replaces
+  the person's programs, not it, so choosing Cool again brings it up
+  to date) with its SELinux label put right, its unit
+  (`data/systemd/olo-fans.service`, carried in the program),
+  `/etc/modprobe.d/olo-fans.conf` (`options thinkpad_acpi
+  fan_control=1`) where the driver doesn't take levels, in force from
+  the computer's next start and said so, the word, and the unit
+  enabled and, if its program or unit changed, started again (running
+  already, the service reads the word by itself). Automatic: the word
+  alone, and only where the service is installed. `olo-doctor --fans`
+  says what there is; `olo-doctor --fans auto|cool` sets it, through
+  the helper and pkexec (the password asked once), or there under
+  sudo: the way in for a person at a terminal and for an agent. It is
+  asked for only in the person's own session (`helper::run_as_root`
+  goes by `helper::way`): from a test session or an agent's screen it
+  says so and does nothing.
+- Preferences ▸ Power ▸ Battery & Idle has the Fans box, only where
+  `look` finds fans to set: "Fan profile:" (Automatic, Cool), what the
+  chosen one means, and what the fans are doing now, read with the
+  battery every five seconds while the panel is open. Choosing one
+  runs `olo-doctor --fans WORD` on a thread ("Setting it: an
+  administrator's password is asked…", the menu dimmed); refused or
+  failed, the menu is back on the profile in force with why in red.
+  It's in the settings index (`olo_xdg::settings`: "Fan profile").
+
+`OLO_FANS_ROOT=DIR` puts every one of those places under DIR, for
+tests: a made-up ThinkPad is two files (`proc/acpi/ibm/fan`,
+`sys/module/thinkpad_acpi/parameters/fan_control` holding `Y`), Doctor
+writes its steps there as the person with nothing of systemd's asked,
+and a status written by hand (`run/olo-fans/status`) shows in the box.
+The whole of it was driven so (2026-11-12): Cool chosen from the menu
+(the program, unit and word written under DIR), the status following,
+Automatic refused by a folder made read-only (said in red), the panel
+reviewed at 1×, 1.25×, 1.5×, 1.75× and 2×, light and dark. On the
+real computer it has not been chosen from the panel yet.
 
 ## Olo Doctor (apps/doctor)
 
@@ -9303,7 +9353,8 @@ signal a process), all done in process. From a terminal or an agent:
 `olo-doctor --report` (the findings as JSON), `olo-doctor --fix` (those
 with a fix, by id), `olo-doctor --fix all|ID…` (what the buttons do: root
 steps through the helper and pkexec, or, under sudo, run there with the
-scan made for the sudo user). What it looks for:
+scan made for the sudo user), `olo-doctor --fans [auto|cool]` (the fan
+profile: "The fans", above). What it looks for:
 
 - **DiskBackup** (`diskbackup`, from its settings and its service's
   state file): not set up ("Nothing is backed up": said, no button,
