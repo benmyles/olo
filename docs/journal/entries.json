@@ -3922,5 +3922,17 @@
   "title": "Preferences \u25b8 Performance: the scheduler",
   "caption": "A Scheduler tab (Ben: \"add to olo the ability to pick a custom scheduler in preferences -> performance and the recommendation should be scx_lavd\"): the kernel's own or LAVD (recommended), what each is for, and what is scheduling now as the kernel says it. Choosing one has Olo Doctor install and start it, or stop it (an administrator's password). Shown with a made-up kernel in a scratch folder.",
   "image": "2026-11-12/043804-preferences-performance-the-scheduler.png"
+ },
+ {
+  "time": "2026-11-12T11:07:51",
+  "title": "Olo Doctor: the Cool fan profile that isn't in force",
+  "caption": "Cool chosen and the fans' driver taking no levels (it had been told to by hand, which a restart undid): found, with the fix that tells it to at every start. Also found: the fan service stopped, and one an upgrade has left older.",
+  "image": "2026-11-12/110751-olo-doctor-the-cool-fan-profile-that-isn-t-in-fo.png"
+ },
+ {
+  "time": "2026-11-12T11:08:02",
+  "title": "Activity Monitor: a fan profile that isn't in force says so",
+  "caption": "The Fans card said \"the fan service isn't running\" of a service that was running and couldn't set the fans. It reads the service's state through olo_system::fans now: not in force and why (the driver, until the next start; the service stopped), or the level held.",
+  "image": "2026-11-12/110802-activity-monitor-a-fan-profile-that-isn-t-in-for.png"
  }
 ]

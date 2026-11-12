@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-12
 
+### Activity Monitor: a fan profile that isn't in force says so
+
+*11:08* — The Fans card said "the fan service isn't running" of a service that was running and couldn't set the fans. It reads the service's state through olo_system::fans now: not in force and why (the driver, until the next start; the service stopped), or the level held.
+
+![Activity Monitor: a fan profile that isn't in force says so](2026-11-12/110802-activity-monitor-a-fan-profile-that-isn-t-in-for.png)
+
+### Olo Doctor: the Cool fan profile that isn't in force
+
+*11:07* — Cool chosen and the fans' driver taking no levels (it had been told to by hand, which a restart undid): found, with the fix that tells it to at every start. Also found: the fan service stopped, and one an upgrade has left older.
+
+![Olo Doctor: the Cool fan profile that isn't in force](2026-11-12/110751-olo-doctor-the-cool-fan-profile-that-isn-t-in-fo.png)
+
 ### Preferences ▸ Performance: the scheduler
 
 *04:38* — A Scheduler tab (Ben: "add to olo the ability to pick a custom scheduler in preferences -> performance and the recommendation should be scx_lavd"): the kernel's own or LAVD (recommended), what each is for, and what is scheduling now as the kernel says it. Choosing one has Olo Doctor install and start it, or stop it (an administrator's password). Shown with a made-up kernel in a scratch folder.
