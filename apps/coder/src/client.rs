@@ -19,7 +19,7 @@ pub enum Update {
     SettingsResult { key: String, result: Result<Value, String> },
     Session(Box<Session>),
     Profiles(Vec<olo_coder_core::profiles::ModelProfile>),
-    ProfileModels { profile: Box<olo_coder_core::profiles::ModelProfile>, models: Result<Vec<String>, String> },
+    ProfileModels { key: String, profile: Box<olo_coder_core::profiles::ModelProfile>, models: Result<Vec<String>, String> },
     Catalog { rows: Vec<Value>, next_offset: Option<usize> },
     InputResult { session: String, text: String, error: Option<String> },
     Repository { session: String, result: Value },
@@ -42,7 +42,7 @@ pub enum Action {
     Repository,
     Models,
     Profiles,
-    DiscoverProfile(Box<olo_coder_core::profiles::ModelProfile>),
+    DiscoverProfile { key: String, profile: Box<olo_coder_core::profiles::ModelProfile> },
     Stop,
     Approve(bool),
     Quit,
@@ -353,7 +353,7 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
                                 Ok(Action::Quit) | Err(mpsc::RecvTimeoutError::Disconnected) => return Ok(()),
                                 Ok(Action::SubmitSettings { key, .. }) => callback(Update::SettingsSaved { key, result: Err(error) }),
                                 Ok(Action::SettingsRequest { key, .. }) => callback(Update::SettingsResult { key, result: Err(error) }),
-                                Ok(Action::DiscoverProfile(profile)) => callback(Update::ProfileModels { profile, models: Err(error) }),
+                                Ok(Action::DiscoverProfile { key, profile }) => callback(Update::ProfileModels { key, profile, models: Err(error) }),
                                 Ok(Action::SubmitForm { reply, .. }) => {
                                     let _ = reply.send(Err(error));
                                 }
@@ -411,13 +411,13 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
                                 std::thread::spawn(move || callback(Update::SettingsResult { key, result: rpc::call(&dir, &command).map_err(|e| e.to_string()) }));
                                 return Ok(());
                             }
-                            Action::DiscoverProfile(profile) => {
+                            Action::DiscoverProfile { key, profile } => {
                                 let dir = dir.clone();
                                 let callback = callback.clone();
                                 std::thread::spawn(move || {
                                     let command = Command::ModelProfiles { action: "discover".into(), profile: Some((*profile).clone()), id: None, session: None, role: String::new() };
                                     let models = rpc::call(&dir, &command).and_then(|v| Ok(serde_json::from_value(v["models"].clone())?)).map_err(|e| e.to_string());
-                                    callback(Update::ProfileModels { profile, models });
+                                    callback(Update::ProfileModels { key, profile, models });
                                 });
                                 return Ok(());
                             }

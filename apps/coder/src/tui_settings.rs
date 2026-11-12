@@ -57,6 +57,8 @@ pub struct Editor {
     picker: Option<(String, usize)>,
     #[serde(default)]
     save_request: Option<String>,
+    #[serde(default)]
+    discovery_request: Option<String>,
 }
 impl Panel {
     pub fn resume(&mut self) {
@@ -66,6 +68,7 @@ impl Panel {
         if let Self::Profile(e) = self {
             e.busy = false;
             e.save_request = None;
+            e.discovery_request = None;
         }
         if let Self::Entry { key, busy, .. } = self {
             *busy = false;
@@ -149,9 +152,11 @@ impl Panel {
         }
         if let Self::Profile(editor) = self {
             match update {
-                Update::ProfileModels { profile, models } if profile.id == editor.profile.id => {
+                Update::ProfileModels { key, profile, models } if editor.discovery_request.as_ref() == Some(key) && profile.id == editor.profile.id => {
                     editor.busy = false;
+                    editor.discovery_request = None;
                     if model_source(&profile.model) != editor.source() {
+                        editor.status = "The endpoint changed. Fetch its models before saving.".into();
                         return false;
                     }
                     match models {
@@ -164,13 +169,6 @@ impl Panel {
                             editor.status = format!("{} models available", ids.len());
                         }
                         Err(error) => editor.status = error.clone(),
-                    }
-                }
-                Update::Profiles(profiles) => {
-                    if let Ok(draft) = editor.draft() {
-                        if profiles.iter().any(|p| p == &draft) {
-                            editor.status = "Profile saved. Select it from a model role in Settings.".into();
-                        }
                     }
                 }
                 _ => {}
@@ -195,7 +193,7 @@ impl Panel {
             return;
         }
         if let Self::Profile(e) = self {
-            if !matches!(e.at, 1 | 4 | 5) {
+            if !e.busy && !matches!(e.at, 1 | 4 | 5) {
                 e.fields[e.at].push_str(&text.replace(['\n', '\r'], ""));
             }
         }
@@ -232,6 +230,9 @@ impl Panel {
         }
         if key.code == KeyCode::Esc {
             return true;
+        }
+        if matches!(self, Self::Profile(e) if e.busy) {
+            return false;
         }
         match self {
             Self::Entry { key: request_key, fields, submission, at, status, busy, .. } => {
@@ -476,9 +477,14 @@ impl Panel {
                 KeyCode::Down | KeyCode::Tab => e.at = (e.at + 1) % e.fields.len(),
                 KeyCode::F(5) if !e.busy => match e.draft() {
                     Ok(profile) => {
-                        e.busy = true;
-                        e.status = "Fetching model catalog…".into();
-                        let _ = client.tx.send(Action::DiscoverProfile(Box::new(profile)));
+                        let key = olo_coder_core::id();
+                        if client.tx.send(Action::DiscoverProfile { key: key.clone(), profile: Box::new(profile) }).is_ok() {
+                            e.busy = true;
+                            e.discovery_request = Some(key);
+                            e.status = "Fetching model catalog…".into();
+                        } else {
+                            e.status = "Connection closed. Your draft is preserved.".into();
+                        }
                     }
                     Err(error) => e.status = error.to_string(),
                 },
@@ -628,11 +634,11 @@ impl Editor {
         ];
         let source = model_source(m);
         let ids = if existing { vec![m.model.clone()] } else { vec![] };
-        Self { profile, fields, at: 0, ids, status: "Fetch the catalog, choose a model and save.".into(), busy: false, source, picker: None, save_request: None }
+        Self { profile, fields, at: 0, ids, status: "Fetch the catalog, choose a model and save.".into(), busy: false, source, picker: None, save_request: None, discovery_request: None }
     }
     fn source(&self) -> String {
         let provider = if self.fields[1] == "Custom endpoint" { Provider::Openai } else { Provider::Codex };
-        format!("{provider:?}\n{}\n{}", if provider == Provider::Openai { &self.fields[2] } else { "" }, if provider == Provider::Openai { &self.fields[3] } else { "" })
+        format!("{provider:?}\n{}\n{}", if provider == Provider::Openai { self.fields[2].trim() } else { "" }, if provider == Provider::Openai { self.fields[3].trim() } else { "" })
     }
     fn draft(&self) -> anyhow::Result<ModelProfile> {
         let mut p = self.profile.clone();
@@ -672,8 +678,9 @@ mod tests {
         let mut panel = Panel::Profile(Editor::new(profile.clone(), false).into());
         if let Panel::Profile(e) = &mut panel {
             e.fields[2] = "https://other.example/v1".into();
+            e.discovery_request = Some("fetch".into());
         }
-        panel.update(&Update::ProfileModels { profile: Box::new(profile), models: Ok(vec!["wrong-provider-model".into()]) });
+        panel.update(&Update::ProfileModels { key: "fetch".into(), profile: Box::new(profile), models: Ok(vec!["wrong-provider-model".into()]) });
         let Panel::Profile(e) = panel else { unreachable!() };
         assert!(e.ids.is_empty());
     }
@@ -717,5 +724,134 @@ mod acknowledgements {
             assert_eq!(status, "Stop the active turn first");
             assert!(request.is_none());
         }
+    }
+}
+
+#[cfg(test)]
+mod profile_requests {
+    use super::*;
+    fn editor() -> (Panel, Handle, std::sync::mpsc::Receiver<Action>) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        (Panel::Profile(Editor::new(ModelProfile { id: olo_coder_core::id(), name: "Draft".into(), model: ModelConfig::default() }, true).into()), Handle { tx: tx.into() }, rx)
+    }
+    fn press(panel: &mut Panel, client: &Handle, code: KeyCode) {
+        panel.key(KeyEvent::new(code, KeyModifiers::NONE), &View::default(), client);
+    }
+    fn reply(rx: &std::sync::mpsc::Receiver<Action>, id: &str) -> Update {
+        let Action::DiscoverProfile { key, profile } = rx.recv().unwrap() else { panic!("expected discovery") };
+        Update::ProfileModels { key, profile, models: Ok(vec![id.into()]) }
+    }
+    #[test]
+    fn disconnected_discovery_preserves_an_editable_draft() {
+        let (mut panel, client, rx) = editor();
+        drop(rx);
+        press(&mut panel, &client, KeyCode::F(5));
+        let Panel::Profile(e) = panel else { unreachable!() };
+        assert!(!e.busy);
+        assert!(e.status.contains("Connection closed"));
+        assert_eq!(e.fields[0], "Draft");
+    }
+    #[test]
+    fn discovery_accepts_trimmed_endpoint_and_credential_reference() {
+        let (mut panel, client, rx) = editor();
+        let Panel::Profile(e) = &mut panel else { unreachable!() };
+        e.fields[1] = "Custom endpoint".into();
+        e.fields[2] = "  https://example.invalid/v1  ".into();
+        e.fields[3] = "  MODEL_KEY  ".into();
+        press(&mut panel, &client, KeyCode::F(5));
+        panel.update(&reply(&rx, "vendor/flash"));
+        let Panel::Profile(e) = panel else { unreachable!() };
+        assert_eq!(e.ids, ["vendor/flash"]);
+        assert_eq!(e.fields[4], "vendor/flash");
+        assert!(!e.busy);
+    }
+    #[test]
+    fn saving_freezes_the_submitted_draft_until_acknowledged() {
+        let (mut panel, client, rx) = editor();
+        press(&mut panel, &client, KeyCode::F(2));
+        let Action::SubmitSettings { key, .. } = rx.recv().unwrap() else { panic!("expected save") };
+        panel.paste("paste");
+        press(&mut panel, &client, KeyCode::Char('x'));
+        press(&mut panel, &client, KeyCode::Down);
+        let Panel::Profile(e) = &panel else { unreachable!() };
+        assert_eq!(e.fields[0], "Draft");
+        assert_eq!(e.at, 0);
+        panel.update(&Update::SettingsSaved { key, result: Err("retry".into()) });
+        press(&mut panel, &client, KeyCode::Char('x'));
+        let Panel::Profile(e) = panel else { unreachable!() };
+        assert_eq!(e.fields[0], "Draftx");
+        assert!(!e.busy);
+    }
+    #[test]
+    fn reopened_profile_ignores_discovery_from_the_previous_editor() {
+        let (mut panel, client, rx) = editor();
+        press(&mut panel, &client, KeyCode::F(5));
+        let old = reply(&rx, "stale");
+        let Panel::Profile(e) = &panel else { unreachable!() };
+        panel = Panel::Profile(Editor::new(e.profile.clone(), true).into());
+        press(&mut panel, &client, KeyCode::F(5));
+        let current = reply(&rx, "current");
+        panel.update(&old);
+        let Panel::Profile(e) = &panel else { unreachable!() };
+        assert!(e.busy);
+        assert!(!e.ids.contains(&"stale".to_owned()));
+        panel.update(&current);
+        let Panel::Profile(e) = panel else { unreachable!() };
+        assert_eq!(e.ids, ["current"]);
+        assert!(!e.busy);
+    }
+    #[test]
+    #[ignore = "release measurement"]
+    fn profile_input_and_drawing_cost() {
+        let (mut panel, client, _rx) = editor();
+        let start = std::time::Instant::now();
+        for _ in 0..10000 {
+            press(&mut panel, &client, KeyCode::Char('x'));
+            press(&mut panel, &client, KeyCode::Backspace);
+        }
+        let input = start.elapsed();
+        let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(100, 30)).unwrap();
+        let start = std::time::Instant::now();
+        for _ in 0..1000 {
+            terminal.draw(|f| panel.draw(f, f.area())).unwrap();
+        }
+        println!("PROFILE_COST 20000 input events {input:?}; 1000 draws {:?}", start.elapsed());
+    }
+}
+
+#[cfg(test)]
+mod form_viewport {
+    use super::*;
+    fn rendered(panel: &Panel, width: u16, height: u16) -> String {
+        let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(width, height)).unwrap();
+        terminal.draw(|f| panel.draw(f, f.area())).unwrap();
+        let buf = terminal.backend().buffer();
+        (0..height).map(|y| (0..width).map(|x| buf[(x, y)].symbol()).collect::<String>()).collect::<Vec<_>>().join("\n")
+    }
+    fn fields(section: &str, at: usize) -> Panel {
+        let config = json!(olo_coder_core::Config::default());
+        let values = crate::options::section(section).iter().map(|f| crate::options::value(&config, f.path)).collect();
+        Panel::Fields { section: section.into(), config, session: "fixture".into(), values, at, status: "Save rejected".into(), request: None }
+    }
+    #[test]
+    fn long_guidance_does_not_hide_selected_fields_or_errors() {
+        let mut panel = fields("supervision", 7);
+        let Panel::Fields { values, .. } = &mut panel else { unreachable!() };
+        values[1] = "Long guidance wrapping across the terminal. ".repeat(80);
+        for (width, height) in [(80, 16), (48, 12)] {
+            let view = rendered(&panel, width, height);
+            assert!(view.contains("Stall timeout"), "{view}");
+            assert!(view.contains("Save rejected"), "{view}");
+        }
+    }
+    #[test]
+    fn multiline_edits_show_newlines_and_the_end_of_the_active_value() {
+        let mut panel = fields("instructions", 0);
+        let Panel::Fields { values, .. } = &mut panel else { unreachable!() };
+        values[0] = (0..30).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n");
+        let view = rendered(&panel, 80, 14);
+        assert!(view.contains("line 29"), "{view}");
+        assert!(!view.contains("line 0line 1"), "newlines must remain visible: {view}");
+        assert!(view.contains("Save rejected"), "{view}");
     }
 }
