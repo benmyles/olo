@@ -1,0 +1,19 @@
+[package]
+name = "olo-airplay"
+description = "Sending to AirPlay receivers, natively: finding them on the network (mDNS, DNS-SD), and what each takes"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "olo-airplay"
+path = "src/bin/olo-airplay.rs"
+
+[dependencies]
+olo-crash.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+libc = "0.2"

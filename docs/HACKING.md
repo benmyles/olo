@@ -9458,6 +9458,37 @@ found by its exact ID (`pid:N` in the search).**
 inspector, at its Supervisor tab (the supervisor's alert and Deskbar's
 gauge menu use it; with a copy running, both are handed to it).
 
+## AirPlay (crates/airplay, `olo-airplay`)
+
+Sending to an AirPlay receiver (Ben, 2026-11-12: a window, a
+workspace, an agent screen or a video file, "high quality video and
+audio"). docs/TODO.md has the plan and what a sender that isn't
+Apple's may and may not do. So far, the first part: **finding the
+receivers**.
+
+- `olo_airplay::receivers(wait)` asks the networks the computer is on
+  who offers `_airplay._tcp`, by mDNS, itself (`dns`: a question
+  written, an answer's PTR, SRV, TXT, A and AAAA records read, names
+  compressed or not; `browse`: asked from a port of its own with the
+  answer wanted back to it alone, so no multicast group is joined and
+  port 5353 isn't taken, beside Avahi or without it; asked at once,
+  after 250 ms and after a second, the later times also for what an
+  instance hasn't said yet). It blocks for `wait`: off a looper.
+- `Receiver` is what one says of itself in its TXT record: its name,
+  kind (an Apple TV, a Mac, a speaker, a television, by its model),
+  where it is, AirPlay's feature bits and status flags, and what they
+  mean here (`plays_video`, `shows_screens`, `plays_sound`,
+  `asks_to_pair`).
+- `olo-airplay list [--json] [--wait SECONDS]` prints them, for people
+  and agents. It prints and ends: no window.
+
+**Tests answer their own questions**: a responder of the test's own on
+the loopback (`Via { to, from }` says where a question goes; `Via::lan`
+is mDNS's group from every network). No test asks the network it
+happens to be on, and nothing is ever sent to a real receiver by a
+test: pairing with one and playing to one are the person's to do, at
+the receiver.
+
 ## The fans (apps/fans, `olo-fans`)
 
 A ThinkPad's fans run ahead of the heat, so the computer isn't slowed

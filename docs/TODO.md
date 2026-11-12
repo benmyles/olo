@@ -544,6 +544,20 @@ something nobody here has is in "Blocked", with what it waits for.
        not for pointing at something while talking, nor for playing.
        All of it native: mDNS, HomeKit's pairing (SRP, Ed25519,
        X25519, ChaCha20-Poly1305), the HTTP server, the segmenter.
+     - *Begun 2026-11-12: finding the receivers* (HACKING,
+       "AirPlay"): `crates/airplay` asks by mDNS itself and reads
+       what each receiver says it is and takes; `olo-airplay list`.
+       On the network Ben's computer was on that day it found 28 in
+       three seconds (Avahi, listening longer, 32): Apple TV 4Ks of
+       three generations (`srcvers` 960 and 1005), Macs, one
+       television with AirPlay built in; every one plays video, shows
+       screens and asks to be paired with first (its flags' "pair
+       once" bit). So the first question below is answered in kind
+       (Apple TVs and Macs, all wanting HomeKit's pairing), though
+       not which one is his: a shared network, and only he pairs, at
+       the screen. *Next:* the pairing (pair-setup with the code the
+       receiver shows, pair-verify, the encrypted channel), kept in
+       Passwords; then a video file played by its address.
      - *Ben's to say:* (1) which receiver it's for (an Apple TV and
        its tvOS, a television with AirPlay built in, something else):
        it has to be tried against the real one, paired by him at the

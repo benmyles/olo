@@ -7019,6 +7019,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-airplay"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "olo-crash",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "olo-airpods"
 version = "0.1.0"
 dependencies = [
