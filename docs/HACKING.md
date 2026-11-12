@@ -327,6 +327,16 @@ message):
   instructions and hundreds of cycles.) perf ending a program doesn't
   end what it started: end that too, or the app's next start hands
   over to it and leaves.
+  `tools/dev/resize-cost NAME LABEL ROUNDS APP_ID CMD…` is that for a
+  live resize: the program started under `perf stat` in a test
+  session, its window's corner dragged as the benchmark drags it, and
+  the instructions and cycles a step of the drag's own seconds
+  printed. Give each step time to be drawn (its `STEP_MS`, 45 by
+  itself): at the display's own rate a build that skips frames counts
+  as the cheaper one. And they do depend on the machine more than was
+  thought, by a sixth from run to run in either build (the app's own
+  workers and what the frames wait on): four rounds in turn and the
+  medians, not one of each.
   When the profile says a fifth of a frame is libc's `memmove` and
   `malloc` and can't say whose, `tools/dev/memhist` can: it runs the
   app with a small probe (`memhist.c`, built into /var/tmp) that
