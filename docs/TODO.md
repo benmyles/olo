@@ -761,6 +761,15 @@ something nobody here has is in "Blocked", with what it waits for.
        start: 1,110 → 921).
      - The pointer moved over a window wakes two threads where it
        woke one (Tracker 10 → 15 ms for a sweep that changes nothing).
+       Counted 2026-11-12 (perf stat, a sweep's 480 motions, three
+       runs each in turn): half the instructions of the build from
+       before the kits (0.056 M a motion against 0.11) and a tenth
+       more cycles (0.26 M against 0.23), four or five cycles an
+       instruction: the waking itself. To do: the stage keeps motion
+       from the looper where nothing under the pointer hears it (as
+       it does the wheel), which needs the commit to say where
+       something does (hover, a cursor, a tip, a window's own
+       listeners while a button is down).
      - Scrolling fails the benchmark's evenness now and then in both
        builds (a frame skipped in a drag or a glide), and the
        Viewer's live resize its budget in both. Looked into
