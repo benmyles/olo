@@ -8267,6 +8267,7 @@ dependencies = [
  "olo-crash",
  "olo-protocol",
  "olo-sync",
+ "olo-xdg",
  "pulseaudio",
  "serde",
  "serde_json",

@@ -1020,7 +1020,7 @@ fn main() -> std::process::ExitCode {
     if !args.is_empty() {
         return cli::run(address.as_deref(), &args);
     }
-    if address.is_none() && std::env::var_os("OLO_REAL_SESSION").is_none() {
+    if address.is_none() && !olo_xdg::session::real() {
         eprintln!("olo-notifications: not in a real Olo session (use --bus ADDRESS to try it)");
         return std::process::ExitCode::FAILURE;
     }

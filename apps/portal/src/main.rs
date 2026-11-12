@@ -378,7 +378,7 @@ fn main() -> std::process::ExitCode {
     };
     // Only the real session's backend answers the session's apps: a test
     // or nested session must never take the user's portal over.
-    if address.is_none() && std::env::var_os("OLO_REAL_SESSION").is_none() {
+    if address.is_none() && !olo_xdg::session::real() {
         eprintln!("olo-portal: not in a real Olo session (use --bus ADDRESS to try it)");
         return std::process::ExitCode::FAILURE;
     }

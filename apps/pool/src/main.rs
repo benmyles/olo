@@ -392,7 +392,7 @@ fn main() -> std::process::ExitCode {
     let service = has("--service");
     // One gateway per computer: a test or nested session runs its own
     // only on a port of its own.
-    if service && std::env::var_os("OLO_REAL_SESSION").is_none() && std::env::var_os("OLO_POOL_PORT").is_none() {
+    if service && !olo_xdg::session::real() && std::env::var_os("OLO_POOL_PORT").is_none() {
         eprintln!("olo-pool: --service is for the real session (set OLO_POOL_PORT to try it)");
         return std::process::ExitCode::FAILURE;
     }

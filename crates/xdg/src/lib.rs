@@ -16,6 +16,7 @@ pub mod mime;
 pub mod open;
 pub mod quirks;
 pub mod scope;
+pub mod session;
 pub mod settings;
 pub mod themes;
 pub mod trash;

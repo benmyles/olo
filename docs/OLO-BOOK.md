@@ -878,6 +878,13 @@ other side.
   Ctrl+C. What an event needs to be understood travels with the event
   (its modifiers, its time, its number); nothing about "then" is asked
   of "now".
+- **Permission decided by an inherited variable.** Whether a program
+  may ask for the administrator went by a variable handed down from
+  olo-session, which a program started any other way (by app_server
+  before the variable was set, by systemd, by D-Bus) didn't have: in
+  the person's own session, "not in the person's session". Decide by
+  what is so (which display it's on, as the session itself says), and
+  when a check refuses, have it say what it went by.
 - **A service that was running, useless, and reported as not
   running.** Three mistakes in a row. Something was set by hand to get
   going (a driver loaded with an option) and nothing kept it, so a

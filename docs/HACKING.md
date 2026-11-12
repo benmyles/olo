@@ -7386,7 +7386,8 @@ NVIDIA's library is started again at each ask until it starts once (a
 failed start had been kept for the life of the process: Preferences
 never asked again). `olo-gpu-tune show` says the same, as
 `power_failed` and `unanswered`. Apply runs `olo-gpu-tune set`
-through pkexec (only in the person's own session: `OLO_REAL_SESSION`),
+through pkexec (only in the person's own session: "The person's own
+session", below),
 which keeps the tuning in `/etc/olo/gpus.json` (the computer's: it's the
 hardware's), notes each GPU's limits as its driver had them before it
 was first tuned (xe keeps whatever is written, and its own lowest clock
@@ -9361,8 +9362,9 @@ details and actions' results back as JSON lines (NaN as null); the local
 sampler pauses meanwhile. It asks at start (File ▸ Ask for Full Access
 at Start, on by default), or when an action needs it (an alert offers
 it, and does the action once it comes). It is only ever asked for in
-the person's own session (`OLO_REAL_SESSION`, not on an agent's screen):
-elsewhere polkit's dialog would come up on the person's screen.
+the person's own session ("The person's own session", below; not on an
+agent's screen): elsewhere polkit's dialog would come up on the
+person's screen.
 `OLO_ACTIVITY_HELPER=direct` runs the helper as this user, without
 pkexec (tests: the whole protocol, nothing elevated); `=off` never.
 **In tests, only ever signal, renice or limit a process you started,
@@ -11567,12 +11569,54 @@ there. Testing: debug builds take `OLO_SUDO_REAL` as the sudo to run, so
 a test stands in a script; never test against the real sudo or
 fingerprint reader. `cargo test -p olo-terminal sudo`.
 
+## The person's own session (`olo_xdg::session`)
+
+Some things are done only in front of the person: asking polkit for
+the administrator (Olo Doctor's fixes, Preferences' GPU, network and
+face settings, Activity Monitor's full access), waiting on their
+finger, face or security key, taking the session bus's names (the
+polkit agent, the portal, Notifications, Token Pool's gateway). A
+test's session and an agent's screen are sessions too, with nobody
+there, and must never do them.
+
+`olo_xdg::session::real()` says whether this program is in the real
+session, and `olo_system::env::at_the_computer()` that and not on an
+agent's screen (`OLO_SCREEN`). **By the display the program is on**:
+olo-session on a seat (`--tty-udev`) keeps a mark in the runtime folder
+while it runs (`olo-real-session`: its display's name and its pid;
+written as it starts, before anything else is, and as it resumes after
+an upgrade; taken away as it ends; one whose maker isn't an olo-session
+any more says nothing), and a program is in the real session if that
+is the display its `OLO_SOCKET` or `WAYLAND_DISPLAY` names. Where no
+session has said, or the program has no display, it goes by
+`OLO_REAL_SESSION`, the variable olo-session hands down.
+
+It went by that variable alone until 2026-11-12, and the variable
+reaches only what descends from olo-session by an unbroken line of
+environments. app_server was started a few lines *before* it was set,
+so the palette app_server starts, and every program opened from the
+palette, were told for the whole session that they weren't at the
+computer: Doctor said "fixing as the administrator is turned off
+here" and Preferences "GPUs are tuned only in the person's own
+session", in the person's own session (Ben: "all this should just work
+automatically and ask me for elevated perms if/when needed"). The
+order is put right too (said before anything is started). The rule:
+**what a program is allowed is decided by what is so (which display it
+is on), not by what it was handed when it started.** A test never sets
+`OLO_REAL_SESSION`, and tsession takes it out of what it runs; on a
+test's display it wouldn't count anyway.
+
+`cargo test -p olo-doctor way_here -- --ignored --nocapture` prints
+which way Doctor would ask for root in the environment it's run in
+(to find out why a program says it can't): run it with another
+program's environment (`/proc/PID/environ`) to ask in its place.
+
 ## The polkit agent (apps/polkit-agent, olo_system::polkit)
 
 Asks for a password when a program needs an administrator (timedated,
 logind, NetworkManager, …). `olo-session` starts it only in a real
-`--tty-udev` session, with `OLO_REAL_SESSION=1` (cleared for nested
-and headless sessions); without that it refuses to run, because it
+`--tty-udev` session (`olo_xdg::session::real`, above; nested and
+headless sessions aren't); elsewhere it refuses to run, because it
 registers with polkitd for the whole **login session** and must never take
 over the prompts of the session it was started from. It stays resident
 (`olo_kit::stay_resident`) and opens a BAlert-style window per request

@@ -404,10 +404,13 @@ impl Session {
         if real_start && !greeter {
             graphical::name_dconf();
         }
-        s.start_server();
         // Only a real session owns the user's environment: a headless or
         // nested one (tests, development) must not point the user's portals
-        // and services at itself.
+        // and services at itself. Said before anything is started, so
+        // every child has it: app_server was started first once, and what
+        // it started (the palette, and every program opened from the
+        // palette) was told for the whole session that it wasn't at the
+        // computer, and wouldn't ask for the administrator.
         let real = s.backend.iter().any(|b| b == "--tty-udev") && !greeter;
         // SAFETY: single-threaded start-up.
         unsafe {
@@ -419,6 +422,8 @@ impl Session {
             }
         }
         s.real = real;
+        s.say_real();
+        s.start_server();
         if real {
             keyring::start();
             export_environment();
@@ -524,6 +529,10 @@ impl Session {
             greeter,
         };
         s.own_files();
+        // (A session from before the mark says so from this upgrade on:
+        // programs it started without the variable are at the computer
+        // from now.)
+        s.say_real();
         if !greeter {
             s.upgrades = exe().parent().and_then(|d| upgrade::Watcher::new(d, &s.display));
         }
@@ -957,6 +966,16 @@ impl Session {
         runtime_dir().join(&self.display)
     }
 
+    /// A real session says which display is the person's, for every
+    /// program to go by (`olo_xdg::session`).
+    fn say_real(&self) {
+        if self.real
+            && let Err(e) = olo_xdg::session::mark_real(&self.display)
+        {
+            log(format!("could not say this is the person's session ({}): {e}", olo_xdg::session::real_session_file().display()));
+        }
+    }
+
     fn own_files(&mut self) {
         let lock = runtime_dir().join(format!("{}.lock", self.display));
         let mut paths = vec![self.wayland_path(), lock, self.ipc_path.clone()];
@@ -1208,6 +1227,7 @@ impl Session {
         if self.real {
             keyd::restore();
             graphical::stop();
+            olo_xdg::session::unmark_real();
         }
         for (path, id) in &self.files {
             if id.is_some() && identity(path) == *id {

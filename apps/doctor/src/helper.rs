@@ -164,7 +164,20 @@ impl Helper {
                 c
             }
             Way::Direct => Command::new(&exe),
-            Way::Off => return Err(std::io::Error::other("fixing as the administrator is turned off here")),
+            // (What it went by, so a wrong "no" can be found: the
+            // person's own session once said this of itself.)
+            Way::Off => {
+                let why = match std::env::var("OLO_DOCTOR_HELPER").as_deref() {
+                    Ok("off") => "it's turned off here (OLO_DOCTOR_HELPER)".to_owned(),
+                    _ if std::env::var_os("OLO_SCREEN").is_some() => "this is an agent's screen, with nobody in front of it to ask".to_owned(),
+                    _ => format!(
+                        "this isn't the session at the computer (it's on {}, and the person's is {})",
+                        olo_xdg::session::own_display().unwrap_or_else(|| "no display".into()),
+                        olo_xdg::session::real_display().unwrap_or_else(|| "not said".into())
+                    ),
+                };
+                return Err(std::io::Error::other(why));
+            }
         };
         let mut child = cmd.arg("--helper").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn()?;
         let stdout = child.stdout.take().expect("piped");
@@ -207,6 +220,15 @@ impl Drop for Helper {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What `way` is in the environment this is run in (to find out why
+    /// a session says root can't be asked for): `… way_here --ignored
+    /// --nocapture`.
+    #[test]
+    #[ignore]
+    fn way_here() {
+        println!("way: {:?}; at the computer: {}", way(), olo_system::env::at_the_computer());
+    }
 
     #[test]
     fn the_helper_runs_steps_in_order_and_stops_at_a_failure() {

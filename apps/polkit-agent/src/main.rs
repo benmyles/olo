@@ -578,7 +578,7 @@ fn main() -> std::process::ExitCode {
     };
     // Only the real session's agent may speak for the login session: a
     // test or nested session must never take over the user's prompts.
-    if self_test.is_none() && !keyring_test && std::env::var_os("OLO_REAL_SESSION").is_none() {
+    if self_test.is_none() && !keyring_test && !olo_xdg::session::real() {
         eprintln!("olo-polkit-agent: not in a real Olo session (use --self-test ACTION to try it)");
         return std::process::ExitCode::FAILURE;
     }
