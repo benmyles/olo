@@ -272,10 +272,11 @@ pub const RESCUE_NICE: i32 = -15;
 /// on a slow core at a low clock, and a frame's work there takes three
 /// or four times as long: Activity's first frame of its processes, 13–17
 /// ms; 3.7–4.6 with this. Nothing while the thread sleeps: idle costs
-/// nothing. (Taken by `olo_system::priority::util_min_self`, and GPUI's
-/// for its windows' threads.)
+/// nothing. (Taken by `olo_system::priority::util_min_self`, and the
+/// Interface Kit's for its windows' threads.)
 pub const CORE_UTIL_MIN: u32 = 1024;
-/// A window's thread's (GPUI's main thread, in every app): as fast as
+/// A window's thread's (its looper's and the display thread's, in
+/// every app): as fast as
 /// 1024 there (a fast core near its top clock), 512 no faster than a
 /// slow core's top.
 pub const UI_UTIL_MIN: u32 = 768;

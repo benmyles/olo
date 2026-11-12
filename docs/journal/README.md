@@ -3,6 +3,88 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-11-12
+
+### Deskbar: a film playing on an AirPlay receiver
+
+*15:43* — While olo-airplay plays a film on a receiver, Deskbar's tray has a screen with a play mark on it (two bars while paused, a count when there are several). Its menu says what plays where, with Pause (or Resume) and Stop for each, and Stop All. The mark is placed in device pixels inside the screen's frame: centred at 1×, 1.25×, 1.5×, 1.75× and 2×. Tried against a receiver of the test's own, on the loopback.
+
+![Deskbar: a film playing on an AirPlay receiver](2026-11-12/154356-deskbar-a-film-playing-on-an-airplay-receiver.png)
+
+### Activity Monitor: an NVIDIA card's encoder and decoder
+
+*13:56* — The card's video encoder and decoder are engines of their own, which its library counts apart from graphics: a screen recording encoding on it read as an idle GPU. Each is a series now (here a 4K encode: the encoder at half, graphics at a seventh), and the card, in Activity Monitor and Deskbar's widget, is as busy as its busiest engine. Intel's render and media engines the same.
+
+![Activity Monitor: an NVIDIA card's encoder and decoder](2026-11-12/135642-activity-monitor-an-nvidia-card-s-encoder-and-de.png)
+
+### Activity Monitor: a fan profile that isn't in force says so
+
+*11:08* — The Fans card said "the fan service isn't running" of a service that was running and couldn't set the fans. It reads the service's state through olo_system::fans now: not in force and why (the driver, until the next start; the service stopped), or the level held.
+
+![Activity Monitor: a fan profile that isn't in force says so](2026-11-12/110802-activity-monitor-a-fan-profile-that-isn-t-in-for.png)
+
+### Olo Doctor: the Cool fan profile that isn't in force
+
+*11:07* — Cool chosen and the fans' driver taking no levels (it had been told to by hand, which a restart undid): found, with the fix that tells it to at every start. Also found: the fan service stopped, and one an upgrade has left older.
+
+![Olo Doctor: the Cool fan profile that isn't in force](2026-11-12/110751-olo-doctor-the-cool-fan-profile-that-isn-t-in-fo.png)
+
+### Preferences ▸ Performance: the scheduler
+
+*04:38* — A Scheduler tab (Ben: "add to olo the ability to pick a custom scheduler in preferences -> performance and the recommendation should be scx_lavd"): the kernel's own or LAVD (recommended), what each is for, and what is scheduling now as the kernel says it. Choosing one has Olo Doctor install and start it, or stop it (an administrator's password). Shown with a made-up kernel in a scratch folder.
+
+![Preferences ▸ Performance: the scheduler](2026-11-12/043804-preferences-performance-the-scheduler.png)
+
+### Preferences ▸ Power: the fan profile
+
+*04:20* — Battery & Idle has a Fans box on a ThinkPad (Ben: "have in the power prefs the option for the default auto and this new cooler/louder auto profile"): Automatic, the firmware's own curve, or Cool, Olo's olo-fans running the fans ahead of the heat so the processor isn't throttled, with what the fans are doing now under it. Choosing one asks Olo Doctor to set it (an administrator's password). Shown with a made-up ThinkPad in a scratch folder.
+
+![Preferences ▸ Power: the fan profile](2026-11-12/042022-preferences-power-the-fan-profile.png)
+
+### The Installer
+
+*03:59* — As it opens once the licence is agreed to: what will happen, where from and onto what, More Options closed, About, Quit and Begin. BeOS's Installer for Olo, in place of the Windows 95 wizard of five pages.
+
+![The Installer](2026-11-12/035914-the-installer.png)
+
+### The Installer, at work
+
+*03:59* — Olo Setup redone after BeOS's Installer (Ben: "redo the installer to be reminiscent of the beos installer instead of windows 95"): one window on the BeOS desktop's blue, with Olo's mark, a box of words saying what is being done, Install from and Onto as pop-ups, More Options opening the optional parts under a latch, a status bar, and Begin, which is Stop while it works. Shown in its demo mode (a made-up computer; nothing is installed).
+
+![The Installer, at work](2026-11-12/035913-the-installer-at-work.png)
+
+## 2026-11-11
+
+### Preferences on olo-kit
+
+*22:34* — Preferences, every panel, on Olo's own kits: each panel's window a view on a looper of its own. The same to the pixel as it was but for two things meant: the launcher's cells are wider (the longest names ran into the cell beside them) and Notifications' From and to line up with the words above them. Typing in a field draws in a quarter of the time, a slider in half.
+
+![Preferences on olo-kit](2026-11-11/223417-preferences-on-olo-kit.png)
+
+### Terminal on olo-kit
+
+*15:05* — Terminal on Olo's own kit: one Terminal behind a lock, each window a view on a looper of its own, its screens a view of their own drawn once a frame however much a shell prints. The same to the pixel as before at every scale, light and dark; a frame of typing 475 to 240 µs, of steady output 532 to 305 µs.
+
+![Terminal on olo-kit](2026-11-11/150502-terminal-on-olo-kit.png)
+
+### Passwords on olo-kit
+
+*12:08* — Passwords moved from GPUI to Olo's own kits: its state is the app's, behind a lock, since it runs with no window as the SSH agent and the keychain; the main window, Review Sync, Sync Problems, the generator and a passkey's question are views that read it. The same to the pixel as before at 1×, 1.5× and 2×, light and dark, but for what was wrong: the item pane's scroll bar is there as an item opens (it came with the first scroll), Sync Problems' icons are level with their items at 1×, and “Synced a minute ago” counts the minutes by itself. A frame typing in the editor went from 1.9 ms to 0.3, the arrows down a list of 508 from 1.8 to 0.8.
+
+![Passwords on olo-kit](2026-11-11/120840-passwords-on-olo-kit.png)
+
+### Activity Monitor: the fans against what they cool
+
+*04:00* — Sensors has a Fans card in place of a small graph a fan: each fan's speed, the processor's temperature and how often it was throttled for heat on one graph (each to its own scale, the fans to one), the fan profile in use and the level Olo's fan service holds, and the throttling counted since the computer started and since the window opened, so a fan curve can be seen to work. (Activity Monitor is on olo-kit as of today.)
+
+![Activity Monitor: the fans against what they cool](2026-11-11/040027-activity-monitor-the-fans-against-what-they-cool.png)
+
+### Screenshot: New screenshot shows the new picture
+
+*02:45* — Screenshot moved to Olo's own kit. Its preview was kept while the picture's size was the same, so New screenshot went on showing the one before; a preview is now of one picture. The region and colour pickers show the screen a pixel to a device pixel at 1.5× and 1.75× too (the overlay's whole-point size was half a device pixel off the screen's, and the frozen picture was stretched by it).
+
+![Screenshot: New screenshot shows the new picture](2026-11-11/024515-screenshot-new-screenshot-shows-the-new-picture.png)
+
 ## 2026-11-10
 
 ### Coder: configurable supervision
@@ -78,6 +160,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 ![Coder: multiline field before alignment](2026-11-10/010547-coder-multiline-field-before-alignment.png)
 
 ## 2026-11-09
+
+### Olo Doctor finds Token Pool running twice
+
+*21:59* — A Token Pool started beside the one serving, unable to take its port, served nothing for two days while its window showed no requests. Olo Doctor now finds it and quits it; the session starts it again, and it keeps the one serving rather than running beside it.
+
+![Olo Doctor finds Token Pool running twice](2026-11-09/215953-olo-doctor-finds-token-pool-running-twice.png)
 
 ### Terminal: each agent's own Keep It Going message
 

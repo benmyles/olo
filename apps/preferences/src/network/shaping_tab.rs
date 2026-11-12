@@ -5,14 +5,13 @@
 //! and off as root (`olo_system::shaping`). It lasts until turned off,
 //! the link goes away or the computer restarts.
 
+use olo_kit::{
+    Child, Cx, IntoElement, ParentElement as _, SharedString, Styled as _, WindowCx, div, metrics as m, px,
+    widgets::{Button, MenuField, StringView, TextControl, TextField},
+};
 use olo_system::{
     network::{Kind, Status},
     shaping::{PRESETS, Shape, Shaping},
-};
-use olo_ui::{
-    gpui::{App, Context, Entity, IntoElement, ParentElement as _, SharedString, Styled as _, div, px},
-    metrics as m,
-    widgets::{Button, MenuField, StringView, TextControl, TextField},
 };
 
 use super::{Extra, Request, State, field, state_of};
@@ -21,14 +20,14 @@ use crate::{PanelView, form::Ui};
 const DIVIDER: f32 = 80.0;
 
 /// One way's fields: bandwidth (kbit/s), delay and jitter (ms), loss (%).
-struct Way([Entity<TextField>; 4]);
+struct Way([Child<TextField>; 4]);
 
 impl Way {
-    fn new(cx: &mut Context<PanelView>) -> Way {
+    fn new(cx: &mut Cx<PanelView>) -> Way {
         Way([field(cx, "As it goes"), field(cx, "0"), field(cx, "0"), field(cx, "0")])
     }
 
-    fn shape(&self, cx: &App) -> Result<Option<Shape>, String> {
+    fn shape(&self, cx: &WindowCx) -> Result<Option<Shape>, String> {
         let text = |i: usize| self.0[i].read(cx).text().trim().to_owned();
         let whole = |i: usize, what: &str| -> Result<u64, String> {
             let t = text(i);
@@ -43,7 +42,7 @@ impl Way {
         Ok((!s.is_nothing()).then_some(s))
     }
 
-    fn fill(&self, s: Option<Shape>, cx: &mut App) {
+    fn fill(&self, s: Option<Shape>, cx: &mut WindowCx) {
         let s = s.unwrap_or_default();
         let nonzero = |v: u64| if v == 0 { String::new() } else { v.to_string() };
         let texts = [nonzero(s.rate_kbit), nonzero(s.delay_ms as u64), nonzero(s.jitter_ms as u64), if s.loss > 0.0 { format!("{}", s.loss) } else { String::new() }];
@@ -65,7 +64,7 @@ impl Way {
                     .flex_row()
                     .items_center()
                     .gap(px(m::LABEL_GAP))
-                    .child(div().flex_1().child(TextControl::new(f.clone()).label(label).divider(DIVIDER)))
+                    .child(div().flex_1().child(TextControl::new(ui.cx, &f).label(label).divider(DIVIDER)))
                     .child(div().w(px(40.0)).child(StringView::new(unit))),
             );
         }
@@ -81,11 +80,11 @@ pub struct Edit {
 }
 
 impl Edit {
-    pub fn new(cx: &mut Context<PanelView>) -> Edit {
+    pub fn new(cx: &mut Cx<PanelView>) -> Edit {
         Edit { device: 0, down: Way::new(cx), up: Way::new(cx), loaded: None }
     }
 
-    fn edited(&self, cx: &App) -> Result<Shaping, String> {
+    fn edited(&self, cx: &WindowCx) -> Result<Shaping, String> {
         Ok(Shaping { down: self.down.shape(cx)?, up: self.up.shape(cx)? })
     }
 }
@@ -112,9 +111,9 @@ pub fn ui(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: boo
     let e = &mut st.shape;
     e.device = e.device.min(links.len() - 1);
     let names: Vec<SharedString> = links.iter().map(|d| SharedString::from(format!("{} ({})", d.interface, if d.kind == Kind::Wifi { "Wi-Fi" } else { "Ethernet" }))).collect();
-    let pick = ui.on_view(|v, i: usize, _, cx| {
+    let pick = ui.on_view(|v, i: &usize, cx| {
         if let Some(st) = state_of(v) {
-            st.shape.device = i;
+            st.shape.device = *i;
         }
         cx.notify();
     });
@@ -140,7 +139,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: boo
     let first = if like == 0 && edited.as_ref().is_ok_and(|s| s.is_on()) { "Custom" } else { "Choose…" };
     let mut presets: Vec<SharedString> = vec![first.into()];
     presets.extend(PRESETS.iter().map(|p| SharedString::from(p.name)));
-    let fill = ui.on_view(|v, i: usize, _, cx| {
+    let fill = ui.on_view(|v, i: &usize, cx| {
         let Some(st) = state_of(v) else { return };
         if let Some(p) = i.checked_sub(1).and_then(|i| PRESETS.get(i)) {
             st.shape.down.fill(Some(p.down), cx);
@@ -156,13 +155,13 @@ pub fn ui(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: boo
     }
     let changed = edited.as_ref().is_ok_and(|s| *s != now);
     let off_iface = iface.clone();
-    let off = ui.on_click_view(move |v, _, cx| {
+    let off = ui.on_click_view(move |v, cx| {
         if let Some(st) = state_of(v) {
             let _ = st.link.tx.send(Request::Shape { interface: off_iface.clone(), shaping: Shaping::default() });
         }
         cx.notify();
     });
-    let apply = ui.on_click_view(move |v, _, cx| {
+    let apply = ui.on_click_view(move |v, cx| {
         let Some(st) = state_of(v) else { return };
         if let Ok(shaping) = st.shape.edited(cx) {
             let _ = st.link.tx.send(Request::Shape { interface: iface.clone(), shaping });
@@ -178,7 +177,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: boo
             .child(div().flex_1())
             .child(Button::new("Turn Off").enabled(now.is_on() && !busy).on_click(off))
             .child(Button::new(label).default(changed).enabled(changed && edited.as_ref().is_ok_and(|s| s.is_on()) && !busy).on_click(apply))
-            .into_any_element(),
+            .into_element(),
     );
     ui.note("It lasts until it's turned off, the link goes away or the computer restarts. Changing it asks for an administrator's password once while this window is open.");
 }

@@ -10,15 +10,11 @@
 
 use std::sync::{Arc, OnceLock};
 
+use olo_kit::SharedString;
 use olo_sync::Mutex;
-use olo_ui::gpui::SharedString;
 use serde::Deserialize;
 
-use olo_ui::{
-    gpui::{Context, ParentElement as _, Styled as _, div, px},
-    metrics as m,
-    widgets::TabView,
-};
+use olo_kit::{Cx, ParentElement as _, Styled as _, div, metrics as m, px, widgets::TabView};
 
 use crate::{
     PanelView,
@@ -39,7 +35,7 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(cx: &mut Context<PanelView>) -> State {
+    pub fn new(cx: &mut Cx<PanelView>) -> State {
         State { tab: 0, keys: security_keys::State::new(cx), touchid: touchid::State::new(cx) }
     }
 }
@@ -57,9 +53,9 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         0 => sign_in(ui, st),
         _ => ui.columns(passwords, passwords_more),
     });
-    let pick = ui.on_view(|v, i: usize, _, cx| {
+    let pick = ui.on_view(|v, i: &usize, cx| {
         if let panel::State::Security(st) = &mut v.state {
-            st.tab = i;
+            st.tab = *i;
         }
         cx.notify();
     });
@@ -92,7 +88,7 @@ fn passwords(ui: &mut Ui) {
     });
     ui.bbox("Passwords: Locking", |ui| {
         let label = "Lock after idle for:";
-        let divider = divider_for(ui.window, &[label]);
+        let divider = divider_for(&[label]);
         minutes_menu(ui, "pw-lock", label, divider, &[1, 5, 10, 30, 60, 0], p.lock_minutes, |s, m| s.security.passwords.lock_minutes = m);
         ui.check("Lock when the screen locks", p.lock_with_screen, |s, v| s.security.passwords.lock_with_screen = v);
     });
@@ -158,7 +154,7 @@ fn ssh_config_note(ui: &mut Ui) {
         ui.note("From your next login, Passwords can be ssh’s agent here too.");
         return;
     }
-    let done = ui.on_click_view(move |_, _, cx| {
+    let done = ui.on_click_view(move |_, cx| {
         if let Ok(text) = std::fs::read_to_string(&path) {
             let new = olo_keychain::ssh_config::use_session_agent(&text);
             let tmp = path.with_extension("olo-new");
@@ -192,7 +188,7 @@ struct SecretsCollection {
 }
 
 /// olo-secrets' state, followed from its file (one watch for the app).
-fn secrets_status(proxy: olo_ui::Proxy) -> SecretsStatus {
+fn secrets_status(proxy: olo_kit::Proxy) -> SecretsStatus {
     static SHARED: OnceLock<Arc<Mutex<SecretsStatus>>> = OnceLock::new();
     let shared = SHARED.get_or_init(|| {
         let shared: Arc<Mutex<SecretsStatus>> = Arc::default();
@@ -222,7 +218,7 @@ fn secrets_status(proxy: olo_ui::Proxy) -> SecretsStatus {
             }
         };
         read(&[]);
-        if let Some(w) = olo_ui::watch::watch([path], read) {
+        if let Some(w) = olo_kit::watch::watch([path], read) {
             // The app's, for as long as it runs.
             std::mem::forget(w);
         }
@@ -237,7 +233,7 @@ fn secrets_note(ui: &mut Ui, on: bool) {
         ui.note("Chrome, Slack and other programs keep their secrets (the keys to their saved passwords and sign-ins) in GNOME Keyring. Turned on, Olo keeps them instead, GNOME Keyring’s copied over first; turned off, what changed goes back.");
         return;
     }
-    let st = secrets_status(olo_ui::proxy(ui.cx));
+    let st = secrets_status(olo_kit::proxy());
     if !st.running {
         ui.note("Olo’s keyring service isn’t running here; it starts with your session.");
         return;

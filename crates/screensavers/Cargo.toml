@@ -1,14 +1,14 @@
 [package]
 name = "olo-screensavers"
-description = "The BeOS R5 screen saver modules (for olo-screensaver and the Preferences preview), drawn through a canvas on Olo's GPUI"
+description = "The BeOS R5 screen saver modules (for olo-screensaver and the Preferences preview), drawn through a canvas on Olo's kit"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [features]
-# The canvas on Olo's GPUI (olo-screensaver).
-gpui = ["dep:olo-ui", "dep:image"]
+# The canvas on Olo's kit (olo-screensaver, Preferences).
+kit = ["dep:olo-kit", "dep:image"]
 
 [dependencies]
-olo-ui = { workspace = true, optional = true }
+olo-kit = { workspace = true, optional = true }
 image = { version = "0.25", default-features = false, optional = true }

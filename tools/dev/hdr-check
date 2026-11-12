@@ -18,7 +18,7 @@ signal, not the sRGB picture screenshots are. Then checks, within a code:
   HDR (PQ, BT.2020):   the untagged grey at 46 cd/m² (110), the PQ
                         window at its own 100 cd/m² (130), nothing above
                         SDR's white at 203 cd/m² (148).
-  A GPUI window in HDR10 (the kit's `hdr_probe`, `Gamut::Hdr10`): its
+  A kit window in HDR10 (the kit's `hdr_probe`, `Gamut::Hdr10`): its
                         sRGB white at SDR's white (148), its HDR10
                         pictures (`RenderImage::deep`) at their own
                         1,000 cd/m² (192) and 100 (130).
@@ -36,7 +36,7 @@ signal, not the sRGB picture screenshots are. Then checks, within a code:
                         a value (what a clip holds is its own).
 
 Build first: `cargo build --release -p app_server --bin olo-app-server
---example color_probe`, `cargo build --release -p olo-ui --example
+--example color_probe`, `cargo build --release -p olo-kit --example
 hdr_probe` and `cargo build --release -p olo-screenshot -p olo-screen`. Exits 1 on a mismatch.
 """
 
@@ -49,7 +49,7 @@ import time
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 TSESSION = [sys.executable, os.path.join(ROOT, "tools/dev/tsession")]
 PROBE = os.path.join(ROOT, "target/release/examples/color_probe")
-GPUI_PROBE = os.path.join(ROOT, "target/release/examples/hdr_probe")
+KIT_PROBE = os.path.join(ROOT, "target/release/examples/hdr_probe")
 NAME = "hdrc"
 OUT = "/var/tmp/olo-hdr-check"
 
@@ -83,8 +83,8 @@ def most(img, n=4):
 
 
 def main():
-    if not os.path.exists(PROBE) or not os.path.exists(GPUI_PROBE):
-        sys.exit("build the probes first: cargo build --release -p app_server --example color_probe; cargo build --release -p olo-ui --example hdr_probe")
+    if not os.path.exists(PROBE) or not os.path.exists(KIT_PROBE):
+        sys.exit("build the probes first: cargo build --release -p app_server --example color_probe; cargo build --release -p olo-kit --example hdr_probe")
     os.makedirs(OUT, exist_ok=True)
     ts("stop", NAME)
     ts("start", NAME, "1280x800", env={"OLO_HEADLESS_COLOR": "p3-hdr"})
@@ -140,15 +140,15 @@ def main():
         if not ok:
             failures.append("nothing above SDR's white")
 
-        print("A GPUI window drawing in HDR10:")
-        ts("run", NAME, GPUI_PROBE)
+        print("A kit window drawing in HDR10:")
+        ts("run", NAME, KIT_PROBE)
         time.sleep(3.0)
         w = next((w for w in ipc({"type": "list_windows"}).get("windows", []) if w.get("app_id") == "olo.hdr-probe"), None)
         if w is None:
             print("  BAD the probe's window didn't come")
-            failures.append("the GPUI probe")
+            failures.append("the kit's probe")
         else:
-            img = shot("gpui", True)
+            img = shot("kit", True)
             # (The screen's device pixels against its logical ones.)
             scale = img.size[0] / 1280 * 2
             c = w["content"]
@@ -163,7 +163,7 @@ def main():
             print("Screenshots and recordings of the HDR screen (sRGB):")
             spots = lambda img, scale, ox=0, oy=0: [img.getpixel((int((c["x"] - ox + c["width"] * (i + 0.5) / 3) * scale), int((c["y"] - oy + c["height"] / 2) * scale)))[:3] for i in range(3)]
             wants = [("SDR's white", 255), ("the 1,000 cd/m² picture", 255), ("the 100 cd/m² picture", 186)]
-            srgb_img = shot("gpui-srgb", False)
+            srgb_img = shot("kit-srgb", False)
             for (what, want), got in zip(wants, spots(srgb_img, srgb_img.size[0] / 1280 * 2)):
                 near(got, (want,) * 3, f"a screenshot: {what}")
             rec = os.path.join(OUT, "window.mp4")

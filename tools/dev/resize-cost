@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+"""What a live resize costs a program, a step: instructions and cycles
+(user space, every thread), by `perf stat` of a program it starts itself.
+
+  resize-cost NAME LABEL ROUNDS APP_ID CMD [ARGS…]
+
+In test session NAME (started already: `tsession start NAME 3456x2234
+--home /var/tmp/olo-bench/home`, the benchmark's home), closes what's
+open, starts CMD under perf, lets it settle (SETTLE seconds, 14), then
+drags its window's corner as tools/dev/bench's "live resize" does,
+ROUNDS times over (36 steps each, STEP_MS apart, 45: long enough that
+every step is drawn, so two builds draw the same number of frames; at
+16.7 a build that skips frames looks cheaper than it is), and prints
+what the resize's own seconds cost a step.
+
+  resize-cost prf old 6 olo.tracker ~/.local/olo-kept/before-kits/bin/olo-tracker /var/tmp/olo-bench/home/Big
+  resize-cost prf new 6 olo.tracker target/release/olo-tracker /var/tmp/olo-bench/home/Big
+
+Compare builds in turn (old, new, old, new…), three or four rounds, and
+by medians: a run varies by a sixth with what else the computer is
+doing, the app's own workers among it. Instructions vary less than
+cycles. For where the cost is, OLO_FRAME_PHASES=1 (a frame's phases),
+`perf record` the same way, and tools/dev/memhist (who allocates):
+HACKING, "Fast and light".
+"""
+import glob, json, os, signal, socket, subprocess, sys, time
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+TS = ["/usr/bin/python3", os.path.join(ROOT, "tools/dev/tsession")]
+BTN = 0x110
+
+
+def main():
+    if len(sys.argv) < 6:
+        sys.exit(__doc__)
+    name, label, rounds, app_id, cmd = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4], sys.argv[5:]
+    cmd[0] = os.path.abspath(os.path.expanduser(cmd[0]))
+    d = f"/var/tmp/olo-dev/{name}"
+    env = dict(os.environ, TSESSION_PROFILE="release")
+    step = float(os.environ.get("STEP_MS", "45")) / 1000
+
+    def ts(*a):
+        return subprocess.run(TS + list(a), env=env, capture_output=True, text=True).stdout
+
+    def req(r):
+        e = json.load(open(f"{d}/env.json"))
+        s = socket.socket(socket.AF_UNIX)
+        s.settimeout(10)
+        s.connect(e["OLO_SOCKET"])
+        s.sendall((json.dumps(r) + "\n").encode())
+        line = s.makefile().readline()
+        s.close()
+        return json.loads(line)
+
+    def synth(*events):
+        req({"type": "synthetic", "events": list(events)})
+
+    for w in req({"type": "list_windows"}).get("windows", []):
+        req({"type": "close", "id": w["id"]})
+    time.sleep(1.0)
+    out = f"{d}/resize-cost-{label}.txt"
+    if os.path.exists(out):
+        os.remove(out)
+    began = time.time()
+    ts("run", name, "perf", "stat", "-I", "200", "-x,", "-e", "instructions:u,cycles:u", "-o", out, "--", *cmd)
+    time.sleep(float(os.environ.get("SETTLE", "14")))
+    win = next((w for w in req({"type": "list_windows"})["windows"] if w["app_id"] == app_id), None)
+    if win is None:
+        sys.exit(f"{label}: no window of {app_id} came up")
+    screen = req({"type": "outputs"})["outputs"][0]
+    sw, sh = screen["current_mode"]["width"] / screen["scale"], screen["current_mode"]["height"] / screen["scale"]
+    req({"type": "place", "id": win["id"], "frame": {"x": 20, "y": 30, "width": int(sw - 220), "height": int(sh - 80)}})
+    time.sleep(0.6)
+    f = next(w["frame"] for w in req({"type": "list_windows"})["windows"] if w["id"] == win["id"])
+    x0, y0 = f["x"] + f["width"] - 2.5, f["y"] + f["height"] - 2.5
+    synth({"type": "move", "x": x0, "y": y0})
+    time.sleep(0.1)
+    synth({"type": "button", "button": BTN, "pressed": True})
+    time.sleep(0.15)
+    a = time.time()
+    for _ in range(rounds):
+        for i in range(1, 37):
+            by = 0.4 * (1 - abs((i % 18) - 9) / 9)
+            synth({"type": "move", "x": x0 - by * f["width"], "y": y0 - by * f["height"]})
+            time.sleep(step)
+    synth({"type": "button", "button": BTN, "pressed": False})
+    b = time.time()
+    time.sleep(0.8)
+    # (perf, started by tsession: ended by its own pid, and only if it is perf.)
+    for pidfile in glob.glob(f"{d}/perf.*.pid"):
+        pid = int(pidfile.split(".")[-2])
+        try:
+            if open(f"/proc/{pid}/cmdline", "rb").read().startswith(b"perf\0stat"):
+                os.kill(pid, signal.SIGINT)
+        except OSError:
+            pass
+        os.remove(pidfile)
+    time.sleep(1.2)
+    for w in req({"type": "list_windows"}).get("windows", []):
+        req({"type": "close", "id": w["id"]})
+    lo, hi = a - began - 0.7, b - began + 0.7
+    total = {"instructions": 0.0, "cycles": 0.0}
+    for line in open(out):
+        fields = line.strip().split(",")
+        if len(fields) < 4 or line.startswith("#"):
+            continue
+        try:
+            at, value = float(fields[0]), float(fields[1])
+        except ValueError:
+            continue
+        if lo <= at <= hi:
+            for k in total:
+                if k in fields[3]:
+                    total[k] += value
+    steps = rounds * 36
+    print(f"{label:8} {total['instructions'] / steps / 1e6:7.3f} M instructions a step  {total['cycles'] / steps / 1e6:7.3f} M cycles a step  ({steps} steps over {b - a:.1f} s)")
+
+
+if __name__ == "__main__":
+    main()

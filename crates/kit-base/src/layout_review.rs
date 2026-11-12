@@ -1,6 +1,6 @@
 //! The layout review's checks: what a frame looks like it got wrong,
 //! from what it painted, which the kit collects into [`Parts`] from what
-//! its style drew (`olo_ui::review`) at the scale it was drawn at. See
+//! its style drew (`olo_kit::review`) at the scale it was drawn at. See
 //! "Layout review" in docs/HACKING.md for what each check finds and why.
 
 pub use crate::review::{Finding, Level};
@@ -201,8 +201,6 @@ pub struct Fill {
     pub cut: [bool; 4],
 }
 
-/// What a frame told the review about its layout, beyond what it
-
 /// A picture drawn from a bitmap: where, its bitmap's size in pixels
 /// (if known), and whether all of the bitmap is drawn.
 #[derive(Debug, Clone)]
@@ -258,8 +256,8 @@ pub struct Control {
     pub role: String,
     pub name: String,
     pub clickable: bool,
-    /// Its element id, whole (GPUI's: the ids of what it's in, then its
-    /// own), as recorded while reviewing.
+    /// Its element id, whole (the ids of what it's in, then its own), as
+    /// recorded while reviewing.
     pub element: Option<String>,
 }
 
@@ -498,8 +496,10 @@ fn texts_over(p: &Parts, screen: Rect, out: &mut Vec<Finding>) {
             // closer than their advance by a point or so; their ink
             // doesn't.)
             // (The same words a point or less off are a shadow: the
-            // desktop's labels have one.)
-            let shadow = a.label == b.label && (a.rect.min.x - b.rect.min.x).abs() <= 1.5 && (a.rect.min.y - b.rect.min.y).abs() <= 1.5;
+            // desktop's labels have one. A title's falls further, by its
+            // size: Olo Setup's, 4 points under 46-point words.)
+            let off = (a.size.min(b.size) * 0.1).max(1.5);
+            let shadow = a.label == b.label && (a.rect.min.x - b.rect.min.x).abs() <= off && (a.rect.min.y - b.rect.min.y).abs() <= off;
             if over.width() > 2.0 && over.height() > a.size.min(b.size) * 0.4 && !shadow {
                 push(out, finding(Level::Error, "text-over-text", format!("{} and {} overlap by {:.1}×{:.1}", quote(a), quote(b), over.width(), over.height()), over));
             }
@@ -576,6 +576,23 @@ fn crowded(p: &Parts, screen: Rect, ppp: f32, out: &mut Vec<Finding>) {
             }
             // (A line of text set in pieces, a word apart, is one line.)
             if *ta && *tb && (ba - bb).abs() <= SAME {
+                continue;
+            }
+            // (A control's own text is as near its neighbour as the
+            // control is: marks in rows one under the other touch, as
+            // BeOS stacks them, and their labels are then a few points
+            // from the next row.)
+            let abuts = |text: &Rect, other: &Rect| {
+                p.controls.iter().any(|c| {
+                    let r = c.shown();
+                    r != *text && r.expand(SAME).contains_rect(*text) && !r.expand(SAME).contains_rect(*other) && {
+                        let gx = (other.min.x - r.max.x).max(r.min.x - other.max.x);
+                        let gy = (other.min.y - r.max.y).max(r.min.y - other.max.y);
+                        gx.max(gy) <= touching
+                    }
+                })
+            };
+            if (*ta && abuts(ra, rb)) || (*tb && abuts(rb, ra)) {
                 continue;
             }
             let overlap_y = ra.max.y.min(rb.max.y) - ra.min.y.max(rb.min.y);
@@ -664,6 +681,13 @@ fn crowded_lines(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
             if ringed {
                 continue;
             }
+            // (A level bar's edges and the gloss along its fill, however
+            // thin the bar, a password's strength under it: the kit's,
+            // drawn so.)
+            let barred = p.controls.iter().any(|c| c.role == "ProgressBar" && c.rect.expand(SAME).contains_rect(*a) && c.rect.expand(SAME).contains_rect(*b));
+            if barred {
+                continue;
+            }
             if overlap >= 0.5 * shorter && gap > touching && gap < LINE_ROOM {
                 let text = format!(
                     "two lines {gap:.1} pt apart (at {:.0},{:.0} and {:.0},{:.0}): an edge almost on another's; give it room (`metrics::BOX_INSET`, `WINDOW_INSET`)",
@@ -682,7 +706,7 @@ fn control_edges(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
     let right_room = SAME.max(1.0 / ppp + 0.01);
     // (A check box or radio button ends where its label does: its right
     // edge lines up with nothing.)
-    let sized = |c: &Control| !matches!(c.role.as_str(), "CheckBox" | "RadioButton" | "Label" | "Link" | "Clickable");
+    let sized = |c: &Control| !matches!(c.role.as_str(), "CheckBox" | "RadioButton" | "DisclosureTriangle" | "Label" | "Link" | "Clickable");
     for a in &shown {
         for b in &shown {
             let (ra, rb) = (a.shown(), b.shown());
@@ -770,6 +794,8 @@ fn uneven_gaps(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
 
 /// What a commit row's buttons say: they act on what's above them.
 const COMMITS: [&str; 5] = ["Apply", "Revert", "Save", "Save Changes", "Done"];
+/// A scroll bar's arrows, as the kit names them to agents.
+const SCROLL_ARROWS: [&str; 4] = ["Scroll Up", "Scroll Down", "Scroll Left", "Scroll Right"];
 
 /// A commit row (Apply, Revert…) with something close under it. The row acts on what's above it and ends that group, so what
 /// follows is a new section, `metrics::SECTION` under it; closer, the
@@ -778,6 +804,7 @@ const COMMITS: [&str; 5] = ["Apply", "Revert", "Save", "Save Changes", "Done"];
 /// were to each other).
 fn after_commit(p: &Parts, out: &mut Vec<Finding>) {
     let all = items(p);
+    let bars: Vec<Rect> = p.controls.iter().filter(|c| c.role == "ScrollBar" || (c.role == "Button" && SCROLL_ARROWS.contains(&c.name.as_str()))).map(|c| c.shown()).collect();
     let mut rows: Vec<f32> = Vec::new();
     // (Enabled or not: a dimmed Apply ends its group all the same. Push
     // buttons, a commit row's: a toolbar's Save is an icon, not one.)
@@ -790,7 +817,10 @@ fn after_commit(p: &Parts, out: &mut Vec<Finding>) {
             continue;
         }
         rows.push(r.max.y);
-        let under = all.iter().filter(|(o, ..)| o.min.y > r.max.y).map(|(o, name, ..)| (o.min.y - r.max.y, name.clone(), *o));
+        // (Not a scroll bar's own parts: the arrow at the foot of the
+        // bar beside a form scrolled to its end is the scroller's, not
+        // something that follows the form's Save.)
+        let under = all.iter().filter(|(o, ..)| o.min.y > r.max.y && !bars.contains(o)).map(|(o, name, ..)| (o.min.y - r.max.y, name.clone(), *o));
         let boxes = p.containers.iter().filter(|b| b.min.y > r.max.y && !p.panes.contains(b)).map(|b| (b.min.y - r.max.y, "a box".to_owned(), *b));
         let Some((gap, name, at)) = under.chain(boxes).min_by(|a, b| a.0.total_cmp(&b.0)) else { continue };
         if gap < crate::metrics::SECTION - NEAR_EDGE {
@@ -1218,6 +1248,38 @@ mod tests {
         // cut by nothing would: that's `text-cut`'s, not this.)
         p.texts = vec![text("Restore…", 258.0, 64.0)];
         assert!(found(&p).is_empty());
+    }
+
+    /// Something close under a form's Save is found; a scroll bar's
+    /// arrow there (the form scrolled to its end, the bar beside it)
+    /// isn't.
+    #[test]
+    fn a_scroll_arrow_does_not_follow_a_commit_row() {
+        let found = |p: &Parts| review(p, 400.0, 300.0, 2.0).into_iter().filter(|f| f.kind == "after-commit").count();
+        let under = |name: &str| {
+            let mut c = button(name, 110.0, "[under]");
+            c.rect = Rect::from_min_max(pos2(110.0, 46.0), pos2(190.0, 70.0));
+            c
+        };
+        let p = Parts { controls: vec![button("Save", 20.0, "[save]"), under("More…")], ..Parts::default() };
+        assert_eq!(found(&p), 1);
+        let p = Parts { controls: vec![button("Save", 20.0, "[save]"), under("Scroll Down")], ..Parts::default() };
+        assert_eq!(found(&p), 0);
+    }
+
+    /// Two long lines a few points apart are found; a thin level bar's
+    /// own (its edge, the gloss along its fill) aren't.
+    #[test]
+    fn a_level_bar_is_not_crowded_lines() {
+        let found = |p: &Parts| review(p, 400.0, 300.0, 2.0).into_iter().filter(|f| f.kind == "crowded-lines").count();
+        let line = |y: f32| Fill { rect: Rect::from_min_max(pos2(20.0, y), pos2(368.0, y + 1.0)), cut: [false; 4] };
+        let mut p = Parts { fills: vec![line(115.0), line(119.0)], ..Parts::default() };
+        assert_eq!(found(&p), 1);
+        let mut bar = button("Strong", 20.0, "[bar]");
+        bar.role = "ProgressBar".into();
+        bar.rect = Rect::from_min_max(pos2(20.0, 94.0), pos2(368.0, 121.0));
+        p.controls = vec![bar];
+        assert_eq!(found(&p), 0);
     }
 
     /// Words over others are found; the same words a point off (the

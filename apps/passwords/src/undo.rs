@@ -1,4 +1,4 @@
-//! Edit ▸ Undo and Redo in Passwords (`olo_ui::undo`, as every app's): an
+//! Edit ▸ Undo and Redo in Passwords (`olo_kit::undo`, as every app's): an
 //! item changed goes back to as it was, a new one goes, a deleted one is
 //! made again (a new item, the same in every field). Each is a save, a
 //! creation or a deletion like any other, so syncing with 1Password takes

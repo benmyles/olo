@@ -8,8 +8,8 @@ use std::{
     time::Duration,
 };
 
+use olo_kit::{Proxy, commands};
 use olo_protocol::{Client, Reply, Request, WindowInfo, shortcuts};
-use olo_ui::{Proxy, commands};
 use olo_xdg::{
     apps::{OUR_APPS, PREFERENCE_PANELS, our_app},
     desktop_entry,
@@ -367,7 +367,7 @@ const MAX_DEPTH: usize = 12;
 
 /// Files under home, for finding by name (hidden files and what
 /// .gitignore files exclude are left out): walked once, then each folder
-/// is followed (`olo_ui::watch`) and only a folder that changed is
+/// is followed (`olo_kit::watch`) and only a folder that changed is
 /// listed again, so a new download is found at once and nothing is
 /// walked on a timer. The kernel's watches are shared by every program:
 /// past a share of them the index is walked again instead, when asked
@@ -634,7 +634,7 @@ pub fn perform(action: Action, front: Option<u64>) {
                 if commands::invoke(pid, &command) { Ok(()) } else { Err(format!("the app didn’t do “{command}”")) }
             }
             Action::Open(path) => olo_xdg::open::open(&olo_xdg::open::Target::Path(path)).map_err(|e| e.to_string()),
-            Action::Reveal(path) => olo_ui::tracker::open(&path).map_err(|e| e.to_string()),
+            Action::Reveal(path) => olo_kit::tracker::open(&path).map_err(|e| e.to_string()),
             Action::Password { vault, id } => {
                 // Passwords may be quit: start it, then ask.
                 if olo_keychain::call(&olo_keychain::Request::Show { vault: vault.clone(), id: id.clone() }).is_err()
@@ -684,6 +684,7 @@ fn search_url(text: &str) -> String {
 
 /// Work done off the UI thread: one channel per kind, so a slow
 /// Passwords never holds up files.
+#[derive(Clone)]
 pub struct Workers {
     pub files: mpsc::Sender<(u64, Vec<String>)>,
     pub passwords: mpsc::Sender<(u64, String)>,
@@ -720,7 +721,7 @@ pub fn workers(proxy: Proxy) -> Workers {
         let follow = folders.len() <= budget;
         let watch = if follow {
             let tx = changed_tx.clone();
-            olo_ui::watch::watch(folders.clone(), move |dirs| {
+            olo_kit::watch::watch(folders.clone(), move |dirs| {
                 let _ = tx.send(dirs.to_vec());
             })
         } else {

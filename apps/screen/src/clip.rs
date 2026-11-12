@@ -13,7 +13,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use olo_ui::clipboard::{self, Clip, Held, Watch};
+use olo_kit::held_clipboard::{self as clipboard, Clip, Held, Watch};
 
 #[derive(Default)]
 struct Shared {

@@ -185,7 +185,8 @@ pub struct Reader {
     cpu: Vec<(u64, u64)>,
     counters: HashMap<String, (u64, u64)>,
     gpu: Option<Probe>,
-    gpu_idle: Option<u64>,
+    /// An xe GPU's idle time when last read, each of its GTs'.
+    gpu_idle: Option<Vec<u64>>,
 }
 
 impl Reader {
@@ -366,15 +367,19 @@ impl Reader {
             // (Asleep: never asked, which would wake it.)
             _ if gpu_load::asleep(&g.device) => Some(Reading { values: vec![0.0], names: vec![g.name.clone()], unit: Unit::Percent, note: Some("asleep".into()) }),
             Kind::Xe { gts } => {
-                // The render GT's idle time against the time gone by (a
-                // GT asleep counts as idle).
-                let gt = gts.iter().find(|gt| gpu_load::xe_gt_name(gt) == "render").or(gts.first())?;
-                let idle = gpu_load::xe_idle_ms(gt);
-                let before = self.gpu_idle.replace(idle);
-                let (b, s) = (before?, elapsed?);
-                busy(100.0 - 100.0 * idle.saturating_sub(b) as f64 / (s * 1000.0))
+                // Each GT's idle time against the time gone by (a GT
+                // asleep counts as idle): the render one's and the media
+                // one's, as busy as the busier (a video decoding on the
+                // media GT is the GPU at work too).
+                let idle: Vec<u64> = gts.iter().map(|gt| gpu_load::xe_idle_ms(gt)).collect();
+                let before = self.gpu_idle.replace(idle.clone());
+                let (b, s) = (before.filter(|b| b.len() == idle.len())?, elapsed?);
+                let each: Vec<f64> = idle.iter().zip(&b).map(|(now, was)| 100.0 - 100.0 * now.saturating_sub(*was) as f64 / (s * 1000.0)).collect();
+                busy(gpu_load::busiest(&each))
             }
-            Kind::Nvidia { bus } => gpu_load::nvidia_now(&g.device, bus).map_or_else(|| Some(Reading::missing(Unit::Percent, "not answering")), |n| busy(n.busy)),
+            // (Its graphics engine, its encoder and its decoder: as
+            // busy as the busiest.)
+            Kind::Nvidia { bus } => gpu_load::nvidia_now(&g.device, bus).map_or_else(|| Some(Reading::missing(Unit::Percent, "not answering")), |n| busy(n.total())),
             Kind::Amd => read(g.device.join("gpu_busy_percent")).trim().parse::<f64>().ok().map_or_else(|| Some(Reading::missing(Unit::Percent, "not answering")), busy),
             Kind::Agx => Some(Reading::missing(Unit::Percent, "not measured")),
         }

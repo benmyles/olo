@@ -35,7 +35,10 @@ mkdir -p "$STAGE/olo/bin" "$STAGE/olo/share/olo/themes" "$STAGE/olo/system"
 for b in target/release/olo-*; do
     [ -x "$b" ] && [ -f "$b" ] || continue
     name=$(basename "$b")
-    case "$name" in *.*) continue ;; olo-installer) continue ;; esac
+    # (Not the scheduler, scx_lavd as Olo carries it: a GPL program is
+    # passed on with its source, which is the publisher's to arrange:
+    # tools/build-scheduler.sh.)
+    case "$name" in *.*) continue ;; olo-installer | olo-scx-lavd) continue ;; esac
     strip -o "$STAGE/olo/bin/$name" "$b"
 done
 strip -o "$STAGE/olo/bin/pam_olo_keyring.so" target/release/libpam_olo_keyring.so

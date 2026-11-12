@@ -4,16 +4,15 @@
 
 use std::time::{Duration, Instant};
 
-use olo_kit_base::Proxy;
-use olo_ui::{
-    gpui::{AnyElement, Entity, IntoElement, ParentElement as _, Styled as _, Window, div, px},
-    metrics as m,
-    widgets::{self, Button, Column, ColumnListView, ListModel, StringView},
+use olo_kit::{
+    ClickEvent, Element, ParentElement as _, Styled as _, div, metrics as m, px,
+    widgets::{self, Button, Column, ColumnListView, StringView},
 };
+use olo_kit_base::Proxy;
 
 use crate::{
     Terminal, Win, client,
-    ui::{Cx, WinOps as _, WindowId, WindowOptions},
+    ui::{Cx, Shell, ShellCx, WindowId, WindowOptions, on},
     wire,
 };
 
@@ -37,7 +36,6 @@ pub struct DaemonWin {
     /// What we're doing ("Restarting…"), or what went wrong.
     note: String,
     busy: bool,
-    list: Entity<ListModel>,
 }
 
 pub enum Action {
@@ -48,9 +46,9 @@ pub enum Action {
 }
 
 pub fn open(cx: &mut Cx) -> (WindowId, DaemonWin) {
-    let list = ListModel::new(cx, false);
-    let id = cx.open_window(WindowOptions::new("Terminal Daemon", WIDTH, HEIGHT).min_size(WIDTH, 240));
-    (id, DaemonWin { status: None, asked: None, waiting: false, note: String::new(), busy: false, list })
+    // (Its shells' list is its view's.)
+    let id = cx.open_window(WindowOptions::new("Terminal Daemon", WIDTH, HEIGHT).min_size(WIDTH, 240).list());
+    (id, DaemonWin { status: None, asked: None, waiting: false, note: String::new(), busy: false })
 }
 
 /// Run `work` on a thread and report back.
@@ -122,19 +120,17 @@ impl DaemonWin {
 impl Terminal {
     /// The Terminal Daemon window: olo-termd's state and its shells, looked
     /// at again every couple of seconds while it's open.
-    pub(crate) fn render_daemon(&mut self, id: WindowId, _: &mut Window, cx: &mut Cx) -> AnyElement {
-        let proxy = cx.proxy();
-        let Some(Win::Daemon(d)) = self.windows.get_mut(&id) else { return div().into_any_element() };
+    pub(crate) fn render_daemon(&mut self, sh: &mut Shell, cx: &mut ShellCx) -> Element {
+        let id = sh.id;
+        let proxy = olo_kit::proxy();
+        let Some(Win::Daemon(d)) = self.windows.get_mut(&id) else { return div() };
+        let Some(model) = sh.list.clone() else { return div() };
         if !d.waiting && !d.busy && d.asked.is_none_or(|t| t.elapsed() >= EVERY) {
             d.waiting = true;
             d.asked = Some(Instant::now());
             run(proxy, || Report::Status(client::status()));
             // (Drawn again with the answer; asked again after that.)
-            cx.spawn(async move |me, cx| {
-                cx.background_executor().timer(EVERY).await;
-                let _ = me.update(cx, |_, cx| cx.redraw(id));
-            })
-            .detach();
+            Cx.later(EVERY, move |_, cx| cx.redraw(id));
         }
         let ours = std::process::id() as i32;
         let (headline, detail) = match &d.status {
@@ -155,12 +151,7 @@ impl Terminal {
         };
         let columns = vec![Column::new("Shell", 230.0), Column::new("Process", 70.0).right(), Column::new("Shown", 110.0)];
         let cells = shells.clone();
-        let show = cx.listener(move |t, row: &usize, _, cx| {
-            if let Some(sh) = shells.get(*row).cloned() {
-                t.daemon_action(cx, id, Action::Show(sh));
-            }
-        });
-        let list = ColumnListView::new("termd-shells", &d.list, columns, cells.len(), move |cell, window, cx| {
+        let list = ColumnListView::new(cx, "termd-shells", &model, columns, cells.len(), move |_: &Shell, cell, g| {
             let Some(sh) = cells.get(cell.row) else { return };
             let text = match cell.column {
                 0 => sh.title.as_deref().filter(|t| !t.trim().is_empty()).unwrap_or("Shell").to_owned(),
@@ -172,9 +163,13 @@ impl Terminal {
                 }
                 .to_owned(),
             };
-            cell.text(window, cx, text);
+            cell.text(g, text);
         })
-        .on_open(move |row, window, cx| show(&row, window, cx));
+        .on_open(on(move |t, row: &usize, _| {
+            if let Some(sh) = shells.get(*row).cloned() {
+                t.daemon_action(&mut Cx, id, Action::Show(sh));
+            }
+        }));
         let running = matches!(d.status, Some(Ok(_)));
         let answering = !matches!(&d.status, Some(Err(e)) if e.starts_with("Not responding"));
         // (One that isn't answering can only start over.)
@@ -182,14 +177,13 @@ impl Terminal {
         let can_restart = !d.busy && answering && d.status.is_some();
         let can_start_over = !d.busy && (running || !answering);
         let note = d.note.clone();
-        let restart = cx.listener(move |t, _: &(), _, cx| {
-            let proxy = cx.proxy();
+        let restart = on(move |t, _: &ClickEvent, _| {
             if let Some(Win::Daemon(d)) = t.windows.get_mut(&id) {
-                d.restart(proxy);
+                d.restart(olo_kit::proxy());
             }
-            cx.redraw(id);
+            Cx.redraw(id);
         });
-        let over = cx.listener(move |t, _: &(), _, cx| t.daemon_action(cx, id, Action::ConfirmStartOver));
+        let over = on(move |t, _: &ClickEvent, _| t.daemon_action(&mut Cx, id, Action::ConfirmStartOver));
         div()
             .size_full()
             .p(px(m::WINDOW_INSET))
@@ -203,11 +197,8 @@ impl Terminal {
             .child(div().h(px(m::SPACING - m::TIGHT)))
             .child(
                 div().flex().flex_row().items_center().child(div().flex_1().child(StringView::new(note).dim(true))).child(
-                    widgets::button_row()
-                        .child(Button::new("Start Over…").enabled(can_start_over).on_click(move |window, cx| over(&(), window, cx)))
-                        .child(Button::new(label).default(true).enabled(can_restart).on_click(move |window, cx| restart(&(), window, cx))),
+                    widgets::button_row().child(Button::new("Start Over…").enabled(can_start_over).on_click(over)).child(Button::new(label).default(true).enabled(can_restart).on_click(restart)),
                 ),
             )
-            .into_any_element()
     }
 }

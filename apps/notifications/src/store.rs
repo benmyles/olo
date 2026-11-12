@@ -223,7 +223,7 @@ impl History {
         let Some(path) = self.path.clone() else { return };
         // (Compact: it's long.)
         let Ok(bytes) = serde_json::to_vec(&self.entries) else { return };
-        olo_ui::store::save_bytes(path, bytes);
+        olo_kit::store::save_bytes(path, bytes);
     }
 
     /// Add `e`, or update the entry with its id still open (a replacement).

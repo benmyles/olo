@@ -21,26 +21,29 @@
 //!                                       D-Bus at address BUS (a test's own)
 //! ```
 //!
+//! Each request's window is on a looper of its own and keeps its own
+//! conversation; the app's looper keeps which windows there are and hands
+//! each what polkit, its helpers and the keyring say.
+//!
 //! The keyring's prompts: gnome-keyring-daemon asks for passwords through
 //! `org.gnome.keyring.SystemPrompter` on the session bus, which this agent
 //! owns (`olo_system::keyring_prompt`), so they come up here rather
 //! than in GTK's gcr-prompter.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{Arc, OnceLock},
+};
 
+use olo_kit::{
+    Child, Cx, Element, FocusHandle, InteractiveElement as _, IntoElement as _, KeyDownEvent, ParentElement as _, SharedString, Styled as _, View, WindowHandle, WindowId, WindowOptions, div,
+    instance::{self, Launch},
+    metrics as m, px, tip,
+    widgets::{self, AlertFrame, Button, Conversation, ConversationField, MenuField, TextField, TextFieldEvent, button_row, paragraph, paragraph_height, text_field},
+};
 use olo_system::{
     keyring_prompt::{self, Prompter},
     polkit::{Agent, Event, Helper, HelperEvent, Request, Subject},
-};
-use olo_ui::{
-    Frame, WindowOptions,
-    gpui::{
-        AnyWindowHandle, App, AppContext as _, Context, Entity, FocusHandle, Global, InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, StatefulInteractiveElement as _,
-        Styled as _, Window, WindowHandle, WindowId, div, px,
-    },
-    instance::{self, Launch},
-    metrics as m,
-    widgets::{self, AlertFrame, Button, Conversation, ConversationField, MenuField, TextField, TextFieldEvent, alert, button_row, paragraph, paragraph_height, text_field},
 };
 
 mod keyring;
@@ -56,13 +59,13 @@ pub const DIVIDER: f32 = 72.0;
 /// The window's height: the title, `message`, an Identity menu when
 /// more than one user may answer, the password and the note under it,
 /// and the buttons.
-fn height(cx: &App, message: &str, identities: bool) -> f32 {
+fn height(message: &str, identities: bool) -> f32 {
     let fixed = 2.0 * m::WINDOW_INSET + m::LABEL_ROW + m::TIGHT + 3.0 * m::SPACING + 2.0 * m::CONTROL_HEIGHT + m::LABEL_ROW;
     let menu = if identities { m::CONTROL_HEIGHT + m::SPACING } else { 0.0 };
-    (fixed + menu + paragraph_height(cx, message, COLUMN)).ceil()
+    (fixed + menu + paragraph_height(message, COLUMN)).ceil()
 }
 
-enum Msg {
+pub enum Msg {
     Polkit(Event),
     Helper(WindowId, u64, HelperEvent),
     Registered(Result<(), String>),
@@ -74,23 +77,41 @@ enum Msg {
     KeyWaiting(WindowId),
     /// The key's password for this window, or why not.
     Key(WindowId, Result<zeroize::Zeroizing<String>, String>),
+    /// A window of ours is closing.
+    Closed(WindowId),
 }
 
-/// The agent: its windows (one for each request and keyring prompt).
+/// The keyring's prompter, once it serves (a prompt's window answers
+/// through it).
+pub static PROMPTER: OnceLock<Arc<Prompter>> = OnceLock::new();
+
+/// The agent, on the app's looper: its windows (one for each request and
+/// keyring prompt).
 #[derive(Default)]
-struct Agents {
-    auths: HashMap<WindowId, Entity<Auth>>,
-    asks: HashMap<WindowId, Entity<keyring::Ask>>,
-    prompter: Option<Arc<Prompter>>,
+pub struct Agents {
+    /// Each request's window, and polkit's cookie for it.
+    auths: HashMap<WindowId, (String, WindowHandle<Auth>)>,
+    /// Each keyring prompt's window, and the prompt's id.
+    pub asks: HashMap<WindowId, (u64, WindowHandle<keyring::Ask>)>,
     /// `--self-test`: quit once its one request is done.
     self_test: bool,
 }
 
-impl Global for Agents {}
+/// What a request's window is told.
+pub enum AuthMsg {
+    /// It has opened: its helper starts.
+    Start,
+    Helper(u64, HelperEvent),
+    KeyWaiting,
+    Key(Result<zeroize::Zeroizing<String>, String>),
+    /// Polkit took the request back.
+    Cancelled,
+    /// Another identity was chosen.
+    Identity(usize),
+}
 
 /// One request's window.
-struct Auth {
-    window: Option<AnyWindowHandle>,
+pub struct Auth {
     request: Option<Request>,
     cookie: String,
     message: SharedString,
@@ -114,7 +135,7 @@ struct Auth {
     /// fingerprint"), to go when it stops listening.
     finger_error: bool,
     conv: Conversation,
-    field: Entity<TextField>,
+    field: Child<TextField>,
     focus: FocusHandle,
     /// A touch of a security key waited for (the person's own identity
     /// only: the password it keeps is theirs), and its answer till PAM
@@ -124,28 +145,56 @@ struct Auth {
 }
 
 impl Auth {
+    fn new(request: Request, cx: &mut Cx<Self>) -> Auth {
+        let field = text_field(cx, |f| f.name("Password").password(true));
+        cx.subscribe(&field, |a: &mut Auth, e: &TextFieldEvent, cx| match e {
+            TextFieldEvent::Entered => a.submit(cx),
+            _ => cx.invalidate(),
+        });
+        let mut conv = Conversation::default();
+        if request.users.is_empty() {
+            conv.error = "Nobody is allowed to authorize this.".into();
+        }
+        cx.send(AuthMsg::Start);
+        Auth {
+            cookie: request.cookie.clone(),
+            message: request.message.clone().into(),
+            action_id: request.action_id.clone().into(),
+            users: request.users.iter().map(|u| u.clone().into()).collect(),
+            user: 0,
+            request: Some(request),
+            helper: None,
+            second: None,
+            listening: false,
+            asking_second: false,
+            run: 0,
+            first_run: 0,
+            second_run: 0,
+            key_waiting: false,
+            finger_error: false,
+            conv,
+            field,
+            focus: FocusHandle::new(),
+            key: None,
+            key_password: None,
+        }
+    }
+
     /// Wait for a touch of a key set up, while the identity chosen is the
     /// person's own (and not where nobody sits at the computer).
-    fn wait_for_key(&mut self, cx: &mut Context<Self>) {
+    fn wait_for_key(&mut self, cx: &mut Cx<Self>) {
         self.key = None;
         self.key_waiting = false;
         if !olo_system::env::key_here() {
             return;
         }
-        let me = olo_system::auth::current_user();
-        let (Some(me), Some(window)) = (me, self.window) else { return };
+        let Some(me) = olo_system::auth::current_user() else { return };
         if self.users.get(self.user).map(|u| u.as_ref()) != Some(me.as_str()) {
             return;
         }
-        let id = window.window_id();
-        let (p, proxy) = (olo_ui::proxy(cx), olo_ui::proxy(cx));
+        let id = cx.window_id();
+        let (p, proxy) = (olo_kit::proxy(), olo_kit::proxy());
         self.key = Some(olo_fido::touch(me, move || p.send(Msg::KeyWaiting(id)), move |r| proxy.send(Msg::Key(id, r.map_err(|e| e.to_string())))));
-    }
-
-    fn key_waiting(&mut self, cx: &mut Context<Self>) {
-        self.key_waiting = true;
-        self.tell_ways();
-        cx.notify();
     }
 
     /// Say how the window can be answered (the finger alongside, a key,
@@ -157,7 +206,7 @@ impl Auth {
         self.conv.info = widgets::ways_in(self.listening, self.key_waiting, self.conv.prompt.is_some()).unwrap_or_default().to_owned();
     }
 
-    fn key_said(&mut self, r: Result<zeroize::Zeroizing<String>, String>, cx: &mut Context<Self>) {
+    fn key_said(&mut self, r: Result<zeroize::Zeroizing<String>, String>, cx: &mut Cx<Self>) {
         self.key = None;
         self.key_waiting = false;
         if widgets::WAYS_IN.contains(&self.conv.info.as_str()) {
@@ -171,12 +220,11 @@ impl Auth {
             }
             Err(why) => self.conv.info = format!("{why} Type your password."),
         }
-        cx.notify();
     }
 
     /// The key's password to the helper, if PAM is asking for a password
     /// and the key gave one (once).
-    fn answer_with_key(&mut self, cx: &mut Context<Self>) {
+    fn answer_with_key(&mut self, cx: &mut Cx<Self>) {
         let hidden = self.conv.prompt.as_ref().is_some_and(|(_, echo)| !echo);
         if !self.conv.ready() || !hidden {
             return;
@@ -198,10 +246,10 @@ impl Auth {
     }
 
     /// A helper for the chosen user, its events tagged with a new run.
-    fn helper(&mut self, cx: &mut Context<Self>) -> Option<(Helper, u64)> {
-        let (user, window) = (self.users.get(self.user)?.clone(), self.window?);
+    fn helper(&mut self, cx: &mut Cx<Self>) -> Option<(Helper, u64)> {
+        let user = self.users.get(self.user)?.clone();
         self.run += 1;
-        let (proxy, run, id) = (olo_ui::proxy(cx), self.run, window.window_id());
+        let (proxy, run, id) = (olo_kit::proxy(), self.run, cx.window_id());
         match Helper::start(&user, &self.cookie, move |e| proxy.send(Msg::Helper(id, run, e))) {
             Ok(h) => Some((h, run)),
             Err(e) => {
@@ -214,7 +262,7 @@ impl Auth {
 
     /// (Re)starts the helper for the chosen user (the second, if there
     /// was one, goes).
-    fn start_helper(&mut self, cx: &mut Context<Self>) {
+    fn start_helper(&mut self, cx: &mut Cx<Self>) {
         self.helper = None;
         self.second = None;
         self.listening = false;
@@ -228,13 +276,12 @@ impl Auth {
             self.first_run = run;
         }
         self.tell_ways();
-        cx.notify();
     }
 
     /// The second helper: the first listens for a finger (pam_fprintd has
     /// the sensor), so the second's PAM finds it taken and asks for the
     /// password at once.
-    fn start_second(&mut self, cx: &mut Context<Self>) {
+    fn start_second(&mut self, cx: &mut Cx<Self>) {
         self.second = None;
         self.asking_second = false;
         if let Some((h, run)) = self.helper(cx) {
@@ -260,19 +307,18 @@ impl Auth {
 
     /// The field takes typing while PAM waits for it, showing bullets
     /// unless PAM echoes; it has the keyboard then.
-    fn sync_field(&mut self, cx: &mut Context<Self>) {
+    fn sync_field(&mut self, cx: &mut Cx<Self>) {
         let (ready, echo) = (self.conv.ready(), self.conv.prompt.as_ref().is_some_and(|(_, e)| *e));
         self.field.update(cx, |f, cx| {
             f.set_enabled(ready, cx);
             f.set_password(!echo, cx);
         });
-        if ready && let Some(window) = self.window {
-            let focus = olo_ui::gpui::Focusable::focus_handle(&self.field, cx);
-            let _ = window.update(cx, |_, window, _| window.focus(&focus));
+        if ready {
+            self.field.focus(cx);
         }
     }
 
-    fn helper_event(&mut self, run: u64, e: HelperEvent, cx: &mut Context<Self>) {
+    fn helper_event(&mut self, run: u64, e: HelperEvent, cx: &mut Cx<Self>) {
         let first = run == self.first_run && self.helper.is_some();
         let second = run == self.second_run && self.second.is_some();
         if !first && !second {
@@ -332,14 +378,13 @@ impl Auth {
                 }
             }
         }
-        cx.notify();
     }
 
-    fn can_submit(&self, cx: &App) -> bool {
+    fn can_submit(&self, cx: &Cx<Self>) -> bool {
         self.conv.ready() && !self.field.read(cx).text().is_empty()
     }
 
-    fn submit(&mut self, cx: &mut Context<Self>) {
+    fn submit(&mut self, cx: &mut Cx<Self>) {
         if !self.can_submit(cx) {
             return;
         }
@@ -353,20 +398,23 @@ impl Auth {
             self.conv.error = "The authentication helper stopped.".into();
         }
         self.sync_field(cx);
-        cx.notify();
+        cx.invalidate();
     }
 
-    /// Closes the window; an unanswered request is cancelled (dropped).
-    fn close(&mut self, cx: &mut Context<Self>) {
+    /// What it was in the middle of goes (an unanswered request is
+    /// cancelled as it's dropped).
+    fn let_go(&mut self, cx: &mut Cx<Self>) {
         self.key = None;
         self.helper = None;
         self.second = None;
         self.key_password = None;
         self.field.update(cx, |f, cx| f.clear_secret(cx));
-        if let Some(window) = self.window.take() {
-            forget(cx, window.window_id());
-            cx.close_window(window);
-        }
+    }
+
+    /// Closes the window; an unanswered request is cancelled (dropped).
+    fn close(&mut self, cx: &mut Cx<Self>) {
+        self.let_go(cx);
+        cx.close_window();
     }
 }
 
@@ -378,185 +426,133 @@ fn zeroed(mut s: String) -> String {
     s
 }
 
-/// A window of ours closed: what was in it goes, and the self-test ends
-/// with its one request.
-fn forget(cx: &mut App, id: WindowId) {
-    let agents = cx.default_global::<Agents>();
-    agents.auths.remove(&id);
-    agents.asks.remove(&id);
-    if agents.self_test && agents.auths.is_empty() {
-        cx.quit();
-    }
-}
+impl View for Auth {
+    type Message = AuthMsg;
 
-impl Render for Auth {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let view = cx.entity();
+    fn message(&mut self, message: AuthMsg, cx: &mut Cx<Self>) {
+        match message {
+            AuthMsg::Start => {
+                cx.activate_window();
+                self.start_helper(cx);
+                self.wait_for_key(cx);
+            }
+            AuthMsg::Helper(run, e) => self.helper_event(run, e, cx),
+            AuthMsg::KeyWaiting => {
+                self.key_waiting = true;
+                self.tell_ways();
+            }
+            AuthMsg::Key(r) => self.key_said(r, cx),
+            AuthMsg::Cancelled => return self.close(cx),
+            AuthMsg::Identity(i) => {
+                self.user = i;
+                self.conv.error.clear();
+                self.key_password = None;
+                self.start_helper(cx);
+                self.wait_for_key(cx);
+            }
+        }
+        cx.invalidate();
+    }
+
+    /// Closed from its tab: as its Cancel.
+    fn close_requested(&mut self, cx: &mut Cx<Self>) -> bool {
+        self.let_go(cx);
+        true
+    }
+
+    /// (However it closes, the agent forgets it.)
+    fn window_closing(&mut self, cx: &mut Cx<Self>) {
+        olo_kit::proxy().send(Msg::Closed(cx.window_id()));
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         let mut form = div().flex().flex_col().gap(px(m::SPACING));
         if self.users.len() > 1 {
-            let view = view.clone();
-            form = form.child(MenuField::new("identity", self.users.clone(), self.user).label("Identity:").divider(DIVIDER).width(COLUMN).on_change(move |i, _, cx| {
-                view.update(cx, |a, cx| {
-                    a.user = i;
-                    a.conv.error.clear();
-                    a.key_password = None;
-                    a.start_helper(cx);
-                    a.wait_for_key(cx);
-                })
-            }));
+            form = form.child(MenuField::new("identity", self.users.clone(), self.user).label("Identity:").divider(DIVIDER).width(COLUMN).on_change(cx.msg_with(|i: &usize| AuthMsg::Identity(*i))));
         }
-        form = form.child(ConversationField::new(&self.conv, self.field.clone(), DIVIDER));
+        form = form.child(ConversationField::new(cx, &self.conv, &self.field, DIVIDER));
         let can = self.can_submit(cx);
-        let (cancel, submit) = (view.clone(), view.clone());
         div()
             .size_full()
-            .key_context(alert::CONTEXT)
             .track_focus(&self.focus)
-            .on_action(cx.listener(|a, _: &alert::Cancel, _, cx| a.close(cx)))
-            .on_action(cx.listener(|a, _: &alert::Default, _, cx| a.submit(cx)))
+            .on_key_down(cx.listener(|a: &mut Self, e: &KeyDownEvent, cx| {
+                if e.keystroke.key == "escape" && !e.keystroke.modifiers.modified() {
+                    a.close(cx);
+                    cx.stop_propagation();
+                }
+            }))
             .child(
                 AlertFrame::new(ICON)
                     .child(widgets::alert_title("Authentication Required"))
                     .child(div().h(px(m::TIGHT)))
-                    .child(paragraph(self.message.clone()).id("message").tooltip(widgets::tooltip(self.action_id.clone())))
+                    .child(tip::on(paragraph(self.message.clone()), "message", self.action_id.clone()))
                     .child(div().h(px(m::SPACING)))
                     .child(form)
                     .child(div().flex_1())
                     .child(
                         button_row()
-                            .child(Button::new("Cancel").on_click(move |_, cx| cancel.update(cx, |a, cx| a.close(cx))))
-                            .child(Button::new("Authenticate").default(true).enabled(can).on_click(move |_, cx| submit.update(cx, |a, cx| a.submit(cx)))),
+                            .child(Button::new("Cancel").on_click(cx.listener(|a: &mut Self, _, cx| a.close(cx))))
+                            .child(Button::new("Authenticate").default(true).enabled(can).on_click(cx.listener(|a: &mut Self, _, cx| a.submit(cx)))),
                     ),
             )
+            .into_element()
     }
 }
 
 /// Opens a window for polkit's request.
-fn begin(cx: &mut App, request: Request) {
-    let h = height(cx, &request.message, request.users.len() > 1);
-    let field = text_field(cx, |f| f.name("Password").password(true));
-    let mut conv = Conversation::default();
-    if request.users.is_empty() {
-        conv.error = "Nobody is allowed to authorize this.".into();
-    }
-    let auth = cx.new(|cx| {
-        cx.subscribe(&field, |a: &mut Auth, _, e: &TextFieldEvent, cx| match e {
-            TextFieldEvent::Entered => a.submit(cx),
-            _ => cx.notify(),
-        })
-        .detach();
-        Auth {
-            window: None,
-            cookie: request.cookie.clone(),
-            message: request.message.clone().into(),
-            action_id: request.action_id.clone().into(),
-            users: request.users.iter().map(|u| u.clone().into()).collect(),
-            user: 0,
-            request: Some(request),
-            helper: None,
-            second: None,
-            listening: false,
-            asking_second: false,
-            run: 0,
-            first_run: 0,
-            second_run: 0,
-            key_waiting: false,
-            finger_error: false,
-            conv,
-            field,
-            focus: cx.focus_handle(),
-            key: None,
-            key_password: None,
-        }
-    });
-    let Some(handle) = open(cx, "Authenticate", h, auth.clone()) else { return };
-    let id = handle.window_id();
-    cx.default_global::<Agents>().auths.insert(id, auth.clone());
-    auth.update(cx, |a, cx| {
-        a.window = Some(handle.into());
-        a.start_helper(cx);
-        a.wait_for_key(cx);
-    });
+fn begin(agents: &mut Agents, request: Request) {
+    let h = height(&request.message, request.users.len() > 1);
+    let cookie = request.cookie.clone();
+    let handle = olo_kit::open_window(WindowOptions::alert("Authenticate", WIDTH, h), move |cx| Auth::new(request, cx));
+    agents.auths.insert(handle.id(), (cookie, handle));
 }
 
-/// Opens an alert window showing `view`, which has the keyboard; closing
-/// it from its tab is as its Cancel.
-pub fn open<V: Render + 'static>(cx: &mut App, title: &str, height: f32, view: Entity<V>) -> Option<WindowHandle<Frame>>
-where
-    V: Cancel,
-{
-    let v = view.clone();
-    olo_ui::open_window(cx, WindowOptions::alert(title.to_owned(), WIDTH, height), move |window, cx| {
-        window.activate_window();
-        let closing = v.clone();
-        window.on_window_should_close(cx, move |_, cx| closing.update(cx, |v, cx| v.cancel(cx)));
-        v
-    })
-}
-
-/// What closing an alert from its tab does: true if it may close now.
-pub trait Cancel {
-    fn cancel(&mut self, cx: &mut Context<Self>) -> bool
-    where
-        Self: Sized;
-}
-
-impl Cancel for Auth {
-    fn cancel(&mut self, cx: &mut Context<Self>) -> bool {
-        self.key = None;
-        self.key_password = None;
-        self.field.update(cx, |f, cx| f.clear_secret(cx));
-        if let Some(w) = self.window.take() {
-            forget(cx, w.window_id());
-        }
-        true
-    }
-}
-
-fn message(message: Box<dyn std::any::Any + Send>, cx: &mut App) {
+fn message(agents: &mut Agents, message: Box<dyn std::any::Any + Send>) {
     let message = match message.downcast::<Launch>() {
         // A second start: we are already serving the session.
         Ok(_) => return,
         Err(other) => other,
     };
     let Ok(m) = message.downcast::<Msg>() else { return };
+    let to_auth = |agents: &Agents, id: WindowId, m: AuthMsg| {
+        if let Some((_, window)) = agents.auths.get(&id) {
+            window.messenger().send(m);
+        }
+    };
     match *m {
-        Msg::Polkit(Event::Begin(r)) => begin(cx, r),
+        Msg::Polkit(Event::Begin(r)) => begin(agents, r),
         Msg::Polkit(Event::Cancel(cookie)) => {
-            let views: Vec<Entity<Auth>> = cx.default_global::<Agents>().auths.values().cloned().collect();
-            for v in views {
-                if v.read(cx).cookie == cookie {
-                    v.update(cx, |a, cx| a.close(cx));
+            for (c, window) in agents.auths.values() {
+                if *c == cookie {
+                    window.messenger().send(AuthMsg::Cancelled);
                 }
             }
         }
-        Msg::Helper(id, run, e) => {
-            if let Some(v) = cx.default_global::<Agents>().auths.get(&id).cloned() {
-                v.update(cx, |a, cx| a.helper_event(run, e, cx));
-            }
-        }
+        Msg::Helper(id, run, e) => to_auth(agents, id, AuthMsg::Helper(run, e)),
         Msg::Registered(Err(e)) => {
             eprintln!("olo-polkit-agent: couldn't register with polkit: {e}");
-            cx.quit();
+            olo_kit::quit();
         }
         Msg::Registered(Ok(())) => {}
-        Msg::Keyring(e) => keyring::event(cx, e),
-        Msg::Prompter(Ok(p)) => cx.default_global::<Agents>().prompter = Some(p),
-        Msg::Prompter(Err(e)) => eprintln!("olo-polkit-agent: couldn't serve the keyring's prompts: {e}"),
-        Msg::KeyWaiting(id) => {
-            if let Some(v) = cx.default_global::<Agents>().auths.get(&id).cloned() {
-                v.update(cx, |a, cx| a.key_waiting(cx));
-            }
+        Msg::Keyring(e) => keyring::event(agents, e),
+        Msg::Prompter(Ok(p)) => {
+            let _ = PROMPTER.set(p);
         }
-        Msg::Key(id, r) => {
-            if let Some(v) = cx.default_global::<Agents>().auths.get(&id).cloned() {
-                v.update(cx, |a, cx| a.key_said(r, cx));
+        Msg::Prompter(Err(e)) => eprintln!("olo-polkit-agent: couldn't serve the keyring's prompts: {e}"),
+        Msg::KeyWaiting(id) => to_auth(agents, id, AuthMsg::KeyWaiting),
+        Msg::Key(id, r) => to_auth(agents, id, AuthMsg::Key(r)),
+        Msg::Closed(id) => {
+            agents.auths.remove(&id);
+            agents.asks.remove(&id);
+            // (The self-test ends with its one request.)
+            if agents.self_test && agents.auths.is_empty() {
+                olo_kit::quit();
             }
         }
         // (Answered without asking, or after its window closed.)
         Msg::Checked => {
-            if cx.default_global::<Agents>().auths.is_empty() {
-                cx.quit();
+            if agents.auths.is_empty() {
+                olo_kit::quit();
             }
         }
     }
@@ -582,22 +578,22 @@ fn main() -> std::process::ExitCode {
     };
     // Only the real session's agent may speak for the login session: a
     // test or nested session must never take over the user's prompts.
-    if self_test.is_none() && !keyring_test && std::env::var_os("OLO_REAL_SESSION").is_none() {
+    if self_test.is_none() && !keyring_test && !olo_xdg::session::real() {
         eprintln!("olo-polkit-agent: not in a real Olo session (use --self-test ACTION to try it)");
         return std::process::ExitCode::FAILURE;
     }
     if self_test.is_none() && !keyring_test && instance::forward(APP_ID, &args) {
         return std::process::ExitCode::SUCCESS;
     }
-    olo_ui::run(APP_ID, move |cx| {
-        olo_ui::stay_resident(cx);
-        cx.set_global(Agents { self_test: self_test.is_some(), ..Default::default() });
-        olo_ui::message_handler(cx, message);
+    olo_kit::run(APP_ID, move |app| {
+        olo_kit::stay_resident();
+        let mut agents = Agents { self_test: self_test.is_some(), ..Default::default() };
+        olo_kit::message_handler(app, move |m, _| message(&mut agents, m));
         if self_test.is_none() && !keyring_test {
-            instance::listen(APP_ID, olo_ui::proxy(cx));
+            instance::listen(APP_ID, olo_kit::proxy());
         }
         if self_test.is_none() {
-            let proxy = olo_ui::proxy(cx);
+            let proxy = olo_kit::proxy();
             std::thread::Builder::new()
                 .name("keyring-prompt".into())
                 .spawn(move || {
@@ -612,7 +608,7 @@ fn main() -> std::process::ExitCode {
         if keyring_test {
             return;
         }
-        let proxy = olo_ui::proxy(cx);
+        let proxy = olo_kit::proxy();
         let action = self_test.clone();
         std::thread::Builder::new()
             .name("polkit-agent".into())

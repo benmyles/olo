@@ -5,17 +5,14 @@
 //! expiry of 8/29 is saved as 08/2029); an address is edited as its
 //! parts. Saving what 1Password would refuse says why instead.
 
-use olo_ui::{
-    Menu,
-    gpui::{
-        AnyElement, App, Context, Corner, Entity, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, SharedString, Styled as _, Subscription, Window, canvas, div, px,
-    },
-    menu, metrics as m, style, theme,
+use olo_kit::{
+    Child, ClickEvent, Corner, Cx, Element, FontWeight, InteractiveElement as _, IntoElement as _, KeyDownEvent, Menu, ParentElement as _, SharedString, Styled as _, WindowCx, canvas, div, menu,
+    metrics as m, px, style, theme,
     widgets::{Button, MenuField, StringView, TextControl, TextField, TextFieldEvent, button_row, heading, text_field},
 };
 use onepassword::{AddressFieldDetails, AutofillBehavior, Item, ItemCategory, ItemCreateParams, ItemField, ItemFieldDetails, ItemFieldType, ItemSection, VaultOverview, Website, fields};
 
-use crate::Passwords;
+use crate::{app, view::Detail};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct EditField {
@@ -340,65 +337,111 @@ impl Editor {
     }
 }
 
-/// The editor's text fields, made from its values (and made again when
-/// fields come or go); what's typed goes back into the editor.
-pub struct EditForm {
-    pub title: Entity<TextField>,
-    labels: Vec<Entity<TextField>>,
-    values: Vec<Entity<TextField>>,
-    /// An address's city, state, ZIP code and country (others: none).
-    parts: Vec<Vec<Entity<TextField>>>,
-    websites: Vec<Entity<TextField>>,
-    notes: Entity<TextField>,
-    tags: Entity<TextField>,
-    _subs: Vec<Subscription>,
+/// One of the form's text fields: which of the editor's values it is.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Slot {
+    Title,
+    Label(usize),
+    Value(usize),
+    /// An address's city, state, ZIP code or country (0 to 3).
+    Part(usize, usize),
+    Website(usize),
+    Tags,
+    Notes,
 }
 
-type Set = Box<dyn Fn(&mut Editor, String)>;
+impl Slot {
+    /// Puts `text` (typed in its field) into `ed`.
+    pub fn put(self, ed: &mut Editor, text: String) {
+        match self {
+            Slot::Title => ed.title = text,
+            Slot::Label(i) => {
+                if let Some(f) = ed.fields.get_mut(i) {
+                    f.label = text
+                }
+            }
+            Slot::Value(i) => {
+                if let Some(f) = ed.fields.get_mut(i) {
+                    if f.kind == ItemFieldType::Address { f.address.street = text } else { f.value = text }
+                }
+            }
+            Slot::Part(i, k) => {
+                if let Some(f) = ed.fields.get_mut(i) {
+                    let a: &mut AddressFieldDetails = &mut f.address;
+                    match k {
+                        0 => a.city = text,
+                        1 => a.state = text,
+                        2 => a.zip = text,
+                        _ => a.country = text,
+                    }
+                }
+            }
+            Slot::Website(i) => {
+                if let Some(w) = ed.websites.get_mut(i) {
+                    w.0 = text
+                }
+            }
+            Slot::Tags => ed.tags = text,
+            Slot::Notes => ed.notes = text,
+        }
+    }
+}
+
+/// The editor's text fields (the item pane's: `view::Detail`), made from
+/// its values (and made again when fields come or go); what's typed goes
+/// back into the editor.
+pub struct EditForm {
+    pub title: Child<TextField>,
+    labels: Vec<Child<TextField>>,
+    values: Vec<Child<TextField>>,
+    /// An address's city, state, ZIP code and country (others: none).
+    parts: Vec<Vec<Child<TextField>>>,
+    websites: Vec<Child<TextField>>,
+    notes: Child<TextField>,
+    tags: Child<TextField>,
+}
 
 impl EditForm {
     /// Focuses field `i` of `e`: its label while it has none, else its
     /// value.
-    pub fn focus_field(&self, e: &Editor, i: usize, window: &mut Window, cx: &App) {
+    pub fn focus_field(&self, e: &Editor, i: usize, cx: &mut WindowCx) {
         let named = e.fields.get(i).is_some_and(|f| !f.label.is_empty());
         if let Some(f) = if named { self.values.get(i) } else { self.labels.get(i) } {
-            f.read(cx).focus(window);
+            f.focus(cx);
         }
     }
 
-    pub fn new(e: &Editor, cx: &mut Context<Passwords>) -> EditForm {
-        let mut subs = Vec::new();
-        let mut field = |cx: &mut Context<Passwords>, name: &str, hint: &str, text: &str, secret: bool, set: Set| {
+    /// The field that is `slot`.
+    pub fn field(&self, slot: Slot) -> Option<&Child<TextField>> {
+        match slot {
+            Slot::Title => Some(&self.title),
+            Slot::Label(i) => self.labels.get(i),
+            Slot::Value(i) => self.values.get(i),
+            Slot::Part(i, k) => self.parts.get(i).and_then(|p| p.get(k)),
+            Slot::Website(i) => self.websites.get(i),
+            Slot::Tags => Some(&self.tags),
+            Slot::Notes => Some(&self.notes),
+        }
+    }
+
+    pub fn new(e: &Editor, cx: &mut Cx<Detail>) -> EditForm {
+        let field = |cx: &mut Cx<Detail>, name: &str, hint: &str, text: &str, secret: bool, slot: Slot| {
             let f = text_field(cx, |f| {
                 let f = f.name(name.to_owned()).hint(hint.to_owned()).password(secret);
                 if secret { f.font(style::mono_font(FontWeight::NORMAL)) } else { f }
             });
             f.update(cx, |f, cx| f.set_text(text.to_owned(), cx));
-            subs.push(cx.subscribe(&f, move |p: &mut Passwords, f, ev: &TextFieldEvent, cx| {
-                if let TextFieldEvent::Changed = ev
-                    && let Some(ed) = p.editor.as_mut()
-                {
-                    set(ed, f.read(cx).text().to_owned());
-                    cx.notify();
+            cx.subscribe(&f, move |d: &mut Detail, ev: &TextFieldEvent, cx| {
+                if let TextFieldEvent::Changed = ev {
+                    d.typed(slot, cx);
                 }
-            }));
+            });
             f
         };
-        let title = field(cx, "Title", e.category.label(), &e.title, false, Box::new(|ed, t| ed.title = t));
+        let title = field(cx, "Title", e.category.label(), &e.title, false, Slot::Title);
         let (mut labels, mut values, mut parts) = (Vec::new(), Vec::new(), Vec::new());
         for (i, f) in e.fields.iter().enumerate() {
-            labels.push(field(
-                cx,
-                "Label",
-                kind_label(f.kind),
-                &f.label,
-                false,
-                Box::new(move |ed, t| {
-                    if let Some(f) = ed.fields.get_mut(i) {
-                        f.label = t
-                    }
-                }),
-            ));
+            labels.push(field(cx, "Label", kind_label(f.kind), &f.label, false, Slot::Label(i)));
             let hint = match f.kind {
                 ItemFieldType::Totp => "otpauth:// URI or secret",
                 ItemFieldType::MonthYear => "MM/YYYY",
@@ -408,75 +451,30 @@ impl EditForm {
                 _ => "",
             };
             let (value, secret) = if f.kind == ItemFieldType::Address { (&f.address.street, false) } else { (&f.value, concealed(f.kind) && !f.reveal) };
-            values.push(field(
-                cx,
-                kind_label(f.kind),
-                hint,
-                value,
-                secret,
-                Box::new(move |ed, t| {
-                    if let Some(f) = ed.fields.get_mut(i) {
-                        if f.kind == ItemFieldType::Address { f.address.street = t } else { f.value = t }
-                    }
-                }),
-            ));
+            values.push(field(cx, kind_label(f.kind), hint, value, secret, Slot::Value(i)));
             let mut rest = Vec::new();
             if f.kind == ItemFieldType::Address {
                 let a = &f.address;
-                let sets: [(&str, &str, fn(&mut AddressFieldDetails, String)); 4] =
-                    [(&a.city, "city", |a, t| a.city = t), (&a.state, "state", |a, t| a.state = t), (&a.zip, "ZIP code", |a, t| a.zip = t), (&a.country, "country", |a, t| a.country = t)];
-                for (text, hint, set) in sets {
-                    rest.push(field(
-                        cx,
-                        hint,
-                        hint,
-                        text,
-                        false,
-                        Box::new(move |ed, t| {
-                            if let Some(f) = ed.fields.get_mut(i) {
-                                set(&mut f.address, t)
-                            }
-                        }),
-                    ));
+                for (k, (text, hint)) in [(&a.city, "city"), (&a.state, "state"), (&a.zip, "ZIP code"), (&a.country, "country")].into_iter().enumerate() {
+                    rest.push(field(cx, hint, hint, text, false, Slot::Part(i, k)));
                 }
             }
             parts.push(rest);
         }
-        let websites = e
-            .websites
-            .iter()
-            .enumerate()
-            .map(|(i, (url, ..))| {
-                field(
-                    cx,
-                    "Website",
-                    "example.com",
-                    url,
-                    false,
-                    Box::new(move |ed, t| {
-                        if let Some(w) = ed.websites.get_mut(i) {
-                            w.0 = t
-                        }
-                    }),
-                )
-            })
-            .collect();
-        let tags = field(cx, "Tags", "work, family", &e.tags, false, Box::new(|ed, t| ed.tags = t));
+        let websites = e.websites.iter().enumerate().map(|(i, (url, ..))| field(cx, "Website", "example.com", url, false, Slot::Website(i))).collect();
+        let tags = field(cx, "Tags", "work, family", &e.tags, false, Slot::Tags);
         let notes = text_field(cx, |f| f.name("Notes").multiline(false));
         notes.update(cx, |f, cx| f.set_text(e.notes.clone(), cx));
-        subs.push(cx.subscribe(&notes, |p: &mut Passwords, f, ev: &TextFieldEvent, cx| {
-            if let TextFieldEvent::Changed = ev
-                && let Some(ed) = p.editor.as_mut()
-            {
-                ed.notes = f.read(cx).text().to_owned();
-                cx.notify();
+        cx.subscribe(&notes, |d: &mut Detail, ev: &TextFieldEvent, cx| {
+            if let TextFieldEvent::Changed = ev {
+                d.typed(Slot::Notes, cx);
             }
-        }));
-        EditForm { title, labels, values, parts, websites, notes, tags, _subs: subs }
+        });
+        EditForm { title, labels, values, parts, websites, notes, tags }
     }
 
     /// Field `i`'s value set from outside (the generator's Use).
-    pub fn set_value(&self, i: usize, text: &str, reveal: bool, cx: &mut App) {
+    pub fn set_value(&self, i: usize, text: &str, reveal: bool, cx: &mut WindowCx) {
         if let Some(f) = self.values.get(i) {
             f.update(cx, |f, cx| {
                 f.set_text(text.to_owned(), cx);
@@ -488,7 +486,7 @@ impl EditForm {
     }
 
     /// Field `i` shown or hidden.
-    pub fn reveal(&self, i: usize, on: bool, cx: &mut App) {
+    pub fn reveal(&self, i: usize, on: bool, cx: &mut WindowCx) {
         if let Some(f) = self.values.get(i) {
             f.update(cx, |f, cx| f.set_password(!on, cx));
         }
@@ -498,22 +496,20 @@ impl EditForm {
 /// The form: the title, each section's fields (their labels and values,
 /// a secret's Show and New, −) and its own Add Field…, the websites, notes and tags, why it
 /// can't be saved, and Cancel and Save; `width` wide.
-pub fn view(me: &Entity<Passwords>, e: &Editor, form: &EditForm, vaults: &[VaultOverview], width: f32, cx: &App) -> AnyElement {
-    let p = theme::palette(cx);
+pub fn view(e: &Editor, form: &EditForm, vaults: &[VaultOverview], width: f32, cx: &mut Cx<Detail>) -> Element {
+    let p = theme::palette();
     let divider = 84.0;
     let label_w = divider + 40.0;
     let minus = m::CONTROL_HEIGHT + 8.0;
-    let mut col = div().flex().flex_col().gap(px(m::SPACING)).child(TextControl::new(form.title.clone()).label("Title:").divider(divider));
+    let mut col = div().flex().flex_col().gap(px(m::SPACING)).child(TextControl::new(cx, &form.title).label("Title:").divider(divider));
     if e.base.is_none() && vaults.len() > 1 {
         let names: Vec<SharedString> = vaults.iter().map(|v| SharedString::from(v.title.clone())).collect();
-        let to = me.clone();
-        col = col.child(MenuField::new("edit-vault", names, e.vault).label("Vault:").divider(divider).on_change(move |i, _, cx| {
-            to.update(cx, |a, cx| {
-                if let Some(ed) = a.editor.as_mut() {
-                    ed.vault = i;
-                }
-                cx.notify();
-            })
+        col = col.child(MenuField::new("edit-vault", names, e.vault).label("Vault:").divider(divider).on_change(|i: &usize, _| {
+            let mut a = app();
+            if let Some(ed) = a.editor.as_mut() {
+                ed.vault = *i;
+            }
+            a.changed();
         }));
     }
     let row = || div().flex().flex_row().items_center().gap(px(m::TIGHT)).h(px(m::CONTROL_HEIGHT + 4.0)).flex_shrink_0();
@@ -528,23 +524,17 @@ pub fn view(me: &Entity<Passwords>, e: &Editor, form: &EditForm, vaults: &[Vault
             // leave too little of the value column to type in.
             let mut secret_buttons: Vec<Button> = Vec::new();
             if f.kind == ItemFieldType::Concealed {
-                let (to, id) = (me.clone(), f.id.clone());
-                secret_buttons.push(Button::new("New").id(format!("edit-new-{i}")).min_width(56.0).on_click(move |_, cx| {
-                    let id = id.clone();
-                    to.update(cx, |a, cx| a.generate_for(id, cx))
-                }));
+                let id = f.id.clone();
+                secret_buttons.push(Button::new("New").id(format!("edit-new-{i}")).min_width(56.0).on_click(move |_: &ClickEvent, _| app().generate_for(id.clone())));
             }
             if concealed(f.kind) {
-                let to = me.clone();
-                secret_buttons
-                    .push(Button::new(if f.reveal { "Hide" } else { "Show" }).id(format!("edit-show-{i}")).min_width(56.0).on_click(move |_, cx| to.update(cx, |a, cx| a.toggle_edit_reveal(i, cx))));
+                secret_buttons.push(Button::new(if f.reveal { "Hide" } else { "Show" }).id(format!("edit-show-{i}")).min_width(56.0).on_click(move |_: &ClickEvent, _| app().toggle_edit_reveal(i)));
             }
             let buttons = secret_buttons.len() as f32 * (56.0 + m::TIGHT);
             let below = buttons > 0.0 && width - label_w - minus - 2.0 * m::TIGHT - buttons < 96.0;
-            let to = me.clone();
-            let remove = Button::new("−").id(format!("edit-remove-{i}")).min_width(minus).on_click(move |_, cx| to.update(cx, |a, cx| a.remove_edit_field(i, cx)));
-            let label = div().w(px(label_w)).flex_shrink_0().child(TextControl::new(form.labels[i].clone()));
-            let value = div().flex_1().min_w_0().child(TextControl::new(form.values[i].clone()));
+            let remove = Button::new("−").id(format!("edit-remove-{i}")).min_width(minus).on_click(move |_: &ClickEvent, _| app().remove_edit_field(i));
+            let label = div().w(px(label_w)).flex_shrink_0().child(TextControl::new(cx, &form.labels[i]));
+            let value = div().flex_1().min_w_0().child(TextControl::new(cx, &form.values[i]));
             let mut line = row().child(label).child(value);
             let mut under = None;
             if below {
@@ -562,7 +552,7 @@ pub fn view(me: &Entity<Passwords>, e: &Editor, form: &EditForm, vaults: &[Vault
                 for chunk in form.parts[i].chunks(per_row) {
                     let mut r = row();
                     for (k, part) in chunk.iter().enumerate() {
-                        r = r.child(if k == 0 { div().w(px(label_w)).flex_shrink_0() } else { div().flex_1().min_w_0() }.child(TextControl::new(part.clone())));
+                        r = r.child(if k == 0 { div().w(px(label_w)).flex_shrink_0() } else { div().flex_1().min_w_0() }.child(TextControl::new(cx, part)));
                     }
                     col = col.child(r.child(div().w(px(minus)).flex_shrink_0()));
                 }
@@ -572,17 +562,16 @@ pub fn view(me: &Entity<Passwords>, e: &Editor, form: &EditForm, vaults: &[Vault
         if section.as_deref() == Some(crate::passkey::SECTION) {
             continue;
         }
-        let to = me.clone();
-        col = col.child(div().flex().child(Button::new("Add Field…").id(format!("edit-add-field-{g}")).on_click_at(move |b, window, cx| {
+        col = col.child(div().flex().child(Button::new("Add Field…").id(format!("edit-add-field-{g}")).on_click(move |_: &ClickEvent, cx| {
             let mut m = Menu::new("Add Field");
             for kind in ADDABLE {
                 m = m.item(kind_label(kind), format!("field:{}", kind.as_str()));
             }
-            let (to, section) = (to.clone(), section.clone());
-            menu::popup(window, cx, m, b, Corner::BottomLeft, move |cmd, _, cx| {
+            let section = section.clone();
+            let b = cx.listener_bounds();
+            menu::popup(cx, m, b, Corner::BottomLeft, move |cmd, _| {
                 if let Some(kind) = cmd.strip_prefix("field:").and_then(|k| ItemFieldType::ALL.iter().find(|t| t.as_str() == k)) {
-                    let kind = *kind;
-                    to.update(cx, |a, cx| a.add_edit_field(kind, section.as_deref(), cx));
+                    app().add_edit_field(*kind, section.as_deref());
                 }
             });
         })));
@@ -591,46 +580,40 @@ pub fn view(me: &Entity<Passwords>, e: &Editor, form: &EditForm, vaults: &[Vault
     if e.category == ItemCategory::Login || !e.websites.is_empty() {
         col = col.child(div().h(px(m::TIGHT))).child(heading("Websites"));
         for (i, field) in form.websites.iter().enumerate() {
-            let to = me.clone();
             col = col.child(
                 row()
-                    .child(div().flex_1().min_w_0().child(TextControl::new(field.clone())))
-                    .child(Button::new("−").id(format!("edit-site-remove-{i}")).min_width(minus).on_click(move |_, cx| to.update(cx, |a, cx| a.remove_edit_website(i, cx)))),
+                    .child(div().flex_1().min_w_0().child(TextControl::new(cx, field)))
+                    .child(Button::new("−").id(format!("edit-site-remove-{i}")).min_width(minus).on_click(move |_: &ClickEvent, _| app().remove_edit_website(i))),
             );
         }
-        let to = me.clone();
-        col = col.child(div().flex().child(Button::new("Add Website").on_click(move |_, cx| to.update(cx, |a, cx| a.add_edit_website(cx)))));
+        col = col.child(div().flex().child(Button::new("Add Website").on_click(|_: &ClickEvent, _| app().add_edit_website())));
     }
 
     col = col.child(div().h(px(m::TIGHT))).child(heading("Notes"));
-    let well = canvas(
-        |_, _, _| {},
-        |b, _, window, cx| {
-            let p = theme::palette(cx);
-            style::fill_rect(window, style::inset(window, b, 2.0), style::c(p.document_background));
-            style::sunken(window, b, &p, false);
-        },
-    )
+    let well = canvas(|g, b| {
+        let p = theme::palette();
+        let inner = style::inset(g, b, 2.0);
+        style::fill_rect(g, inner, style::c(p.document_background));
+        style::sunken(g, b, &p, false);
+    })
     .absolute()
     .inset_0();
     col = col
-        .child(div().relative().h(px(96.0)).flex_shrink_0().child(well).child(div().absolute().inset(px(2.0 + m::TIGHT)).child(form.notes.clone())))
-        .child(TextControl::new(form.tags.clone()).label("Tags:").divider(divider));
+        .child(div().relative().h(px(96.0)).flex_shrink_0().child(well).child(div().absolute().inset(px(2.0 + m::TIGHT)).child(&form.notes)))
+        .child(TextControl::new(cx, &form.tags).label("Tags:").divider(divider));
     if let Some(error) = &e.error {
         col = col.child(StringView::new(error.clone()).wrap(true).color(style::c(p.failure)));
     }
-    let (save, cancel) = (me.clone(), me.clone());
     col = col.child(div().h(px(m::SPACING))).child(
         button_row()
-            .child(Button::new("Cancel").on_click(move |_, cx| cancel.update(cx, |a, cx| a.cancel_editor(cx))))
-            .child(Button::new(if e.base.is_some() { "Save" } else { "Add" }).default(true).on_click(move |_, cx| save.update(cx, |a, cx| a.save_editor(cx)))),
+            .child(Button::new("Cancel").on_click(|_: &ClickEvent, _| app().cancel_editor()))
+            .child(Button::new(if e.base.is_some() { "Save" } else { "Add" }).default(true).on_click(|_: &ClickEvent, _| app().save_editor())),
     );
-    let esc = me.clone();
     div()
-        .on_key_down(move |ev: &KeyDownEvent, _, cx| {
+        .on_key_down(|ev: &KeyDownEvent, cx| {
             if ev.keystroke.key == "escape" && !ev.keystroke.modifiers.modified() {
                 cx.stop_propagation();
-                esc.update(cx, |a, cx| a.cancel_editor(cx));
+                app().cancel_editor();
             }
         })
         .child(col)

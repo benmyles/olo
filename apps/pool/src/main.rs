@@ -29,13 +29,13 @@ use std::{
     time::Duration,
 };
 
+use olo_kit::instance;
 use olo_token_pool::{
     clients, codex_daemon,
     gateway::{self, Shared},
     model::{Provider, now},
     running,
 };
-use olo_ui::instance;
 use serde_json::Value;
 
 const APP_ID: &str = "olo.pool";
@@ -210,20 +210,26 @@ fn clients_now(as_json: bool) -> std::process::ExitCode {
 }
 
 /// What stays of the olo-pool olo-session started, once an upgrade has
-/// handed over to a copy of the new version (`ui::hand_over`): its pid,
-/// which olo-session follows, as a subreaper (the copies that serve are
-/// its children, a later copy given to it as the one before goes) that
-/// passes olo-session's signals on to them and ends as they do, with how
-/// the last ended (so olo-session starts it again as before if it
-/// crashes). An upgrade makes it the new version's keeper (in place:
+/// handed over to a copy of the new version (`ui::hand_over`), or once it
+/// found another copy serving the port as it started (`main`): its pid,
+/// which olo-session follows. It follows the copies that serve: its
+/// children running olo-pool (as a subreaper, a later copy is given to it
+/// as the one before goes) and whichever olo-pool holds the gateway's
+/// listening socket (`drain::serving`: a copy that isn't its own, one the
+/// session's copy before it left behind), each on a pidfd. It passes
+/// olo-session's signals on to them and ends once none is left, with how
+/// the last of its own ended (so olo-session starts it again as before if
+/// it crashes). An upgrade makes it the new version's keeper (in place:
 /// olo-session never sees an old program). Nothing else: about 8 MB
-/// resident, asleep in sigwaitinfo.
+/// resident, asleep in poll.
 fn keeper() -> std::process::ExitCode {
     use std::os::unix::process::CommandExt as _;
     // (Its pid waited for the copy before it handed over: not any more.)
-    olo_ui::restore::mark_waiting(false);
-    // SAFETY: prctl, sigprocmask and sigwaitinfo with valid arguments;
-    // waitpid and kill on our own children.
+    olo_kit::restore::mark_waiting(false);
+    let port = gateway::port();
+    // SAFETY: prctl, sigprocmask, signalfd, pidfd_open, poll and read with
+    // valid arguments; waitpid on our own children; kill on the copies
+    // we follow, which are ours (the same user's olo-pool).
     unsafe {
         libc::prctl(libc::PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
         let mut set: libc::sigset_t = std::mem::zeroed();
@@ -232,19 +238,17 @@ fn keeper() -> std::process::ExitCode {
             libc::sigaddset(&mut set, s);
         }
         libc::sigprocmask(libc::SIG_BLOCK, &set, std::ptr::null_mut());
-        // The copies that serve: our children running olo-pool (others
-        // given to us, a client's daemon, are only reaped).
-        let pools = || -> Vec<i32> {
+        let signals = libc::signalfd(-1, &set, libc::SFD_CLOEXEC | libc::SFD_NONBLOCK);
+        // Our children running olo-pool (others given to us, a client's
+        // daemon, are only reaped).
+        let children = || -> Vec<i32> {
             let me = std::process::id();
             let list = std::fs::read_to_string(format!("/proc/{me}/task/{me}/children")).unwrap_or_default();
-            list.split_whitespace()
-                .filter_map(|p| p.parse::<i32>().ok())
-                .filter(|p| std::fs::read_link(format!("/proc/{p}/exe")).is_ok_and(|e| e.file_name().is_some_and(|n| n.to_string_lossy().trim_end_matches(" (deleted)") == "olo-pool")))
-                .collect()
+            list.split_whitespace().filter_map(|p| p.parse::<i32>().ok()).filter(|&p| olo_system::listening::program(std::path::Path::new("/"), p).as_deref() == Some("olo-pool")).collect()
         };
         let mut last = 0;
         loop {
-            // Each child that ended, reaped; the last copy's way of ending kept.
+            // Each child that ended, reaped; the last one's way of ending kept.
             loop {
                 let mut status = 0;
                 let pid = libc::waitpid(-1, &mut status, libc::WNOHANG);
@@ -253,26 +257,45 @@ fn keeper() -> std::process::ExitCode {
                 }
                 last = status;
             }
-            if pools().is_empty() {
+            let mut follow = children();
+            for p in olo_token_pool::drain::serving(port) {
+                if !follow.contains(&p) {
+                    follow.push(p);
+                }
+            }
+            if follow.is_empty() {
                 break;
             }
-            let mut info: libc::siginfo_t = std::mem::zeroed();
-            match libc::sigwaitinfo(&set, &mut info) {
-                libc::SIGURG => {
-                    // A new version installed: its keeper, in place (the
-                    // mask, and what's pending, carry across).
-                    if let Ok(exe) = std::env::current_exe() {
-                        let exe = std::path::PathBuf::from(exe.to_string_lossy().trim_end_matches(" (deleted)"));
-                        let e = std::process::Command::new(exe).env(ui::KEEPER_ENV, "1").exec();
-                        eprintln!("olo-pool: the keeper couldn’t become the new version: {e}");
-                    }
+            // Asleep till a signal comes or one of them ends.
+            let pidfds: Vec<i32> = follow.iter().map(|&p| libc::syscall(libc::SYS_pidfd_open, p, 0) as i32).filter(|&fd| fd >= 0).collect();
+            let mut polled: Vec<libc::pollfd> = std::iter::once(signals).chain(pidfds.iter().copied()).filter(|&fd| fd >= 0).map(|fd| libc::pollfd { fd, events: libc::POLLIN, revents: 0 }).collect();
+            while libc::poll(polled.as_mut_ptr(), polled.len() as libc::nfds_t, -1) < 0 && std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {}
+            for fd in pidfds {
+                libc::close(fd);
+            }
+            loop {
+                let mut info: libc::signalfd_siginfo = std::mem::zeroed();
+                let size = std::mem::size_of::<libc::signalfd_siginfo>();
+                if signals < 0 || libc::read(signals, (&raw mut info).cast(), size) != size as isize {
+                    break;
                 }
-                s @ (libc::SIGTERM | libc::SIGINT | libc::SIGHUP) => {
-                    for p in pools() {
-                        libc::kill(p, s);
+                match info.ssi_signo as i32 {
+                    libc::SIGURG => {
+                        // A new version installed: its keeper, in place (the
+                        // mask, and what's pending, carry across).
+                        if let Ok(exe) = std::env::current_exe() {
+                            let exe = std::path::PathBuf::from(exe.to_string_lossy().trim_end_matches(" (deleted)"));
+                            let e = std::process::Command::new(exe).env(ui::KEEPER_ENV, "1").exec();
+                            eprintln!("olo-pool: the keeper couldn’t become the new version: {e}");
+                        }
                     }
+                    s @ (libc::SIGTERM | libc::SIGINT | libc::SIGHUP) => {
+                        for &p in &follow {
+                            libc::kill(p, s);
+                        }
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
         }
         if libc::WIFEXITED(last) {
@@ -283,6 +306,39 @@ fn keeper() -> std::process::ExitCode {
             std::process::ExitCode::SUCCESS
         }
     }
+}
+
+/// Become the keeper (`keeper`), as a program of its own (its environment
+/// says so, for Olo Doctor to know it by); returns only if it couldn't.
+fn become_keeper() -> std::io::Error {
+    use std::os::unix::process::CommandExt as _;
+    let exe = match std::env::current_exe() {
+        Ok(e) => std::path::PathBuf::from(e.to_string_lossy().trim_end_matches(" (deleted)")),
+        Err(e) => return e,
+    };
+    std::process::Command::new(exe).env(ui::KEEPER_ENV, "1").env_remove(ui::KEPT_ENV).env_remove(olo_kit::restore::ENV).exec()
+}
+
+/// Whether the version before this one (re-executing in place) had its
+/// window open; its file read and removed.
+fn window_was_open() -> bool {
+    let Some(path) = std::env::var_os(olo_kit::restore::ENV) else { return false };
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let _ = std::fs::remove_file(&path);
+    serde_json::from_str::<Value>(&text).is_ok_and(|v| v["open"] == true)
+}
+
+/// Asks the copy serving the gateway on `port` to open its window
+/// (`/pool/open`); true if it will.
+fn ask_to_open(port: u16) -> bool {
+    let Ok(mut s) = std::net::TcpStream::connect(("127.0.0.1", port)) else { return false };
+    s.set_read_timeout(Some(Duration::from_secs(5))).ok();
+    if write!(s, "POST /pool/open HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").is_err() {
+        return false;
+    }
+    let mut out = Vec::new();
+    let _ = s.read_to_end(&mut out);
+    out.starts_with(b"HTTP/1.1 204")
 }
 
 fn main() -> std::process::ExitCode {
@@ -336,27 +392,65 @@ fn main() -> std::process::ExitCode {
     let service = has("--service");
     // One gateway per computer: a test or nested session runs its own
     // only on a port of its own.
-    if service && std::env::var_os("OLO_REAL_SESSION").is_none() && std::env::var_os("OLO_POOL_PORT").is_none() {
+    if service && !olo_xdg::session::real() && std::env::var_os("OLO_POOL_PORT").is_none() {
         eprintln!("olo-pool: --service is for the real session (set OLO_POOL_PORT to try it)");
         return std::process::ExitCode::FAILURE;
+    }
+    // Handed the listening sockets by the copy before: this one is the
+    // pool (`drain::listen`).
+    let handed = std::env::var_os(olo_token_pool::drain::LISTENERS_ENV).is_some();
+    // The session's copy, started while another serves the port already
+    // (one that outlived the copy the session started before: Olo Doctor
+    // quit that one while it finished handing over, Ben, 2026-11-07): it
+    // keeps that one, rather than running beside it with no gateway (whose
+    // window showed nothing, and took the launches), or ending (the session
+    // started it again and again, and gave up).
+    if service && !handed {
+        let serving = olo_token_pool::drain::serving(port);
+        if !serving.is_empty() {
+            eprintln!("olo-pool: Token Pool (process {}) serves port {port} already; keeping it", serving.iter().map(i32::to_string).collect::<Vec<_>>().join(", "));
+            if window_was_open() {
+                ask_to_open(port);
+            }
+            let e = become_keeper();
+            eprintln!("olo-pool: couldn’t keep it ({e})");
+            return std::process::ExitCode::FAILURE;
+        }
     }
     if instance::forward(APP_ID, &args) {
         return std::process::ExitCode::SUCCESS;
     }
-    olo_ui::run(APP_ID, move |cx| {
-        olo_ui::stay_resident(cx);
-        let proxy = olo_ui::proxy(cx);
+    // Opened while the copy serving takes no launches (it is starting, as
+    // an upgrade hands over to it): it is asked over the gateway, not
+    // given a copy beside it with no gateway. (One from before
+    // `/pool/open`: its launches, once it takes them.)
+    if !service && !handed && std::env::var_os(olo_kit::restore::ENV).is_none() && !olo_token_pool::drain::serving(port).is_empty() {
+        if ask_to_open(port) {
+            return std::process::ExitCode::SUCCESS;
+        }
+        for _ in 0..25 {
+            std::thread::sleep(Duration::from_millis(200));
+            if instance::forward(APP_ID, &args) {
+                return std::process::ExitCode::SUCCESS;
+            }
+        }
+    }
+    olo_kit::run(APP_ID, move |app| {
+        olo_kit::stay_resident();
+        let proxy = olo_kit::proxy();
         instance::listen(APP_ID, proxy.clone());
         let to_ui = proxy.clone();
         let shared = Shared::launch(port, move || to_ui.send(ui::Msg::Changed));
+        let to_ui = proxy.clone();
+        shared.on_open(move || to_ui.send(ui::Msg::Open));
         // Clients pointed at the pool the old way (an API endpoint of its
         // own) go through its proxy instead, as on their own subscription.
         let proxy_port = olo_token_pool::intercept::port();
         std::thread::spawn(move || clients::migrate(proxy_port));
         // Codex's daemon, which outlives its windows, kept on the settings.
         codex_daemon::keep_following(Duration::from_secs(10));
-        // (The app's state lives in the handlers it gives olo-ui.)
-        ui::start(cx, ui::PoolApp::new(shared, proxy_port, proxy), service);
+        // (The app's state lives in the hub the app's looper keeps.)
+        ui::start(app, ui::Hub::new(shared, proxy_port, proxy), service);
     });
     std::process::ExitCode::SUCCESS
 }

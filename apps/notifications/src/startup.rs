@@ -312,7 +312,7 @@ pub fn file(chime: StartupChime) -> Option<PathBuf> {
 /// the service re-executed by an upgrade, or started again after a crash,
 /// stays quiet).
 pub fn at_start() {
-    if std::env::var_os("OLO_REAL_SESSION").is_none() {
+    if !olo_xdg::session::real() {
         return;
     }
     let Some(session) = std::env::var("OLO_SESSION_PID").ok().filter(|p| !p.is_empty()) else { return };

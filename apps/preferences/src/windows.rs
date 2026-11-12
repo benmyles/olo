@@ -7,14 +7,15 @@
 //! and zoomed windows to it as it changes, so the sliders move them live;
 //! the miniature shows the main display with three windows tiled.
 
-use olo_protocol::{OutputInfo, Settings, TilingLayout, WindowingMode};
-use olo_ui::{
-    gpui::{Bounds, ContentMask, Pixels, SharedString, Styled as _, Window, canvas, point, px, rgb, size},
+use olo_kit::{
+    Bounds, ContentMask, Painter, Pixels, SharedString, Styled as _, canvas,
     metrics::DESKBAR_WIDTH,
     palette::Palette,
+    point, px, rgb, size,
     style::{self, c},
     theme,
 };
+use olo_protocol::{OutputInfo, Settings, TilingLayout, WindowingMode};
 
 use crate::form::Ui;
 
@@ -55,27 +56,27 @@ pub fn ui(ui: &mut Ui, outputs: &[OutputInfo]) {
     });
     let main = outputs.iter().find(|o| o.main).or(outputs.first());
     let display = main.map(crate::display::logical).map_or((1280.0, 800.0), |(w, h)| (w as f32, h as f32));
-    ui.add(canvas(|_, _, _| {}, move |b, _, window, cx| miniature(window, b, &theme::palette(cx), &s, display)).w_full().h(px(MINIATURE_H)).flex_shrink_0());
+    ui.add(canvas(move |g, b| miniature(g, b, &theme::palette(), &s, display)).w_full().h(px(MINIATURE_H)).flex_shrink_0());
     ui.note("Tiling, zooming, Tile All, Smart Tile, cascading and fanning out all leave this space.");
 }
 
 /// The main display to scale, Deskbar in its corner and three windows
 /// tiled as app_server would: the left half, and the right half's top
 /// and bottom.
-fn miniature(window: &mut Window, well: Bounds<Pixels>, p: &Palette, s: &Settings, (dw, dh): (f32, f32)) {
-    style::fill_rect(window, well, c(p.document_background));
-    style::sunken(window, well, p, false);
+fn miniature(g: &mut Painter, well: Bounds<Pixels>, p: &Palette, s: &Settings, (dw, dh): (f32, f32)) {
+    style::fill_rect(g, well, c(p.document_background));
+    style::sunken(g, well, p, false);
     let room = well.dilate(px(-10.0));
     let k = (f32::from(room.size.width) / dw).min(f32::from(room.size.height) / dh);
-    let screen = style::snap(window, Bounds::centered_at(room.center(), size(px(dw * k), px(dh * k))));
-    window.with_content_mask(Some(ContentMask { bounds: screen }), |window| {
-        let [r, g, b] = s.workspace_color(0);
-        style::fill_rect(window, screen, rgb((u32::from(r) << 16) | (u32::from(g) << 8) | u32::from(b)).into());
-        let at = |window: &Window, x: f32, y: f32, w: f32, h: f32| style::snap(window, Bounds { origin: point(screen.left() + px(x * k), screen.top() + px(y * k)), size: size(px(w * k), px(h * k)) });
+    let screen = style::snap(g, Bounds::centered_at(room.center(), size(px(dw * k), px(dh * k))));
+    g.with_content_mask(Some(ContentMask { bounds: screen }), |g| {
+        let [red, green, blue] = s.workspace_color(0);
+        style::fill_rect(g, screen, rgb((u32::from(red) << 16) | (u32::from(green) << 8) | u32::from(blue)).into());
+        let at = |g: &Painter, x: f32, y: f32, w: f32, h: f32| style::snap(g, Bounds { origin: point(screen.left() + px(x * k), screen.top() + px(y * k)), size: size(px(w * k), px(h * k)) });
 
-        let bar = at(window, dw - DESKBAR_WIDTH, 0.0, DESKBAR_WIDTH, DESKBAR_H);
-        style::fill_rect(window, bar, c(p.panel_background));
-        style::frame_rect(window, bar, c(p.frame_focused[0]));
+        let bar = at(g, dw - DESKBAR_WIDTH, 0.0, DESKBAR_WIDTH, DESKBAR_H);
+        style::fill_rect(g, bar, c(p.panel_background));
+        style::frame_rect(g, bar, c(p.frame_focused[0]));
 
         // The usable area stops beside Deskbar; the margin and gap as in
         // app_server's `tile_area` and `tiling::part` (edges inside the
@@ -91,12 +92,12 @@ fn miniature(window: &mut Window, well: Bounds<Pixels>, p: &Palette, s: &Setting
         // Tabs to scale would be slivers; they keep a size that reads.
         let tab_h = (TAB_H * k).max(MIN_TAB_H) / k;
         for (x, y, w, h, front) in windows {
-            let (body, tab) = (at(window, x, y + tab_h, w, h - tab_h), at(window, x, y, (w * 0.55).min(220.0), tab_h));
+            let (body, tab) = (at(g, x, y + tab_h, w, h - tab_h), at(g, x, y, (w * 0.55).min(220.0), tab_h));
             let line = c(p.frame_focused[0]);
-            style::fill_rect(window, tab, c(if front { p.tab_focused } else { p.tab_unfocused }));
-            style::frame_rect(window, tab, line);
-            style::fill_rect(window, body, c(p.document_background));
-            style::frame_rect(window, body, line);
+            style::fill_rect(g, tab, c(if front { p.tab_focused } else { p.tab_unfocused }));
+            style::frame_rect(g, tab, line);
+            style::fill_rect(g, body, c(p.document_background));
+            style::frame_rect(g, body, line);
         }
     });
 }

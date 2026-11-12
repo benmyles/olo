@@ -159,7 +159,7 @@ pub fn set_title(name: &str, title: Option<&str>) -> Result<(), String> {
     let path = title_path(name);
     let failed = |e: std::io::Error| format!("couldn't rename {name}: {e}");
     match title.map(str::trim).filter(|t| !t.is_empty()) {
-        Some(t) => olo_ui::store::write(&path, t.as_bytes()).map_err(failed),
+        Some(t) => olo_kit::store::write(&path, t.as_bytes()).map_err(failed),
         None => match std::fs::remove_file(&path) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(failed(e)),
             _ => Ok(()),
@@ -182,7 +182,7 @@ pub fn record(name: &str, action: &Action) {
         let all = read(name);
         let keep = &all[all.len() / 2..];
         let text: String = keep.iter().filter_map(|a| serde_json::to_string(a).ok()).map(|l| l + "\n").collect();
-        let _ = olo_ui::store::write(&path, text.as_bytes());
+        let _ = olo_kit::store::write(&path, text.as_bytes());
     }
     if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path)
         && let Ok(line) = serde_json::to_string(action)

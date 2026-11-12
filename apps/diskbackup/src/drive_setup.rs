@@ -15,12 +15,11 @@ use std::sync::{
 
 use olo_diskbackup::oauth::Client;
 use olo_keychain::Shareable;
-use olo_ui::{
-    Proxy,
+use olo_kit::{
+    Child, ClickEvent, ClipboardItem, Cx, Element, ParentElement as _, SharedString, Styled as _, View, clipboard, div,
     file_panel::{self, FilePanel, PanelResult},
-    gpui::{self, Context, Entity, IntoElement, ParentElement as _, Render, SharedString, Styled as _, Window, div, px},
-    metrics as m, style, theme,
-    widgets::{Button, MenuField, StringView, TextControl, TextField, TextFieldEvent},
+    metrics as m, px, style, theme,
+    widgets::{Button, MenuField, StringView, TextControl, TextField, TextFieldEvent, text_field},
 };
 
 use crate::{app::Msg, target};
@@ -83,9 +82,8 @@ enum Agent {
 }
 
 pub struct DriveSetup {
-    proxy: Proxy,
-    id: Entity<TextField>,
-    secret: Entity<TextField>,
+    id: Child<TextField>,
+    secret: Child<TextField>,
     /// What to say (and whether it's an error).
     status: (String, bool),
     /// Signing in: its Stop.
@@ -100,31 +98,118 @@ pub struct DriveSetup {
     /// one made before, unless asked).
     steps: bool,
     agent: Agent,
-    _subs: Vec<gpui::Subscription>,
 }
 
 impl DriveSetup {
-    pub fn new(proxy: Proxy, cx: &mut Context<Self>) -> DriveSetup {
-        let id = cx.new(|cx| TextField::new(cx).hint("123456789012-abc….apps.googleusercontent.com").name("Client ID"));
-        let secret = cx.new(|cx| TextField::new(cx).hint("GOCSPX-…").password(true).name("Client secret"));
-        let subs = [&id, &secret]
-            .into_iter()
-            .map(|f| {
-                cx.subscribe(f, |w: &mut DriveSetup, _, e: &TextFieldEvent, cx| {
-                    if matches!(e, TextFieldEvent::Changed) {
-                        w.status = (String::new(), false);
-                        cx.notify();
-                    }
-                })
-            })
-            .collect();
+    pub fn new(cx: &mut Cx<Self>) -> DriveSetup {
+        let id = text_field(cx, |f| f.hint("123456789012-abc….apps.googleusercontent.com").name("Client ID"));
+        let secret = text_field(cx, |f| f.hint("GOCSPX-…").password(true).name("Client secret"));
+        for f in [&id, &secret] {
+            cx.subscribe(f, |w: &mut DriveSetup, e: &TextFieldEvent, cx| {
+                if matches!(e, TextFieldEvent::Changed) {
+                    w.status = (String::new(), false);
+                    cx.invalidate();
+                }
+            });
+        }
         // Connecting again: the client signed in with before, filled in.
-        let known = proxy.clone();
-        std::thread::spawn(move || known.send(Msg::Drive(Done::Known(target::known_client()))));
-        DriveSetup { proxy, id, secret, status: (String::new(), false), signing: None, looking: false, done: None, url: None, steps: true, agent: Agent::Off, _subs: subs }
+        cx.work(target::known_client, Done::Known);
+        DriveSetup { id, secret, status: (String::new(), false), signing: None, looking: false, done: None, url: None, steps: true, agent: Agent::Off }
     }
 
-    pub fn message(&mut self, d: Done, cx: &mut Context<Self>) {
+    fn fill(&mut self, c: &Client, cx: &mut Cx<Self>) {
+        self.id.update(cx, |f, cx| f.set_text(c.id.clone(), cx));
+        self.secret.update(cx, |f, cx| f.set_text(c.secret.clone(), cx));
+    }
+
+    fn client(&self, cx: &Cx<Self>) -> Client {
+        Client { id: self.id.read(cx).text().trim().to_owned(), secret: self.secret.read(cx).text().trim().to_owned() }
+    }
+
+    fn choose_file(&mut self, cx: &mut Cx<Self>) {
+        let to = cx.messenger();
+        let downloads = target::home().join("Downloads");
+        let dir = if downloads.is_dir() { downloads } else { target::home() };
+        // (The panel answers on its own looper: it tells this window.)
+        file_panel::show("Choose the Client's File", FilePanel::open(dir).types(&["json"]), move |a| {
+            if let PanelResult::Chosen(path) = a.result {
+                let r = std::fs::read_to_string(&path).map_err(|e| e.to_string()).and_then(|t| Client::from_json(&t));
+                to.send(Done::Chosen(r));
+            }
+        });
+    }
+
+    /// Agent Setup: the Google logins to choose from, asked of Passwords.
+    fn choose_agent_login(&mut self, cx: &mut Cx<Self>) {
+        self.agent = Agent::Choosing { logins: None, chosen: 0 };
+        self.status = (String::new(), false);
+        cx.invalidate();
+        cx.work(crate::agent_setup::google_logins, Done::Logins);
+    }
+
+    /// Agent Setup with the login chosen: its screen, the login shared,
+    /// Claude Code started (on a worker).
+    fn start_agent(&mut self, cx: &mut Cx<Self>) {
+        let Agent::Choosing { logins: Some(Ok(logins)), chosen } = &self.agent else { return };
+        let Some(login) = logins.get(*chosen).cloned() else { return };
+        self.agent = Agent::Starting;
+        cx.invalidate();
+        cx.work(move || crate::agent_setup::start(&login), Done::AgentStarted);
+    }
+
+    fn use_passwords_client(&mut self, cx: &mut Cx<Self>) {
+        self.looking = true;
+        self.status = ("Looking in Passwords (unlock it if it asks)…".into(), false);
+        cx.invalidate();
+        cx.work(target::client_in_passwords, Done::Kept);
+    }
+
+    /// Sign in (the browser to Google's page), then set up, on a worker.
+    fn sign_in(&mut self, cx: &mut Cx<Self>) {
+        let client = self.client(cx);
+        if let Err(e) = client.check() {
+            self.status = (format!("Not yet: {e}."), true);
+            cx.invalidate();
+            return;
+        }
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.signing = Some(cancel.clone());
+        self.status = ("Sign in to Google in your browser (didn't it open? Copy Address, and open it there): DiskBackup waits for it here…".into(), false);
+        cx.invalidate();
+        let proxy = cx.messenger();
+        std::thread::spawn(move || {
+            let r = crate::sign_in(&client, &cancel, |url| {
+                proxy.send(Done::Started(url.to_owned()));
+                // (A test's own Google: the address in the test's folder,
+                // for it to play the browser.)
+                if std::env::var_os("OLO_DISKBACKUP_GOOGLE_API").is_some()
+                    && let Some(dir) = std::env::var_os("OLO_DISKBACKUP_DIR")
+                {
+                    let _ = std::fs::write(std::path::Path::new(&dir).join("sign-in.url"), url);
+                }
+                // (Not with a test's own Google: no browser.)
+                if std::env::var_os("OLO_DISKBACKUP_GOOGLE_API").is_none()
+                    && let Err(e) = olo_xdg::open::open(&olo_xdg::open::Target::Url(url.to_owned()))
+                {
+                    tracing::warn!("diskbackup: the browser didn't open: {e}");
+                }
+            })
+            .and_then(|signed| crate::set_up_drive(client, signed));
+            proxy.send(Done::SetUp(r));
+        });
+    }
+}
+
+fn open_page(url: &'static str) {
+    if let Err(e) = olo_xdg::open::open(&olo_xdg::open::Target::Url(url.into())) {
+        tracing::warn!("diskbackup: {url}: {e}");
+    }
+}
+
+impl View for DriveSetup {
+    type Message = Done;
+
+    fn message(&mut self, d: Done, cx: &mut Cx<Self>) {
         match d {
             Done::Chosen(Ok(c)) => {
                 self.fill(&c, cx);
@@ -170,6 +255,8 @@ impl DriveSetup {
                 self.url = None;
                 match r {
                     Ok(email) => {
+                        // (The main window shows where backups go now.)
+                        olo_kit::proxy().send(Msg::SetUp);
                         self.status = (format!("Backing up to Google Drive ({email}), in the folder “{}”.", olo_diskbackup::drive::FOLDER), false);
                         self.done = Some(email);
                     }
@@ -177,105 +264,10 @@ impl DriveSetup {
                 }
             }
         }
-        cx.notify();
+        cx.invalidate();
     }
 
-    fn fill(&mut self, c: &Client, cx: &mut Context<Self>) {
-        self.id.update(cx, |f, cx| f.set_text(c.id.clone(), cx));
-        self.secret.update(cx, |f, cx| f.set_text(c.secret.clone(), cx));
-    }
-
-    fn client(&self, cx: &gpui::App) -> Client {
-        Client { id: self.id.read(cx).text().trim().to_owned(), secret: self.secret.read(cx).text().trim().to_owned() }
-    }
-
-    fn choose_file(&mut self, cx: &mut Context<Self>) {
-        let proxy = self.proxy.clone();
-        let downloads = target::home().join("Downloads");
-        let dir = if downloads.is_dir() { downloads } else { target::home() };
-        cx.defer(move |cx| {
-            file_panel::show(cx, "Choose the Client's File", FilePanel::open(dir).types(&["json"]), move |a, _| {
-                if let PanelResult::Chosen(path) = a.result {
-                    let r = std::fs::read_to_string(&path).map_err(|e| e.to_string()).and_then(|t| Client::from_json(&t));
-                    proxy.send(Msg::Drive(Done::Chosen(r)));
-                }
-            });
-        });
-    }
-
-    /// Agent Setup: the Google logins to choose from, asked of Passwords.
-    fn choose_agent_login(&mut self, cx: &mut Context<Self>) {
-        self.agent = Agent::Choosing { logins: None, chosen: 0 };
-        self.status = (String::new(), false);
-        cx.notify();
-        let proxy = self.proxy.clone();
-        std::thread::spawn(move || proxy.send(Msg::Drive(Done::Logins(crate::agent_setup::google_logins()))));
-    }
-
-    /// Agent Setup with the login chosen: its screen, the login shared,
-    /// Claude Code started (on a worker).
-    fn start_agent(&mut self, cx: &mut Context<Self>) {
-        let Agent::Choosing { logins: Some(Ok(logins)), chosen } = &self.agent else { return };
-        let Some(login) = logins.get(*chosen).cloned() else { return };
-        self.agent = Agent::Starting;
-        cx.notify();
-        let proxy = self.proxy.clone();
-        std::thread::spawn(move || proxy.send(Msg::Drive(Done::AgentStarted(crate::agent_setup::start(&login)))));
-    }
-
-    fn use_passwords_client(&mut self, cx: &mut Context<Self>) {
-        self.looking = true;
-        self.status = ("Looking in Passwords (unlock it if it asks)…".into(), false);
-        cx.notify();
-        let proxy = self.proxy.clone();
-        std::thread::spawn(move || proxy.send(Msg::Drive(Done::Kept(target::client_in_passwords()))));
-    }
-
-    /// Sign in (the browser to Google's page), then set up, on a worker.
-    fn sign_in(&mut self, cx: &mut Context<Self>) {
-        let client = self.client(cx);
-        if let Err(e) = client.check() {
-            self.status = (format!("Not yet: {e}."), true);
-            cx.notify();
-            return;
-        }
-        let cancel = Arc::new(AtomicBool::new(false));
-        self.signing = Some(cancel.clone());
-        self.status = ("Sign in to Google in your browser (didn't it open? Copy Address, and open it there): DiskBackup waits for it here…".into(), false);
-        cx.notify();
-        let proxy = self.proxy.clone();
-        std::thread::spawn(move || {
-            let r = crate::sign_in(&client, &cancel, |url| {
-                proxy.send(Msg::Drive(Done::Started(url.to_owned())));
-                // (A test's own Google: the address in the test's folder,
-                // for it to play the browser.)
-                if std::env::var_os("OLO_DISKBACKUP_GOOGLE_API").is_some()
-                    && let Some(dir) = std::env::var_os("OLO_DISKBACKUP_DIR")
-                {
-                    let _ = std::fs::write(std::path::Path::new(&dir).join("sign-in.url"), url);
-                }
-                // (Not with a test's own Google: no browser.)
-                if std::env::var_os("OLO_DISKBACKUP_GOOGLE_API").is_none()
-                    && let Err(e) = olo_xdg::open::open(&olo_xdg::open::Target::Url(url.to_owned()))
-                {
-                    tracing::warn!("diskbackup: the browser didn't open: {e}");
-                }
-            })
-            .and_then(|signed| crate::set_up_drive(client, signed));
-            proxy.send(Msg::Drive(Done::SetUp(r)));
-        });
-    }
-}
-
-fn open_page(url: &'static str) {
-    if let Err(e) = olo_xdg::open::open(&olo_xdg::open::Target::Url(url.into())) {
-        tracing::warn!("diskbackup: {url}: {e}");
-    }
-}
-
-impl Render for DriveSetup {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let me = cx.entity();
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         let dim = |text: &str| StringView::new(SharedString::from(text.to_owned())).wrap(true).dim(true);
         let busy = self.signing.is_some() || self.looking;
 
@@ -284,7 +276,6 @@ impl Render for DriveSetup {
         let mut body = div().flex().flex_col().gap(px(m::SPACING)).p(px(m::WINDOW_INSET)).w_full().min_w(px(WIDTH));
         // Connecting again, with the sign-in made before: the steps are done.
         if !self.steps {
-            let show = me.clone();
             body = body.child(
                 div()
                     .flex()
@@ -292,33 +283,24 @@ impl Render for DriveSetup {
                     .items_center()
                     .gap(px(m::SPACING))
                     .child(div().flex_1().min_w_0().child(dim("You made DiskBackup’s sign-in before, so the steps to make one are done: sign in with it below.")))
-                    .child(Button::new("Show the Steps").on_click(move |_, cx| {
-                        show.update(cx, |w, cx| {
-                            w.steps = true;
-                            cx.notify();
-                        })
-                    })),
+                    .child(Button::new("Show the Steps").on_click(cx.listener(|w: &mut DriveSetup, _: &ClickEvent, cx| {
+                        w.steps = true;
+                        cx.invalidate();
+                    }))),
             );
-            return body.child(self.last_part(&me, cx));
+            return body.child(self.last_part(cx));
         }
         body = body.child(dim(
             "Google asks each person to make their own sign-in for an app like DiskBackup: a few minutes, once. Follow these steps in your browser (Open shows each one’s page), then sign in below.",
         ));
         // Made on another computer: kept in Passwords.
-        let kept = me.clone();
-        body = body.child(
-            div()
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap(px(m::SPACING))
-                .child(div().flex_1().min_w_0().child(dim("Made one on another computer? Passwords keeps it.")))
-                .child(Button::new("Sign In with the One in Passwords").enabled(!busy && self.done.is_none()).on_click(move |_, cx| kept.update(cx, |w, cx| w.use_passwords_client(cx)))),
-        );
+        body =
+            body.child(div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().flex_1().min_w_0().child(dim("Made one on another computer? Passwords keeps it."))).child(
+                Button::new("Sign In with the One in Passwords").enabled(!busy && self.done.is_none()).on_click(cx.listener(|w: &mut DriveSetup, _: &ClickEvent, cx| w.use_passwords_client(cx))),
+            ));
         // Or an agent does the steps.
-        body = body.child(self.agent_part(&me, busy, cx));
+        body = body.child(self.agent_part(busy, cx));
         // The steps.
-        let number = |n: usize| div().w(px(22.0)).flex_none().child(StringView::new(SharedString::from(format!("{n}."))).bold(true));
         for (i, (title, how, url)) in STEPS.iter().enumerate() {
             let url = *url;
             body = body.child(
@@ -329,22 +311,25 @@ impl Render for DriveSetup {
                     .gap(px(m::SPACING))
                     .child(number(i + 1))
                     .child(div().flex_1().min_w_0().flex().flex_col().child(StringView::new(SharedString::from(*title)).bold(true)).child(dim(how)))
-                    .child(Button::new("Open").id(format!("open-{i}")).on_click(move |_, _| open_page(url))),
+                    .child(Button::new("Open").id(format!("open-{i}")).on_click(move |_: &ClickEvent, _| open_page(url))),
             );
         }
-        body.child(self.last_part(&me, cx))
+        body.child(self.last_part(cx))
     }
+}
+
+/// A step's number, in a column of its own.
+fn number(n: usize) -> Element {
+    div().w(px(22.0)).flex_none().child(StringView::new(SharedString::from(format!("{n}."))).bold(true))
 }
 
 impl DriveSetup {
     /// The last step (the client given), what's happening, and Sign In.
-    fn last_part(&self, me: &Entity<Self>, cx: &mut Context<Self>) -> gpui::Div {
-        let p = theme::palette(cx);
+    fn last_part(&self, cx: &mut Cx<Self>) -> Element {
+        let p = theme::palette();
         let dim = |text: &str| StringView::new(SharedString::from(text.to_owned())).wrap(true).dim(true);
         let busy = self.signing.is_some() || self.looking;
-        let number = |n: usize| div().w(px(22.0)).flex_none().child(StringView::new(SharedString::from(format!("{n}."))).bold(true));
         // The client, then signing in.
-        let (file, sign, stop) = (me.clone(), me.clone(), self.signing.clone());
         let last = div()
             .flex()
             .flex_row()
@@ -361,74 +346,65 @@ impl DriveSetup {
                     .gap(px(m::TIGHT))
                     .child(StringView::new("Give it to DiskBackup").bold(true))
                     .child(dim("Choose the file you downloaded, or copy its Client ID and Client secret in."))
-                    .child(TextControl::new(self.id.clone()).label("Client ID:").divider(100.0))
-                    .child(TextControl::new(self.secret.clone()).label("Client secret:").divider(100.0)),
+                    .child(TextControl::new(cx, &self.id).label("Client ID:").divider(100.0))
+                    .child(TextControl::new(cx, &self.secret).label("Client secret:").divider(100.0)),
             )
-            .child(Button::new("Choose File…").enabled(!busy).on_click(move |_, cx| file.update(cx, |w, cx| w.choose_file(cx))));
+            .child(Button::new("Choose File…").enabled(!busy).on_click(cx.listener(|w: &mut DriveSetup, _: &ClickEvent, cx| w.choose_file(cx))));
         let mut body = div().flex().flex_col().gap(px(m::SPACING)).child(last);
         let (text, error) = self.status.clone();
-        body = body.child(StringView::new(if text.is_empty() { " ".into() } else { text }).wrap(true).color(if error { style::c(p.failure) } else { style::disabled_text(&p) }));
+        body = body.child(StringView::new(if text.is_empty() { " ".to_owned() } else { text }).wrap(true).color(if error { style::c(p.failure) } else { style::disabled_text(&p) }));
         let mut buttons = div().flex().flex_row().items_center().justify_end().gap(px(m::SPACING));
         // The browser didn't open (or it's another computer's): its address.
         if let Some(url) = self.url.clone() {
-            buttons = buttons.child(Button::new("Copy Address").on_click(move |_, cx| cx.write_to_clipboard(gpui::ClipboardItem::new_string(url.clone()))));
+            buttons = buttons.child(Button::new("Copy Address").on_click(move |_: &ClickEvent, _| clipboard::write(ClipboardItem::new_string(url.clone()))));
         }
-        if let Some(stop) = stop {
-            buttons = buttons.child(Button::new("Stop").on_click(move |_, _| stop.store(true, Relaxed)));
+        if let Some(stop) = self.signing.clone() {
+            buttons = buttons.child(Button::new("Stop").on_click(move |_: &ClickEvent, _| stop.store(true, Relaxed)));
         }
         if self.done.is_some() {
-            buttons = buttons.child(Button::new("Done").default(true).on_click(|window, _| window.remove_window()));
+            buttons = buttons.child(Button::new("Done").default(true).on_click(|_: &ClickEvent, cx| cx.close_window()));
         } else {
             let ready = self.client(cx).check().is_ok();
             // (The default once it can be pressed.)
-            buttons = buttons.child(Button::new("Sign In with Google").default(ready && !busy).enabled(ready && !busy).on_click(move |_, cx| sign.update(cx, |w, cx| w.sign_in(cx))));
+            buttons = buttons.child(Button::new("Sign In with Google").default(ready && !busy).enabled(ready && !busy).on_click(cx.listener(|w: &mut DriveSetup, _: &ClickEvent, cx| w.sign_in(cx))));
         }
         body.child(buttons)
     }
-}
 
-impl DriveSetup {
     /// Agent Setup's part of the window: its button, then the Google login
     /// to choose, then what the agent is doing.
-    fn agent_part(&self, me: &Entity<Self>, busy: bool, cx: &mut Context<Self>) -> gpui::Div {
-        let p = theme::palette(cx);
+    fn agent_part(&self, busy: bool, cx: &mut Cx<Self>) -> Element {
+        let p = theme::palette();
         let dim = |text: String| StringView::new(SharedString::from(text)).wrap(true).dim(true);
         let row = || div().flex().flex_row().items_center().gap(px(m::SPACING));
         match &self.agent {
-            Agent::Off => {
-                let go = me.clone();
-                row()
-                    .child(div().flex_1().min_w_0().child(dim("Or let an agent do the steps: Claude Code, in a Terminal window you can follow, on an agent screen of its own signed in with your Google login from Passwords.".into())))
-                    .child(Button::new("Let an Agent Do It…").enabled(!busy && self.done.is_none()).on_click(move |_, cx| go.update(cx, |w, cx| w.choose_agent_login(cx))))
-            }
+            Agent::Off => row()
+                .child(div().flex_1().min_w_0().child(dim("Or let an agent do the steps: Claude Code, in a Terminal window you can follow, on an agent screen of its own signed in with your Google login from Passwords.".into())))
+                .child(Button::new("Let an Agent Do It…").enabled(!busy && self.done.is_none()).on_click(cx.listener(|w: &mut DriveSetup, _: &ClickEvent, cx| w.choose_agent_login(cx)))),
             Agent::Choosing { logins, chosen } => {
                 let mut col = div().flex().flex_col().gap(px(m::TIGHT)).child(StringView::new("Agent Setup").bold(true)).child(dim(
                     "Which Google account do the backups go in? Its login in Passwords is shared with the agent’s screen, to sign in there; the agent never sees its password."
                         .into(),
                 ));
-                let (cancel, start) = (me.clone(), me.clone());
-                let cancel = Button::new("Cancel").id("agent-cancel").on_click(move |_, cx| {
-                    cancel.update(cx, |w, cx| {
-                        w.agent = Agent::Off;
-                        cx.notify();
-                    })
-                });
+                let cancel = Button::new("Cancel").id("agent-cancel").on_click(cx.listener(|w: &mut DriveSetup, _: &ClickEvent, cx| {
+                    w.agent = Agent::Off;
+                    cx.invalidate();
+                }));
                 match logins {
                     None => col = col.child(dim("Asking Passwords (unlock it if it asks)…".into())).child(row().justify_end().child(cancel)),
                     Some(Err(e)) => col = col.child(StringView::new(SharedString::from(format!("Passwords couldn't say: {e}."))).wrap(true).color(style::c(p.failure))).child(row().justify_end().child(cancel)),
                     Some(Ok(l)) if l.is_empty() => col = col.child(dim("Passwords has no logins to share: add your Google account’s there first.".into())).child(row().justify_end().child(cancel)),
                     Some(Ok(l)) => {
                         let names: Vec<SharedString> = l.iter().map(|i| SharedString::from(crate::agent_setup::label(i))).collect();
-                        let pick = me.clone();
-                        col = col.child(MenuField::new("agent-login", names, *chosen).label("Google login:").divider(100.0).on_change(move |i, _, cx| {
-                            pick.update(cx, |w, cx| {
-                                if let Agent::Choosing { chosen, .. } = &mut w.agent {
-                                    *chosen = i;
-                                }
-                                cx.notify();
-                            })
-                        }));
-                        col = col.child(row().justify_end().child(cancel).child(Button::new("Start").id("agent-start").default(true).on_click(move |_, cx| start.update(cx, |w, cx| w.start_agent(cx)))));
+                        col = col.child(MenuField::new("agent-login", names, *chosen).label("Google login:").divider(100.0).on_change(cx.listener(|w: &mut DriveSetup, i: &usize, cx| {
+                            if let Agent::Choosing { chosen, .. } = &mut w.agent {
+                                *chosen = *i;
+                            }
+                            cx.invalidate();
+                        })));
+                        col = col.child(
+                            row().justify_end().child(cancel).child(Button::new("Start").id("agent-start").default(true).on_click(cx.listener(|w: &mut DriveSetup, _: &ClickEvent, cx| w.start_agent(cx)))),
+                        );
                     }
                 }
                 col
@@ -442,11 +418,8 @@ impl DriveSetup {
 }
 
 /// The window's options.
-pub fn options() -> olo_ui::WindowOptions {
+pub fn options() -> olo_kit::WindowOptions {
     // (A form, as DiskBackup's window: it floats.)
     // (Fixed: it follows what it shows, steps folded or not.)
-    olo_ui::WindowOptions { fixed: true, ..olo_ui::WindowOptions::new("Back Up to Google Drive", WIDTH, 200.0).fits_content().floating() }
+    olo_kit::WindowOptions { fixed: true, ..olo_kit::WindowOptions::new("Back Up to Google Drive", WIDTH, 200.0).fits_content().floating() }
 }
-
-#[allow(unused_imports)]
-use gpui::AppContext as _;

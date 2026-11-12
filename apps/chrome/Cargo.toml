@@ -12,7 +12,7 @@ path = "src/main.rs"
 olo-crash.workspace = true
 olo-sync.workspace = true
 olo-net = { workspace = true, features = ["ureq"] }
-olo-ui.workspace = true
+olo-kit.workspace = true
 olo-kit-base.workspace = true
 olo-xdg.workspace = true
 olo-protocol.workspace = true

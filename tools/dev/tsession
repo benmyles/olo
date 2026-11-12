@@ -498,7 +498,7 @@ def run(name, cmd):
 def review(name, layers=False):
     """Ask each kit app with a window in the session for its windows'
     layout review (`{"review":true}` on its socket; see
-    crates/kit-base/src/layout_review.rs and olo_ui::review) and print the
+    crates/kit-base/src/layout_review.rs and olo_kit::review) and print the
     findings."""
     windows = ipc(name, {"type": "list_windows"}).get("windows", [])
     pids = {w["pid"] for w in windows if w.get("pid")}
@@ -511,16 +511,27 @@ def review(name, layers=False):
         path = os.path.join(RUNTIME, f"olo-menus-{pid}.sock")
         if not os.path.exists(path):
             continue
-        s = socket.socket(socket.AF_UNIX)
-        s.settimeout(4)
-        try:
-            s.connect(path)
-            s.sendall(b'{"review":true}\n')
-            answer = json.loads(s.makefile().readline() or "[]")
-        except (OSError, ValueError):
+        # (Asked again while a window is on its way to another size, one
+        # that follows what it shows: it's laid out for what it's about
+        # to show, and what's found then is of a window nobody sees.)
+        answer = None
+        for _ in range(60):
+            s = socket.socket(socket.AF_UNIX)
+            s.settimeout(4)
+            try:
+                s.connect(path)
+                s.sendall(b'{"review":true}\n')
+                answer = json.loads(s.makefile().readline() or "[]")
+            except (OSError, ValueError):
+                answer = None
+                break
+            finally:
+                s.close()
+            if not any(w.get("resizing") for w in answer):
+                break
+            time.sleep(0.05)
+        if answer is None:
             continue
-        finally:
-            s.close()
         for w in answer:
             if w.get("layer") and not layers:
                 continue

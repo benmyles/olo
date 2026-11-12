@@ -242,7 +242,10 @@ def drawn(pid, layers, scale=None, dark=None, within=6.0):
             # (Twice the same: a window that follows what it shows resizes
             # a frame after the scale changes, and is asked again.)
             sizes = sorted((w.get("layer") or w["title"], w["width"], w["height"]) for w in wins)
-            if all((scale is None or abs(w.get("scale", 0) - scale) < 0.01) and (dark is None or w.get("dark", dark) == dark) for w in wins):
+            # (Nor one on its way to another size, laid out for what it's
+            # about to show: `resizing`. Twice the same size isn't enough
+            # on a busy machine, where the new size is slow in coming.)
+            if all((scale is None or abs(w.get("scale", 0) - scale) < 0.01) and (dark is None or w.get("dark", dark) == dark) and not w.get("resizing") for w in wins):
                 if sizes == settled:
                     return [(w.get("layer") or w["title"], f) for w in wins for f in w["findings"]]
                 settled = sizes
@@ -351,7 +354,7 @@ def main():
     screen = a[a.index("--screen") + 1] if "--screen" in a else "3024x1964"
     jobs = int(a[a.index("--jobs") + 1]) if "--jobs" in a else max(2, (os.cpu_count() or 4) * 3 // 4)
     picked = [x for i, x in enumerate(a) if not x.startswith("--") and (i == 0 or a[i - 1] not in ("--scales", "--screen", "--jobs"))]
-    work = f"/var/tmp/olo-ui-lint-{os.getpid()}"
+    work = f"/var/tmp/olo-live-lint-{os.getpid()}"
     master = os.path.join(work, "home")
     specs = apps(master)
     if "--list" in a:

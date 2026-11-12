@@ -27,8 +27,8 @@ use olo_images::{
     lottie::{self, Lottie, Painter},
     webm::{self, Webm},
 };
+use olo_kit::{Proxy, RenderImage};
 use olo_tg::{ChatId, MsgId};
-use olo_ui::{Proxy, gpui::RenderImage};
 
 pub type Key = (ChatId, MsgId);
 

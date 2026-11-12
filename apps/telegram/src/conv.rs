@@ -16,22 +16,17 @@ use std::{
     time::{Duration, Instant},
 };
 
-use olo_tg::{ChatId, ChatKind, Media, Message, MsgId, Pic};
-use olo_ui::{
-    Menu,
-    gpui::{
-        AnyElement, App, Bounds, ClickEvent, Context, CursorStyle, Entity, FontWeight, Hitbox, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent,
-        MouseMoveEvent, ParentElement as _, PathBuilder, Pixels, Point, RenderImage, ScrollHandle, StatefulInteractiveElement as _, Styled as _, Window, black, canvas, div, hsla, point, px, size,
-        transparent_black, white,
-    },
-    metrics as m,
+use olo_kit::{
+    Bounds, ClickEvent, CursorStyle, Cx, Element, FontWeight, Hsla, InteractiveElement as _, KeyDownEvent, Menu, MouseButton, MouseDownEvent, MouseMoveEvent, Painter, ParentElement as _, PathBuilder,
+    Pixels, Point, RenderImage, ScrollHandle, Styled as _, black, canvas, div, hsla, metrics as m, point, px, size,
     style::{self, Align, c},
-    theme,
+    theme, transparent_black, white,
     widgets::{SCROLL_BAR, ScrollView, TextField},
 };
+use olo_tg::{ChatId, ChatKind, Media, Message, MsgId, Pic};
 
 use crate::{
-    Tg,
+    LeftClick as _, Tg,
     bubble::{self, Hit, Laid, Look, Place},
     when,
 };
@@ -50,7 +45,6 @@ const FLASH: Duration = Duration::from_millis(1200);
 pub struct Conv {
     pub chat: ChatId,
     pub topic: Option<MsgId>,
-    pub field: Entity<TextField>,
     pub reply: Option<MsgId>,
     pub edit: Option<MsgId>,
     pub files: Vec<PathBuf>,
@@ -81,7 +75,7 @@ pub struct Conv {
 struct Painted {
     whole: Bounds<Pixels>,
     origin: Point<Pixels>,
-    m: Message,
+    m: Rc<Message>,
     laid: Rc<Laid>,
 }
 
@@ -146,11 +140,10 @@ fn guess(m: &Message, col: f32) -> f32 {
 }
 
 impl Conv {
-    pub fn new(chat: ChatId, topic: Option<MsgId>, field: Entity<TextField>) -> Conv {
+    pub fn new(chat: ChatId, topic: Option<MsgId>) -> Conv {
         Conv {
             chat,
             topic,
-            field,
             reply: None,
             edit: None,
             files: Vec::new(),
@@ -168,10 +161,6 @@ impl Conv {
             hover: None,
             painted: Rc::default(),
         }
-    }
-
-    pub fn text(&self, cx: &App) -> String {
-        self.field.read(cx).text().to_owned()
     }
 
     /// What's under `q` (window coordinates) in the messages as last
@@ -230,7 +219,7 @@ enum Draw {
     Day(String, f32),
     Unread(f32),
     Msg {
-        m: Box<Message>,
+        m: Rc<Message>,
         place: Place,
         laid: Rc<Laid>,
         y: f32,
@@ -244,25 +233,25 @@ enum Draw {
 }
 
 /// What a pane paints, in order.
-pub type Paints = Vec<Box<dyn FnOnce(&mut Window, &mut App)>>;
+pub type Paints = Vec<Box<dyn Fn(&mut Painter)>>;
 
 fn r(x: f32, y: f32, w: f32, h: f32) -> Bounds<Pixels> {
     Bounds { origin: point(px(x), px(y)), size: size(px(w), px(h)) }
 }
 
-fn disc(window: &mut Window, center: Point<Pixels>, radius: f32, color: Hsla) {
-    window.paint_sector(center, px(0.0), px(radius), 0.0, std::f32::consts::TAU, color);
+fn disc(gr: &mut Painter, center: Point<Pixels>, radius: f32, color: Hsla) {
+    gr.paint_sector(center, px(0.0), px(radius), 0.0, std::f32::consts::TAU, color);
 }
 
 /// The conversation, filling `rect` (window coordinates).
-pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut Context<Tg>) -> AnyElement {
-    let me = cx.entity();
-    let p = theme::palette(cx);
+pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, cx: &mut Cx<Tg>) -> Element {
+    let me = cx.view_ref();
+    let p = theme::palette();
     let look = Look::of(&p);
-    let Some((chat_id, topic)) = tg.conv.as_ref().map(|c| (c.chat, c.topic)) else { return div().into_any_element() };
+    let Some((chat_id, topic)) = tg.conv.as_ref().map(|c| (c.chat, c.topic)) else { return div() };
     let chat = tg.store.chats.get(&chat_id).cloned().unwrap_or_default();
     let (x0, y0, w) = (f32::from(rect.origin.x), f32::from(rect.origin.y), f32::from(rect.size.width));
-    let mut hits: Vec<AnyElement> = Vec::new();
+    let mut hits: Vec<Element> = Vec::new();
     let mut paint: Paints = Vec::new();
     let hot = tg.hot.clone();
     let is_hot = move |k: &str| hot.as_ref().is_some_and(|h| h.as_ref() == k);
@@ -278,24 +267,23 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
     let info = r(x0 + w - 24.0 - 14.0, y0 + HEADER / 2.0 - 14.0, 28.0, 28.0);
     {
         let (chat, look, info_hot) = (chat.clone(), look.clone(), is_hot("conv-info"));
-        paint.push(Box::new(move |window, cx| {
-            let p = theme::palette(cx);
-            style::fill_rect(window, head, c(p.panel_background));
+        paint.push(Box::new(move |gr| {
+            let p = theme::palette();
+            style::fill_rect(gr, head, c(p.panel_background));
             if chat.kind == ChatKind::Saved {
-                disc(window, pic_r.center(), 18.0, look.accent);
-                crate::list::bookmark(window, pic_r.center(), 36.0, white());
+                disc(gr, pic_r.center(), 18.0, look.accent);
+                crate::list::bookmark(gr, pic_r.center(), 36.0, white());
             } else {
-                bubble::avatar(window, cx, pic_r, chat.id, &chat.title, pic.as_ref(), look.dark);
-                olo_ui::review::own_grid(window, pic_r);
+                bubble::avatar(gr, pic_r, chat.id, &chat.title, pic.as_ref(), look.dark);
+                olo_kit::review::own_grid(gr, pic_r);
             }
             let x = pic_r.right() + px(10.0);
             let ink = c(p.panel_text);
             let room = info.origin.x - x - px(8.0);
-            let t = style::label_fit(window, cx, x, head.origin.y + px(18.0), Align::Left, chat.title.clone(), style::PLAIN_SIZE + 1.0, style::ui_font(FontWeight::BOLD), ink, room);
-            olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Heading", name: Some(chat.title.clone().into()), bounds: t, enabled: true, ..Default::default() });
+            let t = style::label_fit(gr, x, head.origin.y + px(18.0), Align::Left, chat.title.clone(), style::PLAIN_SIZE + 1.0, style::ui_font(FontWeight::BOLD), ink, room);
+            olo_kit::agent::record(gr, olo_kit::agent::Node { role: "Heading", name: Some(chat.title.clone().into()), bounds: t, enabled: true, ..Default::default() });
             let s = style::label_fit(
-                window,
-                cx,
+                gr,
                 x,
                 head.origin.y + px(35.0),
                 Align::Left,
@@ -305,19 +293,19 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
                 if live { look.accent } else { style::disabled_text(&p) },
                 room,
             );
-            olo_ui::agent::record(window, cx, olo_ui::agent::Node::label(status, s));
+            olo_kit::agent::record(gr, olo_kit::agent::Node::label(status.clone(), s));
             if info_hot {
-                disc(window, info.center(), 14.0, ink.opacity(0.08));
+                disc(gr, info.center(), 14.0, ink.opacity(0.08));
             }
-            window.paint_sector(info.center(), px(8.0 - 0.7), px(8.0 + 0.7), 0.0, std::f32::consts::TAU, ink);
-            style::label(window, cx, info.center().x, info.center().y, Align::Center, "i", 11.0, style::ui_font(FontWeight::BOLD), ink);
-            olo_ui::agent::record(window, cx, olo_ui::agent::Node::button("Chat Info", info));
-            style::hline_above(window, head.origin.x, head.right(), head.bottom(), c(p.shadow).opacity(0.5));
+            gr.paint_sector(info.center(), px(8.0 - 0.7), px(8.0 + 0.7), 0.0, std::f32::consts::TAU, ink);
+            style::label(gr, info.center().x, info.center().y, Align::Center, "i", 11.0, style::ui_font(FontWeight::BOLD), ink);
+            olo_kit::agent::record(gr, olo_kit::agent::Node::button("Chat Info", info));
+            style::hline_above(gr, head.origin.x, head.right(), head.bottom(), c(p.shadow).opacity(0.5));
         }));
     }
     for (key, b) in [("conv-head", r(x0, y0, f32::from(info.origin.x) - 8.0 - x0, HEADER)), ("conv-info", info)] {
         let t = me.clone();
-        hits.push(crate::hit(&me, key, b).on_click(move |_, window, cx| t.update(cx, |tg, cx| tg.conv_act(Act::Info, window, cx))).into_any_element());
+        hits.push(crate::hit(&me, key, b).on_left_click(move |_, cx| t.update(cx, move |tg, cx| tg.conv_act(Act::Info, cx))));
     }
     let mut top = y0 + HEADER;
 
@@ -332,8 +320,8 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
         let bold = style::ui_font(FontWeight::BOLD);
         let mut chips = Vec::new();
         for (id, title, unread, color) in all {
-            let tw = f32::from(style::text_width(window, title.clone(), size_, normal.clone())) + 6.0;
-            let badge = if unread > 0 { style::pill_width(window, &unread.to_string(), size_, &bold) + 4.0 } else { 0.0 };
+            let tw = f32::from(style::text_width(title.clone(), size_, normal.clone())) + 6.0;
+            let badge = if unread > 0 { style::pill_width(&unread.to_string(), size_, &bold) + 4.0 } else { 0.0 };
             let cw = tw + badge + 26.0;
             if x + cw > x0 + w {
                 break;
@@ -341,18 +329,18 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
             let key = format!("topic:{}", id.unwrap_or(0));
             let b = r(x, top + 5.0, cw, 22.0);
             let t = me.clone();
-            hits.push(crate::hit(&me, &key, b).on_click(move |_, window, cx| t.update(cx, |tg, cx| tg.conv_act(Act::Topic(id), window, cx))).into_any_element());
+            hits.push(crate::hit(&me, &key, b).on_left_click(move |_, cx| t.update(cx, move |tg, cx| tg.conv_act(Act::Topic(id), cx))));
             chips.push((id, title, unread, color, b, tw, is_hot(&key)));
             x += cw + 4.0;
         }
         let accent = look.accent;
-        paint.push(Box::new(move |window, cx| {
-            let p = theme::palette(cx);
-            style::fill_rect(window, row, c(p.panel_background));
+        paint.push(Box::new(move |gr| {
+            let p = theme::palette();
+            style::fill_rect(gr, row, c(p.panel_background));
             let ink = c(p.panel_text);
-            for (id, title, unread, color, b, tw, hot) in chips {
+            for (id, title, unread, color, b, tw, hot) in chips.clone() {
                 let chosen = topic == id;
-                let b = style::snap(window, b);
+                let b = style::snap(gr, b);
                 let face = if chosen {
                     c(p.list_selected_background)
                 } else if hot {
@@ -360,22 +348,18 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
                 } else {
                     transparent_black()
                 };
-                window.paint_quad(olo_ui::gpui::fill(b, face).corner_radii(px(11.0)));
+                gr.paint_quad(olo_kit::fill(b, face).corner_radii(px(11.0)));
                 // The dot on the name's capitals, the count on its baseline.
-                let base = style::baseline_at(window, b.center().y, size_);
-                disc(window, point(b.origin.x + px(12.0), base - px(size_ * style::CAP_HEIGHT / 2.0)), 4.0, olo_ui::gpui::rgb(color).into());
+                let base = style::baseline_at(gr, b.center().y, size_);
+                disc(gr, point(b.origin.x + px(12.0), base - px(size_ * style::CAP_HEIGHT / 2.0)), 4.0, olo_kit::rgb(color).into());
                 let tink = if chosen { c(p.list_selected_item_text) } else { ink };
-                style::label_on_baseline(window, cx, b.origin.x + px(20.0), base, Align::Left, title.clone(), size_, style::ui_font(FontWeight::NORMAL), tink);
+                style::label_on_baseline(gr, b.origin.x + px(20.0), base, Align::Left, title.clone(), size_, style::ui_font(FontWeight::NORMAL), tink);
                 if unread > 0 {
-                    style::pill_on_baseline(window, cx, b.origin.x + px(20.0 + tw), base, &unread.to_string(), size_, style::ui_font(FontWeight::BOLD), accent, white());
+                    style::pill_on_baseline(gr, b.origin.x + px(20.0 + tw), base, &unread.to_string(), size_, style::ui_font(FontWeight::BOLD), accent, white());
                 }
-                olo_ui::agent::record(
-                    window,
-                    cx,
-                    olo_ui::agent::Node { role: "Tab", name: Some(title.into()), bounds: b, enabled: true, clickable: true, selected: Some(chosen), ..Default::default() },
-                );
+                olo_kit::agent::record(gr, olo_kit::agent::Node { role: "Tab", name: Some(title.into()), bounds: b, enabled: true, clickable: true, selected: Some(chosen), ..Default::default() });
             }
-            style::hline_above(window, row.origin.x, row.right(), row.bottom(), c(p.shadow).opacity(0.35));
+            style::hline_above(gr, row.origin.x, row.right(), row.bottom(), c(p.shadow).opacity(0.35));
         }));
         top += TOPICS;
     }
@@ -389,7 +373,7 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
     // width, scale, look or clock), each laid out once for each change to
     // it; a frame then does only what's near the view.
     let col = (w - 2.0 * MARGIN - SCROLL_BAR).max(200.0);
-    let scale = window.scale_factor();
+    let scale = cx.scale_factor();
     let theme_key = {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         (p.mode as u8, p.document_background, p.keyboard_navigation).hash(&mut h);
@@ -414,7 +398,7 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
         width: col.round() as u32,
     };
     if conv.plan.as_ref().is_none_or(|p| p.key != key || p.partial) {
-        conv.plan = Some(plan(thread, topic, conv.unread_from, &conv.revealed, &mut conv.layouts, &look, col, *h24, key, window));
+        conv.plan = Some(plan(thread, topic, conv.unread_from, &conv.revealed, &mut conv.layouts, &look, col, *h24, key));
     }
     let plan = conv.plan.as_ref().expect("a plan");
     let content = plan.content;
@@ -443,9 +427,15 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
         conv.at_bottom = false;
         conv.flash = Some((id, Instant::now()));
     }
-    let offset = offset.clamp(0.0, (content - view_h).max(0.0));
+    // (On a device pixel: what scrolls with it is drawn on them.)
+    let offset = ((offset.clamp(0.0, (content - view_h).max(0.0))) * scale).round() / scale;
     if (offset - now_offset).abs() > 0.5 {
-        conv.scroll.set_offset(point(px(0.0), px(-offset)));
+        conv.scroll.set_offset(cx, point(px(0.0), px(-offset)));
+        // (Its content may be taller than it was last laid out, a chat
+        // just opened most of all: there once it is.)
+        if (-f32::from(conv.scroll.offset().y) - offset).abs() > 0.5 {
+            conv.scroll.reveal_span(px(offset), px(offset + view_h));
+        }
     }
     conv.last = (content, offset, view_h, oldest);
     // Shorter than the view: the messages sit at its bottom.
@@ -494,7 +484,7 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
                 let sender_pic = if laid.avatar && msg.from.as_ref().is_some_and(|f| f.photo.is_some()) { msg.from.as_ref().and_then(|f| pics.get(&Pic::Avatar(f.id), backend)) } else { None };
                 let playing = player.as_ref().filter(|pl| pl.0 == msg.chat && pl.1 == msg.id).map(|pl| crate::played(&pl.2));
                 draws.push(Draw::Msg {
-                    m: Box::new(msg.clone()),
+                    m: Rc::new(msg.clone()),
                     place,
                     laid,
                     y: it.y,
@@ -509,7 +499,9 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
         }
     }
     stickers.painted(&animated);
-    let dropped = std::mem::take(&mut stickers.dropped);
+    // (Frames replaced since: the kit lets their textures go as their
+    // pictures do.)
+    stickers.dropped.clear();
     let due = stickers.take_due();
     let loaded = thread.is_some_and(|t| t.loaded);
     let empty = items.is_empty();
@@ -520,7 +512,7 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
     let at_bottom = conv.at_bottom;
     if partial {
         // The rest laid out next frame.
-        window.request_animation_frame();
+        tg.wake_in(Duration::from_millis(8), cx);
     }
     // A flash to put out, a voice message's progress to move on.
     if let Some((_, since)) = flashing {
@@ -534,66 +526,68 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
     }
     // Older pages, as the top comes near; read up to what's seen.
     if older {
-        tg.conv_act(Act::Older, window, cx);
+        tg.conv_act(Act::Older, cx);
     }
     if let Some(id) = seen_bottom {
-        tg.conv_act(Act::Read(id), window, cx);
+        tg.conv_act(Act::Read(id), cx);
     }
 
     let look2 = look.clone();
-    let messages = canvas(
-        move |b, window, _| window.insert_hitbox(b, HitboxBehavior::Normal),
-        move |b, hitbox: Hitbox, window, cx| {
-            // Stickers' frames replaced since: out of the atlas.
-            for img in dropped {
-                let _ = window.drop_image(img);
-            }
-            if hover_hit {
-                window.set_cursor_style(CursorStyle::PointingHand, &hitbox);
-            }
-            let mut out = painted.borrow_mut();
-            out.clear();
-            // It scrolls: on a grid of its own, not level with the chat
-            // list's.
-            olo_ui::review::own_grid(window, window.content_mask().bounds);
-            let origin = point(b.origin.x + px(MARGIN), b.origin.y + px(lift));
-            for d in draws {
-                match d {
-                    Draw::Day(t, y) => {
-                        let font = style::ui_font(FontWeight::BOLD);
-                        let tw = f32::from(style::text_width(window, t.clone(), style::SMALL_SIZE, font.clone())) + 20.0;
-                        let pill = style::snap(window, Bounds { origin: point(origin.x + px(col / 2.0 - tw / 2.0), origin.y + px(y + DAY / 2.0 - 10.0)), size: size(px(tw), px(20.0)) });
-                        window.paint_quad(olo_ui::gpui::fill(pill, look2.pill).corner_radii(px(10.0)));
-                        style::label(window, cx, pill.center().x, pill.center().y, Align::Center, t.clone(), style::SMALL_SIZE, font, look2.pill_text);
-                        crate::seen(window, cx, olo_ui::agent::Node::label(t, pill));
+    let messages = canvas(move |gr, b| {
+        if hover_hit {
+            gr.set_cursor_style(CursorStyle::PointingHand, b);
+        }
+        let mut out = painted.borrow_mut();
+        out.clear();
+        // It scrolls: on a grid of its own, not level with the chat
+        // list's.
+        olo_kit::review::own_grid(gr, gr.content_mask().bounds);
+        let origin = point(b.origin.x + px(MARGIN), b.origin.y + px(lift));
+        for d in &draws {
+            match d {
+                Draw::Day(t, y) => {
+                    let font = style::ui_font(FontWeight::BOLD);
+                    let tw = f32::from(style::text_width(t.clone(), style::SMALL_SIZE, font.clone())) + 20.0;
+                    let pill = style::snap(gr, Bounds { origin: point(origin.x + px(col / 2.0 - tw / 2.0), origin.y + px(*y + DAY / 2.0 - 10.0)), size: size(px(tw), px(20.0)) });
+                    gr.paint_quad(olo_kit::fill(pill, look2.pill).corner_radii(px(10.0)));
+                    style::label(gr, pill.center().x, pill.center().y, Align::Center, t.clone(), style::SMALL_SIZE, font, look2.pill_text);
+                    crate::seen(gr, olo_kit::agent::Node::label(t.clone(), pill));
+                }
+                Draw::Unread(y) => {
+                    let band = style::snap(gr, Bounds { origin: point(b.origin.x, origin.y + px(*y + 3.0)), size: size(b.size.width, px(DAY - 6.0)) });
+                    style::fill_rect(gr, band, look2.theirs.opacity(0.85));
+                    style::label(gr, origin.x + px(col / 2.0), band.center().y, Align::Center, "Unread Messages", style::SMALL_SIZE, style::ui_font(FontWeight::BOLD), look2.link);
+                }
+                Draw::Msg { m, place, laid, y, picture, sender_pic, progress, read, playing, selected } => {
+                    let o = point(origin.x, origin.y + px(*y));
+                    let pp = bubble::Paint {
+                        look: &look2,
+                        place: *place,
+                        picture: picture.clone(),
+                        sender_pic: sender_pic.clone(),
+                        progress: *progress,
+                        read: *read,
+                        playing: *playing,
+                        selected: *selected,
+                    };
+                    bubble::paint(gr, o, m, laid, &pp);
+                    // The time is a stamp in the balloon's corner, set
+                    // on the text's baseline; a sender's picture is art.
+                    let (g, mp) = &laid.meta;
+                    olo_kit::review::own_grid(gr, Bounds { origin: point(o.x + px(mp.0 - 1.0), o.y + px(mp.1 - 1.0)), size: size(px(g.w + 2.0), px(g.h + 2.0)) });
+                    if laid.avatar {
+                        olo_kit::review::own_grid(gr, Bounds { origin: point(o.x, o.y + px(laid.bubble.bottom() - bubble::AVATAR)), size: size(px(bubble::AVATAR), px(bubble::AVATAR)) });
                     }
-                    Draw::Unread(y) => {
-                        let band = style::snap(window, Bounds { origin: point(b.origin.x, origin.y + px(y + 3.0)), size: size(b.size.width, px(DAY - 6.0)) });
-                        style::fill_rect(window, band, look2.theirs.opacity(0.85));
-                        style::label(window, cx, origin.x + px(col / 2.0), band.center().y, Align::Center, "Unread Messages", style::SMALL_SIZE, style::ui_font(FontWeight::BOLD), look2.link);
-                    }
-                    Draw::Msg { m, place, laid, y, picture, sender_pic, progress, read, playing, selected } => {
-                        let o = point(origin.x, origin.y + px(y));
-                        let pp = bubble::Paint { look: &look2, place, picture, sender_pic, progress, read, playing, selected };
-                        bubble::paint(window, cx, o, &m, &laid, &pp);
-                        // The time is a stamp in the balloon's corner, set
-                        // on the text's baseline; a sender's picture is art.
-                        let (g, mp) = &laid.meta;
-                        olo_ui::review::own_grid(window, Bounds { origin: point(o.x + px(mp.0 - 1.0), o.y + px(mp.1 - 1.0)), size: size(px(g.w + 2.0), px(g.h + 2.0)) });
-                        if laid.avatar {
-                            olo_ui::review::own_grid(window, Bounds { origin: point(o.x, o.y + px(laid.bubble.bottom() - bubble::AVATAR)), size: size(px(bubble::AVATAR), px(bubble::AVATAR)) });
-                        }
-                        let whole = Bounds::from_corners(point(o.x + px(laid.bubble.x), o.y), point(o.x + px(laid.bubble.right()), o.y + px(laid.height)));
-                        // For agents: each message as a list item.
-                        let who = if m.out { "You".to_owned() } else { m.from.as_ref().map_or_else(String::new, |f| f.name.clone()) };
-                        let said = if who.is_empty() { m.summary() } else { format!("{who}: {}", m.summary()) };
-                        crate::seen(window, cx, olo_ui::agent::Node { role: "ListItem", name: Some(said.into()), bounds: whole, enabled: true, clickable: true, ..Default::default() });
-                        out.push(Painted { whole, origin: o, m: *m, laid });
-                    }
+                    let whole = Bounds::from_corners(point(o.x + px(laid.bubble.x), o.y), point(o.x + px(laid.bubble.right()), o.y + px(laid.height)));
+                    // For agents: each message as a list item.
+                    let who = if m.out { "You".to_owned() } else { m.from.as_ref().map_or_else(String::new, |f| f.name.clone()) };
+                    let said = if who.is_empty() { m.summary() } else { format!("{who}: {}", m.summary()) };
+                    crate::seen(gr, olo_kit::agent::Node { role: "ListItem", name: Some(said.into()), bounds: whole, enabled: true, clickable: true, ..Default::default() });
+                    out.push(Painted { whole, origin: o, m: m.clone(), laid: laid.clone() });
                 }
             }
-        },
-    )
+        }
+    })
     .w_full()
     .h(px(content.max(view_h)));
     let (t_move, t_click, t_menu, t_out) = (me.clone(), me.clone(), me.clone(), me.clone());
@@ -602,83 +596,77 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
         .w_full()
         .h(px(content.max(view_h)))
         .child(messages)
-        // (What's under the pointer redraws this pane, not the window.)
-        .on_mouse_move(move |e: &MouseMoveEvent, _, cx| {
+        .on_mouse_move(move |e: &MouseMoveEvent, cx| {
             // (Only the pointer's shape shows it: drawn again when that
             // changes, over a link or off it.)
-            let changed = t_move.update(cx, |tg, _| {
-                let pane = tg.pane(crate::Kind::Conv);
-                let c = tg.conv.as_mut()?;
-                let now = c.hit_at(e.position);
+            let at = e.position;
+            t_move.update(cx, move |tg, cx| {
+                let Some(c) = tg.conv.as_mut() else { return };
+                let now = c.hit_at(at);
                 let pointing = |h: &Option<(MsgId, Option<Hit>)>| h.as_ref().is_some_and(|h| h.1.is_some());
                 // (Onto an animated sticker or off one: it plays or stops.)
                 let sticker = |h: &Option<(MsgId, Option<Hit>)>| h.as_ref().is_some_and(|h| tg.stickers.is_shown((c.chat, h.0)));
                 let moved = now.as_ref().map(|h| h.0) != c.hover.as_ref().map(|h| h.0);
                 let redraw = pointing(&now) != pointing(&c.hover) || moved && (sticker(&now) || sticker(&c.hover));
                 c.hover = now;
-                redraw.then_some(pane)
-            });
-            if let Some(pane) = changed.flatten() {
-                cx.notify(pane);
-            }
-        })
-        .on_hover(move |on: &bool, _, cx| {
-            if !*on {
-                let changed = t_out.update(cx, |tg, _| tg.conv.as_mut().and_then(|c| c.hover.take()).filter(|h| h.1.is_some()).and(tg.pane(crate::Kind::Conv)));
-                if let Some(pane) = changed {
-                    cx.notify(pane);
+                if redraw {
+                    cx.invalidate();
                 }
+            });
+        })
+        .on_hover(move |on: &bool, cx| {
+            if !*on {
+                t_out.update(cx, move |tg, cx| {
+                    if tg.conv.as_mut().and_then(|c| c.hover.take()).is_some_and(|h| h.1.is_some()) {
+                        cx.invalidate();
+                    }
+                });
             }
         })
-        .on_click(move |e: &ClickEvent, window, cx| {
+        .on_left_click(move |e: &ClickEvent, cx| {
             let ClickEvent::Mouse(mc) = e else { return };
-            t_click.update(cx, |tg, cx| {
-                let Some((id, h)) = tg.conv.as_ref().and_then(|c| c.hit_at(mc.up.position)) else { return };
-                if mc.down.click_count >= 2 {
-                    tg.conv_act(Act::Message(id, "reply".into()), window, cx);
+            let (at, clicks) = (mc.up.position, mc.down.click_count);
+            t_click.update(cx, move |tg, cx| {
+                let Some((id, h)) = tg.conv.as_ref().and_then(|c| c.hit_at(at)) else { return };
+                if clicks >= 2 {
+                    tg.conv_act(Act::Message(id, "reply".into()), cx);
                 } else if let Some(h) = h {
-                    tg.conv_act(Act::Hit(id, h), window, cx);
+                    tg.conv_act(Act::Hit(id, h), cx);
                 }
             })
         })
-        .on_mouse_down(MouseButton::Right, move |e: &MouseDownEvent, window, cx| {
-            let menu = t_menu.update(cx, |tg, _| {
-                let c = tg.conv.as_ref()?;
-                let (id, _) = c.hit_at(e.position)?;
-                let msg = tg.store.threads.get(&(c.chat, c.topic)).and_then(|t| t.msgs.get(&id))?;
+        .on_mouse_down(MouseButton::Right, move |e: &MouseDownEvent, cx| {
+            let at = e.position;
+            t_menu.update(cx, move |tg, cx| {
+                let Some(c) = tg.conv.as_ref() else { return };
+                let Some((id, _)) = c.hit_at(at) else { return };
+                let Some(msg) = tg.store.threads.get(&(c.chat, c.topic)).and_then(|t| t.msgs.get(&id)) else { return };
                 let chat = tg.store.chats.get(&c.chat).cloned().unwrap_or_default();
-                Some((id, message_menu(msg, &chat)))
+                let (menu, to) = (message_menu(msg, &chat), cx.view_ref());
+                olo_kit::menu::context_menu(cx, menu, at, move |cmd, cx| {
+                    let cmd = cmd.to_owned();
+                    to.update(cx, move |tg, cx| tg.conv_act(Act::Message(id, cmd), cx))
+                });
             });
-            if let Some((id, menu)) = menu {
-                let to = t_menu.clone();
-                olo_ui::menu::context_menu(window, cx, menu, e.position, move |cmd, window, cx| to.update(cx, |tg, cx| tg.conv_act(Act::Message(id, cmd.to_owned()), window, cx)));
-            }
         });
     let conv = tg.conv.as_ref().expect("a conversation");
-    let list_el = div()
-        .absolute()
-        .left(list.origin.x)
-        .top(list.origin.y)
-        .w(list.size.width)
-        .h(list.size.height)
-        .child(ScrollView::new("conv-scroll", &conv.scroll).border(false).background(rgba(look.ground)).auto_hide(true).child(scroller));
-    let mut overlay: Vec<AnyElement> = Vec::new();
+    let list_el =
+        div().absolute().left(list.origin.x).top(list.origin.y).w(list.size.width).h(list.size.height).child(
+            ScrollView::new(&conv.scroll).border(false).background(rgba(look.ground)).auto_hide(true).on_scroll(cx.listener(|_: &mut Tg, _: &Point<Pixels>, cx| cx.invalidate())).child(scroller),
+        );
+    let mut overlay: Vec<Element> = Vec::new();
     if !loaded || empty {
         let (text, dim) = (if !loaded { "Loading messages…" } else { "No messages here yet." }, look.dim);
         overlay.push(
-            canvas(
-                |_, _, _| {},
-                move |b, _, window, cx| {
-                    let at = style::label(window, cx, b.center().x, b.center().y, Align::Center, text, style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), dim);
-                    olo_ui::agent::record(window, cx, olo_ui::agent::Node::label(text, at));
-                },
-            )
+            canvas(move |gr, b| {
+                let at = style::label(gr, b.center().x, b.center().y, Align::Center, text, style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), dim);
+                olo_kit::agent::record(gr, olo_kit::agent::Node::label(text, at));
+            })
             .absolute()
             .left(list.origin.x)
             .top(list.origin.y)
             .w(list.size.width)
-            .h(list.size.height)
-            .into_any_element(),
+            .h(list.size.height),
         );
     }
     // Down to the newest.
@@ -686,41 +674,30 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
         let b = r(f32::from(list.right()) - 34.0 - 20.0, f32::from(list.bottom()) - 30.0 - 20.0, 40.0, 40.0);
         let (look, hot_b, unread) = (look.clone(), is_hot("to-bottom"), chat.unread);
         overlay.push(
-            canvas(
-                |_, _, _| {},
-                move |_, _, window, cx| {
-                    let cc = b.center();
-                    disc(window, point(cc.x, cc.y + px(1.0)), 20.0, hsla(0.0, 0.0, 0.0, 30.0 / 255.0));
-                    disc(window, cc, 20.0, if hot_b { bubble::blend(look.theirs, look.text, 0.06) } else { look.theirs });
-                    let hair = style::hairline(window);
-                    window.paint_sector(cc, px(20.0) - hair, px(20.0), 0.0, std::f32::consts::TAU, look.theirs_edge);
-                    window.paint_segment(point(cc.x - px(6.0), cc.y - px(3.0)), point(cc.x, cc.y + px(3.0)), px(1.8), true, look.dim);
-                    window.paint_segment(point(cc.x, cc.y + px(3.0)), point(cc.x + px(6.0), cc.y - px(3.0)), px(1.8), true, look.dim);
-                    if unread > 0 {
-                        style::pill(window, cx, cc.x - px(10.0), b.origin.y - px(2.0), &unread.to_string(), 9.5, style::ui_font(FontWeight::BOLD), look.accent, white());
-                    }
-                    olo_ui::agent::record(window, cx, olo_ui::agent::Node::button("Scroll to Newest", b));
-                },
-            )
+            canvas(move |gr, _| {
+                let cc = b.center();
+                disc(gr, point(cc.x, cc.y + px(1.0)), 20.0, hsla(0.0, 0.0, 0.0, 30.0 / 255.0));
+                disc(gr, cc, 20.0, if hot_b { bubble::blend(look.theirs, look.text, 0.06) } else { look.theirs });
+                let hair = style::hairline(gr);
+                gr.paint_sector(cc, px(20.0) - hair, px(20.0), 0.0, std::f32::consts::TAU, look.theirs_edge);
+                gr.paint_segment(point(cc.x - px(6.0), cc.y - px(3.0)), point(cc.x, cc.y + px(3.0)), px(1.8), true, look.dim);
+                gr.paint_segment(point(cc.x, cc.y + px(3.0)), point(cc.x + px(6.0), cc.y - px(3.0)), px(1.8), true, look.dim);
+                if unread > 0 {
+                    style::pill(gr, cc.x - px(10.0), b.origin.y - px(2.0), &unread.to_string(), 9.5, style::ui_font(FontWeight::BOLD), look.accent, white());
+                }
+                olo_kit::agent::record(gr, olo_kit::agent::Node::button("Scroll to Newest", b));
+            })
             .absolute()
             .left(b.origin.x)
             .top(b.origin.y)
             .w(b.size.width)
-            .h(b.size.height)
-            .into_any_element(),
+            .h(b.size.height),
         );
         let t = me.clone();
-        overlay.push(crate::hit(&me, "to-bottom", b).occlude().on_click(move |_, window, cx| t.update(cx, |tg, cx| tg.conv_act(Act::Bottom, window, cx))).into_any_element());
+        overlay.push(crate::hit(&me, "to-bottom", b).occlude().on_left_click(move |_, cx| t.update(cx, move |tg, cx| tg.conv_act(Act::Bottom, cx))));
     }
 
-    div()
-        .absolute()
-        .inset_0()
-        .child(canvas(|_, _, _| {}, move |_, _, window, cx| paint.into_iter().for_each(|f| f(window, cx))).absolute().inset_0())
-        .child(list_el)
-        .children(hits)
-        .children(overlay)
-        .into_any_element()
+    div().absolute().inset_0().child(canvas(move |gr, _| paint.iter().for_each(|f| f(gr))).absolute().inset_0()).child(list_el).children(hits).children(overlay)
 }
 
 /// The conversation's entries in order with day headings and the unread
@@ -737,7 +714,6 @@ fn plan(
     col: f32,
     h24: bool,
     key: PlanKey,
-    window: &mut Window,
 ) -> Plan {
     let mut entries: Vec<(What, Option<&Message>)> = Vec::new();
     if let Some(t) = thread {
@@ -779,7 +755,7 @@ fn plan(
             Some((k, l)) if *k == d => l.height,
             _ if Instant::now() < until => {
                 let name = m.from.as_ref().map(|f| f.name.clone());
-                let laid = bubble::lay(window, m, *place, look, col, &time, name.as_deref(), shown);
+                let laid = bubble::lay(m, *place, look, col, &time, name.as_deref(), shown);
                 let h = laid.height;
                 layouts.laid.insert(*key, (d, Rc::new(laid)));
                 h
@@ -823,7 +799,7 @@ fn plan(
     Plan { key, items, content: y + MARGIN - RUN_GAP, oldest: thread.and_then(|t| t.oldest()), partial }
 }
 
-fn rgba(h: Hsla) -> olo_ui::palette::Rgba {
+fn rgba(h: Hsla) -> olo_kit::palette::Rgba {
     let r = h.to_rgb();
     [(r.r * 255.0).round() as u8, (r.g * 255.0).round() as u8, (r.b * 255.0).round() as u8, (r.a * 255.0).round() as u8]
 }
@@ -873,11 +849,11 @@ fn message_menu(m: &Message, chat: &olo_tg::Chat) -> Menu {
 /// The composer's measure for a conversation `w` wide: the field's
 /// height (its lines, up to eight), the whole composer's, and what's
 /// being answered or edited.
-pub fn composer_size(tg: &Tg, w: f32, window: &mut Window, cx: &App) -> (f32, f32, Option<Message>) {
+pub fn composer_size(tg: &Tg, w: f32, cx: &Cx<Tg>) -> (f32, f32, Option<Message>) {
     let Some(conv) = tg.conv.as_ref() else { return (0.0, 0.0, None) };
     let field_w = (w - 2.0 * m::SPACING - 36.0 - 44.0 - 28.0).max(80.0);
-    let lines = conv.field.read(cx).rows_at(window, px(field_w)).min(8);
-    let lh = f32::from(TextField::line_height_for(window, bubble::TEXT));
+    let lines = tg.field.read(cx).rows_at(px(field_w)).min(8);
+    let lh = f32::from(TextField::line_height_for(cx.scale_factor(), bubble::TEXT));
     let field_h = (lines as f32 * lh + 16.0).max(36.0);
     let quoted = conv.edit.or(conv.reply).and_then(|id| tg.store.threads.get(&(conv.chat, conv.topic)).and_then(|t| t.msgs.get(&id)).cloned());
     let composer_h = field_h + if quoted.is_some() { 42.0 } else { 0.0 } + if conv.files.is_empty() { 0.0 } else { 32.0 } + 2.0 * m::SPACING;
@@ -886,22 +862,22 @@ pub fn composer_size(tg: &Tg, w: f32, window: &mut Window, cx: &App) -> (f32, f3
 
 /// The field to write in, at `rect`: what's being answered or edited,
 /// the files going with it, the paperclip, the field, send.
-pub fn composer(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut Context<Tg>) -> AnyElement {
-    let me = cx.entity();
+pub fn composer(tg: &mut Tg, rect: Bounds<Pixels>, cx: &mut Cx<Tg>) -> Element {
+    let me = cx.view_ref();
     let me = &me;
-    let p = theme::palette(cx);
+    let p = theme::palette();
     let look = Look::of(&p);
     let look = &look;
     let chat = tg.conv.as_ref().and_then(|c| tg.store.chats.get(&c.chat)).cloned().unwrap_or_default();
-    let (field_h, _, quoted) = composer_size(tg, f32::from(rect.size.width), window, cx);
+    let (field_h, _, quoted) = composer_size(tg, f32::from(rect.size.width), cx);
     let hot = tg.hot.clone();
     let is_hot = move |k: &str| hot.as_ref().is_some_and(|h| h.as_ref() == k);
     let mut paint: Paints = Vec::new();
-    let mut hits: Vec<AnyElement> = Vec::new();
-    let mut overlay: Vec<AnyElement> = Vec::new();
+    let mut hits: Vec<Element> = Vec::new();
+    let mut overlay: Vec<Element> = Vec::new();
     // A voice message being recorded: held or not, its time and levels.
     let rec = tg.voice.as_ref().map(|v| (v.held, v.seconds, v.levels.iter().copied().collect::<Vec<f32>>()));
-    let Some(conv) = tg.conv.as_mut() else { return div().into_any_element() };
+    let Some(conv) = tg.conv.as_mut() else { return div() };
     let (x0, y0, w, h) = (f32::from(rect.origin.x), f32::from(rect.origin.y), f32::from(rect.size.width), f32::from(rect.size.height));
     let mut y = y0 + m::SPACING;
     let editing = conv.edit.is_some();
@@ -916,10 +892,10 @@ pub fn composer(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut
         let mut x = x0 + m::SPACING + 36.0;
         let font = style::ui_font(FontWeight::NORMAL);
         for f in &conv.files {
-            let whole: olo_ui::gpui::SharedString = f.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned()).into();
+            let whole: olo_kit::SharedString = f.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned()).into();
             // Cut short to 200 pt once, here; the chip fits what's left.
-            let name = style::fit(window, whole.clone(), style::DETAIL_SIZE, &font, px(200.0));
-            let tw = f32::from(style::text_width(window, name.clone(), style::DETAIL_SIZE, font.clone())).ceil();
+            let name = style::fit_with(&olo_kit::thread_text_system(), whole.clone(), style::DETAIL_SIZE, &font, px(200.0));
+            let tw = f32::from(style::text_width(name.clone(), style::DETAIL_SIZE, font.clone())).ceil();
             let chip = r(x, y, tw + 34.0, 24.0);
             x += tw + 34.0 + 6.0;
             let cut = (name != whole).then(|| (whole.clone(), r(f32::from(chip.origin.x) + 10.0, y, tw, 24.0)));
@@ -931,7 +907,7 @@ pub fn composer(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut
     let send = r(x0 + w - m::SPACING - 36.0, y0 + h - m::SPACING - 36.0, 36.0, 36.0);
     let well = Bounds::from_corners(point(attach.right() + px(4.0), px(y)), point(send.origin.x - px(8.0), px(y + field_h)));
     let inner = Bounds::from_corners(point(well.origin.x + px(14.0), well.origin.y + px(8.0)), point(well.right() - px(14.0), well.bottom() - px(8.0)));
-    let can_send = !conv.text(cx).trim().is_empty() || !conv.files.is_empty();
+    let can_send = !tg.field.read(cx).text().trim().is_empty() || !conv.files.is_empty();
     // Nothing to send: the button records a voice message instead.
     let mic = rec.is_none() && !can_send && !editing;
     let hint = match chat.kind {
@@ -941,38 +917,35 @@ pub fn composer(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut
         _ if editing => "Edit message",
         _ => "Message",
     };
-    conv.field.update(cx, |f, cx| f.set_hint(hint, cx));
+    tg.field.update(cx, |f, cx| f.set_hint(hint, cx));
     {
         let look = look.clone();
         let (attach_hot, send_hot, x_hot) = (is_hot("attach"), is_hot("send"), is_hot("cancel-reply"));
         let rec = rec.clone();
         let file_hots: Vec<bool> = (0..files.len()).map(|i| is_hot(&format!("unstage:{i}"))).collect();
         let (quote, files) = (quote.clone(), files.clone());
-        paint.push(Box::new(move |window, cx| {
-            let p = theme::palette(cx);
-            style::fill_rect(window, rect, c(p.panel_background));
-            style::hline(window, rect.origin.x, rect.right(), rect.origin.y, c(p.shadow).opacity(0.5));
-            if let Some((bar, x, q)) = quote {
+        paint.push(Box::new(move |gr| {
+            let p = theme::palette();
+            style::fill_rect(gr, rect, c(p.panel_background));
+            style::hline(gr, rect.origin.x, rect.right(), rect.origin.y, c(p.shadow).opacity(0.5));
+            if let Some((bar, x, q)) = quote.clone() {
                 let accent = look.accent;
-                window.paint_quad(
-                    olo_ui::gpui::fill(style::snap(window, Bounds { origin: point(bar.origin.x + px(28.0), bar.origin.y + px(2.0)), size: size(px(2.5), px(30.0)) }), accent).corner_radii(px(1.0)),
-                );
+                gr.paint_quad(olo_kit::fill(style::snap(gr, Bounds { origin: point(bar.origin.x + px(28.0), bar.origin.y + px(2.0)), size: size(px(2.5), px(30.0)) }), accent).corner_radii(px(1.0)));
                 // A curved arrow (reply) or a pencil (edit).
                 let ic = point(bar.origin.x + px(12.0), bar.center().y);
                 let at = |dx: f32, dy: f32| point(ic.x + px(dx), ic.y + px(dy));
                 if editing {
-                    window.paint_segment(at(-5.0, 5.0), at(4.0, -4.0), px(3.0), false, accent);
-                    window.paint_segment(at(-6.0, 6.0), at(-4.5, 4.5), px(1.6), false, accent);
+                    gr.paint_segment(at(-5.0, 5.0), at(4.0, -4.0), px(3.0), false, accent);
+                    gr.paint_segment(at(-6.0, 6.0), at(-4.5, 4.5), px(1.6), false, accent);
                 } else {
-                    window.paint_segment(at(-6.0, 0.0), at(-1.0, -5.0), px(1.6), true, accent);
-                    window.paint_segment(at(-6.0, 0.0), at(-1.0, 5.0), px(1.6), true, accent);
-                    window.paint_segment(at(-6.0, 0.0), at(6.0, 0.0), px(1.6), true, accent);
+                    gr.paint_segment(at(-6.0, 0.0), at(-1.0, -5.0), px(1.6), true, accent);
+                    gr.paint_segment(at(-6.0, 0.0), at(-1.0, 5.0), px(1.6), true, accent);
+                    gr.paint_segment(at(-6.0, 0.0), at(6.0, 0.0), px(1.6), true, accent);
                 }
                 let head = if editing { "Edit Message".to_owned() } else { format!("Reply to {}", q.from.as_ref().map_or("message", |f| f.name.as_str())) };
-                style::label(window, cx, bar.origin.x + px(38.0), bar.origin.y + px(10.0), Align::Left, head, style::SMALL_SIZE + 0.5, style::ui_font(FontWeight::BOLD), accent);
+                style::label(gr, bar.origin.x + px(38.0), bar.origin.y + px(10.0), Align::Left, head, style::SMALL_SIZE + 0.5, style::ui_font(FontWeight::BOLD), accent);
                 style::label_fit(
-                    window,
-                    cx,
+                    gr,
                     bar.origin.x + px(38.0),
                     bar.origin.y + px(25.0),
                     Align::Left,
@@ -982,63 +955,55 @@ pub fn composer(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut
                     c(p.panel_text),
                     bar.size.width - px(80.0),
                 );
-                close_mark(window, x.center(), if x_hot { c(p.panel_text) } else { style::disabled_text(&p) });
-                olo_ui::agent::record(window, cx, olo_ui::agent::Node::button("Cancel Reply", x));
+                close_mark(gr, x.center(), if x_hot { c(p.panel_text) } else { style::disabled_text(&p) });
+                olo_kit::agent::record(gr, olo_kit::agent::Node::button("Cancel Reply", x));
             }
-            for ((chip, xr, name, whole, cut), hot) in files.into_iter().zip(file_hots) {
-                let chip = style::snap(window, chip);
-                window.paint_quad(olo_ui::gpui::fill(chip, look.accent.opacity(0.15)).corner_radii(px(12.0)));
-                style::label(window, cx, chip.origin.x + px(10.0), chip.center().y, Align::Left, name, style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), c(p.panel_text));
+            for ((chip, xr, name, whole, cut), hot) in files.clone().into_iter().zip(file_hots.clone()) {
+                let chip = style::snap(gr, chip);
+                gr.paint_quad(olo_kit::fill(chip, look.accent.opacity(0.15)).corner_radii(px(12.0)));
+                style::label(gr, chip.origin.x + px(10.0), chip.center().y, Align::Left, name, style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), c(p.panel_text));
                 if let Some((whole, at)) = cut {
-                    olo_ui::cut::note(window, whole, at);
+                    olo_kit::cut::note(gr, whole, at);
                 }
-                close_mark(window, xr.center(), if hot { c(p.panel_text) } else { style::disabled_text(&p) });
-                olo_ui::agent::record(window, cx, olo_ui::agent::Node::button(format!("Remove {whole}"), xr));
+                close_mark(gr, xr.center(), if hot { c(p.panel_text) } else { style::disabled_text(&p) });
+                olo_kit::agent::record(gr, olo_kit::agent::Node::button(format!("Remove {whole}"), xr));
             }
             if rec.is_some() {
-                close_mark(window, attach.center(), if attach_hot { c(p.panel_text) } else { style::disabled_text(&p) });
-                olo_ui::agent::record(window, cx, olo_ui::agent::Node::button("Cancel Recording", attach));
+                close_mark(gr, attach.center(), if attach_hot { c(p.panel_text) } else { style::disabled_text(&p) });
+                olo_kit::agent::record(gr, olo_kit::agent::Node::button("Cancel Recording", attach));
             } else {
-                paperclip(window, attach.center(), if attach_hot { look.accent } else { style::disabled_text(&p) });
-                olo_ui::agent::record(window, cx, olo_ui::agent::Node::button("Attach Files", attach));
+                paperclip(gr, attach.center(), if attach_hot { look.accent } else { style::disabled_text(&p) });
+                olo_kit::agent::record(gr, olo_kit::agent::Node::button("Attach Files", attach));
             }
-            let well = style::snap(window, well);
-            window.paint_quad(olo_ui::gpui::quad(
-                well,
-                px(18.0),
-                c(p.document_background),
-                style::hairline(window),
-                c(olo_ui::palette::mix(p.panel_background, p.panel_text, 0.22)),
-                olo_ui::gpui::BorderStyle::Solid,
-            ));
+            let well = style::snap(gr, well);
+            gr.paint_quad(olo_kit::quad(well, px(18.0), c(p.document_background), style::hairline(gr), c(olo_kit::palette::mix(p.panel_background, p.panel_text, 0.22)), olo_kit::BorderStyle::Solid));
             match &rec {
                 // Held: red while it records, paler away from it (let go
                 // there, it's thrown away).
                 Some((true, ..)) => {
                     let red = c(p.failure);
-                    disc(window, send.center(), 17.0, if send_hot { red } else { red.opacity(0.45) });
-                    microphone(window, send.center(), white());
-                    olo_ui::agent::record(window, cx, olo_ui::agent::Node::button("Send Voice Message", send));
+                    disc(gr, send.center(), 17.0, if send_hot { red } else { red.opacity(0.45) });
+                    microphone(gr, send.center(), white());
+                    olo_kit::agent::record(gr, olo_kit::agent::Node::button("Send Voice Message", send));
                 }
                 Some((false, ..)) => {
-                    disc(window, send.center(), 17.0, if send_hot { bubble::blend(look.accent, black(), 0.1) } else { look.accent });
-                    plane(window, send.center(), white());
-                    olo_ui::agent::record(window, cx, olo_ui::agent::Node::button("Send Voice Message", send));
+                    disc(gr, send.center(), 17.0, if send_hot { bubble::blend(look.accent, black(), 0.1) } else { look.accent });
+                    plane(gr, send.center(), white());
+                    olo_kit::agent::record(gr, olo_kit::agent::Node::button("Send Voice Message", send));
                 }
                 None if mic => {
-                    disc(window, send.center(), 17.0, if send_hot { bubble::blend(look.accent, black(), 0.1) } else { look.accent });
-                    microphone(window, send.center(), white());
-                    olo_ui::agent::record(window, cx, olo_ui::agent::Node::button("Record Voice Message", send));
+                    disc(gr, send.center(), 17.0, if send_hot { bubble::blend(look.accent, black(), 0.1) } else { look.accent });
+                    microphone(gr, send.center(), white());
+                    olo_kit::agent::record(gr, olo_kit::agent::Node::button("Record Voice Message", send));
                 }
                 None => {
                     let face = if can_send { look.accent } else { look.accent.opacity(0.35) };
                     let face = if send_hot && can_send { bubble::blend(face, black(), 0.1) } else { face };
-                    disc(window, send.center(), 17.0, face);
-                    plane(window, send.center(), white());
-                    olo_ui::agent::record(
-                        window,
-                        cx,
-                        olo_ui::agent::Node { role: "Button", name: Some(if editing { "Save" } else { "Send" }.into()), bounds: send, enabled: can_send, clickable: can_send, ..Default::default() },
+                    disc(gr, send.center(), 17.0, face);
+                    plane(gr, send.center(), white());
+                    olo_kit::agent::record(
+                        gr,
+                        olo_kit::agent::Node { role: "Button", name: Some(if editing { "Save" } else { "Send" }.into()), bounds: send, enabled: can_send, clickable: can_send, ..Default::default() },
                     );
                 }
             }
@@ -1046,17 +1011,17 @@ pub fn composer(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut
     }
     if let Some((_, x, _)) = &quote {
         let t = me.clone();
-        hits.push(crate::hit(me, "cancel-reply", *x).on_click(move |_, window, cx| t.update(cx, |tg, cx| tg.conv_act(Act::CancelReply, window, cx))).into_any_element());
+        hits.push(crate::hit(me, "cancel-reply", *x).on_left_click(move |_, cx| t.update(cx, move |tg, cx| tg.conv_act(Act::CancelReply, cx))));
     }
     for (i, (_, xr, ..)) in files.iter().enumerate() {
         let t = me.clone();
-        hits.push(crate::hit(me, &format!("unstage:{i}"), *xr).on_click(move |_, window, cx| t.update(cx, |tg, cx| tg.conv_act(Act::Unstage(i), window, cx))).into_any_element());
+        hits.push(crate::hit(me, &format!("unstage:{i}"), *xr).on_left_click(move |_, cx| t.update(cx, move |tg, cx| tg.conv_act(Act::Unstage(i), cx))));
     }
     let t = me.clone();
     if rec.is_some() {
-        hits.push(crate::hit(me, "attach", attach).on_click(move |_, _, cx| t.update(cx, |tg, cx| tg.voice_end(false, cx))).into_any_element());
+        hits.push(crate::hit(me, "attach", attach).on_left_click(move |_, cx| t.update(cx, move |tg, cx| tg.voice_end(false, cx))));
     } else {
-        hits.push(crate::hit(me, "attach", attach).on_click(move |_, window, cx| t.update(cx, |tg, cx| tg.conv_act(Act::Attach, window, cx))).into_any_element());
+        hits.push(crate::hit(me, "attach", attach).on_left_click(move |_, cx| t.update(cx, move |tg, cx| tg.conv_act(Act::Attach, cx))));
     }
     let t = me.clone();
     let send_hit = match &rec {
@@ -1064,30 +1029,28 @@ pub fn composer(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut
         Some((true, ..)) => {
             let out = me.clone();
             crate::hit(me, "send", send)
-                .on_mouse_up(MouseButton::Left, move |_, _, cx| t.update(cx, |tg, cx| tg.voice_release(true, cx)))
-                .on_mouse_up_out(MouseButton::Left, move |_, _, cx| out.update(cx, |tg, cx| tg.voice_release(false, cx)))
+                .on_mouse_up(MouseButton::Left, move |_, cx| t.update(cx, move |tg, cx| tg.voice_release(true, cx)))
+                .on_mouse_up_out(MouseButton::Left, move |_, cx| out.update(cx, move |tg, cx| tg.voice_release(false, cx)))
         }
-        Some((false, ..)) => crate::hit(me, "send", send).on_click(move |_, _, cx| t.update(cx, |tg, cx| tg.voice_end(true, cx))),
+        Some((false, ..)) => crate::hit(me, "send", send).on_left_click(move |_, cx| t.update(cx, move |tg, cx| tg.voice_end(true, cx))),
         // Pressed, it records; let go soon (a click), it goes on.
-        None if mic => crate::hit(me, "send", send).on_mouse_down(MouseButton::Left, move |_, _, cx| {
+        None if mic => crate::hit(me, "send", send).on_mouse_down(MouseButton::Left, move |_, cx| {
             cx.stop_propagation();
-            t.update(cx, |tg, cx| tg.voice_start(true, cx))
+            t.update(cx, move |tg, cx| tg.voice_start(true, cx))
         }),
-        None => crate::hit(me, "send", send).on_click(move |_, window, cx| {
-            t.update(cx, |tg, cx| {
-                if tg.conv.as_ref().is_some_and(|c| !c.text(cx).trim().is_empty() || !c.files.is_empty()) {
-                    tg.conv_act(Act::Send, window, cx);
+        None => crate::hit(me, "send", send).on_left_click(move |_, cx| {
+            t.update(cx, move |tg, cx| {
+                if tg.conv.as_ref().is_some_and(|c| !tg.field.read(cx).text().trim().is_empty() || !c.files.is_empty()) {
+                    tg.conv_act(Act::Send, cx);
                 }
             })
         }),
     };
-    hits.push(send_hit.into_any_element());
+    hits.push(send_hit);
     // The field itself; Escape puts a reply or edit away.
-    let field = conv.field.clone();
     if std::mem::take(&mut conv.focus_field) {
-        field.read(cx).focus(window);
+        tg.field.focus(cx);
     }
-    let t = me.clone();
     overlay.push(
         div()
             .absolute()
@@ -1095,68 +1058,51 @@ pub fn composer(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut
             .top(inner.origin.y)
             .w(inner.size.width)
             .h(inner.size.height)
-            .on_key_down(move |e: &KeyDownEvent, window, cx| {
+            .on_key_down(cx.listener(|tg: &mut Tg, e: &KeyDownEvent, cx| {
                 if e.keystroke.key == "escape" && !e.keystroke.modifiers.modified() {
-                    t.update(cx, |tg, cx| {
-                        if tg.voice.is_some() {
-                            tg.voice_end(false, cx);
-                            cx.stop_propagation();
-                        } else if tg.conv.as_ref().is_some_and(|c| c.reply.is_some() || c.edit.is_some()) {
-                            tg.conv_act(Act::CancelReply, window, cx);
-                            cx.stop_propagation();
-                        }
-                    })
+                    if tg.voice.is_some() {
+                        tg.voice_end(false, cx);
+                        cx.stop_propagation();
+                    } else if tg.conv.as_ref().is_some_and(|c| c.reply.is_some() || c.edit.is_some()) {
+                        tg.conv_act(Act::CancelReply, cx);
+                        cx.stop_propagation();
+                    }
                 }
-            })
-            .child(field)
-            .into_any_element(),
+            }))
+            .child(&tg.field),
     );
     // Recording: the field gives way to the recording's time and levels
     // (drawn over it; it keeps the keyboard, for Escape).
     let strip = rec.map(|(held, seconds, levels)| {
         let send_hot = is_hot("send");
-        canvas(|_, _, _| {}, move |_, _, window, cx| voice_strip(window, cx, well, held, send_hot, seconds, &levels)).absolute().inset_0()
+        canvas(move |gr, _| voice_strip(gr, well, held, send_hot, seconds, &levels)).absolute().inset_0()
     });
-    div()
-        .absolute()
-        .inset_0()
-        .child(canvas(|_, _, _| {}, move |_, _, window, cx| paint.into_iter().for_each(|f| f(window, cx))).absolute().inset_0())
-        .children(hits)
-        .children(overlay)
-        .children(strip)
-        .into_any_element()
+    div().absolute().inset_0().child(canvas(move |gr, _| paint.iter().for_each(|f| f(gr))).absolute().inset_0()).children(hits).children(overlay).children(strip)
 }
 
 /// A recording's strip, in the field's well: a red dot and the time,
 /// then the last levels as bars (newest at the right), and while it's
 /// held what letting go does.
-fn voice_strip(window: &mut Window, cx: &mut App, well: Bounds<Pixels>, held: bool, send_hot: bool, seconds: f32, levels: &[f32]) {
-    let p = theme::palette(cx);
-    let well = style::snap(window, well);
-    window.paint_quad(olo_ui::gpui::quad(
-        well,
-        px(18.0),
-        c(p.document_background),
-        style::hairline(window),
-        c(olo_ui::palette::mix(p.panel_background, p.panel_text, 0.22)),
-        olo_ui::gpui::BorderStyle::Solid,
-    ));
+fn voice_strip(gr: &mut Painter, well: Bounds<Pixels>, held: bool, send_hot: bool, seconds: f32, levels: &[f32]) {
+    let p = theme::palette();
+    let well = style::snap(gr, well);
+    gr.paint_quad(olo_kit::quad(well, px(18.0), c(p.document_background), style::hairline(gr), c(olo_kit::palette::mix(p.panel_background, p.panel_text, 0.22)), olo_kit::BorderStyle::Solid));
     let mid = well.center().y;
     let x = well.origin.x + px(16.0);
-    disc(window, point(x + px(4.0), mid), 4.0, c(p.failure));
+    disc(gr, point(x + px(4.0), mid), 4.0, c(p.failure));
     let s = seconds as u32;
     let time = format!("{}:{:02}", s / 60, s % 60);
     let font = style::ui_font(FontWeight::NORMAL);
-    let t = style::label(window, cx, x + px(14.0), mid, Align::Left, time.clone(), bubble::TEXT, font.clone(), c(p.document_text));
+    let t = style::label(gr, x + px(14.0), mid, Align::Left, time.clone(), bubble::TEXT, font.clone(), c(p.document_text));
     let hint = match (held, send_hot) {
         (true, true) => "Let go to send, or move away to cancel",
         (true, false) => "Let go to cancel",
         (false, _) => "",
     };
     let right = well.right() - px(16.0);
-    let hint_w = if hint.is_empty() { px(0.0) } else { style::text_width(window, hint, style::DETAIL_SIZE, font.clone()).ceil() + px(12.0) };
+    let hint_w = if hint.is_empty() { px(0.0) } else { style::text_width(hint, style::DETAIL_SIZE, font.clone()).ceil() + px(12.0) };
     if !hint.is_empty() {
-        style::label(window, cx, right, mid, Align::Right, hint, style::DETAIL_SIZE, font, style::disabled_text(&p));
+        style::label(gr, right, mid, Align::Right, hint, style::DETAIL_SIZE, font, style::disabled_text(&p));
     }
     // Bars: 2 points wide, 4 apart, as loud as each 100 ms was (from
     // -50 dB to the top).
@@ -1169,19 +1115,19 @@ fn voice_strip(window: &mut Window, cx: &mut App, well: Bounds<Pixels>, held: bo
         let k = ((db + 50.0) / 50.0).clamp(0.0, 1.0);
         let h = (2.0 + k * (tall - 2.0)).round();
         let bx = to - px(4.0 * (i + 1) as f32);
-        let bar = style::snap(window, Bounds { origin: point(bx, mid - px(h / 2.0)), size: size(px(2.0), px(h)) });
-        window.paint_quad(olo_ui::gpui::fill(bar, ink).corner_radii(px(1.0)));
+        let bar = style::snap(gr, Bounds { origin: point(bx, mid - px(h / 2.0)), size: size(px(2.0), px(h)) });
+        gr.paint_quad(olo_kit::fill(bar, ink).corner_radii(px(1.0)));
     }
     let name = if held { format!("Recording a voice message, {time}") } else { format!("Recording a voice message, {time}: Send Voice Message or Cancel Recording") };
     // (Where the field's text would be, inside the well.)
     let inner = Bounds::from_corners(point(well.origin.x + px(14.0), well.origin.y + px(8.0)), point(well.right() - px(14.0), well.bottom() - px(8.0)));
-    olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Label", name: Some(name.into()), bounds: inner, enabled: true, ..Default::default() });
+    olo_kit::agent::record(gr, olo_kit::agent::Node { role: "Label", name: Some(name.into()), bounds: inner, enabled: true, ..Default::default() });
 }
 
 /// The record button's microphone: a capsule on a stand.
-fn microphone(window: &mut Window, cc: Point<Pixels>, ink: Hsla) {
+fn microphone(gr: &mut Painter, cc: Point<Pixels>, ink: Hsla) {
     let at = |dx: f32, dy: f32| point(cc.x + px(dx), cc.y + px(dy));
-    window.paint_quad(olo_ui::gpui::fill(Bounds::from_corners(at(-3.0, -9.0), at(3.0, 2.0)), ink).corner_radii(px(3.0)));
+    gr.paint_quad(olo_kit::fill(Bounds::from_corners(at(-3.0, -9.0), at(3.0, 2.0)), ink).corner_radii(px(3.0)));
     let mut path = PathBuilder::stroke(px(1.5));
     for i in 0..=12 {
         let a = std::f32::consts::PI * i as f32 / 12.0;
@@ -1189,20 +1135,20 @@ fn microphone(window: &mut Window, cc: Point<Pixels>, ink: Hsla) {
         if i == 0 { path.move_to(q) } else { path.line_to(q) }
     }
     if let Ok(path) = path.build() {
-        window.paint_path(path, ink);
+        gr.paint_path(path, ink);
     }
-    window.paint_segment(at(0.0, 3.0), at(0.0, 7.0), px(1.5), false, ink);
-    window.paint_segment(at(-3.5, 7.5), at(3.5, 7.5), px(1.5), true, ink);
+    gr.paint_segment(at(0.0, 3.0), at(0.0, 7.0), px(1.5), false, ink);
+    gr.paint_segment(at(-3.5, 7.5), at(3.5, 7.5), px(1.5), true, ink);
 }
 
-fn close_mark(window: &mut Window, cc: Point<Pixels>, ink: Hsla) {
+fn close_mark(gr: &mut Painter, cc: Point<Pixels>, ink: Hsla) {
     let at = |dx: f32, dy: f32| point(cc.x + px(dx), cc.y + px(dy));
-    window.paint_segment(at(-4.0, -4.0), at(4.0, 4.0), px(1.5), false, ink);
-    window.paint_segment(at(-4.0, 4.0), at(4.0, -4.0), px(1.5), false, ink);
+    gr.paint_segment(at(-4.0, -4.0), at(4.0, 4.0), px(1.5), false, ink);
+    gr.paint_segment(at(-4.0, 4.0), at(4.0, -4.0), px(1.5), false, ink);
 }
 
 /// The attach button's paperclip.
-fn paperclip(window: &mut Window, cc: Point<Pixels>, ink: Hsla) {
+fn paperclip(gr: &mut Painter, cc: Point<Pixels>, ink: Hsla) {
     use std::f32::consts::PI;
     let (cx_, cy_) = (f32::from(cc.x), f32::from(cc.y));
     let arc = |ax: f32, ay: f32, r: f32, from: f32, to: f32| -> Vec<(f32, f32)> {
@@ -1230,12 +1176,12 @@ fn paperclip(window: &mut Window, cc: Point<Pixels>, ink: Hsla) {
         path.line_to(rot(q));
     }
     if let Ok(path) = path.build() {
-        window.paint_path(path, ink);
+        gr.paint_path(path, ink);
     }
 }
 
 /// The send button's paper plane.
-fn plane(window: &mut Window, cc: Point<Pixels>, ink: Hsla) {
+fn plane(gr: &mut Painter, cc: Point<Pixels>, ink: Hsla) {
     let at = |dx: f32, dy: f32| point(cc.x + px(dx), cc.y + px(dy));
     let mut path = PathBuilder::fill();
     path.move_to(at(8.0, 0.0));
@@ -1244,6 +1190,6 @@ fn plane(window: &mut Window, cc: Point<Pixels>, ink: Hsla) {
     path.line_to(at(-7.0, 7.0));
     path.close();
     if let Ok(path) = path.build() {
-        window.paint_path(path, ink);
+        gr.paint_path(path, ink);
     }
 }

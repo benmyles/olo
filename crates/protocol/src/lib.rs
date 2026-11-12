@@ -13,6 +13,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+pub mod airplay;
 pub mod airpods;
 pub mod app_keys;
 pub mod color;
@@ -1096,6 +1097,10 @@ pub struct PowerStatus {
     pub app_inhibitors: u32,
     /// The built-in display's backlight, 0.0–1.0, if there is one.
     pub brightness: Option<f32>,
+    /// The built-in display is switched off: its brightness is at the
+    /// bottom (the next step up brings it back).
+    #[serde(default)]
+    pub panel_off: bool,
     /// The screen saver is running.
     #[serde(default)]
     pub screen_saver: bool,

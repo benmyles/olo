@@ -27,7 +27,7 @@ pub fn table_of(doc: &Doc, i: usize) -> Option<Range<usize>> {
 /// Row `i`'s cells, as bytes of the text.
 pub fn cells(doc: &Doc, i: usize) -> Vec<Range<usize>> {
     let r = doc.para_range(i);
-    olo_ui::editor::cells(&doc.text()[r.clone()]).into_iter().map(|(s, l)| r.start + s..r.start + s + l).collect()
+    olo_kit::editor::cells(&doc.text()[r.clone()]).into_iter().map(|(s, l)| r.start + s..r.start + s + l).collect()
 }
 
 /// Which cell of row `i` byte `at` is in.

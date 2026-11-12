@@ -9,13 +9,10 @@
 //! starting the heading can get too long and overlaps controls not sure
 //! why the linter didn't pick that up": it wasn't linted at all.)
 
+use olo_kit::lint::{Found, Lint, assert_clean};
 use olo_protocol::diskbackup::{Check, Doing, Last, Progress, STOPPED, Settings, Stage, State, Target, Unfinished};
-use olo_ui::{
-    gpui::AppContext as _,
-    lint::{Found, Lint, assert_clean},
-};
 
-use crate::{app::Disk, window::MainWindow};
+use crate::window::MainWindow;
 
 fn now() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64)
@@ -107,10 +104,7 @@ fn ui_lint_main_window() {
     let mut lint = Lint::new();
     let mut found = Vec::new();
     for (name, settings, state) in states() {
-        for f in lint.window(&crate::app::main_options(), move |window, cx| {
-            let app = cx.new(|_| Disk::for_lint(settings.clone(), state.clone()));
-            cx.new(|cx| MainWindow::new(app, window, cx))
-        }) {
+        for f in lint.window(&crate::app::main_options(), move |cx| MainWindow::for_lint(settings.clone(), state.clone(), cx)) {
             found.push(Found { text: format!("{name}: {}", f.text), ..f });
         }
     }

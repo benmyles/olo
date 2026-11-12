@@ -1,0 +1,51 @@
+#!/usr/bin/python3
+"""Whether any of the files named on stdin (paths from the repository's
+root, one a line) is in something the layout lint builds: the packages
+`cargo ui-lint` tests and every workspace package they depend on, as
+cargo says (so nobody keeps a list). Exits 0 if so, 1 if not: a commit of
+an app the lint doesn't build (Token Pool, a daemon) isn't held up for
+it. Anything that isn't in a package (Cargo.lock, .cargo/) counts.
+
+  git diff --cached --name-only | tools/hooks/lint-covers
+"""
+import json, os, subprocess, sys
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", ".."))
+# (What `ui-lint` in .cargo/config.toml names.)
+LINTED = ["olo-kit", "olo-preferences", "olo-diskbackup-app"]
+
+
+def main():
+    files = [l.strip() for l in sys.stdin if l.strip()]
+    try:
+        meta = json.loads(subprocess.run(["cargo", "metadata", "--format-version", "1", "--offline"], cwd=ROOT, capture_output=True, text=True, check=True).stdout)
+    except Exception:
+        return 0  # (Can't tell: lint.)
+    members = set(meta["workspace_members"])
+    by_id = {p["id"]: p for p in meta["packages"]}
+    deps = {n["id"]: [d["pkg"] for d in n["deps"]] for n in meta["resolve"]["nodes"]}
+    todo = [i for i in members if by_id[i]["name"] in LINTED]
+    seen = set()
+    while todo:
+        i = todo.pop()
+        if i in seen:
+            continue
+        seen.add(i)
+        todo += deps.get(i, [])
+    # Every package of ours the lint builds (path packages: members,
+    # vendored and patched ones), by its folder.
+    dirs = sorted({os.path.relpath(os.path.dirname(by_id[i]["manifest_path"]), ROOT) + "/" for i in seen if by_id[i]["source"] is None})
+    all_dirs = sorted({os.path.relpath(os.path.dirname(p["manifest_path"]), ROOT) + "/" for p in meta["packages"] if p["source"] is None}, key=len, reverse=True)
+    for f in files:
+        owner = next((d for d in all_dirs if f.startswith(d)), None)
+        # (Docs, tools and the like build nothing.)
+        if owner is None:
+            if f.endswith((".md", ".py", ".sh", ".png", ".svg", ".txt")) or f.startswith(("docs/", "tools/")):
+                continue
+            return 0
+        if owner in dirs:
+            return 0
+    return 1
+
+
+sys.exit(main())

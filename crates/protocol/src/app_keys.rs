@@ -3,7 +3,7 @@
 //! platform a keyboard profile follows, as [`crate::shortcuts::SHORTCUTS`]
 //! has app_server's. Changes are kept in the profile's `shortcuts` beside
 //! app_server's, by id. The kit gives a menu item the keys its command has
-//! here (`olo_ui::menu::resolve`), so an app's menus, Preferences, the
+//! here (`olo_kit::menu::resolve`), so an app's menus, Preferences, the
 //! shortcuts sheet and agents all agree.
 //!
 //! Keys are written as app_server's are, physically: on a Mac "Cmd+C" (⌘,
@@ -141,7 +141,7 @@ pub const APP_KEYS: &[AppKey] = &[
     k("app.bigger", None, "bigger", "Bigger text", &["Cmd+Equal"], &["Ctrl+Equal"], &["Alt+Equal"]),
     k("app.smaller", None, "smaller", "Smaller text", &["Cmd+Minus"], &["Ctrl+Minus"], &["Alt+Minus"]),
     k("app.default-size", None, "default-size", "Text at its own size", &["Cmd+0"], &["Ctrl+0"], &["Alt+0"]),
-    // A side pane put away or brought back (`olo_ui::widgets::SidePane`):
+    // A side pane put away or brought back (`olo_kit::widgets::SidePane`):
     // View ▸ Hide Sidebar, ⌥⌘S as Finder's was (⌃⌘S is ⌘S to a kit app:
     // its keys have no Control of their own).
     k("app.sidebar", None, "sidebar", "Hide or show the sidebar", &["Alt+Cmd+S"], &["Ctrl+Alt+S"], &["Alt+Cmd+S"]),

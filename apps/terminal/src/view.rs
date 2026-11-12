@@ -10,7 +10,7 @@
 //! cells with those it was drawn from and lays out again only rows that
 //! changed (an agent's spinner, a line typed); the rest are painted as
 //! they were, their glyphs straight from where the atlas had them
-//! (`Window::paint_glyph_run`), so a frame neither resolves colours, lays
+//! (`Painter::paint_glyph_run`), so a frame neither resolves colours, lays
 //! out nor looks up glyphs for the screen again. A row laid out is the
 //! same wherever it is, so when the screen scrolls (output, the
 //! scrollback) each row is found where it was: only the rows new to the
@@ -34,10 +34,7 @@ use alacritty_terminal::{
     },
     vte::ansi::{Color, CursorShape, NamedColor, Rgb},
 };
-use olo_ui::{
-    gpui::{self, App, Bounds, ContentMask, FontId, FontWeight, GlyphId, GlyphRun, Hsla, Keystroke, Modifiers, PathBuilder, Pixels, RenderImage, TextRun, Window, point, px, size},
-    style,
-};
+use olo_kit::{Bounds, ContentMask, FontId, FontWeight, GlyphId, GlyphRun, Hsla, Keystroke, Modifiers, Painter, PathBuilder, Pixels, RenderImage, TextRun, point, px, size, style};
 
 use crate::{
     colors::{Scheme, mix},
@@ -45,7 +42,7 @@ use crate::{
     session::{Session, Size, Source},
 };
 
-/// An emulator colour as GPUI's.
+/// An emulator colour as the kit's.
 pub fn hsla(c: Rgb) -> Hsla {
     style::c([c.r, c.g, c.b, 255])
 }
@@ -70,9 +67,8 @@ pub struct Metrics {
 }
 
 impl Metrics {
-    pub fn new(window: &Window, size: f32) -> Metrics {
-        let scale = window.scale_factor();
-        let ts = window.text_system();
+    pub fn new(scale: f32, size: f32) -> Metrics {
+        let ts = olo_kit::text_system();
         let id = ts.resolve_font(&style::mono_font(FontWeight::NORMAL));
         let fs = px(size);
         let advance = ts.advance(id, fs, 'M').map_or(size * 0.6, |a| f32::from(a.width));
@@ -97,7 +93,7 @@ impl Metrics {
         Size { cols: (((w - 2.0 * PAD.0) / self.cell.0).floor() as usize).max(2), rows: (((h - 2.0 * PAD.1) / self.cell.1).floor() as usize).max(1) }
     }
 
-    /// Content size for a `cols`×`rows` window.
+    /// Content size for a `cols`×`rows` g.
     pub fn content_size(&self, cols: usize, rows: usize) -> (f32, f32) {
         ((cols as f32 * self.cell.0 + 2.0 * PAD.0).ceil(), (rows as f32 * self.cell.1 + 2.0 * PAD.1).ceil())
     }
@@ -137,7 +133,7 @@ pub struct Pane {
     /// Pictures by placement, with the image generation and source they
     /// were made from.
     images: RefCell<HashMap<u32, (u64, [u32; 4], Arc<RenderImage>)>>,
-    /// Where the screen was last drawn, in the window.
+    /// Where the screen was last drawn, in the g.
     pub bounds: StdCell<Bounds<Pixels>>,
     /// The frame drawn while the screen is being reflowed (`Session::resize`).
     last: RefCell<Option<Frame>>,
@@ -151,11 +147,11 @@ pub struct Pane {
 /// The normal screen's scrollback scrolled by the point, as everything
 /// else that scrolls: fingers, their glide and a wheel's eased notches
 /// move it as far as they go (not a line at a time), past its ends against
-/// GPUI's rubber band (`Elastic`), springing back. alacritty's display
+/// The kit's rubber band (`Elastic`), springing back. alacritty's display
 /// offset is its whole rows; the rest shifts the rows drawn.
 #[derive(Default)]
 struct Smooth {
-    elastic: gpui::Elastic,
+    elastic: olo_kit::Elastic,
     /// How far up the scrollback, in points (0: at its end, the live
     /// screen).
     pos: f32,
@@ -167,8 +163,8 @@ struct Smooth {
 impl Smooth {
     /// In step with the terminal's display offset (`display`), its ends
     /// for `history` rows above a view `view` tall, rows `ch` tall: where
-    /// it's scrolled to as GPUI has it (from minus its end to zero).
-    fn sync(&mut self, display: usize, history: usize, view: f32, ch: f32) -> (gpui::Point<Pixels>, f32) {
+    /// it's scrolled to as a scroller has it (from minus its end to zero).
+    fn sync(&mut self, display: usize, history: usize, view: f32, ch: f32) -> (olo_kit::Point<Pixels>, f32) {
         if display != self.rows {
             self.pos = display as f32 * ch;
             self.rows = display;
@@ -265,7 +261,7 @@ pub struct Hover {
 
 pub struct Output {
     pub paste: bool,
-    pub context_menu: Option<gpui::Point<Pixels>>,
+    pub context_menu: Option<olo_kit::Point<Pixels>>,
     /// A link ⌘-clicked.
     pub open: Option<links::Target>,
 }
@@ -281,10 +277,10 @@ struct Style {
     italic: bool,
 }
 
-fn font_for(st: Style) -> gpui::Font {
+fn font_for(st: Style) -> olo_kit::Font {
     let mut f = style::mono_font(if st.bold { FontWeight::BOLD } else { FontWeight::NORMAL });
     if st.italic {
-        f.style = gpui::FontStyle::Italic;
+        f.style = olo_kit::FontStyle::Italic;
     }
     f
 }
@@ -324,8 +320,8 @@ pub struct Paint<'a> {
 
 /// `text`'s glyphs (printable ASCII) in `st`'s font, from what's been
 /// found already: None if the font lacks one (it's shaped, with fallback).
-fn ascii_glyphs(window: &Window, found: &mut Vec<(Style, FontId, Box<[Option<Option<GlyphId>>; 95]>)>, st: Style, text: &str) -> Option<(FontId, Vec<GlyphId>)> {
-    let ts = window.text_system();
+fn ascii_glyphs(g: &Painter, found: &mut Vec<(Style, FontId, Box<[Option<Option<GlyphId>>; 95]>)>, st: Style, text: &str) -> Option<(FontId, Vec<GlyphId>)> {
+    let ts = g.text_system();
     let k = match found.iter().position(|(s, _, _)| s.bold == st.bold && s.italic == st.italic) {
         Some(k) => k,
         None => {
@@ -357,7 +353,7 @@ fn same_cells(a: &[Cell], b: &[Cell]) -> bool {
 }
 
 /// Draw the screen into `rect`.
-pub fn paint(window: &mut Window, cx: &mut App, rect: Bounds<Pixels>, p: Paint, pane: &Pane) {
+pub fn paint(g: &mut Painter, rect: Bounds<Pixels>, p: Paint, pane: &Pane) {
     let Paint { source: s, scheme, metrics: m, focused, hover, preedit } = p;
     pane.bounds.set(rect);
     // Being reflowed to a new width: its background, while that takes (the
@@ -365,7 +361,7 @@ pub fn paint(window: &mut Window, cx: &mut App, rect: Bounds<Pixels>, p: Paint, 
     let term = if s.reflowing() { s.term.try_lock_unfair() } else { Some(s.term.lock()) };
     let Some(mut term) = term else {
         if let Some(f) = &*pane.last.borrow() {
-            window.paint_quad(gpui::fill(rect, f.background));
+            g.paint_quad(olo_kit::fill(rect, f.background));
         }
         return;
     };
@@ -393,7 +389,7 @@ pub fn paint(window: &mut Window, cx: &mut App, rect: Bounds<Pixels>, p: Paint, 
     let colors = content.colors;
     let bg_default = scheme.resolve(Color::Named(NamedColor::Background), colors);
     let background = hsla(bg_default);
-    window.paint_quad(gpui::fill(rect, background));
+    g.paint_quad(olo_kit::fill(rect, background));
     *pane.last.borrow_mut() = Some(Frame { background });
     let offset = content.display_offset as i32;
     let selection = content.selection;
@@ -413,9 +409,11 @@ pub fn paint(window: &mut Window, cx: &mut App, rect: Bounds<Pixels>, p: Paint, 
         let slide = sm.pos - offset as f32 * ch + f32::from(shown.y - at.y);
         ((slide * m.scale).round() / m.scale, max, -f32::from(shown.y), moving)
     };
-    window.note_scroll([0.0, seen, 0.0, max]);
+    // (It scrolls itself: where it is goes in the frame's mark, for the
+    // scroll check and the benchmark.)
+    g.note_scroll([0.0, seen, 0.0, max]);
     if moving {
-        window.request_animation_frame();
+        g.paint_again_within(0.0);
     }
     pane.shift.set(slide);
     let extra = usize::from(slide > 0.0 && (offset as usize) < history);
@@ -595,7 +593,7 @@ pub fn paint(window: &mut Window, cx: &mut App, rect: Bounds<Pixels>, p: Paint, 
             // screen of short lines 2 ms at 1×); the same as shaping gives
             // a monospaced font's own characters.
             if text.bytes().all(|b| (0x21..0x7f).contains(&b))
-                && let Some(ids) = ascii_glyphs(window, &mut cache.ascii, *st, text)
+                && let Some(ids) = ascii_glyphs(g, &mut cache.ascii, *st, text)
             {
                 let (font, ids) = ids;
                 for (&(_, col), id) in starts.iter().zip(ids) {
@@ -605,7 +603,7 @@ pub fn paint(window: &mut Window, cx: &mut App, rect: Bounds<Pixels>, p: Paint, 
             }
             let font = font_for(*st);
             let run = TextRun { len: text.len(), font, color: st.fg, background_color: None, underline: None, strikethrough: None, size: None };
-            let layout = window.text_system().layout_line_now(text, px(m.size), &[run]);
+            let layout = g.text_system().layout_line_now(text, px(m.size), &[run]);
             for shaped in &layout.runs {
                 // A cluster's glyphs after its first keep their place from it.
                 let mut cluster: Option<(usize, f32)> = None;
@@ -634,7 +632,7 @@ pub fn paint(window: &mut Window, cx: &mut App, rect: Bounds<Pixels>, p: Paint, 
         for (col, text, st, n) in emoji {
             let span = if n == 1 && col + 1 < cols && !used[col + 1] { 2 } else { n };
             let run = TextRun { len: text.len(), font: font_for(st), color: st.fg, background_color: None, underline: None, strikethrough: None, size: None };
-            let layout = window.text_system().layout_line_now(&text, px(m.size), &[run]);
+            let layout = g.text_system().layout_line_now(&text, px(m.size), &[run]);
             let w = f32::from(layout.width);
             let x0 = col as f32 * cw + ((span.min(2) as f32 * cw - w) / 2.0 * m.scale).round() / m.scale + (span.saturating_sub(2)) as f32 * cw / 2.0;
             for shaped in &layout.runs {
@@ -652,33 +650,33 @@ pub fn paint(window: &mut Window, cx: &mut App, rect: Bounds<Pixels>, p: Paint, 
     // row's text, so a glyph reaching into the next row isn't covered;
     // lines and shapes over the backgrounds. The cursor, links and
     // pictures come after, over it.
-    window.paint_layer(rect, |window| {
+    g.paint_layer(rect, |g| {
         for (r, row) in cache.rows.iter().enumerate() {
             let Some(row) = row else { continue };
             let y = origin.1 + r as f32 * ch;
             for &(x, w, color) in &row.bgs {
-                window.paint_quad(gpui::fill(Bounds { origin: point(px(origin.0 + x), px(y)), size: size(px(w), px(ch)) }, color));
+                g.paint_quad(olo_kit::fill(Bounds { origin: point(px(origin.0 + x), px(y)), size: size(px(w), px(ch)) }, color));
             }
         }
         for (r, row) in cache.rows.iter().enumerate() {
             let Some(row) = row else { continue };
             let y = origin.1 + r as f32 * ch;
-            paint_shapes(window, &row.shapes, (origin.0, y));
+            paint_shapes(g, &row.shapes, (origin.0, y));
             let base = point(px(origin.0), px(y + m.baseline));
-            window.paint_glyph_run(&mut row.run.borrow_mut(), base, 0, |glyph| {
-                for g in row.glyphs.iter().filter(|g| !g.emoji) {
-                    glyph(point(px(g.x), px(0.0)), g.font, g.id, px(g.size), g.color);
+            g.paint_glyph_run(&mut row.run.borrow_mut(), base, 0, |glyph| {
+                for it in row.glyphs.iter().filter(|it| !it.emoji) {
+                    glyph(point(px(it.x), px(0.0)), it.font, it.id, px(it.size), it.color);
                 }
             });
-            for g in row.glyphs.iter().filter(|g| g.emoji) {
-                let _ = window.paint_emoji(point(base.x + px(g.x), base.y), g.font, g.id, px(g.size));
+            for it in row.glyphs.iter().filter(|it| it.emoji) {
+                let _ = g.paint_emoji(point(base.x + px(it.x), base.y), it.font, it.id, px(it.size));
             }
         }
     });
     let image_cells: Vec<(i32, usize, u32, usize)> =
         cache.rows.iter().enumerate().filter_map(|(r, d)| Some((first + r as i32, d.as_ref()?))).flat_map(|(line, d)| d.images.iter().map(move |&(col, uid, row)| (line, col, uid, row))).collect();
     drop(cache);
-    draw_images(window, s, &image_cells, pane, &at, m.cell);
+    draw_images(g, s, &image_cells, pane, &at, m.cell);
 
     // The hovered link, underlined.
     let cursor_color = hsla(scheme.resolve(Color::Named(NamedColor::Cursor), colors));
@@ -686,7 +684,7 @@ pub fn paint(window: &mut Window, cx: &mut App, rect: Bounds<Pixels>, p: Paint, 
         let t = line_px.max(0.5) * 2.0;
         for p in &h.cells {
             let (x, y) = at(p.line.0, p.column.0);
-            window.paint_quad(gpui::fill(Bounds { origin: point(px(x), px(y + m.baseline + (m.row * 0.12).max(1.0))), size: size(px(cw), px(t)) }, cursor_color));
+            g.paint_quad(olo_kit::fill(Bounds { origin: point(px(x), px(y + m.baseline + (m.row * 0.12).max(1.0))), size: size(px(cw), px(t)) }, cursor_color));
         }
     }
     // Text being composed: at the cursor, underlined, over what's there.
@@ -695,11 +693,11 @@ pub fn paint(window: &mut Window, cx: &mut App, rect: Bounds<Pixels>, p: Paint, 
         let (x, y) = at(cursor.point.line.0, cursor.point.column.0);
         let fg = hsla(scheme.resolve(Color::Named(NamedColor::Foreground), colors));
         let run = TextRun { len: text.len(), font: style::mono_font(FontWeight::NORMAL), color: fg, background_color: None, underline: None, strikethrough: None, size: None };
-        let line = window.text_system().shape_line(text.to_owned().into(), px(m.size), &[run], Some(px(cw)));
+        let line = g.text_system().shape_line(text.to_owned().into(), px(m.size), &[run], Some(px(cw)));
         let w = f32::from(line.width).max(cw);
-        window.paint_quad(gpui::fill(Bounds { origin: point(px(x), px(y)), size: size(px(w), px(ch)) }, background));
-        paint_at_baseline(window, cx, &line, x, y + m.baseline);
-        window.paint_quad(gpui::fill(Bounds { origin: point(px(x), px(y + ch - 2.0 * line_px)), size: size(px(w), px((2.0 * line_px).max(1.0))) }, fg));
+        g.paint_quad(olo_kit::fill(Bounds { origin: point(px(x), px(y)), size: size(px(w), px(ch)) }, background));
+        paint_at_baseline(g, &line, x, y + m.baseline);
+        g.paint_quad(olo_kit::fill(Bounds { origin: point(px(x), px(y + ch - 2.0 * line_px)), size: size(px(w), px((2.0 * line_px).max(1.0))) }, fg));
         cursor_x = w;
     }
     // The cursor: a solid block when focused (with its character in the
@@ -713,27 +711,28 @@ pub fn paint(window: &mut Window, cx: &mut App, rect: Bounds<Pixels>, p: Paint, 
         let w = if wide { cw * 2.0 } else { cw };
         let r = Bounds { origin: point(px(x), px(y)), size: size(px(w), px(ch)) };
         match (focused, cursor.shape) {
-            (true, CursorShape::Beam) => window.paint_quad(gpui::fill(Bounds { origin: r.origin, size: size(px((2.0 * line_px).max(1.0)), px(ch)) }, cursor_color)),
+            (true, CursorShape::Beam) => g.paint_quad(olo_kit::fill(Bounds { origin: r.origin, size: size(px((2.0 * line_px).max(1.0)), px(ch)) }, cursor_color)),
             (true, CursorShape::Underline) => {
                 let t = 2.0 * line_px.max(0.5) * 2.0;
-                window.paint_quad(gpui::fill(Bounds { origin: point(px(x), px(y + ch - t)), size: size(px(w), px(t)) }, cursor_color));
+                g.paint_quad(olo_kit::fill(Bounds { origin: point(px(x), px(y + ch - t)), size: size(px(w), px(t)) }, cursor_color));
             }
             (true, _) => {
-                window.paint_quad(gpui::fill(r, cursor_color));
+                g.paint_quad(olo_kit::fill(r, cursor_color));
                 let c = cell.c;
                 if !spacer(cell) && c != ' ' && c != '\0' && !is_box(c) && preedit.is_none_or(str::is_empty) {
                     let st = style_of(cell, bg_default);
                     let text: String = std::iter::once(c).chain(cell.zerowidth().into_iter().flatten().copied()).collect();
                     let run = TextRun { len: text.len(), font: font_for(st), color: background, background_color: None, underline: None, strikethrough: None, size: None };
-                    let line = window.text_system().shape_line(text.into(), px(m.size), &[run], None);
+                    let line = g.text_system().shape_line(text.into(), px(m.size), &[run], None);
                     let lx = x + ((w - f32::from(line.width)) / 2.0 * m.scale).round() / m.scale;
-                    paint_at_baseline(window, cx, &line, lx, y + m.baseline);
+                    paint_at_baseline(g, &line, lx, y + m.baseline);
                 }
             }
             (false, _) => {
                 let t = line_px.max(0.5);
-                window.paint_quad(
-                    gpui::outline(Bounds { origin: point(px(x + t / 2.0), px(y + t / 2.0)), size: size(px(w - t), px(ch - t)) }, cursor_color, gpui::BorderStyle::Solid).border_widths(px(2.0 * t)),
+                g.paint_quad(
+                    olo_kit::outline(Bounds { origin: point(px(x + t / 2.0), px(y + t / 2.0)), size: size(px(w - t), px(ch - t)) }, cursor_color, olo_kit::BorderStyle::Solid)
+                        .border_widths(px(2.0 * t)),
                 );
             }
         }
@@ -753,21 +752,21 @@ struct Run {
 }
 
 /// Paints `line` with its baseline at `baseline`.
-fn paint_at_baseline(window: &mut Window, cx: &mut App, line: &gpui::ShapedLine, x: f32, baseline: f32) {
+fn paint_at_baseline(g: &mut Painter, line: &olo_kit::ShapedLine, x: f32, baseline: f32) {
     let h = line.ascent + line.descent;
-    let _ = line.paint(point(px(x), px(baseline) - line.ascent), h, window, cx);
+    let _ = line.paint(point(px(x), px(baseline) - line.ascent), h, g);
 }
 
 /// Where the glyph after the ones for text byte `index` starts: the next
 /// cluster's first glyph, else the line's end.
-fn next_x(glyphs: &[gpui::ShapedGlyph], index: usize, end: Pixels) -> Option<Pixels> {
+fn next_x(glyphs: &[olo_kit::ShapedGlyph], index: usize, end: Pixels) -> Option<Pixels> {
     Some(glyphs.iter().find(|g| g.index > index).map_or(end, |g| g.position.x))
 }
 
-fn paint_shapes(window: &mut Window, shapes: &[Shape], (ox, oy): (f32, f32)) {
+fn paint_shapes(g: &mut Painter, shapes: &[Shape], (ox, oy): (f32, f32)) {
     for s in shapes {
         match s {
-            Shape::Rect(x, y, w, h, c) => window.paint_quad(gpui::fill(Bounds { origin: point(px(ox + x), px(oy + y)), size: size(px(*w), px(*h)) }, *c)),
+            Shape::Rect(x, y, w, h, c) => g.paint_quad(olo_kit::fill(Bounds { origin: point(px(ox + x), px(oy + y)), size: size(px(*w), px(*h)) }, *c)),
             Shape::Line(pts, width, c) => {
                 let mut b = PathBuilder::stroke(px(*width));
                 for (k, &(x, y)) in pts.iter().enumerate() {
@@ -775,7 +774,7 @@ fn paint_shapes(window: &mut Window, shapes: &[Shape], (ox, oy): (f32, f32)) {
                     if k == 0 { b.move_to(p) } else { b.line_to(p) }
                 }
                 if let Ok(path) = b.build() {
-                    window.paint_path(path, *c);
+                    g.paint_path(path, *c);
                 }
             }
             Shape::Poly(pts, c) => {
@@ -786,7 +785,7 @@ fn paint_shapes(window: &mut Window, shapes: &[Shape], (ox, oy): (f32, f32)) {
                 }
                 b.close();
                 if let Ok(path) = b.build() {
-                    window.paint_path(path, *c);
+                    g.paint_path(path, *c);
                 }
             }
         }
@@ -951,11 +950,11 @@ fn draw_box(out: &mut Vec<Shape>, (rx, ry, rw, rh): (f32, f32, f32, f32), c: cha
 
 /// Paint the pictures in tagged cells: each placement whole, cut to the
 /// runs of its cells on the screen.
-fn draw_images(window: &mut Window, s: &Source, cells: &[(i32, usize, u32, usize)], pane: &Pane, at: &dyn Fn(i32, usize) -> (f32, f32), (cw, ch): (f32, f32)) {
+fn draw_images(g: &mut Painter, s: &Source, cells: &[(i32, usize, u32, usize)], pane: &Pane, at: &dyn Fn(i32, usize) -> (f32, f32), (cw, ch): (f32, f32)) {
     let mut made = pane.images.borrow_mut();
     if cells.is_empty() {
         for (_, (_, _, img)) in made.drain() {
-            let _ = window.drop_image(img);
+            drop(img);
         }
         return;
     }
@@ -975,7 +974,7 @@ fn draw_images(window: &mut Window, s: &Source, cells: &[(i32, usize, u32, usize
         if !fresh {
             let Some(picture) = crop(&img.rgba, img.width, img.height, p.src) else { continue };
             if let Some((_, _, old)) = made.insert(uid, (img.generation, p.src, picture)) {
-                let _ = window.drop_image(old);
+                drop(old);
             }
         }
         let Some((_, _, picture)) = made.get(&uid) else { continue };
@@ -985,20 +984,20 @@ fn draw_images(window: &mut Window, s: &Source, cells: &[(i32, usize, u32, usize
         let (sx, sy) = at(line, col);
         let shown = Bounds { origin: point(px(sx), px(sy)), size: size(px(cw * (last_col + 1 - col) as f32), px(ch)) };
         let picture = picture.clone();
-        window.with_content_mask(Some(ContentMask { bounds: shown }), |window| {
-            let _ = window.paint_image(whole, gpui::Corners::default(), picture, 0, false);
+        g.with_content_mask(Some(ContentMask { bounds: shown }), |g| {
+            let _ = g.paint_image(whole, olo_kit::Corners::default(), picture, 0, false);
         });
     }
     // Forget pictures that are gone.
     let gone: Vec<u32> = made.keys().copied().filter(|uid| !store.placements.contains_key(uid)).collect();
     for uid in gone {
         if let Some((_, _, img)) = made.remove(&uid) {
-            let _ = window.drop_image(img);
+            drop(img);
         }
     }
 }
 
-/// The part `[x, y, w, h]` of an RGBA image, as GPUI draws pictures (BGRA).
+/// The part `[x, y, w, h]` of an RGBA image, as the kit draws pictures (BGRA).
 fn crop(rgba: &[u8], width: u32, height: u32, [x, y, w, h]: [u32; 4]) -> Option<Arc<RenderImage>> {
     let (x, y) = (x.min(width), y.min(height));
     let (w, h) = (w.min(width - x).max(1), h.min(height - y).max(1));
@@ -1091,7 +1090,7 @@ fn find_link(s: &Session, at: Point, cwd: &dyn Fn() -> Option<std::path::PathBuf
 
 // ---- keyboard ---------------------------------------------------------------
 
-/// A key as the terminal encodes it: GPUI's name for it, unshifted (it
+/// A key as the terminal encodes it: its keystroke's name, unshifted (it
 /// names shifted symbols as themselves: "_" for ⇧-), and its modifiers,
 /// Shift with them again.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -1104,7 +1103,7 @@ pub struct Key<'a> {
 
 impl<'a> Key<'a> {
     pub fn of(k: &'a Keystroke) -> Key<'a> {
-        let (name, shifted) = olo_ui::keys::unshifted(&k.key);
+        let (name, shifted) = olo_kit::keys::unshifted(&k.key);
         Key { name, shift: k.modifiers.shift || shifted, ctrl: k.modifiers.control, alt: k.modifiers.alt }
     }
 }
@@ -1202,7 +1201,7 @@ fn ctrl_byte(k: Key) -> Option<u8> {
         return Some(c.to_ascii_lowercase() as u8 & 0x1f);
     }
     // With Shift: the shifted symbol's (Ctrl+_, Ctrl+^, Ctrl+@, Ctrl+?).
-    let c = if k.shift { olo_ui::keys::shifted(c).unwrap_or(c) } else { c };
+    let c = if k.shift { olo_kit::keys::shifted(c).unwrap_or(c) } else { c };
     Some(match c {
         '2' | '@' => 0,
         '3' | '[' | '{' => 0x1b,
@@ -1391,7 +1390,7 @@ pub fn paste(s: &Session, text: &str) {
 // ---- mouse ------------------------------------------------------------------
 
 /// The cell at `pos` (window coordinates) on the screen drawn in `rect`.
-fn cell_at(pos: gpui::Point<Pixels>, rect: Bounds<Pixels>, m: &Metrics, size: Size, offset: usize) -> (Point, Side) {
+fn cell_at(pos: olo_kit::Point<Pixels>, rect: Bounds<Pixels>, m: &Metrics, size: Size, offset: usize) -> (Point, Side) {
     let x = (f32::from(pos.x - rect.left()) - PAD.0).max(0.0);
     let y = (f32::from(pos.y - rect.top()) - PAD.1).max(0.0);
     let col = ((x / m.cell.0) as usize).min(size.cols - 1);
@@ -1425,18 +1424,25 @@ fn report(s: &Session, button: u8, point: Point, offset: usize, pressed: bool, m
     s.write(format!("\x1b[<{};{col};{line}{fin}", button + mods).into_bytes());
 }
 
-fn button_code(b: gpui::MouseButton) -> Option<u8> {
+fn button_code(b: olo_kit::MouseButton) -> Option<u8> {
     match b {
-        gpui::MouseButton::Left => Some(0),
-        gpui::MouseButton::Middle => Some(1),
-        gpui::MouseButton::Right => Some(2),
+        olo_kit::MouseButton::Left => Some(0),
+        olo_kit::MouseButton::Middle => Some(1),
+        olo_kit::MouseButton::Right => Some(2),
         _ => None,
     }
 }
 
 impl Mouse {
+    /// A button pressed on the screen is still down (a selection being
+    /// dragged, a press reported to the program): its release is the
+    /// screen's wherever the pointer is.
+    pub fn held(&self) -> bool {
+        self.selecting || self.reporting.is_some()
+    }
+
     /// The link under the pointer, while ⌘ is held: found once a cell.
-    pub fn hover_at(&mut self, s: &Session, m: &Metrics, rect: Bounds<Pixels>, pos: Option<gpui::Point<Pixels>>, command: bool, cwd: &dyn Fn() -> Option<std::path::PathBuf>) -> bool {
+    pub fn hover_at(&mut self, s: &Session, m: &Metrics, rect: Bounds<Pixels>, pos: Option<olo_kit::Point<Pixels>>, command: bool, cwd: &dyn Fn() -> Option<std::path::PathBuf>) -> bool {
         let before = self.hover.as_ref().map(|h| h.cells.clone());
         match pos.filter(|p| command && !self.selecting && rect.contains(p)) {
             Some(pos) => {
@@ -1455,7 +1461,7 @@ impl Mouse {
     /// in `phase`): the scrollback moved by as much (a program that takes
     /// the mouse, or on the alternate screen, gets it a line at a time).
     #[allow(clippy::too_many_arguments)]
-    pub fn wheel(&mut self, s: &Session, pane: &Pane, m: &Metrics, rect: Bounds<Pixels>, pos: gpui::Point<Pixels>, dy: f32, (kind, phase): (gpui::ScrollKind, gpui::TouchPhase), mods: Mods) {
+    pub fn wheel(&mut self, s: &Session, pane: &Pane, m: &Metrics, rect: Bounds<Pixels>, pos: olo_kit::Point<Pixels>, dy: f32, (kind, phase): (olo_kit::ScrollKind, olo_kit::TouchPhase), mods: Mods) {
         let (mode, offset) = {
             let t = s.term.lock();
             (*t.mode(), t.grid().display_offset())
@@ -1496,14 +1502,14 @@ impl Mouse {
     }
 
     /// A button went down on the screen.
-    pub fn down(&mut self, s: &Session, m: &Metrics, rect: Bounds<Pixels>, pos: gpui::Point<Pixels>, button: gpui::MouseButton, count: usize, mods: Mods, out: &mut Output) {
+    pub fn down(&mut self, s: &Session, m: &Metrics, rect: Bounds<Pixels>, pos: olo_kit::Point<Pixels>, button: olo_kit::MouseButton, count: usize, mods: Mods, out: &mut Output) {
         let (mode, offset) = {
             let t = s.term.lock();
             (*t.mode(), t.grid().display_offset())
         };
         let (point, side) = cell_at(pos, rect, m, s.size, offset);
         // ⌘-click on a link opens it, even in a program that takes the mouse.
-        if button == gpui::MouseButton::Left
+        if button == olo_kit::MouseButton::Left
             && mods.command
             && let Some(target) = self.hover.as_ref().and_then(|h| h.target.clone())
         {
@@ -1521,9 +1527,9 @@ impl Mouse {
         }
         self.last_cell = Some(point);
         match button {
-            gpui::MouseButton::Middle => out.paste = true,
-            gpui::MouseButton::Right => out.context_menu = Some(pos),
-            gpui::MouseButton::Left => {
+            olo_kit::MouseButton::Middle => out.paste = true,
+            olo_kit::MouseButton::Right => out.context_menu = Some(pos),
+            olo_kit::MouseButton::Left => {
                 // Selection: drag for characters, double-click words,
                 // triple-click lines; Shift extends.
                 let now = std::time::Instant::now();
@@ -1559,7 +1565,7 @@ impl Mouse {
     /// The pointer moved (a button held or not): drags select or report.
     /// Returns the lines to scroll while a selection is dragged past an
     /// edge (the caller keeps scrolling while it's held there).
-    pub fn moved(&mut self, s: &Session, m: &Metrics, rect: Bounds<Pixels>, pos: gpui::Point<Pixels>, held: bool, mods: Mods) -> bool {
+    pub fn moved(&mut self, s: &Session, m: &Metrics, rect: Bounds<Pixels>, pos: olo_kit::Point<Pixels>, held: bool, mods: Mods) -> bool {
         let (mode, offset) = {
             let t = s.term.lock();
             (*t.mode(), t.grid().display_offset())
@@ -1599,7 +1605,7 @@ impl Mouse {
     }
 
     /// A button went up.
-    pub fn up(&mut self, s: &Session, m: &Metrics, rect: Bounds<Pixels>, pos: gpui::Point<Pixels>, button: gpui::MouseButton, mods: Mods) {
+    pub fn up(&mut self, s: &Session, m: &Metrics, rect: Bounds<Pixels>, pos: olo_kit::Point<Pixels>, button: olo_kit::MouseButton, mods: Mods) {
         let offset = s.term.lock().grid().display_offset();
         let (point, _) = cell_at(pos, rect, m, s.size, offset);
         if let Some(b) = self.reporting.filter(|&b| Some(b) == button_code(button)) {
@@ -1607,7 +1613,7 @@ impl Mouse {
             report(s, b, point, offset, false, mods);
             return;
         }
-        if button == gpui::MouseButton::Left && self.selecting {
+        if button == olo_kit::MouseButton::Left && self.selecting {
             self.selecting = false;
             let mut t = s.term.lock();
             // A plain click (no drag) clears the selection.
@@ -1636,7 +1642,7 @@ mod tests {
 
     #[test]
     fn ctrl_underscore_is_the_shells() {
-        // Ctrl+Shift+- (GPUI names it "_") is Ctrl+_, readline's undo.
+        // Ctrl+Shift+- (a keystroke names it "_") is Ctrl+_, readline's undo.
         assert_eq!(key_bytes(k("-", true, true, false), TermMode::empty()).unwrap(), vec![0x1f]);
         assert_eq!(key_bytes(k("2", true, true, false), TermMode::empty()).unwrap(), vec![0]);
         assert_eq!(key_bytes(k("c", false, true, false), TermMode::empty()).unwrap(), vec![3]);

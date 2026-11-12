@@ -7,7 +7,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use olo_ui::Proxy;
+use olo_kit::Proxy;
 
 const EVERY: Duration = Duration::from_secs(2);
 

@@ -8,16 +8,15 @@
 
 use std::rc::Rc;
 
-use olo_protocol::{
-    Chord, Settings, app_keys,
-    shortcuts::{self, Entry, GROUPS, SHORTCUTS},
-};
-use olo_ui::{
-    gpui::{Bounds, Context, DispatchPhase, Entity, FontWeight, MouseButton, MouseDownEvent, ParentElement as _, ScrollHandle, Styled as _, canvas, div, point, px, size},
-    metrics as m,
+use olo_kit::{
+    Bounds, Child, Cx, FontWeight, InteractiveElement as _, MouseButton, MouseDownEvent, ParentElement as _, ScrollHandle, Styled as _, canvas, div, metrics as m, point, px, size,
     style::{self, c},
     theme,
     widgets::{Button, ScrollView, StringView, TextField},
+};
+use olo_protocol::{
+    Chord, Settings, app_keys,
+    shortcuts::{self, Entry, GROUPS, SHORTCUTS},
 };
 
 use crate::{PanelView, form::Ui, keyboard, server::Server};
@@ -28,13 +27,13 @@ pub struct State {
     /// What the last change did, to say under the list.
     note: Option<String>,
     /// The name being typed for the profile's Save As.
-    pub saving: Option<Entity<TextField>>,
+    pub saving: Option<Child<TextField>>,
     scroll: ScrollHandle,
     rows: Rc<Vec<Row>>,
 }
 
 impl State {
-    pub fn new(_: &mut Context<PanelView>) -> State {
+    pub fn new(_: &mut Cx<PanelView>) -> State {
         State { recording: None, note: None, saving: None, scroll: ScrollHandle::new(), rows: Rc::new(rows()) }
     }
 }
@@ -82,10 +81,7 @@ pub fn ui(ui: &mut Ui, server: &Server, st: &mut State) {
                 let taken = shortcuts::assign(&mut keyboard.profile, id, chord);
                 keyboard.profile_changed();
                 let platform = keyboard.profile.platform;
-                let prefs = ui.prefs();
-                ui.cx.defer(move |cx| {
-                    let _ = prefs.update(cx, |p, cx| p.edit_as(cx, "", "Shortcut", |s| s.keyboard = keyboard));
-                });
+                crate::prefs().edit_as("", "Shortcut", |s| s.keyboard = keyboard);
                 (!taken.is_empty()).then(|| format!("{} was taken from “{}”.", chord.map(|c| c.label(platform)).unwrap_or_default(), taken.join("”, “")))
             }
         };
@@ -100,9 +96,9 @@ pub fn ui(ui: &mut Ui, server: &Server, st: &mut State) {
     let n = rows.len();
     // A click on a shortcut records its keys (again: stops).
     let server2 = server.clone();
-    let click = Rc::new(ui.on_view(move |v, i: usize, _, cx| {
+    let click = Rc::new(ui.on_view(move |v, i: &usize, cx| {
         let Some(st) = keyboard::state_of(v).map(|k| &mut k.shortcuts) else { return };
-        let Some(Row::Shortcut(info)) = st.rows.get(i) else { return };
+        let Some(Row::Shortcut(info)) = st.rows.get(*i) else { return };
         let id = info.id;
         if st.recording == Some(id) {
             st.recording = None;
@@ -115,65 +111,61 @@ pub fn ui(ui: &mut Ui, server: &Server, st: &mut State) {
         }
         cx.notify();
     }));
-    // Only the rows in view are drawn.
-    let list = canvas(
-        |_, _, _| {},
-        move |b, _, window, cx| {
-            let p = theme::palette(cx);
-            let clip = window.content_mask().bounds.intersect(&b);
-            let first = (f32::from(clip.top() - b.top()) / m::LIST_ROW).floor().max(0.0) as usize;
-            let last = ((f32::from(clip.bottom() - b.top()) / m::LIST_ROW).ceil().max(0.0) as usize).min(n);
-            let text = c(p.document_text);
-            for i in first..last {
-                let r = Bounds { origin: point(b.left(), b.top() + px(i as f32 * m::LIST_ROW)), size: size(b.size.width, px(m::LIST_ROW)) };
-                match &rows[i] {
-                    Row::Group(g) => {
-                        style::label(window, cx, r.left() + px(6.0), r.center().y, style::Align::Left, *g, style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), text);
+    // Only the rows in view are drawn (again as it scrolls: what shows
+    // of a drawing is the painter's to say).
+    let list = canvas(move |g, b| {
+        let p = theme::palette();
+        let clip = g.visible_bounds().intersect(&b);
+        let first = (f32::from(clip.top() - b.top()) / m::LIST_ROW).floor().max(0.0) as usize;
+        let last = ((f32::from(clip.bottom() - b.top()) / m::LIST_ROW).ceil().max(0.0) as usize).min(n);
+        let text = c(p.document_text);
+        for i in first..last {
+            let r = Bounds { origin: point(b.left(), b.top() + px(i as f32 * m::LIST_ROW)), size: size(b.size.width, px(m::LIST_ROW)) };
+            match &rows[i] {
+                Row::Group(name) => {
+                    style::label(g, r.left() + px(6.0), r.center().y, style::Align::Left, *name, style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), text);
+                }
+                Row::Shortcut(info) => {
+                    let on = recording == Some(info.id);
+                    let (fg, keys) = if on {
+                        style::fill_rect(g, r, c(p.list_selected_background));
+                        (c(p.list_selected_item_text), "Type the keys…".to_owned())
+                    } else {
+                        (text, keys_text(info, &s))
+                    };
+                    style::label(g, r.left() + px(18.0), r.center().y, style::Align::Left, info.title, style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), fg);
+                    let right = point(r.right() - px(8.0), r.center().y);
+                    if on || keys == "None" {
+                        let ink = if on { fg } else { style::disabled_text(&p) };
+                        style::label(g, right.x, right.y, style::Align::Right, keys.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), ink);
+                    } else {
+                        style::key_combo(g, right, &keys, fg);
                     }
-                    Row::Shortcut(info) => {
-                        let on = recording == Some(info.id);
-                        let (fg, keys) = if on {
-                            style::fill_rect(window, r, c(p.list_selected_background));
-                            (c(p.list_selected_item_text), "Type the keys…".to_owned())
-                        } else {
-                            (text, keys_text(info, &s))
-                        };
-                        style::label(window, cx, r.left() + px(18.0), r.center().y, style::Align::Left, info.title, style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), fg);
-                        let right = point(r.right() - px(8.0), r.center().y);
-                        if on || keys == "None" {
-                            let ink = if on { fg } else { style::disabled_text(&p) };
-                            style::label(window, cx, right.x, right.y, style::Align::Right, keys.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), ink);
-                        } else {
-                            style::key_combo(window, cx, right, &keys, fg);
-                        }
-                        olo_ui::agent::record(
-                            window,
-                            cx,
-                            olo_ui::agent::Node {
-                                role: "ListItem",
-                                name: Some(format!("{}: {keys}", info.title).into()),
-                                bounds: r,
-                                enabled: true,
-                                clickable: true,
-                                selected: Some(on),
-                                ..Default::default()
-                            },
-                        );
-                    }
+                    olo_kit::agent::record(
+                        g,
+                        olo_kit::agent::Node {
+                            role: "ListItem",
+                            name: Some(format!("{}: {keys}", info.title).into()),
+                            bounds: r,
+                            enabled: true,
+                            clickable: true,
+                            selected: Some(on),
+                            ..Default::default()
+                        },
+                    );
                 }
             }
-            let click = click.clone();
-            window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {
-                if phase == DispatchPhase::Bubble && e.button == MouseButton::Left && clip.contains(&e.position) {
-                    click((f32::from(e.position.y - b.top()) / m::LIST_ROW).floor().max(0.0) as usize, window, cx);
-                }
-            });
-        },
-    )
+        }
+    })
     .w_full()
-    .h(px(n as f32 * m::LIST_ROW));
-    let p = theme::palette(ui.cx);
-    ui.add(div().flex_1().min_h_0().child(ScrollView::new("shortcuts", &st.scroll).background(p.document_background).child(list)));
+    .h(px(n as f32 * m::LIST_ROW))
+    // (Where the list is now, scrolled: the listener's own bounds.)
+    .on_mouse_down(MouseButton::Left, move |e: &MouseDownEvent, cx| {
+        let b = cx.listener_bounds();
+        click(&((f32::from(e.position.y - b.top()) / m::LIST_ROW).floor().max(0.0) as usize), cx);
+    });
+    let p = theme::palette();
+    ui.add(div().flex_1().min_h_0().child(ScrollView::new(&st.scroll).background(p.document_background).child(list)));
 
     let text = match (&st.recording, &st.note) {
         (Some(_), _) => "Type the keys. Esc cancels; ⌫ removes them.".to_owned(),
@@ -185,7 +177,7 @@ pub fn ui(ui: &mut Ui, server: &Server, st: &mut State) {
         s.keyboard.profile.shortcuts.clear();
         s.keyboard.profile_changed();
     });
-    let clear_note = ui.on_click_view(|v, _, cx| {
+    let clear_note = ui.on_click_view(|v, cx| {
         if let Some(k) = keyboard::state_of(v) {
             k.shortcuts.note = None;
         }

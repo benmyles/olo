@@ -150,7 +150,7 @@ pub fn load(draws: impl Fn(&str) -> bool) -> Vec<Emoji> {
 }
 
 /// Whether the colour emoji font draws `cluster` as one glyph: the font
-/// GPUI draws emoji with, found as it finds it. None: no such font (all
+/// the kit draws emoji with, found as it finds it. None: no such font (all
 /// are offered).
 pub fn font_check() -> Option<impl Fn(&str) -> bool> {
     let mut db = fontdb::Database::new();
@@ -164,7 +164,7 @@ pub fn font_check() -> Option<impl Fn(&str) -> bool> {
     };
     // Mapped, not read: the font's 5 MB stay the file's (shared, and
     // let go by the system as it likes), not the picker's own.
-    // SAFETY: a system font, mapped read-only, as GPUI maps its faces.
+    // SAFETY: a system font, mapped read-only, as the kit maps its faces.
     let map = unsafe { memmap2::Mmap::map(&std::fs::File::open(path).ok()?) }.ok()?;
     let font = olo_emoji::ColorFont::from_static(&Box::leak(Box::new(map))[..], index)?;
     Some(move |cluster: &str| font.glyph(cluster).is_some())
@@ -244,11 +244,11 @@ impl Recents {
     }
 
     pub fn load() -> Recents {
-        olo_ui::store::load(&Self::path()).unwrap_or_default()
+        olo_kit::store::load(&Self::path()).unwrap_or_default()
     }
 
     fn save(&self) {
-        olo_ui::store::save(Self::path(), self);
+        olo_kit::store::save(Self::path(), self);
     }
 
     fn now() -> u64 {

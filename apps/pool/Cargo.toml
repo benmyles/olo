@@ -13,8 +13,10 @@ olo-crash.workspace = true
 # (The keeper: a subreaper waiting for the copies that serve.)
 libc = "0.2"
 tracing.workspace = true
-olo-ui.workspace = true
+olo-kit.workspace = true
 olo-xdg.workspace = true
 olo-token-pool.workspace = true
+# (Which processes hold the gateway's port: `listening`.)
+olo-system.workspace = true
 serde_json.workspace = true
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }

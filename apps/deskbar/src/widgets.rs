@@ -20,23 +20,23 @@ use std::{
     cell::RefCell,
     collections::{HashMap, VecDeque},
     rc::Rc,
+    sync::Arc,
     sync::{OnceLock, mpsc},
     time::Instant,
 };
 
+use olo_kit::{
+    Bounds, Cx, Element, FontWeight, Hsla, Painter, Pixels, Styled as _, View, agent, canvas, metrics as m,
+    palette::Palette,
+    point, px,
+    style::{self, Align, c},
+    theme,
+    widgets::charts,
+};
 use olo_protocol::deskbar::{Look, MAX_SPAN_S, Measure, Size, Widget};
 use olo_system::{
     meters::{self, Reader, Reading, Unit},
     procs::{Rank, Sampler},
-};
-use olo_ui::{
-    agent,
-    gpui::{App, Bounds, Context, Entity, FontWeight, Hsla, IntoElement, Pixels, Render, Styled, Window, canvas, point, px},
-    metrics as m,
-    palette::Palette,
-    style::{self, Align, c},
-    theme,
-    widgets::charts,
 };
 
 /// Seconds since Deskbar started: when each reading was made, and the
@@ -206,7 +206,7 @@ pub struct Live {
     /// What each has read, newest last, with when, and as what (another
     /// measure or rate starts again).
     readings: HashMap<u32, (VecDeque<(f64, Reading)>, (Measure, u32))>,
-    shown: HashMap<u32, Rc<Shown>>,
+    shown: HashMap<u32, Arc<Shown>>,
     worker: Option<mpsc::Sender<Tell>>,
     paused: bool,
     /// The widget the pointer is on, and the processes using most of
@@ -221,13 +221,13 @@ impl Live {
     }
 
     /// What widget `w` shows (nothing read yet: nothing).
-    pub fn shown(&self, w: &Widget) -> Rc<Shown> {
-        self.shown.get(&w.id).filter(|s| s.widget == *w).cloned().unwrap_or_else(|| Rc::new(Shown::of(w, &VecDeque::new(), Vec::new())))
+    pub fn shown(&self, w: &Widget) -> Arc<Shown> {
+        self.shown.get(&w.id).filter(|s| s.widget == *w).cloned().unwrap_or_else(|| Arc::new(Shown::of(w, &VecDeque::new(), Vec::new())))
     }
 
     /// The widgets as the settings now say: what each read kept if it
     /// measures the same at the same rate.
-    pub fn set(&mut self, widgets: Vec<Widget>, proxy: &olo_ui::Proxy) {
+    pub fn set(&mut self, widgets: Vec<Widget>, proxy: &olo_kit::Proxy) {
         if widgets == self.widgets {
             return;
         }
@@ -238,7 +238,7 @@ impl Live {
                 while r.len() > kept(w) {
                     r.pop_front();
                 }
-                self.shown.insert(w.id, Rc::new(Shown::of(w, r, Vec::new())));
+                self.shown.insert(w.id, Arc::new(Shown::of(w, r, Vec::new())));
             }
         }
         self.widgets = widgets;
@@ -246,14 +246,14 @@ impl Live {
     }
 
     /// Nothing read while the displays are asleep or the screen locked.
-    pub fn pause(&mut self, on: bool, proxy: &olo_ui::Proxy) {
+    pub fn pause(&mut self, on: bool, proxy: &olo_kit::Proxy) {
         if self.paused != on {
             self.paused = on;
             self.tell(proxy);
         }
     }
 
-    fn tell(&mut self, proxy: &olo_ui::Proxy) {
+    fn tell(&mut self, proxy: &olo_kit::Proxy) {
         let wanted = if self.paused { Vec::new() } else { self.widgets.clone() };
         if wanted.is_empty() {
             // (Its sender gone, the worker ends.)
@@ -314,7 +314,7 @@ impl Live {
             while readings.len() > kept(w) {
                 readings.pop_front();
             }
-            self.shown.insert(id, Rc::new(Shown::of(w, readings, was)));
+            self.shown.insert(id, Arc::new(Shown::of(w, readings, was)));
         }
     }
 }
@@ -373,7 +373,7 @@ fn kept(w: &Widget) -> usize {
 /// The worker: each widget read when it's due, the readings sent
 /// together; waits for the next due (or a new list) and does nothing
 /// else.
-fn read_widgets(rx: mpsc::Receiver<Tell>, proxy: olo_ui::Proxy) {
+fn read_widgets(rx: mpsc::Receiver<Tell>, proxy: olo_kit::Proxy) {
     let mut widgets: Vec<Widget> = Vec::new();
     let mut readers: HashMap<u32, (Measure, Reader)> = HashMap::new();
     // When each is next read, and what it was set to read then.
@@ -486,7 +486,7 @@ pub fn cells(r: Bounds<Pixels>, n: usize, inset: f32) -> Vec<Bounds<Pixels>> {
 /// A widget's colours: its hue (the accent with none), and a second
 /// series' (up after down, writes after reads, swap after memory).
 fn colors(w: &Widget, p: &Palette) -> (Hsla, Hsla) {
-    use olo_ui::palette::Hue;
+    use olo_kit::palette::Hue;
     let first = w.hue.map_or(p.control_highlight, |h| p.hue(h));
     let second = match w.hue {
         Some(Hue::Orange) => p.hue(Hue::Purple),
@@ -542,11 +542,11 @@ fn short_value(r: &Reading, v: Option<f64>) -> String {
 /// bars, a heatmap or a meter in a sunken well; and, while it moves, ask
 /// for the frame where it has moved a device pixel (the window's one
 /// clock, `charts::tick_within`), none once it's still.
-fn paint_drawing(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, s: &Shown, p: &Palette, t: f64) {
-    let inner = charts::paint_well(window, r, p);
+fn paint_drawing(g: &mut Painter, r: Bounds<Pixels>, s: &Shown, p: &Palette, t: f64) {
+    let inner = charts::paint_well(g, r, p);
     let w = &s.widget;
     let (first, second) = colors(w, p);
-    let scale = window.scale_factor();
+    let scale = g.scale_factor();
     let (wide, tall) = (f32::from(inner.size.width) * scale, f32::from(inner.size.height) * scale);
     // How far its levels move from nothing to all: device pixels (a
     // heatmap's cells, steps of colour).
@@ -555,48 +555,48 @@ fn paint_drawing(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, s: &Shown
             let (now, span) = (s.graph_now(t), w.span_s.clamp(1, MAX_SPAN_S) as f64);
             // (The second under the first: up under down.)
             for (i, points) in s.series.iter().enumerate().rev() {
-                charts::paint_trace(window, inner, points, now, span, if i == 0 { first } else { second }, i == 0);
+                charts::paint_trace(g, inner, points, now, span, if i == 0 { first } else { second }, i == 0);
             }
             if s.at.is_some_and(|at| t - at < s.every()) {
-                charts::tick_within(window, cx, span / wide.max(1.0) as f64);
+                g.paint_again_within(span / wide.max(1.0) as f64);
             }
             return;
         }
         Look::Bars => {
-            charts::paint_bars(window, inner, &s.levels_at(t), first);
+            charts::paint_bars(g, inner, &s.levels_at(t), first);
             tall
         }
         // (Idle, the well's own ground; busy, the widget's hue.)
         Look::Heatmap => {
-            charts::paint_heatmap(window, inner, &s.levels_at(t), p.document_background, w.hue.map_or(p.control_highlight, |h| p.hue(h)));
+            charts::paint_heatmap(g, inner, &s.levels_at(t), p.document_background, w.hue.map_or(p.control_highlight, |h| p.hue(h)));
             16.0
         }
         Look::Meter => {
-            charts::paint_meter(window, inner, &s.levels_at(t), first);
+            charts::paint_meter(g, inner, &s.levels_at(t), first);
             wide
         }
         Look::Number => return,
     };
     if let Some(next) = s.next_frame(t, extent) {
-        charts::tick_within(window, cx, next);
+        g.paint_again_within(next);
     }
 }
 
 /// Paint `s` in a tray slot `r` (an icon's square): its drawing, or its
 /// value in small figures.
-fn paint_tray(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, s: &Shown, p: &Palette, t: f64) {
+fn paint_tray(g: &mut Painter, r: Bounds<Pixels>, s: &Shown, p: &Palette, t: f64) {
     if s.widget.look == Look::Number {
         let (first, _) = colors(&s.widget, p);
-        style::label(window, cx, r.center().x, r.center().y, Align::Center, s.short.clone(), 9.0, style::ui_font(FontWeight::BOLD), first);
+        style::label(g, r.center().x, r.center().y, Align::Center, s.short.clone(), 9.0, style::ui_font(FontWeight::BOLD), first);
         return;
     }
-    paint_drawing(window, cx, r, s, p, t);
+    paint_drawing(g, r, s, p, t);
 }
 
 /// Paint `s`'s row `r`: its label at the left, its value at the right,
 /// and its drawing: between them in a small row, under them in a medium
 /// or large one, the whole row's with neither.
-fn paint_row(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, s: &Shown, p: &Palette, inset: f32, t: f64) {
+fn paint_row(g: &mut Painter, r: Bounds<Pixels>, s: &Shown, p: &Palette, inset: f32, t: f64) {
     let w = &s.widget;
     let left = r.left() + px(inset);
     let right = r.right() - px(inset);
@@ -613,16 +613,16 @@ fn paint_row(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, s: &Shown, p:
     // Its value in full if it fits beside its label (a small row's
     // drawing between them too), else shorter, else without the label.
     let room = f32::from(right - left) - if w.size == Size::Small && !number { 24.0 } else { 0.0 };
-    let label_w = if w.label { style::text_width_app(cx, label(w), style::PLAIN_SIZE, &bold) + m::SPACING } else { 0.0 };
-    let value = if !w.label || style::text_width_app(cx, &s.value, size, &plain) + label_w <= room { s.value.clone() } else { s.compact.clone() };
-    let show_label = w.label && style::text_width_app(cx, &value, size, &plain) + label_w <= room;
+    let label_w = if w.label { style::text_width_app(label(w), style::PLAIN_SIZE, &bold) + m::SPACING } else { 0.0 };
+    let value = if !w.label || style::text_width_app(&s.value, size, &plain) + label_w <= room { s.value.clone() } else { s.compact.clone() };
+    let show_label = w.label && style::text_width_app(&value, size, &plain) + label_w <= room;
     let mut label_w = px(0.0);
     if show_label {
-        label_w = style::label(window, cx, left, text_y, Align::Left, label(w), style::PLAIN_SIZE, bold, c(p.panel_text)).size.width;
+        label_w = style::label(g, left, text_y, Align::Left, label(w), style::PLAIN_SIZE, bold, c(p.panel_text)).size.width;
     }
     let mut value_w = px(0.0);
     if w.value || number {
-        value_w = style::label(window, cx, right, text_y, Align::Right, value, size, plain, c(p.panel_text)).size.width;
+        value_w = style::label(g, right, text_y, Align::Right, value, size, plain, c(p.panel_text)).size.width;
     }
     if number {
         return;
@@ -636,7 +636,7 @@ fn paint_row(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, s: &Shown, p:
     } else {
         Bounds::from_corners(point(left, r.top() + px(8.0 + m::LABEL_ROW)), point(right, r.bottom() - px(4.0)))
     };
-    paint_drawing(window, cx, drawing, s, p, t);
+    paint_drawing(g, drawing, s, p, t);
 }
 
 /// The line a cell's words are on, from its top.
@@ -645,26 +645,26 @@ const CELL_WORDS: f32 = 14.0;
 /// Paint `s` in cell `r` of a row it shares, small: its label over its
 /// drawing, its value at the label's right if both fit (else in its
 /// tip); a number's value under its label.
-fn paint_cell(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, s: &Shown, p: &Palette, t: f64) {
+fn paint_cell(g: &mut Painter, r: Bounds<Pixels>, s: &Shown, p: &Palette, t: f64) {
     let w = &s.widget;
     let number = w.look == Look::Number;
     let (bold, plain) = (style::ui_font(FontWeight::BOLD), style::ui_font(FontWeight::NORMAL));
     let size = style::SMALL_SIZE;
     let room = f32::from(r.size.width);
     let text_y = r.top() + px(4.0 + CELL_WORDS / 2.0);
-    let width = |cx: &mut App, text: &str, font| style::text_width_app(cx, text, size, font);
-    let name = [label(w), short_label(w)].into_iter().find(|l| width(cx, l, &bold) <= room).unwrap_or(short_label(w));
-    let name_w = if w.label { width(cx, name, &bold) + m::TIGHT } else { 0.0 };
+    let width = |text: &str, font| style::text_width_app(text, size, font);
+    let name = [label(w), short_label(w)].into_iter().find(|l| width(l, &bold) <= room).unwrap_or(short_label(w));
+    let name_w = if w.label { width(name, &bold) + m::TIGHT } else { 0.0 };
     // (In the words' line unless it's a number, whose value is under;
     // never the tray's figures without their unit, "3" for 3%.)
-    let value = (w.value && !number).then(|| [&s.value, &s.compact].into_iter().find(|v| width(cx, v, &plain) + name_w <= room).cloned()).flatten();
-    window.with_content_mask(Some(olo_ui::gpui::ContentMask { bounds: r }), |window| {
+    let value = (w.value && !number).then(|| [&s.value, &s.compact].into_iter().find(|v| width(v, &plain) + name_w <= room).cloned()).flatten();
+    g.with_content_mask(Some(olo_kit::ContentMask { bounds: r }), |g| {
         if w.label {
-            style::label(window, cx, r.left(), text_y, Align::Left, name, size, bold.clone(), c(p.panel_text));
+            style::label(g, r.left(), text_y, Align::Left, name, size, bold.clone(), c(p.panel_text));
         }
         if let Some(value) = value {
             let (x, align) = if w.label { (r.right(), Align::Right) } else { (r.left(), Align::Left) };
-            style::label(window, cx, x, text_y, align, value, size, plain.clone(), c(p.panel_text));
+            style::label(g, x, text_y, align, value, size, plain.clone(), c(p.panel_text));
         }
     });
     let body = Bounds::from_corners(point(r.left(), r.top() + px(6.0 + CELL_WORDS)), point(r.right(), r.bottom() - px(4.0)));
@@ -675,13 +675,13 @@ fn paint_cell(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, s: &Shown, p
             Size::Medium => 14.0,
             Size::Large => 16.0,
         };
-        let text = if width(cx, &s.value, &bold) * big / size <= room { s.value.clone() } else { s.short.clone() };
-        window.with_content_mask(Some(olo_ui::gpui::ContentMask { bounds: r }), |window| {
-            style::label(window, cx, body.left(), body.center().y, Align::Left, text, big, bold, first);
+        let text = if width(&s.value, &bold) * big / size <= room { s.value.clone() } else { s.short.clone() };
+        g.with_content_mask(Some(olo_kit::ContentMask { bounds: r }), |g| {
+            style::label(g, body.left(), body.center().y, Align::Left, text, big, bold, first);
         });
         return;
     }
-    paint_drawing(window, cx, body, s, p, t);
+    paint_drawing(g, body, s, p, t);
 }
 
 /// Where on the bar a widget is drawn.
@@ -715,56 +715,51 @@ impl Shelf {
     }
 }
 
-/// A bar's widgets, drawn over it as a view of their own (both cached:
-/// see `BarRoot`). Drawn again when Deskbar's model changes (so the bar
-/// may have moved them), as a reading comes, and as they move.
+/// A bar's widgets, drawn over it as a view of their own: drawn again
+/// when the bar says a reading came (or lays them out anew: the bar's
+/// `body` runs first), and as they move (each asks for its next frame),
+/// without the bar under them being drawn.
 pub struct Layer {
     shelf: Shelf,
-    model: Entity<crate::Deskbar>,
+    model: crate::Model,
 }
 
 impl Layer {
-    pub fn new(shelf: Shelf, model: Entity<crate::Deskbar>, cx: &mut Context<Layer>) -> Layer {
-        cx.observe(&model, |_, _, cx| cx.notify()).detach();
+    pub fn new(shelf: Shelf, model: crate::Model) -> Layer {
         Layer { shelf, model }
     }
 }
 
-impl Render for Layer {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+impl View for Layer {
+    type Message = ();
+
+    fn body(&mut self, _: &mut Cx<Self>) -> Element {
+        use crate::ModelExt as _;
         let (shelf, model) = (self.shelf.clone(), self.model.clone());
-        canvas(
-            |_, _, _| {},
-            move |_, _, window, cx| {
-                // (What the bar put there in this frame: it's laid out
-                // first.)
-                let placed = shelf.0.borrow().clone();
-                let (t, p) = (clock(), theme::palette(cx));
-                for Placed { widget, spot } in placed {
-                    let s = model.read(cx).live.shown(&widget);
-                    let r = match spot {
-                        Spot::Tray(r) => {
-                            paint_tray(window, cx, r, &s, &p, t);
-                            r
-                        }
-                        Spot::Row(r) => {
-                            paint_row(window, cx, r, &s, &p, crate::TRAY_TEXT, t);
-                            r
-                        }
-                        Spot::Cell(r) => {
-                            paint_cell(window, cx, r, &s, &p, t);
-                            r
-                        }
-                    };
-                    let name = label(&s.widget);
-                    agent::record(
-                        window,
-                        cx,
-                        agent::Node { role: "Meter", name: Some(name.into()), value: Some(s.value.clone().into()), bounds: r, enabled: true, clickable: true, ..Default::default() },
-                    );
-                }
-            },
-        )
+        canvas(move |g, _| {
+            // (What the bar put there as it was last laid out.)
+            let placed = shelf.0.borrow().clone();
+            let (t, p) = (clock(), theme::palette());
+            for Placed { widget, spot } in placed {
+                let s = model.read().live.shown(&widget);
+                let r = match spot {
+                    Spot::Tray(r) => {
+                        paint_tray(g, r, &s, &p, t);
+                        r
+                    }
+                    Spot::Row(r) => {
+                        paint_row(g, r, &s, &p, crate::TRAY_TEXT, t);
+                        r
+                    }
+                    Spot::Cell(r) => {
+                        paint_cell(g, r, &s, &p, t);
+                        r
+                    }
+                };
+                let name = label(&s.widget);
+                agent::record(g, agent::Node { role: "Meter", name: Some(name.into()), value: Some(s.value.clone().into()), bounds: r, enabled: true, clickable: true, ..Default::default() });
+            }
+        })
         .size_full()
     }
 }

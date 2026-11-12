@@ -13,17 +13,16 @@ use std::{
     time::{Duration, Instant},
 };
 
-use olo_protocol::{Client, CommandKey, Event, EventKind, KeyboardProfile, Platform, PowerStatus, Reply, Request, Settings};
-use olo_ui::{
-    gpui::{Context, Entity, ParentElement as _, SharedString, Styled as _, div, px},
-    metrics as m,
+use olo_kit::{
+    Child, Cx, ParentElement as _, SharedString, Styled as _, div, metrics as m, px,
     widgets::{Button, MenuField, Slider, TabView, TextControl, TextField},
 };
+use olo_protocol::{Client, CommandKey, Event, EventKind, KeyboardProfile, Platform, PowerStatus, Reply, Request, Settings};
 
 use crate::{Msg, PanelView, form::Ui, panel, server::Server};
 
 pub struct State {
-    test: Entity<TextField>,
+    test: Child<TextField>,
     /// The level being dragged to, until app_server's report catches up.
     backlight: Option<(f32, Instant)>,
     tab: usize,
@@ -34,9 +33,9 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(cx: &mut Context<PanelView>) -> State {
-        let test = olo_ui::widgets::text_field(cx, |f| f.hint("Type here to try the settings"));
-        State { test, backlight: None, tab: 0, shortcuts: crate::shortcuts::State::new(cx), keyboards: watch_keyboards(olo_ui::proxy(cx)) }
+    pub fn new(cx: &mut Cx<PanelView>) -> State {
+        let test = olo_kit::widgets::text_field(cx, |f| f.hint("Type here to try the settings"));
+        State { test, backlight: None, tab: 0, shortcuts: crate::shortcuts::State::new(cx), keyboards: watch_keyboards(olo_kit::proxy()) }
     }
 }
 
@@ -73,7 +72,7 @@ const LAYOUTS: &[(&str, &str)] = &[
 
 /// The keyboards plugged in, kept up to date on a thread (subscribed to
 /// app_server's device events before asking, as Touchpad's devices are).
-fn watch_keyboards(proxy: olo_ui::Proxy) -> Arc<Mutex<Option<Vec<String>>>> {
+fn watch_keyboards(proxy: olo_kit::Proxy) -> Arc<Mutex<Option<Vec<String>>>> {
     let shared: Arc<Mutex<Option<Vec<String>>>> = Default::default();
     // Tests (the layout lint), and a look headless (`OLO_KEYBOARDS_DEMO`):
     // a laptop's and an Apple one, named as they come.
@@ -147,17 +146,14 @@ const KEYBOARD_PICTURE: f32 = 64.0;
 /// A keyboard Olo knows: its picture beside what it is, and its Touch ID
 /// as it stands here.
 fn known_keyboard(ui: &mut Ui, model: &'static olo_protocol::keyboards::Model, name: &str) {
-    use olo_ui::{gpui::canvas, widgets::StringView};
+    use olo_kit::{canvas, widgets::StringView};
     let mut facts = vec![format!("{} {}", model.maker, model.model)];
     facts.push(if model.keypad { "full size, with a numeric keypad".into() } else { "compact".into() });
     facts.push(model.connection.to_owned());
-    let picture = canvas(
-        |_, _, _| {},
-        move |b, _, window, _| {
-            let at = olo_ui::style::snap_centred(window, b.center(), KEYBOARD_PICTURE, KEYBOARD_PICTURE);
-            olo_ui::icons::paint(window, at, model.icon);
-        },
-    )
+    let picture = canvas(move |g, b| {
+        let at = olo_kit::style::snap_centred(g, b.center(), KEYBOARD_PICTURE, KEYBOARD_PICTURE);
+        olo_kit::icons::paint(g, at, model.icon);
+    })
     .w(px(KEYBOARD_PICTURE))
     .h(px(KEYBOARD_PICTURE))
     .flex_shrink_0();
@@ -233,9 +229,9 @@ pub fn ui(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut St
         2 => keyboards(ui, st),
         _ => power_button(ui),
     });
-    let pick = ui.on_view(|v, i: usize, _, cx| {
+    let pick = ui.on_view(|v, i: &usize, cx| {
         if let Some(st) = state_of(v) {
-            st.tab = i;
+            st.tab = *i;
         }
         cx.notify();
     });
@@ -272,7 +268,7 @@ fn keyboard(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut 
         },
     );
 
-    let test = st.test.clone();
+    let test = &st.test;
     ui.bbox("Key Repeat", |ui| {
         let rate = k.repeat_rate_hz as f32;
         ui.slider(
@@ -290,7 +286,7 @@ fn keyboard(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut 
             |s| s.step(25.0).label("Delay until repeat").value_text(format!("{delay:.0} ms")).limits("Short", "Long"),
             |s, v| s.keyboard.repeat_delay_ms = v as i32,
         );
-        ui.add(TextControl::new(test).label("Typing test:"));
+        ui.add(TextControl::new(ui.cx, test).label("Typing test:"));
     });
 
     ui.check("Num Lock on when Olo starts", k.num_lock, |s, v| s.keyboard.num_lock = v);
@@ -312,17 +308,18 @@ fn keyboard(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut 
 
     ui.bbox("Backlight", |ui| match power.and_then(|p| p.keyboard_backlight) {
         Some(level) => {
-            if st.backlight.is_some_and(|(_, at)| at.elapsed() > Duration::from_millis(600)) {
+            if st.backlight.is_some_and(|(_, at)| at.elapsed() > crate::form::HELD) {
                 st.backlight = None;
             }
             let v = st.backlight.map_or(level, |(l, _)| l);
             let text = if v == 0.0 { "Off".to_owned() } else { format!("{:.0}%", v * 100.0) };
             let server = server.clone();
-            let on = ui.on_view(move |view, v: f32, _, cx| {
+            let on = ui.on_view(move |view, v: &f32, cx| {
                 if let Some(st) = state_of(view) {
-                    st.backlight = Some((v, Instant::now()));
+                    st.backlight = Some((*v, Instant::now()));
                 }
-                server.set_keyboard_backlight(v);
+                server.set_keyboard_backlight(*v);
+                crate::form::again_once_let_go(cx);
                 cx.notify();
             });
             ui.add(Slider::new("backlight", v, 0.0..=1.0).step(1.0 / 64.0).label("Brightness").value_text(text).limits("Off", "Bright").on_change(on));
@@ -345,7 +342,7 @@ fn power_button(ui: &mut Ui) {
     let pb = ui.s.keyboard.power_button.clone();
     let actions: Vec<SharedString> = PowerAction::ALL.iter().map(|a| SharedString::from(a.label())).collect();
     let of = |a: PowerAction| PowerAction::ALL.iter().position(|x| *x == a).unwrap_or(0);
-    let divider = crate::form::divider_for(ui.window, &["When pressed:", "When held for:"]);
+    let divider = crate::form::divider_for(&["When pressed:", "When held for:"]);
     ui.menu("power-press", actions.clone(), of(pb.press), |f| f.label("When pressed:").divider(divider), |s, i| s.keyboard.power_button.press = PowerAction::ALL[i]);
     // Each hold, by its seconds (the order they come in).
     let mut order: Vec<usize> = (0..pb.holds.len()).collect();
@@ -382,8 +379,8 @@ fn power_button(ui: &mut Ui) {
     }
     if pb.wants_helper() && !helper_installed() {
         ui.note("Immediately needs a small helper that only the administrator can install. Until it's installed, Immediately restarts or shuts down as Restart and Shut Down do.");
-        ui.button("Install the Helper…", |_, cx| {
-            let proxy = olo_ui::proxy(cx);
+        ui.button("Install the Helper…", |_, _cx| {
+            let proxy = olo_kit::proxy();
             // (Olo Doctor's fix: polkit asks for the password.)
             std::thread::spawn(move || {
                 match std::process::Command::new("olo-doctor").args(["--fix", "power-now"]).status() {
@@ -401,7 +398,7 @@ fn power_button(ui: &mut Ui) {
 /// The profile, at the top of Shortcuts: which (Save As… keeps it under
 /// a name of its own), its command key and its keys' ways. `saving` is
 /// the name being typed for Save As, while it is.
-pub fn profile(ui: &mut Ui, saving: Option<&Entity<TextField>>) {
+pub fn profile(ui: &mut Ui, saving: Option<&Child<TextField>>) {
     let k = ui.s.keyboard.clone();
     ui.bbox("Keyboard Profile", |ui| {
         let saved = !Platform::ALL.iter().any(|p| p.name() == k.profile.name);
@@ -427,13 +424,13 @@ pub fn profile(ui: &mut Ui, saving: Option<&Entity<TextField>>) {
                     k.profile = KeyboardProfile::builtin(k.profile.platform);
                 });
                 let start = if saved && !k.profile.name.ends_with("(Customized)") { k.profile.name.clone() } else { String::new() };
-                let save_as = ui.on_click_view(move |v, window, cx| {
+                let save_as = ui.on_click_view(move |v, cx| {
                     if let Some(st) = state_of(v) {
-                        let field = olo_ui::widgets::text_field(cx, |f| f.hint("My keys"));
+                        let field = crate::form::text_field(cx, |f| f.hint("My keys"));
                         field.update(cx, |f, cx| {
                             f.set_text(start.clone(), cx);
                             f.select_all_text(cx);
-                            f.focus(window);
+                            cx.focus();
                         });
                         st.shortcuts.saving = Some(field);
                     }
@@ -453,20 +450,17 @@ pub fn profile(ui: &mut Ui, saving: Option<&Entity<TextField>>) {
                 let name = field.read(ui.cx).text().trim().to_owned();
                 let taken = Platform::ALL.iter().any(|p| p.name() == name || KeyboardProfile::customized_name(*p) == name);
                 let ok = !name.is_empty() && !taken;
-                let prefs = ui.prefs();
-                let save = ui.on_click_view(move |v, _, cx| {
+                let save = ui.on_click_view(move |v, cx| {
                     let Some(st) = state_of(v) else { return };
                     let Some(field) = st.shortcuts.saving.take() else { return };
                     let name = field.read(cx).text().trim().to_owned();
-                    let _ = prefs.update(cx, |p, cx| {
-                        p.edit_as(cx, "", "Save Profile", |s| {
-                            s.keyboard.profile.name = name;
-                            s.keyboard.save_profile();
-                        })
+                    crate::prefs().edit_as("", "Save Profile", |s| {
+                        s.keyboard.profile.name = name;
+                        s.keyboard.save_profile();
                     });
                     cx.notify();
                 });
-                let cancel = ui.on_click_view(|v, _, cx| {
+                let cancel = ui.on_click_view(|v, cx| {
                     if let Some(st) = state_of(v) {
                         st.shortcuts.saving = None;
                     }
@@ -477,7 +471,7 @@ pub fn profile(ui: &mut Ui, saving: Option<&Entity<TextField>>) {
                         .flex()
                         .flex_row()
                         .gap(px(m::SPACING))
-                        .child(div().flex_1().child(TextControl::new(field.clone()).label("Name:").divider(DIVIDER)))
+                        .child(div().flex_1().child(TextControl::new(ui.cx, &field).label("Name:").divider(DIVIDER)))
                         .child(Button::new("Save").default(true).enabled(ok).on_click(save))
                         .child(Button::new("Cancel").on_click(cancel)),
                 );

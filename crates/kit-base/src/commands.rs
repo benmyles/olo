@@ -29,7 +29,7 @@
 //! tab's menu (Open in Tracker);
 //! `{"lose_gpu":true}` → `{"ok":bool}`: debug builds only, mark the
 //! GPU device lost, as a driver reset loses it, to test that the app
-//! comes back (olo-ui's `upgrade::lost_compositor`);
+//! comes back (olo-kit's `upgrade::lost_compositor`);
 //! `{"window_over":{"window":ID,"onto":ID|null,"x":X,"y":Y}}` and
 //! `{"window_dropped":{…}}` → `{"ok":true}`: from app_server, a window of
 //! ours moved over another of ours (surface ids, `onto`'s coordinates),
@@ -183,20 +183,24 @@ pub const MARKS: usize = 1200;
 /// One frame a window drew.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct FrameMark {
-    /// When it took its input, in CLOCK_MONOTONIC microseconds (the
-    /// clock app_server and input events go by).
+    /// When it began to be drawn (olo-kit: by the display thread, with
+    /// what had come in by then), in CLOCK_MONOTONIC microseconds (the
+    /// clock app_server and input events go by): how evenly frames come
+    /// is read from these (`tools/dev/scroll-check`, the benchmark).
     pub at_us: u64,
-    /// How long it took to draw, to handing it to the GPU.
+    /// How long it took, to handing it to the GPU (olo-kit: the
+    /// looper's work on what it shows, and the display thread's drawing
+    /// of it).
     pub us: u32,
     /// Of that, the toolkit's and the app's own code (laying out and
-    /// painting).
+    /// painting: on olo-kit, the looper's work).
     #[serde(default)]
     pub ui_us: u32,
     /// Setting the GPU surface up (made, or its swapchain configured
     /// for a new size).
     #[serde(default)]
     pub setup_us: u32,
-    /// Turning shapes into triangles (none on GPUI, which draws its
+    /// Turning shapes into triangles (none: the Interface Kit draws its
     /// primitives as they are).
     #[serde(default)]
     pub tessellate_us: u32,
@@ -231,6 +235,12 @@ pub struct WindowReview {
     /// A layer surface's namespace ("deskbar"); None for a window.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub layer: Option<String>,
+    /// The window is on its way to another size (one that follows what
+    /// it shows, laid out for what just came but not yet as tall): what
+    /// was found is of a window nobody is shown, so a lint asks again
+    /// rather than report it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub resizing: bool,
     pub findings: Vec<crate::review::Finding>,
 }
 

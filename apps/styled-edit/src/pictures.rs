@@ -1,7 +1,7 @@
 //! Pictures in documents (`doc::Picture`, a style of their character):
 //! each file decoded on a worker (`olo_images`: what the image crate
 //! reads, and JPEG XL, AVIF and HEIC), made no bigger than 2048 pixels a
-//! side and kept as a GPUI image; one still loading shows as a frame. The
+//! side and kept as a `RenderImage`; one still loading shows as a frame. The
 //! bytes a picture goes into other formats as (its file's own when PNG or
 //! JPEG, else made a PNG); its natural size; and where pictures with no
 //! file of their own (pasted, or from an imported document) are kept
@@ -15,7 +15,7 @@ use std::{
     sync::Arc,
 };
 
-use olo_ui::{Proxy, gpui::RenderImage};
+use olo_kit::RenderImage;
 
 /// A picture decoded on a worker (sent to the app).
 pub struct Loaded(pub PathBuf, pub Result<Arc<RenderImage>, String>);
@@ -30,7 +30,8 @@ enum Slot {
 #[derive(Default)]
 pub struct Pictures {
     slots: HashMap<PathBuf, Slot>,
-    proxy: Option<Proxy>,
+    /// Where decoded pictures are sent (the document's window).
+    send: Option<Arc<dyn Fn(Loaded) + Send + Sync>>,
     /// Pictures on the web: the file each is kept in, and its address.
     web: HashMap<PathBuf, String>,
 }
@@ -49,9 +50,10 @@ fn fetched_dir() -> PathBuf {
 const MOST: u32 = 2048;
 
 impl Pictures {
-    /// Where decoded pictures are sent (`Loaded`, to the app).
-    pub fn set_proxy(&mut self, proxy: Proxy) {
-        self.proxy = Some(proxy);
+    /// Where decoded pictures are sent (`Loaded`, to the document's
+    /// window).
+    pub fn set_sender(&mut self, send: impl Fn(Loaded) + Send + Sync + 'static) {
+        self.send = Some(Arc::new(send));
     }
 
     /// The file a picture at `url` (http or https) is kept in once
@@ -85,7 +87,7 @@ impl Pictures {
             Some(_) => None,
             None => {
                 self.slots.insert(path.to_owned(), Slot::Loading);
-                if let Some(proxy) = self.proxy.clone() {
+                if let Some(send) = self.send.clone() {
                     let path = path.to_owned();
                     let url = self.web.get(&path).cloned();
                     std::thread::spawn(move || {
@@ -93,7 +95,7 @@ impl Pictures {
                             Some(url) if !path.exists() => fetch(&url, &path).and_then(|_| decode(&path)),
                             _ => decode(&path),
                         };
-                        proxy.send(Loaded(path, r));
+                        send(Loaded(path, r));
                     });
                 }
                 None
@@ -148,7 +150,7 @@ fn fetch(url: &str, to: &Path) -> Result<(), String> {
 fn decode(path: &Path) -> Result<Arc<RenderImage>, String> {
     let (img, _) = olo_images::open(path)?;
     let img = if img.width().max(img.height()) > MOST { img.thumbnail(MOST, MOST) } else { img };
-    // (GPUI's images are BGRA, alpha straight.)
+    // (The kit's pictures are BGRA, alpha straight.)
     let mut bgra = img.to_rgba8();
     for p in bgra.pixels_mut() {
         p.0.swap(0, 2);

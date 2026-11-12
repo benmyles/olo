@@ -5,14 +5,13 @@
 //! written as root), so a network joined later, by anything, falls in
 //! line; links connected take it at once, without disconnecting.
 
+use olo_kit::{
+    Cx, IntoElement, ParentElement as _, Styled as _, div, metrics as m, px,
+    widgets::{Button, Column, ColumnListView, ListModel},
+};
 use olo_system::{
     netconf::{NetConf, Service},
     network::Status,
-};
-use olo_ui::{
-    gpui::{Context, Entity, IntoElement, ParentElement as _, Styled as _, div, px},
-    metrics as m,
-    widgets::{Button, Column, ColumnListView, ListModel},
 };
 
 use super::{Extra, Request, State, check, state_of};
@@ -21,12 +20,12 @@ use crate::{PanelView, form::Ui};
 pub struct Edit {
     /// The order as moved here, not yet applied.
     pending: Option<Vec<Service>>,
-    list: Entity<ListModel>,
+    list: ListModel,
 }
 
 impl Edit {
-    pub fn new(cx: &mut Context<PanelView>) -> Edit {
-        Edit { pending: None, list: ListModel::new(cx, false) }
+    pub fn new(_cx: &mut Cx<PanelView>) -> Edit {
+        Edit { pending: None, list: ListModel::new(false) }
     }
 }
 
@@ -56,18 +55,18 @@ pub fn ui(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: boo
     let rows = order.clone();
     let states: Vec<&'static str> = order.iter().map(|s| service_state(*s, status).1).collect();
     let columns = vec![Column::new("", 22.0), Column::new("Service", 200.0), Column::new("Status", 160.0)];
-    let list = ColumnListView::new("service-order", &st.order.list, columns, rows.len(), move |cell, window, cx| {
+    let list = ColumnListView::new(ui.cx, "service-order", &st.order.list, columns, rows.len(), move |_: &PanelView, cell, g| {
         let s = rows[cell.row];
         match cell.column {
-            0 if Some(s) == in_use => check(window, cell.bounds, cell.text_color),
-            1 => cell.text(window, cx, s.name()),
-            2 => cell.text(window, cx, states[cell.row]),
+            0 if Some(s) == in_use => check(g, cell.bounds, cell.text_color),
+            1 => cell.text(g, s.name()),
+            2 => cell.text(g, states[cell.row]),
             _ => {}
         }
     })
-    .on_select(|_, cx| cx.refresh_windows());
+    .on_select(ui.cx.listener(|_: &mut PanelView, _: &(), cx| cx.notify()));
     ui.add(div().h(px(m::LIST_ROW * 4.0 + 2.0)).child(list));
-    let selected = st.order.list.read(ui.cx).state.single().filter(|&i| i < order.len());
+    let selected = st.order.list.state().single().filter(|&i| i < order.len());
     let moved = |by: isize| -> Option<(Vec<Service>, usize)> {
         let from = selected?;
         let to = from.checked_add_signed(by).filter(|&to| to < order.len())?;
@@ -76,11 +75,11 @@ pub fn ui(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: boo
         Some((o, to))
     };
     let set = |next: Option<(Vec<Service>, usize)>| {
-        ui.on_click_view(move |v, _, cx| {
+        ui.on_click_view(move |v, cx| {
             let Some(st) = state_of(v) else { return };
             if let Some((o, to)) = next.clone() {
                 st.order.pending = Some(o);
-                st.order.list.update(cx, |l, _| l.state.select(to));
+                st.order.list.state_mut().select(to);
             }
             cx.notify();
         })
@@ -90,13 +89,13 @@ pub fn ui(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: boo
     let (up, down) = (set(up), set(down));
     let changed = order != applied;
     let default = order == Service::ALL;
-    let to_default = ui.on_click_view(|v, _, cx| {
+    let to_default = ui.on_click_view(|v, cx| {
         if let Some(st) = state_of(v) {
             st.order.pending = Some(Service::ALL.to_vec());
         }
         cx.notify();
     });
-    let revert = ui.on_click_view(|v, _, cx| {
+    let revert = ui.on_click_view(|v, cx| {
         if let Some(st) = state_of(v) {
             st.order.pending = None;
         }
@@ -104,7 +103,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: boo
     });
     let dns = extra.conf.dns.clone();
     let pending = order.clone();
-    let apply = ui.on_click_view(move |v, _, cx| {
+    let apply = ui.on_click_view(move |v, cx| {
         let Some(st) = state_of(v) else { return };
         let _ = st.link.tx.send(Request::Conf(NetConf { order: pending.clone(), dns: dns.clone() }));
         st.order.pending = None;
@@ -119,7 +118,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: boo
             .child(Button::new("Move Down").enabled(can_down && !busy).on_click(down))
             .child(div().flex_1())
             .child(Button::new("Use the Usual Order").enabled(!default && !busy).on_click(to_default))
-            .into_any_element(),
+            .into_element(),
     );
     ui.add(
         div()
@@ -129,7 +128,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: boo
             .child(div().flex_1())
             .child(Button::new("Revert").enabled(changed && !busy).on_click(revert))
             .child(Button::new("Apply").default(changed).enabled(changed && !busy).on_click(apply))
-            .into_any_element(),
+            .into_element(),
     );
     ui.note("Applying asks for an administrator's password once while this window is open.");
 }

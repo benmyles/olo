@@ -1,8 +1,9 @@
 # Olo: rules for agents
 
 Read [docs/HACKING.md](docs/HACKING.md) before changing anything. It is the
-source of truth for layout, the kit, look-and-feel rules and testing. These
-rules are universal and non-negotiable:
+source of truth for layout, the kit, look-and-feel rules and testing; the
+Olo Book ([docs/OLO-BOOK.md](docs/OLO-BOOK.md)) is how the kits work and
+how to build with them. These rules are universal and non-negotiable:
 
 - **BeOS-inspired, not a BeOS replica.** For everything you design, first
   look at how BeOS did it (the Be Book, in
@@ -74,10 +75,11 @@ rules are universal and non-negotiable:
   Rust/cargo crate is fine), so the whole desktop is one cohesive,
   consistent experience.
 - **Build on the shared kit.** If an app needs a widget or behaviour another
-  app could use, add it to `crates/ui` and document it in HACKING.md.
+  app could use, add it to `crates/kit` and document it in HACKING.md.
 - **Survive in-place reload.** Apps reconnect when app_server restarts and
-  re-exec after an upgrade; implement `olo_ui::on_upgrade` /
-  `olo_ui::restored_state()` so windows come back as they were. Test with
+  re-exec after an upgrade; implement `View::save_state` (and
+  `olo_kit::on_upgrade` for several windows) / `olo_kit::restored_state()`
+  so windows come back as they were. Test with
   `tsession start NAME --session` + rebuild + `tsession reload NAME`.
 - **Icons** follow [docs/ICONS.md](docs/ICONS.md) (sunburst at max quality,
   against the reference set).

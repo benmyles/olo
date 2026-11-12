@@ -21,16 +21,14 @@
 
 use std::sync::{Arc, mpsc};
 
-use olo_sync::Mutex;
-use olo_ui::{
-    gpui::{self, Entity, ParentElement as _, SharedString, Styled as _, div, px},
-    metrics as m,
+use olo_kit::{
+    self, Child, ParentElement as _, SharedString, Styled as _, WindowCx, div, metrics as m, px,
     widgets::{
         BBox, Button, EmptyState, ListModel, MenuField, TabView, TextControl, TextField,
         list::{Column, ColumnListView},
-        text_field,
     },
 };
+use olo_sync::Mutex;
 use olo_xdg::{
     mime::{self, OwnKind},
     open::{self, Handler},
@@ -139,14 +137,14 @@ pub struct State {
     tab: usize,
     found: Arc<Mutex<Option<Found>>>,
     tx: mpsc::Sender<Job>,
-    name: Entity<TextField>,
-    extensions: Entity<TextField>,
+    name: Child<TextField>,
+    extensions: Child<TextField>,
     /// The app a new kind opens in (an index into `every`).
     new_app: usize,
     /// The kind the Open With tab shows (an index into `offered`), and
     /// its apps' list.
     offer_kind: usize,
-    offers: Entity<ListModel>,
+    offers: ListModel,
 }
 
 fn state_of(v: &mut PanelView) -> Option<&mut State> {
@@ -157,12 +155,12 @@ fn state_of(v: &mut PanelView) -> Option<&mut State> {
 }
 
 impl State {
-    pub fn new(cx: &mut gpui::Context<PanelView>) -> State {
+    pub fn new(cx: &mut olo_kit::Cx<PanelView>) -> State {
         let found: Arc<Mutex<Option<Found>>> = Arc::default();
         let (tx, rx) = mpsc::channel::<Job>();
-        let name = text_field(cx, |f| f.hint("Game saves").name("Name"));
-        let extensions = text_field(cx, |f| f.hint("sav, sv2").name("Extensions"));
-        let st = State { tab: 0, found: found.clone(), tx, name, extensions, new_app: 0, offer_kind: 0, offers: ListModel::new(cx, false) };
+        let name = crate::form::text_field(cx, |f| f.hint("Game saves").name("Name"));
+        let extensions = crate::form::text_field(cx, |f| f.hint("sav, sv2").name("Extensions"));
+        let st = State { tab: 0, found: found.clone(), tx, name, extensions, new_app: 0, offer_kind: 0, offers: ListModel::new(false) };
         // (Tests: made-up apps at once, not this computer's.)
         if cfg!(test) {
             let app = |id: &str, name: &str, icon: &str| App { id: id.into(), name: name.into(), icon: icon.into() };
@@ -174,7 +172,7 @@ impl State {
             *found.lock().unwrap() = Some(Found { builtin: KINDS.iter().map(|(_, kinds)| kinds.iter().map(|_| row.clone()).collect()).collect(), own, every: apps, offered });
             return st;
         }
-        let proxy = olo_ui::proxy(cx);
+        let proxy = olo_kit::proxy();
         let _ = std::thread::Builder::new().name("default-apps".into()).spawn(move || {
             *found.lock().unwrap() = Some(work_out());
             proxy.send(Msg::Redraw);
@@ -276,9 +274,9 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         1 => own_kinds(ui, st, &found),
         _ => offered(ui, st, &found),
     });
-    let pick = ui.on_view(|v, i: usize, _, cx| {
+    let pick = ui.on_view(|v, i: &usize, cx| {
         if let Some(st) = state_of(v) {
-            st.tab = i;
+            st.tab = *i;
         }
         cx.notify();
     });
@@ -301,9 +299,9 @@ fn app_menu(ui: &mut Ui, id: String, label: String, row: &Row, send: impl Fn(Str
     }
     let names = row.apps.iter().map(|a| a.name.clone().into()).collect();
     let (ids, current) = (row.apps.iter().map(|a| a.id.clone()).collect::<Vec<_>>(), row.current);
-    ui.add(MenuField::new(id, names, current.unwrap_or(0)).label(label).divider(LABEL_W).width(LABEL_W + MENU_W).on_change(move |i, _, _| {
-        if Some(i) != current
-            && let Some(id) = ids.get(i)
+    ui.add(MenuField::new(id, names, current.unwrap_or(0)).label(label).divider(LABEL_W).width(LABEL_W + MENU_W).on_change(move |i, _| {
+        if Some(*i) != current
+            && let Some(id) = ids.get(*i)
         {
             send(id.clone());
         }
@@ -344,12 +342,12 @@ fn own_kinds(ui: &mut Ui, st: &State, found: &Found) {
         }
     });
     ui.bbox("Add a Kind", |ui| {
-        ui.add(TextControl::new(st.name.clone()).label("Name:").divider(LABEL_W).width(LABEL_W + MENU_W));
-        ui.add(TextControl::new(st.extensions.clone()).label("Extensions:").divider(LABEL_W).width(LABEL_W + MENU_W));
+        ui.add(TextControl::new(ui.cx, &st.name).label("Name:").divider(LABEL_W).width(LABEL_W + MENU_W));
+        ui.add(TextControl::new(ui.cx, &st.extensions).label("Extensions:").divider(LABEL_W).width(LABEL_W + MENU_W));
         let names: Vec<SharedString> = found.every.iter().map(|a| a.name.clone().into()).collect();
-        let choose = ui.on_view(|v, i: usize, _, cx| {
+        let choose = ui.on_view(|v, i: &usize, cx| {
             if let Some(st) = state_of(v) {
-                st.new_app = i;
+                st.new_app = *i;
             }
             cx.notify();
         });
@@ -357,7 +355,7 @@ fn own_kinds(ui: &mut Ui, st: &State, found: &Found) {
             ui.add(MenuField::new("new-kind-app", names, st.new_app.min(found.every.len() - 1)).label("Opens in:").divider(LABEL_W).width(LABEL_W + MENU_W).on_change(choose));
         }
         let every = found.every.clone();
-        let add = ui.on_click_view(move |v, _, cx| {
+        let add = ui.on_click_view(move |v, cx| {
             let Some(st) = state_of(v) else { return };
             let name = st.name.read(cx).text().trim().to_owned();
             let extensions: Vec<String> = st.extensions.read(cx).text().split([',', ' ', ';']).map(|e| e.trim().trim_start_matches('.').to_lowercase()).filter(|e| !e.is_empty()).collect();
@@ -383,28 +381,28 @@ fn offered(ui: &mut Ui, st: &State, found: &Found) {
     }
     let at = st.offer_kind.min(found.offered.len() - 1);
     let names: Vec<SharedString> = found.offered.iter().map(|(n, _, _)| n.clone().into()).collect();
-    let choose = ui.on_view(|v, i: usize, _, cx| {
+    let choose = ui.on_view(|v, i: &usize, cx| {
         if let Some(st) = state_of(v) {
-            st.offer_kind = i;
-            st.offers.update(cx, |l, _| l.state.selected.clear());
+            st.offer_kind = *i;
+            st.offers.state_mut().selected.clear();
         }
         cx.notify();
     });
     ui.add(MenuField::new("open-with-kind", names, at).label("Kind:").divider(KIND_W).width(KIND_W + MENU_W).on_change(choose));
     let (_, mime, offer) = &found.offered[at];
     let ids: Vec<String> = offer.apps.iter().map(|a| a.id.clone()).collect();
-    let selected = st.offers.read(ui.cx).state.single().filter(|&i| i < ids.len());
+    let selected = st.offers.state().single().filter(|&i| i < ids.len());
     // A change to the order: sent, and the app moved stays chosen.
     let send = |order: Option<(Vec<String>, Option<usize>)>| {
         let mime = mime.clone();
-        ui.on_click_view(move |v, _, cx| {
+        ui.on_click_view(move |v, cx| {
             let Some(st) = state_of(v) else { return };
             let Some((order, then)) = order.clone() else { return };
             let _ = st.tx.send(Job::Offer(mime.clone(), order));
-            st.offers.update(cx, |l, _| match then {
-                Some(i) => l.state.select(i),
-                None => l.state.selected.clear(),
-            });
+            match then {
+                Some(i) => st.offers.state_mut().select(i),
+                None => st.offers.state_mut().selected.clear(),
+            }
             cx.notify();
         })
     };
@@ -429,7 +427,7 @@ fn offered(ui: &mut Ui, st: &State, found: &Found) {
     add_names.extend(addable.iter().map(|a| SharedString::from(a.name.clone())));
     let add_ids: Vec<String> = addable.iter().map(|a| a.id.clone()).collect();
     let (tx, add_mime, base) = (st.tx.clone(), mime.clone(), ids.clone());
-    let add = move |i: usize, _: &mut gpui::Window, _: &mut gpui::App| {
+    let add = move |i: &usize, _: &mut WindowCx| {
         if let Some(id) = i.checked_sub(1).and_then(|i| add_ids.get(i)) {
             let mut o = base.clone();
             o.push(id.clone());
@@ -437,13 +435,13 @@ fn offered(ui: &mut Ui, st: &State, found: &Found) {
         }
     };
     let apps = offer.apps.clone();
-    let list = ColumnListView::new("open-with-apps", &st.offers, vec![Column::new("App", 300.0)], apps.len(), move |cell, window, cx| {
+    let list = ColumnListView::new(ui.cx, "open-with-apps", &st.offers, vec![Column::new("App", 300.0)], apps.len(), move |_: &PanelView, cell, g| {
         let a = &apps[cell.row];
-        cell.icon_text(window, cx, &a.icon, "application", a.name.clone());
+        cell.icon_text(g, &a.icon, "application", a.name.clone());
     })
     .no_header()
     .empty_text("No app opens these yet: add one.")
-    .on_select(|_, cx| cx.refresh_windows());
+    .on_select(ui.cx.listener(|_: &mut PanelView, _: &(), cx| cx.notify()));
     let button = |label: &str, on: bool, f| Button::new(label.to_owned()).enabled(on).min_width(BUTTON_W).on_click(f);
     ui.add(
         BBox::new("Open With Offers").child(div().h(px(m::LIST_ROW * 8.0 + 2.0)).child(list)).child(

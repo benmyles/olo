@@ -2,8 +2,8 @@
 //! in the evening, at once or gradually from its start); the window tab font size and longest title; icons in
 //! Deskbar's menu; new windows glowing a moment.
 
+use olo_kit::{SharedString, metrics as m};
 use olo_protocol::{NightLightMode, ThemePreference};
-use olo_ui::{gpui::SharedString, metrics as m};
 
 use crate::form::Ui;
 

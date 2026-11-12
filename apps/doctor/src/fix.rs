@@ -44,10 +44,22 @@ pub enum Step {
     SetSessionEnvironment {
         vars: Vec<(String, String)>,
     },
-    /// Write a value to a sysfs attribute.
+    /// Write a value to a sysfs attribute. It lasts until the next
+    /// restart (or the device's next plugging in): alone, only for what
+    /// is meant to (applying now what a rule or a file written beside
+    /// it does from then on).
     WriteSysfs {
         path: PathBuf,
         value: String,
+    },
+    /// Let a Thunderbolt device in, for good: boltd told to remember it
+    /// (`olo_system::bolt::enroll`, by its unique id), which lets it in
+    /// now and whenever it's plugged in; without boltd, or if it says
+    /// no, the kernel's `authorized` for this once (`device`: its name
+    /// in /sys/bus/thunderbolt/devices).
+    AllowThunderbolt {
+        device: String,
+        uid: String,
     },
     /// Remove a file (already gone is fine).
     RemoveFile {
@@ -197,6 +209,7 @@ impl Step {
             Step::SessionBusReload => "Reloading the session bus's settings".into(),
             Step::SetSessionEnvironment { vars } => format!("Setting {} for the session", vars.iter().map(|(k, v)| format!("{k}={v}")).collect::<Vec<_>>().join(", ")),
             Step::WriteSysfs { path, value } => format!("Setting {} to {value}", path.display()),
+            Step::AllowThunderbolt { device, .. } => format!("Letting Thunderbolt device {device} in, now and from now on"),
             Step::RemoveFile { path } => format!("Removing {}", path.display()),
             Step::Unit { name, action } => {
                 let verb = match action {
@@ -295,6 +308,17 @@ impl Step {
                 olo_system::env::update_activation_environment(&pairs).map_err(|e| format!("{}: {e}", self.describe()))
             }
             Step::WriteSysfs { path, value } => std::fs::write(path, value).map_err(failed),
+            Step::AllowThunderbolt { device, uid } => {
+                let remembered = if uid.is_empty() { Err("it has no unique id".to_owned()) } else { olo_system::bolt::enroll(uid).map_err(|e| e.to_string()) };
+                match remembered {
+                    Ok(()) => Ok(()),
+                    // (Not remembered: in for this once, and said.)
+                    Err(why) => {
+                        tracing::warn!("doctor: boltd didn't remember Thunderbolt device {device} ({why}): allowed until it's unplugged");
+                        std::fs::write(Path::new("/sys/bus/thunderbolt/devices").join(device).join("authorized"), "1").map_err(failed)
+                    }
+                }
+            }
             Step::RemoveFile { path } => match std::fs::remove_file(path) {
                 Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(failed(e)),
                 _ => Ok(()),

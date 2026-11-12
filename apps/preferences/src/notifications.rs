@@ -13,14 +13,13 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-use olo_protocol::{AppNotifications, ClockSettings, NotificationSettings};
-use olo_ui::{
-    gpui::{Bounds, Context, FontWeight, ParentElement as _, ScrollHandle, SharedString, Styled as _, Window, canvas, div, point, px, size},
-    metrics as m,
+use olo_kit::{
+    Bounds, Cx, FontWeight, Painter, ParentElement as _, ScrollHandle, SharedString, Styled as _, WindowCx, canvas, div, metrics as m, point, px, size,
     style::{self, c},
     theme,
     widgets::{CheckBox, MenuField, ScrollView, StringView},
 };
+use olo_protocol::{AppNotifications, ClockSettings, NotificationSettings};
 
 use crate::{Msg, PanelView, form::Ui, panel};
 
@@ -36,15 +35,15 @@ pub struct State {
     /// ignored for a moment after it.
     edited: Option<Instant>,
     /// The settings and the history, followed as they change while the
-    /// panel is open (`olo_ui::watch`).
-    _watch: Option<olo_ui::watch::Watch>,
+    /// panel is open (`olo_kit::watch`).
+    _watch: Option<olo_kit::watch::Watch>,
     scroll: ScrollHandle,
     /// A frame is due as Do Not Disturb's minutes count down.
     ticking: bool,
 }
 
 impl State {
-    pub fn new(cx: &mut Context<PanelView>) -> State {
+    pub fn new(_cx: &mut Cx<PanelView>) -> State {
         let (tx, rx) = channel();
         // Tests (the layout lint): the defaults and apps with long names,
         // not this account's files.
@@ -53,7 +52,7 @@ impl State {
             let apps = ["Telegram", "Google Chrome", "Olo Passwords", "Microsoft Teams (work or school)", "Visual Studio Code - Insiders"].map(str::to_owned).to_vec();
             return State { settings: Some(NotificationSettings::default()), apps, rx, edited: None, _watch: None, scroll: ScrollHandle::new(), ticking: false };
         }
-        let proxy = olo_ui::proxy(cx);
+        let proxy = olo_kit::proxy();
         let read = Arc::new(move || {
             // The settings, and the history (for apps new to it).
             let _ = tx.send((NotificationSettings::load(), known_apps()));
@@ -61,8 +60,8 @@ impl State {
         });
         let now = read.clone();
         std::thread::Builder::new().name("notifications-read".into()).spawn(move || now()).expect("thread");
-        let history = olo_ui::state_dir().join("notifications").join("history.json");
-        let watch = olo_ui::watch::watch([NotificationSettings::path(), history], move |_| read());
+        let history = olo_kit::state_dir().join("notifications").join("history.json");
+        let watch = olo_kit::watch::watch([NotificationSettings::path(), history], move |_| read());
         State { settings: None, apps: Vec::new(), rx, edited: None, _watch: watch, scroll: ScrollHandle::new(), ticking: false }
     }
 }
@@ -93,9 +92,9 @@ fn change(v: &mut PanelView, f: impl FnOnce(&mut NotificationSettings)) {
 }
 
 /// A control's change to the settings.
-fn set<T: 'static>(ui: &Ui, f: impl Fn(&mut NotificationSettings, T) + 'static) -> impl Fn(T, &mut Window, &mut olo_ui::gpui::App) + 'static {
-    ui.on_view(move |v, value: T, _, cx| {
-        change(v, |s| f(s, value));
+fn set<T: Clone + 'static>(ui: &Ui, f: impl Fn(&mut NotificationSettings, T) + 'static) -> impl Fn(&T, &mut WindowCx) + 'static {
+    ui.on_view(move |v, value: &T, cx| {
+        change(v, |s| f(s, value.clone()));
         cx.notify();
     })
 }
@@ -107,7 +106,7 @@ fn check(ui: &mut Ui, label: impl Into<SharedString>, on: bool, f: impl Fn(&mut 
 
 /// Apps that have sent notifications (from the history), by name.
 fn known_apps() -> Vec<String> {
-    let path = olo_ui::state_dir().join("notifications").join("history.json");
+    let path = olo_kit::state_dir().join("notifications").join("history.json");
     let v: serde_json::Value = std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
     let mut apps: Vec<String> = v.as_array().into_iter().flatten().filter_map(|e| e["app"].as_str()).filter(|a| !a.is_empty()).map(str::to_owned).collect();
     apps.sort_by_key(|a| a.to_lowercase());
@@ -124,7 +123,7 @@ fn time_text(clock: &ClockSettings, minute: u16) -> String {
 /// A time of day in half hours.
 fn time_menu(ui: &mut Ui, id: &str, label: &str, clock: &ClockSettings, value: u16, f: fn(&mut (u16, u16), u16)) -> MenuField {
     let names: Vec<SharedString> = (0..48).map(|i| time_text(clock, i * 30).into()).collect();
-    let divider = f32::from(style::text_width(ui.window, label.to_owned(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL))) + 8.0;
+    let divider = f32::from(style::text_width(label.to_owned(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL))) + 8.0;
     let on = set(ui, move |s, i: usize| {
         if let Some(sched) = s.schedule.as_mut() {
             f(sched, i as u16 * 30);
@@ -155,17 +154,12 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                 if !st.ticking {
                     st.ticking = true;
                     let wait = Duration::from_secs(t.saturating_sub(now) % 60 + 1);
-                    ui.cx
-                        .spawn(async move |view, cx| {
-                            cx.background_executor().timer(wait).await;
-                            let _ = view.update(cx, |v, cx| {
-                                if let Some(st) = state_of(v) {
-                                    st.ticking = false;
-                                }
-                                cx.notify();
-                            });
-                        })
-                        .detach();
+                    ui.cx.after_do(wait, |v, cx| {
+                        if let Some(st) = state_of(v) {
+                            st.ticking = false;
+                        }
+                        cx.notify();
+                    });
                 }
                 format!("Do Not Disturb (for {} more minutes)", t.saturating_sub(now).div_ceil(60))
             }
@@ -179,7 +173,8 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         if let Some((from, to)) = s.schedule {
             let from = time_menu(ui, "dnd-from", "From:", &clock, from, |s, v| s.0 = v);
             let to = time_menu(ui, "dnd-to", "to:", &clock, to, |s, v| s.1 = v);
-            ui.add(div().flex().flex_row().gap(px(m::SPACING)).pl(px(20.0)).child(from).child(to));
+            // (Under the check box's words, not two points past them.)
+            ui.add(div().flex().flex_row().gap(px(m::SPACING)).pl(px(m::MARK_SIZE + m::MARK_GAP)).child(from).child(to));
         }
         check(ui, "While sharing or recording the screen (errors wait too)", s.while_sharing, |s, v| s.while_sharing = v);
     });
@@ -221,7 +216,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         let fade = CheckBox::new("Fade notifications away over", s.fade).height(m::CONTROL_HEIGHT).on_toggle(set(ui, |s, v| s.fade = v));
         ui.add(div().flex().flex_row().items_center().gap(px(m::SPACING)).child(fade).child(MenuField::new("fade-minutes", names, i).width(110.0).enabled(s.fade).on_change(on)));
         let strip = s.clone();
-        ui.add(canvas(|_, _, _| {}, move |b, _, window, cx| fade_strip(window, cx, b, &strip)).w_full().h(px(10.0 + style::SMALL_SIZE + 4.0)));
+        ui.add(canvas(move |g, b| fade_strip(g, b, &strip)).w_full().h(px(10.0 + style::SMALL_SIZE + 4.0)));
         ui.note(if s.fade { "The newest show strongest; each goes once it has faded away." } else { "Kept until you clear them (the last 200)." });
         check(ui, "Only the latest of the same notification", s.one_of_each, |s, v| s.one_of_each = v);
         ui.note("One like it again from the same app (its title and text) takes the earlier one's place while that's still showing or unread.");
@@ -248,30 +243,30 @@ fn duration_text(minutes: u32) -> String {
 /// front (as unread notifications are marked) where a notification is
 /// new, fading as it ages, with now at its left and the end at its right
 /// (with fading off, lit evenly and dimmed, as a disabled control is).
-fn fade_strip(window: &mut Window, cx: &mut olo_ui::gpui::App, r: Bounds<Pixels>, s: &NotificationSettings) {
-    let p = theme::palette(cx);
-    let bar = style::snap(window, Bounds { origin: r.origin, size: size(r.size.width, px(10.0)) });
-    window.with_element_opacity((!s.fade).then_some(0.4), |window| {
-        style::fill_rect(window, bar, c(p.document_background));
+fn fade_strip(g: &mut Painter, r: Bounds<Pixels>, s: &NotificationSettings) {
+    let p = theme::palette();
+    let bar = style::snap(g, Bounds { origin: r.origin, size: size(r.size.width, px(10.0)) });
+    g.with_element_opacity((!s.fade).then_some(0.4), |g| {
+        style::fill_rect(g, bar, c(p.document_background));
         let span = s.fade_minutes.max(1) as u64 * 60;
         let steps = (f32::from(bar.size.width) / 2.0).ceil() as usize;
         for k in 0..steps {
             let x0 = bar.left() + px(k as f32 * 2.0);
             let strength = s.strength(span * k as u64 / steps as u64);
-            let color = olo_ui::palette::mix(p.document_background, p.tab_focused, strength);
-            style::fill_rect(window, Bounds::from_corners(point(x0, bar.top()), point((x0 + px(2.0)).min(bar.right()), bar.bottom())), c(color));
+            let color = olo_kit::palette::mix(p.document_background, p.tab_focused, strength);
+            style::fill_rect(g, Bounds::from_corners(point(x0, bar.top()), point((x0 + px(2.0)).min(bar.right()), bar.bottom())), c(color));
         }
-        style::sunken(window, bar, &p, false);
+        style::sunken(g, bar, &p, false);
     });
     let dim = style::disabled_text(&p);
     let y = bar.bottom() + px(3.0 + style::SMALL_SIZE / 2.0);
     let end = if s.fade { format!("{} later: gone", duration_text(s.fade_minutes)) } else { "Never fade".into() };
     let font = style::ui_font(FontWeight::NORMAL);
-    style::label(window, cx, bar.left(), y, style::Align::Left, "Now", style::SMALL_SIZE, font.clone(), dim);
-    style::label(window, cx, bar.right(), y, style::Align::Right, end, style::SMALL_SIZE, font, dim);
+    style::label(g, bar.left(), y, style::Align::Left, "Now", style::SMALL_SIZE, font.clone(), dim);
+    style::label(g, bar.right(), y, style::Align::Right, end, style::SMALL_SIZE, font, dim);
 }
 
-use olo_ui::gpui::Pixels;
+use olo_kit::Pixels;
 
 /// Each app's column of choices, as it is now.
 fn columns(a: &AppNotifications) -> [bool; 3] {
@@ -292,7 +287,7 @@ fn set_column(s: &mut NotificationSettings, app: &str, k: usize, v: bool) {
 
 /// The apps, each with what its notifications may do.
 fn apps_ui(ui: &mut Ui, st: &mut State, s: &NotificationSettings) {
-    let p = theme::palette(ui.cx);
+    let p = theme::palette();
     let mut apps: Vec<String> = st.apps.iter().chain(s.apps.keys()).cloned().collect();
     apps.sort_by_key(|a| a.to_lowercase());
     apps.dedup();
@@ -308,25 +303,21 @@ fn apps_ui(ui: &mut Ui, st: &mut State, s: &NotificationSettings) {
     if apps.is_empty() {
         ui.add(
             div().flex_1().min_h(px(60.0)).child(
-                canvas(
-                    |_, _, _| {},
-                    move |b, _, window, cx| {
-                        let p = theme::palette(cx);
-                        style::fill_rect(window, b, c(p.document_background));
-                        style::sunken(window, b, &p, false);
-                        style::label(
-                            window,
-                            cx,
-                            b.center().x,
-                            b.center().y,
-                            style::Align::Center,
-                            "Apps appear here once they have sent a notification.",
-                            style::SMALL_SIZE,
-                            style::ui_font(FontWeight::NORMAL),
-                            style::disabled_text(&p),
-                        );
-                    },
-                )
+                canvas(move |g, b| {
+                    let p = theme::palette();
+                    style::fill_rect(g, b, c(p.document_background));
+                    style::sunken(g, b, &p, false);
+                    style::label(
+                        g,
+                        b.center().x,
+                        b.center().y,
+                        style::Align::Center,
+                        "Apps appear here once they have sent a notification.",
+                        style::SMALL_SIZE,
+                        style::ui_font(FontWeight::NORMAL),
+                        style::disabled_text(&p),
+                    );
+                })
                 .size_full(),
             ),
         );
@@ -348,7 +339,7 @@ fn apps_ui(ui: &mut Ui, st: &mut State, s: &NotificationSettings) {
     }
     // (Its marks over the apps' in the scroll view below: the view's
     // frame and its bar, as the heading.)
-    ui.add(row.pr(px(2.0 + olo_ui::widgets::SCROLL_BAR)));
+    ui.add(row.pr(px(2.0 + olo_kit::widgets::SCROLL_BAR)));
     let mut rows = Vec::new();
     for app in &apps {
         let a = s.app(app);
@@ -361,7 +352,7 @@ fn apps_ui(ui: &mut Ui, st: &mut State, s: &NotificationSettings) {
         }
         rows.push(r);
     }
-    ui.add(div().flex_1().min_h_0().child(ScrollView::new("notification-apps", &st.scroll).background(p.document_background).child(div().flex().flex_col().children(rows))));
+    ui.add(div().flex_1().min_h_0().child(ScrollView::new(&st.scroll).background(p.document_background).child(div().flex().flex_col().children(rows))));
 }
 
 #[cfg(test)]

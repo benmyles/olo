@@ -1,0 +1,35 @@
+[package]
+name = "olo-kit"
+description = "Olo's kit: the BeOS controls, menus, lists and text, and what every Olo app does the same way, on the Interface Kit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+# The layout lint: windows and tables as they're made, not as someone left them.
+lint = []
+
+[dependencies]
+olo-app.workspace = true
+olo-interface.workspace = true
+olo-crash.workspace = true
+olo-sync.workspace = true
+olo-kit-base.workspace = true
+olo-protocol.workspace = true
+olo-theme.workspace = true
+olo-syntax.workspace = true
+olo-xdg.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+fast_image_resize = "5"
+image = { version = "0.25", default-features = false }
+olo-images.workspace = true
+libc = "0.2"
+smallvec = "1.6"
+unicode-segmentation = "1.12"
+
+[[test]]
+name = "lint"
+required-features = ["lint"]

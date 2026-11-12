@@ -4,12 +4,11 @@
 //! kept, and only if nothing else changed it meanwhile). The machine's
 //! own entries (localhost) are shown, not edited.
 
-use olo_system::hosts::{Host, HostsFile};
-use olo_ui::{
-    gpui::{App, Context, Entity, IntoElement, ParentElement as _, Styled as _, div, px},
-    metrics as m,
+use olo_kit::{
+    Child, Cx, IntoElement, ParentElement as _, Styled as _, WindowCx, div, metrics as m, px,
     widgets::{Button, CheckBox, Column, ColumnListView, ListModel, TextControl, TextField},
 };
+use olo_system::hosts::{Host, HostsFile};
 
 use super::{Extra, Request, State, check, field, state_of};
 use crate::{PanelView, form::Ui};
@@ -20,20 +19,20 @@ const DIVIDER: f32 = 92.0;
 pub struct Edit {
     /// The entries as edited here, not yet saved.
     pending: Option<Vec<Host>>,
-    list: Entity<ListModel>,
-    address: Entity<TextField>,
-    names: Entity<TextField>,
-    comment: Entity<TextField>,
+    list: ListModel,
+    address: Child<TextField>,
+    names: Child<TextField>,
+    comment: Child<TextField>,
     /// The row the fields were filled from, and as what.
     filled: Option<(usize, Host)>,
 }
 
 impl Edit {
-    pub fn new(cx: &mut Context<PanelView>) -> Edit {
-        Edit { pending: None, list: ListModel::new(cx, false), address: field(cx, ""), names: field(cx, "Separated by spaces"), comment: field(cx, "Optional"), filled: None }
+    pub fn new(cx: &mut Cx<PanelView>) -> Edit {
+        Edit { pending: None, list: ListModel::new(false), address: field(cx, ""), names: field(cx, "Separated by spaces"), comment: field(cx, "Optional"), filled: None }
     }
 
-    fn host_in_fields(&self, on: bool, cx: &App) -> Host {
+    fn host_in_fields(&self, on: bool, cx: &WindowCx) -> Host {
         Host {
             on,
             address: self.address.read(cx).text().trim().to_owned(),
@@ -51,7 +50,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, extra: &Extra, busy: bool) {
     };
     let e = &mut st.hosts;
     let mut hosts = e.pending.clone().unwrap_or_else(|| applied.clone());
-    let selected = e.list.read(ui.cx).state.single().filter(|&i| i < hosts.len());
+    let selected = e.list.state().single().filter(|&i| i < hosts.len());
     // The fields edit the entry chosen: filled as it's chosen, read back
     // into it as they're typed in.
     match selected {
@@ -82,7 +81,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, extra: &Extra, busy: bool) {
     }
     let rows = hosts.clone();
     let columns = vec![Column::new("On", 30.0), Column::new("Address", 150.0), Column::new("Names", 190.0), Column::new("Comment", 150.0)];
-    let list = ColumnListView::new("hosts", &e.list, columns, rows.len(), move |cell, window, cx| {
+    let list = ColumnListView::new(ui.cx, "hosts", &e.list, columns, rows.len(), move |_: &PanelView, cell, g| {
         let h = &rows[cell.row];
         // The machine's own, not to be edited: dim.
         if h.system() {
@@ -90,20 +89,20 @@ pub fn ui(ui: &mut Ui, st: &mut State, extra: &Extra, busy: bool) {
         }
         let color = cell.text_color;
         match cell.column {
-            0 if h.on => check(window, cell.bounds, color),
-            1 => cell.text(window, cx, h.address.clone()),
-            2 => cell.text(window, cx, h.names.join(" ")),
-            3 => cell.text(window, cx, h.comment.clone()),
+            0 if h.on => check(g, cell.bounds, color),
+            1 => cell.text(g, h.address.clone()),
+            2 => cell.text(g, h.names.join(" ")),
+            3 => cell.text(g, h.comment.clone()),
             _ => {}
         }
     })
     .empty_text("No entries.")
-    .on_select(|_, cx| cx.refresh_windows());
+    .on_select(ui.cx.listener(|_: &mut PanelView, _: &(), cx| cx.notify()));
     ui.add(div().flex_1().min_h(px(m::LIST_ROW * 6.0 + 2.0)).child(list));
 
     // The entry chosen.
     let on = selected.map(|i| hosts[i].on).unwrap_or(false);
-    let toggle = ui.on_view(move |v, now: bool, _, cx| {
+    let toggle = ui.on_view(move |v, now: &bool, cx| {
         let Some(st) = state_of(v) else { return };
         let Some(i) = selected else { return };
         let mut h = st.hosts.pending.clone().unwrap_or_else(|| match &st.link.shared.lock().unwrap().extra.hosts {
@@ -111,7 +110,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, extra: &Extra, busy: bool) {
             _ => Vec::new(),
         });
         if let Some(x) = h.get_mut(i) {
-            x.on = now;
+            x.on = *now;
             st.hosts.filled = Some((i, x.clone()));
         }
         st.hosts.pending = Some(h);
@@ -123,28 +122,28 @@ pub fn ui(ui: &mut Ui, st: &mut State, extra: &Extra, busy: bool) {
             .flex_row()
             .items_center()
             .gap(px(m::SPACING * 2.0))
-            .child(div().flex_1().child(TextControl::new(e.address.clone()).label("Address:").divider(DIVIDER)))
-            .child(CheckBox::new("On", on).enabled(editable).on_toggle(move |now, window, cx| toggle(now, window, cx))),
+            .child(div().flex_1().child(TextControl::new(ui.cx, &e.address).label("Address:").divider(DIVIDER)))
+            .child(CheckBox::new("On", on).enabled(editable).on_toggle(toggle)),
     );
-    ui.add(TextControl::new(e.names.clone()).label("Names:").divider(DIVIDER));
-    ui.add(TextControl::new(e.comment.clone()).label("Comment:").divider(DIVIDER));
+    ui.add(TextControl::new(ui.cx, &e.names).label("Names:").divider(DIVIDER));
+    ui.add(TextControl::new(ui.cx, &e.comment).label("Comment:").divider(DIVIDER));
     let invalid = hosts.iter().find_map(|h| h.check().err());
     if let Some(why) = &invalid {
         ui.label(format!("{why}."));
     }
     let changed = hosts != applied;
-    let add = ui.on_click_view(move |v, window, cx| {
+    let add = ui.on_click_view(move |v, cx| {
         let Some(st) = state_of(v) else { return };
         let mut h = st.hosts.pending.clone().unwrap_or_else(|| applied_of(st));
         h.push(Host { on: true, ..Host::default() });
         let at = h.len() - 1;
         st.hosts.pending = Some(h);
         st.hosts.filled = None;
-        st.hosts.list.update(cx, |l, _| l.state.select(at));
-        st.hosts.address.update(cx, |f, _| f.focus(window));
+        st.hosts.list.state_mut().select(at);
+        st.hosts.address.focus(cx);
         cx.notify();
     });
-    let remove = ui.on_click_view(move |v, _, cx| {
+    let remove = ui.on_click_view(move |v, cx| {
         let Some(st) = state_of(v) else { return };
         let Some(i) = selected else { return };
         let mut h = st.hosts.pending.clone().unwrap_or_else(|| applied_of(st));
@@ -153,10 +152,10 @@ pub fn ui(ui: &mut Ui, st: &mut State, extra: &Extra, busy: bool) {
         }
         st.hosts.pending = Some(h);
         st.hosts.filled = None;
-        st.hosts.list.update(cx, |l, _| l.state.selected.clear());
+        st.hosts.list.state_mut().selected.clear();
         cx.notify();
     });
-    let revert = ui.on_click_view(|v, _, cx| {
+    let revert = ui.on_click_view(|v, cx| {
         if let Some(st) = state_of(v) {
             st.hosts.pending = None;
             st.hosts.filled = None;
@@ -164,7 +163,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, extra: &Extra, busy: bool) {
         cx.notify();
     });
     let pending = hosts.clone();
-    let save = ui.on_click_view(move |v, _, cx| {
+    let save = ui.on_click_view(move |v, cx| {
         let Some(st) = state_of(v) else { return };
         let new = HostsFile::parse(&text).with(&pending);
         if HostsFile::check(&new).is_ok() {
@@ -184,7 +183,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, extra: &Extra, busy: bool) {
             .child(div().flex_1())
             .child(Button::new("Revert").enabled(changed && !busy).on_click(revert))
             .child(Button::new("Save").default(changed).enabled(changed && invalid.is_none() && !busy).on_click(save))
-            .into_any_element(),
+            .into_element(),
     );
 }
 

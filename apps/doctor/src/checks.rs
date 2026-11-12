@@ -23,7 +23,9 @@ use crate::fix::{Step, UnitAction, UnitState};
 /// Olo's udev rules, as the repository has them (installed by
 /// tools/install-session.sh; here so the Doctor can install or refresh
 /// them without the repository).
-pub const INPUT_RULE: &str = include_str!("../../../data/udev/71-olo-input.rules");
+pub const INPUT_RULE: &str = include_str!("../../../data/udev/95-olo-input.rules");
+/// The Thunderbolt 5 ports' USB controller kept awake (`thunderbolt_usb2`).
+pub const THUNDERBOLT_USB_RULE: &str = include_str!("../../../data/udev/75-olo-thunderbolt-usb.rules");
 pub const DISPLAY_RULE: &str = include_str!("../../../data/udev/70-olo-displays.rules");
 pub const IDLE_GPU_RULE: &str = include_str!("../../../data/udev/72-olo-idle-gpu.rules");
 /// The login screen's entry (its Exec made absolute on install).
@@ -39,7 +41,12 @@ const BRCMFMAC_CONF_PATH: &str = "etc/NetworkManager/conf.d/80-olo-brcmfmac.conf
 /// Wi-Fi drivers whose firmware the healer resets.
 const HEALED_DRIVERS: &[&str] = &["brcmfmac"];
 
-const INPUT_RULE_PATH: &str = "etc/udev/rules.d/71-olo-input.rules";
+const INPUT_RULE_PATH: &str = "etc/udev/rules.d/95-olo-input.rules";
+/// Where it was until 2026-11-12: before the smart-card readers' rule,
+/// which undid it for a security key at every start (taken away as the
+/// rule is installed in its new place).
+const INPUT_RULE_OLD_PATH: &str = "etc/udev/rules.d/71-olo-input.rules";
+const THUNDERBOLT_USB_RULE_PATH: &str = "etc/udev/rules.d/75-olo-thunderbolt-usb.rules";
 const DISPLAY_RULE_PATH: &str = "etc/udev/rules.d/70-olo-displays.rules";
 const IDLE_GPU_RULE_PATH: &str = "etc/udev/rules.d/72-olo-idle-gpu.rules";
 /// A FIDO security key's node for the person at the seat (`security_keys`).
@@ -243,7 +250,13 @@ pub struct Roots {
     pub updates: Box<dyn Fn() -> Option<Vec<String>> + Send + Sync>,
     /// Where the session's programs keep temporary files (`temp_files`).
     pub temp: TempFiles,
+    /// The port Token Pool's gateway listens on (`token_pool`).
+    pub pool_port: u16,
 }
+
+/// Token Pool's gateway's port, unless `OLO_POOL_PORT` says another
+/// (olo_token_pool's `gateway::PORT`).
+const POOL_PORT: u16 = 17891;
 
 /// Where temporary files go: /tmp's file system, and the session's
 /// `TMPDIR` (systemd's user manager's, else ours) and whether it's in
@@ -339,6 +352,7 @@ impl Roots {
             packages: Box::new(real_packages),
             updates: Box::new(real_updates),
             temp: TempFiles::real(),
+            pool_port: std::env::var("OLO_POOL_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(POOL_PORT),
         }
     }
 }
@@ -580,7 +594,7 @@ pub fn scan(roots: &Roots) -> Report {
     intel_video(roots, &gpus, &mut r);
     builtin_sound(roots, &gpus, &mut r);
     thunderbolt(roots, &mut r);
-    thunderbolt_usb2(&gpus, &mut r);
+    thunderbolt_usb2(roots, &gpus, &mut r);
     login_keyring(roots, &mut r);
     secrets_store(roots, &procs, &mut r);
     presence_rule(roots, &mut r);
@@ -588,9 +602,11 @@ pub fn scan(roots: &Roots) -> Report {
     security_keys(roots, &mut r);
     panel_hdr(roots, &mut r);
     stale(roots, &procs, &mut r);
+    token_pool(roots, &procs, &mut r);
     login_entry(roots, &mut r);
     login_screen_handed_over(roots, &mut r);
     own_login_screen(roots, &mut r);
+    fan_profile(roots, &mut r);
     temp_files(roots, &mut r);
     file_manager(roots, &mut r);
     diskbackup(roots, &mut r);
@@ -980,11 +996,12 @@ fn gnome_services(roots: &Roots, procs: &[Proc], r: &mut Report) {
 fn input_rule(roots: &Roots, r: &mut Report) -> bool {
     let path = roots.fs.join(INPUT_RULE_PATH);
     let installed = std::fs::read_to_string(&path).ok();
-    if installed.as_deref() == Some(INPUT_RULE) {
-        r.fine.push(Fine { title: "Olo's input rule is installed".into(), detail: "USB mice, keyboards and receivers are never put to sleep (71-olo-input.rules).".into() });
+    let old = roots.fs.join(INPUT_RULE_OLD_PATH).exists();
+    if installed.as_deref() == Some(INPUT_RULE) && !old {
+        r.fine.push(Fine { title: "Olo's input rule is installed".into(), detail: "USB mice, keyboards, receivers and security keys are never put to sleep (95-olo-input.rules).".into() });
         return true;
     }
-    let mut steps = vec![Step::WriteFile { path: PathBuf::from("/").join(INPUT_RULE_PATH), content: INPUT_RULE.into(), mode: 0o644 }];
+    let mut steps = input_rule_steps(roots);
     // Applied to what is plugged in now (udev reads the rule itself for
     // what comes later).
     for d in usb_inputs(&roots.fs) {
@@ -992,15 +1009,25 @@ fn input_rule(roots: &Roots, r: &mut Report) -> bool {
             steps.push(Step::WriteSysfs { path: PathBuf::from("/sys/bus/usb/devices").join(&d.port).join("power/control"), value: "on".into() });
         }
     }
-    let (title, verb) = if installed.is_some() { ("Olo's input rule is out of date", "updates") } else { ("Olo's input rule isn't installed", "installs") };
+    let (title, verb) = if installed.is_some() || old { ("Olo's input rule is out of date", "updates") } else { ("Olo's input rule isn't installed", "installs") };
     r.findings.push(Finding {
         id: "rule:input".into(),
         severity: Severity::Problem,
         title: title.into(),
-        detail: format!("Without it, a USB mouse, keyboard or wireless receiver may be put to sleep after a pause and lose the first reports when the hand moves again (the pointer sits still for a moment). The fix {verb} /etc/udev/rules.d/71-olo-input.rules and applies it to what is plugged in now."),
+        detail: format!("Without it, a USB mouse, keyboard or wireless receiver may be put to sleep after a pause and lose the first reports when the hand moves again (the pointer sits still for a moment). A security key that is a smart card too is put to sleep by the smart-card readers' own rule unless Olo's comes after it. The fix {verb} /etc/udev/rules.d/95-olo-input.rules and applies it to what is plugged in now."),
         fix: Some(Fix { label: "Install the Rule".into(), root: true, steps }),
     });
     false
+}
+
+/// The steps that put Olo's input rule in place: the file, and its old
+/// one taken away where it's still there.
+fn input_rule_steps(roots: &Roots) -> Vec<Step> {
+    let mut steps = vec![Step::WriteFile { path: PathBuf::from("/").join(INPUT_RULE_PATH), content: INPUT_RULE.into(), mode: 0o644 }];
+    if roots.fs.join(INPUT_RULE_OLD_PATH).exists() {
+        steps.push(Step::RemoveFile { path: PathBuf::from("/").join(INPUT_RULE_OLD_PATH) });
+    }
+    steps
 }
 
 fn autosuspend(roots: &Roots, rule_current: bool, r: &mut Report) {
@@ -1016,10 +1043,9 @@ fn autosuspend(roots: &Roots, rule_current: bool, r: &mut Report) {
         return;
     }
     for d in asleep {
-        let mut steps = Vec::new();
-        if !rule_current {
-            steps.push(Step::WriteFile { path: PathBuf::from("/").join(INPUT_RULE_PATH), content: INPUT_RULE.into(), mode: 0o644 });
-        }
+        // (The rule is what keeps it so from its next plugging in and
+        // the computer's next start; the value is for now.)
+        let mut steps = if rule_current { Vec::new() } else { input_rule_steps(roots) };
         steps.push(Step::WriteSysfs { path: PathBuf::from("/sys/bus/usb/devices").join(&d.port).join("power/control"), value: "on".into() });
         let _ = &d.dir;
         r.findings.push(Finding {
@@ -2113,12 +2139,15 @@ fn thunderbolt(roots: &Roots, r: &mut Report) {
         return;
     }
     let names: Vec<String> = waiting.iter().map(|(_, w)| w.clone()).collect();
-    let steps = waiting.iter().map(|(n, _)| Step::WriteSysfs { path: PathBuf::from("/sys/bus/thunderbolt/devices").join(n).join("authorized"), value: "1".into() }).collect();
+    // (Remembered, so it's let in whenever it comes: allowed by the
+    // kernel's `authorized` alone it waited again at its next plugging
+    // in and at every start.)
+    let steps = waiting.iter().map(|(n, _)| Step::AllowThunderbolt { device: n.clone(), uid: read(&dir.join(n).join("unique_id")).map(|u| u.trim().to_owned()).unwrap_or_default() }).collect();
     r.findings.push(Finding {
         id: format!("thunderbolt:{}", waiting.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>().join(",")),
         severity: Severity::Problem,
         title: format!("{} is plugged in but not allowed", names.join(", ")),
-        detail: "This computer's Thunderbolt lets a device in only once it's allowed, and it hasn't been: until then a dock, a display or a drive on it does nothing. Allow it if you know it.".into(),
+        detail: "This computer's Thunderbolt lets a device in only once it's allowed, and it hasn't been: until then a dock, a display or a drive on it does nothing. Allow it if you know it: it's remembered, and let in whenever it's plugged in from then on.".into(),
         fix: Some(Fix { label: "Allow It".into(), root: true, steps }),
     });
 }
@@ -2128,9 +2157,12 @@ fn thunderbolt(roots: &Roots, r: &mut Report) {
 /// port (Ben's YubiKey, 2026-11-04) wasn't seen at all, the kernel hearing
 /// nothing, while USB 3 drives were and the key worked at once in another
 /// port: so said, with what to do meanwhile. Whether the controller,
-/// asleep, misses a USB 2 plug is still to find; the fix keeps it awake
-/// until the next restart, so plugging the device in again tells.
-fn thunderbolt_usb2(pcis: &[Pci], r: &mut Report) {
+/// asleep, misses a USB 2 plug is still to find; the fix keeps it awake,
+/// by a rule so it's awake at every start (it was a value written for
+/// the day, and the finding came back with each restart: Ben,
+/// 2026-11-10, "olo should just set ephemeral stuff like that"), and
+/// the way back takes the rule away.
+fn thunderbolt_usb2(roots: &Roots, pcis: &[Pci], r: &mut Report) {
     let Some(xhci) = pcis.iter().find(|p| p.vendor == 0x8086 && read(&p.dir.join("device")).is_some_and(|d| d.trim().trim_start_matches("0x").eq_ignore_ascii_case("5782"))) else { return };
     // Its root hubs (usbN), kept awake with it.
     let mut hubs: Vec<String> = std::fs::read_dir(&xhci.dir)
@@ -2141,21 +2173,34 @@ fn thunderbolt_usb2(pcis: &[Pci], r: &mut Report) {
         .collect();
     hubs.sort();
     let sys = PathBuf::from("/sys/bus/pci/devices").join(&xhci.address);
-    if xhci.power_control.as_deref() == Some("on") {
+    let rule = std::fs::read_to_string(roots.fs.join(THUNDERBOLT_USB_RULE_PATH)).ok().as_deref() == Some(THUNDERBOLT_USB_RULE);
+    let power = |value: &str| -> Vec<Step> {
+        std::iter::once(sys.join("power/control")).chain(hubs.iter().map(|h| sys.join(h).join("power/control"))).map(|path| Step::WriteSysfs { path, value: value.into() }).collect()
+    };
+    if rule && xhci.power_control.as_deref() == Some("on") {
+        let title = "The Thunderbolt 5 ports' USB is kept awake";
         r.fine.push(Fine {
-            title: "The Thunderbolt 5 ports' USB is kept awake".into(),
-            detail: "Plug a USB 2 device (a security key, a keyboard) into a Thunderbolt 5 port: if it's seen now, its controller was missing the plug while asleep. Until the next restart.".into(),
+            title: title.into(),
+            detail: "At every start (75-olo-thunderbolt-usb.rules). Plug a USB 2 device (a security key, a keyboard) into a Thunderbolt 5 port: if it's seen now, its controller was missing the plug while asleep.".into(),
         });
+        // The way back: the rule away, and asleep when idle again.
+        let mut steps = vec![Step::RemoveFile { path: PathBuf::from("/").join(THUNDERBOLT_USB_RULE_PATH) }];
+        steps.extend(power("auto"));
+        r.undo.push(Undo { id: format!("usb2:thunderbolt5:{}:undo", xhci.address), title: title.into(), fix: Fix { label: "Let It Sleep".into(), root: true, steps } });
         return;
     }
-    let mut steps = vec![Step::WriteSysfs { path: sys.join("power/control"), value: "on".into() }];
-    steps.extend(hubs.iter().map(|h| Step::WriteSysfs { path: sys.join(h).join("power/control"), value: "on".into() }));
+    // The rule, for every start from now; and awake now.
+    let mut steps = Vec::new();
+    if !rule {
+        steps.push(Step::WriteFile { path: PathBuf::from("/").join(THUNDERBOLT_USB_RULE_PATH), content: THUNDERBOLT_USB_RULE.into(), mode: 0o644 });
+    }
+    steps.extend(power("on"));
     r.findings.push(Finding {
         id: format!("usb2:thunderbolt5:{}", xhci.address),
         severity: Severity::Advice,
         title: "A USB 2 device in a Thunderbolt 5 port may go unseen".into(),
-        detail: "This computer's Thunderbolt 5 ports have a USB controller of their own, and a USB 2 device in one (a security key, a keyboard, a mouse's receiver) wasn't seen at all here, though USB 3 drives were and the same key worked at once in another port. Meanwhile, plug such devices into another USB-C port. To find out whether the controller misses the plug while it sleeps, the fix keeps it awake until the next restart (a little power): then plug the device in again.".into(),
-        fix: Some(Fix { label: "Keep It Awake for Now".into(), root: true, steps }),
+        detail: "This computer's Thunderbolt 5 ports have a USB controller of their own, and a USB 2 device in one (a security key, a keyboard, a mouse's receiver) wasn't seen at all here, though USB 3 drives were and the same key worked at once in another port. Meanwhile, plug such devices into another USB-C port. To find out whether the controller misses the plug while it sleeps, the fix keeps it awake, now and at every start (a little power; Olo Doctor can let it sleep again): then plug the device in again.".into(),
+        fix: Some(Fix { label: "Keep It Awake".into(), root: true, steps }),
     });
 }
 
@@ -2218,6 +2263,24 @@ fn builtin_sound(roots: &Roots, pcis: &[Pci], r: &mut Report) {
     });
 }
 
+/// Whether process `pid` is finishing what it has under way before it
+/// becomes the new version (olo_kit_base::restore's `mark_waiting`: Token
+/// Pool, handed over to a copy of the new version, streaming the answers
+/// it has), which olo-session leaves to it too.
+/// (A marker older than the process is another's, left by one that
+/// ended before it could take it away, whose pid this one has again.)
+fn finishing(roots: &Roots, pid: i32) -> bool {
+    let Ok(marked) = std::fs::metadata(roots.temp.runtime.join("olo-upgrade-waits").join(pid.to_string())) else { return false };
+    let marked_ago = marked.modified().ok().and_then(|t| t.elapsed().ok()).map_or(0.0, |d| d.as_secs_f64());
+    age(&roots.fs, pid).is_none_or(|running| marked_ago <= running + 1.0)
+}
+
+/// Olo's programs still on a version an upgrade replaced, but not one
+/// finishing what it has before it goes (`finishing`): Quit Them stopped
+/// Token Pool's copy the session follows while it streamed its last
+/// answers, its successor left to run on alone, and the session, starting
+/// it again, ended up with a second Token Pool with no gateway (Ben,
+/// 2026-11-07).
 fn stale(roots: &Roots, procs: &[Proc], r: &mut Report) {
     let me = std::process::id() as i32;
     let bin = roots.bin.to_string_lossy();
@@ -2227,6 +2290,7 @@ fn stale(roots: &Roots, procs: &[Proc], r: &mut Report) {
         .filter(|p| p.exe.as_deref().is_some_and(|e| e.ends_with(" (deleted)") && e.starts_with(&*bin)))
         .filter(|p| !NEVER_STOPPED.contains(&p.name.as_str()))
         .filter(|p| !on_a_screen(&roots.fs, p.pid))
+        .filter(|p| !finishing(roots, p.pid))
         .collect();
     if old.is_empty() {
         r.fine.push(Fine { title: "Every Olo program runs the installed version".into(), detail: String::new() });
@@ -2240,6 +2304,102 @@ fn stale(roots: &Roots, procs: &[Proc], r: &mut Report) {
         detail: format!("{}: each runs a program file an upgrade has since replaced. Quitting them lets the session start the current version.", names.join(", ")),
         fix: Some(Fix { label: "Quit Them".into(), root: false, steps: old.iter().map(|p| Step::Signal { pid: p.pid, signal: libc::SIGTERM }).collect() }),
     });
+}
+
+/// How long ago process `pid` started, in seconds, as /proc says (None
+/// if it doesn't).
+fn age(fs: &Path, pid: i32) -> Option<f64> {
+    let stat = std::fs::read_to_string(fs.join("proc").join(pid.to_string()).join("stat")).ok()?;
+    let started: f64 = stat.rsplit_once(')')?.1.split_whitespace().nth(19)?.parse().ok()?;
+    let uptime: f64 = std::fs::read_to_string(fs.join("proc/uptime")).ok()?.split_whitespace().next()?.parse().ok()?;
+    // SAFETY: sysconf has no preconditions.
+    let hz = unsafe { libc::sysconf(libc::_SC_CLK_TCK) }.max(1) as f64;
+    Some(uptime - started / hz)
+}
+
+/// Token Pool, as its processes and its gateway's port say. A copy of it
+/// serving nothing beside the one that serves: the session's, started
+/// while another held the port (which ran on with no gateway, its window
+/// showing no requests, and took Token Pool's launches: Ben, 2026-11-09)
+/// is found and quit (the session starts it again, and it keeps the one
+/// serving: olo-pool's `keeper`). The gateway's port held by no Token
+/// Pool: by another program (said), or by none (Token Pool started
+/// again). Else, which serves, as fine. The keeper, a copy finishing
+/// what it has after handing over, a launch on its way (younger than 15
+/// s) and the command line's own (`--status`) are as they should be.
+fn token_pool(roots: &Roots, procs: &[Proc], r: &mut Report) {
+    const COMMANDS: &[&str] = &["--status", "--clients", "--put-back", "--restart-codex-service", "-h", "--help"];
+    let port = roots.pool_port;
+    let dir = |pid: i32| roots.fs.join("proc").join(pid.to_string());
+    let args = |pid: i32| -> Vec<String> {
+        std::fs::read(dir(pid).join("cmdline")).unwrap_or_default().split(|b| *b == 0).skip(1).filter(|a| !a.is_empty()).map(|a| String::from_utf8_lossy(a).into_owned()).collect()
+    };
+    let environ = |pid: i32| -> Vec<Vec<u8>> { std::fs::read(dir(pid).join("environ")).unwrap_or_default().split(|b| *b == 0).map(<[u8]>::to_vec).collect() };
+    let keeper = |pid: i32| environ(pid).iter().any(|v| v == b"OLO_POOL_KEEPER=1");
+    // (One on a port of its own is a test's or a nested session's.)
+    let its_port = |pid: i32| environ(pid).iter().find_map(|v| std::str::from_utf8(v.strip_prefix(b"OLO_POOL_PORT=")?).ok()?.parse::<u16>().ok()).unwrap_or(POOL_PORT);
+    let pools: Vec<&Proc> = procs
+        .iter()
+        .filter(|p| p.uid == roots.uid && p.name == "olo-pool" && (p.scope.is_none() || p.scope == roots.scope))
+        .filter(|p| !on_a_screen(&roots.fs, p.pid) && !args(p.pid).iter().any(|a| COMMANDS.contains(&a.as_str())) && its_port(p.pid) == port)
+        .collect();
+    if pools.is_empty() {
+        // (Not running: turned off, or not this session's to run.)
+        return;
+    }
+    // Token Pool's own first (a few processes' descriptors read); every
+    // other program's only when none of them holds the port (a thousand
+    // processes: 30 ms).
+    let ids: Vec<i32> = pools.iter().map(|p| p.pid).collect();
+    let serving = olo_system::listening::holders(&roots.fs, port, |pid| ids.contains(&pid));
+    let idle: Vec<i32> = ids.iter().copied().filter(|&pid| !serving.contains(&pid) && !keeper(pid) && !finishing(roots, pid) && age(&roots.fs, pid).is_none_or(|a| a > 15.0)).collect();
+    let processes = |pids: &[i32]| -> String {
+        match pids {
+            [one] => format!("process {one}"),
+            [rest @ .., last] => format!("processes {} and {last}", rest.iter().map(i32::to_string).collect::<Vec<_>>().join(", ")),
+            [] => String::new(),
+        }
+    };
+    let quit = |label: &str| Fix { label: label.into(), root: false, steps: idle.iter().map(|&pid| Step::Signal { pid, signal: libc::SIGTERM }).collect() };
+    if serving.is_empty() {
+        let others = olo_system::listening::holders(&roots.fs, port, |pid| !ids.contains(&pid) && procs.iter().any(|p| p.pid == pid && p.uid == roots.uid));
+        if let Some(other) = others.iter().find_map(|h| procs.iter().find(|p| p.pid == *h)) {
+            r.findings.push(Finding {
+                id: "token-pool:port".into(),
+                severity: Severity::Problem,
+                title: "Another program has Token Pool's port".into(),
+                detail: format!(
+                    "{} (process {}) listens on port {port}, where Token Pool's gateway does, so Token Pool can't, and Claude Code and Codex can't reach the pool. Quit it, then quit Token Pool from Activity Monitor: the session starts it again on its port.",
+                    other.name, other.pid
+                ),
+                fix: None,
+            });
+        } else if !idle.is_empty() {
+            r.findings.push(Finding {
+                id: "token-pool:no-gateway".into(),
+                severity: Severity::Problem,
+                title: "Token Pool's gateway isn't running".into(),
+                detail: format!("Token Pool runs ({}), but nothing listens on port {port}, so Claude Code and Codex can't reach the pool. Starting it again starts its gateway.", processes(&idle)),
+                fix: Some(quit("Start It Again")),
+            });
+        }
+        return;
+    }
+    if !idle.is_empty() {
+        r.findings.push(Finding {
+            id: "token-pool:twice".into(),
+            severity: Severity::Problem,
+            title: "Token Pool is running twice".into(),
+            detail: format!(
+                "Token Pool ({}) serves Claude Code and Codex; another ({}) started beside it and couldn't take its port, so it serves nothing: its window shows no requests, and opening Token Pool may show it. Quitting it fixes this; the session starts it again to look after the one serving.",
+                processes(&serving),
+                processes(&idle)
+            ),
+            fix: Some(quit(if idle.len() == 1 { "Quit It" } else { "Quit Them" })),
+        });
+        return;
+    }
+    r.fine.push(Fine { title: "Token Pool serves Claude Code and Codex".into(), detail: format!("Its gateway listens on port {port} ({}).", processes(&serving)) });
 }
 
 /// Olo's login screen gave the seat to another this boot (olo-login's
@@ -2321,6 +2481,70 @@ fn own_login_screen(roots: &Roots, r: &mut Report) {
             .into(),
         fix: Some(Fix { label: "Use Olo's Login Screen".into(), root: true, steps: ls::steps(&roots.bin, &share, dm.as_deref()) }),
     });
+}
+
+/// The fan profile (fans.rs): Cool, chosen, that isn't what the fans are
+/// doing, and a service an upgrade has left older (Ben, 2026-11-12: "why
+/// does it say the fan service isn't started in activity monitor?": it
+/// was running, and the fans' driver had taken no level since that
+/// morning's restart, having been told to only by hand). Nothing where
+/// the firmware's own curve is chosen, or the fans can't be set at all.
+fn fan_profile(roots: &Roots, r: &mut Report) {
+    use olo_system::fans::{Amiss, Places, Profile, look};
+    let places = if roots.fs == Path::new("/") { Places::here() } else { Places::under(&roots.fs) };
+    let Some(state) = look(&places) else { return };
+    if !state.installed || state.profile != Profile::Cool {
+        return;
+    }
+    // (A build tree's: nothing to bring it up to date from.)
+    if !roots.bin.join(crate::fans::PROGRAM).is_file() {
+        return;
+    }
+    let mut steps = crate::fans::steps_with(Profile::Cool, &roots.bin, &places, &*roots.units);
+    let amiss = state.amiss();
+    let restarts = |steps: &[Step]| steps.iter().any(|s| matches!(s, Step::Unit { action: UnitAction::Restart, .. }));
+    if amiss == Some(Amiss::Stopped) && !restarts(&steps) {
+        steps.push(Step::Unit { name: crate::fans::SERVICE.into(), action: UnitAction::Restart });
+    }
+    let older = steps.iter().any(|s| matches!(s, Step::CopyFile { .. }));
+    let firmware = "Until then the fans are the firmware's own, which wait for the heat and fall behind it: the processor is slowed for it under load.";
+    let fix = |label: &str, steps: Vec<Step>| Some(Fix { label: label.into(), root: true, steps });
+    match amiss {
+        Some(Amiss::NextStart) => r.findings.push(Finding {
+            id: "fans:next-start".into(),
+            severity: Severity::Advice,
+            title: "The Cool fan profile starts with the computer's next start".into(),
+            detail: format!(
+                "The fans' driver (thinkpad_acpi) lets them be set only if it's told to as it's loaded, and this time it wasn't. It is told to from the next start on: nothing more is needed. {firmware}{}",
+                if steps.is_empty() { "" } else { " The fix brings Olo's fan service up to date meanwhile." }
+            ),
+            fix: if steps.is_empty() { None } else { fix("Update the Fan Service", steps) },
+        }),
+        Some(Amiss::Driver) => r.findings.push(Finding {
+            id: "fans:driver".into(),
+            severity: Severity::Problem,
+            title: "The Cool fan profile isn't in force".into(),
+            detail: format!(
+                "The fans' driver (thinkpad_acpi) doesn't let them be set, and nothing tells it to when it's loaded (it may have been told by hand before the computer last started). The fix tells it to at every start (/etc/modprobe.d/olo-fans.conf): Cool is in force from the next one. {firmware}"
+            ),
+            fix: fix("Repair the Fan Profile", steps),
+        }),
+        Some(Amiss::Stopped) => r.findings.push(Finding {
+            id: "fans:stopped".into(),
+            severity: Severity::Problem,
+            title: "The Cool fan profile isn't in force".into(),
+            detail: format!("Olo's fan service (olo-fans) isn't running. The fix starts it{}. {firmware}", if older { ", from the installed version of Olo" } else { "" }),
+            fix: fix("Start the Fan Service", steps),
+        }),
+        None if !steps.is_empty() => r.findings.push(Finding {
+            id: "fans:older".into(),
+            severity: Severity::Advice,
+            title: if older { "Olo's fan service runs an older version".into() } else { "Olo's fan service isn't set up as this version sets it up".into() },
+            detail: "It runs as the system's, from a copy of its own (/usr/local/libexec/olo/olo-fans) that an upgrade doesn't replace. The fix brings the copy and its settings up to date and starts it again; the fans are the firmware's for the moment that takes.".into(),
+            fix: fix("Update the Fan Service", steps),
+        }),
+        None => r.fine.push(Fine { title: "The fans run ahead of the heat".into(), detail: "The Cool fan profile is in force: Olo's fan service is running, the installed version.".into() }),
+    }
 }
 
 fn login_entry(roots: &Roots, r: &mut Report) {
@@ -2484,8 +2708,93 @@ mod tests {
             packages: Box::new(|_| None),
             updates: Box::new(|| None),
             temp: TempFiles::default(),
+            pool_port: POOL_PORT,
         };
         (fs, roots)
+    }
+
+    /// Token Pool running twice (Ben, 2026-11-09): the copy serving holds
+    /// the gateway's listening socket, the session's beside it doesn't, and
+    /// is quit; the keeper, the command line's own and a launch on its way
+    /// aren't. With no copy serving, its gateway started again; with
+    /// another program on the port, said; one copy serving, fine. A copy
+    /// finishing what it has after an upgrade isn't quit as old.
+    #[test]
+    fn token_pool_twice_or_without_its_gateway() {
+        let (fs, mut roots) = machine("token-pool");
+        roots.temp.runtime = fs.join("run/user/1000");
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        let link = |to: &str, at: &str| {
+            let at = fs.join(at);
+            std::fs::create_dir_all(at.parent().unwrap()).unwrap();
+            let _ = std::fs::remove_file(&at);
+            std::os::unix::fs::symlink(to, at).unwrap();
+        };
+        let pool = format!("{}/olo-pool", roots.bin.display());
+        w(
+            "proc/net/tcp",
+            "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:45E3 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 555 1 0 100 0 0 10 0\n",
+        );
+        w("proc/uptime", "100000.00 1.00\n");
+        // SAFETY: sysconf has no preconditions.
+        let hz = unsafe { libc::sysconf(libc::_SC_CLK_TCK) } as f64;
+        let stat = |pid: i32, ago: f64| w(&format!("proc/{pid}/stat"), &format!("{pid} (olo-pool) S 1{} {} 0 0\n", " 0".repeat(17), ((100000.0 - ago) * hz) as u64));
+        // Serving; the session's, beside it, an hour old; the keeper; the
+        // command line's.
+        for (pid, args) in [(950, "--service\0"), (951, "--service\0"), (952, ""), (953, "--status\0")] {
+            w(&format!("proc/{pid}/cmdline"), &format!("{pool}\0{args}"));
+            link(&pool, &format!("proc/{pid}/exe"));
+            stat(pid, 3600.0);
+        }
+        link("socket:[555]", "proc/950/fd/7");
+        w("proc/952/environ", "HOME=/home/me\0OLO_POOL_KEEPER=1\0");
+        let r = scan(&roots);
+        let f = r.find("token-pool:twice").expect("twice");
+        assert_eq!(f.title, "Token Pool is running twice");
+        assert!(f.detail.starts_with("Token Pool (process 950) serves") && f.detail.contains("another (process 951)"), "{}", f.detail);
+        assert_eq!(f.fix.as_ref().unwrap().label, "Quit It");
+        assert_eq!(f.fix.as_ref().unwrap().steps, [Step::Signal { pid: 951, signal: libc::SIGTERM }]);
+        // A launch on its way (5 s old) isn't a second Token Pool.
+        stat(951, 5.0);
+        let r = scan(&roots);
+        assert!(r.find("token-pool:twice").is_none());
+        assert!(r.fine.iter().any(|f| f.title == "Token Pool serves Claude Code and Codex" && f.detail == "Its gateway listens on port 17891 (process 950)."), "{:?}", r.fine);
+        // Nothing serves: the session's started again (not the keeper).
+        stat(951, 3600.0);
+        std::fs::remove_file(fs.join("proc/950/fd/7")).unwrap();
+        std::fs::remove_dir_all(fs.join("proc/950")).unwrap();
+        let r = scan(&roots);
+        let f = r.find("token-pool:no-gateway").expect("no gateway");
+        assert_eq!((f.fix.as_ref().unwrap().label.as_str(), f.fix.as_ref().unwrap().steps.clone()), ("Start It Again", vec![Step::Signal { pid: 951, signal: libc::SIGTERM }]));
+        // Another program has the port: said, nothing to press.
+        w("proc/960/cmdline", "python3\0-m\0http.server\0");
+        link("socket:[555]", "proc/960/fd/3");
+        let r = scan(&roots);
+        let f = r.find("token-pool:port").expect("port taken");
+        assert!(f.detail.starts_with("python3 (process 960) listens on port 17891"), "{}", f.detail);
+        assert!(f.fix.is_none() && r.find("token-pool:no-gateway").is_none());
+        // A test's Token Pool, on a port of its own, isn't this one's.
+        std::fs::remove_dir_all(fs.join("proc/960")).unwrap();
+        w("proc/951/environ", "OLO_POOL_PORT=27891\0");
+        assert!(scan(&roots).find("token-pool:no-gateway").is_none());
+        std::fs::remove_file(fs.join("proc/951/environ")).unwrap();
+        // A marker older than the process (another's, its pid again)
+        // doesn't make it one finishing.
+        w("run/user/1000/olo-upgrade-waits/951", "");
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(7200);
+        std::fs::File::options().write(true).open(fs.join("run/user/1000/olo-upgrade-waits/951")).unwrap().set_modified(old).unwrap();
+        assert!(scan(&roots).find("token-pool:no-gateway").is_some());
+        // Finishing what it has after handing over: neither idle here nor
+        // old to Quit Them (the stale Deskbar, 900, finishing too).
+        link("/home/me/.local/bin/olo-pool (deleted)", "proc/951/exe");
+        w("run/user/1000/olo-upgrade-waits/951", "");
+        w("run/user/1000/olo-upgrade-waits/900", "");
+        let r = scan(&roots);
+        assert!(r.find("token-pool:no-gateway").is_none() && r.find("stale").is_none(), "{:?}", r.findings.iter().map(|f| &f.id).collect::<Vec<_>>());
     }
 
     /// DiskBackup: not set up, said without a button; set up, its service
@@ -2590,11 +2899,26 @@ mod tests {
                 other => format!("{other:?}"),
             })
             .collect();
-        assert_eq!(paths, ["/sys/bus/pci/devices/0000:a9:00.0/power/control=on", "/sys/bus/pci/devices/0000:a9:00.0/usb5/power/control=on", "/sys/bus/pci/devices/0000:a9:00.0/usb6/power/control=on"]);
+        // The rule that keeps it so at every start, and the value now.
+        assert!(paths[0].contains("75-olo-thunderbolt-usb.rules"), "{paths:?}");
+        assert_eq!(
+            paths[1..],
+            ["/sys/bus/pci/devices/0000:a9:00.0/power/control=on", "/sys/bus/pci/devices/0000:a9:00.0/usb5/power/control=on", "/sys/bus/pci/devices/0000:a9:00.0/usb6/power/control=on"]
+        );
+        // Awake for the day, by the value alone (as the fix once left
+        // it): still said, for the rule.
         w(&format!("{dev}/power/control"), "on");
+        let r = scan(&roots);
+        let f = r.find("usb2:thunderbolt5:0000:a9:00.0").expect("awake only until the next start");
+        assert!(matches!(&f.fix.as_ref().unwrap().steps[0], Step::WriteFile { content, .. } if content == THUNDERBOLT_USB_RULE));
+        // With the rule: as it should be, and a way back.
+        w("etc/udev/rules.d/75-olo-thunderbolt-usb.rules", THUNDERBOLT_USB_RULE);
         let r = scan(&roots);
         assert!(r.find("usb2:thunderbolt5:0000:a9:00.0").is_none());
         assert!(r.fine.iter().any(|f| f.title == "The Thunderbolt 5 ports' USB is kept awake"));
+        let back = r.undo.iter().find(|u| u.id == "usb2:thunderbolt5:0000:a9:00.0:undo").expect("a way back");
+        assert!(matches!(&back.fix.steps[0], Step::RemoveFile { path } if path == Path::new("/etc/udev/rules.d/75-olo-thunderbolt-usb.rules")));
+        assert!(matches!(&back.fix.steps[1], Step::WriteSysfs { value, .. } if value == "auto"));
     }
 
     /// What's ignored is out of the counts and Fix All, still found and
@@ -2661,6 +2985,99 @@ mod tests {
         let f = r.find("login:own-older").expect("its update offered");
         assert!(f.detail.contains("olo-greeter") && !f.detail.contains("olo-session"), "{}", f.detail);
         assert_eq!(f.fix.as_ref().unwrap().label, "Update the Login Screen");
+    }
+
+    /// Cool, chosen: in force and said so; and each way it isn't, with
+    /// what puts it right.
+    #[test]
+    fn a_cool_fan_profile_not_in_force_is_found() {
+        use olo_system::fans::{CONF, Places};
+        let (fs, roots) = machine("fans");
+        let places = Places::under(&fs);
+        let w = |path: PathBuf, c: &str| {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        let ids = |r: &Report| r.findings.iter().filter(|f| f.id.starts_with("fans:")).map(|f| f.id.clone()).collect::<Vec<_>>();
+        // Not a ThinkPad, then one with the firmware's curve: nothing said.
+        assert!(ids(&scan(&roots)).is_empty());
+        w(places.fan(), "status:\t\tenabled\nspeed:\t\t2880\nlevel:\t\tauto\n");
+        w(places.fan_control(), "Y\n");
+        w(roots.bin.join(crate::fans::PROGRAM), "the program");
+        assert!(ids(&scan(&roots)).is_empty());
+        // Cool, as Preferences puts it there, the service running.
+        w(places.program(), "the program");
+        w(places.unit(), crate::fans::UNIT);
+        w(places.profile(), "cool\n");
+        w(places.modprobe(), CONF);
+        w(places.status(), "level=auto why=\n");
+        let r = scan(&roots);
+        assert!(ids(&r).is_empty(), "{:?}", ids(&r));
+        assert!(r.fine.iter().any(|f| f.title == "The fans run ahead of the heat"));
+        // The computer started again with a driver that takes no levels
+        // and nothing telling it to (it had been told by hand).
+        w(places.fan_control(), "N\n");
+        std::fs::remove_file(places.modprobe()).unwrap();
+        let r = scan(&roots);
+        assert_eq!(ids(&r), ["fans:driver"]);
+        let f = r.find("fans:driver").unwrap();
+        assert_eq!((f.severity, f.fix.as_ref().unwrap().label.as_str()), (Severity::Problem, "Repair the Fan Profile"));
+        assert!(matches!(f.fix.as_ref().unwrap().steps.as_slice(), [Step::WriteFile { path, content, .. }] if *path == places.modprobe() && content == CONF), "{:?}", f.fix);
+        // Told to: the next start has it, and nothing is left to fix.
+        w(places.modprobe(), CONF);
+        let r = scan(&roots);
+        assert_eq!(ids(&r), ["fans:next-start"]);
+        assert!(r.find("fans:next-start").unwrap().fix.is_none());
+        // The driver takes levels and the service isn't running.
+        w(places.fan_control(), "Y\n");
+        std::fs::remove_dir_all(places.running()).unwrap();
+        let r = scan(&roots);
+        assert_eq!(ids(&r), ["fans:stopped"]);
+        assert!(matches!(r.find("fans:stopped").unwrap().fix.as_ref().unwrap().steps.as_slice(), [Step::Unit { action: UnitAction::Restart, .. }]));
+        // Running, and older than the installed Olo.
+        w(places.status(), "level=4 why=19 W\n");
+        w(roots.bin.join(crate::fans::PROGRAM), "the program, a newer build's");
+        let r = scan(&roots);
+        assert_eq!(ids(&r), ["fans:older"]);
+        let f = r.find("fans:older").unwrap();
+        assert_eq!((f.severity, f.title.as_str(), f.fix.as_ref().unwrap().label.as_str()), (Severity::Advice, "Olo's fan service runs an older version", "Update the Fan Service"));
+    }
+
+    /// Olo's input rule has the last word on a USB input device's
+    /// power: after the smart-card readers' rule, which turns
+    /// autosuspend on for a security key as its driver binds. Where it
+    /// was is out of date, and taken away as the new one is installed.
+    #[test]
+    fn the_input_rule_comes_after_the_smart_card_rule() {
+        // (udev reads rule files by name, whatever folder each is in.)
+        assert!("95-olo-input.rules" > "92_pcscd_ccid.rules");
+        assert!(INPUT_RULE_PATH.ends_with("/95-olo-input.rules"));
+        // The device itself, at each of its events (its driver's
+        // binding, which follows its interfaces, among them).
+        assert!(INPUT_RULE.lines().any(|l| l.starts_with("ACTION!=\"remove\"") && l.contains("usb_device") && l.contains("ID_USB_INTERFACES") && l.contains("ATTR{power/control}=\"on\"")));
+        let (fs, roots) = machine("input-rule");
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        // As an Olo from before installed it.
+        let _ = std::fs::remove_file(fs.join(INPUT_RULE_PATH));
+        w(INPUT_RULE_OLD_PATH, "ACTION==\"add|change\", SUBSYSTEM==\"usb\", ENV{DEVTYPE}==\"usb_interface\", ATTR{bInterfaceClass}==\"03\", ATTR{../power/control}=\"on\"\n");
+        let r = scan(&roots);
+        let f = r.find("rule:input").expect("out of date");
+        assert_eq!(f.title, "Olo's input rule is out of date");
+        let steps = &f.fix.as_ref().unwrap().steps;
+        assert!(matches!(&steps[0], Step::WriteFile { path, content, .. } if path == Path::new("/etc/udev/rules.d/95-olo-input.rules") && content == INPUT_RULE));
+        assert_eq!(steps[1], Step::RemoveFile { path: "/etc/udev/rules.d/71-olo-input.rules".into() });
+        // Both there (the new one written, the old not yet gone): still
+        // to do.
+        w(INPUT_RULE_PATH, INPUT_RULE);
+        assert!(scan(&roots).find("rule:input").is_some());
+        std::fs::remove_file(fs.join(INPUT_RULE_OLD_PATH)).unwrap();
+        let r = scan(&roots);
+        assert!(r.find("rule:input").is_none());
+        assert!(r.fine.iter().any(|f| f.title == "Olo's input rule is installed"));
     }
 
     #[test]
@@ -2760,7 +3177,7 @@ mod tests {
         let mouse = r.find("autosuspend:3-1.3").unwrap();
         assert_eq!(mouse.title, "Logitech G309 (Logitech USB Receiver) may be put to sleep");
         let steps = &mouse.fix.as_ref().unwrap().steps;
-        assert!(matches!(&steps[0], Step::WriteFile { path, content, .. } if path == Path::new("/etc/udev/rules.d/71-olo-input.rules") && content == INPUT_RULE));
+        assert!(matches!(&steps[0], Step::WriteFile { path, content, .. } if path == Path::new("/etc/udev/rules.d/95-olo-input.rules") && content == INPUT_RULE));
         assert_eq!(steps[1], Step::WriteSysfs { path: "/sys/bus/usb/devices/3-1.3/power/control".into(), value: "on".into() });
         // The display is a HID device without input nodes: not a finding
         // of its own, but the display rule applies to it.
@@ -3007,6 +3424,7 @@ mod tests {
         w(&format!("{tb}/domain0/security"), "user\n");
         w(&format!("{tb}/0-0/authorized"), "1\n");
         w(&format!("{tb}/0-1/authorized"), "0\n");
+        w(&format!("{tb}/0-1/unique_id"), "c4010000-0080-7e18-23c0-5a0c2c111122\n");
         w(&format!("{tb}/0-1/vendor_name"), "Lenovo\n");
         w(&format!("{tb}/0-1/device_name"), "ThinkPad Thunderbolt 4 Dock\n");
         let mut r = Report::default();
@@ -3015,7 +3433,8 @@ mod tests {
         assert_eq!(f.title, "Lenovo ThinkPad Thunderbolt 4 Dock is plugged in but not allowed");
         let fix = f.fix.as_ref().unwrap();
         assert!(fix.root);
-        assert_eq!(fix.steps, vec![Step::WriteSysfs { path: "/sys/bus/thunderbolt/devices/0-1/authorized".into(), value: "1".into() }]);
+        // (Remembered by boltd, by its unique id: let in from now on.)
+        assert_eq!(fix.steps, vec![Step::AllowThunderbolt { device: "0-1".into(), uid: "c4010000-0080-7e18-23c0-5a0c2c111122".into() }]);
         // Allowed: fine.
         w(&format!("{tb}/0-1/authorized"), "1\n");
         let mut r = Report::default();
@@ -3309,6 +3728,7 @@ mod tests {
                     data: PathBuf::from("/home/me/.local/share"),
                     runtime: PathBuf::new(),
                 },
+                pool_port: POOL_PORT,
             };
             temp_files(&roots, &mut r);
             r

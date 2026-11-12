@@ -1,0 +1,8 @@
+# Olo: the USB controller of Intel's Thunderbolt 5 ports (Barlow Ridge,
+# 8086:5782) and its root hubs are kept awake. Asleep, it didn't see a
+# USB 2 device plugged into one of those ports at all (a YubiKey on a
+# ThinkPad P1 Gen 9, 2026-11-04: nothing in the kernel's log, while USB 3
+# drives were seen and the key worked at once in another port). Olo Doctor
+# installs this, and takes it away again (Let It Sleep).
+ACTION=="add|bind", SUBSYSTEM=="pci", ATTR{vendor}=="0x8086", ATTR{device}=="0x5782", TEST=="power/control", ATTR{power/control}="on"
+ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{bDeviceClass}=="09", ATTRS{vendor}=="0x8086", ATTRS{device}=="0x5782", TEST=="power/control", ATTR{power/control}="on"

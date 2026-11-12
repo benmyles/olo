@@ -10,8 +10,8 @@ path = "src/main.rs"
 
 [dependencies]
 olo-crash.workspace = true
-olo-ui.workspace = true
-olo-screensavers = { workspace = true, features = ["gpui"] }
+olo-kit.workspace = true
+olo-screensavers = { workspace = true, features = ["kit"] }
 olo-xdg.workspace = true
 serde_json.workspace = true
 tracing.workspace = true

@@ -2,8 +2,9 @@
 //! shows it, and offers to save it (any of several formats, into a folder
 //! of your choice), copy it, or take a new one, of the whole screen or the
 //! active window, with or without its border and the pointer, after a
-//! delay. Our own window steps aside while a picture is taken. On the
-//! GPUI kit (olo-ui).
+//! delay. Our own window steps aside while a picture is taken. The first
+//! picture is taken before there is a window (so it isn't in it): the
+//! app's looper opens the window with it.
 //!
 //! `--silent [--window [ID]]` (⌘⇧3, Print Screen, Alt+Print Screen) saves one
 //! straight into the folder, as `screenshotN`, with no window; `--region`
@@ -27,15 +28,14 @@ use std::{
 };
 
 use capture::{Format, Settings, Shot};
-use olo_ui::{
-    Frame, WindowOptions, clipboard,
+use olo_kit::{
+    Bounds, Child, ClickEvent, ClipboardEntry, ClipboardItem, Corner, Corners, Cx, Element, FontWeight, Image, ImageFormat, ParentElement as _, Pixels, RenderImage, SharedString, Styled as _, View,
+    WindowHandle, WindowOptions, canvas, clipboard, div,
     file_panel::{self, FilePanel, PanelResult},
-    gpui::{
-        self, App, AppContext as _, Bounds, ClipboardEntry, ClipboardItem, Context, Corners, Entity, Image, ImageFormat, InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Render,
-        RenderImage, SharedString, Styled as _, Window, WindowHandle, canvas, div, point, px, size,
-    },
+    held_clipboard,
     instance::{self, Launch},
-    metrics as m, style, theme,
+    menu::{self, Menu},
+    metrics as m, point, px, size, style, theme,
     widgets::{Button, CheckBox, MenuField, StringView, TextControl, TextField, TextFieldEvent, open_alert, separator, text_field},
 };
 use serde::{Deserialize, Serialize};
@@ -59,14 +59,17 @@ enum Msg {
     Copied(Result<Vec<u8>, String>),
     /// The first free name in a folder.
     Named(PathBuf, String),
-    /// Something else is on the clipboard now: the path given out after
-    /// saving isn't needed any more.
-    Released,
     /// A recording asked for from the window started (it goes on by
     /// itself: we're done), or why not.
     Recording(Result<(), String>),
     /// The recording settings Record…'s ticks show.
     Recordings(olo_protocol::ScreenRecordingSettings),
+    /// The folder chosen in the panel.
+    Folder(PathBuf),
+    /// Record…'s menu, under the button.
+    RecordMenu(Bounds<Pixels>),
+    /// What was chosen from it.
+    Record(String),
 }
 
 /// What the window's Record… records.
@@ -87,18 +90,19 @@ enum Busy {
 }
 
 struct Screenshot {
-    window: Option<WindowHandle<Frame>>,
     settings: Settings,
     shot: Option<Shot>,
     /// Counts the pictures taken, so a late preview of an old one is
     /// dropped.
     taken: u64,
-    /// The preview: its size in device pixels and the image.
-    preview: Option<((u32, u32), Arc<RenderImage>)>,
+    /// The preview: the picture it's of (`taken`), its size in device
+    /// pixels and the image. (A new picture the same size is another
+    /// preview: New screenshot kept showing the one before.)
+    preview: Option<(u64, (u32, u32), Arc<RenderImage>)>,
     /// The preview size last asked for (picture, size).
     asked: Option<(u64, (u32, u32))>,
-    name: Entity<TextField>,
-    delay: Entity<TextField>,
+    name: Child<TextField>,
+    delay: Child<TextField>,
     /// The name as we proposed it; typing over it keeps the user's.
     proposed: String,
     busy: Option<Busy>,
@@ -109,8 +113,6 @@ struct Screenshot {
     /// Saved: the window is gone and the app stays only to hand out
     /// where the picture went.
     holding: bool,
-    /// The window's keys (Return saves) when no field has them.
-    focus: gpui::FocusHandle,
     /// The recording settings, for Record…'s ticks (the sound, GIF,
     /// clicks and keys shown).
     recordings: olo_protocol::ScreenRecordingSettings,
@@ -128,7 +130,7 @@ fn folder_label(path: &Path) -> String {
 }
 
 /// `image` made `w` × `h` (device pixels) on a worker, area-averaged, as
-/// GPUI draws it (BGRA): drawn one pixel to a device pixel, never scaled.
+/// it's drawn (BGRA): drawn one pixel to a device pixel, never scaled.
 fn preview_of(image: &image::RgbaImage, w: u32, h: u32) -> Option<Arc<RenderImage>> {
     let small = image::imageops::thumbnail(image, w.max(1), h.max(1));
     let mut bgra = small.into_raw();
@@ -186,28 +188,28 @@ fn form_rows() -> [(f32, f32); 8] {
 }
 
 impl Screenshot {
-    fn new(settings: Settings, cx: &mut Context<Self>) -> Self {
+    /// The window, showing the first picture taken (or saying why not).
+    fn new(settings: Settings, first: Result<Shot, String>, name: Option<String>, cx: &mut Cx<Self>) -> Self {
         let mut folders = Vec::new();
         for f in [Some(capture::home()), olo_xdg::user_dir("DESKTOP"), olo_xdg::user_dir("PICTURES")].into_iter().flatten() {
             if !folders.contains(&f) {
                 folders.push(f);
             }
         }
-        let name = text_field(cx, |f| f.name("Name"));
-        let delay = text_field(cx, |f| f.name("Delay"));
-        delay.update(cx, |f, cx| f.set_text(settings.delay.to_string(), cx));
-        cx.subscribe(&name, |s, _, e: &TextFieldEvent, cx| match e {
+        let name = text_field(cx, |f| f.name("Name").with_text(name.unwrap_or_default()));
+        let delay = text_field(cx, |f| f.name("Delay").with_text(settings.delay.to_string()));
+        cx.subscribe(&name, |s: &mut Screenshot, e: &TextFieldEvent, cx| match e {
             TextFieldEvent::Entered => s.save(cx),
-            _ => cx.notify(),
-        })
-        .detach();
-        cx.subscribe(&delay, |s, field, e: &TextFieldEvent, cx| {
+            _ => cx.invalidate(),
+        });
+        cx.subscribe(&delay, |s: &mut Screenshot, e: &TextFieldEvent, cx| {
             if let TextFieldEvent::Changed = e {
                 // Two digits at most, a minute at most.
-                let text = field.read(cx).text().to_owned();
+                let text = s.delay.read(cx).text().to_owned();
                 let digits: String = text.chars().filter(char::is_ascii_digit).take(2).collect();
                 if digits != text {
-                    field.update(cx, |f, cx| f.set_text(digits.clone(), cx));
+                    let shown = digits.clone();
+                    s.delay.update(cx, |f, cx| f.set_text(shown, cx));
                 }
                 let d = digits.parse::<u32>().unwrap_or(0).min(60);
                 if d != s.settings.delay {
@@ -215,10 +217,17 @@ impl Screenshot {
                     s.settings_changed(cx);
                 }
             }
-        })
-        .detach();
+        });
+        // What Record…'s ticks show, read off the window's looper.
+        let to = cx.messenger();
+        std::thread::spawn(move || {
+            if let Some(s) = olo_kit::settings::current() {
+                to.send(Msg::Recordings(s.screen_recording));
+            }
+        });
+        // (Shown, or said, once the window is up.)
+        cx.send(Msg::Taken(first));
         Screenshot {
-            window: None,
             settings,
             shot: None,
             taken: 0,
@@ -227,27 +236,16 @@ impl Screenshot {
             name,
             delay,
             proposed: String::new(),
-            busy: None,
+            busy: Some(Busy::Taking),
             note: String::new(),
             folders,
             holding: false,
-            focus: cx.focus_handle(),
             recordings: Default::default(),
         }
     }
 
-    /// What Record…'s ticks show, read off the UI thread.
-    fn read_sound(cx: &mut Context<Self>) {
-        let proxy = olo_ui::proxy(cx);
-        std::thread::spawn(move || {
-            if let Some(s) = olo_ui::settings::current() {
-                proxy.send(Msg::Recordings(s.screen_recording));
-            }
-        });
-    }
-
     /// One of Record…'s ticks turned over: kept in the settings (off the
-    /// UI thread).
+    /// window's looper).
     fn toggle(&mut self, what: &str) {
         let r = &mut self.recordings;
         match what {
@@ -279,7 +277,7 @@ impl Screenshot {
         }
         let mine = r.clone();
         std::thread::spawn(move || {
-            let Some(mut settings) = olo_ui::settings::current() else { return };
+            let Some(mut settings) = olo_kit::settings::current() else { return };
             // (The encoder is Preferences', left as it is there.)
             settings.screen_recording = olo_protocol::ScreenRecordingSettings { encoder: settings.screen_recording.encoder, ..mine };
             if let Ok(mut c) = olo_protocol::Client::connect() {
@@ -288,65 +286,34 @@ impl Screenshot {
         });
     }
 
-    fn name_text(&self, cx: &App) -> String {
+    fn name_text(&self, cx: &Cx<Self>) -> String {
         self.name.read(cx).text().to_owned()
     }
 
-    /// Take a picture on a worker; our window steps aside if it is up.
-    fn take(&mut self, cx: &mut Context<Self>) {
+    /// Take a picture on a worker; our window steps aside (and comes back).
+    fn take(&mut self, cx: &mut Cx<Self>) {
         self.busy = Some(Busy::Taking);
         self.note.clear();
         let settings = self.settings.clone();
-        let hide = self.window.is_some();
-        let proxy = olo_ui::proxy(cx);
-        std::thread::spawn(move || proxy.send(Msg::Taken(capture::take(&settings, hide))));
-        cx.notify();
+        cx.work(move || capture::take(&settings, true), Msg::Taken);
+        cx.invalidate();
     }
 
-    /// Show a picture taken earlier (after an in-place reload).
-    fn reload(&mut self, png: PathBuf, cx: &mut Context<Self>) {
-        self.busy = Some(Busy::Taking);
-        let proxy = olo_ui::proxy(cx);
-        std::thread::spawn(move || {
-            let r = image::open(&png).map_err(|e| e.to_string()).map(|img| Shot { png, image: Arc::new(img.into_rgba8()) });
-            proxy.send(Msg::Taken(r));
-        });
-    }
-
-    /// Find the next free name in the folder, off the UI thread.
-    fn propose_name(&self, cx: &mut Context<Self>) {
+    /// Find the next free name in the folder, off the window's looper.
+    fn propose_name(&self, cx: &mut Cx<Self>) {
         let folder = self.settings.folder();
-        let proxy = olo_ui::proxy(cx);
-        std::thread::spawn(move || {
-            let name = capture::next_name(&folder);
-            proxy.send(Msg::Named(folder, name));
-        });
-    }
-
-    fn open_main(&mut self, cx: &mut Context<Self>) {
-        if let Some(w) = self.window
-            && olo_ui::raise(Some(w), cx)
-        {
-            return;
-        }
-        let me = cx.entity();
-        let focus = self.focus.clone();
-        cx.defer(move |cx| {
-            let view = me.clone();
-            let mut options = WindowOptions::new("Screenshot", WIDTH, layout().height).fits_content();
-            options.fixed = true;
-            let w = olo_ui::open_window(cx, options, move |window, _| {
-                window.focus(&focus);
-                view
-            });
-            me.update(cx, |s, _| s.window = w);
-        });
+        cx.work(
+            move || {
+                let name = capture::next_name(&folder);
+                (folder, name)
+            },
+            |(folder, name)| Msg::Named(folder, name),
+        );
     }
 
     /// Record…'s menu: what to record, or (one going on this display)
     /// Pause, Resume and Stop.
-    fn record_menu(&self) -> olo_ui::menu::Menu {
-        use olo_ui::menu::Menu;
+    fn record_menu(&self) -> Menu {
         match olo_protocol::recording::going() {
             Some(g) => {
                 let menu = Menu::new("Record");
@@ -396,12 +363,12 @@ impl Screenshot {
         }
     }
 
-    fn record_command(&mut self, command: &str, cx: &mut Context<Self>) {
+    fn record_command(&mut self, command: &str, cx: &mut Cx<Self>) {
         let what = match command {
             "sound-computer" | "sound-microphone" | "gif" | "show-clicks" | "show-keys" | "background" | "pointer-size" | "smooth-pointer" | "zoom-follow" | "camera" | "countdown-0"
             | "countdown-3" | "countdown-5" | "countdown-10" => {
                 self.toggle(command);
-                cx.notify();
+                cx.invalidate();
                 return;
             }
             // The recordings made (library.rs, a window of its own).
@@ -432,11 +399,10 @@ impl Screenshot {
     /// steps aside, the recorder starts on its own (Deskbar's record
     /// light, ⌘⇧6 or Stop Recording finish it, and it tells when it's
     /// saved), and we're done.
-    fn record(&mut self, what: Record, cx: &mut Context<Self>) {
+    fn record(&mut self, what: Record, cx: &mut Cx<Self>) {
         let pointer = self.settings.pointer;
-        let proxy = olo_ui::proxy(cx);
-        std::thread::spawn(move || {
-            let started = (|| {
+        cx.work(
+            move || {
                 let active = capture::step_aside()?;
                 let exe = std::env::current_exe().map_err(|e| e.to_string())?;
                 let mut cmd = std::process::Command::new(exe);
@@ -454,24 +420,20 @@ impl Screenshot {
                     cmd.arg("--no-pointer");
                 }
                 cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
-            })();
-            proxy.send(Msg::Recording(started));
-        });
+            },
+            Msg::Recording,
+        );
     }
 
-    fn show_error(&self, message: String, cx: &mut Context<Self>) {
-        let me = cx.entity();
-        cx.defer(move |cx| {
-            let _ = me;
-            open_alert(cx, "Screenshot", "warning", &message, &["OK"], |_, _| {});
-        });
+    fn show_error(&self, message: String, cx: &mut Cx<Self>) {
+        open_alert(cx, "Screenshot", "warning", &message, &["OK"], |_, _| {});
     }
 
-    fn can_save(&self, cx: &App) -> bool {
+    fn can_save(&self, cx: &Cx<Self>) -> bool {
         self.busy.is_none() && self.shot.is_some() && !self.name_text(cx).trim().is_empty()
     }
 
-    fn save(&mut self, cx: &mut Context<Self>) {
+    fn save(&mut self, cx: &mut Cx<Self>) {
         if !self.can_save(cx) {
             return;
         }
@@ -479,46 +441,33 @@ impl Screenshot {
         let path = self.settings.folder().join(capture::file_name(&self.name_text(cx), self.settings.format));
         let format = self.settings.format;
         self.busy = Some(Busy::Saving);
-        let proxy = olo_ui::proxy(cx);
-        std::thread::spawn(move || {
-            let r = capture::save(&shot, &path, format).map(|()| path);
-            proxy.send(Msg::Saved(r));
-        });
-        cx.notify();
+        cx.work(move || capture::save(&shot, &path, format).map(|()| path), Msg::Saved);
+        cx.invalidate();
     }
 
-    fn copy(&mut self, cx: &mut Context<Self>) {
+    fn copy(&mut self, cx: &mut Cx<Self>) {
         let Some(shot) = self.shot.clone() else { return };
         self.busy = Some(Busy::Copying);
-        let proxy = olo_ui::proxy(cx);
-        std::thread::spawn(move || {
-            let r = std::fs::read(&shot.png).map_err(|e| e.to_string());
-            proxy.send(Msg::Copied(r));
-        });
-        cx.notify();
+        cx.work(move || std::fs::read(&shot.png).map_err(|e| e.to_string()), Msg::Copied);
+        cx.invalidate();
     }
 
-    fn settings_changed(&mut self, cx: &mut Context<Self>) {
+    fn settings_changed(&mut self, cx: &mut Cx<Self>) {
         self.settings.store();
         // Keep a proposed name current; a typed one stays.
         if self.name_text(cx) == self.proposed {
             self.propose_name(cx);
         }
-        cx.notify();
+        cx.invalidate();
     }
 
-    fn choose_folder(&mut self, cx: &mut Context<Self>) {
-        let me = cx.entity();
-        let start = self.settings.folder();
-        cx.defer(move |cx| {
-            file_panel::show(cx, "Choose a Folder", FilePanel::folder(start), move |a, cx| {
-                if let PanelResult::Chosen(dir) = a.result {
-                    me.update(cx, |s, cx| {
-                        s.settings.folder = Some(dir);
-                        s.settings_changed(cx);
-                    });
-                }
-            });
+    fn choose_folder(&mut self, cx: &mut Cx<Self>) {
+        // (The panel answers on its own looper: it tells this window.)
+        let to = cx.messenger();
+        file_panel::show("Choose a Folder", FilePanel::folder(self.settings.folder()), move |a| {
+            if let PanelResult::Chosen(dir) = a.result {
+                to.send(Msg::Folder(dir));
+            }
         });
     }
 
@@ -540,7 +489,7 @@ impl Screenshot {
         let top = dev(f32::from(area.top())) + edge;
         // Its caption a few points under the middle of a row of the form
         // beside it: the picture a little smaller, so the caption is level
-        // with that row (`render` lines it up with one just below).
+        // with that row (`body` lines it up with one just below).
         let caption = (top + ph + edge) / scale + m::TIGHT + m::LABEL_ROW / 2.0;
         if let Some(r) = form_rows().iter().map(|(t, h)| t + h / 2.0).find(|r| (caption - m::LABEL_ROW / 2.0..caption).contains(r)) {
             ph = (ph - ((caption - r) * scale).ceil()).max(1.0);
@@ -553,28 +502,27 @@ impl Screenshot {
 
     /// Asks for a preview the size the frame wants now (once per picture
     /// and size: a new scale, a new picture).
-    fn want_preview(&mut self, scale: f32, cx: &mut Context<Self>) {
+    fn want_preview(&mut self, scale: f32, cx: &mut Cx<Self>) {
         let (_, Some(want)) = self.frame(scale) else { return };
-        if self.preview.as_ref().is_some_and(|(s, _)| *s == want) || self.asked == Some((self.taken, want)) {
+        if self.preview.as_ref().is_some_and(|(of, s, _)| *of == self.taken && *s == want) || self.asked == Some((self.taken, want)) {
             return;
         }
         let Some(shot) = self.shot.clone() else { return };
         self.asked = Some((self.taken, want));
-        let (taken, proxy) = (self.taken, olo_ui::proxy(cx));
+        let (taken, to) = (self.taken, cx.messenger());
         std::thread::spawn(move || {
             if let Some(image) = preview_of(&shot.image, want.0, want.1) {
-                proxy.send(Msg::Preview(taken, want, image));
+                to.send(Msg::Preview(taken, want, image));
             }
         });
     }
+}
 
-    fn message(&mut self, message: Box<dyn std::any::Any + Send>, cx: &mut Context<Self>) {
-        if message.is::<Launch>() {
-            // Launched again: bring the window forward.
-            return self.open_main(cx);
-        }
-        let Ok(msg) = message.downcast::<Msg>() else { return };
-        match *msg {
+impl View for Screenshot {
+    type Message = Msg;
+
+    fn message(&mut self, msg: Msg, cx: &mut Cx<Self>) {
+        match msg {
             Msg::Taken(r) => {
                 self.busy = None;
                 match r {
@@ -588,21 +536,17 @@ impl Screenshot {
                     }
                     Err(e) => self.show_error(format!("Couldn't take a screenshot.\n\n{e}"), cx),
                 }
-                self.open_main(cx);
             }
             Msg::Preview(taken, size, image) => {
                 if taken == self.taken {
-                    let old = self.preview.replace((size, image));
-                    // The old one's texture goes.
-                    if let (Some((_, old)), Some(w)) = (old, self.window) {
-                        let _ = w.update(cx, |_, window, _| window.drop_image(old));
-                    }
+                    self.preview = Some((taken, size, image));
                 }
             }
             Msg::Named(folder, name) => {
                 let typed = self.name_text(cx);
                 if folder == self.settings.folder() && (typed.is_empty() || typed == self.proposed) {
-                    self.name.update(cx, |f, cx| f.set_text(name.clone(), cx));
+                    let shown = name.clone();
+                    self.name.update(cx, |f, cx| f.set_text(shown, cx));
                     self.proposed = name;
                 }
             }
@@ -611,21 +555,17 @@ impl Screenshot {
                 match r {
                     // Done, as in Haiku: the window goes, and where the
                     // picture went is on the clipboard (held, with no
-                    // window, until something else is copied).
+                    // window, until something else is copied; then the
+                    // app ends).
                     Ok(path) => {
                         self.holding = true;
-                        if let Some(w) = self.window.take() {
-                            cx.defer(move |cx| {
-                                let _ = w.update(cx, |_, window, _| window.remove_window());
-                            });
-                        }
+                        cx.close_window();
                         let _ = std::fs::remove_file(capture::scratch_path());
-                        let proxy = olo_ui::proxy(cx);
                         std::thread::spawn(move || {
-                            if let Err(e) = clipboard::hold(clipboard::text(&path.display().to_string())) {
+                            if let Err(e) = held_clipboard::hold(held_clipboard::text(&path.display().to_string())) {
                                 tracing::warn!("couldn't put where it went on the clipboard: {e}");
                             }
-                            proxy.send(Msg::Released);
+                            olo_kit::quit();
                         });
                     }
                     Err(e) => self.show_error(format!("Couldn't save the screenshot.\n\n{e}"), cx),
@@ -635,43 +575,56 @@ impl Screenshot {
                 self.busy = None;
                 match r {
                     Ok(png) => {
-                        cx.write_to_clipboard(ClipboardItem::from_entries(vec![ClipboardEntry::Image(Image::from_bytes(ImageFormat::Png, png))]));
+                        clipboard::write(ClipboardItem::from_entries(vec![ClipboardEntry::Image(Image::from_bytes(ImageFormat::Png, png))]));
                         self.note = "Copied to the clipboard".into();
                     }
                     Err(e) => self.show_error(format!("Couldn't copy the screenshot.\n\n{e}"), cx),
                 }
             }
-            Msg::Released => cx.quit(),
             Msg::Recording(Ok(())) => {
                 let _ = std::fs::remove_file(capture::scratch_path());
-                cx.quit();
+                olo_kit::quit();
             }
             Msg::Recording(Err(e)) => {
-                self.open_main(cx);
+                cx.activate_window();
                 self.show_error(format!("Couldn't start recording.\n\n{e}"), cx);
             }
             Msg::Recordings(r) => self.recordings = r,
+            Msg::Folder(dir) => {
+                self.settings.folder = Some(dir);
+                self.settings_changed(cx);
+            }
+            Msg::RecordMenu(at) => {
+                let chosen = cx.msg_with(|command: &str| Msg::Record(command.to_owned()));
+                menu::popup(cx, self.record_menu(), at, Corner::BottomLeft, chosen);
+            }
+            Msg::Record(command) => self.record_command(&command, cx),
         }
-        cx.notify();
+        cx.invalidate();
     }
 
-    fn save_state(&self, cx: &App) -> Option<String> {
+    /// The window closed by the person: the app ends (saved, it stays to
+    /// hand out where the picture went).
+    fn window_closing(&mut self, _: &mut Cx<Self>) {
+        if !self.holding {
+            olo_kit::quit();
+        }
+    }
+
+    fn save_state(&mut self, cx: &mut Cx<Self>) -> Option<String> {
         serde_json::to_string(&Saved { png: self.shot.as_ref().map(|s| s.png.clone()), name: self.name_text(cx) }).ok()
     }
-}
 
-impl Render for Screenshot {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let scale = window.scale_factor();
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        let scale = cx.scale_factor();
         self.want_preview(scale, cx);
-        let me = cx.entity();
         let l = layout();
         let rows = form_rows();
         let at = |x: f32, y: f32, w: f32| div().absolute().left(px(x)).top(px(y)).w(px(w));
 
         // The preview, framed at the picture's shape, its size under it.
         let (frame, _) = self.frame(scale);
-        let preview = self.preview.as_ref().map(|(_, image)| image.clone());
+        let preview = self.preview.as_ref().map(|(_, _, image)| image.clone());
         let caption = match (self.busy, &self.shot) {
             (Some(Busy::Taking), _) => "Taking a screenshot…".to_owned(),
             (Some(Busy::Saving), _) => "Saving…".to_owned(),
@@ -686,31 +639,36 @@ impl Render for Screenshot {
         let caption_y = f32::from(frame.bottom()) + m::TIGHT + m::LABEL_ROW / 2.0;
         let caption_y = rows.iter().map(|(top, h)| top + h / 2.0).find(|r| (0.0..=m::LABEL_ROW / 2.0).contains(&(r - caption_y))).unwrap_or(caption_y);
         let area = l.area;
-        let picture = canvas(
-            |_, _, _| {},
-            move |_, _, window, cx| {
-                let p = theme::palette(cx);
-                if let Some(image) = &preview {
-                    let inner = style::inset(window, frame, 2.0);
-                    let _ = window.paint_image(inner, Corners::default(), image.clone(), 0, false);
-                }
-                style::sunken(window, frame, &p, false);
-                let font = style::ui_font(gpui::FontWeight::NORMAL);
-                style::label(window, cx, area.center().x, px(caption_y), style::Align::Center, caption.clone(), style::PLAIN_SIZE, font, style::disabled_text(&p));
-            },
-        )
+        let look = style::key((
+            self.taken,
+            self.preview.as_ref().map(|(of, size, _)| (*of, *size)),
+            &caption,
+            f32::from(frame.origin.x).to_bits(),
+            f32::from(frame.size.width).to_bits(),
+            f32::from(frame.size.height).to_bits(),
+        ));
+        let picture = canvas(move |g, _| {
+            let p = theme::palette();
+            if let Some(image) = &preview {
+                let inner = style::inset(g, frame, 2.0);
+                let _ = g.paint_image(inner, Corners::default(), image.clone(), 0, false);
+            }
+            style::sunken(g, frame, &p, false);
+            let font = style::ui_font(FontWeight::NORMAL);
+            style::label(g, area.center().x, px(caption_y), style::Align::Center, caption.clone(), style::PLAIN_SIZE, font, style::disabled_text(&p));
+        })
+        .paint_key(look)
         .absolute()
-        .inset_0();
+        .left(px(0.0))
+        .top(px(0.0))
+        .size_full();
 
         // The form.
         let check = |label: &'static str, on: bool, enabled: bool, set: fn(&mut Settings, bool)| {
-            let me = me.clone();
-            CheckBox::new(label, on).enabled(enabled).on_toggle(move |v, _, cx| {
-                me.update(cx, |s, cx| {
-                    set(&mut s.settings, v);
-                    s.settings_changed(cx);
-                })
-            })
+            CheckBox::new(label, on).enabled(enabled).on_toggle(cx.listener(move |s: &mut Screenshot, v: &bool, cx| {
+                set(&mut s.settings, *v);
+                s.settings_changed(cx);
+            }))
         };
         let labels: Vec<SharedString> = Format::ALL.iter().map(|f| SharedString::from(f.label())).collect();
         let fi = Format::ALL.iter().position(|f| *f == self.settings.format).unwrap_or(0);
@@ -725,7 +683,6 @@ impl Render for Screenshot {
         names.push("Choose folder…".into());
         let di = folders.iter().position(|f| *f == current).unwrap_or(0);
         let (fx, fw) = (l.form_x, l.form_w);
-        let (fm, dm) = (me.clone(), me.clone());
         let form = div()
             .child(at(fx, rows[0].0, fw).child(check("Capture active window", self.settings.window, true, |s, v| s.window = v)))
             .child(at(fx, rows[1].0, fw).child(check("Include window border", self.settings.border, self.settings.window, |s, v| s.border = v)))
@@ -735,48 +692,58 @@ impl Render for Screenshot {
                     .flex()
                     .items_center()
                     .gap(px(m::LABEL_GAP))
-                    .child(TextControl::new(self.delay.clone()).label("Delay:").divider(DIVIDER).width(DIVIDER + 44.0))
+                    .child(TextControl::new(cx, &self.delay).label("Delay:").divider(DIVIDER).width(DIVIDER + 44.0))
                     .child(StringView::new("seconds")),
             )
             .child(at(fx, rows[4].0, fw).child(separator()))
-            .child(at(fx, rows[5].0, fw).child(TextControl::new(self.name.clone()).label("Name:").divider(DIVIDER).width(fw)))
-            .child(at(fx, rows[6].0, fw).child(MenuField::new("format", labels, fi).label("Save as:").divider(DIVIDER).width(fw).on_change(move |i, _, cx| {
-                fm.update(cx, |s, cx| {
-                    s.settings.format = Format::ALL[i];
-                    s.settings_changed(cx);
-                })
-            })))
-            .child(at(fx, rows[7].0, fw).child(MenuField::new("folder", names, di).label("Save in:").divider(DIVIDER).width(fw).on_change(move |i, _, cx| {
-                dm.update(cx, |s, cx| match folders.get(i) {
+            .child(at(fx, rows[5].0, fw).child(TextControl::new(cx, &self.name).label("Name:").divider(DIVIDER).width(fw)))
+            .child(at(fx, rows[6].0, fw).child(MenuField::new("format", labels, fi).label("Save as:").divider(DIVIDER).width(fw).on_change(cx.listener(|s: &mut Screenshot, i: &usize, cx| {
+                s.settings.format = Format::ALL[*i];
+                s.settings_changed(cx);
+            }))))
+            .child(at(fx, rows[7].0, fw).child(MenuField::new("folder", names, di).label("Save in:").divider(DIVIDER).width(fw).on_change(cx.listener(move |s: &mut Screenshot, i: &usize, cx| {
+                match folders.get(*i) {
                     Some(f) => {
                         s.settings.folder = Some(f.clone());
                         s.settings_changed(cx);
                     }
                     None => s.choose_folder(cx),
-                })
-            })));
+                }
+            }))));
 
         // Buttons.
         let idle = self.busy.is_none() && self.shot.is_some();
         let can_save = self.can_save(cx);
-        let (copy, new, save, rec) = (me.clone(), me.clone(), me.clone(), me.clone());
         let w = WIDTH;
         let bw = m::BUTTON_MIN_WIDTH;
         let save_x = w - m::WINDOW_INSET - bw;
         let new_x = save_x - m::SPACING - 120.0;
         let buttons = div()
-            .child(at(m::WINDOW_INSET, l.buttons_y, 130.0).child(Button::new("Copy to clipboard").min_width(130.0).enabled(idle).on_click(move |_, cx| copy.update(cx, |s, cx| s.copy(cx)))))
-            .child(at(m::WINDOW_INSET + 130.0 + m::SPACING, l.buttons_y, bw).child(Button::new("Record…").id("record").min_width(bw).enabled(self.busy.is_none()).on_click_at(move |b, window, cx| {
-                let menu = rec.read(cx).record_menu();
-                let to = rec.clone();
-                olo_ui::menu::popup(window, cx, menu, b, gpui::Corner::BottomLeft, move |cmd, _, cx| to.update(cx, |s, cx| s.record_command(cmd, cx)));
-            })))
-            .child(at(new_x, l.buttons_y, 120.0).child(Button::new("New screenshot").min_width(120.0).enabled(self.busy.is_none()).on_click(move |_, cx| new.update(cx, |s, cx| s.take(cx)))))
-            .child(at(save_x, l.buttons_y, bw).child(Button::new("Save").default(true).min_width(bw).enabled(can_save).on_click(move |_, cx| save.update(cx, |s, cx| s.save(cx)))));
+            .child(
+                at(m::WINDOW_INSET, l.buttons_y, 130.0)
+                    .child(Button::new("Copy to clipboard").min_width(130.0).enabled(idle).on_click(cx.listener(|s: &mut Screenshot, _: &ClickEvent, cx| s.copy(cx)))),
+            )
+            .child(at(m::WINDOW_INSET + 130.0 + m::SPACING, l.buttons_y, bw).child(Button::new("Record…").id("record").min_width(bw).enabled(self.busy.is_none()).on_click(cx.listener(
+                |_: &mut Screenshot, _: &ClickEvent, cx| {
+                    let at = cx.listener_bounds();
+                    cx.send(Msg::RecordMenu(at));
+                },
+            ))))
+            .child(
+                at(new_x, l.buttons_y, 120.0)
+                    .child(Button::new("New screenshot").min_width(120.0).enabled(self.busy.is_none()).on_click(cx.listener(|s: &mut Screenshot, _: &ClickEvent, cx| s.take(cx)))),
+            )
+            // (Return saves: Save is the default button.)
+            .child(at(save_x, l.buttons_y, bw).child(Button::new("Save").default(true).min_width(bw).enabled(can_save).on_click(cx.listener(|s: &mut Screenshot, _: &ClickEvent, cx| s.save(cx)))));
 
-        // Return saves: Save is the default button.
-        div().w_full().h(px(l.height)).relative().track_focus(&self.focus).child(picture).child(form).child(buttons)
+        div().w_full().h(px(l.height)).relative().child(picture).child(form).child(buttons)
     }
+}
+
+/// What the app's looper is told: the first picture (the window opens
+/// with it), and launches.
+enum AppMsg {
+    First(Result<Shot, String>, Option<String>),
 }
 
 /// ⌘⇧3 and friends: one picture, saved, no window.
@@ -810,7 +777,7 @@ fn saved(path: &Path) -> std::process::ExitCode {
     if std::env::args().any(|a| a == "--for-app") {
         return std::process::ExitCode::SUCCESS;
     }
-    if let Err(e) = clipboard::hold(clipboard::text(&path)) {
+    if let Err(e) = held_clipboard::hold(held_clipboard::text(&path)) {
         eprintln!("olo-screenshot: couldn't copy where it went: {e}");
     }
     std::process::ExitCode::SUCCESS
@@ -915,44 +882,37 @@ fn main() -> std::process::ExitCode {
         return std::process::ExitCode::SUCCESS;
     }
     std::thread::spawn(capture::sweep);
-    olo_ui::run(APP_ID, |cx| {
-        instance::listen(APP_ID, olo_ui::proxy(cx));
-        let app = cx.new(|cx| {
-            let s = Screenshot::new(Settings::load(), cx);
-            Screenshot::read_sound(cx);
-            s
-        });
-        let restored = olo_ui::restored_state().and_then(|s| serde_json::from_str::<Saved>(&s).ok());
-        app.update(cx, |s, cx| match restored {
-            Some(Saved { png: Some(png), name }) if png.is_file() => {
-                s.name.update(cx, |f, cx| f.set_text(name, cx));
-                s.reload(png, cx);
-            }
-            // The picture comes first, then the window (so it isn't in it).
-            _ => s.take(cx),
-        });
-        let messages = app.clone();
-        olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |s, cx| s.message(message, cx)));
-        let saving = app.clone();
-        olo_ui::on_upgrade(cx, move |cx| saving.read(cx).save_state(cx));
-        // The picture app_server wrote for us goes with us.
-        cx.on_app_quit(|_| {
-            let _ = std::fs::remove_file(capture::scratch_path());
-            async {}
-        })
-        .detach();
+    olo_kit::run(APP_ID, |app| {
+        let proxy = olo_kit::proxy();
+        instance::listen(APP_ID, proxy.clone());
         // It stays with no window while the first picture is taken (the
-        // window opens after) and after saving (holding the clipboard);
-        // otherwise its last window closing ends it.
-        olo_ui::stay_resident(cx);
-        cx.on_window_closed(move |cx| {
-            let s = app.read(cx);
-            if cx.windows().is_empty() && !s.holding && s.busy != Some(Busy::Taking) {
-                cx.quit();
+        // window opens after, so it isn't in it) and after saving
+        // (holding the clipboard); its window closed otherwise ends it.
+        olo_kit::stay_resident();
+        let restored = olo_kit::restored_state().and_then(|s| serde_json::from_str::<Saved>(&s).ok());
+        std::thread::spawn(move || match restored {
+            // The picture shown before an in-place reload.
+            Some(Saved { png: Some(png), name }) if png.is_file() => {
+                let r = image::open(&png).map_err(|e| e.to_string()).map(|img| Shot { png, image: Arc::new(img.into_rgba8()) });
+                proxy.send(AppMsg::First(r, Some(name)));
             }
-        })
-        .detach();
+            _ => proxy.send(AppMsg::First(capture::take(&Settings::load(), false), None)),
+        });
+        let mut window: Option<WindowHandle<Screenshot>> = None;
+        olo_kit::message_handler(app, move |message, _| {
+            // Launched again: the window comes forward.
+            if message.is::<Launch>() {
+                olo_kit::raise(window.as_ref());
+            } else if let Ok(first) = message.downcast::<AppMsg>() {
+                let AppMsg::First(shot, name) = *first;
+                let mut options = WindowOptions::new("Screenshot", WIDTH, layout().height).fits_content();
+                options.fixed = true;
+                window = Some(olo_kit::open_window(options, move |cx| Screenshot::new(Settings::load(), shot, name, cx)));
+            }
+        });
     });
+    // The picture app_server wrote for us goes with us.
+    let _ = std::fs::remove_file(capture::scratch_path());
     std::process::ExitCode::SUCCESS
 }
 

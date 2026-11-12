@@ -9,8 +9,8 @@
 
 use std::time::Duration;
 
+use olo_kit::Proxy;
 use olo_system::{env, face, fingerprint};
-use olo_ui::Proxy;
 
 use crate::cli::Session;
 

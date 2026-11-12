@@ -25,16 +25,11 @@ use std::{
 };
 
 use install::Progress;
-use olo_ui::{
-    WindowOptions,
-    gpui::{AppContext as _, Context, Entity, FocusHandle, InteractiveElement as _, IntoElement, ParentElement as _, Render, Styled as _, Window, WindowHandle, div, px},
+use olo_kit::{
+    ClickEvent, Cx, Element, FocusHandle, InteractiveElement as _, KeyDownEvent, ParentElement as _, Styled as _, View, WindowOptions, div,
     instance::{self, Launch},
-    metrics as m,
-    widgets::{
-        AlertFrame, Button, StatusBar, StringView,
-        alert::{self, ALERT_WIDTH},
-        alert_height, button_row, paragraph,
-    },
+    metrics as m, px,
+    widgets::{ALERT_WIDTH, AlertFrame, Button, StatusBar, StringView, alert_height, button_row, paragraph},
 };
 
 const APP_ID: &str = "olo.chrome";
@@ -48,9 +43,20 @@ enum State {
     Failed(String),
 }
 
+/// What the window is told.
+enum Msg {
+    /// How the download is going (from its thread).
+    Progress(Progress),
+    /// The offer's or the failure's buttons: Cancel (0) or the default.
+    Choose(usize),
+    /// The download's Cancel.
+    Stop,
+}
+
+/// The window that offers to download Chrome, on olo-kit: a view told
+/// how it's going by the download's thread.
 struct Installer {
     args: Vec<String>,
-    window: Option<WindowHandle<olo_ui::Frame>>,
     state: State,
     cancel: Arc<AtomicBool>,
     /// The window's keyboard (Return and Escape are the alert's).
@@ -58,83 +64,75 @@ struct Installer {
 }
 
 impl Installer {
-    fn open(&mut self, cx: &mut Context<Self>) {
-        if let Some(w) = self.window
-            && olo_ui::raise(Some(w), cx)
-        {
-            return;
-        }
-        let me = cx.entity();
-        cx.defer(move |cx| {
-            let h = alert_height(cx, OFFER, ALERT_WIDTH) + 8.0;
-            let view = me.clone();
-            let w = olo_ui::open_window(cx, WindowOptions::new("Google Chrome", ALERT_WIDTH, h).min_size(ALERT_WIDTH, h), move |_, _| view);
-            me.update(cx, |i, _| i.window = w);
-        });
-    }
-
-    fn start(&mut self, cx: &mut Context<Self>) {
+    fn start(&mut self, cx: &mut Cx<Self>) {
         self.cancel = Arc::new(AtomicBool::new(false));
         self.state = State::Working(Progress::Looking);
-        let (proxy, cancel) = (olo_ui::proxy(cx), self.cancel.clone());
-        std::thread::Builder::new().name("install".into()).spawn(move || install::install(&cancel, &|p| proxy.send(p))).expect("thread");
-        cx.notify();
+        let (to, cancel) = (cx.messenger(), self.cancel.clone());
+        std::thread::Builder::new()
+            .name("install".into())
+            .spawn(move || {
+                install::install(&cancel, &|p| {
+                    to.send(Msg::Progress(p));
+                })
+            })
+            .expect("thread");
+        cx.invalidate();
     }
 
     /// The offer's or the failure's buttons: Cancel quits, the other
     /// (the default) starts the download.
-    fn choose(&mut self, i: usize, cx: &mut Context<Self>) {
+    fn choose(&mut self, i: usize, cx: &mut Cx<Self>) {
         if i == 0 {
-            self.cancel.store(true, Ordering::Relaxed);
-            olo_net::nudge();
-            cx.quit();
+            self.stop();
+            olo_kit::quit();
         } else {
             self.start(cx);
         }
     }
 
-    fn message(&mut self, message: Box<dyn std::any::Any + Send>, cx: &mut Context<Self>) {
-        let message = match message.downcast::<Progress>() {
-            Ok(p) => {
-                match *p {
-                    Progress::Done(chrome) => {
-                        start_chrome(&chrome, &self.args);
-                        cx.quit();
-                    }
-                    // Back where it started, to offer again.
-                    Progress::Cancelled => self.state = State::Offer,
-                    Progress::Failed(why) => self.state = State::Failed(why),
-                    p => self.state = State::Working(p),
-                }
-                cx.notify();
-                return;
-            }
-            Err(m) => m,
-        };
-        if message.is::<Launch>() {
-            self.open(cx);
-        }
+    fn stop(&self) {
+        self.cancel.store(true, Ordering::Relaxed);
+        olo_net::nudge();
     }
 }
 
-impl Render for Installer {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if !self.focus.is_focused(window) {
-            window.focus(&self.focus);
+impl View for Installer {
+    type Message = Msg;
+
+    fn message(&mut self, message: Msg, cx: &mut Cx<Self>) {
+        match message {
+            Msg::Progress(Progress::Done(chrome)) => {
+                start_chrome(&chrome, &self.args);
+                olo_kit::quit();
+            }
+            // Back where it started, to offer again.
+            Msg::Progress(Progress::Cancelled) => self.state = State::Offer,
+            Msg::Progress(Progress::Failed(why)) => self.state = State::Failed(why),
+            Msg::Progress(p) => self.state = State::Working(p),
+            Msg::Choose(i) => return self.choose(i, cx),
+            Msg::Stop => return self.stop(),
         }
-        let me = cx.entity();
-        let alert_buttons = |labels: [&'static str; 2], me: Entity<Installer>| {
+        cx.invalidate();
+    }
+
+    /// Closed from its tab: the download stops.
+    fn window_closing(&mut self, _: &mut Cx<Self>) {
+        self.stop();
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        self.focus.focus_if_none(cx);
+        let alert_buttons = |labels: [&'static str; 2], cx: &Cx<Self>| {
             let mut row = button_row();
             for (i, label) in labels.into_iter().enumerate() {
-                let me = me.clone();
-                row = row.child(Button::new(label).default(i == 1).on_click(move |_, cx| me.update(cx, |a, cx| a.choose(i, cx))));
+                row = row.child(Button::new(label).default(i == 1).on_click(cx.msg_with(move |_: &ClickEvent| Msg::Choose(i))));
             }
             row
         };
         let frame = AlertFrame::new("installer");
         let content = match &self.state {
-            State::Offer => frame.child(paragraph(OFFER)).child(div().flex_1()).child(alert_buttons(["Cancel", "Download"], me.clone())),
-            State::Failed(why) => frame.child(paragraph(format!("Google Chrome couldn't be installed.\n\n{why}"))).child(div().flex_1()).child(alert_buttons(["Cancel", "Try Again"], me.clone())),
+            State::Offer => frame.child(paragraph(OFFER)).child(div().flex_1()).child(alert_buttons(["Cancel", "Download"], cx)),
+            State::Failed(why) => frame.child(paragraph(format!("Google Chrome couldn't be installed.\n\n{why}"))).child(div().flex_1()).child(alert_buttons(["Cancel", "Try Again"], cx)),
             State::Working(progress) => {
                 let (title, fraction, amount, version) = match progress {
                     Progress::Downloading { version, got, total } => {
@@ -144,38 +142,30 @@ impl Render for Installer {
                     _ => ("Looking for the newest Google Chrome…", 0.0, String::new(), None),
                 };
                 let unpacking = matches!(progress, Progress::Unpacking { .. });
-                let cancel = self.cancel.clone();
                 let mut col = div().flex().flex_col().gap(px(m::SPACING)).child(StatusBar::new(fraction).label(title).trailing(amount));
                 if let Some(v) = version {
                     col = col.child(StringView::new(format!("Version {v}, from Google's repository")).dim(true));
                 }
-                frame.child(col).child(div().flex_1()).child(button_row().child(Button::new("Cancel").enabled(!unpacking).on_click(move |_, _| {
-                    cancel.store(true, Ordering::Relaxed);
-                    olo_net::nudge();
-                })))
+                frame.child(col).child(div().flex_1()).child(button_row().child(Button::new("Cancel").enabled(!unpacking).on_click(cx.msg_with(|_: &ClickEvent| Msg::Stop))))
             }
         };
         // Return takes the default, Escape cancels, as an alert's.
-        let (ok, cancel) = (me.clone(), me.clone());
-        let offering = !matches!(self.state, State::Working(_));
-        let working_cancel = self.cancel.clone();
         div()
             .size_full()
-            .key_context(alert::CONTEXT)
             .track_focus(&self.focus)
-            .on_action(move |_: &alert::Default, _, cx| {
-                if offering {
-                    ok.update(cx, |a, cx| a.choose(1, cx));
+            .on_key_down(cx.listener(|a: &mut Self, e: &KeyDownEvent, cx| {
+                if e.keystroke.modifiers.modified() {
+                    return;
                 }
-            })
-            .on_action(move |_: &alert::Cancel, _, cx| {
-                if offering {
-                    cancel.update(cx, |a, cx| a.choose(0, cx));
-                } else {
-                    working_cancel.store(true, Ordering::Relaxed);
-                    olo_net::nudge();
+                let offering = !matches!(a.state, State::Working(_));
+                match e.keystroke.key.as_str() {
+                    "enter" if offering => a.choose(1, cx),
+                    "escape" if offering => a.choose(0, cx),
+                    "escape" => a.stop(),
+                    _ => return,
                 }
-            })
+                cx.stop_propagation();
+            }))
             .child(content)
     }
 }
@@ -304,19 +294,20 @@ fn main() {
     if instance::forward(APP_ID, &args) {
         return;
     }
-    olo_ui::run(APP_ID, move |cx| {
-        instance::listen(APP_ID, olo_ui::proxy(cx));
-        let app = cx.new(|cx| Installer { args, window: None, state: State::Offer, cancel: Arc::new(AtomicBool::new(false)), focus: cx.focus_handle() });
-        app.update(cx, |a, cx| a.open(cx));
-        let messages = app.clone();
-        olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |a, cx| a.message(message, cx)));
-        // Closed from its tab: the download stops.
-        let closing = app.clone();
-        cx.on_app_quit(move |cx| {
-            closing.read(cx).cancel.store(true, Ordering::Relaxed);
-            olo_net::nudge();
-            async {}
-        })
-        .detach();
+    olo_kit::run(APP_ID, move |app| {
+        instance::listen(APP_ID, olo_kit::proxy());
+        let h = alert_height(OFFER, ALERT_WIDTH) + 8.0;
+        let window = olo_kit::open_window(WindowOptions::new("Google Chrome", ALERT_WIDTH, h).min_size(ALERT_WIDTH, h), move |_| Installer {
+            args,
+            state: State::Offer,
+            cancel: Arc::new(AtomicBool::new(false)),
+            focus: FocusHandle::new(),
+        });
+        // (Launched again: the one there comes forward.)
+        olo_kit::message_handler(app, move |message, _| {
+            if message.is::<Launch>() {
+                olo_kit::raise(Some(&window));
+            }
+        });
     });
 }

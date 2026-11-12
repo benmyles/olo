@@ -8,7 +8,7 @@
 //! coordinates: on Wayland a program doesn't know where on screen it is).
 //! Only what is showing is walked, and at most `MAX_NODES` of it.
 
-use olo_ui::commands::{UiNode, WindowTree};
+use olo_kit::commands::{UiNode, WindowTree};
 use zbus::{blocking::Connection, zvariant::OwnedObjectPath};
 
 const ACCESSIBLE: &str = "org.a11y.atspi.Accessible";

@@ -11,13 +11,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use olo_kit::Proxy;
 use olo_protocol::diskbackup::{Reply, Request, Settings, State, Target};
-use olo_ui::{
-    Proxy,
-    gpui::{App, Global},
-};
+use olo_sync::Mutex;
 
-use crate::Msg;
+use crate::ToHub;
 
 #[derive(Default)]
 pub struct Marks {
@@ -32,7 +30,14 @@ pub struct Marks {
     again: HashSet<PathBuf>,
 }
 
-impl Global for Marks {}
+/// (Every window's: each draws its marks on its own looper; the app's
+/// looper keeps them.)
+static MARKS: Mutex<Option<Marks>> = Mutex::new(None);
+
+fn with<R>(f: impl FnOnce(&mut Marks) -> R) -> R {
+    let mut m = MARKS.lock().unwrap_or_else(|e| e.into_inner());
+    f(m.get_or_insert_with(Marks::default))
+}
 
 /// DiskBackup is on (for the menus, which have no `App`).
 static ON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -50,9 +55,12 @@ pub fn older_versions(path: &Path) {
 }
 
 /// `path`'s current version is backed up.
-pub fn backed_up(cx: &App, path: &Path) -> bool {
-    let (Some(m), Some(dir), Some(name)) = (cx.try_global::<Marks>(), path.parent(), path.file_name().and_then(|n| n.to_str())) else { return false };
-    m.dirs.get(dir).is_some_and(|names| names.contains(name))
+pub fn backed_up(path: &Path) -> bool {
+    if !on() {
+        return false;
+    }
+    let (Some(dir), Some(name)) = (path.parent(), path.file_name().and_then(|n| n.to_str())) else { return false };
+    with(|m| m.dirs.get(dir).is_some_and(|names| names.contains(name)))
 }
 
 /// DiskBackup as it is now: whether it's on, its last whole backup.
@@ -67,50 +75,63 @@ pub fn state() -> (bool, Option<i64>) {
 
 /// DiskBackup went on or off, or finished a backup (or Tracker started):
 /// every folder in `shown` asked again. Whether the marks changed.
-pub fn followed(cx: &mut App, shown: &std::collections::BTreeSet<PathBuf>, proxy: &Proxy, on: bool, last_ok: Option<i64>) -> bool {
-    let m = cx.default_global::<Marks>();
-    if (on, last_ok) == (m.on, m.last_ok) {
-        return false;
+pub fn followed(shown: &std::collections::BTreeSet<PathBuf>, proxy: &Proxy, on: bool, last_ok: Option<i64>) -> bool {
+    let cleared = with(|m| {
+        if (on, last_ok) == (m.on, m.last_ok) {
+            return None;
+        }
+        m.on = on;
+        m.last_ok = last_ok;
+        ON.store(on, std::sync::atomic::Ordering::Relaxed);
+        if !on {
+            m.dirs.clear();
+        }
+        Some(!on)
+    });
+    match cleared {
+        None => false,
+        Some(true) => true,
+        Some(false) => {
+            for dir in shown {
+                ask(dir, proxy);
+            }
+            false
+        }
     }
-    m.on = on;
-    m.last_ok = last_ok;
-    ON.store(on, std::sync::atomic::Ordering::Relaxed);
-    if !on {
-        m.dirs.clear();
-        return true;
-    }
-    for dir in shown {
-        ask(cx, dir, proxy);
-    }
-    false
 }
 
 /// The folders shown now: those no longer shown forgotten, new ones asked.
-pub fn shown(cx: &mut App, now: &std::collections::BTreeSet<PathBuf>, proxy: &Proxy) {
-    let m = cx.default_global::<Marks>();
-    m.dirs.retain(|d, _| now.contains(d));
-    let new: Vec<PathBuf> = now.iter().filter(|d| !m.dirs.contains_key(*d) && !m.asking.contains(*d)).cloned().collect();
+pub fn shown(now: &std::collections::BTreeSet<PathBuf>, proxy: &Proxy) {
+    let new: Vec<PathBuf> = with(|m| {
+        m.dirs.retain(|d, _| now.contains(d));
+        now.iter().filter(|d| !m.dirs.contains_key(*d) && !m.asking.contains(*d)).cloned().collect()
+    });
     for dir in new {
-        ask(cx, &dir, proxy);
+        ask(&dir, proxy);
     }
 }
 
 /// `dir` changed: asked again.
-pub fn changed(cx: &mut App, dir: &Path, proxy: &Proxy) {
-    if cx.try_global::<Marks>().is_some_and(|m| m.dirs.contains_key(dir) || m.asking.contains(dir)) {
-        ask(cx, dir, proxy);
+pub fn changed(dir: &Path, proxy: &Proxy) {
+    if with(|m| m.dirs.contains_key(dir) || m.asking.contains(dir)) {
+        ask(dir, proxy);
     }
 }
 
 /// Ask the service about `dir`, on a thread of its own (once at a time a
 /// folder: asked while it's being answered, asked again after).
-fn ask(cx: &mut App, dir: &Path, proxy: &Proxy) {
-    let m = cx.default_global::<Marks>();
-    if !m.on {
-        return;
-    }
-    if !m.asking.insert(dir.to_owned()) {
-        m.again.insert(dir.to_owned());
+fn ask(dir: &Path, proxy: &Proxy) {
+    let go = with(|m| {
+        if !m.on {
+            return false;
+        }
+        if !m.asking.insert(dir.to_owned()) {
+            m.again.insert(dir.to_owned());
+            return false;
+        }
+        true
+    });
+    if !go {
         return;
     }
     let (dir, proxy) = (dir.to_owned(), proxy.clone());
@@ -119,20 +140,22 @@ fn ask(cx: &mut App, dir: &Path, proxy: &Proxy) {
             Ok(Reply::Marks { backed_up, .. }) => Some(backed_up.into_iter().collect()),
             _ => None,
         };
-        proxy.send(Msg::Marks(dir, names));
+        proxy.send(ToHub::Marks(dir, names));
     });
 }
 
 /// The service answered about `dir`: whether anything shown changed.
-pub fn answered(cx: &mut App, dir: PathBuf, names: Option<HashSet<String>>, proxy: &Proxy) -> bool {
-    let m = cx.default_global::<Marks>();
-    m.asking.remove(&dir);
-    let again = m.again.remove(&dir);
-    let names = names.unwrap_or_default();
-    let changed = m.dirs.get(&dir) != Some(&names);
-    m.dirs.insert(dir.clone(), names);
+pub fn answered(dir: PathBuf, names: Option<HashSet<String>>, proxy: &Proxy) -> bool {
+    let (again, changed) = with(|m| {
+        m.asking.remove(&dir);
+        let again = m.again.remove(&dir);
+        let names = names.unwrap_or_default();
+        let changed = m.dirs.get(&dir) != Some(&names);
+        m.dirs.insert(dir.clone(), names);
+        (again, changed)
+    });
     if again {
-        ask(cx, &dir, proxy);
+        ask(&dir, proxy);
     }
     changed
 }

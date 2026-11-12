@@ -125,7 +125,7 @@ pub fn spans(text: &str) -> Vec<(Range<usize>, Kind)> {
                 Kind::Key
             } else if word.chars().next().is_some_and(char::is_uppercase) && (after.starts_with('(') || after.starts_with('{')) {
                 Kind::Type
-            } else if BAD.contains(&word.to_lowercase().as_str()) {
+            } else if BAD.iter().any(|bad| bad.eq_ignore_ascii_case(word)) {
                 Kind::Bad
             } else {
                 Kind::Plain

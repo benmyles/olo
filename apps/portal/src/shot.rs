@@ -56,7 +56,7 @@ impl Screenshot {
         let interactive = options.get("interactive").and_then(|v| bool::try_from(v).ok()).unwrap_or(false);
         match blocking::unblock(move || take(interactive)).await {
             Ok(Some(path)) => {
-                let uri = olo_ui::files::file_uri(std::path::Path::new(&path));
+                let uri = olo_kit::files::file_uri(std::path::Path::new(&path));
                 (OK, HashMap::from([("uri".to_owned(), OwnedValue::try_from(Value::from(uri)).expect("a string"))]))
             }
             Ok(None) => (CANCELLED, HashMap::new()),

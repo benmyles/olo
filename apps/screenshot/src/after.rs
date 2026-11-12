@@ -15,17 +15,10 @@ use std::{
     time::Duration,
 };
 
-use olo_ui::{
-    WindowOptions,
-    gpui::{
-        self, AppContext as _, Context, Corners, InteractiveElement as _, IntoElement, LayerKeyboard, LayerShellLayer, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, Pixels, Point,
-        Render, RenderImage, StatefulInteractiveElement as _, Styled as _, Task, Window, canvas, div, point, px, size,
-    },
-    metrics as m, style, theme,
-    widgets::{
-        StringView,
-        buttons::{Button, SMALL_BUTTON_HEIGHT},
-    },
+use olo_kit::{
+    Bounds, BoxShadow, ClickEvent, Corners, Cx, DragAction, Element, InteractiveElement as _, LayerKeyboard, LayerShellLayer, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, Pixels,
+    Point, RenderImage, Styled as _, View, WindowOptions, canvas, div, dnd, held_clipboard, hsla, metrics as m, point, px, size, style, theme,
+    widgets::{Button, SMALL_BUTTON_HEIGHT, StringView},
 };
 
 const APP_ID: &str = "olo.screenshot-after";
@@ -49,8 +42,11 @@ enum Msg {
     Picture(Option<(f32, Arc<RenderImage>)>),
     /// The original picture, to make again at another scale.
     Original(Arc<image::RgbaImage>),
-    /// Something else is on the clipboard: nothing more to serve.
-    Released,
+    /// `STAYS` since the pointer last came or went (the wait numbered
+    /// so: an older one is dropped).
+    Leave(u64),
+    /// The file dragged out was dropped as this (None: nowhere).
+    Dropped(Option<DragAction>),
 }
 
 struct After {
@@ -65,10 +61,11 @@ struct After {
     picture: Option<(f32, Arc<RenderImage>)>,
     /// A picture being made for this scale.
     asked: Option<f32>,
-    dropped: Vec<Arc<RenderImage>>,
     close_lit: bool,
-    /// Its going, once the pointer has left it.
-    leaving: Option<Task<()>>,
+    /// The pointer is over it.
+    hovered: bool,
+    /// The wait for its going that counts (`Msg::Leave`).
+    leaving: u64,
     /// Where a press on the picture began (points in the window).
     press: Option<Point<Pixels>>,
     /// The size the window was given (points).
@@ -118,23 +115,8 @@ pub(crate) fn to_trash(path: &Path) -> std::io::Result<PathBuf> {
 }
 
 impl After {
-    fn message(&mut self, m: Msg, window: &mut Window, cx: &mut Context<Self>) {
-        match m {
-            Msg::Picture(made) => {
-                self.asked = None;
-                self.dropped.extend(std::mem::replace(&mut self.picture, made).map(|(_, i)| i));
-                cx.notify();
-            }
-            Msg::Original(original) => {
-                self.original = Some(original);
-                self.ask_picture(window.scale_factor(), cx);
-            }
-            Msg::Released => cx.quit(),
-        }
-    }
-
     /// The picture made for `scale` on a worker (exact device pixels).
-    fn ask_picture(&mut self, scale: f32, cx: &mut Context<Self>) {
+    fn ask_picture(&mut self, scale: f32, cx: &mut Cx<Self>) {
         let Some(original) = self.original.clone() else { return };
         if self.asked == Some(scale) || self.picture.as_ref().is_some_and(|(s, _)| *s == scale) {
             return;
@@ -143,53 +125,39 @@ impl After {
         let (w, h) = picture_size(self.aspect);
         // (Inside the frame's 2-point bevel.)
         let (dw, dh) = (((w - 4.0) * scale).round() as u32, ((h - 4.0) * scale).round() as u32);
-        let proxy = olo_ui::proxy(cx);
-        std::thread::spawn(move || proxy.send(Msg::Picture(crate::preview_of(&original, dw, dh).map(|i| (scale, i)))));
+        cx.work(move || crate::preview_of(&original, dw, dh).map(|i| (scale, i)), Msg::Picture);
     }
 
     /// It goes `STAYS` after the pointer left: asked then whether the
-    /// pointer is over it (a drag out of it takes the pointer without its
-    /// leaving being told), and again later if it is.
-    fn hold(&mut self, window: &Window, cx: &mut Context<Self>) {
-        self.leaving = Some(cx.spawn_in(window, async move |this, cx| {
-            cx.background_executor().timer(STAYS).await;
-            let _ = this.update_in(cx, |a, window, cx| {
-                if a.holding {
-                    return;
-                }
-                if window.is_window_hovered() {
-                    a.hold(window, cx);
-                } else {
-                    cx.quit();
-                }
-            });
-        }));
+    /// pointer is over it, and again later if it is.
+    fn hold(&mut self, cx: &mut Cx<Self>) {
+        self.leaving += 1;
+        cx.after(STAYS, Msg::Leave(self.leaving));
     }
 
-    fn show(&mut self, cx: &mut Context<Self>) {
-        let _ = olo_ui::tracker::open(&self.path);
-        cx.quit();
+    fn show(&mut self) {
+        let _ = olo_kit::tracker::open(&self.path);
+        olo_kit::quit();
     }
 
     /// The file on the clipboard (as a file manager copies it); the window
     /// goes, the process serving it till something else is copied.
-    fn copy(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn copy(&mut self, cx: &mut Cx<Self>) {
         self.holding = true;
         // (No window from now on, and still running.)
-        olo_ui::stay_resident(cx);
-        let clip = olo_ui::clipboard::files(std::slice::from_ref(&self.path), false);
-        let proxy = olo_ui::proxy(cx);
+        olo_kit::stay_resident();
+        let clip = held_clipboard::files(std::slice::from_ref(&self.path), false);
         std::thread::spawn(move || {
-            if let Err(e) = olo_ui::clipboard::hold(clip) {
+            if let Err(e) = held_clipboard::hold(clip) {
                 eprintln!("olo-screenshot: couldn't copy the recording: {e}");
             }
-            proxy.send(Msg::Released);
+            olo_kit::quit();
         });
-        window.remove_window();
+        cx.close_window();
     }
 
     /// Edit: the recording in the Viewer's editor (`olo-viewer --edit`).
-    fn edit(&mut self, cx: &mut Context<Self>) {
+    fn edit(&mut self) {
         match olo_xdg::find_program("olo-viewer") {
             Some(viewer) => {
                 let argv = [viewer.into_os_string(), "--edit".into(), self.path.clone().into_os_string()];
@@ -199,102 +167,114 @@ impl After {
             }
             None => eprintln!("olo-screenshot: no Viewer to edit it in"),
         }
-        cx.quit();
+        olo_kit::quit();
     }
 
-    fn delete(&mut self, cx: &mut Context<Self>) {
+    fn delete(&mut self) {
         if let Err(e) = to_trash(&self.path) {
             eprintln!("olo-screenshot: couldn't move {} to the Trash: {e}", self.path.display());
         }
-        cx.quit();
+        olo_kit::quit();
     }
 
     /// A press on the picture moved far enough: the file dragged out.
-    fn drag(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn drag(&mut self, cx: &mut Cx<Self>) {
         self.press = None;
-        let mut drag = olo_ui::dnd::files(std::slice::from_ref(&self.path), true, false);
-        drag.icon = olo_ui::dnd::picture(window, cx, "video-x-generic", 48.0, Some(&self.name), point(px(24.0), px(24.0)));
-        olo_ui::dnd::start(window, cx, drag, |action, cx| {
-            // Dropped somewhere: done with.
-            if action.is_some() {
-                cx.quit();
-            }
-        });
+        let mut drag = dnd::files(std::slice::from_ref(&self.path), true, false);
+        drag.icon = dnd::picture(cx, "video-x-generic", 48.0, Some(&self.name), point(px(24.0), px(24.0)));
+        dnd::start(cx, drag, Msg::Dropped);
     }
 }
 
-impl Render for After {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let p = theme::palette(cx);
-        let scale = window.scale_factor();
+impl View for After {
+    type Message = Msg;
+
+    fn message(&mut self, m: Msg, cx: &mut Cx<Self>) {
+        match m {
+            Msg::Picture(made) => {
+                self.asked = None;
+                self.picture = made;
+                cx.invalidate();
+            }
+            Msg::Original(original) => {
+                self.original = Some(original);
+                self.ask_picture(cx.scale_factor(), cx);
+            }
+            Msg::Leave(n) if n == self.leaving && !self.holding => {
+                if self.hovered {
+                    self.hold(cx);
+                } else {
+                    olo_kit::quit();
+                }
+            }
+            Msg::Leave(_) => {}
+            // Dropped somewhere: done with.
+            Msg::Dropped(Some(_)) => olo_kit::quit(),
+            // (A drag takes the pointer without its leaving being told:
+            // it isn't over the card now, wherever it was let go.)
+            Msg::Dropped(None) => {
+                self.hovered = false;
+                self.hold(cx);
+            }
+        }
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        let p = theme::palette();
+        let scale = cx.scale_factor();
         self.ask_picture(scale, cx);
         let (cw, ch) = card_size(self.aspect);
         let (w, h) = (cw + 2.0 * SHADOW, ch + 2.0 * SHADOW);
         if (w, h) != self.size {
             self.size = (w, h);
-            window.defer(cx, move |window, _| window.resize(size(px(w), px(h))));
+            cx.resize_window(size(px(w), px(h)));
         }
         let (pw, ph) = picture_size(self.aspect);
-        let picture = self.picture.as_ref().filter(|(s, _)| *s == scale).map(|(_, i)| i.clone());
-        let dropped = std::mem::take(&mut self.dropped);
-        let (name, close_lit) = (self.name.clone(), self.close_lit);
-        let me = cx.entity();
         let card_at = point(px(SHADOW), px(SHADOW * 0.6));
         let frame_at = card_at + point(px(m::CARD_INSET + (PICTURE_W - pw) / 2.0), px(m::CARD_INSET));
         let text_y = SHADOW * 0.6 + m::CARD_INSET + ph + m::TIGHT;
         let close = 16.0;
         let close_at = point(card_at.x + px(cw - m::CARD_INSET - close + 4.0), px(text_y + (m::LABEL_ROW - close) / 2.0));
         let ink = style::card_ink(&p);
-        let (hover_me, press_me, move_me, close_me, lit_me) = (me.clone(), me.clone(), me.clone(), me.clone(), me.clone());
-        let action = |f: fn(&mut After, &mut Window, &mut Context<After>)| {
-            let me = me.clone();
-            move |window: &mut Window, cx: &mut gpui::App| me.update(cx, |a, cx| f(a, window, cx))
-        };
+        let back = cx
+            .canvas(move |a: &After, g, b| {
+                let p = theme::palette();
+                let card = Bounds::new(b.origin + card_at, size(px(cw), px(ch)));
+                // Over whatever is on the screen: a shadow that lifts it,
+                // then the card's own.
+                let radius = Corners::all(px(m::CARD_RADIUS));
+                g.paint_shadows(card, radius, &[BoxShadow { color: hsla(0.0, 0.0, 0.0, 0.28), offset: point(px(0.0), px(3.0)), blur_radius: px(SHADOW * 0.7), spread_radius: px(0.0) }]);
+                style::card(g, card, &p, false, false);
+                let frame = style::snap(g, Bounds::new(b.origin + frame_at, size(px(pw), px(ph))));
+                match a.picture.as_ref().filter(|(s, _)| *s == g.scale_factor()) {
+                    Some((_, image)) => {
+                        let inner = style::inset(g, frame, 2.0);
+                        let _ = g.paint_image(inner, Corners::default(), image.clone(), 0, false);
+                    }
+                    None => style::fill_rect(g, frame, style::c(p.panel_background)),
+                }
+                style::sunken(g, frame, &p, false);
+                olo_kit::agent::record(
+                    g,
+                    olo_kit::agent::Node { role: "Image", name: Some(format!("Recording: {} (drag it out as the file)", a.name).into()), bounds: frame, enabled: true, ..Default::default() },
+                );
+                let close = Bounds::new(b.origin + close_at, size(px(close), px(close)));
+                style::close_box(g, close, if a.close_lit { style::c(p.panel_text) } else { style::disabled_text(&p) });
+            })
+            .absolute()
+            .left(px(0.0))
+            .top(px(0.0))
+            .size_full();
         div()
             .id("after")
             .size_full()
             .relative()
             // (Its time starts again whenever the pointer comes or goes.)
-            .on_hover(move |_, window, cx| hover_me.update(cx, |a, cx| a.hold(window, cx)))
-            .child(
-                canvas(
-                    |_, _, _| {},
-                    move |b, _, window, cx| {
-                        let p = theme::palette(cx);
-                        for image in dropped {
-                            let _ = window.drop_image(image);
-                        }
-                        let card = gpui::Bounds::new(b.origin + card_at, size(px(cw), px(ch)));
-                        // Over whatever is on the screen: a shadow that
-                        // lifts it, then the card's own.
-                        let radius = Corners::all(px(m::CARD_RADIUS));
-                        window.paint_shadows(
-                            card,
-                            radius,
-                            &[gpui::BoxShadow { color: gpui::hsla(0.0, 0.0, 0.0, 0.28), offset: point(px(0.0), px(3.0)), blur_radius: px(SHADOW * 0.7), spread_radius: px(0.0) }],
-                        );
-                        style::card(window, card, &p, false, false);
-                        let frame = style::snap(window, gpui::Bounds::new(b.origin + frame_at, size(px(pw), px(ph))));
-                        match &picture {
-                            Some(image) => {
-                                let inner = style::inset(window, frame, 2.0);
-                                let _ = window.paint_image(inner, Corners::default(), image.clone(), 0, false);
-                            }
-                            None => style::fill_rect(window, frame, style::c(p.panel_background)),
-                        }
-                        style::sunken(window, frame, &p, false);
-                        olo_ui::agent::record(
-                            window,
-                            cx,
-                            olo_ui::agent::Node { role: "Image", name: Some(format!("Recording: {name} (drag it out as the file)").into()), bounds: frame, enabled: true, ..Default::default() },
-                        );
-                        let close = gpui::Bounds::new(b.origin + close_at, size(px(close), px(close)));
-                        style::close_box(window, close, if close_lit { style::c(p.panel_text) } else { style::disabled_text(&p) });
-                    },
-                )
-                .absolute()
-                .size_full(),
-            )
+            .on_hover(cx.listener(|a: &mut After, inside: &bool, cx| {
+                a.hovered = *inside;
+                a.hold(cx);
+            }))
+            .child(back)
             // The picture: pressed and moved, the file dragged out.
             .child(
                 div()
@@ -304,17 +284,15 @@ impl Render for After {
                     .top(frame_at.y)
                     .w(px(pw))
                     .h(px(ph))
-                    .on_mouse_down(MouseButton::Left, move |e: &MouseDownEvent, _, cx| press_me.update(cx, |a, _| a.press = Some(e.position)))
-                    .on_mouse_move(move |e: &MouseMoveEvent, window, cx| {
-                        move_me.update(cx, |a, cx| {
-                            let Some(at) = a.press else { return };
-                            if e.pressed_button != Some(MouseButton::Left) {
-                                a.press = None;
-                            } else if f32::from((e.position - at).x).hypot(f32::from((e.position - at).y)) >= DRAG_AFTER {
-                                a.drag(window, cx);
-                            }
-                        })
-                    }),
+                    .on_mouse_down(MouseButton::Left, cx.listener(|a: &mut After, e: &MouseDownEvent, _| a.press = Some(e.position)))
+                    .on_mouse_move(cx.listener(|a: &mut After, e: &MouseMoveEvent, cx| {
+                        let Some(at) = a.press else { return };
+                        if e.pressed_button != Some(MouseButton::Left) {
+                            a.press = None;
+                        } else if f32::from((e.position - at).x).hypot(f32::from((e.position - at).y)) >= DRAG_AFTER {
+                            a.drag(cx);
+                        }
+                    })),
             )
             .child(
                 div()
@@ -324,7 +302,7 @@ impl Render for After {
                     .w(px(PICTURE_W - close - m::TIGHT))
                     .flex()
                     .flex_col()
-                    .child(div().h(px(m::LABEL_ROW)).text_color(ink.text).child(StringView::new(self.name.clone())))
+                    .child(div().h(px(m::LABEL_ROW)).child(StringView::new(self.name.clone()).color(ink.text)))
                     .child(div().h(px(m::LABEL_ROW)).child(StringView::new(self.details.clone()).dim(true))),
             )
             .child(
@@ -335,14 +313,12 @@ impl Render for After {
                     .top(close_at.y)
                     .w(px(close))
                     .h(px(close))
-                    .child(canvas(|_, _, _| {}, move |b, _, window, cx| olo_ui::agent::record(window, cx, olo_ui::agent::Node::button("Close", b))).size_full())
-                    .on_hover(move |inside, _, cx| {
-                        lit_me.update(cx, |a, cx| {
-                            a.close_lit = *inside;
-                            cx.notify();
-                        })
-                    })
-                    .on_click(move |_, _, cx| close_me.update(cx, |_, cx| cx.quit())),
+                    .child(canvas(|g, b| olo_kit::agent::record(g, olo_kit::agent::Node::button("Close", b))).size_full())
+                    .on_hover(cx.listener(|a: &mut After, inside: &bool, cx| {
+                        a.close_lit = *inside;
+                        cx.invalidate();
+                    }))
+                    .on_click(|_: &ClickEvent, _| olo_kit::quit()),
             )
             .child(
                 div()
@@ -351,10 +327,10 @@ impl Render for After {
                     .top(px(text_y + 2.0 * m::LABEL_ROW + m::TIGHT))
                     .flex()
                     .gap(px(m::TIGHT))
-                    .child(Button::new("Show in Tracker").small().on_click(action(|a, _, cx| a.show(cx))))
-                    .child(Button::new("Copy").small().on_click(action(|a, window, cx| a.copy(window, cx))))
-                    .child(Button::new("Edit").small().on_click(action(|a, _, cx| a.edit(cx))))
-                    .child(Button::new("Delete").small().on_click(action(|a, _, cx| a.delete(cx)))),
+                    .child(Button::new("Show in Tracker").small().on_click(cx.listener(|a: &mut After, _: &ClickEvent, _| a.show())))
+                    .child(Button::new("Copy").small().on_click(cx.listener(|a: &mut After, _: &ClickEvent, cx| a.copy(cx))))
+                    .child(Button::new("Edit").small().on_click(cx.listener(|a: &mut After, _: &ClickEvent, _| a.edit())))
+                    .child(Button::new("Delete").small().on_click(cx.listener(|a: &mut After, _: &ClickEvent, _| a.delete()))),
             )
     }
 }
@@ -388,47 +364,35 @@ pub fn run(args: &[String]) -> std::process::ExitCode {
     }
     details.push(bytes(size));
     let aspect = if height > 0 { width as f32 / height as f32 } else { 16.0 / 10.0 };
-    olo_ui::run(APP_ID, move |cx| {
+    olo_kit::run(APP_ID, move |_| {
         let (cw, ch) = card_size(aspect);
         let options = WindowOptions::new("Recording Saved", cw + 2.0 * SHADOW, ch + 2.0 * SHADOW).no_panel().layer(NAMESPACE, LayerShellLayer::Top, (false, true, true, false)).layer_options(|l| {
             // (The card `MARGIN` from the edges: its shadow's room inside.)
             l.margin = (0, 0, (MARGIN - SHADOW * 1.4).max(0.0).round() as i32, (MARGIN - SHADOW).round() as i32);
             l.keyboard = LayerKeyboard::None;
         });
-        let after = cx.new(|_| After {
-            path: path.clone(),
-            name,
-            details: details.join(" · "),
-            aspect,
-            original: None,
-            picture: None,
-            asked: None,
-            dropped: Vec::new(),
-            close_lit: false,
-            leaving: None,
-            press: None,
-            size: (0.0, 0.0),
-            holding: false,
-        });
-        let view = after.clone();
-        let handle = olo_ui::open_window(cx, options, move |window, cx| {
-            view.update(cx, |a, cx| a.hold(window, cx));
-            view
-        });
-        let messages = after.clone();
-        olo_ui::message_handler(cx, move |m, cx| {
-            let Ok(m) = m.downcast::<Msg>() else { return };
-            // (Copied, the window has gone: only the clipboard's end comes.)
-            if matches!(*m, Msg::Released) {
-                cx.quit();
-                return;
-            }
-            if let Some(h) = handle {
-                let _ = h.update(cx, |_, window, cx| messages.update(cx, |a, cx| a.message(*m, window, cx)));
-            }
+        let shown = path.clone();
+        let window = olo_kit::open_window(options, move |cx| {
+            let mut after = After {
+                path: shown,
+                name,
+                details: details.join(" · "),
+                aspect,
+                original: None,
+                picture: None,
+                asked: None,
+                close_lit: false,
+                hovered: false,
+                leaving: 0,
+                press: None,
+                size: (0.0, 0.0),
+                holding: false,
+            };
+            after.hold(cx);
+            after
         });
         // The picture: a moment in (past a countdown's last frame).
-        let proxy = olo_ui::proxy(cx);
+        let to = window.messenger();
         std::thread::spawn(move || {
             let picture = if gif {
                 image::open(&path).ok().map(|i| i.into_rgba8())
@@ -437,9 +401,9 @@ pub fn run(args: &[String]) -> std::process::ExitCode {
                 olo_preview::video::picture_at(&input, at).ok().and_then(|b| image::RgbaImage::from_raw(b.size[0] as u32, b.size[1] as u32, b.rgba.clone()))
             };
             match picture {
-                Some(p) => proxy.send(Msg::Original(Arc::new(p))),
-                None => proxy.send(Msg::Picture(None)),
-            }
+                Some(p) => to.send(Msg::Original(Arc::new(p))),
+                None => to.send(Msg::Picture(None)),
+            };
         });
     });
     std::process::ExitCode::SUCCESS

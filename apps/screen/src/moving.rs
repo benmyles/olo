@@ -3,7 +3,7 @@
 //! viewer's Move to Agent Screen and Move Windows to): the program keeps
 //! running as it goes.
 //!
-//! - An app on Olo's kit is asked to go (`olo_ui::moving`): all of it
+//! - An app on Olo's kit is asked to go (`olo_kit::moving`): all of it
 //!   re-executes there with its state, as for an upgrade; one window of
 //!   several goes by a copy of the app started there with that window's
 //!   state, where the app can (Tracker's folder windows; Terminal's).
@@ -24,8 +24,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+use olo_kit::moving::{self, MoveTo};
 use olo_protocol::{Client, Reply, Request, WindowInfo};
-use olo_ui::moving::{self, MoveTo};
 
 use crate::screens::Screen;
 

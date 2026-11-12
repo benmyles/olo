@@ -6,11 +6,7 @@
 //! Terminal follows them live. And brush's suggestions from Olo's model
 //! (complete.rs).
 
-use olo_ui::{
-    gpui::{Font, ParentElement as _, Styled as _, div, px},
-    metrics as m,
-    widgets::{Button, TextControl},
-};
+use olo_kit::{ClickEvent, Font, ParentElement as _, Styled as _, WindowCx, div, metrics as m, px, widgets::Button};
 
 use crate::form::Ui;
 
@@ -26,7 +22,7 @@ pub fn ui(ui: &mut Ui) {
 fn worktrees(ui: &mut Ui) {
     let t = ui.s.terminal.clone();
     ui.bbox("Git Worktrees", |ui| {
-        let mono: Font = olo_ui::style::mono_font(olo_ui::gpui::FontWeight::NORMAL);
+        let mono: Font = olo_kit::style::mono_font(olo_kit::FontWeight::NORMAL);
         ui.text("worktrees", &t.worktrees, |f| f.hint("~/worktrees").font(mono), |c| c.label("New ones go in:").divider(100.0), |s, v| s.terminal.worktrees = v);
         let base = t.worktrees.trim().trim_end_matches('/');
         let base = if base.is_empty() { "~/worktrees" } else { base };
@@ -56,10 +52,10 @@ fn coding_agents(ui: &mut Ui) {
         let changed = t.keep_going_says != default;
         let set_default = ui.edit_click(move |s| s.terminal.keep_going_says = default.into());
         // (The field too: it keeps what's typed while it has the keyboard.)
-        let shown = field.clone();
-        let use_default = move |window: &mut olo_ui::gpui::Window, cx: &mut olo_ui::gpui::App| {
+        let shown = field;
+        let use_default = move |e: &ClickEvent, cx: &mut WindowCx| {
             shown.update(cx, |f, cx| f.set_text(default.to_owned(), cx));
-            set_default(window, cx);
+            set_default(e, cx);
         };
         let enabled = ui.enabled();
         ui.add(
@@ -68,7 +64,7 @@ fn coding_agents(ui: &mut Ui) {
                 .flex_row()
                 .items_center()
                 .gap(px(m::SPACING))
-                .child(div().flex_1().min_w_0().child(TextControl::new(field).label("Keep It Going says:").divider(130.0)))
+                .child(div().flex_1().min_w_0().child(ui.control_of("keep-going-says").label("Keep It Going says:").divider(130.0)))
                 .child(Button::new("Use Default").id("keep-going-default").enabled(enabled && changed).on_click(use_default)),
         );
         ui.note("Keep It Going, in a tab’s menu, types this to the coding agent in the tab when it has stopped: after two quiet minutes, at most once an hour. Left empty, it says “Please continue”.");

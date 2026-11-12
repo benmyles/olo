@@ -1,0 +1,11 @@
+[package]
+name = "olo-app"
+description = "Olo's Application Kit: loopers, handlers and typed messages"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+olo-sync = { workspace = true }
+async-task = "4.7"
+tracing = { workspace = true }

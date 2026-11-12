@@ -6,11 +6,11 @@
 
 use std::f32::consts::TAU;
 
-use olo_theme::{Hue, Palette, Rgba, mix};
-use olo_ui::{
-    gpui::{Bounds, Hsla, Pixels, Point, Window, point, px},
+use olo_kit::{
+    Bounds, Hsla, Painter, Pixels, Point, point, px,
     style::{self, c},
 };
+use olo_theme::{Hue, Palette, Rgba, mix};
 
 use crate::scan::{NodeId, Tree};
 
@@ -125,48 +125,48 @@ fn at(g: &Geometry, r: f32, a: f32) -> Point<Pixels> {
 
 /// A third of the way to white: a slice under the pointer, or chosen.
 fn lighter(color: Hsla) -> Hsla {
-    let c = olo_ui::gpui::Rgba::from(color);
+    let c = olo_kit::Rgba::from(color);
     let up = |v: f32| v + (1.0 - v) / 3.0;
-    olo_ui::gpui::Rgba { r: up(c.r), g: up(c.g), b: up(c.b), a: c.a }.into()
+    olo_kit::Rgba { r: up(c.r), g: up(c.g), b: up(c.b), a: c.a }.into()
 }
 
 /// Paints the rings: slices with a hairline between them in `line`, and
 /// `hover` lighter. Each slice is one sector drawn on the GPU (no path to
 /// tessellate or rasterise); the slices are one layer and the lines over
 /// them another, so the scene orders two things, not hundreds.
-pub fn paint(window: &mut Window, g: &Geometry, slices: &[Slice], hover: Option<usize>, selected: Option<NodeId>, line: Hsla) {
+pub fn paint(gx: &mut Painter, g: &Geometry, slices: &[Slice], hover: Option<usize>, selected: Option<NodeId>, line: Hsla) {
     let reach = px(g.inner(RINGS) + g.ring + 1.0);
     let bounds = Bounds::from_corners(point(g.center.x - reach, g.center.y - reach), point(g.center.x + reach, g.center.y + reach));
-    window.paint_layer(bounds, |window| {
+    gx.paint_layer(bounds, |gx| {
         for (i, s) in slices.iter().enumerate() {
             let color = if Some(i) == hover || Some(s.node) == selected { lighter(s.color) } else { s.color };
             let r0 = g.inner(s.ring);
-            window.paint_sector(g.center, px(r0), px(r0 + g.ring), s.start, s.end - s.start, color);
+            gx.paint_sector(g.center, px(r0), px(r0 + g.ring), s.start, s.end - s.start, color);
         }
     });
     // Hairlines between slices and round each ring's outer edge, a device
     // pixel wide (one at 12 o'clock is straight up).
-    let w = style::hairline(window);
-    window.paint_layer(bounds, |window| {
+    let w = style::hairline(gx);
+    gx.paint_layer(bounds, |gx| {
         for s in slices {
             let (r0, r1) = (g.inner(s.ring), g.inner(s.ring) + g.ring);
             // Slices thinner than a few pixels share one edge, or a run of
             // small files becomes hatching.
             if (s.end - s.start) * r1 >= 6.0 {
-                window.paint_segment(at(g, r0, s.start), at(g, r1, s.start), w, false, line);
+                gx.paint_segment(at(g, r0, s.start), at(g, r1, s.start), w, false, line);
             }
             if (s.end - s.start) * r1 >= 2.0 {
-                window.paint_sector(g.center, px(r1) - w / 2.0, px(r1) + w / 2.0, s.start, s.end - s.start, line);
+                gx.paint_sector(g.center, px(r1) - w / 2.0, px(r1) + w / 2.0, s.start, s.end - s.start, line);
             }
         }
     });
 }
 
 /// The middle: the folder itself, a hairline round it.
-pub fn paint_hub(window: &mut Window, g: &Geometry, fill: Hsla, line: Hsla) {
-    let w = style::hairline(window);
-    window.paint_sector(g.center, px(0.0), px(g.hub), 0.0, TAU, fill);
-    window.paint_sector(g.center, px(g.hub) - w, px(g.hub), 0.0, TAU, line);
+pub fn paint_hub(gx: &mut Painter, g: &Geometry, fill: Hsla, line: Hsla) {
+    let w = style::hairline(gx);
+    gx.paint_sector(g.center, px(0.0), px(g.hub), 0.0, TAU, fill);
+    gx.paint_sector(g.center, px(g.hub) - w, px(g.hub), 0.0, TAU, line);
 }
 
 /// The middle of `ring` at angle `a`.
@@ -178,7 +178,7 @@ pub fn to_pos(g: &Geometry, ring: usize, a: f32) -> Point<Pixels> {
 mod tests {
     use super::*;
     use crate::scan::{Node, ROOT};
-    use olo_ui::gpui::{point, px};
+    use olo_kit::{point, px};
 
     fn pos2(x: f32, y: f32) -> Point<Pixels> {
         point(px(x), px(y))

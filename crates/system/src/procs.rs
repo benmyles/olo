@@ -274,7 +274,7 @@ pub fn gpu_clients(gpus: &[crate::gpu_load::Probe], pids: &[(i32, String)], befo
         }
         let Some(d) = crate::gpu_load::nvml().and_then(|n| n.device_by_pci_bus_id(bus.as_str()).ok()) else { continue };
         let since = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |t| t.as_micros() as u64).saturating_sub((elapsed * 1e6) as u64);
-        let util: HashMap<u32, u32> = d.process_utilization_stats(since).map(|v| v.into_iter().map(|u| (u.pid, u.sm_util)).collect()).unwrap_or_default();
+        let util: HashMap<u32, u32> = d.process_utilization_stats(since).map(|v| v.into_iter().map(|u| (u.pid, u.sm_util.max(u.enc_util).max(u.dec_util))).collect()).unwrap_or_default();
         let procs = d.running_graphics_processes().unwrap_or_default().into_iter().chain(d.running_compute_processes().unwrap_or_default());
         for pr in procs {
             let pid = pr.pid as i32;

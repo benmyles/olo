@@ -31,8 +31,8 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+use olo_kit::{instance, widgets};
 use olo_protocol::performance::{Finding, FindingKind, LogEntry, Lowered, PerformanceSettings, Raised, SupervisorState};
-use olo_ui::{gpui::App, instance, widgets};
 
 const APP_ID: &str = "olo.supervisor";
 const EVERY: Duration = Duration::from_secs(2);
@@ -79,7 +79,7 @@ struct Supervisor {
     settings: Arc<Mutex<PerformanceSettings>>,
     /// The active window's app: its pid and name.
     focus: Arc<Mutex<Option<(i32, String)>>>,
-    proxy: olo_ui::Proxy,
+    proxy: olo_kit::Proxy,
     uid: u32,
     clock: Instant,
     followed: HashMap<i32, Followed>,
@@ -528,7 +528,7 @@ fn follow_focus(focus: Arc<Mutex<Option<(i32, String)>>>) {
 /// Follow `performance.json` as Preferences and Deskbar change it.
 fn follow_settings(settings: Arc<Mutex<PerformanceSettings>>, wake: Arc<(Mutex<bool>, olo_sync::Condvar)>) {
     let path = PerformanceSettings::path();
-    let watch = olo_ui::watch::watch([path], move |_| {
+    let watch = olo_kit::watch::watch([path], move |_| {
         *settings.lock().unwrap() = PerformanceSettings::load();
         let (lock, cv) = &*wake;
         *lock.lock().unwrap() = true;
@@ -564,12 +564,12 @@ fn chose(f: &Finding, choice: usize, settings: &Mutex<PerformanceSettings>) {
     }
 }
 
-/// Asks the person about an urgent finding (an alert; closing it from
-/// its tab is no choice).
-fn ask(cx: &mut App, f: Finding, settings: Arc<Mutex<PerformanceSettings>>) {
+/// Asks the person about an urgent finding (an alert of the program's
+/// own, on a looper of its own; closing it from its tab is no choice).
+fn ask(f: Finding, settings: Arc<Mutex<PerformanceSettings>>) {
     let icon = if f.kind == FindingKind::Zombies { "warning" } else { "stop" };
     let text = alert_text(&f);
-    widgets::open_alert(cx, f.kind.title(), icon, &text, BUTTONS, move |choice, _| {
+    widgets::open_app_alert(f.kind.title(), icon, &text, BUTTONS, move |choice| {
         if let Some(choice) = choice {
             chose(&f, choice, &settings);
         }
@@ -663,9 +663,9 @@ fn main() -> std::process::ExitCode {
     if instance::forward(APP_ID, &args) {
         return std::process::ExitCode::SUCCESS;
     }
-    olo_ui::run(APP_ID, move |cx| {
-        olo_ui::stay_resident(cx);
-        instance::listen(APP_ID, olo_ui::proxy(cx));
+    olo_kit::run(APP_ID, move |app| {
+        olo_kit::stay_resident();
+        instance::listen(APP_ID, olo_kit::proxy());
         let settings = Arc::new(Mutex::new(PerformanceSettings::load()));
         let focus = Arc::new(Mutex::new(None));
         let wake = Arc::new((Mutex::new(false), olo_sync::Condvar::new()));
@@ -674,7 +674,7 @@ fn main() -> std::process::ExitCode {
         let mut sup = Supervisor {
             settings: settings.clone(),
             focus,
-            proxy: olo_ui::proxy(cx),
+            proxy: olo_kit::proxy(),
             // SAFETY: plain getuid.
             uid: unsafe { libc::getuid() },
             clock: Instant::now(),
@@ -710,10 +710,10 @@ fn main() -> std::process::ExitCode {
                 *woke = false;
             }
         });
-        olo_ui::message_handler(cx, move |message, cx| {
+        olo_kit::message_handler(app, move |message, _| {
             if let Ok(msg) = message.downcast::<Msg>() {
                 let Msg::Urgent(f) = *msg;
-                ask(cx, f, settings.clone());
+                ask(f, settings.clone());
             }
         });
     });

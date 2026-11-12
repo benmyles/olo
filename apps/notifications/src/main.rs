@@ -20,7 +20,10 @@
 //!
 //! Only the real session runs the service (a test or nested session must
 //! not take the user's notifications); `--bus ADDRESS` serves a private
-//! bus. On Olo's GPUI (the GPUI kit, `olo-ui`).
+//! bus. On olo-kit: what it keeps (the cards on screen, the history, the
+//! settings) is one model the app's looper and its two windows (the
+//! banners, the History window, each a view on a looper of its own) share
+//! behind a lock; whoever changes it tells the windows.
 
 mod banners;
 mod cli;
@@ -42,13 +45,9 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+use olo_kit::{Bounds, LayerKeyboard, LayerShellLayer, Menu, Painter, Pixels, WindowCx, WindowHandle, WindowOptions};
 use olo_kit_base::{metrics as m, watch::Watch};
 use olo_protocol::{NotificationSettings, NotificationState};
-use olo_ui::{
-    Frame, WindowOptions,
-    gpui::{self, App, AppContext as _, Context, Entity, LayerKeyboard, LayerShellLayer, Window, WindowHandle},
-    widgets::{TextField, text_field},
-};
 use server::{Bus, Control, In, Kind, Note, Reason};
 use store::{Entry, History};
 
@@ -73,6 +72,8 @@ enum Msg {
     Token(u64, Option<String>),
     /// Icons were found: drawn again.
     Refresh,
+    /// Look for cards whose time is up (asked for then, `expire_at`).
+    Expire(Instant),
 }
 
 pub struct Card {
@@ -81,8 +82,9 @@ pub struct Card {
     pub until: Option<Instant>,
     /// The picture it was sent with.
     pub picture: Option<pictures::Source>,
-    /// Its reply field, when it can be answered.
-    pub reply: Option<Entity<TextField>>,
+    /// A reply has been begun in its field (the banners' view keeps the
+    /// field): it stays while one has.
+    pub replying: bool,
 }
 
 /// An action chosen, waiting for the activation token to send with it.
@@ -96,9 +98,13 @@ struct Pending {
 
 pub struct Notifications {
     bus: Arc<Mutex<Option<Bus>>>,
-    /// The banners' layer surface, and whether one is being opened.
-    win: Option<WindowHandle<Frame>>,
-    opening: bool,
+    /// The model itself, for the windows it opens.
+    me: std::sync::Weak<Mutex<Notifications>>,
+    /// Something the windows show changed: they're told once whoever
+    /// holds the lock is done ([`with`]).
+    dirty: bool,
+    /// The banners' layer surface.
+    win: Option<WindowHandle<banners::Banners>>,
     /// Oldest first.
     pub cards: Vec<Card>,
     /// How many of them are on screen: up to SHOWN, as many as fit.
@@ -109,17 +115,16 @@ pub struct Notifications {
     expiry: Option<Instant>,
     pending: HashMap<u64, Pending>,
     next_tag: u64,
-    proxy: olo_ui::Proxy,
+    proxy: olo_kit::Proxy,
     pub settings: NotificationSettings,
     /// When `notifications.json` was last read.
     settings_read: Option<SystemTime>,
     pub history: History,
     /// Edit ▸ Undo and Redo in the History window: entries forgotten
     /// (Clear All, Forget) put back.
-    pub steps: olo_ui::undo::History<Gone>,
+    pub steps: olo_kit::undo::History<Gone>,
     /// The History window, and what it shows.
-    history_win: Option<WindowHandle<Frame>>,
-    history_opening: bool,
+    history_win: Option<WindowHandle<history::HistoryWindow>>,
     pub view: history::HistoryState,
     /// `List`'s answer, shared with the bus thread.
     snapshot: Arc<Mutex<String>>,
@@ -192,7 +197,7 @@ impl Notifications {
     /// turns on Do Not Disturb while recording); when that starts (and it
     /// is to be quiet then), the banners on screen go into the history, as
     /// if they had timed out.
-    fn refresh_sharing(&mut self, cx: &mut Context<Self>) {
+    fn refresh_sharing(&mut self) {
         let recording = olo_protocol::recording::going_on(&olo_protocol::recording::this_display()).is_some_and(|g| g.recording);
         let sharing = !olo_protocol::sharing::SharingState::load().shares.is_empty() || recording;
         if sharing == self.sharing {
@@ -202,7 +207,7 @@ impl Notifications {
         if self.sharing_quiet() {
             let ids: Vec<u32> = self.cards.iter().map(|c| c.note.id).collect();
             for id in ids {
-                self.remove(cx, id, Reason::Expired);
+                self.remove(id, Reason::Expired);
             }
         }
     }
@@ -221,7 +226,7 @@ impl Notifications {
             show_count: self.settings.deskbar_count,
         };
         if self.told.as_ref() != Some(&state) {
-            olo_ui::store::save_bytes(NotificationState::path(), serde_json::to_vec(&state).unwrap_or_default());
+            olo_kit::store::save_bytes(NotificationState::path(), serde_json::to_vec(&state).unwrap_or_default());
             self.told = Some(state.clone());
         }
         // Each with how faded it is.
@@ -245,7 +250,7 @@ impl Notifications {
         *self.snapshot.lock().unwrap() = list.to_string();
     }
 
-    fn show(&mut self, cx: &mut Context<Self>, mut note: Note) {
+    fn show(&mut self, mut note: Note) {
         self.refresh_settings();
         // One of each (Preferences ▸ Notifications): the same again from
         // the same app takes the earlier one's place.
@@ -253,7 +258,7 @@ impl Notifications {
             let text = markup::plain(&note.body);
             let earlier = store::same_as(&self.history, &self.cards.iter().map(|c| &c.note).collect::<Vec<_>>(), &note.app_name, &note.summary, &text, note.id);
             for id in earlier {
-                self.take(cx, id);
+                self.take(id);
                 self.history.retain(|e| e.id != id);
                 self.bus(|b| b.closed(id, Reason::Expired));
             }
@@ -286,91 +291,87 @@ impl Notifications {
             }
         }
         if banner {
-            self.add_card(cx, note);
+            self.add_card(note);
         } else if self.cards.iter().any(|c| c.note.id == note.id) {
             // A replacement for one on screen that may no longer show.
-            self.take(cx, note.id);
+            self.take(note.id);
         } else if !kept {
             // Neither shown nor kept: gone as far as the app is concerned.
             self.bus(|b| b.closed(note.id, Reason::Dismissed));
         }
         self.publish(kept);
-        cx.notify();
+        self.changed();
     }
 
-    fn add_card(&mut self, cx: &mut Context<Self>, note: Note) {
+    fn add_card(&mut self, note: Note) {
         // Pinned: on screen until closed.
         let pinned = self.history.newest(note.id).is_some_and(|e| e.pinned);
         let until = note.timeout.filter(|_| !pinned).map(|t| Instant::now() + t);
         if let Some(at) = until {
-            self.expire_at(at, cx);
+            self.expire_at(at);
         }
         let picture = note.picture.as_ref().map(|p| pictures::Source::Note(note.id, Arc::new(pictures::Raw::from_unmultiplied(p.width, p.height, &p.rgba))));
         match self.cards.iter_mut().find(|c| c.note.id == note.id) {
             // In place: what was typed stays, the picture is made again.
             Some(old) => {
-                if note.reply.is_some() && old.reply.is_none() {
-                    old.reply = Some(reply_field(&note, cx));
-                }
                 old.note = note;
                 old.until = until;
                 old.picture = picture;
             }
-            None => {
-                let reply = note.reply.is_some().then(|| reply_field(&note, cx));
-                self.cards.push(Card { note, until, picture, reply });
-            }
+            None => self.cards.push(Card { note, until, picture, replying: false }),
         }
-        self.open_banners(cx);
-        cx.notify();
+        self.open_banners();
+        self.changed();
     }
 
-    /// The banners' surface, opened once the update that asks for it is
-    /// over (its first frame reads the cards).
-    fn open_banners(&mut self, cx: &mut Context<Self>) {
-        if self.win.is_some() || self.opening {
+    /// Something the windows show changed.
+    pub fn changed(&mut self) {
+        self.dirty = true;
+    }
+
+    /// The windows told that what they show changed (once the lock is
+    /// about to be let go: [`with`]).
+    fn tell(&mut self) {
+        if !std::mem::take(&mut self.dirty) {
             return;
         }
-        self.opening = true;
-        let me = cx.entity();
-        cx.defer(move |cx| {
-            let view = me.clone();
-            let options = WindowOptions::new("Notifications", WIDTH, 1.0).layer("notifications", LayerShellLayer::Top, (false, true, false, true)).layer_options(|l| {
-                l.margin = (0, 0, GAP as i32, 0);
-                l.keyboard = LayerKeyboard::None;
-            });
-            let win = olo_ui::open_window(cx, options.no_panel(), move |_, cx| cx.new(|cx| banners::Banners::new(view, cx)));
-            me.update(cx, |n, cx| {
-                n.opening = false;
-                n.win = win;
-                // Closed meanwhile (the last card went).
-                if n.cards.is_empty() {
-                    n.close_banners(cx);
-                }
-            });
-        });
+        if let Some(w) = &self.win {
+            w.messenger().send(banners::Told::Changed);
+        }
+        if let Some(w) = &self.history_win {
+            w.messenger().send(history::Told::Changed);
+        }
     }
 
-    fn close_banners(&mut self, cx: &mut Context<Self>) {
+    /// The banners' surface (its first frame reads the cards).
+    fn open_banners(&mut self) {
+        if self.win.as_ref().is_some_and(|w| w.is_open()) {
+            return;
+        }
+        let Some(shared) = self.me.upgrade() else { return };
+        let options = WindowOptions::new("Notifications", WIDTH, 1.0).layer("notifications", LayerShellLayer::Top, (false, true, false, true)).layer_options(|l| {
+            l.margin = (0, 0, GAP as i32, 0);
+            l.keyboard = LayerKeyboard::None;
+        });
+        self.win = Some(olo_kit::open_window(options.no_panel(), move |cx| banners::Banners::new(shared, cx)));
+    }
+
+    fn close_banners(&mut self) {
         if let Some(w) = self.win.take() {
-            cx.defer(move |cx| cx.close_window(w));
+            w.close();
         }
     }
 
     /// Check again after `after` (a card's time, a snooze, a token).
-    fn tick_after(&self, after: Duration, cx: &mut Context<Self>) {
-        cx.spawn(async move |me, cx| {
-            cx.background_executor().timer(after + Duration::from_millis(20)).await;
-            let _ = me.update(cx, |n, cx| n.tick(cx));
-        })
-        .detach();
+    fn tick_after(&self, after: Duration) {
+        later(&self.proxy, after + Duration::from_millis(20), Msg::Tick);
     }
 
     /// A notification goes. Its card times out into the history (still
     /// open at its app, so its actions work from there); otherwise the app
     /// hears why it closed.
-    pub fn remove(&mut self, cx: &mut Context<Self>, id: u32, reason: Reason) {
-        let on_screen = self.take(cx, id);
+    pub fn remove(&mut self, id: u32, reason: Reason) {
+        let on_screen = self.take(id);
         let kept = self.history.get_mut(id).is_some();
         if reason == Reason::Expired && kept {
             if let Some(e) = self.history.get_mut(id) {
@@ -393,7 +394,7 @@ impl Notifications {
     }
 
     /// Take a card away (saying nothing); whether it was there.
-    fn take(&mut self, cx: &mut Context<Self>, id: u32) -> bool {
+    fn take(&mut self, id: u32) -> bool {
         let before = self.cards.len();
         self.cards.retain(|c| c.note.id != id);
         let was = self.cards.len() != before;
@@ -402,9 +403,9 @@ impl Notifications {
         }
         self.wake(0..self.fits);
         if self.cards.is_empty() {
-            self.close_banners(cx);
+            self.close_banners();
         }
-        cx.notify();
+        self.changed();
         was
     }
 
@@ -423,59 +424,50 @@ impl Notifications {
 
     /// A card being used: under the pointer, or a reply begun in it. It
     /// stays, and has its time again once it isn't (`hover`, `typed`).
-    fn held(&self, c: &Card, cx: &App) -> bool {
-        Some(c.note.id) == self.hovered || c.reply.as_ref().is_some_and(|f| !f.read(cx).text().trim().is_empty())
+    fn held(&self, c: &Card) -> bool {
+        Some(c.note.id) == self.hovered || c.replying
     }
 
     /// Cards whose time is up go (not one being used).
-    fn expire(&mut self, cx: &mut Context<Self>) {
+    fn expire(&mut self) {
         let now = Instant::now();
-        let gone: Vec<u32> = self.cards.iter().take(self.fits).filter(|c| c.until.is_some_and(|u| u <= now) && !self.held(c, cx)).map(|c| c.note.id).collect();
+        let gone: Vec<u32> = self.cards.iter().take(self.fits).filter(|c| c.until.is_some_and(|u| u <= now) && !self.held(c)).map(|c| c.note.id).collect();
         for id in gone {
-            self.remove(cx, id, Reason::Expired);
+            self.remove(id, Reason::Expired);
         }
         // The next to go, checked for then. (Not one being used: its time
         // past, it was looked for again every 20 ms while the pointer
         // rested on it.)
-        if let Some(next) = self.cards.iter().take(self.fits).filter(|c| !self.held(c, cx)).filter_map(|c| c.until).min() {
-            self.expire_at(next, cx);
+        if let Some(next) = self.cards.iter().take(self.fits).filter(|c| !self.held(c)).filter_map(|c| c.until).min() {
+            self.expire_at(next);
         }
     }
 
     /// A reply typed in note `id`'s card changed: emptied, the card has
     /// its time again (a moment, as when the pointer leaves it).
-    fn typed(&mut self, id: u32, cx: &mut Context<Self>) {
+    pub fn typed(&mut self, id: u32, empty: bool) {
         let Some(card) = self.cards.iter_mut().find(|c| c.note.id == id) else { return };
-        let empty = card.reply.as_ref().is_some_and(|f| f.read(cx).text().trim().is_empty());
+        card.replying = !empty;
         if empty && card.until.is_some_and(|u| u < Instant::now() + Duration::from_secs(2)) {
             let at = Instant::now() + Duration::from_secs(2);
             card.until = Some(at);
-            self.expire_at(at, cx);
+            self.expire_at(at);
         }
     }
 
     /// Look for cards whose time is up at `at` (one timer for them all:
     /// a later one waits for the earlier, which asks again).
-    fn expire_at(&mut self, at: Instant, cx: &mut Context<Self>) {
+    fn expire_at(&mut self, at: Instant) {
         if self.expiry.is_some_and(|e| e <= at && e > Instant::now()) {
             return;
         }
         self.expiry = Some(at);
-        cx.spawn(async move |me, cx| {
-            cx.background_executor().timer(at.saturating_duration_since(Instant::now()) + Duration::from_millis(20)).await;
-            let _ = me.update(cx, |n, cx| {
-                if n.expiry == Some(at) {
-                    n.expiry = None;
-                }
-                n.expire(cx);
-            });
-        })
-        .detach();
+        later(&self.proxy, at.saturating_duration_since(Instant::now()) + Duration::from_millis(20), Msg::Expire(at));
     }
 
     /// The pointer went over a card (or off them): one under it stays,
     /// and goes a moment after it leaves.
-    pub fn hover(&mut self, id: Option<u32>, cx: &mut Context<Self>) {
+    pub fn hover(&mut self, id: Option<u32>) {
         if self.hovered == id {
             return;
         }
@@ -485,17 +477,17 @@ impl Notifications {
         {
             let at = Instant::now() + Duration::from_secs(2);
             card.until = Some(at);
-            self.expire_at(at, cx);
+            self.expire_at(at);
         }
         self.hovered = id;
-        cx.notify();
+        self.changed();
     }
 
     /// Run action `key` of notification `id` (`from`: the window clicked
     /// in, which makes the activation token): the app gets the token
     /// first, so it may bring its window forward. The card goes at once;
     /// the app hears it closed after the action.
-    pub fn invoke(&mut self, cx: &mut Context<Self>, from: Option<&Window>, id: u32, key: String) {
+    pub fn invoke(&mut self, from: Option<&WindowCx>, id: u32, key: String) {
         let resident = self.cards.iter().any(|c| c.note.id == id && c.note.resident);
         let pending = Pending { id, key, close: !resident, since: Instant::now() };
         match from {
@@ -505,7 +497,7 @@ impl Notifications {
                 self.pending.insert(tag, pending);
                 let proxy = self.proxy.clone();
                 window.activation_token(move |token| proxy.send(Msg::Token(tag, token)));
-                self.tick_after(TOKEN_WAIT, cx);
+                self.tick_after(TOKEN_WAIT);
             }
             None => self.send(pending, None),
         }
@@ -517,16 +509,16 @@ impl Notifications {
             }
         }
         if !resident {
-            self.take(cx, id);
+            self.take(id);
         }
         self.publish(true);
-        cx.notify();
+        self.changed();
     }
 
     /// The reply typed into note `id`'s card: sent, and the card goes.
-    pub fn reply(&mut self, cx: &mut Context<Self>, id: u32, text: &str) {
+    pub fn reply(&mut self, id: u32, text: &str) {
         self.bus(|b| b.replied(id, text));
-        self.remove(cx, id, Reason::Dismissed);
+        self.remove(id, Reason::Dismissed);
     }
 
     /// Token (when there is one), action, then closed, in the spec's order.
@@ -553,83 +545,63 @@ impl Notifications {
     }
 
     /// The History window, opened (or brought forward).
-    pub fn open_history(&mut self, cx: &mut Context<Self>) {
-        if self.history_opening {
-            return;
-        }
-        self.history_opening = true;
-        let me = cx.entity();
+    pub fn open_history(&mut self) {
+        let Some(shared) = self.me.upgrade() else { return };
         let options = WindowOptions::new("Notifications", 400.0, 560.0).min_size(360.0, 240.0).keep_size("history");
-        olo_ui::open_or_raise(
-            self.history_win,
-            cx,
-            options,
-            move |window, cx| {
-                let closing = me.clone();
-                window.on_window_should_close(cx, move |_, cx| {
-                    closing.update(cx, |n, cx| n.history_closed(cx));
-                    true
-                });
-                cx.new(|cx| history::HistoryWindow::new(me, window, cx))
-            },
-            |n, w| {
-                n.history_opening = false;
-                n.history_win = w;
-            },
-        );
+        olo_kit::open_or_raise(&mut self.history_win, options, move |cx| history::HistoryWindow::new(shared, cx));
     }
 
     /// The History window closed: what was read while it was open moves.
-    fn history_closed(&mut self, cx: &mut Context<Self>) {
+    pub fn history_closed(&mut self) {
         self.history_win = None;
         self.view.held.clear();
         self.view.selected = None;
-        cx.notify();
+        self.changed();
     }
 
-    pub fn close_history(&mut self, cx: &mut Context<Self>) {
-        if let Some(w) = self.history_win {
-            self.history_closed(cx);
-            cx.defer(move |cx| cx.close_window(w));
+    pub fn close_history(&mut self) {
+        if let Some(w) = self.history_win.take() {
+            self.history_closed();
+            w.close();
         }
     }
 
     /// Mark notification `id` read (or unread again).
-    pub fn set_read(&mut self, cx: &mut Context<Self>, id: u32, read: bool) {
+    pub fn set_read(&mut self, id: u32, read: bool) {
         if self.history.set_read(id, read) {
             self.publish(true);
-            cx.notify();
+            self.changed();
         }
     }
 
-    pub fn mark_all_read(&mut self, cx: &mut Context<Self>) {
+    pub fn mark_all_read(&mut self) {
         if self.history.mark_read() {
             self.publish(true);
         }
-        cx.notify();
+        self.changed();
     }
 
     /// Forget what has faded away; tell the apps of those still open.
-    fn fade_out(&mut self, cx: &mut Context<Self>) {
+    fn fade_out(&mut self) {
         let Some(live) = self.history.fade_out(&self.settings, now_secs()) else { return };
         for id in live {
             self.bus(|b| b.closed(id, Reason::Expired));
         }
         self.publish(true);
-        cx.notify();
+        self.changed();
     }
 
     /// Do Not Disturb on for `minutes` (0: until turned off), or off.
-    pub fn set_quiet(&mut self, on: bool, minutes: u32, cx: &mut Context<Self>) {
+    pub fn set_quiet(&mut self, on: bool, minutes: u32) {
         self.refresh_settings();
         self.settings.dnd = on;
         self.settings.dnd_until = (on && minutes > 0).then(|| now_secs() + minutes as u64 * 60);
         self.save_settings();
         if let Some(until) = self.settings.dnd_until {
-            self.tick_after(Duration::from_secs(until.saturating_sub(now_secs())), cx);
+            self.tick_after(Duration::from_secs(until.saturating_sub(now_secs())));
         }
         self.publish(false);
-        cx.notify();
+        self.changed();
     }
 
     fn save_settings(&mut self) {
@@ -639,29 +611,29 @@ impl Notifications {
         self.settings_read = std::fs::metadata(NotificationSettings::path()).and_then(|m| m.modified()).ok();
     }
 
-    fn control(&mut self, cx: &mut Context<Self>, c: Control) {
+    fn control(&mut self, c: Control) {
         match c {
             Control::Invoke(id, key) => {
                 if self.history.get_mut(id).is_some() || self.cards.iter().any(|c| c.note.id == id) {
                     // From a program, not a click: no token to hand on.
-                    self.invoke(cx, None, id, key);
+                    self.invoke(None, id, key);
                 }
             }
-            Control::Dismiss(id) => self.remove(cx, id, Reason::Dismissed),
-            Control::ClearHistory => self.clear_history(cx),
-            Control::ShowHistory => self.open_history(cx),
-            Control::DoNotDisturb(on, minutes) => self.set_quiet(on, minutes, cx),
-            Control::SetRead(id, read) => self.set_read(cx, id, read),
-            Control::MarkAllRead => self.mark_all_read(cx),
-            Control::Pin(id, on) => self.set_pinned(cx, id, on),
-            Control::Snooze(id, minutes) => self.snooze(cx, id, now_secs() + minutes as u64 * 60),
+            Control::Dismiss(id) => self.remove(id, Reason::Dismissed),
+            Control::ClearHistory => self.clear_history(),
+            Control::ShowHistory => self.open_history(),
+            Control::DoNotDisturb(on, minutes) => self.set_quiet(on, minutes),
+            Control::SetRead(id, read) => self.set_read(id, read),
+            Control::MarkAllRead => self.mark_all_read(),
+            Control::Pin(id, on) => self.set_pinned(id, on),
+            Control::Snooze(id, minutes) => self.snooze(id, now_secs() + minutes as u64 * 60),
         }
-        cx.notify();
+        self.changed();
     }
 
     /// Pin a note (it stays put: no fading, no going with Clear All, and
     /// on screen until closed), or unpin it.
-    pub fn set_pinned(&mut self, cx: &mut Context<Self>, id: u32, on: bool) {
+    pub fn set_pinned(&mut self, id: u32, on: bool) {
         let Some(e) = self.history.newest_mut(id) else { return };
         e.pinned = on;
         let mut again = None;
@@ -670,41 +642,41 @@ impl Notifications {
             again = c.until;
         }
         if let Some(at) = again {
-            self.expire_at(at, cx);
+            self.expire_at(at);
         }
         self.publish(true);
-        cx.notify();
+        self.changed();
     }
 
     /// Put a note away until `until` (seconds since the epoch): out of
     /// sight (off the screen too) and not counted, then back as new
     /// (`wake_snoozed`).
-    pub fn snooze(&mut self, cx: &mut Context<Self>, id: u32, until: u64) {
+    pub fn snooze(&mut self, id: u32, until: u64) {
         let Some(e) = self.history.newest_mut(id) else { return };
         e.snoozed_until = Some(until);
         e.shown = false;
-        self.take(cx, id);
+        self.take(id);
         if self.view.selected == Some(id) {
             self.view.selected = None;
         }
-        self.tick_after(Duration::from_secs(until.saturating_sub(now_secs())), cx);
+        self.tick_after(Duration::from_secs(until.saturating_sub(now_secs())));
         self.publish(true);
-        cx.notify();
+        self.changed();
     }
 
     /// `note_menu`'s command for the note `id`.
-    pub fn note_command(&mut self, cx: &mut Context<Self>, id: u32, command: &str) {
+    pub fn note_command(&mut self, id: u32, command: &str) {
         if command == "pin" {
             let on = !self.history.newest(id).is_some_and(|e| e.pinned);
-            self.set_pinned(cx, id, on);
+            self.set_pinned(id, on);
         } else if let Some((minutes, _)) = command.strip_prefix("snooze:").and_then(|i| i.parse::<usize>().ok()).and_then(|i| SNOOZES.get(i)) {
-            self.snooze(cx, id, minutes.map_or_else(tomorrow_morning, |m| now_secs() + m as u64 * 60));
+            self.snooze(id, minutes.map_or_else(tomorrow_morning, |m| now_secs() + m as u64 * 60));
         }
     }
 
     /// Snoozed notes whose time has come: back as new, unread and (unless
     /// banners are off or it is quiet) on screen again.
-    fn wake_snoozed(&mut self, cx: &mut Context<Self>) {
+    fn wake_snoozed(&mut self) {
         let now = now_secs();
         let due: Vec<u32> = self.history.entries.iter().filter(|e| e.snoozed_until.is_some_and(|t| t <= now)).map(|e| e.id).collect();
         if due.is_empty() {
@@ -722,16 +694,16 @@ impl Notifications {
             e.shown = banner;
             let note = e.to_note(Some(time));
             if banner {
-                self.add_card(cx, note);
+                self.add_card(note);
             }
         }
         self.publish(true);
-        cx.notify();
+        self.changed();
     }
 
     /// Forget the history (but what is pinned or snoozed); what is still
     /// open at its app closes.
-    pub fn clear_history(&mut self, cx: &mut Context<Self>) {
+    pub fn clear_history(&mut self) {
         let kept = |e: &Entry| e.shown || e.pinned || e.snoozed();
         let live: Vec<u32> = self.history.entries.iter().filter(|e| e.live && !kept(e)).map(|e| e.id).collect();
         for id in live {
@@ -742,13 +714,13 @@ impl Notifications {
             self.steps.done("Clear All", Gone::Forgot(gone));
         }
         self.publish(true);
-        cx.notify();
+        self.changed();
     }
 
     /// Edit ▸ Undo (`redo` false) or Redo in the History window: entries
     /// forgotten put back (closed at their apps by now), or forgotten again.
-    pub fn undo_redo(&mut self, redo: bool, cx: &mut Context<Self>) {
-        use olo_ui::undo::Purpose;
+    pub fn undo_redo(&mut self, redo: bool) {
+        use olo_kit::undo::Purpose;
         let Some(step) = (if redo { self.steps.take_redo() } else { self.steps.take_undo() }) else { return };
         let purpose = if redo { Purpose::Redo } else { Purpose::Undo };
         let change = match step.change {
@@ -761,57 +733,83 @@ impl Notifications {
         };
         self.steps.record(purpose, step.name, change);
         self.publish(true);
-        cx.notify();
+        self.changed();
     }
 
     /// Time passed, or something it depends on changed.
-    fn tick(&mut self, cx: &mut Context<Self>) {
+    fn tick(&mut self) {
         self.flush_pending();
-        self.wake_snoozed(cx);
+        self.wake_snoozed();
         // Do Not Disturb may have begun or ended (a share too).
         self.refresh_settings();
-        self.refresh_sharing(cx);
-        self.fade_out(cx);
+        self.refresh_sharing();
+        self.fade_out();
         self.publish(false);
-        self.expire(cx);
+        self.expire();
         // The history fades on, its times say so.
-        cx.notify();
+        self.changed();
     }
 
-    fn message(&mut self, msg: Msg, cx: &mut Context<Self>) {
+    fn message(&mut self, msg: Msg) {
         match msg {
-            Msg::In(In::Show(note)) => self.show(cx, *note),
-            Msg::In(In::Close(id)) => self.remove(cx, id, Reason::Closed),
+            Msg::In(In::Show(note)) => self.show(*note),
+            Msg::In(In::Close(id)) => self.remove(id, Reason::Closed),
             Msg::In(In::Control(c, done)) => {
-                self.control(cx, c);
+                self.control(c);
                 if let Some(done) = done {
                     let _ = done.send(());
                 }
             }
-            Msg::Tick => self.tick(cx),
+            Msg::Tick => self.tick(),
             Msg::Token(tag, token) => {
                 if let Some(p) = self.pending.remove(&tag) {
                     self.send(p, token.as_deref());
                 }
             }
-            Msg::Refresh => {}
+            // (What each note's mark is drawn from is in its key: `icons_made`.)
+            Msg::Refresh => {
+                ICONS_MADE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
+            Msg::Expire(at) => {
+                if self.expiry == Some(at) {
+                    self.expiry = None;
+                }
+                self.expire();
+            }
         }
-        cx.notify();
+        self.changed();
     }
 }
 
-/// A card's reply field (Return sends, as Send does).
-fn reply_field(note: &Note, cx: &mut Context<Notifications>) -> Entity<TextField> {
-    let hint = note.reply.clone().unwrap_or_default();
-    let field = text_field(cx, move |f| f.name("Reply").hint(hint));
-    let id = note.id;
-    cx.subscribe(&field, move |n, _, e: &olo_ui::widgets::TextFieldEvent, cx| {
-        if matches!(e, olo_ui::widgets::TextFieldEvent::Changed) {
-            n.typed(id, cx);
-        }
-    })
-    .detach();
-    field
+/// The model, as the app's looper and the windows hold it.
+pub type Shared = Arc<Mutex<Notifications>>;
+
+/// Does `f` with the model, then tells the windows if what they show
+/// changed.
+pub fn with<R>(shared: &Shared, f: impl FnOnce(&mut Notifications) -> R) -> R {
+    let mut n = shared.lock().unwrap();
+    let out = f(&mut n);
+    n.tell();
+    out
+}
+
+/// Sends the app's looper `msg` after `after` (a sleeping thread: nothing
+/// runs till then).
+fn later(proxy: &olo_kit::Proxy, after: Duration, msg: Msg) {
+    let proxy = proxy.clone();
+    let _ = std::thread::Builder::new().name("notifications-timer".into()).stack_size(64 * 1024).spawn(move || {
+        std::thread::sleep(after);
+        proxy.send(msg);
+    });
+}
+
+/// How many times icons have been found since the program began: in the
+/// key of whatever draws a note's mark, so it's drawn again when its
+/// app's icon comes.
+static ICONS_MADE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+pub fn icons_made() -> u64 {
+    ICONS_MADE.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 /// Bring forward a window of the app with this desktop entry or name (a
@@ -874,15 +872,15 @@ pub fn named_icons(icon: Option<&str>, desktop_entry: Option<&str>, app: &str) -
 /// The mark of who a note is from, filling `r`: a website's tile; else
 /// the first of `names` there is; else, for an app that gave its colour
 /// but has no icon, its initial on that colour; else the generic app's.
-pub fn paint_mark(window: &mut Window, cx: &mut App, r: gpui::Bounds<gpui::Pixels>, app: &str, accent: Option<[u8; 3]>, via: bool, names: &[String]) {
-    if !via && names.iter().any(|n| olo_ui::icons::paint(window, r, n)) {
+pub fn paint_mark(g: &mut Painter, r: Bounds<Pixels>, app: &str, accent: Option<[u8; 3]>, via: bool, names: &[String]) {
+    if !via && names.iter().any(|n| olo_kit::icons::paint(g, r, n)) {
         return;
     }
     if via || (accent.is_some() && !app.trim().is_empty()) {
         let (letter, fill) = web::tile(app, accent);
-        return olo_ui::style::monogram(window, cx, r, &letter, fill);
+        return olo_kit::style::monogram(g, r, &letter, fill);
     }
-    let _ = olo_ui::icons::paint(window, r, "application");
+    let _ = olo_kit::icons::paint(g, r, "application");
 }
 
 /// An app as notes name it: (its desktop entry, its name).
@@ -892,7 +890,7 @@ type AppKey = (Option<String>, String);
 static APP_ICONS: Mutex<Option<HashMap<AppKey, Option<Vec<String>>>>> = Mutex::new(None);
 
 /// Where to say that icons were found (the windows are drawn again).
-static REFRESH: std::sync::OnceLock<olo_ui::Proxy> = std::sync::OnceLock::new();
+static REFRESH: std::sync::OnceLock<olo_kit::Proxy> = std::sync::OnceLock::new();
 
 /// The sending app's own icon names. Finding them can read every desktop
 /// entry on the system, milliseconds a time, so a worker looks each app
@@ -981,8 +979,8 @@ fn tomorrow_morning() -> u64 {
 
 /// A note's Pin (or Unpin) and Snooze ▸ items, after `menu`'s (`pinned`:
 /// None with no note to act on).
-pub fn note_menu(menu: olo_ui::Menu, pinned: Option<bool>) -> olo_ui::Menu {
-    let mut snooze = olo_ui::Menu::new("Snooze");
+pub fn note_menu(menu: Menu, pinned: Option<bool>) -> Menu {
+    let mut snooze = Menu::new("Snooze");
     for (i, (_, label)) in SNOOZES.iter().enumerate() {
         snooze = snooze.item(*label, format!("snooze:{i}")).enabled(pinned.is_some());
     }
@@ -1022,16 +1020,16 @@ fn main() -> std::process::ExitCode {
     if !args.is_empty() {
         return cli::run(address.as_deref(), &args);
     }
-    if address.is_none() && std::env::var_os("OLO_REAL_SESSION").is_none() {
+    if address.is_none() && !olo_xdg::session::real() {
         eprintln!("olo-notifications: not in a real Olo session (use --bus ADDRESS to try it)");
         return std::process::ExitCode::FAILURE;
     }
     olo_preview::audio::set_identity("Notifications", "olo-notifications");
-    olo_ui::run(APP_ID, move |cx| {
-        olo_ui::stay_resident(cx);
+    olo_kit::run(APP_ID, move |app| {
+        olo_kit::stay_resident();
         // Olo's start-up sound, once a session.
         startup::at_start();
-        let proxy = olo_ui::proxy(cx);
+        let proxy = olo_kit::proxy();
         let _ = REFRESH.set(proxy.clone());
         let bus = Arc::new(Mutex::new(None));
         let snapshot = Arc::new(Mutex::new(String::new()));
@@ -1076,11 +1074,12 @@ fn main() -> std::process::ExitCode {
             let ticker = proxy.clone();
             watches.extend(olo_kit_base::watch::watch([path], move |_| ticker.send(Msg::Tick)));
         }
-        let app = cx.new(|cx: &mut Context<Notifications>| {
-            let mut app = Notifications {
+        let shared: Shared = Arc::new_cyclic(|me| {
+            Mutex::new(Notifications {
                 bus,
+                me: me.clone(),
+                dirty: false,
                 win: None,
-                opening: false,
                 cards: Vec::new(),
                 fits: SHOWN,
                 hovered: None,
@@ -1092,62 +1091,60 @@ fn main() -> std::process::ExitCode {
                 settings_read: None,
                 history,
                 history_win: None,
-                history_opening: false,
                 view: history::HistoryState::default(),
                 snapshot,
                 told: None,
                 sharing: false,
                 _watches: watches,
                 steps: Default::default(),
-            };
-            app.refresh_sharing(cx);
-            app.refresh_settings();
-            app.fade_out(cx);
+            })
+        });
+        with(&shared, |n| {
+            n.refresh_sharing();
+            n.refresh_settings();
+            n.fade_out();
             // Snoozed ones back on time.
-            app.wake_snoozed(cx);
+            n.wake_snoozed();
             // Pinned banners on screen before a restart (an upgrade) are again.
-            let pinned: Vec<Note> = app.history.entries.iter().filter(|e| e.shown).map(|e| e.to_note(Some(app.banner_time()))).collect();
+            let pinned: Vec<Note> = n.history.entries.iter().filter(|e| e.shown).map(|e| e.to_note(Some(n.banner_time()))).collect();
             for note in pinned {
-                app.add_card(cx, note);
+                n.add_card(note);
             }
             let now = now_secs();
-            for until in app.history.entries.iter().filter_map(|e| e.snoozed_until).collect::<Vec<_>>() {
-                app.tick_after(Duration::from_secs(until.saturating_sub(now)), cx);
+            for until in n.history.entries.iter().filter_map(|e| e.snoozed_until).collect::<Vec<_>>() {
+                n.tick_after(Duration::from_secs(until.saturating_sub(now)));
             }
-            app.publish(false);
-            // A scheduled Do Not Disturb begins and ends on the minute, and
-            // the history's times and fading move on: a tick each minute.
-            cx.spawn(async move |me, cx| {
-                loop {
-                    cx.background_executor().timer(to_next_minute()).await;
-                    if me.update(cx, |n, cx| n.tick(cx)).is_err() {
-                        return;
-                    }
-                }
-            })
-            .detach();
-            app
+            n.publish(false);
         });
-        let messages = app.clone();
-        olo_ui::message_handler(cx, move |message, cx| {
+        // A scheduled Do Not Disturb begins and ends on the minute, and
+        // the history's times and fading move on: a tick each minute.
+        let minutes = proxy.clone();
+        let _ = std::thread::Builder::new().name("notifications-minute".into()).stack_size(64 * 1024).spawn(move || {
+            loop {
+                std::thread::sleep(to_next_minute());
+                minutes.send(Msg::Tick);
+            }
+        });
+        let messages = shared.clone();
+        olo_kit::message_handler(app, move |message, _| {
             if let Ok(msg) = message.downcast::<Msg>() {
-                messages.update(cx, |n, cx| n.message(*msg, cx));
+                with(&messages, |n| n.message(*msg));
             }
         });
         // After an upgrade: the History window as it was.
-        let saving = app.clone();
-        olo_ui::on_upgrade(cx, move |cx| {
-            let n = saving.read(cx);
-            n.history_win.map(|_| serde_json::json!({ "history": true, "search": n.view.search, "folded": n.view.folded, "selected": n.view.selected }).to_string())
+        let saving = shared.clone();
+        olo_kit::on_upgrade(move |_| {
+            let n = saving.lock().unwrap();
+            n.history_win.as_ref().filter(|w| w.is_open()).map(|_| serde_json::json!({ "history": true, "search": n.view.search, "folded": n.view.folded, "selected": n.view.selected }).to_string())
         });
-        if let Some(state) = olo_ui::restored_state().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+        if let Some(state) = olo_kit::restored_state().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
             && state["history"] == true
         {
-            app.update(cx, |n, cx| {
+            with(&shared, |n| {
                 n.view.search = state["search"].as_str().unwrap_or_default().to_owned();
                 n.view.folded = serde_json::from_value(state["folded"].clone()).unwrap_or_default();
                 n.view.selected = state["selected"].as_u64().map(|id| id as u32);
-                n.open_history(cx);
+                n.open_history();
             });
         }
     });

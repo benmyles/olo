@@ -122,7 +122,10 @@ for other in /usr/local/share/wayland-sessions /usr/share/wayland-sessions; do
 done
 # Brightness of USB-controlled monitors (Studio Display and the like).
 as_root install -D -m 644 data/udev/70-olo-displays.rules /etc/udev/rules.d/70-olo-displays.rules
-as_root install -D -m 644 data/udev/71-olo-input.rules /etc/udev/rules.d/71-olo-input.rules
+as_root install -D -m 644 data/udev/95-olo-input.rules /etc/udev/rules.d/95-olo-input.rules
+# (Its name before 2026-11-12, when it came before the smart-card rule
+# that undid it for security keys.)
+as_root rm -f /etc/udev/rules.d/71-olo-input.rules
 # A human presence sensor's buffer for the session (Preferences ▸ Power).
 as_root install -D -m 644 data/udev/73-olo-presence.rules /etc/udev/rules.d/73-olo-presence.rules
 as_root rm -f /etc/udev/rules.d/70-tabula-displays.rules

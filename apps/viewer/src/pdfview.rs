@@ -8,18 +8,15 @@
 //! line.
 
 use std::{
+    cell::Cell,
     collections::HashMap,
     path::PathBuf,
     sync::{Arc, mpsc::Sender},
 };
 
-use olo_ui::{
-    Menu, agent,
-    gpui::{
-        self, App, Bounds, Context, CursorStyle, Entity, Focusable as _, Font, FontWeight, Hitbox, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, KeyBinding, MouseButton, MouseDownEvent,
-        MouseMoveEvent, MouseUpEvent, ParentElement as _, PathBuilder, Pixels, Point, Render, RenderImage, ScrollDelta, ScrollHandle, ScrollWheelEvent, SharedString, Size, Styled as _, Subscription,
-        Window, actions, canvas, div, point, px, size,
-    },
+use olo_kit::{
+    Bounds, Child, CursorStyle, Cx, Element, Font, FontWeight, Hsla, InteractiveElement as _, IntoElement as _, KeyDownEvent, Menu, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Painter,
+    ParentElement as _, PathBuilder, Pixels, Point, ScrollDelta, ScrollHandle, ScrollWheelEvent, SharedString, Size, Styled as _, View, agent, canvas, div, point, px, size,
     style::{self, Align},
     theme,
     widgets::{SCROLL_BAR, ScrollView, TextField, TextFieldEvent, text_field},
@@ -36,8 +33,7 @@ type Caret = (usize, usize);
 
 /// Find: what's looked for, where it is (page, carets), which is shown.
 struct Find {
-    field: Entity<TextField>,
-    _subscription: Subscription,
+    field: Child<TextField>,
     query: String,
     matches: Vec<(usize, usize, usize)>,
     current: Option<usize>,
@@ -57,15 +53,10 @@ const UPLOAD_BUDGET: usize = 12 << 20;
 /// is typed wraps as it will in the saved file).
 const PDF_FACES: [&str; 4] = ["Liberation Sans", "Arimo", "Nimbus Sans", "Helvetica"];
 
-actions!(olo_pdf_field, [NextField, PrevField, EndEdit]);
-
-const FIELD_CONTEXT: &str = "OloPdfField";
-
-/// Tab and ⇧Tab go from field to field; Escape ends the typing.
-pub fn bind_keys(cx: &mut App) {
-    let c = Some(FIELD_CONTEXT);
-    cx.bind_keys([KeyBinding::new("tab", NextField, c), KeyBinding::new("shift-tab", PrevField, c), KeyBinding::new("escape", EndEdit, c)]);
-}
+/// Told to whoever shows it: something its window says of it changed
+/// (the page and zoom in the tool bar, the tool, whether it's edited,
+/// what its menus offer).
+pub struct Changed;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Tool {
@@ -120,7 +111,8 @@ struct PageImg {
     scale: f32,
     size: (u32, u32),
     tiles: Vec<Tile>,
-    uploaded: Vec<bool>,
+    /// (Marked as each is first drawn: a drawing can only look.)
+    uploaded: Vec<Cell<bool>>,
 }
 
 pub struct PdfView {
@@ -141,7 +133,10 @@ pub struct PdfView {
     editing: Option<Editing>,
     /// Text being typed into the field or mark being edited.
     buffer: String,
-    editor: Option<(Entity<TextField>, Vec<Subscription>)>,
+    editor: Option<Child<TextField>>,
+    /// Counts the editors opened: what an earlier one's element hears
+    /// (the keyboard leaving it as the next takes over) isn't this one's.
+    editors: u64,
     drag: Option<Drag>,
     stroke: Vec<[f32; 2]>,
     undo: Vec<(String, Model)>,
@@ -160,10 +155,13 @@ pub struct PdfView {
     /// Bring this content range into view next frame.
     reveal: Option<(f32, f32)>,
     pub saving: bool,
-    /// Where the content's top left was drawn (window points).
+    /// Where the content's top left is in the window now (as the
+    /// pointer's handlers last found it).
     origin: Point<Pixels>,
-    /// Images to take out of the window's atlas.
-    dropped: Vec<Arc<RenderImage>>,
+    /// The window has the keyboard (as `body` last found it).
+    active: bool,
+    /// What was last told (`Changed`: `telling`).
+    told: u64,
     font: Font,
     /// Each page's text as the worker read it.
     texts: HashMap<usize, Arc<PageText>>,
@@ -192,7 +190,7 @@ fn invert(t: &[f64; 6]) -> [f64; 6] {
 }
 
 fn rgb(c3: [f32; 3]) -> Hsla {
-    gpui::Rgba { r: c3[0], g: c3[1], b: c3[2], a: 1.0 }.into()
+    olo_kit::Rgba { r: c3[0], g: c3[1], b: c3[2], a: 1.0 }.into()
 }
 
 /// A rectangle in content points.
@@ -229,8 +227,8 @@ impl Rect {
 pub const INKS: [(&str, [f32; 3]); 3] = [("Black", [0.0, 0.0, 0.0]), ("Blue", [0.05, 0.2, 0.6]), ("Red", [0.75, 0.08, 0.08])];
 
 impl PdfView {
-    pub fn new(tx: Sender<Request>, cx: &App) -> Self {
-        let names = cx.text_system().all_font_names();
+    pub fn new(tx: Sender<Request>) -> Self {
+        let names = olo_kit::thread_text_system().all_font_names();
         let family = PDF_FACES.iter().find(|f| names.iter().any(|n| n == *f)).map_or_else(|| style::UI_FONT.to_owned(), |f| (*f).to_owned());
         PdfView {
             tx,
@@ -248,6 +246,7 @@ impl PdfView {
             editing: None,
             buffer: String::new(),
             editor: None,
+            editors: 0,
             drag: None,
             stroke: Vec::new(),
             undo: Vec::new(),
@@ -262,7 +261,8 @@ impl PdfView {
             reveal: None,
             saving: false,
             origin: point(px(0.0), px(0.0)),
-            dropped: Vec::new(),
+            active: true,
+            told: 0,
             font: Font { family: family.into(), ..style::ui_font(FontWeight::NORMAL) },
             texts: HashMap::new(),
             text_sel: None,
@@ -312,14 +312,14 @@ impl PdfView {
 
     /// Copy the selected text (when the pages it covers are read: at once
     /// for what was dragged over, when the rest come for Select All).
-    pub fn copy(&mut self, cx: &mut Context<Self>) {
+    pub fn copy(&mut self, _: &mut Cx<Self>) {
         if !self.has_text_selection() {
             return;
         }
         match self.selected_text() {
             Some(text) => {
                 self.copy_pending = false;
-                cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
+                olo_kit::clipboard::write(olo_kit::ClipboardItem::new_string(text));
             }
             None => {
                 self.copy_pending = true;
@@ -328,13 +328,13 @@ impl PdfView {
         }
     }
 
-    pub fn select_all(&mut self, cx: &mut Context<Self>) {
+    pub fn select_all(&mut self, cx: &mut Cx<Self>) {
         if self.geoms.is_empty() {
             return;
         }
         self.text_sel = Some(((0, 0), (self.geoms.len() - 1, usize::MAX)));
         self.ask_all_text();
-        cx.notify();
+        cx.invalidate();
     }
 
     /// A page's point in its rendered points.
@@ -390,42 +390,40 @@ impl PdfView {
 
     // ---- find --------------------------------------------------------------
 
-    pub fn open_find(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn open_find(&mut self, cx: &mut Cx<Self>) {
         if let Some(f) = &self.find {
-            f.field.update(cx, |f, cx| {
-                f.focus(window);
-                f.select_all_text(cx);
-            });
+            f.field.update(cx, |f, cx| f.select_all_text(cx));
+            f.field.focus(cx);
             return;
         }
         let field = text_field(cx, |f| f.hint("Find in document"));
-        let sub = cx.subscribe_in(&field, window, |v: &mut PdfView, field, e: &TextFieldEvent, window, cx| match e {
+        cx.subscribe(&field, |v: &mut PdfView, e: &TextFieldEvent, cx| match e {
             TextFieldEvent::Changed => {
-                let q = field.read(cx).text().to_lowercase();
+                let Some(q) = v.find.as_ref().map(|f| f.field.read(cx).text().to_lowercase()) else { return };
                 v.set_query(q, cx);
             }
             TextFieldEvent::Entered => {
-                let back = window.modifiers().shift;
+                let back = cx.modifiers().shift;
                 v.find_step(back, cx);
             }
             _ => {}
         });
-        field.update(cx, |f, _| f.focus(window));
-        self.find = Some(Find { field, _subscription: sub, query: String::new(), matches: Vec::new(), current: None });
+        field.focus(cx);
+        self.find = Some(Find { field, query: String::new(), matches: Vec::new(), current: None });
         self.ask_all_text();
-        cx.notify();
+        cx.invalidate();
     }
 
-    pub fn close_find(&mut self, cx: &mut Context<Self>) {
+    pub fn close_find(&mut self, cx: &mut Cx<Self>) {
         self.find = None;
-        cx.notify();
+        cx.invalidate();
     }
 
     pub fn finding(&self) -> bool {
         self.find.as_ref().is_some_and(|f| !f.matches.is_empty())
     }
 
-    fn set_query(&mut self, q: String, cx: &mut Context<Self>) {
+    fn set_query(&mut self, q: String, cx: &mut Cx<Self>) {
         let Some(f) = &mut self.find else { return };
         f.query = q;
         f.matches.clear();
@@ -440,7 +438,7 @@ impl PdfView {
         let here = self.current_page;
         f.current = f.matches.iter().position(|m| m.0 >= here).or((!f.matches.is_empty()).then_some(0));
         self.show_match();
-        cx.notify();
+        cx.invalidate();
     }
 
     /// A page's text came: its matches, in page order.
@@ -461,7 +459,7 @@ impl PdfView {
         }
     }
 
-    pub fn find_step(&mut self, back: bool, cx: &mut Context<Self>) {
+    pub fn find_step(&mut self, back: bool, cx: &mut Cx<Self>) {
         let Some(f) = &mut self.find else { return };
         let n = f.matches.len();
         if n == 0 {
@@ -473,7 +471,7 @@ impl PdfView {
             None => 0,
         });
         self.show_match();
-        cx.notify();
+        cx.invalidate();
     }
 
     /// The match shown: selected, and scrolled into view.
@@ -496,7 +494,7 @@ impl PdfView {
     }
 
     /// Apply a worker event; true when the window should resize (opened).
-    pub fn event(&mut self, ev: Event, cx: &mut Context<Self>) -> bool {
+    pub fn event(&mut self, ev: Event, cx: &mut Cx<Self>) -> bool {
         let opened = match ev {
             Event::Opened { geoms, model, editable } => {
                 self.geoms = geoms;
@@ -513,15 +511,15 @@ impl PdfView {
                 }
                 // (Drawn only where it's selected or found.)
                 if self.text_sel.is_some() || self.find.is_some() {
-                    cx.notify();
+                    cx.invalidate();
                 }
                 false
             }
             Event::Page { page, scale, size, tiles } => {
-                let uploaded = vec![false; tiles.len()];
-                if let Some(old) = self.pages.insert(page, PageImg { scale, size, tiles, uploaded }) {
-                    self.dropped.extend(old.tiles.into_iter().map(|t| t.image));
-                }
+                // (The pictures it replaces leave the GPU's atlas as
+                // they're let go.)
+                let uploaded = tiles.iter().map(|_| Cell::new(false)).collect();
+                self.pages.insert(page, PageImg { scale, size, tiles, uploaded });
                 false
             }
             Event::Saved { adopted, .. } => {
@@ -540,7 +538,7 @@ impl PdfView {
                 false
             }
         };
-        cx.notify();
+        cx.invalidate();
         opened
     }
 
@@ -557,7 +555,7 @@ impl PdfView {
     }
 
     /// Ask the worker to save (the edit in progress included).
-    pub fn save(&mut self, to: PathBuf, flatten: bool, adopt: bool, cx: &mut Context<Self>) {
+    pub fn save(&mut self, to: PathBuf, flatten: bool, adopt: bool, cx: &mut Cx<Self>) {
         self.end_editing(cx);
         self.saving = true;
         let _ = self.tx.send(Request::Save { model: self.model.clone(), to, flatten, adopt });
@@ -595,45 +593,45 @@ impl PdfView {
         self.redo.last().map(|(n, _)| n.as_str())
     }
 
-    pub fn undo(&mut self, cx: &mut Context<Self>) {
+    pub fn undo(&mut self, cx: &mut Cx<Self>) {
         self.end_editing(cx);
         if let Some((name, m)) = self.undo.pop() {
             self.redo.push((name, std::mem::replace(&mut self.model, m)));
             self.sel = None;
         }
-        cx.notify();
+        cx.invalidate();
     }
 
-    pub fn redo(&mut self, cx: &mut Context<Self>) {
+    pub fn redo(&mut self, cx: &mut Cx<Self>) {
         self.end_editing(cx);
         if let Some((name, m)) = self.redo.pop() {
             self.undo.push((name, std::mem::replace(&mut self.model, m)));
             self.sel = None;
         }
-        cx.notify();
+        cx.invalidate();
     }
 
     pub fn has_selection(&self) -> bool {
         self.sel.is_some() && self.editing.is_none()
     }
 
-    pub fn delete_selection(&mut self, cx: &mut Context<Self>) {
+    pub fn delete_selection(&mut self, cx: &mut Cx<Self>) {
         if let (Some(Sel::Mark(i)), None) = (self.sel, self.editing)
             && i < self.model.marks.len()
         {
             self.push_undo("Delete");
             self.model.marks.remove(i);
             self.sel = None;
-            cx.notify();
+            cx.invalidate();
         }
     }
 
     /// Commit what is being typed.
-    fn end_editing(&mut self, cx: &mut Context<Self>) {
+    fn end_editing(&mut self, cx: &mut Cx<Self>) {
         let Some(e) = self.editing.take() else { return };
         self.editor = None;
         let text = std::mem::take(&mut self.buffer);
-        cx.notify();
+        cx.invalidate();
         match e {
             Editing::Field(f, _) => {
                 if let Some(field) = self.model.fields.get(f)
@@ -673,7 +671,7 @@ impl PdfView {
     }
 
     /// The field's text editor, for what's typed in `editing`.
-    fn open_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn open_editor(&mut self, cx: &mut Cx<Self>) {
         let (size, color, multiline, password, max_len, align, name) = match self.editing {
             Some(Editing::Field(fi, wi)) => {
                 let field = &self.model.fields[fi];
@@ -682,12 +680,12 @@ impl PdfView {
                     FieldKind::Text { multiline, password, max_len, .. } => (multiline, password, max_len),
                     _ => (false, false, None),
                 };
-                let align = if field.align == 2 { olo_ui::widgets::text_field::Align::Right } else { olo_ui::widgets::text_field::Align::Left };
+                let align = if field.align == 2 { olo_kit::widgets::text_field::Align::Right } else { olo_kit::widgets::text_field::Align::Left };
                 (pdfdoc::field_font_size(field, w.rect, &self.buffer) * self.zoom, rgb(field.color), multiline, password, max_len, align, field.name.clone())
             }
             Some(Editing::Mark(i)) => {
                 let MarkKind::Text { size, .. } = self.model.marks[i].kind else { return };
-                (size * self.zoom, rgb(self.model.marks[i].color), true, false, None, olo_ui::widgets::text_field::Align::Left, "Text Box".to_owned())
+                (size * self.zoom, rgb(self.model.marks[i].color), true, false, None, olo_kit::widgets::text_field::Align::Left, "Text Box".to_owned())
             }
             None => return,
         };
@@ -704,27 +702,28 @@ impl PdfView {
             f
         });
         editor.update(cx, |f, cx| f.set_text(text, cx));
-        let changed = cx.subscribe(&editor, |v: &mut PdfView, e, ev: &TextFieldEvent, cx| match ev {
+        cx.subscribe(&editor, |v: &mut PdfView, ev: &TextFieldEvent, cx| match ev {
             TextFieldEvent::Changed => {
-                let now = e.read(cx).text().to_owned();
+                let Some(now) = v.editor.as_ref().map(|e| e.read(cx).text().to_owned()) else { return };
                 if now != v.buffer && !v.snapshot_taken {
                     v.undo.push(("Typing".into(), v.model.clone()));
                     v.redo.clear();
                     v.snapshot_taken = true;
                 }
                 v.buffer = now;
-                cx.notify();
+                cx.invalidate();
             }
             TextFieldEvent::Entered => v.end_editing(cx),
             TextFieldEvent::Typed(_) => {}
         });
-        let focus = editor.read(cx).focus_handle(cx);
-        window.focus(&focus);
-        let blurred = cx.on_blur(&focus, window, |v: &mut PdfView, _, cx| v.end_editing(cx));
-        self.editor = Some((editor, vec![changed, blurred]));
+        // (The keyboard gone from it ends the typing: its holder hears,
+        // `body`.)
+        editor.focus(cx);
+        self.editor = Some(editor);
+        self.editors += 1;
     }
 
-    fn start_field(&mut self, f: usize, w: usize, window: &mut Window, cx: &mut Context<Self>) {
+    fn start_field(&mut self, f: usize, w: usize, cx: &mut Cx<Self>) {
         self.end_editing(cx);
         let field = &self.model.fields[f];
         if field.read_only || !self.editable {
@@ -749,27 +748,27 @@ impl PdfView {
                 self.buffer = t.clone();
                 self.editing = Some(Editing::Field(f, w));
                 self.snapshot_taken = false;
-                self.open_editor(window, cx);
+                self.open_editor(cx);
             }
             _ => {}
         }
         self.sel = None;
-        cx.notify();
+        cx.invalidate();
     }
 
-    fn start_mark_text(&mut self, i: usize, window: &mut Window, cx: &mut Context<Self>) {
+    fn start_mark_text(&mut self, i: usize, cx: &mut Cx<Self>) {
         self.end_editing(cx);
         if let Some(Mark { kind: MarkKind::Text { text, .. }, .. }) = self.model.marks.get(i) {
             self.buffer = text.clone();
             self.editing = Some(Editing::Mark(i));
             self.sel = Some(Sel::Mark(i));
             self.snapshot_taken = false;
-            self.open_editor(window, cx);
+            self.open_editor(cx);
         }
     }
 
     /// Tab: the next editable text field after the one being edited.
-    fn next_field(&mut self, back: bool, window: &mut Window, cx: &mut Context<Self>) {
+    fn next_field(&mut self, back: bool, cx: &mut Cx<Self>) {
         let Some(Editing::Field(f, _)) = self.editing else { return };
         let n = self.model.fields.len();
         for k in 1..=n {
@@ -778,7 +777,7 @@ impl PdfView {
             if !field.read_only && matches!(field.kind, FieldKind::Text { .. } | FieldKind::Choice { editable: true, .. }) {
                 let page = field.widgets[0].page;
                 let rect = field.widgets[0].rect;
-                self.start_field(i, 0, window, cx);
+                self.start_field(i, 0, cx);
                 self.goto_rect(page, rect);
                 return;
             }
@@ -787,7 +786,7 @@ impl PdfView {
 
     /// Add a signature (normalised strokes and aspect) to the middle of
     /// the visible part of the current page.
-    pub fn place_signature(&mut self, strokes: Vec<Vec<[f32; 2]>>, aspect: f32, cx: &mut Context<Self>) {
+    pub fn place_signature(&mut self, strokes: Vec<Vec<[f32; 2]>>, aspect: f32, cx: &mut Cx<Self>) {
         if !self.editable || self.geoms.is_empty() {
             return;
         }
@@ -808,19 +807,19 @@ impl PdfView {
         self.model.marks.push(Mark { id: None, page, rect, color: self.ink, kind: MarkKind::Ink { strokes, width: 1.6, signature: true } });
         self.sel = Some(Sel::Mark(self.model.marks.len() - 1));
         self.tool = Tool::Select;
-        cx.notify();
+        cx.invalidate();
     }
 
-    pub fn set_tool(&mut self, t: Tool, cx: &mut Context<Self>) {
+    pub fn set_tool(&mut self, t: Tool, cx: &mut Cx<Self>) {
         self.end_editing(cx);
         self.tool = t;
         self.sel = None;
-        cx.notify();
+        cx.invalidate();
     }
 
     // ---- zoom and pages ----------------------------------------------------
 
-    pub fn set_zoom(&mut self, z: f32, fit: Option<Fit>, cx: &mut Context<Self>) {
+    pub fn set_zoom(&mut self, z: f32, fit: Option<Fit>, cx: &mut Cx<Self>) {
         let z = z.clamp(MIN_ZOOM, MAX_ZOOM);
         // Keep the middle of the view where it is.
         let mid = point(self.view.width / 2.0, self.view.height / 2.0);
@@ -828,24 +827,24 @@ impl PdfView {
         self.zoom = z;
         self.fit = fit;
         self.end_editing(cx);
-        cx.notify();
+        cx.invalidate();
     }
 
-    pub fn set_fit(&mut self, fit: Fit, cx: &mut Context<Self>) {
+    pub fn set_fit(&mut self, fit: Fit, cx: &mut Cx<Self>) {
         self.fit = Some(fit);
-        cx.notify();
+        cx.invalidate();
     }
 
-    pub fn zoom_step(&mut self, up: bool, cx: &mut Context<Self>) {
+    pub fn zoom_step(&mut self, up: bool, cx: &mut Cx<Self>) {
         const STEPS: [f32; 13] = [0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0, 8.0];
         let z = if up { STEPS.iter().copied().find(|s| *s > self.zoom + 0.01).unwrap_or(MAX_ZOOM) } else { STEPS.iter().rev().copied().find(|s| *s < self.zoom - 0.01).unwrap_or(MIN_ZOOM) };
         self.set_zoom(z, None, cx);
     }
 
-    pub fn go_to_page(&mut self, page: usize, cx: &mut Context<Self>) {
+    pub fn go_to_page(&mut self, page: usize, cx: &mut Cx<Self>) {
         if !self.geoms.is_empty() {
             self.goto = Some(page.min(self.geoms.len() - 1));
-            cx.notify();
+            cx.invalidate();
         }
     }
 
@@ -926,33 +925,41 @@ impl PdfView {
 
     // ---- the pointer -------------------------------------------------------
 
-    fn press(&mut self, e: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+    /// Where the pages' content is in the window now, for the pointer's
+    /// handlers (run on the content's own element).
+    fn place(&mut self, cx: &Cx<Self>) {
+        let (s, o) = (cx.scale_factor(), cx.listener_bounds().origin);
+        self.origin = point(px((f32::from(o.x) * s).round() / s), px((f32::from(o.y) * s).round() / s));
+    }
+
+    fn press(&mut self, e: &MouseDownEvent, cx: &mut Cx<Self>) {
+        self.place(cx);
         let at = self.content_at(e.position);
         let Some((page, pr)) = self.page_at(at) else {
             self.end_editing(cx);
             self.sel = None;
             self.text_sel = None;
-            cx.notify();
+            cx.invalidate();
             return;
         };
         // On a mark (or a selected one's corner), the mark first.
         let on_mark = self.tool == Tool::Select && (self.corner_at(page, pr, at).is_some() || self.mark_at(page, pr, at).is_some());
         if !on_mark && self.tool == Tool::Select {
             if let Some((fi, wi, r)) = self.field_at(at) {
-                self.click_field(fi, wi, r, at, window, cx);
+                self.click_field(fi, wi, r, at, cx);
                 return;
             }
         }
         if !self.editable {
             if self.tool == Tool::Select {
                 self.start_text(page, pr, at, e);
-                cx.notify();
+                cx.invalidate();
             }
             return;
         }
         match self.tool {
             Tool::Text => {
-                self.new_text(page, pr, at, window, cx);
+                self.new_text(page, pr, at, cx);
             }
             Tool::Draw => {
                 self.end_editing(cx);
@@ -971,7 +978,7 @@ impl PdfView {
                     }
                     self.sel = Some(Sel::Mark(i));
                     if e.click_count >= 2 && matches!(self.model.marks[i].kind, MarkKind::Text { .. }) {
-                        self.start_mark_text(i, window, cx);
+                        self.start_mark_text(i, cx);
                     } else {
                         self.push_undo("Move");
                         self.drag = Some(Drag::Move { mark: i, start: self.model.marks[i].rect, grab: self.user_point(page, pr, at), moved: false });
@@ -983,10 +990,10 @@ impl PdfView {
                 }
             }
         }
-        cx.notify();
+        cx.invalidate();
     }
 
-    fn click_field(&mut self, fi: usize, wi: usize, r: Rect, at: [f32; 2], window: &mut Window, cx: &mut Context<Self>) {
+    fn click_field(&mut self, fi: usize, wi: usize, r: Rect, at: [f32; 2], cx: &mut Cx<Self>) {
         let field = self.model.fields[fi].clone();
         match &field.kind {
             FieldKind::Choice { combo: true, options, .. } => {
@@ -996,10 +1003,11 @@ impl PdfView {
                 for (k, (export, label)) in options.iter().enumerate() {
                     menu = menu.item(label.clone(), format!("{k}")).checked(field.value == Value::Text(export.clone()));
                 }
-                let me = cx.entity();
+                let me = cx.view_ref();
                 let anchor = r.on(self.origin);
-                olo_ui::menu::popup(window, cx, menu, anchor, gpui::Corner::BottomLeft, move |cmd, _, cx| {
-                    me.update(cx, |v, cx| {
+                olo_kit::menu::popup(cx, menu, anchor, olo_kit::Corner::BottomLeft, move |cmd, cx| {
+                    let cmd = cmd.to_owned();
+                    me.update(cx, move |v, cx| {
                         if let Some(FieldKind::Choice { options, .. }) = v.model.fields.get(fi).map(|f| &f.kind)
                             && let Some((export, _)) = cmd.parse::<usize>().ok().and_then(|k| options.get(k))
                         {
@@ -1007,7 +1015,7 @@ impl PdfView {
                             if v.model.fields[fi].value != value {
                                 v.push_undo("Choice");
                                 v.model.fields[fi].value = value;
-                                cx.notify();
+                                cx.invalidate();
                             }
                         }
                     })
@@ -1022,15 +1030,16 @@ impl PdfView {
                     if field.value != value {
                         self.push_undo("Choice");
                         self.model.fields[fi].value = value;
-                        cx.notify();
+                        cx.invalidate();
                     }
                 }
             }
-            _ => self.start_field(fi, wi, window, cx),
+            _ => self.start_field(fi, wi, cx),
         }
     }
 
-    fn moved(&mut self, e: &MouseMoveEvent, cx: &mut Context<Self>) {
+    fn moved(&mut self, e: &MouseMoveEvent, cx: &mut Cx<Self>) {
+        self.place(cx);
         if e.pressed_button != Some(MouseButton::Left) {
             return;
         }
@@ -1043,7 +1052,7 @@ impl PdfView {
                 let u = self.user_point(page, pr, at);
                 if self.stroke.last().is_none_or(|l| (l[0] - u[0]).hypot(l[1] - u[1]) * self.zoom > 1.5) {
                     self.stroke.push(u);
-                    cx.notify();
+                    cx.invalidate();
                 }
             }
             Some(Drag::Move { mark, start, grab, .. }) => {
@@ -1052,27 +1061,27 @@ impl PdfView {
                 let (dx, dy) = (u[0] - grab[0], u[1] - grab[1]);
                 self.model.marks[mark].rect = [start[0] + dx, start[1] + dy, start[2] + dx, start[3] + dy];
                 self.drag = Some(Drag::Move { mark, start, grab, moved: true });
-                cx.notify();
+                cx.invalidate();
             }
             Some(Drag::Resize { mark, corner, start }) => {
                 let page = self.model.marks[mark].page;
                 let u = self.user_point(page, layout[page], at);
                 self.resize_mark(mark, corner, start, u);
-                cx.notify();
+                cx.invalidate();
             }
             Some(Drag::Text) => {
                 if let (Some(focus), Some((anchor, old))) = (self.caret_near(at), self.text_sel)
                     && focus != old
                 {
                     self.text_sel = Some((anchor, focus));
-                    cx.notify();
+                    cx.invalidate();
                 }
             }
             None => {}
         }
     }
 
-    fn released(&mut self, cx: &mut Context<Self>) {
+    fn released(&mut self, cx: &mut Cx<Self>) {
         match self.drag.take() {
             Some(Drag::Draw { page }) => self.finish_stroke(page),
             Some(Drag::Move { moved: false, .. }) => {
@@ -1081,14 +1090,15 @@ impl PdfView {
             }
             _ => {}
         }
-        cx.notify();
+        cx.invalidate();
     }
 
-    fn wheel(&mut self, e: &ScrollWheelEvent, cx: &mut Context<Self>) {
+    fn wheel(&mut self, e: &ScrollWheelEvent, cx: &mut Cx<Self>) {
         if !(e.modifiers.control || e.modifiers.platform) {
             return;
         }
         // ⌘ and the wheel zoom about the pointer.
+        self.place(cx);
         let d = match e.delta {
             ScrollDelta::Pixels(p) => f32::from(p.y),
             ScrollDelta::Lines(l) => l.y * 40.0,
@@ -1099,22 +1109,23 @@ impl PdfView {
         self.fit = None;
         self.end_editing(cx);
         cx.stop_propagation();
-        cx.notify();
+        cx.invalidate();
     }
 
     /// Two fingers pinching (a touchpad's, a touch screen's): zoomed by
     /// as much about the fingers, as ⌘ and the wheel.
-    fn pinch(&mut self, e: &gpui::PinchEvent, cx: &mut Context<Self>) {
-        if !matches!(e.phase, gpui::TouchPhase::Moved) || !e.step.is_finite() || e.step <= 0.0 {
+    fn pinch(&mut self, e: &olo_kit::PinchEvent, cx: &mut Cx<Self>) {
+        if !matches!(e.phase, olo_kit::TouchPhase::Moved) || !e.step.is_finite() || e.step <= 0.0 {
             return;
         }
+        self.place(cx);
         let at = point(f32::from(e.position.x - self.origin.x) - self.offset.x, f32::from(e.position.y - self.origin.y) - self.offset.y);
         self.anchor = Some((point(self.offset.x + at.x, self.offset.y + at.y), at, self.zoom));
         self.zoom = (self.zoom * e.step).clamp(MIN_ZOOM, MAX_ZOOM);
         self.fit = None;
         self.end_editing(cx);
         cx.stop_propagation();
-        cx.notify();
+        cx.invalidate();
     }
 
     fn resize_mark(&mut self, i: usize, corner: usize, start: PdfRect, u: [f32; 2]) {
@@ -1165,7 +1176,7 @@ impl PdfView {
         mark.rect = r;
     }
 
-    fn new_text(&mut self, page: usize, pr: Rect, at: [f32; 2], window: &mut Window, cx: &mut Context<Self>) {
+    fn new_text(&mut self, page: usize, pr: Rect, at: [f32; 2], cx: &mut Cx<Self>) {
         self.end_editing(cx);
         let g = self.geoms[page];
         let u = self.user_point(page, pr, at);
@@ -1180,7 +1191,7 @@ impl PdfView {
         self.editing = Some(Editing::Mark(i));
         self.sel = Some(Sel::Mark(i));
         self.tool = Tool::Select;
-        self.open_editor(window, cx);
+        self.open_editor(cx);
     }
 
     fn finish_stroke(&mut self, page: usize) {
@@ -1208,13 +1219,21 @@ impl PdfView {
 
     /// Before drawing: the zoom for a fit mode, scrolls asked for, pages
     /// to render; the hitboxes the pointer's shape follows.
-    fn prepaint(&mut self, b: Bounds<Pixels>, window: &mut Window) -> Vec<(Hitbox, CursorStyle)> {
-        let s = window.scale_factor();
-        self.origin = point(px((f32::from(b.origin.x) * s).round() / s), px((f32::from(b.origin.y) * s).round() / s));
+    /// Where it's scrolled to and how much shows, as the scroller has
+    /// them now.
+    fn look(&mut self) {
         let view = self.scroll.bounds();
         self.view = size(f32::from(view.size.width), f32::from(view.size.height));
         let off = self.scroll.offset();
         self.offset = point(-f32::from(off.x), -f32::from(off.y));
+    }
+
+    /// For where it's scrolled to: which page is the current one, the
+    /// pages near the view asked of the worker at this zoom and scale,
+    /// those far from it let go. Whether what its window says of it
+    /// changed.
+    fn settle(&mut self, s: f32) -> bool {
+        self.look();
         let layout = self.layout();
         // The page in the middle of the view is the current one.
         let mid = self.offset.y + self.view.height / 2.0;
@@ -1226,9 +1245,7 @@ impl PdfView {
         let want = self.zoom * s;
         for (i, pr) in layout.iter().enumerate() {
             if !pr.intersects(&far) {
-                if let Some(old) = self.pages.remove(&i) {
-                    self.dropped.extend(old.tiles.into_iter().map(|t| t.image));
-                }
+                self.pages.remove(&i);
                 self.asked.remove(&i);
                 continue;
             }
@@ -1247,10 +1264,24 @@ impl PdfView {
                 }
             }
         }
-        // The pointer's shape over what's on the pages.
-        let mut hits = Vec::new();
-        let o = self.origin;
-        let visible = Rect { x0: self.offset.x, y0: self.offset.y, x1: self.offset.x + self.view.width, y1: self.offset.y + self.view.height };
+        let now = self.telling();
+        std::mem::replace(&mut self.told, now) != now
+    }
+
+    /// What its window says of it (its tool bar, its menus, its title),
+    /// as one number: `Changed` is told when it's another.
+    fn telling(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::hash::DefaultHasher::new();
+        (self.current_page, self.geoms.len(), self.zoom.to_bits(), self.fit.map(|f| f as u8), self.tool as u8, self.ink.map(f32::to_bits)).hash(&mut h);
+        (self.editable, self.saving, self.dirty(), self.has_selection(), self.has_text_selection(), self.finding()).hash(&mut h);
+        (self.undo_name(), self.redo_name()).hash(&mut h);
+        h.finish()
+    }
+
+    /// The pointer's shape over what's on the pages in view (what comes
+    /// later is over what came before, and wins).
+    fn cursors(&self, layout: &[Rect], visible: Rect, o: Point<Pixels>, g: &mut Painter) {
         let page_cursor = match (self.editable, self.tool) {
             (true, Tool::Text) => Some(CursorStyle::IBeam),
             (true, Tool::Draw) => Some(CursorStyle::Crosshair),
@@ -1261,7 +1292,7 @@ impl PdfView {
                 continue;
             }
             if let Some(c) = page_cursor {
-                hits.push((window.insert_hitbox(pr.on(o), HitboxBehavior::Normal), c));
+                g.set_cursor_style(c, pr.on(o));
                 continue;
             }
             if self.tool != Tool::Select {
@@ -1273,7 +1304,7 @@ impl PdfView {
                 for line in &t.lines {
                     let r = Rect { x0: pr.x0 + line.rect[0] * self.zoom, y0: pr.y0 + line.rect[1] * self.zoom, x1: pr.x0 + line.rect[2] * self.zoom, y1: pr.y0 + line.rect[3] * self.zoom };
                     if r.intersects(&visible) {
-                        hits.push((window.insert_hitbox(r.on(o), HitboxBehavior::Normal), CursorStyle::IBeam));
+                        g.set_cursor_style(CursorStyle::IBeam, r.on(o));
                     }
                 }
             }
@@ -1284,39 +1315,36 @@ impl PdfView {
                     }
                     let r = to_screen(&self.geoms[i], self.zoom, (pr.x0, pr.y0), w.rect);
                     let c = if matches!(field.kind, FieldKind::Text { .. }) { CursorStyle::IBeam } else { CursorStyle::PointingHand };
-                    hits.push((window.insert_hitbox(r.on(o), HitboxBehavior::Normal), c));
+                    g.set_cursor_style(c, r.on(o));
                 }
             }
             if self.editable {
                 for (k, mk) in self.model.marks.iter().enumerate().filter(|(_, mk)| mk.page == i) {
                     let r = to_screen(&self.geoms[i], self.zoom, (pr.x0, pr.y0), mk.rect).expand(2.0);
-                    hits.push((window.insert_hitbox(r.on(o), HitboxBehavior::Normal), CursorStyle::OpenHand));
+                    g.set_cursor_style(CursorStyle::OpenHand, r.on(o));
                     if self.sel == Some(Sel::Mark(k)) && self.editing != Some(Editing::Mark(k)) {
                         for (n, (x, y)) in [(r.x0, r.y1), (r.x1, r.y1), (r.x1, r.y0), (r.x0, r.y0)].into_iter().enumerate() {
                             let h = Rect { x0: x - HANDLE, y0: y - HANDLE, x1: x + HANDLE, y1: y + HANDLE };
                             let c = if n % 2 == 0 { CursorStyle::ResizeUpRightDownLeft } else { CursorStyle::ResizeUpLeftDownRight };
-                            hits.push((window.insert_hitbox(h.on(o), HitboxBehavior::Normal), c));
+                            g.set_cursor_style(c, h.on(o));
                         }
                     }
                 }
             }
         }
-        hits
     }
 
-    fn paint(&mut self, hits: Vec<(Hitbox, CursorStyle)>, window: &mut Window, cx: &mut Context<Self>) {
-        for img in self.dropped.drain(..) {
-            let _ = window.drop_image(img);
-        }
-        for (hit, c) in &hits {
-            window.set_cursor_style(*c, hit);
-        }
-        let p = theme::palette(cx);
-        let s = window.scale_factor();
-        let o = self.origin;
-        let visible = Rect { x0: self.offset.x, y0: self.offset.y, x1: self.offset.x + self.view.width, y1: self.offset.y + self.view.height };
-        window.paint_quad(gpui::fill(visible.on(o), style::shade(&p, p.panel_background, 1.18)));
+    /// The pages that show, drawn in the content's place `b` (drawn
+    /// again as it's scrolled: only what's in view is).
+    fn paint(&self, g: &mut Painter, b: Bounds<Pixels>) {
+        let p = theme::palette();
+        let s = g.scale_factor();
+        let o = point(px((f32::from(b.origin.x) * s).round() / s), px((f32::from(b.origin.y) * s).round() / s));
+        let seen = g.visible_bounds();
+        let visible = Rect { x0: f32::from(seen.left() - o.x), y0: f32::from(seen.top() - o.y), x1: f32::from(seen.right() - o.x), y1: f32::from(seen.bottom() - o.y) };
         let layout = self.layout();
+        self.cursors(&layout, visible, o, g);
+        g.paint_quad(olo_kit::fill(visible.on(o), style::shade(&p, p.panel_background, 1.18)));
         let want = self.zoom * s;
         let mut budget = UPLOAD_BUDGET;
         let mut more = false;
@@ -1326,51 +1354,50 @@ impl PdfView {
             }
             let pb = pr.on(o);
             // Shadow, then the page (white until it's rendered).
-            window.paint_quad(gpui::fill(Bounds::new(pb.origin + point(px(0.0), px(0.0)), pb.size + size(px(2.0), px(2.0))), style::shade(&p, p.panel_background, 1.45)));
-            window.paint_quad(gpui::fill(pb, gpui::white()));
-            agent::record(window, cx, agent::Node { role: "Page", name: Some(format!("Page {}", i + 1).into()), bounds: pb, enabled: true, ..Default::default() });
-            let Some(img) = self.pages.get_mut(&i) else { continue };
+            g.paint_quad(olo_kit::fill(Bounds::new(pb.origin + point(px(0.0), px(0.0)), pb.size + size(px(2.0), px(2.0))), style::shade(&p, p.panel_background, 1.45)));
+            g.paint_quad(olo_kit::fill(pb, olo_kit::white()));
+            agent::record(g, agent::Node { role: "Page", name: Some(format!("Page {}", i + 1).into()), bounds: pb, enabled: true, ..Default::default() });
+            let Some(img) = self.pages.get(&i) else { continue };
             // Rendered for this zoom and scale: a texture pixel to a
             // device pixel, from a whole one. Until then, stretched to fit.
             let exact = (img.scale / want - 1.0).abs() < 1e-4;
             let k = if exact { 1.0 / s } else { f32::from(pb.size.width) / img.size.0.max(1) as f32 };
             let at = if exact { point(px((f32::from(pb.origin.x) * s).round() / s), px((f32::from(pb.origin.y) * s).round() / s)) } else { pb.origin };
-            window.with_content_mask(Some(gpui::ContentMask { bounds: pb }), |window| {
+            g.with_content_mask(Some(olo_kit::ContentMask { bounds: pb }), |g| {
                 for (n, t) in img.tiles.iter().enumerate() {
                     let tb = Bounds::new(point(at.x + px(t.x as f32 * k), at.y + px(t.y as f32 * k)), size(px(t.w as f32 * k), px(t.h as f32 * k)));
                     if !tb.intersects(&visible.on(o)) {
                         continue;
                     }
-                    if !img.uploaded[n] {
+                    if !img.uploaded[n].get() {
                         let bytes = (t.w * t.h * 4) as usize;
                         if bytes > budget && budget < UPLOAD_BUDGET {
                             more = true;
                             continue;
                         }
                         budget = budget.saturating_sub(bytes);
-                        img.uploaded[n] = true;
+                        img.uploaded[n].set(true);
                     }
-                    let _ = window.paint_image(tb, gpui::Corners::default(), t.image.clone(), 0, false);
+                    let _ = g.paint_image(tb, olo_kit::Corners::default(), t.image.clone(), 0, false);
                 }
             });
         }
+        // (The rest of its tiles go to the GPU a frame at a time.)
         if more {
-            window.request_animation_frame();
+            g.paint_again_within(0.0);
         }
-        self.paint_overlays(&layout, window, cx);
+        self.paint_overlays(&layout, visible, o, g);
     }
 
     /// The text in view: each line for agents, what's found, what's
     /// selected (over the page's picture, where its text is).
-    fn paint_text(&self, layout: &[Rect], window: &mut Window, cx: &mut App) {
-        let p = theme::palette(cx);
-        let o = self.origin;
-        let visible = Rect { x0: self.offset.x, y0: self.offset.y, x1: self.offset.x + self.view.width, y1: self.offset.y + self.view.height };
+    fn paint_text(&self, layout: &[Rect], visible: Rect, o: Point<Pixels>, g: &mut Painter) {
+        let p = theme::palette();
         let zoom = self.zoom;
         let on_page = |pr: &Rect, r: [f32; 4]| Rect { x0: pr.x0 + r[0] * zoom, y0: pr.y0 + r[1] * zoom, x1: pr.x0 + r[2] * zoom, y1: pr.y0 + r[3] * zoom };
         let sel = self.text_sel.map(Self::ordered);
-        let found = olo_ui::style::c(p.hue(olo_ui::palette::Hue::Yellow)).opacity(0.45);
-        let selected = style::selection_over(&p, window.is_window_active());
+        let found = olo_kit::style::c(p.hue(olo_kit::palette::Hue::Yellow)).opacity(0.45);
+        let selected = style::selection_over(&p, self.active);
         for (page, pr) in layout.iter().enumerate() {
             if !pr.intersects(&visible) {
                 continue;
@@ -1379,7 +1406,7 @@ impl PdfView {
             for line in &t.lines {
                 let r = on_page(pr, line.rect);
                 if r.intersects(&visible) {
-                    agent::record(window, cx, agent::Node::label(SharedString::from(line.text.clone()), r.on(o)));
+                    agent::record(g, agent::Node::label(SharedString::from(line.text.clone()), r.on(o)));
                 }
             }
             if let Some(f) = &self.find {
@@ -1388,7 +1415,7 @@ impl PdfView {
                         continue;
                     }
                     for r in t.boxes(m.1, m.2) {
-                        window.paint_quad(gpui::fill(on_page(pr, r).on(o), found));
+                        g.paint_quad(olo_kit::fill(on_page(pr, r).on(o), found));
                     }
                 }
             }
@@ -1398,18 +1425,16 @@ impl PdfView {
                 let from = if page == a.0 { a.1 } else { 0 };
                 let to = if page == b.0 { b.1 } else { usize::MAX };
                 for r in t.boxes(from, to) {
-                    window.paint_quad(gpui::fill(on_page(pr, r).on(o), selected));
+                    g.paint_quad(olo_kit::fill(on_page(pr, r).on(o), selected));
                 }
             }
         }
     }
 
     /// Fields and marks over the pages in view, the stroke being drawn.
-    fn paint_overlays(&mut self, layout: &[Rect], window: &mut Window, cx: &mut Context<Self>) {
-        self.paint_text(layout, window, cx);
-        let p = theme::palette(cx);
-        let o = self.origin;
-        let visible = Rect { x0: self.offset.x, y0: self.offset.y, x1: self.offset.x + self.view.width, y1: self.offset.y + self.view.height };
+    fn paint_overlays(&self, layout: &[Rect], visible: Rect, o: Point<Pixels>, g: &mut Painter) {
+        self.paint_text(layout, visible, o, g);
+        let p = theme::palette();
         let zoom = self.zoom;
         for (fi, field) in self.model.fields.iter().enumerate() {
             for (wi, w) in field.widgets.iter().enumerate() {
@@ -1419,7 +1444,7 @@ impl PdfView {
                     continue;
                 }
                 let editing = self.editing == Some(Editing::Field(fi, wi));
-                draw_field(window, cx, &p, field, w, r.on(o), zoom, &self.font, editing, self.editable);
+                draw_field(g, &p, field, w, r.on(o), zoom, &self.font, editing, self.editable);
             }
         }
         for (i, mark) in self.model.marks.iter().enumerate() {
@@ -1429,27 +1454,27 @@ impl PdfView {
                 continue;
             }
             if self.editing != Some(Editing::Mark(i)) {
-                draw_mark(window, cx, mark, r.on(o), zoom, &self.font);
+                draw_mark(g, mark, r.on(o), zoom, &self.font);
             }
             if self.sel == Some(Sel::Mark(i)) {
-                draw_selection(window, &p, r.on(o), self.editing != Some(Editing::Mark(i)));
+                draw_selection(g, &p, r.on(o), self.editing != Some(Editing::Mark(i)));
             }
         }
         // The stroke so far.
         if let Some(Drag::Draw { page }) = self.drag
             && let Some(pr) = layout.get(page)
         {
-            let g = self.geoms[page];
+            let geom = self.geoms[page];
             let pts: Vec<Point<Pixels>> = self
                 .stroke
                 .iter()
                 .map(|u| {
-                    let q = apply(&g.transform, u[0], u[1]);
+                    let q = apply(&geom.transform, u[0], u[1]);
                     point(o.x + px(pr.x0 + q[0] * zoom), o.y + px(pr.y0 + q[1] * zoom))
                 })
                 .collect();
             for w in pts.windows(2) {
-                window.paint_segment(w[0], w[1], px(1.5 * zoom), true, rgb(self.ink));
+                g.paint_segment(w[0], w[1], px(1.5 * zoom), true, rgb(self.ink));
             }
         }
     }
@@ -1479,8 +1504,12 @@ impl PdfView {
     }
 }
 
-impl Render for PdfView {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+impl View for PdfView {
+    type Message = ();
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        self.active = cx.is_window_active();
+        self.look();
         // Fit modes follow the window size.
         if self.view.width > 0.0 {
             let inner_w = self.view.width - 2.0 * GAP - 4.0;
@@ -1492,18 +1521,20 @@ impl Render for PdfView {
                 None => {}
             }
         }
-        // Scrolls asked for: a zoom about a point, a page, a range.
+        // Scrolls asked for: a zoom about a point, a page, a range. (Once
+        // the pages are laid out at the zoom they have now: how far it
+        // scrolls changes with it.)
         if let Some((at, rel, old)) = self.anchor.take() {
             let k = self.zoom / old;
             let off = point((at.x * k - rel.x).max(0.0), (at.y * k - rel.y).max(0.0));
-            self.scroll.set_offset(point(px(-off.x), px(-off.y)));
+            self.scroll.set_offset_once_laid_out(cx, point(px(-off.x), px(-off.y)));
             self.offset = off;
         }
         let layout = self.layout();
         if let Some(page) = self.goto.take()
             && let Some(r) = layout.get(page)
         {
-            self.scroll.set_offset(point(px(-self.offset.x), px(-(r.y0 - GAP).max(0.0))));
+            self.scroll.set_offset_once_laid_out(cx, point(px(-self.offset.x), px(-(r.y0 - GAP).max(0.0))));
         }
         if let Some((top, bottom)) = self.reveal.take() {
             let (y0, h) = (self.offset.y, self.view.height);
@@ -1514,12 +1545,13 @@ impl Render for PdfView {
             } else {
                 y0
             };
-            self.scroll.set_offset(point(px(-self.offset.x), px(-y.max(0.0))));
+            self.scroll.set_offset_once_laid_out(cx, point(px(-self.offset.x), px(-y.max(0.0))));
         }
         let content = self.content_size(&layout);
-        let me = cx.entity();
-        let (pre, paint) = (me.clone(), me.clone());
-        let pages = canvas(move |b, window, cx| pre.update(cx, |v, _| v.prepaint(b, window)), move |_, hits, window, cx| paint.update(cx, |v, cx| v.paint(hits, window, cx))).size_full();
+        if self.settle(cx.scale_factor()) {
+            cx.emit(Changed);
+        }
+        let pages = cx.canvas(|v: &PdfView, g, b| v.paint(g, b)).size_full();
         let mut body = div()
             .id("pdf-pages")
             .relative()
@@ -1528,89 +1560,121 @@ impl Render for PdfView {
             .child(pages)
             .on_mouse_down(
                 MouseButton::Left,
-                cx.listener(|v, e: &MouseDownEvent, window, cx| {
-                    v.press(e, window, cx);
+                cx.listener(|v: &mut PdfView, e: &MouseDownEvent, cx| {
+                    v.press(e, cx);
                     // A press that starts typing keeps the keyboard there
                     // (else the window's focus takes it back after us).
                     if v.editing.is_some() {
-                        window.prevent_default();
+                        cx.prevent_default();
                     }
                 }),
             )
-            .on_mouse_move(cx.listener(|v, e: &MouseMoveEvent, _, cx| v.moved(e, cx)))
-            .on_mouse_up(MouseButton::Left, cx.listener(|v, _: &MouseUpEvent, _, cx| v.released(cx)))
-            .on_scroll_wheel(cx.listener(|v, e: &ScrollWheelEvent, _, cx| v.wheel(e, cx)))
-            .on_pinch(cx.listener(|v, e: &gpui::PinchEvent, _, cx| v.pinch(e, cx)));
+            .on_mouse_move(cx.listener(|v: &mut PdfView, e: &MouseMoveEvent, cx| v.moved(e, cx)))
+            .on_mouse_up(MouseButton::Left, cx.listener(|v: &mut PdfView, _: &MouseUpEvent, cx| v.released(cx)))
+            .on_scroll_wheel(cx.listener(|v: &mut PdfView, e: &ScrollWheelEvent, cx| v.wheel(e, cx)))
+            .on_pinch(cx.listener(|v: &mut PdfView, e: &olo_kit::PinchEvent, cx| v.pinch(e, cx)));
         // The field or text box being typed in, over it.
-        if let (Some((editor, _)), Some((r, multiline))) = (&self.editor, self.editor_rect()) {
-            let p = theme::palette(cx);
+        if let (Some(editor), Some((r, multiline))) = (&self.editor, self.editor_rect()) {
+            let p = theme::palette();
             let pad = if matches!(self.editing, Some(Editing::Mark(_))) { pdfdoc::TEXT_PAD * self.zoom } else { 2.0 * self.zoom };
-            let frame = canvas(
-                |_, _, _| {},
-                move |b, _, window, _| {
-                    window.paint_quad(gpui::fill(b, gpui::white()));
-                    let ring = Bounds::from_corners(b.origin - point(px(1.0), px(1.0)), b.bottom_right() + point(px(1.0), px(1.0)));
-                    style::frame_rect(window, ring, style::c(p.keyboard_navigation));
-                },
-            )
+            let frame = canvas(move |g, b| {
+                g.paint_quad(olo_kit::fill(b, olo_kit::white()));
+                let ring = Bounds::from_corners(b.origin - point(px(1.0), px(1.0)), b.bottom_right() + point(px(1.0), px(1.0)));
+                style::frame_rect(g, ring, style::c(p.keyboard_navigation));
+            })
             .absolute()
             .size_full();
+            let opened = self.editors;
             let mut holder = div()
+                .id(SharedString::from(format!("pdf-editor-{opened}")))
                 .absolute()
                 .left(px(r.x0))
                 .top(px(r.y0))
                 .w(px(r.w()))
                 .h(px(r.h()))
-                .key_context(FIELD_CONTEXT)
-                .on_action(cx.listener(|v, _: &NextField, window, cx| v.next_field(false, window, cx)))
-                .on_action(cx.listener(|v, _: &PrevField, window, cx| v.next_field(true, window, cx)))
-                .on_action(cx.listener(|v, _: &EndEdit, _, cx| v.end_editing(cx)))
-                .on_mouse_down(MouseButton::Left, |_, window, cx| {
-                    window.prevent_default();
+                // Tab and ⇧Tab go from field to field, Escape ends the
+                // typing: taken on their way to the field.
+                .capture_key_down(cx.listener(|v: &mut PdfView, e: &KeyDownEvent, cx| {
+                    let m = &e.keystroke.modifiers;
+                    if m.control || m.alt || m.platform {
+                        return;
+                    }
+                    match e.keystroke.key.as_str() {
+                        "tab" => v.next_field(m.shift, cx),
+                        "escape" if !m.shift => v.end_editing(cx),
+                        _ => return,
+                    }
+                    cx.stop_propagation();
+                }))
+                // The keyboard gone from the field ends the typing too.
+                .on_focus_changed(cx.listener(move |v: &mut PdfView, has: &bool, cx| {
+                    if !*has && v.editors == opened {
+                        v.end_editing(cx);
+                    }
+                }))
+                .on_mouse_down(MouseButton::Left, |_, cx| {
+                    cx.prevent_default();
                     cx.stop_propagation();
                 })
                 .child(frame);
-            let inner =
-                div().absolute().left(px(pad)).right(px(pad)).top(px(if multiline { pad } else { 0.0 })).bottom(px(if multiline { pad } else { 0.0 })).flex().items_center().child(editor.clone());
+            let inner = div().absolute().left(px(pad)).right(px(pad)).top(px(if multiline { pad } else { 0.0 })).bottom(px(if multiline { pad } else { 0.0 })).flex().items_center().child(editor);
             holder = holder.child(if multiline { inner.items_start() } else { inner });
             body = body.child(holder);
         }
         // A right-click: the text's commands.
-        let me = cx.entity();
-        body = body.on_mouse_down(MouseButton::Right, move |e: &MouseDownEvent, window, cx| {
-            let selected = me.read(cx).has_text_selection();
-            let mut menu = Menu::new("Text");
-            if selected {
-                menu = menu.item("Copy", "copy").separator();
-            }
-            menu = menu.item("Select All", "select-all").item("Find…", "find");
-            let v = me.clone();
-            olo_ui::menu::context_menu(window, cx, menu, e.position, move |cmd, window, cx| {
-                v.update(cx, |v, cx| match cmd {
-                    "copy" => v.copy(cx),
-                    "select-all" => v.select_all(cx),
-                    "find" => v.open_find(window, cx),
-                    _ => {}
-                })
-            });
-        });
-        let p = theme::palette(cx);
-        let _ = window;
-        let scroll = ScrollView::new("pdf-scroll", &self.scroll).horizontal(true).border(false).background(p.panel_background).child(body);
+        body = body.on_mouse_down(
+            MouseButton::Right,
+            cx.listener(|v: &mut PdfView, e: &MouseDownEvent, cx| {
+                let mut menu = Menu::new("Text");
+                if v.has_text_selection() {
+                    menu = menu.item("Copy", "copy").separator();
+                }
+                menu = menu.item("Select All", "select-all").item("Find…", "find");
+                let me = cx.view_ref();
+                olo_kit::menu::context_menu(cx, menu, e.position, move |cmd, cx| {
+                    let cmd = cmd.to_owned();
+                    me.update(cx, move |v, cx| match cmd.as_str() {
+                        "copy" => v.copy(cx),
+                        "select-all" => v.select_all(cx),
+                        "find" => v.open_find(cx),
+                        _ => {}
+                    })
+                });
+            }),
+        );
+        let p = theme::palette();
+        // (Scrolled: the pages near the view are asked for, and the tool
+        // bar's page told. Sized: the fit follows, in the same turn.)
+        let scroll = ScrollView::new(&self.scroll)
+            .horizontal(true)
+            .border(false)
+            .background(p.panel_background)
+            .on_scroll(cx.listener(|v: &mut PdfView, _: &Point<Pixels>, cx| {
+                if v.settle(cx.scale_factor()) {
+                    cx.emit(Changed);
+                }
+            }))
+            .child(body);
         let bar = self.find.as_ref().map(|f| self.find_bar(f, cx));
-        div().size_full().flex().flex_col().children(bar).child(div().flex_1().min_h(px(0.0)).child(scroll))
+        let sized = cx.listener(|v: &mut PdfView, b: &Bounds<Pixels>, cx| {
+            if (f32::from(b.size.width), f32::from(b.size.height)) != (v.view.width, v.view.height) {
+                cx.invalidate();
+            }
+        });
+        div().size_full().flex().flex_col().children(bar).child(div().flex_1().min_h(px(0.0)).on_bounds_changed(sized).child(scroll)).into_any_element()
     }
 }
 
 impl PdfView {
     /// Find's bar over the pages: the field, how many it found (or that
     /// it's still reading pages), Previous, Next and Close.
-    fn find_bar(&self, f: &Find, cx: &mut Context<Self>) -> gpui::AnyElement {
+    fn find_bar(&self, f: &Find, cx: &Cx<Self>) -> Element {
         let reading = self.texts.len() < self.geoms.len();
         let looking = reading.then(|| format!("{} of {} pages", self.texts.len(), self.geoms.len()));
-        let said = olo_ui::widgets::find_said(&f.query, f.matches.len(), f.current, looking);
-        let (step, close) = (cx.entity(), cx.entity());
-        olo_ui::widgets::find_bar(&f.field, said, !f.matches.is_empty(), move |back, _, cx| step.update(cx, |v, cx| v.find_step(back, cx)), move |_, cx| close.update(cx, |v, cx| v.close_find(cx)))
+        let said = olo_kit::widgets::find_said(&f.query, f.matches.len(), f.current, looking);
+        let step = cx.listener(|v: &mut PdfView, back: &bool, cx| v.find_step(*back, cx));
+        let close = cx.listener(|v: &mut PdfView, _: &(), cx| v.close_find(cx));
+        olo_kit::widgets::find_bar(cx, &f.field, said, !f.matches.is_empty(), step, close)
     }
 }
 
@@ -1631,26 +1695,26 @@ fn field_size(field: &Field, w: &pdfdoc::Widget, zoom: f32) -> f32 {
 }
 
 /// Text in the PDF face, its left at `x`, on `baseline`.
-fn pdf_text(window: &mut Window, cx: &mut App, x: Pixels, baseline: Pixels, align: Align, text: &str, size: f32, font: &Font, color: Hsla) -> Bounds<Pixels> {
-    style::label_on_baseline(window, cx, x, baseline, align, text.to_owned(), size.max(1.0), font.clone(), color)
+fn pdf_text(g: &mut Painter, x: Pixels, baseline: Pixels, align: Align, text: &str, size: f32, font: &Font, color: Hsla) -> Bounds<Pixels> {
+    style::label_on_baseline(g, x, baseline, align, text.to_owned(), size.max(1.0), font.clone(), color)
 }
 
 /// A field as the saved file will show it, with a tint marking it
 /// fillable.
 #[allow(clippy::too_many_arguments)]
-fn draw_field(window: &mut Window, cx: &mut App, p: &olo_ui::palette::Palette, field: &Field, w: &pdfdoc::Widget, r: Bounds<Pixels>, zoom: f32, font: &Font, editing: bool, editable: bool) {
+fn draw_field(g: &mut Painter, p: &olo_kit::palette::Palette, field: &Field, w: &pdfdoc::Widget, r: Bounds<Pixels>, zoom: f32, font: &Font, editing: bool, editable: bool) {
     if let Some(bg) = w.background {
-        window.paint_quad(gpui::fill(r, rgb(bg)));
+        g.paint_quad(olo_kit::fill(r, rgb(bg)));
     }
     if editable && !field.read_only && !editing {
         // Fields to fill in, tinted in the focus colour (on the page,
         // which is paper white whatever the look).
-        window.paint_quad(gpui::fill(r, style::c(p.keyboard_navigation).opacity(34.0 / 255.0)));
+        g.paint_quad(olo_kit::fill(r, style::c(p.keyboard_navigation).opacity(34.0 / 255.0)));
     }
     if let Some(bc) = w.border {
         let t = px(zoom.max(1.0));
         let inner = Bounds::from_corners(r.origin + point(px(0.5 * zoom), px(0.5 * zoom)), r.bottom_right() - point(px(0.5 * zoom), px(0.5 * zoom)));
-        window.paint_quad(gpui::outline(inner, rgb(bc), gpui::BorderStyle::Solid).border_widths(t));
+        g.paint_quad(olo_kit::outline(inner, rgb(bc), olo_kit::BorderStyle::Solid).border_widths(t));
     }
     // What agents read it as: a check box or radio button is on when
     // the field's state is this widget's.
@@ -1667,7 +1731,7 @@ fn draw_field(window: &mut Window, cx: &mut App, p: &olo_ui::palette::Palette, f
         return;
     }
     let usable = editable && !field.read_only;
-    agent::record(window, cx, agent::Node { role, name: Some(field.name.clone().into()), value: value.map(Into::into), bounds: r, enabled: usable, clickable: usable, checked, ..Default::default() });
+    agent::record(g, agent::Node { role, name: Some(field.name.clone().into()), value: value.map(Into::into), bounds: r, enabled: usable, clickable: usable, checked, ..Default::default() });
     let color = rgb(field.color);
     let (rw, rh) = (f32::from(r.size.width), f32::from(r.size.height));
     match (&field.kind, &field.value) {
@@ -1676,11 +1740,11 @@ fn draw_field(window: &mut Window, cx: &mut App, p: &olo_ui::palette::Palette, f
             let c = r.center();
             let at = |x: f32, y: f32| point(c.x - px(side / 2.0) + px(x * side), c.y - px(side / 2.0) + px((1.0 - y) * side));
             let t = px((side * 0.12).max(1.0));
-            window.paint_segment(at(0.2, 0.52), at(0.42, 0.28), t, true, color);
-            window.paint_segment(at(0.42, 0.28), at(0.8, 0.76), t, true, color);
+            g.paint_segment(at(0.2, 0.52), at(0.42, 0.28), t, true, color);
+            g.paint_segment(at(0.42, 0.28), at(0.8, 0.76), t, true, color);
         }
         (FieldKind::Radio, Value::State(Some(s))) if w.on.as_deref() == Some(s.as_str()) => {
-            window.paint_sector(r.center(), px(0.0), px(rw.min(rh) * 0.25), 0.0, std::f32::consts::TAU, color);
+            g.paint_sector(r.center(), px(0.0), px(rw.min(rh) * 0.25), 0.0, std::f32::consts::TAU, color);
         }
         (FieldKind::Check | FieldKind::Radio, _) => {}
         (FieldKind::Choice { combo: false, options, .. }, Value::Text(v)) => {
@@ -1693,10 +1757,10 @@ fn draw_field(window: &mut Window, cx: &mut App, p: &olo_ui::palette::Palette, f
                 }
                 let row = Bounds::new(point(r.left() + px(1.0), px(top)), size_px(rw - 2.0, lead));
                 if export == v {
-                    window.paint_quad(gpui::fill(row, gpui::rgb(0x99c1da)));
+                    g.paint_quad(olo_kit::fill(row, olo_kit::rgb(0x99c1da)));
                 }
-                let baseline = style::baseline_at(window, row.center().y, size);
-                pdf_text(window, cx, row.left() + px(2.0 * zoom), baseline, Align::Left, label, size, font, color);
+                let baseline = style::baseline_at(g, row.center().y, size);
+                pdf_text(g, row.left() + px(2.0 * zoom), baseline, Align::Left, label, size, font, color);
             }
         }
         _ => {
@@ -1708,24 +1772,24 @@ fn draw_field(window: &mut Window, cx: &mut App, p: &olo_ui::palette::Palette, f
                 2 => (r.right() - px(2.0 * zoom), Align::Right),
                 _ => (r.left() + px(2.0 * zoom), Align::Left),
             };
-            window.with_content_mask(Some(gpui::ContentMask { bounds: r }), |window| match field.kind {
+            g.with_content_mask(Some(olo_kit::ContentMask { bounds: r }), |g| match field.kind {
                 FieldKind::Text { multiline: true, .. } => {
                     let width = w.rect[2] - w.rect[0];
                     for (k, line) in pdfdoc::wrap(&text, pt, width - 4.0).iter().enumerate() {
                         let baseline = r.top() + px((2.0 + pt * 0.93 + k as f32 * pt * 1.15) * zoom);
-                        pdf_text(window, cx, x, baseline, align, line, size, font, color);
+                        pdf_text(g, x, baseline, align, line, size, font, color);
                     }
                 }
                 FieldKind::Text { comb: true, max_len: Some(n), .. } if n > 0 => {
                     let cell = rw / n as f32;
-                    let baseline = style::baseline_at(window, r.center().y, size);
+                    let baseline = style::baseline_at(g, r.center().y, size);
                     for (k, ch) in text.chars().take(n).enumerate() {
-                        pdf_text(window, cx, r.left() + px(cell * k as f32 + cell / 2.0), baseline, Align::Center, &ch.to_string(), size, font, color);
+                        pdf_text(g, r.left() + px(cell * k as f32 + cell / 2.0), baseline, Align::Center, &ch.to_string(), size, font, color);
                     }
                 }
                 _ => {
-                    let baseline = style::baseline_at(window, r.center().y, size);
-                    pdf_text(window, cx, x, baseline, align, &text, size, font, color);
+                    let baseline = style::baseline_at(g, r.center().y, size);
+                    pdf_text(g, x, baseline, align, &text, size, font, color);
                 }
             });
             if matches!(field.kind, FieldKind::Choice { combo: true, .. }) && editable {
@@ -1738,7 +1802,7 @@ fn draw_field(window: &mut Window, cx: &mut App, p: &olo_ui::palette::Palette, f
                 path.line_to(point(cx_, cy + px(a / 2.0)));
                 path.close();
                 if let Ok(path) = path.build() {
-                    window.paint_path(path, gpui::rgb(0x5a5a5a));
+                    g.paint_path(path, olo_kit::rgb(0x5a5a5a));
                 }
             }
         }
@@ -1749,20 +1813,16 @@ fn size_px(w: f32, h: f32) -> Size<Pixels> {
     size(px(w), px(h))
 }
 
-fn draw_mark(window: &mut Window, cx: &mut App, mark: &Mark, r: Bounds<Pixels>, zoom: f32, font: &Font) {
+fn draw_mark(g: &mut Painter, mark: &Mark, r: Bounds<Pixels>, zoom: f32, font: &Font) {
     let color = rgb(mark.color);
     match &mark.kind {
         MarkKind::Text { text, size } => {
             let width = mark.rect[2] - mark.rect[0];
             for (k, line) in pdfdoc::wrap(text, *size, width - 2.0 * pdfdoc::TEXT_PAD).iter().enumerate() {
                 let top = r.top() + px((pdfdoc::TEXT_PAD + k as f32 * size * 1.15) * zoom);
-                pdf_text(window, cx, r.left() + px(pdfdoc::TEXT_PAD * zoom), top + px(size * zoom * 0.905), Align::Left, line, size * zoom, font, color);
+                pdf_text(g, r.left() + px(pdfdoc::TEXT_PAD * zoom), top + px(size * zoom * 0.905), Align::Left, line, size * zoom, font, color);
             }
-            agent::record(
-                window,
-                cx,
-                agent::Node { role: "TextInput", name: Some("Text Box".into()), value: Some(text.clone().into()), bounds: r, enabled: true, clickable: true, ..Default::default() },
-            );
+            agent::record(g, agent::Node { role: "TextInput", name: Some("Text Box".into()), value: Some(text.clone().into()), bounds: r, enabled: true, clickable: true, ..Default::default() });
         }
         MarkKind::Ink { strokes, width, signature } => {
             let sw = px(width * zoom);
@@ -1770,42 +1830,42 @@ fn draw_mark(window: &mut Window, cx: &mut App, mark: &Mark, r: Bounds<Pixels>, 
             for s in strokes {
                 let pts: Vec<Point<Pixels>> = s.iter().map(|p| point(r.left() + rw * p[0], r.bottom() - rh * p[1])).collect();
                 if pts.len() == 1 {
-                    window.paint_sector(pts[0], px(0.0), sw / 2.0, 0.0, std::f32::consts::TAU, color);
+                    g.paint_sector(pts[0], px(0.0), sw / 2.0, 0.0, std::f32::consts::TAU, color);
                     continue;
                 }
                 for w in pts.windows(2) {
-                    window.paint_segment(w[0], w[1], sw, true, color);
+                    g.paint_segment(w[0], w[1], sw, true, color);
                 }
             }
             let name = if *signature { "Signature" } else { "Drawing" };
-            agent::record(window, cx, agent::Node { role: "Image", name: Some(name.into()), bounds: r, enabled: true, clickable: true, ..Default::default() });
+            agent::record(g, agent::Node { role: "Image", name: Some(name.into()), bounds: r, enabled: true, clickable: true, ..Default::default() });
         }
     }
 }
 
 /// A dotted frame with corner handles, in the focus colour.
-fn draw_selection(window: &mut Window, p: &olo_ui::palette::Palette, r: Bounds<Pixels>, handles: bool) {
+fn draw_selection(g: &mut Painter, p: &olo_kit::palette::Palette, r: Bounds<Pixels>, handles: bool) {
     let blue = style::c(p.keyboard_navigation);
     let r = Bounds::from_corners(r.origin - point(px(2.0), px(2.0)), r.bottom_right() + point(px(2.0), px(2.0)));
-    let t = style::hairline(window);
-    let dash = |window: &mut Window, horizontal: bool, at: Pixels, from: Pixels, to: Pixels| {
+    let t = style::hairline(g);
+    let dash = |g: &mut Painter, horizontal: bool, at: Pixels, from: Pixels, to: Pixels| {
         let mut x = from;
         while x < to {
             let e = (x + px(3.0)).min(to);
             let b = if horizontal { Bounds::from_corners(point(x, at), point(e, at + t)) } else { Bounds::from_corners(point(at, x), point(at + t, e)) };
-            window.paint_quad(gpui::fill(b, blue));
+            g.paint_quad(olo_kit::fill(b, blue));
             x += px(5.0);
         }
     };
-    dash(window, true, r.top(), r.left(), r.right());
-    dash(window, true, r.bottom() - t, r.left(), r.right());
-    dash(window, false, r.left(), r.top(), r.bottom());
-    dash(window, false, r.right() - t, r.top(), r.bottom());
+    dash(g, true, r.top(), r.left(), r.right());
+    dash(g, true, r.bottom() - t, r.left(), r.right());
+    dash(g, false, r.left(), r.top(), r.bottom());
+    dash(g, false, r.right() - t, r.top(), r.bottom());
     if handles {
         for c in [r.origin, point(r.right(), r.top()), r.bottom_right(), point(r.left(), r.bottom())] {
-            let h = style::snap_centred(window, c, HANDLE, HANDLE);
-            window.paint_quad(gpui::fill(h, gpui::white()));
-            style::frame_rect(window, h, blue);
+            let h = style::snap_centred(g, c, HANDLE, HANDLE);
+            g.paint_quad(olo_kit::fill(h, olo_kit::white()));
+            style::frame_rect(g, h, blue);
         }
     }
 }

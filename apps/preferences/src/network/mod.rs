@@ -25,18 +25,17 @@ use std::{
     time::{Duration, Instant},
 };
 
+use olo_kit::{
+    Bounds, Child, ClickEvent, Cx, Element, Hsla, IntoElement, Painter, ParentElement as _, PathBuilder, Pixels, SharedString, Styled as _, View, WindowCx, WindowOptions, div,
+    file_panel::{self, FilePanel, PanelResult},
+    metrics as m, point, px, size, style,
+    widgets::{Button, CheckBox, Column, ColumnListView, EmptyState, ListModel, MenuField, StringView, TabView, TextControl, TextField, TextFieldEvent, separator},
+};
 use olo_system::{
     hosts::{Host, HostsFile},
     netconf::NetConf,
     network::{self as nm, Device, Enterprise, Kind, Network, Status},
     shaping::{self, Shaping},
-};
-use olo_ui::{
-    WindowOptions,
-    file_panel::{self, FilePanel, PanelResult},
-    gpui::{AnyElement, App, AppContext as _, Bounds, Context, Entity, Hsla, IntoElement, ParentElement as _, PathBuilder, Pixels, Render, SharedString, Styled as _, Window, div, point, px, size},
-    metrics as m, style,
-    widgets::{Button, CheckBox, Column, ColumnListView, EmptyState, ListModel, MenuField, StringView, TabView, TextControl, TextField, TextFieldEvent, separator},
 };
 
 use crate::{Msg, PanelView, form::Ui, panel};
@@ -158,7 +157,7 @@ const SCAN_EVERY: Duration = Duration::from_secs(30);
 
 /// NetworkManager's worker (one for the app), telling the windows
 /// through `proxy` when anything changes.
-fn link(proxy: olo_ui::Proxy) -> &'static Link {
+fn link(proxy: olo_kit::Proxy) -> &'static Link {
     static LINK: OnceLock<Link> = OnceLock::new();
     LINK.get_or_init(|| {
         let shared: Arc<Mutex<Shared>> = Default::default();
@@ -389,10 +388,10 @@ fn fake_worker(sh: &Arc<Mutex<Shared>>, wake: &dyn Fn(), rx: &std::sync::mpsc::R
 
 pub struct State {
     tab: usize,
-    list: Entity<ListModel>,
+    list: ListModel,
     /// The selected network's name (the list reorders as signals change).
     selected: Option<String>,
-    password: Entity<TextField>,
+    password: Child<TextField>,
     device: usize,
     link: &'static Link,
     eth: ethernet::Edit,
@@ -401,8 +400,8 @@ pub struct State {
     hosts: hosts_tab::Edit,
     shape: shaping_tab::Edit,
     vpn: vpn::Edit,
-    hotspot_name: Entity<TextField>,
-    hotspot_password: Entity<TextField>,
+    hotspot_name: Child<TextField>,
+    hotspot_password: Child<TextField>,
 }
 
 impl Drop for State {
@@ -416,15 +415,14 @@ impl Drop for State {
 const TABS: [&str; 8] = ["Wi-Fi", "Ethernet", "VPN", "Service Order", "DNS", "Hosts", "Shaping", "Details"];
 
 /// A text field that redraws the panel as it's typed in.
-fn field(cx: &mut Context<PanelView>, hint: &str) -> Entity<TextField> {
+fn field(cx: &mut Cx<PanelView>, hint: &str) -> Child<TextField> {
     let hint = hint.to_owned();
-    let f = olo_ui::widgets::text_field(cx, |f| f.hint(hint));
-    cx.subscribe(&f, |_, _, e: &TextFieldEvent, cx| {
+    let f = crate::form::text_field(cx, |f| f.hint(hint));
+    cx.subscribe(&f, |_, e: &TextFieldEvent, cx| {
         if matches!(e, TextFieldEvent::Changed) {
             cx.notify();
         }
-    })
-    .detach();
+    });
     f
 }
 
@@ -436,15 +434,15 @@ fn rows(ui: &mut Ui, divider: f32, rows: &[(&str, String)]) {
 }
 
 /// `label` in the label column, `then` from the divider on.
-fn labelled(divider: f32, label: &str, then: impl IntoElement) -> olo_ui::gpui::Div {
+fn labelled(divider: f32, label: &str, then: impl IntoElement) -> Element {
     div().flex().flex_row().items_center().child(div().w(px(divider)).flex_shrink_0().child(StringView::new(label.to_owned()))).child(div().flex_1().min_w(px(0.0)).child(then))
 }
 
 impl State {
-    pub fn new(cx: &mut Context<PanelView>) -> State {
-        let password = olo_ui::widgets::text_field(cx, |f| f.password(true));
+    pub fn new(cx: &mut Cx<PanelView>) -> State {
+        let password = crate::form::text_field(cx, |f| f.password(true));
         // Return joins, once the password can be one.
-        cx.subscribe(&password, |v, _, e: &TextFieldEvent, cx| match e {
+        cx.subscribe(&password, |v, e: &TextFieldEvent, cx| match e {
             TextFieldEvent::Entered => {
                 if let Some(st) = state_of(v) {
                     st.join(cx);
@@ -453,15 +451,14 @@ impl State {
             }
             TextFieldEvent::Changed => cx.notify(),
             _ => {}
-        })
-        .detach();
+        });
         State {
             tab: 0,
-            list: ListModel::new(cx, false),
+            list: ListModel::new(false),
             selected: None,
             password,
             device: 0,
-            link: link(olo_ui::proxy(cx)),
+            link: link(olo_kit::proxy()),
             eth: ethernet::Edit::new(cx),
             order: order::Edit::new(cx),
             dns: dns::Edit::new(cx),
@@ -482,12 +479,12 @@ impl State {
         }
     }
 
-    fn clear_password(&mut self, cx: &mut App) {
+    fn clear_password(&mut self, cx: &mut WindowCx) {
         self.password.update(cx, |f, cx| f.clear_secret(cx));
     }
 
     /// Join (or open the sheet for) the network chosen, if it can be.
-    fn join(&mut self, cx: &mut Context<PanelView>) {
+    fn join(&mut self, cx: &mut Cx<PanelView>) {
         let (status, busy) = {
             let sh = self.link.shared.lock().unwrap();
             (sh.status.clone(), sh.busy)
@@ -501,7 +498,7 @@ impl State {
         let needs_password = net.secure && !net.known && !net.enterprise;
         let needs_sheet = net.enterprise && !net.known;
         if needs_sheet {
-            open_sheet(self.link, dev.path.clone(), net, cx);
+            open_sheet(self.link, dev.path.clone(), net);
             return;
         }
         let pw = needs_password.then(|| self.password.read(cx).text().to_owned());
@@ -561,9 +558,9 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             ui.note(d.clone());
         }
     });
-    let pick = ui.on_view(|v, i: usize, _, cx| {
+    let pick = ui.on_view(|v, i: &usize, cx| {
         if let Some(st) = state_of(v) {
-            st.tab = i;
+            st.tab = *i;
             // (What the last change said was about the tab it was on.)
             let mut sh = st.link.shared.lock().unwrap();
             sh.done = None;
@@ -608,8 +605,8 @@ fn wifi(ui: &mut Ui, st: &mut State, status: &Status, busy: bool) {
             .gap(px(m::SPACING * 3.0))
             // (As tall as the line beside it: their middles one, the two
             // level at 1.25×.)
-            .child(CheckBox::new("Wi-Fi", status.wireless_enabled).height(m::CONTROL_HEIGHT).enabled(status.wireless_hardware && !busy).on_toggle(move |on, _, _| {
-                let _ = link.tx.send(Request::Wireless(on));
+            .child(CheckBox::new("Wi-Fi", status.wireless_enabled).height(m::CONTROL_HEIGHT).enabled(status.wireless_hardware && !busy).on_toggle(move |on, _| {
+                let _ = link.tx.send(Request::Wireless(*on));
             }))
             .child(StringView::new(text).dim(true)),
     );
@@ -620,38 +617,38 @@ fn wifi(ui: &mut Ui, st: &mut State, status: &Status, busy: bool) {
     let nets = status.networks.clone();
     // Keep the selection on the same network as the list reorders.
     let at = st.selected.as_ref().and_then(|s| nets.iter().position(|n| n.ssid == *s));
-    st.list.update(ui.cx, |l, _| {
-        l.state.selected.clear();
+    {
+        let mut l = st.list.state_mut();
+        l.selected.clear();
         if let Some(i) = at {
-            l.state.select(i);
+            l.select(i);
         }
-    });
+    }
     let columns = vec![Column::new("", 22.0), Column::new("Network", 210.0), Column::new("Security", 100.0), Column::new("Signal", 50.0)];
     let cells = nets.clone();
     let model = st.list.clone();
     let ssids: Vec<String> = nets.iter().map(|n| n.ssid.clone()).collect();
-    let pick = ui.on_view(move |v, _: (), _, cx| {
-        let row = model.read(cx).state.single();
+    let pick = ui.on_view(move |v, _: &(), cx| {
+        let row = model.state().single();
         if let Some(st) = state_of(v) {
             st.selected = row.and_then(|i| ssids.get(i).cloned());
             st.clear_password(cx);
         }
         cx.notify();
     });
-    let open = ui.on_view(|v, _: usize, _, cx| {
+    let open = ui.on_view(|v, _: &usize, cx| {
         if let Some(st) = state_of(v) {
             st.join(cx);
         }
         cx.notify();
     });
-    let list = ColumnListView::new("networks", &st.list, columns, nets.len(), move |cell, window, cx| {
+    let list = ColumnListView::new(ui.cx, "networks", &st.list, columns, nets.len(), move |_: &PanelView, cell, g| {
         let n = &cells[cell.row];
         match cell.column {
-            0 if n.active => check(window, cell.bounds, cell.text_color),
-            1 => cell.text(window, cx, n.ssid.clone()),
+            0 if n.active => check(g, cell.bounds, cell.text_color),
+            1 => cell.text(g, n.ssid.clone()),
             2 => cell.text(
-                window,
-                cx,
+                g,
                 match (n.enterprise, n.secure, n.known) {
                     (true, ..) => "Enterprise",
                     (_, true, true) => "Secured, saved",
@@ -660,11 +657,11 @@ fn wifi(ui: &mut Ui, st: &mut State, status: &Status, busy: bool) {
                     (_, false, false) => "Open",
                 },
             ),
-            3 => bars(window, cell.bounds, n.strength, cell.text_color),
+            3 => bars(g, cell.bounds, n.strength, cell.text_color),
             _ => {}
         }
     })
-    .on_select(move |window, cx| pick((), window, cx))
+    .on_select(move |_window, cx| pick(&(), cx))
     .on_open(open);
     ui.add(div().flex_1().min_h(px(90.0)).child(list));
     let Some(net) = at.and_then(|i| nets.get(i)).cloned() else {
@@ -675,9 +672,9 @@ fn wifi(ui: &mut Ui, st: &mut State, status: &Status, busy: bool) {
     // A new enterprise network asks for more than fits here: a sheet.
     let needs_sheet = net.enterprise && !net.known && !net.active;
     if needs_password {
-        ui.add(TextControl::new(st.password.clone()).label("Password:").divider(72.0));
+        ui.add(TextControl::new(ui.cx, &st.password).label("Password:").divider(72.0));
     }
-    let mut row: Vec<AnyElement> = Vec::new();
+    let mut row: Vec<Element> = Vec::new();
     if net.active {
         let path = dev.path.clone();
         row.push(
@@ -686,19 +683,19 @@ fn wifi(ui: &mut Ui, st: &mut State, status: &Status, busy: bool) {
                 .on_click(move |_, _| {
                     let _ = link.tx.send(Request::Disconnect(path.clone()));
                 })
-                .into_any_element(),
+                .into_element(),
         );
     } else {
         // WPA passwords are 8 to 63 characters.
         let ready = !needs_password || (8..=63).contains(&st.password.read(ui.cx).text().len());
         let label = if needs_sheet { "Join…" } else { "Join" };
-        let join = ui.on_click_view(|v, _, cx| {
+        let join = ui.on_click_view(|v, cx| {
             if let Some(st) = state_of(v) {
                 st.join(cx);
             }
             cx.notify();
         });
-        row.push(Button::new(label).default(true).enabled(ready && !busy).on_click(join).into_any_element());
+        row.push(Button::new(label).default(true).enabled(ready && !busy).on_click(join).into_element());
     }
     if net.known {
         let ssid = net.ssid.clone();
@@ -708,7 +705,7 @@ fn wifi(ui: &mut Ui, st: &mut State, status: &Status, busy: bool) {
                 .on_click(move |_, _| {
                     let _ = link.tx.send(Request::Forget(ssid.clone()));
                 })
-                .into_any_element(),
+                .into_element(),
         );
     }
     ui.add(div().flex().flex_row().gap(px(m::SPACING)).children(row));
@@ -733,7 +730,7 @@ fn hotspot(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: bo
         return;
     }
     let link = st.link;
-    let (name, password) = (st.hotspot_name.clone(), st.hotspot_password.clone());
+    let (name, password) = (&st.hotspot_name, &st.hotspot_password);
     ui.bbox("Hotspot", |ui| match &extra.hotspot {
         Some(h) => {
             let active = h.active.clone();
@@ -745,20 +742,21 @@ fn hotspot(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: bo
         }
         None => {
             let ready = !name.read(ui.cx).text().trim().is_empty() && (8..=63).contains(&password.read(ui.cx).text().len());
-            let (n, p, device) = (name.clone(), password.clone(), dev.path.clone());
-            let start = move |_: &mut Window, cx: &mut App| {
-                let ssid = n.read(cx).text().trim().to_owned();
-                let pw = p.read(cx).text().to_owned();
+            let device = dev.path.clone();
+            let start = ui.on_click_view(move |v, cx| {
+                let Some(st) = state_of(v) else { return };
+                let ssid = st.hotspot_name.read(cx).text().trim().to_owned();
+                let pw = st.hotspot_password.read(cx).text().to_owned();
                 let _ = link.tx.send(Request::StartHotspot { device: device.clone(), ssid, password: pw });
-            };
+            });
             ui.add(
                 div()
                     .flex()
                     .flex_row()
                     .items_center()
                     .gap(px(m::SPACING * 2.0))
-                    .child(div().flex_1().child(TextControl::new(name).label("Name:").divider(60.0)))
-                    .child(div().flex_1().child(TextControl::new(password).label("Password:").divider(80.0)))
+                    .child(div().flex_1().child(TextControl::new(ui.cx, name).label("Name:").divider(60.0)))
+                    .child(div().flex_1().child(TextControl::new(ui.cx, password).label("Password:").divider(80.0)))
                     .child(Button::new("Start").enabled(ready && !busy).on_click(start)),
             );
             ui.note("Shares this computer's connection as a Wi-Fi network of its own; the adapter leaves the network it's on while it does.");
@@ -782,13 +780,11 @@ pub struct EnterpriseForm {
     ca_file: Option<PathBuf>,
     client_cert: Option<PathBuf>,
     private_key: Option<PathBuf>,
-    identity: Entity<TextField>,
-    password: Entity<TextField>,
-    key_password: Entity<TextField>,
-    anonymous: Entity<TextField>,
-    domain: Entity<TextField>,
-    /// Joined (Return in a field): the window closes.
-    done: bool,
+    identity: Child<TextField>,
+    password: Child<TextField>,
+    key_password: Child<TextField>,
+    anonymous: Child<TextField>,
+    domain: Child<TextField>,
 }
 
 pub const SHEET_WIDTH: f32 = 440.0;
@@ -798,49 +794,45 @@ pub const CERT_TYPES: &[&str] = &["pem", "crt", "cer", "der", "key", "p12", "pfx
 const SHEET_DIVIDER: f32 = 132.0;
 
 /// The sheet for joining `net` (one per network: an open one comes forward).
-fn open_sheet(link: &'static Link, device: String, net: Network, cx: &mut App) {
+fn open_sheet(link: &'static Link, device: String, net: Network) {
     let title = format!("Join “{}”", net.ssid);
     // (As tall as its rows: they come and go with the method chosen.)
     let options = WindowOptions { fixed: true, ..WindowOptions::new(title, SHEET_WIDTH, 200.0).dialog() };
-    let _ = olo_ui::open_window(cx, options, move |window, cx| {
-        window.activate_window();
-        cx.new(|cx| {
-            let field = |cx: &mut Context<EnterpriseForm>, hint: &str, password: bool| {
-                let hint = hint.to_owned();
-                let f = olo_ui::widgets::text_field(cx, |f| f.hint(hint).password(password));
-                cx.subscribe(&f, |form: &mut EnterpriseForm, _, e: &TextFieldEvent, cx| match e {
-                    TextFieldEvent::Entered => form.join(cx),
-                    TextFieldEvent::Changed => cx.notify(),
-                    _ => {}
-                })
-                .detach();
-                f
-            };
-            let identity = field(cx, "", false);
-            identity.update(cx, |f, _| f.focus(window));
-            EnterpriseForm {
-                link,
-                device,
-                net,
-                eap: 0,
-                inner: 0,
-                ca: 0,
-                ca_file: None,
-                client_cert: None,
-                private_key: None,
-                password: field(cx, "", true),
-                key_password: field(cx, "", true),
-                anonymous: field(cx, "Optional", false),
-                domain: field(cx, "Optional, e.g. example.edu", false),
-                identity,
-                done: false,
-            }
-        })
+    olo_kit::open_window(options, move |cx| {
+        cx.activate_window();
+        let field = |cx: &mut Cx<EnterpriseForm>, hint: &str, password: bool| {
+            let hint = hint.to_owned();
+            let f = olo_kit::widgets::text_field(cx, |f| f.hint(hint).password(password));
+            cx.subscribe(&f, |form: &mut EnterpriseForm, e: &TextFieldEvent, cx| match e {
+                TextFieldEvent::Entered => form.join(cx),
+                TextFieldEvent::Changed => cx.notify(),
+                _ => {}
+            });
+            f
+        };
+        let identity = field(cx, "", false);
+        identity.focus(cx);
+        EnterpriseForm {
+            link,
+            device,
+            net,
+            eap: 0,
+            inner: 0,
+            ca: 0,
+            ca_file: None,
+            client_cert: None,
+            private_key: None,
+            password: field(cx, "", true),
+            key_password: field(cx, "", true),
+            anonymous: field(cx, "Optional", false),
+            domain: field(cx, "Optional, e.g. example.edu", false),
+            identity,
+        }
     });
 }
 
 impl EnterpriseForm {
-    fn enterprise(&self, cx: &App) -> Enterprise {
+    fn enterprise(&self, cx: &WindowCx) -> Enterprise {
         let eap = nm::Eap::ALL[self.eap.min(2)];
         let inner = eap.inner().get(self.inner).or(eap.inner().first()).map(|s| s.to_string()).unwrap_or_default();
         Enterprise {
@@ -861,117 +853,109 @@ impl EnterpriseForm {
         }
     }
 
-    fn join(&mut self, cx: &mut Context<Self>) {
+    fn join(&mut self, cx: &mut Cx<Self>) {
         let e = self.enterprise(cx);
         if !e.ready() {
             return;
         }
         let _ = self.link.tx.send(Request::JoinEnterprise(self.device.clone(), self.net.clone(), Box::new(e)));
         self.clear_secrets(cx);
-        // (Its window closes as it's next drawn.)
-        self.done = true;
-        cx.notify();
+        cx.close_window();
     }
 
-    fn clear_secrets(&mut self, cx: &mut App) {
+    fn clear_secrets(&mut self, cx: &mut WindowCx) {
         for f in [&self.password, &self.key_password] {
             f.update(cx, |f, cx| f.clear_secret(cx));
         }
     }
 
     /// The file panel for one of the sheet's files.
-    fn choose(&self, which: u8, cx: &mut Context<Self>) {
+    fn choose(&self, which: u8, cx: &mut Cx<Self>) {
         let title = match which {
             0 => "Choose a CA Certificate",
             1 => "Choose Your Certificate",
             _ => "Choose Your Private Key",
         };
         let dir = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
-        let me = cx.weak_entity();
-        file_panel::show(cx, title, FilePanel::open(dir).types(CERT_TYPES), move |a, cx| {
-            let PanelResult::Chosen(path) = a.result else { return };
-            let _ = me.update(cx, |f, cx| {
-                match which {
-                    0 => f.ca_file = Some(path),
-                    1 => f.client_cert = Some(path),
-                    _ => f.private_key = Some(path),
-                }
-                cx.notify();
-            });
+        // (Its answer comes on the panel's own looper.)
+        let to = cx.messenger();
+        file_panel::show(title, FilePanel::open(dir).types(CERT_TYPES), move |a| {
+            if let PanelResult::Chosen(path) = a.result {
+                to.send((which, path));
+            }
         });
     }
 }
 
-impl Render for EnterpriseForm {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.done {
-            window.remove_window();
-            return div();
+impl View for EnterpriseForm {
+    /// A file chosen for the sheet: which, and its path.
+    type Message = (u8, PathBuf);
+
+    fn message(&mut self, (which, path): (u8, PathBuf), cx: &mut Cx<Self>) {
+        match which {
+            0 => self.ca_file = Some(path),
+            1 => self.client_cert = Some(path),
+            _ => self.private_key = Some(path),
         }
+        cx.notify();
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         let eap = nm::Eap::ALL[self.eap.min(2)];
-        let me = cx.weak_entity();
-        let set = move |f: fn(&mut EnterpriseForm, usize)| {
-            let me = me.clone();
-            move |i: usize, _: &mut Window, cx: &mut App| {
-                let _ = me.update(cx, |form, cx| {
-                    f(form, i);
-                    cx.notify();
-                });
-            }
-        };
+        fn set(cx: &Cx<EnterpriseForm>, f: fn(&mut EnterpriseForm, usize)) -> impl Fn(&usize, &mut WindowCx) + 'static {
+            cx.listener(move |form: &mut EnterpriseForm, i: &usize, cx| {
+                f(form, *i);
+                cx.notify();
+            })
+        }
         let mut col = div().size_full().flex().flex_col().gap(px(m::SPACING)).p(px(m::WINDOW_INSET));
         col = col.child(StringView::new(format!("“{}” is an enterprise network.", self.net.ssid)));
         let eaps: Vec<SharedString> = nm::Eap::ALL.iter().map(|e| SharedString::from(e.name())).collect();
-        col = col.child(MenuField::new("ent-eap", eaps, self.eap).label("Security:").divider(SHEET_DIVIDER).on_change(set(|f, i| f.eap = i)));
-        let file_row = |label: &str, path: Option<&std::path::Path>, which: u8, cx: &mut Context<Self>| {
+        col = col.child(MenuField::new("ent-eap", eaps, self.eap).label("Security:").divider(SHEET_DIVIDER).on_change(set(cx, |f, i| f.eap = i)));
+        let file_row = |label: &str, path: Option<&std::path::Path>, which: u8, cx: &mut Cx<Self>| {
             let name = path.and_then(|p| p.file_name()).map_or("None".into(), |n| n.to_string_lossy().into_owned());
-            let me = cx.weak_entity();
             div()
                 .flex()
                 .flex_row()
                 .items_center()
                 .child(div().w(px(SHEET_DIVIDER)).flex_shrink_0().child(StringView::new(label.to_owned())))
                 .child(div().flex_1().child(StringView::new(name).dim(path.is_none())))
-                .child(Button::new("Choose…").on_click(move |_, cx| {
-                    let _ = me.update(cx, |f, cx| f.choose(which, cx));
-                }))
+                .child(Button::new("Choose…").on_click(cx.listener(move |f: &mut EnterpriseForm, _: &ClickEvent, cx| f.choose(which, cx))))
         };
         if eap == nm::Eap::Tls {
-            col = col.child(TextControl::new(self.identity.clone()).label("Identity:").divider(SHEET_DIVIDER));
+            col = col.child(TextControl::new(cx, &self.identity).label("Identity:").divider(SHEET_DIVIDER));
             col = col.child(file_row("Certificate:", self.client_cert.as_deref(), 1, cx));
             col = col.child(file_row("Private key:", self.private_key.as_deref(), 2, cx));
-            col = col.child(TextControl::new(self.key_password.clone()).label("Key password:").divider(SHEET_DIVIDER));
+            col = col.child(TextControl::new(cx, &self.key_password).label("Key password:").divider(SHEET_DIVIDER));
         } else {
             let names: Vec<SharedString> = eap.inner().iter().map(|i| SharedString::from(inner_name(i))).collect();
             self.inner = self.inner.min(names.len().saturating_sub(1));
-            col = col.child(MenuField::new("ent-inner", names, self.inner).label("Authentication:").divider(SHEET_DIVIDER).on_change(set(|f, i| f.inner = i)));
-            col = col.child(TextControl::new(self.identity.clone()).label("Username:").divider(SHEET_DIVIDER));
-            col = col.child(TextControl::new(self.password.clone()).label("Password:").divider(SHEET_DIVIDER));
+            col = col.child(MenuField::new("ent-inner", names, self.inner).label("Authentication:").divider(SHEET_DIVIDER).on_change(set(cx, |f, i| f.inner = i)));
+            col = col.child(TextControl::new(cx, &self.identity).label("Username:").divider(SHEET_DIVIDER));
+            col = col.child(TextControl::new(cx, &self.password).label("Password:").divider(SHEET_DIVIDER));
         }
-        col = col.child(TextControl::new(self.anonymous.clone()).label("Anonymous identity:").divider(SHEET_DIVIDER));
+        col = col.child(TextControl::new(cx, &self.anonymous).label("Anonymous identity:").divider(SHEET_DIVIDER));
         let cas: Vec<SharedString> = ["System certificates", "A certificate file", "Don't verify"].into_iter().map(SharedString::from).collect();
-        col = col.child(MenuField::new("ent-ca", cas, self.ca).label("CA certificate:").divider(SHEET_DIVIDER).on_change(set(|f, i| f.ca = i)));
+        col = col.child(MenuField::new("ent-ca", cas, self.ca).label("CA certificate:").divider(SHEET_DIVIDER).on_change(set(cx, |f, i| f.ca = i)));
         if self.ca == 1 {
             col = col.child(file_row("", self.ca_file.as_deref(), 0, cx));
         }
-        self.domain.update(cx, |f, cx| f.set_enabled(self.ca != 2, cx));
-        col = col.child(TextControl::new(self.domain.clone()).label("Domain:").divider(SHEET_DIVIDER));
+        let verified = self.ca != 2;
+        self.domain.update(cx, |f, cx| f.set_enabled(verified, cx));
+        col = col.child(TextControl::new(cx, &self.domain).label("Domain:").divider(SHEET_DIVIDER));
         // Buttons at the bottom right, Join the default.
         let ready = self.enterprise(cx).ready();
-        let (j, c) = (cx.weak_entity(), cx.weak_entity());
         col = col.child(div().flex_1()).child(
             div()
                 .flex()
                 .flex_row()
                 .justify_end()
                 .gap(px(m::SPACING))
-                .child(Button::new("Cancel").on_click(move |window, cx| {
-                    let _ = c.update(cx, |f, cx| f.clear_secrets(cx));
-                    window.remove_window();
-                }))
-                .child(Button::new("Join").default(true).enabled(ready).on_click(move |_, cx| {
-                    let _ = j.update(cx, |f, cx| f.join(cx));
-                })),
+                .child(Button::new("Cancel").on_click(cx.listener(|f: &mut EnterpriseForm, _: &ClickEvent, cx| {
+                    f.clear_secrets(cx);
+                    cx.close_window();
+                })))
+                .child(Button::new("Join").default(true).enabled(ready).on_click(cx.listener(|f: &mut EnterpriseForm, _: &ClickEvent, cx| f.join(cx)))),
         );
         col
     }
@@ -990,7 +974,7 @@ fn inner_name(nm_name: &str) -> &'static str {
 }
 
 /// The tick beside the network in use.
-pub(super) fn check(window: &mut Window, r: Bounds<Pixels>, color: Hsla) {
+pub(super) fn check(g: &mut Painter, r: Bounds<Pixels>, color: Hsla) {
     let c0 = r.center();
     let at = |x: f32, y: f32| point(c0.x + px(x), c0.y + px(y));
     let mut path = PathBuilder::stroke(px(2.0));
@@ -998,12 +982,12 @@ pub(super) fn check(window: &mut Window, r: Bounds<Pixels>, color: Hsla) {
     path.line_to(at(-1.5, 3.5));
     path.line_to(at(4.5, -4.0));
     if let Ok(p) = path.build() {
-        window.paint_path(p, color);
+        g.paint_path(p, color);
     }
 }
 
 /// Four rising bars, lit to the signal's strength.
-fn bars(window: &mut Window, r: Bounds<Pixels>, strength: u8, color: Hsla) {
+fn bars(g: &mut Painter, r: Bounds<Pixels>, strength: u8, color: Hsla) {
     let lit = match strength {
         0..=20 => 1,
         21..=45 => 2,
@@ -1011,7 +995,7 @@ fn bars(window: &mut Window, r: Bounds<Pixels>, strength: u8, color: Hsla) {
         _ => 4,
     };
     // In whole device pixels, so they rise in even steps at every scale.
-    let s = window.scale_factor();
+    let s = g.scale_factor();
     let d = |v: f32| (v * s).round();
     let (width, pitch, base, step) = (d(3.0), d(5.0), d(3.0), d(2.5));
     let (x0, bottom) = (d(f32::from(r.left()) + m::CELL_INSET), d(f32::from(r.center().y) + 5.0));
@@ -1019,7 +1003,7 @@ fn bars(window: &mut Window, r: Bounds<Pixels>, strength: u8, color: Hsla) {
         let (x, h) = (x0 + i as f32 * pitch, base + i as f32 * step);
         let bar = Bounds { origin: point(px(x / s), px((bottom - h) / s)), size: size(px(width / s), px(h / s)) };
         let fill = if i < lit { color } else { color.opacity(0.25) };
-        style::fill_rect(window, bar, fill);
+        style::fill_rect(g, bar, fill);
     }
 }
 
@@ -1034,9 +1018,9 @@ fn details(ui: &mut Ui, st: &mut State, status: &Status) {
     st.device = st.device.min(names.len() - 1);
     // (On the 4-point grid, as Ethernet's.)
     const DIVIDER: f32 = 132.0;
-    let pick = ui.on_view(|v, i: usize, _, cx| {
+    let pick = ui.on_view(|v, i: &usize, cx| {
         if let Some(st) = state_of(v) {
-            st.device = i;
+            st.device = *i;
         }
         cx.notify();
     });

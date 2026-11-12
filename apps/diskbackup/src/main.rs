@@ -224,20 +224,17 @@ fn status(json: bool) {
 /// The app: one window, one copy (another launch brings it forward).
 fn app_main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if olo_ui::instance::forward(APP_ID, &args) {
+    if olo_kit::instance::forward(APP_ID, &args) {
         return ExitCode::SUCCESS;
     }
-    olo_ui::run(APP_ID, move |cx| {
-        use olo_ui::gpui::AppContext as _;
-        let proxy = olo_ui::proxy(cx);
-        olo_ui::instance::listen(APP_ID, proxy.clone());
-        let disk = cx.new(|_| app::Disk::new(proxy));
-        let cwd = std::env::current_dir().ok();
-        disk.update(cx, |d, cx| d.launched(&args, cwd.as_deref(), cx));
-        let messages = disk.clone();
-        olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |d, cx| d.message(message, cx)));
+    olo_kit::run(APP_ID, move |app| {
+        olo_kit::instance::listen(APP_ID, olo_kit::proxy());
+        // (The app's windows are kept by the hub, on the app's looper.)
+        let mut hub = app::Hub::new();
+        hub.launched(&args, std::env::current_dir().ok().as_deref());
+        olo_kit::message_handler(app, move |message, _| hub.message(message));
         // (Back as it was after an upgrade: its window.)
-        olo_ui::on_upgrade(cx, |_| Some("{}".into()));
+        olo_kit::on_upgrade(|_| Some("{}".into()));
     });
     ExitCode::SUCCESS
 }
@@ -421,8 +418,8 @@ fn agent_setup_done(a: &[String]) -> Result<(), String> {
     let email = set_up_drive(client, signed)?;
     println!("Backing up to Google Drive ({email}), in the folder “{}”. DiskBackup is set up.", olo_diskbackup::drive::FOLDER);
     // DiskBackup's window, if it's open, says so (not started for it).
-    if olo_ui::instance::running(APP_ID) {
-        olo_ui::instance::forward(APP_ID, &["--agent-setup-done".to_owned()]);
+    if olo_kit::instance::running(APP_ID) {
+        olo_kit::instance::forward(APP_ID, &["--agent-setup-done".to_owned()]);
     }
     Ok(())
 }

@@ -11,12 +11,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use olo_ui::{
-    Frame, WindowOptions,
-    gpui::{App, Bounds, Context, FocusHandle, InteractiveElement as _, IntoElement, ParentElement as _, Render, Styled as _, Window, WindowHandle, canvas, div, px},
-    metrics as m, style, theme,
+use olo_kit::{
+    Bounds, ClickEvent, Cx, Element, InteractiveElement as _, KeyDownEvent, ParentElement as _, Styled as _, View, WindowHandle, WindowOptions, canvas, div, metrics as m, point, px, style, theme,
     widgets::{
-        AlertFrame, Button, alert,
+        AlertFrame, Button,
         alert::{ALERT_TEXT_X, alert_title, button_row, paragraph, paragraph_height},
     },
 };
@@ -119,7 +117,6 @@ pub struct Dialog {
     answer: Answer<bool>,
     app: String,
     picture: PathBuf,
-    focus: FocusHandle,
 }
 
 fn body(app: &str) -> String {
@@ -127,64 +124,54 @@ fn body(app: &str) -> String {
     format!("{who} would like to make this picture your desktop background.")
 }
 
-fn height(cx: &App, ask: &Ask) -> f32 {
-    let text = m::LABEL_ROW + m::TIGHT + paragraph_height(cx, &body(&ask.app), COLUMN) + m::SPACING;
+fn height(ask: &Ask) -> f32 {
+    let text = m::LABEL_ROW + m::TIGHT + paragraph_height(&body(&ask.app), COLUMN) + m::SPACING;
     (2.0 * m::WINDOW_INSET + text + PICTURE_H + m::SPACING + m::CONTROL_HEIGHT + m::WINDOW_INSET).ceil()
 }
 
-pub fn open(cx: &mut App, ask: Ask) -> Option<WindowHandle<Frame>> {
-    let options = ui::over(WindowOptions::alert("Desktop Background", WIDTH, height(cx, &ask)), &ask.parent);
-    ui::open(cx, options, move |window, cx| {
-        let focus = cx.focus_handle();
-        window.focus(&focus);
-        Dialog { answer: Answer::new(ask.reply, false), app: ask.app, picture: ask.picture, focus }
-    })
+pub fn open(ask: Ask) -> WindowHandle<Dialog> {
+    let options = ui::over(WindowOptions::alert("Desktop Background", WIDTH, height(&ask)), &ask.parent);
+    ui::open(options, move |_| Dialog { answer: Answer::new(ask.reply, false), app: ask.app, picture: ask.picture })
 }
 
 impl Dialog {
-    fn finish(&mut self, yes: bool, window: &mut Window) {
+    fn finish(&mut self, yes: bool, cx: &mut Cx<Self>) {
         self.answer.give(yes);
-        window.remove_window();
+        cx.close_window();
     }
 }
 
-impl Render for Dialog {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let me = cx.entity();
+impl View for Dialog {
+    type Message = ();
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         // The picture, fitted (never past a texel to a device pixel), with
         // a hairline around it.
         let path = self.picture.clone();
-        let picture = canvas(
-            |_, _, _| {},
-            move |b, _, window, cx| {
-                let s = window.scale_factor();
-                let place = ((f32::from(b.size.width) * s).round() as u32, (PICTURE_H * s).round() as u32);
-                let Some(img) = crate::pictures::get(cx, &path, place) else { return };
-                let isz = img.size(0);
-                let at = style::snap_centred(window, b.center(), isz.width.0 as f32 / s, isz.height.0 as f32 / s);
-                let _ = window.paint_image(at, Default::default(), img, 0, false);
-                let p = theme::palette(cx);
-                let line = style::hairline(window);
-                style::frame_rect(window, Bounds::from_corners(at.origin - olo_ui::gpui::point(line, line), at.bottom_right() + olo_ui::gpui::point(line, line)), style::c(p.control_border));
-                olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Image", name: Some(path.display().to_string().into()), bounds: at, enabled: true, ..Default::default() });
-            },
-        )
+        let picture = canvas(move |g, b| {
+            let s = g.scale_factor();
+            let place = ((f32::from(b.size.width) * s).round() as u32, (PICTURE_H * s).round() as u32);
+            let Some(img) = olo_kit::pictures::fitted(g, &path, place) else { return };
+            let isz = img.size(0);
+            let at = style::snap_centred(g, b.center(), isz.width.0 as f32 / s, isz.height.0 as f32 / s);
+            let _ = g.paint_image(at, Default::default(), img, 0, false);
+            let p = theme::palette();
+            let line = style::hairline(g);
+            style::frame_rect(g, Bounds::from_corners(at.origin - point(line, line), at.bottom_right() + point(line, line)), style::c(p.control_border));
+            olo_kit::agent::record(g, olo_kit::agent::Node { role: "Image", name: Some(path.display().to_string().into()), bounds: at, enabled: true, ..Default::default() });
+        })
         .w_full()
         .h(px(PICTURE_H));
-        let no = Button::new("Cancel").on_click({
-            let me = me.clone();
-            move |window, cx| me.update(cx, |d, _| d.finish(false, window))
-        });
-        let yes = Button::new("Set Background").default(true).on_click({
-            let me = me.clone();
-            move |window, cx| me.update(cx, |d, _| d.finish(true, window))
-        });
+        let no = Button::new("Cancel").on_click(cx.listener(|d: &mut Dialog, _: &ClickEvent, cx| d.finish(false, cx)));
+        // (Return sets it: the default button. Escape cancels.)
+        let yes = Button::new("Set Background").default(true).on_click(cx.listener(|d: &mut Dialog, _: &ClickEvent, cx| d.finish(true, cx)));
         div()
             .size_full()
-            .key_context(alert::CONTEXT)
-            .track_focus(&self.focus)
-            .on_action(cx.listener(|d, _: &alert::Default, window, _| d.finish(true, window)))
-            .on_action(cx.listener(|d, _: &alert::Cancel, window, _| d.finish(false, window)))
+            .on_window_key_down(cx.listener(|d: &mut Dialog, e: &KeyDownEvent, cx| {
+                if e.keystroke.key == "escape" && !e.keystroke.modifiers.modified() {
+                    d.finish(false, cx);
+                }
+            }))
             .child(
                 AlertFrame::new(ICON)
                     .child(alert_title(TITLE))

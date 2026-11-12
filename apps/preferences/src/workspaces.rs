@@ -1,10 +1,10 @@
 //! Workspaces (how many) and Backgrounds (each workspace's desktop colour,
 //! and an optional wallpaper), as in BeOS's Workspaces and Backgrounds.
 
-use olo_ui::{
+use olo_kit::{
+    Cx, ParentElement as _, SharedString, Styled as _, div,
     file_panel::{self, FilePanel, PanelResult},
-    gpui::{Context, IntoElement as _, ParentElement as _, SharedString, Styled as _, div, px, rgb},
-    metrics as m, pictures, style, theme,
+    metrics as m, pictures, px, rgb, style, theme,
     widgets::{Button, ColorControl, ColorWell, MenuField, Thumbnail, ThumbnailPicker, color_control_height},
 };
 use olo_xdg::wallpapers::{self, Wallpaper};
@@ -20,13 +20,10 @@ pub fn ui(ui: &mut Ui) {
     // A miniature of the Workspaces applet: one cell per workspace, in its colour.
     let colours: Vec<[u8; 3]> = (0..ui.s.workspace_count).map(|i| ui.s.workspace_color(i)).collect();
     ui.add(div().flex().flex_row().gap(px(4.0)).children(colours.into_iter().map(|c| {
-        olo_ui::gpui::canvas(
-            |_, _, _| {},
-            move |b, _, window, cx| {
-                style::fill_rect(window, b, colour(c));
-                style::sunken(window, b, &theme::palette(cx), false);
-            },
-        )
+        olo_kit::canvas(move |g, b| {
+            style::fill_rect(g, b, colour(c));
+            style::sunken(g, b, &theme::palette(), false);
+        })
         .w(px(28.0))
         .h(px(20.0))
     })));
@@ -34,7 +31,7 @@ pub fn ui(ui: &mut Ui) {
     ui.note("Each display has workspaces of its own.");
 }
 
-fn colour([r, g, b]: [u8; 3]) -> olo_ui::gpui::Hsla {
+fn colour([r, g, b]: [u8; 3]) -> olo_kit::Hsla {
     rgb((u32::from(r) << 16) | (u32::from(g) << 8) | u32::from(b)).into()
 }
 
@@ -60,20 +57,18 @@ pub const WALLPAPER_TYPES: &[&str] = &["png", "jpg", "jpeg", "jxl", "avif", "hei
 
 /// The file panel for a picture of one's own, starting where the current
 /// one is, else in the Pictures folder.
-fn choose(ui: &Ui) -> impl Fn(&mut olo_ui::gpui::Window, &mut olo_ui::gpui::App) + Clone + 'static {
-    let prefs = ui.prefs();
+fn choose(ui: &Ui) -> impl Fn() + Clone + 'static {
     let current = ui.s.wallpaper.clone();
-    move |_, cx| {
+    move || {
         let dir = current
             .as_deref()
             .and_then(|p| std::path::Path::new(p).parent().map(|d| d.to_owned()))
             .filter(|d| d.is_dir())
             .or_else(|| olo_xdg::user_dir("PICTURES"))
             .unwrap_or_else(|| std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default()));
-        let prefs = prefs.clone();
-        file_panel::show(cx, "Choose a Wallpaper", FilePanel::open(dir).types(WALLPAPER_TYPES), move |a, cx| {
+        file_panel::show("Choose a Wallpaper", FilePanel::open(dir).types(WALLPAPER_TYPES), move |a| {
             if let PanelResult::Chosen(path) = a.result {
-                let _ = prefs.update(cx, |p, cx| p.edit_as(cx, "", "Background", |s| s.wallpaper = Some(path.to_string_lossy().into_owned())));
+                crate::prefs().edit_as("", "Background", |s| s.wallpaper = Some(path.to_string_lossy().into_owned()));
             }
         });
     }
@@ -83,9 +78,9 @@ pub fn backgrounds_ui(ui: &mut Ui, st: &mut BackgroundsState) {
     let s = ui.s.clone();
     let names: Vec<SharedString> = (1..=s.workspace_count).map(|i| format!("Workspace {i}").into()).collect();
     st.workspace = st.workspace.min(names.len().saturating_sub(1));
-    let pick = ui.on_view(|v, i: usize, _, cx: &mut Context<PanelView>| {
+    let pick = ui.on_view(|v, i: &usize, cx: &mut Cx<PanelView>| {
         if let Some(st) = state_of(v) {
-            st.workspace = i;
+            st.workspace = *i;
         }
         cx.notify();
     });
@@ -103,24 +98,35 @@ pub fn backgrounds_ui(ui: &mut Ui, st: &mut BackgroundsState) {
             s.workspace_colors[ws] = c;
         });
         let h = color_control_height();
-        let ramps = (f32::from(ui.window.viewport_size().width) - 2.0 * m::WINDOW_INSET - 2.0 * m::BOX_INSET - h - 2.0 * m::SPACING - 96.0).clamp(160.0, 260.0);
-        ui.add(div().flex().flex_row().gap(px(m::SPACING)).child(ColorWell::new(colour(rgb), h)).child(ColorControl::new(format!("desktop-colour-{ws}"), rgb).ramp_width(ramps).on_change(set)));
+        let ramps = (f32::from(ui.cx.viewport_size().width) - 2.0 * m::WINDOW_INSET - 2.0 * m::BOX_INSET - h - 2.0 * m::SPACING - 96.0).clamp(160.0, 260.0);
+        let control = ColorControl::new(format!("desktop-colour-{ws}"), rgb).ramp_width(ramps).on_change(set).build(ui.cx);
+        ui.add(div().flex().flex_row().gap(px(m::SPACING)).child(ColorWell::new(colour(rgb), h)).child(control));
     });
 
     let pack = st.pack.get_or_insert_with(wallpapers::pack).clone();
     let choose = choose(ui);
     ui.bbox("Wallpaper", |ui| {
-        let dark = s.appearance.effective_theme == olo_ui::palette::ThemeMode::Dark;
+        let dark = s.appearance.effective_theme == olo_kit::palette::ThemeMode::Dark;
         let own = s.wallpaper.as_deref().filter(|w| !w.starts_with(wallpapers::PACK)).map(str::to_owned);
-        let px_wide = (PREVIEW.0 * ui.window.scale_factor()).round() as u32;
+        let px_wide = (PREVIEW.0 * ui.cx.scale_factor()).round() as u32;
         // None (just this workspace's colour), the pack (previews in the
         // current mode), and your own.
         let mut items = vec![Thumbnail { picture: None, color: Some(colour(rgb)), label: "None".into() }];
         for w in &pack {
-            let picture = wallpapers::thumbnail(&w.name, dark).and_then(|p| pictures::thumbnail(ui.cx, &p, px_wide));
+            let picture = wallpapers::thumbnail(&w.name, dark).and_then(|p| {
+                pictures::thumbnail_soon(&p, px_wide, {
+                    let again = ui.cx.invalidator();
+                    move || again.invalidate()
+                })
+            });
             items.push(Thumbnail { picture, color: None, label: w.label.clone().into() });
         }
-        let own_picture = own.as_deref().and_then(|p| pictures::thumbnail(ui.cx, std::path::Path::new(p), px_wide));
+        let own_picture = own.as_deref().and_then(|p| {
+            pictures::thumbnail_soon(std::path::Path::new(p), px_wide, {
+                let again = ui.cx.invalidator();
+                move || again.invalidate()
+            })
+        });
         items.push(Thumbnail { picture: own_picture, color: None, label: "Your Own".into() });
         let selected = match s.wallpaper.as_deref() {
             None => Some(0),
@@ -143,15 +149,15 @@ pub fn backgrounds_ui(ui: &mut Ui, st: &mut BackgroundsState) {
             }
         });
         // Your Own with none chosen yet: pick one.
-        let choose_own = choose_twin(&choose);
+        let choose_own = choose.clone();
         let has_own = own.is_some();
         // As wide as the box's content: as many side by side as fit.
-        let wide = f32::from(ui.window.viewport_size().width) - 2.0 * (m::WINDOW_INSET + m::BOX_INSET);
-        let picker = ThumbnailPicker::new("wallpaper", items, selected).picture_size(PREVIEW.0, PREVIEW.1).width(wide).on_select(move |i, window, cx| {
-            if i > n && !has_own {
-                choose_own(window, cx);
+        let wide = f32::from(ui.cx.viewport_size().width) - 2.0 * (m::WINDOW_INSET + m::BOX_INSET);
+        let picker = ThumbnailPicker::new("wallpaper", items, selected).picture_size(PREVIEW.0, PREVIEW.1).width(wide).on_select(move |i: &usize, cx| {
+            if *i > n && !has_own {
+                choose_own();
             } else {
-                set(i, window, cx);
+                set(i, cx);
             }
         });
         ui.add(picker);
@@ -165,7 +171,7 @@ pub fn backgrounds_ui(ui: &mut Ui, st: &mut BackgroundsState) {
         }
         ui.space(m::SPACING);
         // Your own picture, by name.
-        let field = ui.field(
+        let _field = ui.field(
             "wallpaper-own",
             own.as_deref().unwrap_or(""),
             |f| f.hint("A picture of your own"),
@@ -176,18 +182,6 @@ pub fn backgrounds_ui(ui: &mut Ui, st: &mut BackgroundsState) {
                 }
             },
         );
-        ui.add(
-            div()
-                .flex()
-                .flex_row()
-                .gap(px(m::SPACING))
-                .child(div().flex_1().child(olo_ui::widgets::TextControl::new(field).label("Your own:")))
-                .child(Button::new("Choose…").on_click(choose).into_any_element()),
-        );
+        ui.add(div().flex().flex_row().gap(px(m::SPACING)).child(div().flex_1().child(ui.control_of("wallpaper-own").label("Your own:"))).child(Button::new("Choose…").on_click(move |_, _| choose())));
     });
-}
-
-/// The same file panel, for another control.
-fn choose_twin(f: &(impl Fn(&mut olo_ui::gpui::Window, &mut olo_ui::gpui::App) + Clone + 'static)) -> impl Fn(&mut olo_ui::gpui::Window, &mut olo_ui::gpui::App) + 'static {
-    f.clone()
 }

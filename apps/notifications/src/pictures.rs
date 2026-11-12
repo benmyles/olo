@@ -11,10 +11,8 @@ use std::{
     sync::Arc,
 };
 
-use olo_ui::{
-    gpui::{App, AppContext as _, Global, RenderImage},
-    widgets::image_view::{self, Rgba},
-};
+use olo_kit::{Painter, RenderImage};
+use olo_sync::Mutex;
 
 /// Pixels in no toolkit's type: RGBA, premultiplied.
 #[derive(Debug, PartialEq)]
@@ -47,15 +45,6 @@ impl Raw {
             rgba.extend_from_slice(&self.rgba[row..row + cw * 4]);
         }
         Raw { size: [cw, ch], rgba }
-    }
-}
-
-impl Rgba for Raw {
-    fn size(&self) -> [usize; 2] {
-        self.size
-    }
-    fn rgba(&self) -> &[u8] {
-        &self.rgba
     }
 }
 
@@ -107,57 +96,59 @@ enum Slot {
     Missing,
 }
 
-/// Pictures made so far.
-#[derive(Default)]
-pub struct Pictures {
-    made: HashMap<Key, Slot>,
-}
+/// Pictures made so far (one cache for the program: the banners and the
+/// History window draw the same ones).
+static MADE: Mutex<Option<HashMap<Key, Slot>>> = Mutex::new(None);
 
-impl Global for Pictures {}
-
-/// At most this many kept; past it, the oldest go (the History window
-/// scrolled through two hundred pictures).
+/// At most this many kept; past it, they all go and are made again as
+/// they're drawn (the History window scrolled through two hundred
+/// pictures). One let go of takes its texture with it.
 const KEEP: usize = 400;
 
 /// `source`'s picture made for a place `place` device pixels in size
 /// (`shape`: how it fills it; fitted, it is its own size within it, to
-/// be centred there); None while it's being made (the windows are drawn
-/// again when it is) or if it can't be read.
-pub fn get(cx: &mut App, source: &Source, place: (u32, u32), shape: Shape) -> Option<Arc<RenderImage>> {
+/// be centred there), for what `g` is painting: None while it's being
+/// made (the drawing is made again when it is) or if it can't be read.
+pub fn get(g: &mut Painter, source: &Source, place: (u32, u32), shape: Shape) -> Option<Arc<RenderImage>> {
     let place = (place.0.max(1), place.1.max(1));
     let key = (source.key(), place.0, place.1, shape);
-    let pictures = cx.default_global::<Pictures>();
-    match pictures.made.get(&key) {
-        Some(Slot::Made(img)) => return Some(img.clone()),
-        Some(Slot::Making | Slot::Missing) => return None,
-        None => {}
-    }
-    if pictures.made.len() >= KEEP {
-        // (Each leaves the GPU's atlas too, or they'd stay there.)
-        let gone: Vec<Arc<RenderImage>> = pictures.made.drain().filter_map(|(_, slot)| if let Slot::Made(img) = slot { Some(img) } else { None }).collect();
-        for img in gone {
-            cx.drop_image(img, None);
+    {
+        let mut made = MADE.lock().unwrap_or_else(|e| e.into_inner());
+        let made = made.get_or_insert_with(HashMap::new);
+        match made.get(&key) {
+            Some(Slot::Made(img)) => return Some(img.clone()),
+            Some(Slot::Missing) => return None,
+            Some(Slot::Making) => {
+                g.paint_unfinished();
+                return None;
+            }
+            None => {}
         }
+        if made.len() >= KEEP {
+            made.retain(|_, slot| matches!(slot, Slot::Making));
+        }
+        made.insert(key.clone(), Slot::Making);
     }
-    let pictures = cx.default_global::<Pictures>();
-    pictures.made.insert(key.clone(), Slot::Making);
+    g.paint_unfinished();
     let source = source.clone();
-    let made = cx.background_spawn(async move {
-        let raw = match &source {
-            Source::Note(_, raw) => raw.clone(),
-            Source::File(path) => Arc::new(Raw::load(path)?),
-        };
-        match shape {
-            Shape::Cover => image_view::resampled(&raw.middle(place), place),
-            Shape::Fit => image_view::resampled(raw.as_ref(), fitted(raw.size, place)),
-        }
-    });
-    cx.spawn(async move |cx| {
-        let img = made.await;
-        let _ = cx.update(|cx| {
-            cx.default_global::<Pictures>().made.insert(key, img.map_or(Slot::Missing, Slot::Made));
-            cx.refresh_windows();
-        });
+    olo_kit::app_kit::pool::run(move || {
+        let img = (|| {
+            let raw = match &source {
+                Source::Note(_, raw) => raw.clone(),
+                Source::File(path) => Arc::new(Raw::load(path)?),
+            };
+            let size = |r: &Raw| (r.size[0] as u32, r.size[1] as u32);
+            match shape {
+                Shape::Cover => {
+                    let middle = raw.middle(place);
+                    olo_kit::pictures::resampled(&middle.rgba, size(&middle), place)
+                }
+                Shape::Fit => olo_kit::pictures::resampled(&raw.rgba, size(&raw), fitted(raw.size, place)),
+            }
+        })();
+        MADE.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).insert(key, img.map_or(Slot::Missing, Slot::Made));
+        // What was drawn without it is drawn again.
+        olo_kit::all_windows(|cx| cx.repaint_unfinished());
     })
     .detach();
     None

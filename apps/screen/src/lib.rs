@@ -73,8 +73,8 @@ mod viewer;
 
 use std::{path::PathBuf, time::Duration};
 
+use olo_kit::{commands, instance};
 use olo_protocol::{Frame, ImageFormat, Reply, Request, SyntheticEvent, WindowInfo};
-use olo_ui::{commands, instance};
 use serde::Serialize;
 use serde_json::json;
 
@@ -1231,34 +1231,16 @@ pub fn main() {
     if instance::forward(APP_ID, &args) {
         return;
     }
-    olo_ui::run(APP_ID, move |cx| {
-        use olo_ui::gpui::{AppContext as _, KeyBinding, NoAction};
-        instance::listen(APP_ID, olo_ui::proxy(cx));
-        // Tab and ⇧Tab on a screen being controlled go to it.
-        cx.bind_keys([KeyBinding::new("tab", NoAction, Some(viewer::CONTROLLED)), KeyBinding::new("shift-tab", NoAction, Some(viewer::CONTROLLED))]);
+    olo_kit::run(APP_ID, move |app| {
+        instance::listen(APP_ID, olo_kit::proxy());
         // (Re-executed by an upgrade, the same pid: what it said it
         // controlled before isn't so now.)
         screens::clear_controlled_by_me();
-        let app = cx.new(viewer::Viewer::new);
-        let view = app.clone();
-        let window = olo_ui::open_window(cx, olo_ui::WindowOptions::new("Agent Screens", 1000.0, 640.0).min_size(660.0, 420.0).keep_size("main"), move |window, cx| {
-            // Closing it ends the app (and any control of a screen).
-            let quitting = view.clone();
-            window.on_window_should_close(cx, move |_, cx| {
-                quitting.update(cx, |v, cx| v.quit(cx));
-                true
-            });
-            view
+        let window = olo_kit::open_window(olo_kit::WindowOptions::new("Agent Screens", 1000.0, 640.0).min_size(660.0, 420.0).keep_size("main"), move |cx| viewer::Viewer::new(show, cx));
+        // What the workers and other starts say goes to the window.
+        olo_kit::message_handler(app, move |message, _| {
+            window.messenger().send(message);
         });
-        app.update(cx, |v, cx| {
-            v.set_window(window);
-            v.show(show, cx);
-        });
-        let messages = app.clone();
-        olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |v, cx| v.message(message, cx)));
-        // What it shows, kept over an upgrade.
-        let saving = app.clone();
-        olo_ui::on_upgrade(cx, move |cx| Some(saving.read(cx).saved()));
     });
 }
 

@@ -7,12 +7,11 @@
 use olo_sync::Mutex;
 use std::sync::Arc;
 
-use olo_system::github::{self, Source};
-use olo_ui::{
-    gpui::{AnyElement, Context, Entity, IntoElement, ParentElement as _, Styled as _, canvas, div, px},
-    icons, metrics as m,
+use olo_kit::{
+    Child, ClickEvent, Cx, Element, IntoElement, ParentElement as _, Styled as _, WindowCx, canvas, div, icons, metrics as m, px,
     widgets::{BBox, Button, StringView, TextControl, TextField, TextFieldEvent},
 };
+use olo_system::github::{self, Source};
 
 use crate::{Msg, PanelView, form::Ui, panel};
 
@@ -42,25 +41,24 @@ enum GitHub {
 pub struct State {
     github: Arc<Mutex<GitHub>>,
     /// A token being typed, to connect with.
-    token: Entity<TextField>,
+    token: Child<TextField>,
     adding: bool,
-    proxy: olo_ui::Proxy,
+    proxy: olo_kit::Proxy,
     pub telegram: crate::telegram::State,
 }
 
 impl State {
-    pub fn new(cx: &mut Context<PanelView>) -> State {
-        let token = olo_ui::widgets::text_field(cx, |f| f.password(true).hint("ghp_… or github_pat_…"));
-        cx.subscribe(&token, |v, _, e: &TextFieldEvent, cx| {
+    pub fn new(cx: &mut Cx<PanelView>) -> State {
+        let token = crate::form::text_field(cx, |f| f.password(true).hint("ghp_… or github_pat_…"));
+        cx.subscribe(&token, |v, e: &TextFieldEvent, cx| {
             if matches!(e, TextFieldEvent::Entered)
                 && let Some(st) = state_of(v)
             {
                 st.connect(cx);
                 cx.notify();
             }
-        })
-        .detach();
-        let mut st = State { github: Arc::default(), token, adding: false, proxy: olo_ui::proxy(cx), telegram: crate::telegram::State::new(cx) };
+        });
+        let mut st = State { github: Arc::default(), token, adding: false, proxy: olo_kit::proxy(), telegram: crate::telegram::State::new(cx) };
         // (Tests, the layout lint, never read the keyring.)
         if cfg!(test) {
             *st.github.lock().unwrap() = GitHub::None;
@@ -81,18 +79,15 @@ pub fn state_of(v: &mut PanelView) -> Option<&mut State> {
 /// A row of buttons at the right, the first given rightmost (laid out
 /// right to left), a little below what's above it (room for a
 /// default button's ring).
-pub fn buttons(items: Vec<AnyElement>) -> impl IntoElement {
+pub fn buttons(items: Vec<Element>) -> impl IntoElement {
     div().flex().flex_row().justify_end().gap(px(m::SPACING + 2.0)).pt(px(m::TIGHT)).children(items.into_iter().rev())
 }
 
 /// A service's icon beside what it does and how it is connected.
 pub fn service(icon: &'static str, about: &str, status: String) -> impl IntoElement {
-    let art = canvas(
-        |_, _, _| {},
-        move |b, _, window, _| {
-            icons::paint(window, b, icon);
-        },
-    )
+    let art = canvas(move |g, b| {
+        icons::paint(g, b, icon);
+    })
     .w(px(INTEGRATION_ICON))
     .h(px(INTEGRATION_ICON))
     .flex_shrink_0();
@@ -149,7 +144,7 @@ impl State {
     }
 
     /// Try the token typed, and keep it if GitHub takes it.
-    fn connect(&mut self, cx: &mut Context<PanelView>) {
+    fn connect(&mut self, cx: &mut Cx<PanelView>) {
         let token = self.token.read(cx).text().to_owned();
         if token.trim().is_empty() {
             return;
@@ -186,8 +181,8 @@ impl State {
 }
 
 /// Something done to the panel's state from a button.
-fn act(ui: &Ui, f: impl Fn(&mut State, &mut Context<PanelView>) + 'static) -> impl Fn(&mut olo_ui::gpui::Window, &mut olo_ui::gpui::App) + 'static {
-    ui.on_click_view(move |v, _, cx| {
+fn act(ui: &Ui, f: impl Fn(&mut State, &mut Cx<PanelView>) + 'static) -> impl Fn(&ClickEvent, &mut WindowCx) + 'static {
+    ui.on_click_view(move |v, cx| {
         if let Some(st) = state_of(v) {
             f(st, cx);
         }
@@ -204,55 +199,55 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         GitHub::Failed { source: Some(s), why } => format!("{why} (From {}.)", s.describe()),
         GitHub::Failed { source: None, why } => why.clone(),
     };
-    let mut items: Vec<AnyElement> = vec![service("github", "Terminal shows each tab’s pull request on GitHub and whether its checks pass.", status).into_any_element()];
+    let mut items: Vec<Element> = vec![service("github", "Terminal shows each tab’s pull request on GitHub and whether its checks pass.", status).into_element()];
     if st.adding {
-        items.push(TextControl::new(st.token.clone()).label("Token:").into_any_element());
+        items.push(TextControl::new(ui.cx, &st.token).label("Token:").into_element());
         items.push(
             StringView::new("A classic token with the repo scope, or a fine-grained one that can read pull requests and checks. Olo keeps it in your login keyring.")
                 .dim(true)
                 .wrap(true)
-                .into_any_element(),
+                .into_element(),
         );
     }
-    let row: Vec<AnyElement> = if st.adding {
+    let row: Vec<Element> = if st.adding {
         let ready = !st.token.read(ui.cx).text().trim().is_empty();
         vec![
-            Button::new("Connect").default(true).enabled(ready).on_click(act(ui, |st, cx| st.connect(cx))).into_any_element(),
+            Button::new("Connect").default(true).enabled(ready).on_click(act(ui, |st, cx| st.connect(cx))).into_element(),
             Button::new("Cancel")
                 .on_click(act(ui, |st, cx| {
                     st.adding = false;
                     st.token.update(cx, |f, cx| f.clear_secret(cx));
                 }))
-                .into_any_element(),
+                .into_element(),
             Button::new("Make a Token…")
                 .on_click(|_, _| {
                     let _ = olo_xdg::open::open(&olo_xdg::open::Target::Url(NEW_TOKEN.into()));
                 })
-                .into_any_element(),
+                .into_element(),
         ]
     } else {
         let checking = now == GitHub::Checking;
-        let mut row = vec![Button::new("Check Again").enabled(!checking).on_click(act(ui, |st, _| st.check())).into_any_element()];
+        let mut row = vec![Button::new("Check Again").enabled(!checking).on_click(act(ui, |st, _| st.check())).into_element()];
         if matches!(now, GitHub::Connected { source: Source::Olo, .. } | GitHub::Failed { source: Some(Source::Olo), .. }) {
-            row.push(Button::new("Disconnect").on_click(act(ui, |st, _| st.disconnect())).into_any_element());
+            row.push(Button::new("Disconnect").on_click(act(ui, |st, _| st.disconnect())).into_element());
         }
         let label = if matches!(now, GitHub::Connected { .. }) { "Use Another Token…" } else { "Connect with a Token…" };
-        let token = st.token.clone();
+        let token = st.token.downgrade();
         row.push(
             Button::new(label)
                 .enabled(!checking)
-                .on_click(ui.on_click_view(move |v, window, cx| {
+                .on_click(ui.on_click_view(move |v, cx| {
                     if let Some(st) = state_of(v) {
                         st.adding = true;
                     }
-                    token.update(cx, |f, _| f.focus(window));
+                    token.focus(cx);
                     cx.notify();
                 }))
-                .into_any_element(),
+                .into_element(),
         );
         row
     };
-    items.push(buttons(row).into_any_element());
+    items.push(buttons(row).into_element());
     ui.add(BBox::new("GitHub").children(items));
     ui.space(m::SPACING);
     crate::telegram::ui(ui, &mut st.telegram);

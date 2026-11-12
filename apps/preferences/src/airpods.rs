@@ -15,13 +15,12 @@ use std::{
     time::Duration,
 };
 
-use olo_protocol::airpods::{self as ap, AirPods, AirPodsSettings, AirPodsState, BudMicrophone, Change, Charge, ListeningMode, MicrophoneChoice, Request};
-use olo_sync::Mutex;
-use olo_ui::{
-    gpui::{AppContext as _, Context, Entity, ParentElement as _, SharedString, Styled as _, div, px},
-    metrics as m,
+use olo_kit::{
+    Child, Cx, ParentElement as _, SharedString, Styled as _, WindowCx, div, metrics as m, px,
     widgets::{BBox, Button, CheckBox, EmptyState, MenuField, RadioButton, Slider, StatusBar, StringView, TextControl, TextField, TextFieldEvent},
 };
+use olo_protocol::airpods::{self as ap, AirPods, AirPodsSettings, AirPodsState, BudMicrophone, Change, Charge, ListeningMode, MicrophoneChoice, Request};
+use olo_sync::Mutex;
 
 use crate::{Msg, PanelView, form::Ui, panel};
 
@@ -46,7 +45,7 @@ struct Link {
 
 /// The service's state, followed, and the worker that asks it (one for
 /// the app).
-fn link(proxy: olo_ui::Proxy) -> &'static Link {
+fn link(proxy: olo_kit::Proxy) -> &'static Link {
     static LINK: OnceLock<Link> = OnceLock::new();
     LINK.get_or_init(|| {
         let shared: Arc<Mutex<Shared>> = Default::default();
@@ -74,7 +73,7 @@ fn link(proxy: olo_ui::Proxy) -> &'static Link {
         let paths = [AirPodsState::path(), AirPodsSettings::path()];
         let first = read.clone();
         std::thread::spawn(move || first(&[]));
-        if let Some(w) = olo_ui::watch::watch(paths, read) {
+        if let Some(w) = olo_kit::watch::watch(paths, read) {
             // The app's, for as long as it runs.
             std::mem::forget(w);
         }
@@ -151,26 +150,24 @@ pub struct State {
     link: &'static Link,
     /// The pair shown (several may be paired).
     chosen: Option<String>,
-    name: Entity<TextField>,
+    name: Child<TextField>,
 }
 
 impl State {
-    pub fn new(cx: &mut Context<PanelView>) -> State {
-        let link = link(olo_ui::proxy(cx));
-        let name = cx.new(TextField::new);
-        cx.subscribe(&name, move |v, field, e: &TextFieldEvent, cx| {
+    pub fn new(cx: &mut Cx<PanelView>) -> State {
+        let link = link(olo_kit::proxy());
+        let name = crate::form::text_field(cx, |f| f);
+        cx.subscribe(&name, move |v, e: &TextFieldEvent, cx| {
             if matches!(e, TextFieldEvent::Entered) {
-                let text = field.read(cx).text().trim().to_owned();
-                let address = match &v.state {
-                    panel::State::AirPods(st) => st.chosen.clone(),
-                    _ => None,
+                let (text, address) = match &v.state {
+                    panel::State::AirPods(st) => (st.name.read(cx).text().trim().to_owned(), st.chosen.clone()),
+                    _ => return,
                 };
                 if !text.is_empty() {
                     let _ = link.tx.send(Job::Ask(Request::Set { address, change: Change::Name(text) }));
                 }
             }
-        })
-        .detach();
+        });
         State { link, chosen: None, name }
     }
 }
@@ -195,13 +192,10 @@ fn levels(ui: &mut Ui, a: &AirPods) {
     let columns: Vec<_> = parts
         .into_iter()
         .map(|(name, icon, c)| {
-            let picture = olo_ui::gpui::canvas(
-                |_, _, _| {},
-                move |b: olo_ui::gpui::Bounds<olo_ui::gpui::Pixels>, _, window, _| {
-                    let at = olo_ui::style::snap_centred(window, b.center(), 48.0, 48.0);
-                    olo_ui::icons::paint(window, at, icon);
-                },
-            )
+            let picture = olo_kit::canvas(move |g, b: olo_kit::Bounds<olo_kit::Pixels>| {
+                let at = olo_kit::style::snap_centred(g, b.center(), 48.0, 48.0);
+                olo_kit::icons::paint(g, at, icon);
+            })
             .w_full()
             .h(px(48.0));
             let bar = match c {
@@ -224,13 +218,12 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         return ui.add(EmptyState::new("Looking for AirPods…").icon("airpods"));
     }
     if state.devices.is_empty() {
-        let prefs = ui.prefs();
         return ui.add(
             EmptyState::new("No AirPods are paired with this computer.")
                 .icon("airpods")
                 .detail("Open the case near this computer, press and hold its button until the light flashes white, then pair them in Bluetooth.")
-                .action("Bluetooth…", move |_, cx| {
-                    let _ = prefs.update(cx, |p, cx| p.open("bluetooth", cx));
+                .action("Bluetooth…", move |_, _cx| {
+                    crate::prefs().open("bluetooth");
                 }),
         );
     }
@@ -275,7 +268,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                                 .label("Adaptive:")
                                 .limits("More noise", "Less noise")
                                 .enabled(ui.enabled() && s.listening_mode == Some(ListeningMode::Adaptive))
-                                .on_change(move |v, _, _| ask(Change::AdaptiveStrength(v.round() as u8))),
+                                .on_change(move |v, _| ask(Change::AdaptiveStrength(v.round() as u8))),
                         );
                     }
                 });
@@ -294,9 +287,9 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                             let on = chosen.contains(&mode);
                             // At least two are always chosen.
                             let last_two = on && chosen.len() <= 2;
-                            CheckBox::new(mode.label(), on).enabled(ui.enabled() && !last_two).on_toggle(move |now, _, _| {
+                            CheckBox::new(mode.label(), on).enabled(ui.enabled() && !last_two).on_toggle(move |now, _| {
                                 let mut modes: Vec<ListeningMode> = chosen.iter().copied().filter(|m| *m != mode).collect();
-                                if now {
+                                if *now {
                                     modes.push(mode);
                                 }
                                 ask(Change::PressAndHoldModes(modes));
@@ -310,12 +303,12 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                     let speed = MenuField::new("press-speed", speeds, s.press_speed.unwrap_or(0).min(2) as usize)
                         .label("Press speed:")
                         .enabled(ui.enabled())
-                        .on_change(move |i, _, _| ask2(Change::PressSpeed(i as u8)));
+                        .on_change(move |i, _| ask2(Change::PressSpeed(*i as u8)));
                     let ask3 = ask.clone();
                     let hold = MenuField::new("hold-duration", durations, s.hold_duration.unwrap_or(0).min(2) as usize)
                         .label("Hold duration:")
                         .enabled(ui.enabled())
-                        .on_change(move |i, _, _| ask3(Change::HoldDuration(i as u8)));
+                        .on_change(move |i, _| ask3(Change::HoldDuration(*i as u8)));
                     ui.add(div().flex().flex_row().flex_wrap().items_center().gap_x(px(m::SPACING * 4.0)).gap_y(px(m::STACK)).child(speed).child(hold));
                 });
                 ui.add(BBox::new("Press and Hold").children(items));
@@ -327,7 +320,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             let items = ui.collect(|ui| {
                 let check = |ui: &mut Ui, label: &str, on: Option<bool>, make: fn(bool) -> Change| {
                     let ask = ask.clone();
-                    ui.add(CheckBox::new(label.to_owned(), on.unwrap_or(false)).enabled(ui.enabled() && on.is_some()).on_toggle(move |v, _, _| ask(make(v))));
+                    ui.add(CheckBox::new(label.to_owned(), on.unwrap_or(false)).enabled(ui.enabled() && on.is_some()).on_toggle(move |v, _| ask(make(*v))));
                 };
                 if a.abilities.adaptive {
                     check(ui, "Conversation Awareness: lower the sound when you speak", s.conversation_awareness, Change::ConversationAwareness);
@@ -352,7 +345,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                         MenuField::new("bud-microphone", mics, at)
                             .label("Microphone:")
                             .enabled(ui.enabled())
-                            .on_change(move |i, _, _| ask(Change::Microphone([BudMicrophone::Automatic, BudMicrophone::Left, BudMicrophone::Right][i]))),
+                            .on_change(move |i, _| ask(Change::Microphone([BudMicrophone::Automatic, BudMicrophone::Left, BudMicrophone::Right][*i]))),
                     );
                 }
             });
@@ -376,21 +369,22 @@ fn header(ui: &mut Ui, st: &mut State, state: &AirPodsState, a: &AirPods) {
         let names: Vec<SharedString> = state.devices.iter().map(|d| SharedString::from(d.name.clone())).collect();
         let at = state.devices.iter().position(|d| d.address == a.address).unwrap_or(0);
         let addrs: Vec<String> = state.devices.iter().map(|d| d.address.clone()).collect();
-        let pick = ui.on_view(move |v, i: usize, _, cx| {
+        let pick = ui.on_view(move |v, i: &usize, cx| {
             if let Some(st) = state_of(v) {
-                st.chosen = addrs.get(i).cloned();
+                st.chosen = addrs.get(*i).cloned();
             }
             cx.notify();
         });
         ui.add(MenuField::new("airpods-pair", names, at).label("AirPods:").on_change(pick));
     }
-    let field = st.name.clone();
-    let focused = field.read(ui.cx).is_focused(ui.window);
+    let field = &st.name;
+    let focused = field.is_focused(ui.cx);
     if !focused && field.read(ui.cx).text() != a.name {
         let name = a.name.clone();
         field.update(ui.cx, |f, cx| f.set_text(name, cx));
     }
-    field.update(ui.cx, |f, cx| f.set_enabled(a.connected && a.linked, cx));
+    let usable = a.connected && a.linked;
+    field.update(ui.cx, |f, cx| f.set_enabled(usable, cx));
     let status = match (a.connected, a.linked) {
         (true, true) => "Connected".to_owned(),
         (true, false) => "Connecting…".to_owned(),
@@ -406,16 +400,16 @@ fn header(ui: &mut Ui, st: &mut State, state: &AirPodsState, a: &AirPods) {
             let _ = link.tx.send(Job::Ask(Request::Connect { address: address.clone() }));
         })
     };
-    ui.add(div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().flex_1().child(TextControl::new(field).label("Name:"))).child(button));
+    ui.add(div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().flex_1().child(TextControl::new(ui.cx, field).label("Name:"))).child(button));
     ui.add(StringView::new(format!("{} · {status}", a.model)).dim(true));
 }
 
 /// What this computer does with them: Olo's settings.
 fn this_computer(ui: &mut Ui, link: &'static Link, a: &AirPods, settings: &AirPodsSettings) {
     let save = move |change: fn(&mut AirPodsSettings, bool)| {
-        move |on: bool, _: &mut olo_ui::gpui::Window, _: &mut olo_ui::gpui::App| {
+        move |on: &bool, _: &mut WindowCx| {
             let mut s = link.shared.lock().unwrap().settings.clone();
-            change(&mut s, on);
+            change(&mut s, *on);
             link.shared.lock().unwrap().settings = s.clone();
             let _ = link.tx.send(Job::Save(s));
         }
@@ -423,8 +417,9 @@ fn this_computer(ui: &mut Ui, link: &'static Link, a: &AirPods, settings: &AirPo
     let items = ui.collect(|ui| {
         let address = Some(a.address.clone());
         let ear = a.settings.ear_detection;
-        ui.add(CheckBox::new("Automatic Ear Detection: pause when you take an AirPod out", settings.pause_when_removed && ear != Some(false)).on_toggle(move |on, w, cx| {
-            save(|s, on| s.pause_when_removed = on)(on, w, cx);
+        ui.add(CheckBox::new("Automatic Ear Detection: pause when you take an AirPod out", settings.pause_when_removed && ear != Some(false)).on_toggle(move |on: &bool, cx| {
+            let on = *on;
+            save(|s, on| s.pause_when_removed = on)(&on, cx);
             // The AirPods' own (they stop sending sound to a bud out).
             let _ = link.tx.send(Job::Ask(Request::Set { address: address.clone(), change: Change::EarDetection(on) }));
         }));
@@ -446,9 +441,9 @@ fn this_computer(ui: &mut Ui, link: &'static Link, a: &AirPods, settings: &AirPo
         let at = choices.iter().position(|(c, _)| *c == settings.microphone).unwrap_or(0);
         let names: Vec<SharedString> = choices.iter().map(|(_, n)| SharedString::from(*n)).collect();
         let values: Vec<MicrophoneChoice> = choices.iter().map(|(c, _)| *c).collect();
-        ui.add(MenuField::new("airpods-record-from", names, at).label("Record from:").on_change(move |i, _, _| {
+        ui.add(MenuField::new("airpods-record-from", names, at).label("Record from:").on_change(move |i, _| {
             let mut s = link.shared.lock().unwrap().settings.clone();
-            s.microphone = values[i];
+            s.microphone = values[*i];
             link.shared.lock().unwrap().settings = s.clone();
             let _ = link.tx.send(Job::Save(s));
         }));
@@ -458,20 +453,20 @@ fn this_computer(ui: &mut Ui, link: &'static Link, a: &AirPods, settings: &AirPo
 
 /// What the AirPods service last published (other panels show it too:
 /// Bluetooth's list, Sound's AirPods box). Followed from now on.
-pub fn current(cx: &mut olo_ui::gpui::App) -> (AirPodsState, AirPodsSettings) {
-    let link = link(olo_ui::proxy(cx));
+pub fn current(_cx: &mut WindowCx) -> (AirPodsState, AirPodsSettings) {
+    let link = link(olo_kit::proxy());
     let s = link.shared.lock().unwrap();
     (s.state.clone(), s.settings.clone())
 }
 
 /// Save Olo's AirPods settings (on the worker).
-pub fn save_settings(cx: &mut olo_ui::gpui::App, settings: AirPodsSettings) {
-    let link = link(olo_ui::proxy(cx));
+pub fn save_settings(_cx: &mut WindowCx, settings: AirPodsSettings) {
+    let link = link(olo_kit::proxy());
     link.shared.lock().unwrap().settings = settings.clone();
     let _ = link.tx.send(Job::Save(settings));
 }
 
 /// Ask the AirPods service something (on the worker).
-pub fn ask(cx: &mut olo_ui::gpui::App, request: Request) {
-    let _ = link(olo_ui::proxy(cx)).tx.send(Job::Ask(request));
+pub fn ask(_cx: &mut WindowCx, request: Request) {
+    let _ = link(olo_kit::proxy()).tx.send(Job::Ask(request));
 }

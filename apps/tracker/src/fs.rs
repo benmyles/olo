@@ -131,7 +131,7 @@ pub fn app_id(e: &Entry) -> Option<String> {
 
 /// Group Windows for `e`'s app: shown when it is an application, checked
 /// while its windows are grouped.
-pub fn grouping_item(menu: olo_ui::Menu, e: Option<&Entry>) -> olo_ui::Menu {
+pub fn grouping_item(menu: olo_kit::Menu, e: Option<&Entry>) -> olo_kit::Menu {
     let Some(app) = e.and_then(app_id) else { return menu };
     let grouped = !UNGROUPED.lock().is_ok_and(|u| u.contains(&app));
     menu.item("Group Windows", "group-windows").checked(grouped)
@@ -171,7 +171,10 @@ pub fn list_counting(dir: &Path, hidden: bool, count: &std::sync::atomic::Atomic
 }
 
 pub fn home() -> PathBuf {
-    std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| "/".into())
+    // (Read once: it's asked for every row drawn, and the environment
+    // is searched from its start each time.)
+    static HOME: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    HOME.get_or_init(|| std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| "/".into())).clone()
 }
 
 /// A path for display, with the home folder shortened to `~`.

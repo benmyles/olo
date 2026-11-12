@@ -1,10 +1,10 @@
-//! Edit ▸ Undo and Redo for Preferences' changes (`olo_ui::undo`, as every
+//! Edit ▸ Undo and Redo for Preferences' changes (`olo_kit::undo`, as every
 //! app's): a change made with a panel's control is kept as the settings it
 //! changed, each where it is in the settings (its JSON path) with what it
 //! was and what it became. Undo puts back what they were and Redo what
 //! they became, those alone: a change made since to anything else (another
 //! panel, the Deskbar, an agent) stays. A slider dragged or a field typed
-//! in is one step (`olo_ui::undo::History::done_merging`). Named for the
+//! in is one step (`olo_kit::undo::History::done_merging`). Named for the
 //! control: Edit ▸ Undo “Play a sound when Olo starts”.
 
 use olo_protocol::Settings;

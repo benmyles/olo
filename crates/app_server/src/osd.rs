@@ -90,6 +90,7 @@ fn slot(output: &Output) -> &Slot {
 impl Indicator {
     fn title(&self) -> &'static str {
         match self {
+            Indicator::Brightness(l) if crate::power::off_at(*l) => "Display off",
             Indicator::Brightness(_) => "Brightness",
             Indicator::KeyboardBacklight(_) => "Keyboard Backlight",
             Indicator::Volume { muted: true, .. } => "Volume (muted)",

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "apps/*", "gpui/*", "smithay/*"]
+members = ["crates/*", "apps/*", "smithay/*"]
 exclude = ["vendor"]
 
 [workspace.package]
@@ -14,14 +14,16 @@ olo-protocol = { path = "crates/protocol" }
 olo-kit-base = { path = "crates/kit-base" }
 olo-color = { path = "crates/color" }
 olo-sync = { path = "crates/sync" }
+olo-yuv = { path = "crates/yuv" }
+olo-app = { path = "crates/app" }
+olo-interface = { path = "crates/interface" }
+olo-kit = { path = "crates/kit" }
 olo-net = { path = "crates/net" }
 olo-crash = { path = "crates/crash" }
 olo-video = { path = "crates/video" }
 olo-vaapi = { path = "crates/vaapi" }
 olo-syntax = { path = "crates/syntax" }
 olo-camera = { path = "crates/camera" }
-olo-ui = { path = "crates/ui" }
-gpui = { path = "gpui/gpui" }
 olo-theme = { path = "crates/theme" }
 olo-preview = { path = "crates/preview" }
 olo-richtext = { path = "crates/richtext" }
@@ -40,6 +42,7 @@ olo-palm = { path = "crates/palm" }
 olo-complete = { path = "crates/complete" }
 olo-images = { path = "crates/images" }
 olo-token-pool = { path = "crates/pool" }
+olo-airplay = { path = "crates/airplay" }
 olo-ai = { path = "crates/ai" }
 olo-eld = { path = "crates/eld" }
 olo-voice = { path = "crates/voice" }
@@ -63,13 +66,14 @@ path = "smithay/smithay-drm-extras"
 
 # See vendor/README.md.
 [patch.crates-io]
-blade-graphics = { path = "gpui/blade-graphics" }
+blade-graphics = { path = "vendor/blade-graphics" }
 matroska-demuxer = { path = "vendor/matroska-demuxer" }
 blocking = { path = "vendor/blocking" }
 brush-interactive = { path = "vendor/brush-interactive" }
 rust_h265 = { path = "vendor/rust_h265" }
 velato = { path = "vendor/velato" }
 mp4 = { path = "vendor/mp4" }
+taffy = { path = "vendor/taffy" }
 
 [profile.release]
 debug = "line-tables-only"

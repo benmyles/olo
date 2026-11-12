@@ -183,6 +183,10 @@ impl Backend for HeadlessData {
         tracing::info!(on, "displays (simulated)");
     }
 
+    fn set_output_on(&mut self, output: &Output, on: bool) {
+        tracing::info!(output = output.name(), on, "a display (simulated)");
+    }
+
     /// No scan-out to warm; logged so tests can follow a fade.
     fn set_white_point(&mut self, gains: [f64; 3]) {
         tracing::info!(r = gains[0], g = gains[1], b = gains[2], "white point");

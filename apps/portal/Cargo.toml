@@ -20,9 +20,9 @@ pipewire = { version = "0.10", features = ["v0_3_34"] }
 gbm = { version = "0.18", default-features = false }
 tracing.workspace = true
 tracing-subscriber.workspace = true
-olo-ui.workspace = true
+olo-kit.workspace = true
 olo-images.workspace = true
-olo-print = { workspace = true, features = ["gpui"] }
+olo-print = { workspace = true, features = ["kit"] }
 olo-protocol.workspace = true
 olo-theme.workspace = true
 olo-xdg.workspace = true

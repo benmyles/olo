@@ -14,16 +14,15 @@ use std::{
     sync::Arc,
 };
 
+use olo_kit::{
+    Cx, ParentElement as _, SharedString, Styled as _, WindowCx, div, metrics as m, px, style, theme,
+    widgets::{Button, CheckBox, EmptyState, MenuField, Slider, StringView},
+};
 use olo_sync::Mutex;
 use olo_system::{
     cpu_tuning::CpuPreset,
     gpu_tuning::{self, Caps, GpuTune, Preset, Tuning, When},
     gpus::{self, Gpu},
-};
-use olo_ui::{
-    gpui::{Context, ParentElement as _, SharedString, Styled as _, Window, div, px},
-    metrics as m, style, theme,
-    widgets::{Button, CheckBox, EmptyState, MenuField, Slider, StringView},
 };
 
 use crate::{Msg, PanelView, form::Ui};
@@ -33,7 +32,7 @@ pub struct State {
     shared: Arc<Mutex<Shared>>,
     asked: bool,
     /// The tuning kept, followed: the power mode's follower changes it.
-    watch: Option<olo_ui::watch::Watch>,
+    watch: Option<olo_kit::watch::Watch>,
 }
 
 impl State {
@@ -117,7 +116,7 @@ struct Entry {
 /// Read every GPU, what each allows and the tuning kept, on a thread
 /// (`wake`: that GPU asked even if it's asleep). The window isn't shown
 /// until it's in, briefly (`hold`).
-fn read(shared: Arc<Mutex<Shared>>, proxy: olo_ui::Proxy, wake: Option<String>, hold: Option<olo_ui::FirstShowHold>) {
+fn read(shared: Arc<Mutex<Shared>>, proxy: olo_kit::Proxy, wake: Option<String>, hold: Option<olo_kit::FirstShowHold>) {
     // Tests (the layout lint): a hybrid laptop's two, as the ThinkPad P1
     // Gen 9's are.
     if cfg!(test) {
@@ -199,7 +198,7 @@ fn read(shared: Arc<Mutex<Shared>>, proxy: olo_ui::Proxy, wake: Option<String>, 
 }
 
 /// Apply what's edited: `olo-gpu-tune set`, as root through polkit.
-fn apply(shared: Arc<Mutex<Shared>>, proxy: olo_ui::Proxy) {
+fn apply(shared: Arc<Mutex<Shared>>, proxy: olo_kit::Proxy) {
     let tuning = {
         let mut s = shared.lock().unwrap();
         s.applying = true;
@@ -351,11 +350,11 @@ fn drives(g: &Gpu) -> String {
 fn ensure_read(ui: &mut Ui, st: &mut State) {
     if !st.asked {
         st.asked = true;
-        let hold = olo_ui::hold_first_show(ui.window);
-        read(st.shared.clone(), olo_ui::proxy(ui.cx), None, hold);
-        let (shared, proxy) = (st.shared.clone(), olo_ui::proxy(ui.cx));
+        let hold = olo_kit::hold_first_show(ui.cx);
+        read(st.shared.clone(), olo_kit::proxy(), None, hold);
+        let (shared, proxy) = (st.shared.clone(), olo_kit::proxy());
         if !cfg!(test) {
-            st.watch = olo_ui::watch::watch([std::path::PathBuf::from(gpu_tuning::FILE), std::path::PathBuf::from(FOLLOWER)], move |_| read(shared.clone(), proxy.clone(), None, None));
+            st.watch = olo_kit::watch::watch([std::path::PathBuf::from(gpu_tuning::FILE), std::path::PathBuf::from(FOLLOWER)], move |_| read(shared.clone(), proxy.clone(), None, None));
         }
     }
 }
@@ -399,7 +398,7 @@ pub fn modes(ui: &mut Ui, st: &mut State) {
     // half pixel at 1.25× and the gaps came out 11.2 and 12.8.)
     const LABEL_W: f32 = 152.0;
     const CELL_W: f32 = 144.0;
-    let plain = theme::palette(ui.cx).panel_text;
+    let plain = theme::palette().panel_text;
     ui.bbox("What Each Mode Sets", |ui| {
         // The columns: each mode, and running on battery (bold: in force).
         let mut head = div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().w(px(LABEL_W)).flex_shrink_0());
@@ -416,7 +415,7 @@ pub fn modes(ui: &mut Ui, st: &mut State) {
             let mut r = div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().w(px(LABEL_W)).flex_shrink_0().child(StringView::new(name.clone()).color(style::c(plain))));
             for (k, (options, chosen, set)) in cells.into_iter().enumerate() {
                 let shared = st.shared.clone();
-                let on = ui.on_view(move |_, i: usize, _, cx: &mut Context<PanelView>| {
+                let on = ui.on_view(move |_, &i: &usize, cx: &mut Cx<PanelView>| {
                     let mut s = shared.lock().unwrap();
                     set(&mut s.edited, i);
                     s.said = None;
@@ -495,8 +494,8 @@ pub fn graphics(ui: &mut Ui, st: &mut State) {
         ui.add(EmptyState::new("No GPUs found.").icon("gpu"));
     } else {
         // Side by side, two to a row.
-        let mut boxes: Vec<Vec<olo_ui::gpui::AnyElement>> = gpus.iter().map(|e| ui.collect(|ui| gpu_box(ui, e, &edited, &st.shared))).collect();
-        let column = |items: Vec<olo_ui::gpui::AnyElement>| div().flex_1().min_w_0().flex().flex_col().gap(px(m::SPACING)).children(items);
+        let mut boxes: Vec<Vec<olo_kit::Element>> = gpus.iter().map(|e| ui.collect(|ui| gpu_box(ui, e, &edited, &st.shared))).collect();
+        let column = |items: Vec<olo_kit::Element>| div().flex_1().min_w_0().flex().flex_col().gap(px(m::SPACING)).children(items);
         while !boxes.is_empty() {
             let left = boxes.remove(0);
             let right = if boxes.is_empty() { Vec::new() } else { boxes.remove(0) };
@@ -526,13 +525,13 @@ fn apply_row(ui: &mut Ui, st: &mut State, follower: Follower) {
     // (Nothing installed to follow it yet, or an older one: Apply
     // installs it.)
     let changed = edited != kept || follower != Follower::Current;
-    let (s1, s2, p1) = (st.shared.clone(), st.shared.clone(), olo_ui::proxy(ui.cx));
-    let failure = style::c(theme::palette(ui.cx).failure);
-    let on_apply = ui.on_click_view(move |_, _, cx| {
+    let (s1, s2, p1) = (st.shared.clone(), st.shared.clone(), olo_kit::proxy());
+    let failure = style::c(theme::palette().failure);
+    let on_apply = ui.on_click_view(move |_, cx| {
         apply(s1.clone(), p1.clone());
         cx.notify();
     });
-    let on_revert = ui.on_click_view(move |_, _, cx| {
+    let on_revert = ui.on_click_view(move |_, cx| {
         let mut s = s2.lock().unwrap();
         s.edited = s.kept.clone();
         s.said = None;
@@ -558,15 +557,9 @@ fn apply_row(ui: &mut Ui, st: &mut State, follower: Follower) {
 /// Change GPU `pci`'s Custom settings. With `switch` (where it is now,
 /// whether it's NVIDIA's, and the settings it runs at now, `from`), it
 /// isn't on Custom yet: it's made Custom there, from those.
-fn edit(
-    ui: &Ui,
-    shared: &Arc<Mutex<Shared>>,
-    pci: &str,
-    switch: Option<(When, bool, GpuTune)>,
-    f: impl Fn(&mut GpuTune, f32) + 'static,
-) -> impl Fn(f32, &mut Window, &mut olo_ui::gpui::App) + 'static {
+fn edit(ui: &Ui, shared: &Arc<Mutex<Shared>>, pci: &str, switch: Option<(When, bool, GpuTune)>, f: impl Fn(&mut GpuTune, f32) + 'static) -> impl Fn(&f32, &mut WindowCx) + 'static {
     let (shared, pci) = (shared.clone(), pci.to_owned());
-    ui.on_view(move |_, v: f32, _, cx: &mut Context<PanelView>| {
+    ui.on_view(move |_, &v: &f32, cx: &mut Cx<PanelView>| {
         let mut s = shared.lock().unwrap();
         let mut t = match &switch {
             Some((when, nvidia, from)) => {
@@ -637,8 +630,8 @@ fn gpu_box(ui: &mut Ui, e: &Entry, edited: &Tuning, shared: &Arc<Mutex<Shared>>)
                 (None, _) => "What it can be set to isn't known yet: asking it wakes it for a moment.".to_owned(),
             };
             ui.note(words);
-            let (shared, proxy, pci) = (shared.clone(), olo_ui::proxy(ui.cx), pci.clone());
-            let wake = ui.on_click_view(move |_, _, cx| {
+            let (shared, proxy, pci) = (shared.clone(), olo_kit::proxy(), pci.clone());
+            let wake = ui.on_click_view(move |_, cx| {
                 shared.lock().unwrap().asking = Some(pci.clone());
                 read(shared.clone(), proxy.clone(), Some(pci.clone()), None);
                 cx.notify();
@@ -733,7 +726,7 @@ fn knobs(ui: &mut Ui, caps: &Caps, tune: &GpuTune, driver: Option<&gpu_tuning::D
             if x.profiles {
                 let saving = tune.power_saving.unwrap_or(false);
                 let on = edit(ui, shared, pci, switch.clone(), |t, v| t.power_saving = Some(v > 0.5));
-                ui.add(CheckBox::new("Power-saving profile", saving).id(format!("gpu-{pci}-saving")).on_toggle(move |b, w, cx| on(if b { 1.0 } else { 0.0 }, w, cx)));
+                ui.add(CheckBox::new("Power-saving profile", saving).id(format!("gpu-{pci}-saving")).on_toggle(move |b: &bool, cx| on(&(if *b { 1.0 } else { 0.0 }), cx)));
             }
         }
         Caps::Nvidia(n) => {
@@ -750,7 +743,7 @@ fn knobs(ui: &mut Ui, caps: &Caps, tune: &GpuTune, driver: Option<&gpu_tuning::D
             ui.add(Slider::new(format!("gpu-{pci}-max"), max, n.min_gpu_mhz as f32..=n.max_gpu_mhz as f32).step(15.0).label("Highest clock").value_text(mhz(max)).on_change(on));
             let persistent = tune.persistent.unwrap_or(n.persistent_now.unwrap_or(false));
             let on = edit(ui, shared, pci, switch.clone(), |t, v| t.persistent = Some(v > 0.5));
-            ui.add(CheckBox::new("Keep its driver ready", persistent).id(format!("gpu-{pci}-persistent")).on_toggle(move |b, w, cx| on(if b { 1.0 } else { 0.0 }, w, cx)));
+            ui.add(CheckBox::new("Keep its driver ready", persistent).id(format!("gpu-{pci}-persistent")).on_toggle(move |b: &bool, cx| on(&(if *b { 1.0 } else { 0.0 }), cx)));
             ui.add(div().pl(px(m::MARK_SIZE + m::MARK_GAP)).child(StringView::new("Its work starts sooner, but it never sleeps: more power, more warmth.").dim(true).wrap(true)));
         }
         Caps::None => {}

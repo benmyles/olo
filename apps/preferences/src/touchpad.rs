@@ -9,17 +9,16 @@
 
 use std::{sync::Arc, time::Duration};
 
+use olo_kit::{
+    Cx, ParentElement as _, SharedString, Styled as _, div, metrics as m, px, style, theme,
+    widgets::{Button, StringView, TabView},
+};
 use olo_protocol::{
     Client, Event, EventKind, Reply, Request, Settings, TouchpadSettings,
     mice::{self, Class, MouseTuning, Quirk},
     touchpad::{CLICK_PRESSURES, DeviceKind, InputDeviceInfo, PROFILES},
 };
 use olo_sync::Mutex;
-use olo_ui::{
-    gpui::{Context, ParentElement as _, SharedString, Styled as _, div, px},
-    metrics as m, style, theme,
-    widgets::{Button, StringView, TabView},
-};
 
 use crate::{Msg, PanelView, form::Ui, panel};
 
@@ -32,8 +31,8 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(cx: &mut Context<PanelView>) -> State {
-        State { tab: 0, devices: watch(olo_ui::proxy(cx)) }
+    pub fn new(_cx: &mut Cx<PanelView>) -> State {
+        State { tab: 0, devices: watch(olo_kit::proxy()) }
     }
 }
 
@@ -47,7 +46,7 @@ fn state_of(v: &mut PanelView) -> Option<&mut State> {
 /// Asks app_server for its devices, then hears of each one that comes or
 /// goes (an event: nothing is polled). The thread waits on app_server and
 /// ends at the first event after the panel has closed.
-fn watch(proxy: olo_ui::Proxy) -> Shared {
+fn watch(proxy: olo_kit::Proxy) -> Shared {
     let devices: Shared = Default::default();
     // Tests (the layout lint): a MacBook's pad and a mouse named as
     // long as they come, and no app_server.
@@ -142,9 +141,9 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             mice_boxes(ui, devices.as_deref());
         }
     });
-    let pick = ui.on_view(|v, i: usize, _, cx| {
+    let pick = ui.on_view(|v, i: &usize, cx| {
         if let Some(st) = state_of(v) {
-            st.tab = i;
+            st.tab = *i;
         }
         cx.notify();
     });
@@ -256,12 +255,10 @@ fn touch(ui: &mut Ui, t: &TouchpadSettings, pad: Option<&InputDeviceInfo>) {
                         let trained = f.palm_model.as_ref().is_some_and(|m| olo_palm::Kind::of_model(m) == kind);
                         ui.check("Tell palms apart with a palm model too", f.use_palm_model, |s, v| tuned(s, |t| t.filter.use_palm_model = v));
                         ui.note(model_status(f.palm_model.as_ref(), f.use_palm_model, kind));
-                        let (prefs, palm_size, press) = (ui.prefs(), f.palm_size, f.click_press);
+                        let (palm_size, press) = (f.palm_size, f.click_press);
                         ui.row(|ui| {
                             ui.button(if trained { "Train Again…" } else { "Train for Your Palm…" }, move |_, cx| {
-                                if let Some(p) = prefs.upgrade() {
-                                    crate::palm_trainer::open(p, palm_size, press, cx);
-                                }
+                                crate::palm_trainer::open(palm_size, press, cx);
                             });
                             ui.enabled_if(trained, |ui| {
                                 ui.button(
@@ -291,13 +288,11 @@ fn touch(ui: &mut Ui, t: &TouchpadSettings, pad: Option<&InputDeviceInfo>) {
                     let trained = f.palm_model.as_ref().is_some_and(|m| olo_palm::Kind::of_model(m) == kind);
                     ui.check("Tell palms apart with a palm model", f.use_palm_model, |s, v| tuned(s, |t| t.filter.use_palm_model = v));
                     ui.note(model_status(f.palm_model.as_ref(), f.use_palm_model, kind));
-                    let (prefs, palm_size, press) = (ui.prefs(), f.palm_size, f.click_press);
+                    let (palm_size, press) = (f.palm_size, f.click_press);
                     ui.row(|ui| {
                         // The trainer: full screen, driven from the keyboard.
                         ui.button(if trained { "Train Again…" } else { "Train for Your Palm…" }, move |_, cx| {
-                            if let Some(p) = prefs.upgrade() {
-                                crate::palm_trainer::open(p, palm_size, press, cx);
-                            }
+                            crate::palm_trainer::open(palm_size, press, cx);
                         });
                         ui.enabled_if(trained, |ui| {
                             ui.button(
@@ -418,7 +413,7 @@ fn remapper(d: &InputDeviceInfo) -> Option<&str> {
 
 /// A problem in `failure`'s colour, and the button that fixes it.
 fn problem(ui: &mut Ui, text: String) {
-    let p = theme::palette(ui.cx);
+    let p = theme::palette();
     ui.add(StringView::new(text).color(style::c(p.failure)).wrap(true));
     ui.add(Button::new("Fix in Olo Doctor…").on_click(|_, _| {
         let _ = olo_xdg::open::spawn_app(&["olo-doctor".into()], "olo.doctor");

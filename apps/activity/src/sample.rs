@@ -43,11 +43,11 @@ impl Unit {
     pub fn format(self, v: f64) -> String {
         match self {
             Unit::Percent => format!("{v:.1}%"),
-            Unit::Bytes => olo_ui::files::format_size(v.max(0.0) as u64),
+            Unit::Bytes => olo_kit::files::format_size(v.max(0.0) as u64),
             // Under a kilobyte reads as part of one, not in bytes.
             Unit::Rate if v <= 0.0 => "0 KB/s".into(),
             Unit::Rate if v < 1024.0 => "<1 KB/s".into(),
-            Unit::Rate => format!("{}/s", olo_ui::files::format_size(v.max(0.0) as u64)),
+            Unit::Rate => format!("{}/s", olo_kit::files::format_size(v.max(0.0) as u64)),
             Unit::Count => format!("{v:.0}"),
             Unit::PerSecond => format!("{v:.0}/s"),
             Unit::Watts => format!("{v:.1} W"),
@@ -214,9 +214,53 @@ pub struct Volume {
     pub read_only: bool,
 }
 
+/// Who keeps the fans (Olo's `olo-fans`, if it's here) and how, and
+/// whether the processor was held back for heat.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Cooling {
+    /// The fan profile chosen (`/etc/olo/fans`: "cool", or "auto", the
+    /// firmware's own curve); empty where there's no such choice.
+    pub profile: String,
+    /// The level the service holds the fans at ("auto": left to the
+    /// firmware; "3" to "7"; "full-speed"), and what asked for it;
+    /// empty: Cool isn't chosen, or isn't in force (`amiss`).
+    pub level: String,
+    pub why: String,
+    /// Why a chosen Cool isn't what the fans are doing, for people ("the
+    /// fan service isn't running", "the fans can't be set until the
+    /// computer's next start"); empty: it is.
+    #[serde(default)]
+    pub amiss: String,
+    /// How often the processor's package was throttled for heat since
+    /// the computer started, and for how long in all (None: the
+    /// processor doesn't say).
+    pub throttled: Option<u64>,
+    pub throttled_ms: Option<u64>,
+}
+
+/// The fans' keeper as `olo_system::fans` finds it (the one reader of
+/// the service's files: what Preferences ▸ Power and Olo Doctor go by).
+/// A service that's running and has said nothing holds "auto": this
+/// read the missing line as "isn't running" once, of a service that was
+/// (Ben, 2026-11-12).
+fn fan_state(state: Option<&olo_system::fans::State>) -> (String, String, String, String) {
+    let Some(state) = state.filter(|s| s.installed) else { return Default::default() };
+    let (level, why) = state.level().map(|(l, w)| (l.to_owned(), w.to_owned())).unwrap_or_default();
+    (state.profile.word().to_owned(), level, why, state.amiss().map(|a| a.words().to_owned()).unwrap_or_default())
+}
+
+fn cooling() -> Cooling {
+    let (profile, level, why, amiss) = fan_state(olo_system::fans::look(&olo_system::fans::Places::here()).as_ref());
+    let count = |name: &str| read(format!("/sys/devices/system/cpu/cpu0/thermal_throttle/{name}")).trim().parse().ok();
+    Cooling { profile, level, why, amiss, throttled: count("package_throttle_count"), throttled_ms: count("package_throttle_total_time_ms") }
+}
+
 /// What isn't a series: the machine, and the state of things now.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct System {
+    /// The fans' keeper and the processor's throttling.
+    #[serde(default)]
+    pub cooling: Cooling,
     pub host: String,
     pub kernel: String,
     pub model: String,
@@ -484,13 +528,19 @@ fn probe() -> Probe {
                 add(&format!("{x}-jobs"), &label("jobs"), Unit::PerSecond, Hue::Teal, None, Group::Gpu);
                 add(&format!("{x}-power"), &label("power"), Unit::Watts, Hue::Orange, None, Group::Gpu);
             }
+            // (A GPU of several engines: "busy" is its busiest, and each
+            // is a series of its own.)
             Kind::Xe { gts } => {
                 if gts.len() > 1 {
+                    add(&format!("{x}-render"), &label("render busy"), Unit::Percent, Hue::Purple, Some(100.0), Group::Gpu);
                     add(&format!("{x}-media"), &label("media busy"), Unit::Percent, Hue::Teal, Some(100.0), Group::Gpu);
                 }
                 add(&format!("{x}-freq"), &label("clock"), Unit::Megahertz, Hue::Blue, None, Group::Gpu);
             }
             Kind::Nvidia { .. } => {
+                add(&format!("{x}-render"), &label("graphics busy"), Unit::Percent, Hue::Purple, Some(100.0), Group::Gpu);
+                add(&format!("{x}-encode"), &label("encoder busy"), Unit::Percent, Hue::Orange, Some(100.0), Group::Gpu);
+                add(&format!("{x}-decode"), &label("decoder busy"), Unit::Percent, Hue::Teal, Some(100.0), Group::Gpu);
                 add(&format!("{x}-power"), &label("power"), Unit::Watts, Hue::Orange, None, Group::Gpu);
                 add(&format!("{x}-temp"), &label("temperature"), Unit::Celsius, Hue::Red, None, Group::Gpu);
                 add(&format!("{x}-freq"), &label("clock"), Unit::Megahertz, Hue::Blue, None, Group::Gpu);
@@ -1051,6 +1101,7 @@ fn system(probe: &Probe, mi: &str, static_disks: &[Disk], disk_rates: &HashMap<S
         };
         s.gpus.push(Gpu { prefix: g.prefix.clone(), name, driver: g.driver.clone(), memory_used: used, memory_limit: limit, jobs, asleep });
     }
+    s.cooling = cooling();
     s.tunables = TUNABLES.iter().map(|(k, _)| ((*k).to_owned(), read(sysctl_path(k)).trim().to_owned())).filter(|(_, v)| !v.is_empty()).collect();
     let nr: Vec<u64> = read("/proc/sys/fs/file-nr").split_whitespace().map(num).collect();
     s.open_files = (nr.first().copied().unwrap_or(0), nr.get(2).copied().unwrap_or(0));
@@ -1271,17 +1322,21 @@ pub fn start(control: Control, send_sources: impl FnOnce(Vec<Source>) + Send + '
                                 }
                             };
                             let render = gts.iter().find(|gt| crate::gpus::xe_gt_name(gt) == "render").or(gts.first());
-                            values.push(render.map_or(f64::NAN, &mut busy));
+                            let rendering = render.map_or(f64::NAN, &mut busy);
                             if gts.len() > 1 {
+                                // As busy as the busier of the two, and each.
                                 let media = gts.iter().find(|gt| crate::gpus::xe_gt_name(gt) == "media").or(gts.get(1));
-                                values.push(media.map_or(f64::NAN, &mut busy));
+                                let playing = media.map_or(f64::NAN, &mut busy);
+                                values.extend([crate::gpus::busiest(&[rendering, playing]), rendering, playing]);
+                            } else {
+                                values.push(rendering);
                             }
                             values.push(render.map_or(f64::NAN, |gt| crate::gpus::xe_mhz(gt)));
                         }
                         Kind::Nvidia { bus } => match crate::gpus::nvidia_now(&g.device, bus) {
-                            Some(n) => values.extend([n.busy, n.watts, n.celsius, n.mhz, n.memory_used as f64]),
+                            Some(n) => values.extend([n.total(), n.busy, n.encode, n.decode, n.watts, n.celsius, n.mhz, n.memory_used as f64]),
                             // Asleep: nothing runs on it, and it draws next to nothing.
-                            None => values.extend([0.0, 0.0, f64::NAN, 0.0, 0.0]),
+                            None => values.extend([0.0, 0.0, 0.0, 0.0, 0.0, f64::NAN, 0.0, 0.0]),
                         },
                     }
                 }
@@ -1407,6 +1462,31 @@ mod tests {
         assert_eq!(cpu_times(stat), [(150, 1000), (80, 500)]);
         let all = cpu_lines(stat);
         assert_eq!((all[0].user, all[0].system, all[0].iowait), (100, 50, 50));
+    }
+
+    #[test]
+    fn fan_service_state() {
+        use olo_system::fans::{Profile, State};
+        let own = |(a, b, c, d): (&str, &str, &str, &str)| (a.to_owned(), b.to_owned(), c.to_owned(), d.to_owned());
+        let mut s = State { profile: Profile::Cool, installed: true, control: true, control_kept: true, running: true, held: Some(("6".into(), "coretemp Package id 0 74° (+4 rising)".into())) };
+        assert_eq!(fan_state(Some(&s)), own(("cool", "6", "coretemp Package id 0 74° (+4 rising)", "")));
+        // Running and silent (an older service before its first change):
+        // the firmware's for now, not "isn't running".
+        s.held = None;
+        assert_eq!(fan_state(Some(&s)), own(("cool", "auto", "", "")));
+        s.running = false;
+        assert_eq!(fan_state(Some(&s)), own(("cool", "", "", "the fan service isn't running")));
+        // A driver that takes no levels: whatever the service says.
+        (s.running, s.control, s.held) = (true, false, Some(("auto".into(), String::new())));
+        assert_eq!(fan_state(Some(&s)), own(("cool", "", "", "the fans can't be set until the computer's next start")));
+        s.control_kept = false;
+        assert_eq!(fan_state(Some(&s)), own(("cool", "", "", "the fans' driver doesn't let them be set")));
+        s.profile = Profile::Auto;
+        assert_eq!(fan_state(Some(&s)), own(("auto", "", "", "")));
+        // Not installed, or no fans to set: no profile to speak of.
+        s.installed = false;
+        assert_eq!(fan_state(Some(&s)), own(("", "", "", "")));
+        assert_eq!(fan_state(None), own(("", "", "", "")));
     }
 
     #[test]

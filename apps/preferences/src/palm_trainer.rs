@@ -26,20 +26,16 @@ use std::{
     time::{Duration, Instant},
 };
 
+use olo_kit::{
+    Bounds, Cx, Element, FocusHandle, FontWeight, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, Messenger, Painter, ParentElement as _, PathBuilder, Pixels, Styled as _, View, WindowCx,
+    agent, canvas, div, metrics as m, point, px, size, style, theme,
+    widgets::{Banner, KeyHint, StatusBar, StringView, Tone, banner_back, banner_height, verdict_mark},
+};
 use olo_palm::{FEATURES, Kind, Labelled, PadAxes, PalmModel, Report, TouchContact, Tracker};
 use olo_protocol::{Client, Event, EventKind, Reply, Request};
 use olo_sync::Mutex;
-use olo_ui::{
-    agent,
-    gpui::{
-        AnyElement, App, AppContext as _, Bounds, Context, Entity, FocusHandle, FontWeight, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, PathBuilder, Pixels, Render,
-        Styled as _, Window, canvas, div, point, px, size,
-    },
-    metrics as m, style, theme,
-    widgets::{Banner, KeyHint, StatusBar, StringView, Tone, banner_back, banner_height, verdict_mark},
-};
 
-use crate::{Msg, Prefs};
+use crate::Msg;
 
 /// The steps, in order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -355,7 +351,7 @@ impl Open {
 
 /// Follow the pad until `stop` (the window closing), calling each contact
 /// with `model`'s view (it may change: the try uses the model kept).
-fn watch(live: Arc<Mutex<Live>>, model: Arc<Mutex<PalmModel>>, stop: Arc<AtomicBool>, proxy: olo_ui::Proxy) {
+fn watch(live: Arc<Mutex<Live>>, model: Arc<Mutex<PalmModel>>, stop: Arc<AtomicBool>, proxy: olo_kit::Proxy) {
     let _ = std::thread::Builder::new().name("palm-trainer".into()).spawn(move || {
         let mut tracker = Tracker::default();
         let mut open: HashMap<i32, Open> = HashMap::new();
@@ -518,7 +514,9 @@ struct Said {
 
 /// The trainer's window: full screen, its own (closing it ends the run).
 pub struct TrainerWindow {
-    prefs: Entity<Prefs>,
+    /// The workers' news (a touch, training's progress): the window
+    /// says what it shows again.
+    news: Messenger<Told>,
     /// The touch filter's palm size and click (the pad's units).
     palm_size: u32,
     press: u32,
@@ -553,6 +551,15 @@ pub struct TrainerWindow {
     focused: bool,
 }
 
+/// What the trainer's window is told.
+pub enum Told {
+    /// Something a worker shares changed.
+    News,
+    /// Training is over: the model and how it did, if there was enough
+    /// to learn from.
+    Trained(Option<(PalmModel, Report)>),
+}
+
 impl Drop for TrainerWindow {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
@@ -579,24 +586,19 @@ const WIDTH: f32 = 1280.0;
 const HEIGHT: f32 = 800.0;
 
 /// Open it, full screen.
-pub fn open(prefs: Entity<Prefs>, palm_size: u32, press: u32, cx: &mut App) {
-    let options = olo_ui::WindowOptions::new("Train for Your Palm", WIDTH, HEIGHT).fullscreen();
-    let _ = olo_ui::open_window(cx, options, move |_, cx| {
-        let proxy = olo_ui::proxy(cx);
-        cx.new(|cx| {
-            let w = TrainerWindow::new(prefs, palm_size, press, cx);
-            watch(w.live.clone(), w.model.clone(), w.stop.clone(), proxy);
-            w
-        })
+pub fn open(palm_size: u32, press: u32, _: &mut WindowCx) {
+    let options = olo_kit::WindowOptions::new("Train for Your Palm", WIDTH, HEIGHT).fullscreen();
+    olo_kit::open_window(options, move |cx| {
+        let w = TrainerWindow::new(palm_size, press, cx);
+        watch(w.live.clone(), w.model.clone(), w.stop.clone(), w.proxy());
+        w
     });
 }
 
 impl TrainerWindow {
-    fn new(prefs: Entity<Prefs>, palm_size: u32, press: u32, cx: &mut Context<Self>) -> TrainerWindow {
-        // The worker's news comes as the settings' does (`Msg::Redraw`).
-        cx.observe(&prefs, |_, _, cx| cx.notify()).detach();
+    fn new(palm_size: u32, press: u32, cx: &mut Cx<Self>) -> TrainerWindow {
         TrainerWindow {
-            prefs,
+            news: cx.messenger(),
             palm_size,
             press,
             step: Step::Intro,
@@ -616,9 +618,18 @@ impl TrainerWindow {
             outcome: None,
             saved: Default::default(),
             tried: (0, 0),
-            focus: cx.focus_handle(),
+            focus: FocusHandle::new(),
             focused: false,
         }
+    }
+
+    /// The workers' way to say something changed (they send `Msg::Redraw`,
+    /// as to the app: here it is this window's news).
+    fn proxy(&self) -> olo_kit::Proxy {
+        let news = self.news.clone();
+        olo_kit::Proxy::new(move |_| {
+            news.send(Told::News);
+        })
     }
 
     /// The kind of pad being trained on (a MacBook's until it says).
@@ -726,7 +737,7 @@ impl TrainerWindow {
     }
 
     /// Space (or Return): on to what's next, if the step is done.
-    fn go_on(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn go_on(&mut self, cx: &mut Cx<Self>) {
         match self.step {
             Step::Intro => self.go(EXERCISES[0]),
             s if s.exercise().is_some() => {
@@ -740,32 +751,32 @@ impl TrainerWindow {
                 }
             }
             Step::Summary if matches!(self.outcome, Some(Outcome::Kept(_))) => self.go(Step::Test),
-            Step::Summary => window.remove_window(),
-            Step::Test => window.remove_window(),
+            Step::Summary => cx.close_window(),
+            Step::Test => cx.close_window(),
             _ => {}
         }
         cx.notify();
     }
 
-    fn escape(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn escape(&mut self, cx: &mut Cx<Self>) {
         let gathered = !self.samples.is_empty() || !self.current.is_empty();
         if self.step.exercise().is_some() && gathered && !self.quitting {
             self.quitting = true;
             cx.notify();
             return;
         }
-        window.remove_window();
+        cx.close_window();
     }
 
     /// Start over: the whole run (the summary's and the try's R).
-    fn again(&mut self, cx: &mut Context<Self>) {
+    fn again(&mut self, cx: &mut Cx<Self>) {
         self.samples.clear();
         self.outcome = None;
         self.go(EXERCISES[0]);
         cx.notify();
     }
 
-    fn key_down(&mut self, e: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+    fn key_down(&mut self, e: &KeyDownEvent, cx: &mut Cx<Self>) {
         let k = &e.keystroke;
         if k.modifiers.control || k.modifiers.platform || k.modifiers.alt {
             return;
@@ -784,8 +795,8 @@ impl TrainerWindow {
             return;
         }
         match key {
-            "escape" => self.escape(window, cx),
-            "space" | "enter" => self.go_on(window, cx),
+            "escape" => self.escape(cx),
+            "space" | "enter" => self.go_on(cx),
             "backspace" if self.step.exercise().is_some() => {
                 let step = self.step;
                 self.go(step);
@@ -801,65 +812,65 @@ impl TrainerWindow {
     /// newest earlier runs on this kind of pad), off the UI thread
     /// with progress; keep it (in the settings, and on) if it does at
     /// least as well as Olo's own on the touches kept back.
-    fn train(&mut self, cx: &mut Context<Self>) {
+    fn train(&mut self, cx: &mut Cx<Self>) {
         self.go(Step::Training);
         let samples = self.samples.clone();
         let progress = self.progress.clone();
         *progress.lock().unwrap() = 0.0;
         let kind = self.kind();
         // (No size on the pad: the size rule says nothing.)
-        let (palm_size, proxy) = (if kind.sized() { self.palm_size } else { u32::MAX }, olo_ui::proxy(cx));
-        let task = cx.background_spawn(async move {
-            // The earlier runs on this kind of pad learnt from too, not
-            // today's alone (one sitting's hands overfit it); then today's
-            // kept on disk with them (~/.local/state/olo/palm; until
-            // 2026-11-03, olo/olo/palm), for the next training and for Olo's
-            // own model to be tuned on real hands.
-            let dir = olo_xdg::state_dir().join("palm");
-            let (earlier, mut all) = olo_palm::kept_runs(&[dir.clone(), olo_xdg::state_dir().join("olo").join("palm")], kind, RUNS_LEARNT_FROM - 1);
-            match olo_palm::keep_samples(&dir, kind, &samples) {
-                Ok(p) => tracing::info!("palm trainer: samples kept in {}", p.display()),
-                Err(e) => tracing::warn!("palm trainer: samples not kept: {e}"),
-            }
-            all.extend(samples.iter().cloned());
-            tracing::info!(earlier, contacts = all.len(), "palm trainer: learning from today's run and the earlier ones");
-            olo_palm::train(kind, &all, palm_size, |p| {
-                *progress.lock().unwrap() = p;
-                proxy.send(Msg::Redraw);
-            })
-        });
-        cx.spawn(async move |me, cx| {
-            let out = task.await;
-            let _ = me.update(cx, |w, cx| {
-                w.outcome = Some(match out {
-                    Some((model, report)) if report.better_than_baseline() => {
-                        let kept = model.clone();
-                        w.prefs.update(cx, |p, cx| {
-                            p.edit_as(cx, "", "Palm Model", move |s| {
-                                s.touchpad.filter.palm_model = Some(kept);
-                                s.touchpad.filter.use_palm_model = true;
-                            })
-                        });
-                        w.confirm(model.trained, cx);
-                        *w.model.lock().unwrap() = model;
-                        Outcome::Kept(report)
-                    }
-                    Some((_, report)) => Outcome::Worse(report),
-                    None => Outcome::TooFew,
+        let (palm_size, proxy) = (if kind.sized() { self.palm_size } else { u32::MAX }, self.proxy());
+        cx.work(
+            move || {
+                // The earlier runs on this kind of pad learnt from too, not
+                // today's alone (one sitting's hands overfit it); then today's
+                // kept on disk with them (~/.local/state/olo/palm; until
+                // 2026-11-03, olo/olo/palm), for the next training and for Olo's
+                // own model to be tuned on real hands.
+                let dir = olo_xdg::state_dir().join("palm");
+                let (earlier, mut all) = olo_palm::kept_runs(&[dir.clone(), olo_xdg::state_dir().join("olo").join("palm")], kind, RUNS_LEARNT_FROM - 1);
+                match olo_palm::keep_samples(&dir, kind, &samples) {
+                    Ok(p) => tracing::info!("palm trainer: samples kept in {}", p.display()),
+                    Err(e) => tracing::warn!("palm trainer: samples not kept: {e}"),
+                }
+                all.extend(samples.iter().cloned());
+                tracing::info!(earlier, contacts = all.len(), "palm trainer: learning from today's run and the earlier ones");
+                olo_palm::train(kind, &all, palm_size, |p| {
+                    *progress.lock().unwrap() = p;
+                    proxy.send(Msg::Redraw);
+                })
+            },
+            Told::Trained,
+        );
+    }
+
+    /// Training is over: its model kept (in the settings, and on) if it
+    /// does at least as well as Olo's own on the touches kept back.
+    fn trained(&mut self, out: Option<(PalmModel, Report)>, cx: &mut Cx<Self>) {
+        self.outcome = Some(match out {
+            Some((model, report)) if report.better_than_baseline() => {
+                let kept = model.clone();
+                crate::prefs().edit_as("", "Palm Model", move |s| {
+                    s.touchpad.filter.palm_model = Some(kept);
+                    s.touchpad.filter.use_palm_model = true;
                 });
-                w.go(Step::Summary);
-                cx.notify();
-            });
-        })
-        .detach();
+                self.confirm(model.trained, cx);
+                *self.model.lock().unwrap() = model;
+                Outcome::Kept(report)
+            }
+            Some((_, report)) => Outcome::Worse(report),
+            None => Outcome::TooFew,
+        });
+        self.go(Step::Summary);
+        cx.notify();
     }
 }
 
 impl TrainerWindow {
     /// Ask app_server whether it has the model trained at `trained` (a
     /// few times, for a moment: the settings reach it on another thread).
-    fn confirm(&mut self, trained: u64, cx: &mut Context<Self>) {
-        let (saved, proxy) = (self.saved.clone(), olo_ui::proxy(cx));
+    fn confirm(&mut self, trained: u64, _cx: &mut Cx<Self>) {
+        let (saved, proxy) = (self.saved.clone(), self.proxy());
         *saved.lock().unwrap() = None;
         std::thread::spawn(move || {
             let mut has = false;
@@ -884,7 +895,7 @@ impl TrainerWindow {
 /// size (by `calls`: orange a palm, blue a finger; grey while it's
 /// undecided or isn't being called), and `marks` fading where touches
 /// counted (green) or didn't (red).
-fn draw_pad(window: &mut Window, r: Bounds<Pixels>, live: &Live, calling: bool, marks: &[(f32, f32, bool, f32)], p: &olo_theme::Palette) -> Bounds<Pixels> {
+fn draw_pad(g: &mut Painter, r: Bounds<Pixels>, live: &Live, calling: bool, marks: &[(f32, f32, bool, f32)], p: &olo_theme::Palette) -> Bounds<Pixels> {
     // The pad's own shape (its size in millimetres where it says, a
     // MacBook's until it has), fitted and centred.
     let aspect = match &live.axes {
@@ -894,20 +905,20 @@ fn draw_pad(window: &mut Window, r: Bounds<Pixels>, live: &Live, calling: bool, 
     };
     let (rw, rh) = (f32::from(r.size.width), f32::from(r.size.height));
     let (w, h) = if rw / rh > aspect { (rh * aspect, rh) } else { (rw, rw / aspect) };
-    let r = style::snap_centred(window, r.center(), w, h);
-    style::sunken(window, r, p, false);
-    let inner = style::inset(window, r, 2.0);
-    style::fill_rect(window, inner, style::shade(p, p.panel_background, 1.08));
+    let r = style::snap_centred(g, r.center(), w, h);
+    style::sunken(g, r, p, false);
+    let inner = style::inset(g, r, 2.0);
+    style::fill_rect(g, inner, style::shade(p, p.panel_background, 1.08));
     let Some(a) = &live.axes else { return r };
     let (w, h) = ((a.x_max - a.x_min).max(1) as f32, (a.y_max - a.y_min).max(1) as f32);
     let (iw, ih) = (f32::from(inner.size.width), f32::from(inner.size.height));
     // (Within the pad: a palm at its edge is cut by it, as on the glass.)
-    window.with_content_mask(Some(olo_ui::gpui::ContentMask { bounds: inner }), |window| {
+    g.with_content_mask(Some(olo_kit::ContentMask { bounds: inner }), |g| {
         for (x, y, good, age) in marks {
             let ink = if *good { p.success } else { p.failure };
             let fade = (1.0 - age / MARK_SECONDS).clamp(0.0, 1.0);
             let c = point(inner.left() + px(iw * x), inner.top() + px(ih * y));
-            ring(window, c, 14.0 + age * 10.0, 14.0 + age * 10.0, style::c(ink).opacity(fade));
+            ring(g, c, 14.0 + age * 10.0, 14.0 + age * 10.0, style::c(ink).opacity(fade));
         }
         let kind = Kind::of(a);
         for c in &live.contacts {
@@ -933,7 +944,7 @@ fn draw_pad(window: &mut Window, r: Bounds<Pixels>, live: &Live, calling: bool, 
                 Some(true) => style::c(p.warning),
                 _ => style::c(p.navigation_base),
             };
-            ellipse(window, point(cx, cy), rx, ry, ink.opacity(0.8));
+            ellipse(g, point(cx, cy), rx, ry, ink.opacity(0.8));
         }
     });
     r
@@ -942,7 +953,7 @@ fn draw_pad(window: &mut Window, r: Bounds<Pixels>, live: &Live, calling: bool, 
 /// How long a counted or missed touch's mark shows on the pad.
 const MARK_SECONDS: f32 = 1.5;
 
-pub(crate) fn ellipse(window: &mut Window, c: olo_ui::gpui::Point<Pixels>, rx: f32, ry: f32, ink: Hsla) {
+pub(crate) fn ellipse(g: &mut Painter, c: olo_kit::Point<Pixels>, rx: f32, ry: f32, ink: Hsla) {
     let mut b = PathBuilder::fill();
     for k in 0..=32 {
         let t = k as f32 / 32.0 * std::f32::consts::TAU;
@@ -951,55 +962,55 @@ pub(crate) fn ellipse(window: &mut Window, c: olo_ui::gpui::Point<Pixels>, rx: f
     }
     b.close();
     if let Ok(path) = b.build() {
-        window.paint_path(path, ink);
+        g.paint_path(path, ink);
     }
 }
 
-pub(crate) fn ring(window: &mut Window, c: olo_ui::gpui::Point<Pixels>, rx: f32, ry: f32, ink: Hsla) {
-    let mut b = PathBuilder::stroke(style::hairline(window) * 2.0);
+pub(crate) fn ring(g: &mut Painter, c: olo_kit::Point<Pixels>, rx: f32, ry: f32, ink: Hsla) {
+    let mut b = PathBuilder::stroke(style::hairline(g) * 2.0);
     for k in 0..=32 {
         let t = k as f32 / 32.0 * std::f32::consts::TAU;
         let pt = point(c.x + px(rx * t.cos()), c.y + px(ry * t.sin()));
         if k == 0 { b.move_to(pt) } else { b.line_to(pt) }
     }
     if let Ok(path) = b.build() {
-        window.paint_path(path, ink);
+        g.paint_path(path, ink);
     }
 }
 
 /// The step's little film: hands on a laptop's deck, in Olo's flat style,
 /// moving with `t` seconds.
-fn animation(window: &mut Window, r: Bounds<Pixels>, step: Step, t: f32, p: &olo_theme::Palette) {
+fn animation(g: &mut Painter, r: Bounds<Pixels>, step: Step, t: f32, p: &olo_theme::Palette) {
     // A laptop's deck in a sunken well: rows of keys above, the pad
     // below between the palm rests, as the hands find them.
-    let r = style::snap(window, r);
-    style::sunken(window, r, p, false);
-    let deck = style::inset(window, r, 2.0);
-    style::fill_rect(window, deck, style::shade(p, p.panel_background, 0.94));
+    let r = style::snap(g, r);
+    style::sunken(g, r, p, false);
+    let deck = style::inset(g, r, 2.0);
+    style::fill_rect(g, deck, style::shade(p, p.panel_background, 0.94));
     let (dw, dh) = (f32::from(deck.size.width), f32::from(deck.size.height));
     let keys = Bounds::from_corners(deck.origin + point(px(dw * 0.08), px(dh * 0.06)), deck.origin + point(px(dw * 0.92), px(dh * 0.40)));
     let (rows, cols) = (4, 12);
     let (kw, kh) = (f32::from(keys.size.width) / cols as f32, f32::from(keys.size.height) / rows as f32);
     for row in 0..rows {
         for col in 0..cols {
-            let k = style::snap(window, Bounds::new(keys.origin + point(px(kw * col as f32 + 1.0), px(kh * row as f32 + 1.0)), size(px(kw - 2.0), px(kh - 2.0))));
-            style::raised(window, k, p);
+            let k = style::snap(g, Bounds::new(keys.origin + point(px(kw * col as f32 + 1.0), px(kh * row as f32 + 1.0)), size(px(kw - 2.0), px(kh - 2.0))));
+            style::raised(g, k, p);
         }
     }
     // The pad: a MacBook's shape (157 × 96 mm), centred under the keys.
     let pad_w = dw * 0.56;
     let pad_h = (pad_w / 1.64).min(dh * 0.4);
-    let pad = style::snap(window, Bounds::new(deck.origin + point(px((dw - pad_w) / 2.0), px(dh * 0.5)), size(px(pad_w), px(pad_h))));
-    style::sunken(window, pad, p, false);
-    let pad = style::inset(window, pad, 2.0);
-    style::fill_rect(window, pad, style::shade(p, p.panel_background, 1.08));
+    let pad = style::snap(g, Bounds::new(deck.origin + point(px((dw - pad_w) / 2.0), px(dh * 0.5)), size(px(pad_w), px(pad_h))));
+    style::sunken(g, pad, p, false);
+    let pad = style::inset(g, pad, 2.0);
+    style::fill_rect(g, pad, style::shade(p, p.panel_background, 1.08));
     // (What's over the pad's edges stays in the film.)
-    window.with_content_mask(Some(olo_ui::gpui::ContentMask { bounds: deck }), |window| film(window, step, t, keys, kw, kh, pad, p));
+    g.with_content_mask(Some(olo_kit::ContentMask { bounds: deck }), |g| film(g, step, t, keys, kw, kh, pad, p));
 }
 
 /// The film's hands on `pad` (`keys`, each `kw` × `kh`, above it).
 #[allow(clippy::too_many_arguments)]
-fn film(window: &mut Window, step: Step, t: f32, keys: Bounds<Pixels>, kw: f32, kh: f32, pad: Bounds<Pixels>, p: &olo_theme::Palette) {
+fn film(g: &mut Painter, step: Step, t: f32, keys: Bounds<Pixels>, kw: f32, kh: f32, pad: Bounds<Pixels>, p: &olo_theme::Palette) {
     let hand = style::c(p.panel_text).opacity(0.35);
     let finger = style::c(p.navigation_base);
     let palm = style::c(p.warning);
@@ -1007,20 +1018,20 @@ fn film(window: &mut Window, step: Step, t: f32, keys: Bounds<Pixels>, kw: f32, 
     let dot = (pw * 0.035).max(4.0);
     // A palm's heel at each of the pad's upper outer edges, half on the
     // deck (where a typing hand rests on a MacBook), down or lifted.
-    let heel = |window: &mut Window, left: bool, down: bool| {
+    let heel = |g: &mut Painter, left: bool, down: bool| {
         let x = if left { pad.left() + px(pw * 0.04) } else { pad.right() - px(pw * 0.04) };
         let y = pad.top() + px(ph * 0.32) - px(if down { 0.0 } else { ph * 0.08 });
-        ellipse(window, point(x, y), pw * 0.16, ph * 0.2, if down { palm.opacity(0.85) } else { hand });
+        ellipse(g, point(x, y), pw * 0.16, ph * 0.2, if down { palm.opacity(0.85) } else { hand });
     };
     match step {
         Step::RestPalms => {
             let down = (t % 4.0) < 2.5;
-            heel(window, true, down);
-            heel(window, false, down);
+            heel(g, true, down);
+            heel(g, false, down);
         }
         Step::TypeWithPalms => {
-            heel(window, true, true);
-            heel(window, false, true);
+            heel(g, true, true);
+            heel(g, false, true);
             // Fingers on the home row, each pressing a key in turn.
             let home = keys.top() + px(kh * 2.5);
             for k in 0..8 {
@@ -1028,24 +1039,24 @@ fn film(window: &mut Window, step: Step, t: f32, keys: Bounds<Pixels>, kw: f32, 
                 let x = keys.left() + px(kw * (col as f32 + 0.5));
                 let pressing = ((t * 5.0) as usize) % 8 == k;
                 let d = if pressing { dot * 0.8 } else { dot };
-                ellipse(window, point(x, home), d, d, if pressing { finger } else { finger.opacity(0.6) });
+                ellipse(g, point(x, home), d, d, if pressing { finger } else { finger.opacity(0.6) });
             }
         }
         Step::Point => {
             let (x, y) = (0.5 + 0.3 * (t * 1.5).cos(), 0.5 + 0.25 * (t * 1.1).sin());
-            ellipse(window, point(pad.left() + px(pw * x), pad.top() + px(ph * y)), dot, dot * 1.15, finger);
+            ellipse(g, point(pad.left() + px(pw * x), pad.top() + px(ph * y)), dot, dot * 1.15, finger);
         }
         Step::Scroll => {
             let y = 0.5 + 0.3 * (t * 2.0).sin();
-            ellipse(window, point(pad.left() + px(pw * 0.45), pad.top() + px(ph * y)), dot, dot * 1.15, finger);
-            ellipse(window, point(pad.left() + px(pw * 0.55), pad.top() + px(ph * y)), dot, dot * 1.15, finger);
+            ellipse(g, point(pad.left() + px(pw * 0.45), pad.top() + px(ph * y)), dot, dot * 1.15, finger);
+            ellipse(g, point(pad.left() + px(pw * 0.55), pad.top() + px(ph * y)), dot, dot * 1.15, finger);
         }
         Step::Taps => {
             let k = (t * 1.5) as usize % 4;
             let (x, y) = [(0.3, 0.4), (0.7, 0.6), (0.5, 0.3), (0.4, 0.7)][k];
             let down = ((t * 1.5) % 1.0) < 0.3;
             let d = if down { dot * 1.15 } else { dot * 0.6 };
-            ellipse(window, point(pad.left() + px(pw * x), pad.top() + px(ph * y)), d, d * 1.1, if down { finger } else { hand });
+            ellipse(g, point(pad.left() + px(pw * x), pad.top() + px(ph * y)), d, d * 1.1, if down { finger } else { hand });
         }
         Step::Clicks | Step::ThumbClicks => {
             // Down, pressed until it clicks (a ring), up; a finger here
@@ -1057,13 +1068,13 @@ fn film(window: &mut Window, step: Step, t: f32, keys: Bounds<Pixels>, kw: f32, 
             let d = if step == Step::Clicks { dot } else { dot * 1.4 };
             if phase < 1.0 {
                 let press = (phase / 0.5).min(1.0);
-                ellipse(window, c, d * (1.0 + 0.2 * press), d * (1.15 + 0.2 * press), finger);
+                ellipse(g, c, d * (1.0 + 0.2 * press), d * (1.15 + 0.2 * press), finger);
                 if phase >= 0.5 {
                     let r = d * (1.6 + (phase - 0.5) * 3.0);
-                    ring(window, c, r, r, finger.opacity(1.0 - (phase - 0.5) * 2.0));
+                    ring(g, c, r, r, finger.opacity(1.0 - (phase - 0.5) * 2.0));
                 }
             } else {
-                ellipse(window, c, d * 0.6, d * 0.7, hand);
+                ellipse(g, c, d * 0.6, d * 0.7, hand);
             }
         }
         Step::EdgeLeft | Step::EdgeRight => {
@@ -1071,7 +1082,7 @@ fn film(window: &mut Window, step: Step, t: f32, keys: Bounds<Pixels>, kw: f32, 
             let down = (t % 3.5) < 2.4;
             let x = if step == Step::EdgeLeft { pad.left() - px(pw * 0.03) } else { pad.right() + px(pw * 0.03) };
             let y = pad.top() + px(ph * 0.4) - px(if down { 0.0 } else { ph * 0.08 });
-            ellipse(window, point(x, y), pw * 0.17, ph * 0.22, if down { palm.opacity(0.85) } else { hand });
+            ellipse(g, point(x, y), pw * 0.17, ph * 0.22, if down { palm.opacity(0.85) } else { hand });
         }
         Step::PointWithPalm | Step::LowPalm => {
             // Rest, point a few times, lift.
@@ -1081,10 +1092,10 @@ fn film(window: &mut Window, step: Step, t: f32, keys: Bounds<Pixels>, kw: f32, 
             let (hx, hy) = if low { (pad.left() + px(pw * 0.62), pad.bottom() + px(ph * 0.02)) } else { (pad.right() + px(pw * 0.03), pad.top() + px(ph * 0.42)) };
             let lift = if down { 0.0 } else { ph * 0.08 };
             let (rx, ry) = if low { (pw * 0.2, ph * 0.16) } else { (pw * 0.17, ph * 0.22) };
-            ellipse(window, point(hx, hy - px(lift)), rx, ry, if down { palm.opacity(0.85) } else { hand });
+            ellipse(g, point(hx, hy - px(lift)), rx, ry, if down { palm.opacity(0.85) } else { hand });
             if (1.0..4.4).contains(&phase) {
                 let (x, y) = if low { (0.5 + 0.12 * (t * 1.5).cos(), 0.35 + 0.15 * (t * 1.1).sin()) } else { (0.35 + 0.2 * (t * 1.5).cos(), 0.45 + 0.25 * (t * 1.1).sin()) };
-                ellipse(window, point(pad.left() + px(pw * x), pad.top() + px(ph * y)), dot, dot * 1.15, finger);
+                ellipse(g, point(pad.left() + px(pw * x), pad.top() + px(ph * y)), dot, dot * 1.15, finger);
             }
         }
         Step::Shirt => {
@@ -1099,7 +1110,7 @@ fn film(window: &mut Window, step: Step, t: f32, keys: Bounds<Pixels>, kw: f32, 
             };
             let y = pad.bottom() + px(ph * (0.28 - 0.24 * near));
             let ink = if near > 0.9 { palm.opacity(0.7) } else { hand };
-            ellipse(window, point(pad.center().x, y), pw * 0.42, ph * 0.18, ink);
+            ellipse(g, point(pad.center().x, y), pw * 0.42, ph * 0.18, ink);
         }
         _ => {}
     }
@@ -1113,7 +1124,7 @@ fn caption(text: &'static str) -> impl IntoElement {
 impl TrainerWindow {
     /// The top: where in the run this is, as a bar of the exercises and
     /// the try, and its title and what to do (now).
-    fn top(&self, title: String, lead: String) -> AnyElement {
+    fn top(&self, title: String, lead: String) -> Element {
         let at = match self.step {
             Step::Intro => 0,
             s => s.exercise().map_or(EXERCISES.len() + 1, |i| i + 1),
@@ -1123,20 +1134,17 @@ impl TrainerWindow {
             None if self.step == Step::Intro => "Twelve exercises, then a try".to_owned(),
             None => "Done with the exercises".to_owned(),
         };
-        let track = canvas(
-            |_, _, _| {},
-            move |b, _, window, cx| {
-                let p = theme::palette(cx);
-                let n = EXERCISES.len() + 1;
-                let gap = m::TIGHT;
-                let w = (f32::from(b.size.width) - gap * (n - 1) as f32) / n as f32;
-                for i in 0..n {
-                    let r = style::snap(window, Bounds::new(point(b.left() + px((w + gap) * i as f32), b.top()), size(px(w), b.size.height)));
-                    let ink = if i < at { style::c(p.navigation_base) } else { style::shade(&p, p.panel_background, 0.8) };
-                    style::fill_rect(window, r, ink);
-                }
-            },
-        )
+        let track = canvas(move |g, b| {
+            let p = theme::palette();
+            let n = EXERCISES.len() + 1;
+            let gap = m::TIGHT;
+            let w = (f32::from(b.size.width) - gap * (n - 1) as f32) / n as f32;
+            for i in 0..n {
+                let r = style::snap(g, Bounds::new(point(b.left() + px((w + gap) * i as f32), b.top()), size(px(w), b.size.height)));
+                let ink = if i < at { style::c(p.navigation_base) } else { style::shade(&p, p.panel_background, 0.8) };
+                style::fill_rect(g, r, ink);
+            }
+        })
         .w_full()
         .h(px(m::TIGHT));
         let mut col = div().flex().flex_col().gap(px(m::SPACING)).w_full();
@@ -1147,80 +1155,60 @@ impl TrainerWindow {
         if !lead.is_empty() {
             col = col.child(StringView::new(lead).size(style::LEAD_SIZE).wrap(true));
         }
-        col.into_any_element()
+        col.into_element()
     }
 
     /// The film and the pad live, side by side, each under its caption,
     /// each `w` × `h`.
-    fn panels(&self, film: Option<Step>, calling: bool, (w, h): (f32, f32)) -> AnyElement {
+    fn panels(&self, film: Option<Step>, calling: bool, (w, h): (f32, f32)) -> Element {
         let (started, live) = (self.started, self.live.clone());
         let marks: Vec<(f32, f32, bool, f32)> =
             self.marks.iter().filter(|s| s.at.elapsed().as_secs_f32() < MARK_SECONDS).map(|s| (s.place.0, s.place.1, s.good, s.at.elapsed().as_secs_f32())).collect();
         let fading = !marks.is_empty();
-        let pad = canvas(
-            |_, _, _| {},
-            move |b, _, window, cx| {
-                let p = theme::palette(cx);
-                let l = live.lock().unwrap();
-                let r = draw_pad(window, b, &l, calling, &marks, &p);
-                if l.axes.is_none() {
-                    style::label(
-                        window,
-                        cx,
-                        r.center().x,
-                        r.center().y,
-                        style::Align::Center,
-                        "Waiting for the touchpad…",
-                        style::PLAIN_SIZE,
-                        style::ui_font(FontWeight::NORMAL),
-                        style::disabled_text(&p),
-                    );
-                }
-                let n = l.contacts.len();
-                agent::record(
-                    window,
-                    cx,
-                    agent::Node { role: "Image", name: Some("Your touchpad".into()), value: Some(format!("{n} touches").into()), bounds: r, enabled: true, ..Default::default() },
-                );
-                if fading {
-                    window.request_animation_frame();
-                }
-            },
-        )
+        let pad = canvas(move |g, b| {
+            let p = theme::palette();
+            let l = live.lock().unwrap();
+            let r = draw_pad(g, b, &l, calling, &marks, &p);
+            if l.axes.is_none() {
+                style::label(g, r.center().x, r.center().y, style::Align::Center, "Waiting for the touchpad…", style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
+            }
+            let n = l.contacts.len();
+            agent::record(g, agent::Node { role: "Image", name: Some("Your touchpad".into()), value: Some(format!("{n} touches").into()), bounds: r, enabled: true, ..Default::default() });
+            if fading {
+                g.paint_again_within(1.0 / 120.0);
+            }
+        })
         .w(px(w))
         .h(px(h));
         let pad = div().flex().flex_col().gap(px(m::TIGHT)).child(caption("Your touchpad")).child(pad);
         let mut row = div().flex().flex_row().gap(px(PANEL_GAP)).w_full();
         if let Some(step) = film {
             let next = self.tutor.next();
-            let film = canvas(
-                |_, _, _| {},
-                move |b, _, window, cx| {
-                    let p = theme::palette(cx);
-                    let t = started.elapsed().as_secs_f32();
-                    // (The introduction shows each exercise in turn.)
-                    let (shown, t) = if step == Step::Intro { (EXERCISES[(t / 4.0) as usize % EXERCISES.len()], t % 4.0) } else { (step, t) };
-                    if shown == Step::TypeWithPalms && step != Step::Intro {
-                        // (The lesson's keyboard: still, but for the key.)
-                        crate::typing_tutor::keyboard(window, cx, b, next, &p);
-                    } else {
-                        animation(window, b, shown, t, &p);
-                        window.request_animation_frame();
-                    }
-                    agent::record(window, cx, agent::Node { role: "Image", name: Some("Like this".into()), value: Some(shown.words().0.into()), bounds: b, enabled: true, ..Default::default() });
-                },
-            )
+            let film = canvas(move |g, b| {
+                let p = theme::palette();
+                let t = started.elapsed().as_secs_f32();
+                // (The introduction shows each exercise in turn.)
+                let (shown, t) = if step == Step::Intro { (EXERCISES[(t / 4.0) as usize % EXERCISES.len()], t % 4.0) } else { (step, t) };
+                if shown == Step::TypeWithPalms && step != Step::Intro {
+                    // (The lesson's keyboard: still, but for the key.)
+                    crate::typing_tutor::keyboard(g, b, next, &p);
+                } else {
+                    animation(g, b, shown, t, &p);
+                    g.paint_again_within(1.0 / 120.0);
+                }
+                agent::record(g, agent::Node { role: "Image", name: Some("Like this".into()), value: Some(shown.words().0.into()), bounds: b, enabled: true, ..Default::default() });
+            })
             .w(px(w))
             .h(px(h));
             row = row.child(div().flex().flex_col().gap(px(m::TIGHT)).child(caption("Like this")).child(film));
         }
-        row.child(pad).into_any_element()
+        row.child(pad).into_element()
     }
 
     /// Under the panels: what the last touch did (or the step's news)
     /// and the step's count; once it's done, a banner saying so, and what
     /// goes on.
-    fn feedback(&self) -> AnyElement {
+    fn feedback(&self) -> Element {
         let slot = div().w_full().h(px(banner_height()));
         if self.done() && !self.quitting {
             let key = if self.step == Step::TypeWithPalms { "Return" } else { "Space" };
@@ -1230,10 +1218,10 @@ impl TrainerWindow {
                 None => format!("That's all of them. Press {key} to learn your hands."),
             };
             let banner = Banner::new(Tone::Success, "This step is done", detail).trailing(KeyHint::new(key, if next.is_some() { "Next step" } else { "Train" }));
-            return slot.child(banner).into_any_element();
+            return slot.child(banner).into_element();
         }
         // (In the banner's box, quiet, so the banner takes its place.)
-        let back = canvas(|_, _, _| {}, |b, _, window, cx| banner_back(window, b, None, &theme::palette(cx))).absolute().inset_0();
+        let back = canvas(|g, b| banner_back(g, b, None, &theme::palette())).absolute().inset_0();
         let mut row = div().flex().flex_row().items_center().gap(px(m::SPACING)).px(px(m::SPACING * 2.0)).size_full();
         let (good, text): (Option<bool>, String) = if self.quitting {
             (None, "Press Esc again to quit: the touches so far are dropped. Space goes on.".into())
@@ -1247,21 +1235,18 @@ impl TrainerWindow {
             (None, String::new())
         };
         if let Some(good) = good {
-            let mark = canvas(|_, _, _| {}, move |b, _, window, cx| verdict_mark(window, b, if good { Tone::Success } else { Tone::Failure }, 18.0, &theme::palette(cx)))
-                .w(px(m::MARK_ROW))
-                .h(px(m::MARK_ROW))
-                .flex_shrink_0();
+            let mark = canvas(move |g, b| verdict_mark(g, b, if good { Tone::Success } else { Tone::Failure }, 18.0, &theme::palette())).w(px(m::MARK_ROW)).h(px(m::MARK_ROW)).flex_shrink_0();
             row = row.child(mark);
         }
         row = row.child(div().flex_1().min_w_0().child(StringView::new(text).size(style::LEAD_SIZE).wrap(true)));
         if let Some((name, want)) = self.step.goal() {
             row = row.child(tally(name, self.got, want));
         }
-        slot.relative().child(back).child(row).into_any_element()
+        slot.relative().child(back).child(row).into_element()
     }
 
     /// The bottom: the keys and what each does now.
-    fn keys(&self) -> AnyElement {
+    fn keys(&self) -> Element {
         let mut row = div().flex().flex_row().items_center().gap(px(m::SPACING * 3.0)).w_full().h(px(m::CONTROL_HEIGHT));
         let hint = |key: &'static str, action: &'static str, on: bool| KeyHint::new(key, action).enabled(on);
         match self.step {
@@ -1285,11 +1270,11 @@ impl TrainerWindow {
             Step::Test => row = row.child(hint("Space", "Done", true)).child(hint("R", "Train again", true)),
             _ => row = row.child(hint("Esc", "Stop", true)),
         }
-        row.into_any_element()
+        row.into_element()
     }
 
     /// The summary: whether a model was made and kept, and how it did.
-    fn summary(&self) -> AnyElement {
+    fn summary(&self) -> Element {
         let gathered = self.samples.len();
         let palms = self.samples.iter().filter(|s| s.palm).count();
         let saved = *self.saved.lock().unwrap();
@@ -1336,38 +1321,35 @@ impl TrainerWindow {
         if let Some(Outcome::Kept(r) | Outcome::Worse(r)) = &self.outcome {
             col = col.child(results(r, self.kind()));
         }
-        col.into_any_element()
+        col.into_element()
     }
 }
 
 /// A goal's count: its name, and a dot for each touch it wants, filled
 /// as they come.
-fn tally(name: &'static str, got: usize, want: usize) -> AnyElement {
+fn tally(name: &'static str, got: usize, want: usize) -> Element {
     const DOT: f32 = 10.0;
     let said = format!("{name}: {} of {want}", got.min(want));
-    let dots = canvas(
-        |_, _, _| {},
-        move |b, _, window, cx| {
-            let p = theme::palette(cx);
-            for i in 0..want {
-                let c = point(b.left() + px(i as f32 * (DOT + m::TIGHT) + DOT / 2.0), b.center().y);
-                if i < got {
-                    ellipse(window, c, DOT / 2.0, DOT / 2.0, style::c(p.success));
-                } else {
-                    ring(window, c, DOT / 2.0 - 1.0, DOT / 2.0 - 1.0, style::disabled_text(&p));
-                }
+    let dots = canvas(move |g, b| {
+        let p = theme::palette();
+        for i in 0..want {
+            let c = point(b.left() + px(i as f32 * (DOT + m::TIGHT) + DOT / 2.0), b.center().y);
+            if i < got {
+                ellipse(g, c, DOT / 2.0, DOT / 2.0, style::c(p.success));
+            } else {
+                ring(g, c, DOT / 2.0 - 1.0, DOT / 2.0 - 1.0, style::disabled_text(&p));
             }
-            agent::record(window, cx, agent::Node::label(said.clone(), b));
-        },
-    )
+        }
+        agent::record(g, agent::Node::label(said.clone(), b));
+    })
     .w(px(want as f32 * (DOT + m::TIGHT) - m::TIGHT))
     .h(px(DOT))
     .flex_shrink_0();
-    div().flex().flex_row().items_center().gap(px(m::SPACING)).child(StringView::new(name).dim(got < want)).child(dots).into_any_element()
+    div().flex().flex_row().items_center().gap(px(m::SPACING)).child(StringView::new(name).dim(got < want)).child(dots).into_element()
 }
 
 /// How each model did on the touches kept back: a little table.
-fn results(r: &Report, kind: Kind) -> AnyElement {
+fn results(r: &Report, kind: Kind) -> Element {
     let pct = |v: f32| format!("{:.0}%", v * 100.0);
     let row = |name: &str, caught: String, lost: String, bold: bool| {
         div()
@@ -1397,7 +1379,7 @@ fn results(r: &Report, kind: Kind) -> AnyElement {
         .child(row("The new model", pct(r.palms_caught), pct(r.fingers_lost), true))
         .child(row("Olo's own model", pct(r.baseline_palms_caught), pct(r.baseline_fingers_lost), false));
     // (A pad that says no size: size says nothing.)
-    if kind.sized() { table.child(row("Size alone", pct(r.size_rule_palms_caught), pct(r.size_rule_fingers_lost), false)) } else { table }.into_any_element()
+    if kind.sized() { table.child(row("Size alone", pct(r.size_rule_palms_caught), pct(r.size_rule_fingers_lost), false)) } else { table }.into_element()
 }
 
 /// Each screen in each of its states, for the layout lint
@@ -1425,8 +1407,8 @@ pub(crate) fn lint_states() -> Vec<(String, Step, u8)> {
 impl TrainerWindow {
     /// The window at `step` in state `v` of `lint_states`, with a
     /// MacBook's pad, the longest things each shows.
-    pub(crate) fn for_lint(prefs: Entity<Prefs>, step: Step, v: u8, cx: &mut Context<Self>) -> TrainerWindow {
-        let mut w = TrainerWindow::new(prefs, 1600, 120, cx);
+    pub(crate) fn for_lint(step: Step, v: u8, cx: &mut Cx<Self>) -> TrainerWindow {
+        let mut w = TrainerWindow::new(1600, 120, cx);
         w.live.lock().unwrap().axes =
             Some(PadAxes { name: "Apple MTP multi-touch".into(), x_min: -7700, x_max: 7700, y_min: -200, y_max: 9200, x_res: 98, y_res: 98, size_max: 4000, ..Default::default() });
         w.step = step;
@@ -1490,18 +1472,27 @@ impl TrainerWindow {
     }
 }
 
-impl Render for TrainerWindow {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+impl View for TrainerWindow {
+    type Message = Told;
+
+    fn message(&mut self, told: Told, cx: &mut Cx<Self>) {
+        match told {
+            Told::News => cx.notify(),
+            Told::Trained(out) => self.trained(out, cx),
+        }
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         if !self.focused {
             self.focused = true;
-            window.focus(&self.focus);
+            self.focus.focus(cx);
         }
         self.take_touches();
         let step = self.step;
         let (title, lead) = step.words();
         // The column: as wide as the screen allows, up to COLUMN; the
         // panels in the pad's shape, never so tall the rest doesn't fit.
-        let screen = window.viewport_size();
+        let screen = cx.viewport_size();
         let (vw, vh) = (f32::from(screen.width), f32::from(screen.height));
         let col_w = ((vw - 2.0 * MARGIN).min(COLUMN) / 2.0).floor() * 2.0;
         let half = ((col_w - PANEL_GAP) / 2.0 / 2.0).floor() * 2.0;
@@ -1538,7 +1529,8 @@ impl Render for TrainerWindow {
                 }
                 col = col.child(self.panels(Some(s), false, two));
                 if s == Step::TypeWithPalms && self.tutor.wrong_now() {
-                    window.request_animation_frame();
+                    let again = cx.invalidator();
+                    cx.on_next_frame(move |_| again.invalidate());
                 }
                 col = col.child(self.feedback());
             }
@@ -1555,7 +1547,7 @@ impl Render for TrainerWindow {
                 col = col.child(self.top(title.into(), lead.into()));
                 col = col.child(self.panels(None, true, one));
                 let legend = |ink: fn(&olo_theme::Palette) -> Hsla, name: String| {
-                    let dot = canvas(|_, _, _| {}, move |b, _, window, cx| ellipse(window, b.center(), 6.0, 6.0, ink(&theme::palette(cx)))).w(px(m::MARK_SIZE)).h(px(m::MARK_SIZE)).flex_shrink_0();
+                    let dot = canvas(move |g, b| ellipse(g, b.center(), 6.0, 6.0, ink(&theme::palette()))).w(px(m::MARK_SIZE)).h(px(m::MARK_SIZE)).flex_shrink_0();
                     div().flex().flex_row().items_center().gap(px(m::MARK_GAP)).child(dot).child(StringView::new(name))
                 };
                 let (fingers, palms) = self.tried;

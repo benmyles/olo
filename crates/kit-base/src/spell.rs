@@ -4,7 +4,7 @@
 //! words learnt (Learn Spelling) are kept in `~/.config/olo/words`, one a
 //! line, for every app. The kit loads the dictionary on a worker the
 //! first time it's wanted ([`load`]) and draws again when it's ready
-//! (`olo_ui::spell::checker`).
+//! (`olo_kit::spell::checker`).
 
 use olo_sync::RwLock;
 use std::{collections::HashSet, ops::Range, path::PathBuf};

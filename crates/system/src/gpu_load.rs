@@ -117,11 +117,25 @@ pub fn asleep(device: &Path) -> bool {
     read(device.join("power/runtime_status")).trim() == "suspended"
 }
 
-/// An NVIDIA GPU's figures now: busy %, memory used and in all, watts,
-/// °C, MHz. None if it's asleep or its library can't say.
+/// How busy a GPU is, of how busy each of its engines is (%): as busy as
+/// its busiest (they are separate hardware: a card encoding video with
+/// its 3D engine idle is busy, and two at 60% aren't 120%). NaN where
+/// none of them says.
+pub fn busiest(engines: &[f64]) -> f64 {
+    engines.iter().copied().filter(|v| v.is_finite()).fold(f64::NAN, f64::max)
+}
+
+/// An NVIDIA GPU's figures now: how busy its graphics and compute engine
+/// is (%), and its video encoder and decoder, which its library counts
+/// apart (a screen recording or a call encoding on the card read as an
+/// idle GPU while only the first was asked: Ben, 2026-11-10); memory
+/// used and in all, watts, °C, MHz. None if it's asleep or its library
+/// can't say.
 #[derive(Clone, Copy)]
 pub struct NvidiaNow {
     pub busy: f64,
+    pub encode: f64,
+    pub decode: f64,
     pub memory_used: u64,
     pub memory_total: u64,
     pub watts: f64,
@@ -129,29 +143,48 @@ pub struct NvidiaNow {
     pub mhz: f64,
 }
 
+impl NvidiaNow {
+    /// How busy the card is: its busiest engine ([`busiest`]).
+    pub fn total(&self) -> f64 {
+        busiest(&[self.busy, self.encode, self.decode])
+    }
+}
+
 /// How long an idle NVIDIA GPU is left unasked: each question counts as
 /// use, and one asked every second never sleeps (it slept about ten
 /// seconds after the last). While it's busy it's asked every time.
 const IDLE_ASK_EVERY: std::time::Duration = std::time::Duration::from_secs(20);
+/// How long after it was last seen asleep it's asked every time.
+const JUST_WOKEN: std::time::Duration = std::time::Duration::from_secs(8);
 
 pub fn nvidia_now(device: &Path, bus: &str) -> Option<NvidiaNow> {
     use std::{collections::HashMap, sync::Mutex, time::Instant};
     static LAST: Mutex<Option<HashMap<String, (Instant, NvidiaNow)>>> = Mutex::new(None);
+    static SLEPT: Mutex<Option<HashMap<String, Instant>>> = Mutex::new(None);
+    let mut slept = SLEPT.lock().unwrap_or_else(|e| e.into_inner());
+    let slept = slept.get_or_insert_with(HashMap::new);
     if asleep(device) {
+        slept.insert(bus.to_owned(), Instant::now());
         return None;
     }
+    // Just woken: something has begun to use it, and what it does shows
+    // a moment after it wakes. Asked each time for a while, though it
+    // says it's idle (a recording begun on a sleeping card read as
+    // nothing for its first twenty seconds otherwise).
+    let just_woken = slept.get(bus).is_some_and(|at| at.elapsed() < JUST_WOKEN);
     let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
     let last = last.get_or_insert_with(HashMap::new);
     // Idle when last asked: what it said then, until it's time to ask
     // again (it may well be asleep by then).
-    if let Some((at, was)) = last.get(bus)
-        && was.busy < 1.0
+    if !just_woken
+        && let Some((at, was)) = last.get(bus)
+        && was.total() < 1.0
         && at.elapsed() < IDLE_ASK_EVERY
     {
         return Some(NvidiaNow { ..*was });
     }
     let now = ask_nvidia(bus)?;
-    NVIDIA_BUSY.lock().unwrap_or_else(|e| e.into_inner()).insert(bus.to_owned(), now.busy >= 1.0);
+    NVIDIA_BUSY.lock().unwrap_or_else(|e| e.into_inner()).insert(bus.to_owned(), now.total() >= 1.0);
     last.insert(bus.to_owned(), (Instant::now(), NvidiaNow { ..now }));
     Some(now)
 }
@@ -170,6 +203,8 @@ fn ask_nvidia(bus: &str) -> Option<NvidiaNow> {
     let memory = d.memory_info().ok();
     Some(NvidiaNow {
         busy: d.utilization_rates().map_or(0.0, |u| u.gpu as f64),
+        encode: d.encoder_utilization().map_or(0.0, |u| u.utilization as f64),
+        decode: d.decoder_utilization().map_or(0.0, |u| u.utilization as f64),
         memory_used: memory.as_ref().map_or(0, |m| m.used),
         memory_total: memory.as_ref().map_or(0, |m| m.total),
         watts: d.power_usage().map_or(0.0, |mw| mw as f64 / 1000.0),
@@ -195,12 +230,52 @@ pub fn xe_gt_name(gt: &Path) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    /// A GPU is as busy as its busiest engine: one encoding with its 3D
+    /// engine idle is busy, and what an engine doesn't say isn't counted.
+    #[test]
+    fn as_busy_as_its_busiest_engine() {
+        use super::{NvidiaNow, busiest};
+        assert_eq!(busiest(&[3.0, 41.0, 0.0]), 41.0);
+        assert_eq!(busiest(&[60.0, 60.0]), 60.0);
+        assert_eq!(busiest(&[f64::NAN, 12.0]), 12.0);
+        assert!(busiest(&[f64::NAN]).is_nan() && busiest(&[]).is_nan());
+        let recording = NvidiaNow { busy: 2.0, encode: 38.0, decode: 0.0, memory_used: 0, memory_total: 0, watts: 0.0, celsius: 0.0, mhz: 0.0 };
+        assert_eq!(recording.total(), 38.0);
+    }
+
     /// This computer's GPUs (`cargo test -- --ignored`).
     #[test]
     #[ignore]
     fn live() {
         for g in super::find() {
             eprintln!("{} {} ({}) {:?} asleep={}", g.prefix, g.name, g.driver, g.kind, super::asleep(&g.device));
+        }
+    }
+
+    /// An NVIDIA GPU's engines, a line a second for `OLO_GPU_WATCH`
+    /// seconds (10), while it's awake: run it beside something that
+    /// encodes or decodes on the card (olo-video's ignored NVENC tests)
+    /// to see the encoder's and decoder's figures move. It never wakes
+    /// a sleeping card (`--ignored --nocapture`).
+    #[test]
+    #[ignore]
+    fn watch_nvidia() {
+        let seconds: u32 = std::env::var("OLO_GPU_WATCH").ok().and_then(|s| s.parse().ok()).unwrap_or(10);
+        let Some((g, bus)) = super::find().into_iter().find_map(|g| match &g.kind {
+            super::Kind::Nvidia { bus } => Some((g.clone(), bus.clone())),
+            _ => None,
+        }) else {
+            return eprintln!("no NVIDIA GPU here");
+        };
+        for _ in 0..seconds {
+            // (Asked every time, as `nvidia_now` asks a busy card: it
+            // leaves an idle one alone for twenty seconds, which here
+            // would be the whole watch.)
+            match Some(()).filter(|()| !super::asleep(&g.device)).and_then(|()| super::ask_nvidia(&bus)) {
+                Some(n) => eprintln!("graphics {:3.0}%  encoder {:3.0}%  decoder {:3.0}%  as busy as {:3.0}%  ({:.0} W)", n.busy, n.encode, n.decode, n.total(), n.watts),
+                None => eprintln!("asleep (or its library doesn't answer)"),
+            }
+            std::thread::sleep(std::time::Duration::from_secs(1));
         }
     }
 }

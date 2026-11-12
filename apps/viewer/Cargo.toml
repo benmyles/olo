@@ -10,9 +10,9 @@ path = "src/main.rs"
 
 [dependencies]
 olo-crash.workspace = true
-olo-ui.workspace = true
+olo-kit.workspace = true
 olo-xdg.workspace = true
-olo-preview = { workspace = true, features = ["gpui"] }
+olo-preview = { workspace = true, features = ["kit"] }
 olo-video.workspace = true
 image = { version = "0.25", default-features = false }
 serde.workspace = true

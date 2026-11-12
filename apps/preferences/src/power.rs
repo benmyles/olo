@@ -9,25 +9,27 @@
 //!   (`gpus::modes`).
 //! - Graphics: each GPU, its Custom settings, and what records and plays
 //!   video (`gpus::graphics`).
-//! - Battery & Idle: the battery, when an idle machine turns its display
-//!   off and sleeps, caffeinated mode (stay awake until turned off; also
-//!   the cup in the Deskbar) and presence.
+//! - Battery & Idle: the battery, the fans' profile (a ThinkPad's: the
+//!   firmware's own curve, or Olo's `olo-fans` running them ahead of the
+//!   heat), when an idle machine turns its display off and sleeps,
+//!   caffeinated mode (stay awake until turned off; also the cup in the
+//!   Deskbar) and presence.
 //!
-//! The battery is read on a thread every few seconds; the modes follow
-//! the daemon's signals.
+//! The battery and the fans' keeper are read on a thread every few
+//! seconds; the modes follow the daemon's signals.
 
 use std::{sync::Arc, time::Duration};
 
+use olo_kit::{
+    Cx, ParentElement as _, SharedString, Styled as _, WindowCx, div, metrics as m, px, style, theme,
+    widgets::{CheckBox, MenuField, RadioButton, StringView, TabView},
+};
 use olo_protocol::{PowerStatus, Settings};
 use olo_sync::Mutex;
 use olo_system::{
     battery::{self, Battery, State as Charge},
+    fans::{self, Profile},
     power_profile::{self, Mode, Modes},
-};
-use olo_ui::{
-    gpui::{Context, ParentElement as _, SharedString, Styled as _, div, px},
-    metrics as m,
-    widgets::{CheckBox, RadioButton, StringView, TabView},
 };
 
 use crate::{
@@ -39,9 +41,24 @@ use crate::{
 /// What the poller last read: None until it has; Some(None) for no battery.
 type Shared = Arc<Mutex<Option<Option<Battery>>>>;
 
+/// The fans' keeper as the poller last read it, and a change of profile
+/// under way.
+#[derive(Clone, Default)]
+struct Fans {
+    /// None until read; Some(None): this computer's fans can't be set
+    /// (nothing is shown).
+    state: Option<Option<fans::State>>,
+    /// The profile being put in force (the administrator's password
+    /// asked, the steps run): shown as chosen meanwhile.
+    applying: Option<Profile>,
+    /// How the last change went, until the next.
+    said: Option<Result<String, String>>,
+}
+
 /// The battery, read on a thread of its own while the panel is open.
 pub struct State {
     battery: Shared,
+    fans: Arc<Mutex<Fans>>,
     /// The power modes: None while being read, then the daemon's (None:
     /// there is none).
     modes: Modes_,
@@ -73,7 +90,7 @@ pub fn show_tab(st: &mut State, name: &str) {
 type Modes_ = Arc<Mutex<Option<Option<Modes>>>>;
 
 impl State {
-    pub fn new(cx: &mut Context<PanelView>) -> State {
+    pub fn new(_cx: &mut Cx<PanelView>) -> State {
         // The power modes, as the daemon says, kept up to date by its
         // signals (a ThinkPad's Fn+L/M/H too). Tests: made up.
         let modes: Modes_ = Default::default();
@@ -81,7 +98,7 @@ impl State {
         if cfg!(test) {
             *modes.lock().unwrap() = Some(Some(Modes { active: Mode::Balanced, available: Mode::ALL.to_vec(), degraded: None, drivers: vec!["intel_pstate".into(), "platform_profile".into()] }));
         } else {
-            let (into, proxy, follow) = (modes.clone(), olo_ui::proxy(cx), gpus_follow.clone());
+            let (into, proxy, follow) = (modes.clone(), olo_kit::proxy(), gpus_follow.clone());
             power_profile::watch(move |m| {
                 let on = std::path::Path::new("/etc/systemd/system/olo-gpu-follow.service").exists();
                 follow.store(on, std::sync::atomic::Ordering::Relaxed);
@@ -90,15 +107,48 @@ impl State {
             });
         }
         let limit: Arc<Mutex<Option<battery::ChargeLimit>>> = Default::default();
-        read_limit(&limit, olo_ui::proxy(cx));
+        read_limit(&limit, olo_kit::proxy());
         // (Tests: a ThinkPad's, readable.)
         let presence = if cfg!(test) { Some(true) } else { olo_system::presence::sensor().map(|s| olo_system::presence::readable(&s)) };
-        State { battery: poll(olo_ui::proxy(cx)), modes, limit, presence, gpus_follow, tab: 0, gpus: crate::gpus::State::new() }
+        // (Tests: a ThinkPad's fans kept cool, at work.)
+        let fans: Arc<Mutex<Fans>> = Default::default();
+        if cfg!(test) {
+            fans.lock().unwrap().state = Some(Some(fans::State { profile: Profile::Cool, installed: true, control: true, control_kept: true, running: true, held: Some(("4".into(), "19 W".into())) }));
+        }
+        State { battery: poll(olo_kit::proxy(), fans.clone()), fans, modes, limit, presence, gpus_follow, tab: 0, gpus: crate::gpus::State::new() }
     }
 }
 
+/// Put `profile` in force: Olo Doctor does it (`olo-doctor --fans`: its
+/// helper, as root through polkit, which asks for the password), on a
+/// thread; how it went is said under the menu.
+fn set_fans(shared: Arc<Mutex<Fans>>, proxy: olo_kit::Proxy, profile: Profile) {
+    {
+        let mut f = shared.lock().unwrap();
+        if f.applying.is_some() {
+            return;
+        }
+        f.applying = Some(profile);
+        f.said = None;
+    }
+    proxy.send(Msg::Redraw);
+    std::thread::Builder::new()
+        .name("fans-apply".into())
+        .spawn(move || {
+            let said = crate::ask_doctor(&["--fans", profile.word()]);
+            let now = fans::look(&fans::Places::here());
+            let mut f = shared.lock().unwrap();
+            f.applying = None;
+            f.said = Some(said);
+            f.state = Some(now);
+            drop(f);
+            proxy.send(Msg::Redraw);
+        })
+        .expect("thread");
+}
+
 /// Read the battery's charge limit (UPower's), on a thread.
-fn read_limit(into: &Arc<Mutex<Option<battery::ChargeLimit>>>, proxy: olo_ui::Proxy) {
+fn read_limit(into: &Arc<Mutex<Option<battery::ChargeLimit>>>, proxy: olo_kit::Proxy) {
     // Tests (the layout lint): a ThinkPad's.
     if cfg!(test) {
         *into.lock().unwrap() = Some(battery::ChargeLimit { enabled: false, start: 75, end: 80, path: String::new() });
@@ -112,7 +162,7 @@ fn read_limit(into: &Arc<Mutex<Option<battery::ChargeLimit>>>, proxy: olo_ui::Pr
     });
 }
 
-fn poll(proxy: olo_ui::Proxy) -> Shared {
+fn poll(proxy: olo_kit::Proxy, fans: Arc<Mutex<Fans>>) -> Shared {
     let battery: Shared = Default::default();
     // Tests (the layout lint): a battery with all there is to say, and
     // not this machine's.
@@ -134,12 +184,23 @@ fn poll(proxy: olo_ui::Proxy) -> Shared {
         .name("battery".into())
         .spawn(move || {
             // Ends once the panel (the only strong reference) has closed.
+            let places = fans::Places::here();
             while let Some(shared) = out.upgrade() {
                 let b = battery::battery();
                 {
                     let mut slot = shared.lock().unwrap();
                     if slot.as_ref() != Some(&b) {
                         *slot = Some(b);
+                        proxy.send(Msg::Redraw);
+                    }
+                }
+                // The fans' keeper with it (a few small files): the
+                // level it holds changes as the computer works.
+                let now = fans::look(&places);
+                {
+                    let mut f = fans.lock().unwrap();
+                    if f.state.as_ref() != Some(&now) {
+                        f.state = Some(now);
                         proxy.send(Msg::Redraw);
                     }
                 }
@@ -233,7 +294,7 @@ fn power_mode(ui: &mut Ui, modes: Option<Option<Modes>>, shared: &Modes_, gpus_f
         };
         for mode in Mode::ALL.into_iter().filter(|m| modes.available.contains(m)) {
             let shared = shared.clone();
-            let pick = ui.on_view(move |_, _: (), _, cx| {
+            let pick = ui.on_view(move |_, _: &(), cx| {
                 // (Shown at once; the daemon's signal confirms it.)
                 if let Some(Some(m)) = shared.lock().unwrap().as_mut() {
                     m.active = mode;
@@ -245,7 +306,7 @@ fn power_mode(ui: &mut Ui, modes: Option<Option<Modes>>, shared: &Modes_, gpus_f
                 });
                 cx.notify();
             });
-            ui.add(RadioButton::new(mode.label(), modes.active == mode).id(format!("power-{}", mode.id())).on_select(move |window, cx| pick((), window, cx)));
+            ui.add(RadioButton::new(mode.label(), modes.active == mode).id(format!("power-{}", mode.id())).on_select(move |_window, cx| pick(&(), cx)));
             // (Under the label, past the mark.)
             ui.add(div().pl(px(m::MARK_SIZE + m::MARK_GAP)).child(StringView::new(mode.about()).dim(true).wrap(true)));
         }
@@ -267,9 +328,9 @@ pub fn ui(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut St
         1 => crate::gpus::graphics(ui, &mut st.gpus),
         _ => battery_and_idle(ui, power, server, st),
     });
-    let pick = ui.on_view(|v, i: usize, _, cx| {
+    let pick = ui.on_view(|v, i: &usize, cx| {
         if let crate::panel::State::Power(st) = &mut v.state {
-            st.tab = i;
+            st.tab = *i;
         }
         cx.notify();
     });
@@ -287,13 +348,16 @@ pub fn ui(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut St
 /// and when idle, caffeinated and presence beside it.
 fn battery_and_idle(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut State) {
     let battery = st.battery.lock().unwrap().clone();
-    let left = ui.collect(|ui| battery_box(ui, battery, st));
+    let left = ui.collect(|ui| {
+        battery_box(ui, battery, st);
+        fans_box(ui, st);
+    });
     let presence = st.presence;
     let right = ui.collect(|ui| {
         idle_boxes(ui, power, server);
         presence_box(ui, presence);
     });
-    let column = |items: Vec<olo_ui::gpui::AnyElement>| div().flex_1().min_w_0().flex().flex_col().gap(px(m::SPACING)).children(items);
+    let column = |items: Vec<olo_kit::Element>| div().flex_1().min_w_0().flex().flex_col().gap(px(m::SPACING)).children(items);
     ui.add(div().flex().flex_row().items_start().gap(px(m::SPACING)).child(column(left)).child(column(right)));
 }
 
@@ -316,9 +380,9 @@ fn battery_box(ui: &mut Ui, battery: Option<Option<Battery>>, st: &State) {
             // Charging stopped short, to spare a battery that's mostly
             // plugged in (UPower's threshold: a ThinkPad's).
             if let Some(l) = st.limit.lock().unwrap().clone() {
-                let (shared, proxy, it) = (st.limit.clone(), olo_ui::proxy(ui.cx), l.clone());
-                let toggle = move |on: bool, _: &mut olo_ui::gpui::Window, _: &mut olo_ui::gpui::App| {
-                    let (l, shared, proxy) = (it.clone(), shared.clone(), proxy.clone());
+                let (shared, proxy, it) = (st.limit.clone(), olo_kit::proxy(), l.clone());
+                let toggle = move |on: &bool, _: &mut WindowCx| {
+                    let (l, shared, proxy, on) = (it.clone(), shared.clone(), proxy.clone(), *on);
                     std::thread::spawn(move || {
                         if let Err(e) = battery::set_charge_limit(&l, on) {
                             tracing::warn!("charge limit: {e}");
@@ -334,12 +398,39 @@ fn battery_box(ui: &mut Ui, battery: Option<Option<Battery>>, st: &State) {
     });
 }
 
+/// The fans' profile, where they can be set (a ThinkPad's): the
+/// firmware's own curve or Olo's, and what the fans are doing now.
+/// Choosing one asks for an administrator's password (the service is
+/// the system's).
+fn fans_box(ui: &mut Ui, st: &State) {
+    let f = st.fans.lock().unwrap().clone();
+    let Some(Some(state)) = f.state else { return };
+    ui.bbox("Fans", |ui| {
+        let shown = f.applying.unwrap_or(state.profile);
+        let names: Vec<SharedString> = Profile::ALL.iter().map(|p| p.label().into()).collect();
+        let chosen = Profile::ALL.iter().position(|p| *p == shown).unwrap_or(0);
+        let (shared, proxy) = (st.fans.clone(), olo_kit::proxy());
+        let pick = move |i: &usize, _: &mut WindowCx| {
+            if let Some(&profile) = Profile::ALL.get(*i) {
+                set_fans(shared.clone(), proxy.clone(), profile);
+            }
+        };
+        ui.add(div().flex().child(MenuField::new("fan-profile", names, chosen).label("Fan profile:").enabled(f.applying.is_none()).on_change(pick)));
+        ui.note(shown.about());
+        match (&f.applying, &f.said) {
+            (Some(_), _) => ui.note("Setting it: an administrator's password is asked…"),
+            (None, Some(Err(why))) => ui.add(StringView::new(format!("Not changed. {why}")).wrap(true).color(style::c(theme::palette().failure))),
+            _ => ui.note(state.now()),
+        }
+    });
+}
+
 fn idle_boxes(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server) {
     let p = ui.s.power.clone();
     ui.bbox("When Idle", |ui| {
         const OFF: &str = "Turn the display off after:";
         const SLEEP_AFTER: &str = "Put the computer to sleep after:";
-        let divider = divider_for(ui.window, &[OFF, SLEEP_AFTER]);
+        let divider = divider_for(&[OFF, SLEEP_AFTER]);
         minutes_menu(ui, "display-off", OFF, divider, DISPLAY_OFF, p.display_off_minutes, |s, m| s.power.display_off_minutes = m);
         minutes_menu(ui, "sleep", SLEEP_AFTER, divider, SLEEP, p.sleep_minutes, |s, m| s.power.sleep_minutes = m);
         ui.enabled_if(p.sleep_minutes > 0, |ui| ui.check("Only on battery power", p.sleep_on_battery_only, |s, v| s.power.sleep_on_battery_only = v));
@@ -352,7 +443,7 @@ fn idle_boxes(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server) {
             return;
         };
         let server = server.clone();
-        ui.add(CheckBox::new("Stay awake: no display sleep, sleep, screen saver or lock", status.caffeinated).on_toggle(move |on, _, _| server.set_caffeinated(on)));
+        ui.add(CheckBox::new("Stay awake: no display sleep, sleep, screen saver or lock", status.caffeinated).on_toggle(move |on, _| server.set_caffeinated(*on)));
         let note = match status.app_inhibitors {
             0 => "Also from the Deskbar: click the cup.".to_owned(),
             1 => "An application is keeping the display awake.".to_owned(),
@@ -381,7 +472,7 @@ fn presence_box(ui: &mut Ui, sensor: Option<bool>) {
     let p = ui.s.power.clone();
     ui.bbox("Presence", |ui| {
         const LOCK: &str = "Lock when you walk away:";
-        let divider = divider_for(ui.window, &[LOCK]);
+        let divider = divider_for(&[LOCK]);
         let mut choices: Vec<u32> = AWAY.to_vec();
         if !choices.contains(&p.lock_when_away_seconds) {
             choices.push(p.lock_when_away_seconds);

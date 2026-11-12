@@ -31,13 +31,15 @@ pub fn manager_environment() -> Result<Vec<(String, String)>> {
 }
 
 /// Whether this program runs in the person's own session, in front of
-/// the computer: a real one (`OLO_REAL_SESSION`: olo-session on a seat)
-/// and not an agent's screen (`OLO_SCREEN`). Only there does a program
-/// go across to root through polkit (which asks the person), or use what
-/// is the person's to touch: their fingerprint reader, security key and
-/// camera. A test session or an agent's screen has nobody in front of it.
+/// the computer: on the real session's display (`olo_xdg::session::real`:
+/// the one olo-session on a seat says is the person's, however this
+/// program came to be started) and not an agent's screen (`OLO_SCREEN`).
+/// Only there does a program go across to root through polkit (which
+/// asks the person), or use what is the person's to touch: their
+/// fingerprint reader, security key and camera. A test session or an
+/// agent's screen has nobody in front of it.
 pub fn at_the_computer() -> bool {
-    std::env::var_os("OLO_REAL_SESSION").is_some() && std::env::var_os("OLO_SCREEN").is_none()
+    olo_xdg::session::real() && std::env::var_os("OLO_SCREEN").is_none()
 }
 
 /// Whether the person's fingerprint reader, security key and camera are
