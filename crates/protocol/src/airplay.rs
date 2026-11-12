@@ -107,9 +107,72 @@ pub fn on(receiver: &str) -> Vec<Playing> {
     all().into_iter().filter(|p| p.receiver.to_lowercase().starts_with(&wanted)).collect()
 }
 
+/// Where the pairings are kept (`olo_airplay::kept`: each receiver
+/// paired with, and the keys that prove each side to the other). Only
+/// the person reads it.
+pub fn pairings_path() -> PathBuf {
+    olo_xdg::state_dir().join("airplay/pairings.json")
+}
+
+/// A receiver paired with, as a menu names it (its keys stay in the
+/// file, unread here).
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct Paired {
+    /// Its id as it announces it: the same whatever it's renamed to.
+    pub device_id: String,
+    pub name: String,
+}
+
+impl Paired {
+    /// What names it to `olo-airplay`: its id, or (it announced none) its
+    /// name.
+    pub fn key(&self) -> &str {
+        if self.device_id.is_empty() { &self.name } else { &self.device_id }
+    }
+}
+
+/// The receivers paired with, by name: what "Play On" lists. Read from
+/// the file as it is (a small one), no network asked.
+pub fn paired() -> Vec<Paired> {
+    let mut all: Vec<Paired> = std::fs::read(pairings_path()).ok().and_then(|bytes| serde_json::from_slice(&bytes).ok()).unwrap_or_default();
+    all.sort_by_key(|p| p.name.to_lowercase());
+    all
+}
+
+/// One word for a shell, whatever is in it.
+fn quoted(word: &str) -> String {
+    format!("'{}'", word.replace('\'', "'\\''"))
+}
+
+/// The command that plays `what` (a file's path, or an address on the
+/// web) on `receiver` ([`Paired::key`], or a name) and tells the person
+/// if it couldn't: what an app's "Play On" runs.
+pub fn play_command(receiver: &str, what: &str) -> String {
+    format!("olo-airplay play --notify --on {} {}", quoted(receiver), quoted(what))
+}
+
+/// Start playing `what` on `receiver`: a process of its own
+/// (`olo-airplay play`), which outlives the window that asked, shows in
+/// Deskbar's tray while it plays, and tells the person in a notification
+/// if the receiver wouldn't play it.
+pub fn play_on(receiver: &str, what: &str) -> std::io::Result<()> {
+    olo_xdg::spawn_detached(&play_command(receiver, what))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_play_asked_for_in_words_a_shell_takes() {
+        assert_eq!(play_command("AA:BB:CC:DD:EE:FF", "/home/me/Films/A film.mp4"), "olo-airplay play --notify --on 'AA:BB:CC:DD:EE:FF' '/home/me/Films/A film.mp4'");
+        assert_eq!(play_command("Ben's Room", "it's.mp4"), r"olo-airplay play --notify --on 'Ben'\''s Room' 'it'\''s.mp4'");
+        let p = Paired { device_id: String::new(), name: "Den".into() };
+        assert_eq!((p.key(), Paired { device_id: "AA".into(), ..p.clone() }.key()), ("Den", "AA"));
+        // The pairings' file, read for its names: the keys in it aren't.
+        let read: Vec<Paired> = serde_json::from_str(r#"[{"device_id":"AA:BB","name":"Front Room","credentials":"aa:bb:cc:dd"}]"#).unwrap();
+        assert_eq!(read, [Paired { device_id: "AA:BB".into(), name: "Front Room".into() }]);
+    }
 
     #[test]
     fn where_it_is_by_now() {

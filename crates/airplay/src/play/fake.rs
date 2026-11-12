@@ -146,7 +146,31 @@ pub fn serve(tv: Arc<Mutex<Tv>>) -> SocketAddr {
     let listener = TcpListener::bind("127.0.0.1:0").expect("a port on the loopback");
     let at = listener.local_addr().expect("its address");
     std::thread::spawn(move || {
-        let Ok((mut stream, _)) = listener.accept() else { return };
+        if let Ok((stream, _)) = listener.accept() {
+            connection(stream, tv);
+        }
+    });
+    at
+}
+
+/// The receiver on the loopback at one address for as long as the
+/// program runs, as a real one is: pairing, proving and playing all
+/// there, one connection after another (and several at once).
+pub fn serve_many(tv: Arc<Mutex<Tv>>) -> SocketAddr {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a port on the loopback");
+    let at = listener.local_addr().expect("its address");
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            let tv = tv.clone();
+            std::thread::spawn(move || connection(stream, tv));
+        }
+    });
+    at
+}
+
+/// One connection to it, to its end.
+fn connection(mut stream: TcpStream, tv: Arc<Mutex<Tv>>) {
+    {
         let pairing = tv.lock().unwrap().pairing.clone();
         pairing.lock().unwrap().proved = None;
         let channel: Channel = Arc::default();
@@ -184,7 +208,8 @@ pub fn serve(tv: Arc<Mutex<Tv>>) -> SocketAddr {
             let list = |v: Value| pl::write(&v);
             let mut then = Then::Nothing;
             let (status, answer): (u16, Vec<u8>) = match (method, uri) {
-                ("POST", "/pair-verify") => match pairing.lock().unwrap().post(uri, &body) {
+                // (Pairing and proving, before the connection is enciphered.)
+                ("POST", "/pair-pin-start" | "/pair-setup" | "/pair-verify") if cipher.is_none() => match pairing.lock().unwrap().post(uri, &body) {
                     Ok(answer) => (200, answer),
                     Err(_) => (400, Vec::new()),
                 },
@@ -376,6 +401,5 @@ pub fn serve(tv: Arc<Mutex<Tv>>) -> SocketAddr {
                 Then::Info => tell(&channel, &pl::dict([("type", Value::from("updateInfo")), ("value", pl::dict([("name", Value::from("A receiver of the test's own"))]))]), false),
             }
         }
-    });
-    at
+    }
 }

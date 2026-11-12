@@ -7032,6 +7032,7 @@ dependencies = [
  "libc",
  "num-bigint 0.4.8",
  "olo-crash",
+ "olo-kit-base",
  "olo-protocol",
  "olo-xdg",
  "plist",
