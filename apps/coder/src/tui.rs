@@ -18,7 +18,7 @@ enum Input {
     Key(Event),
     Update { pane: usize, update: Update },
     Upgrade,
-    Wrapped { pane: usize, document: std::sync::Arc<olo_ui::rich_text::Text>, width: usize, lines: Vec<Line<'static>> },
+    Wrapped { pane: usize, document: std::sync::Arc<crate::rich::Text>, width: usize, lines: Vec<Line<'static>> },
 }
 struct Restore;
 impl Drop for Restore {
@@ -38,7 +38,7 @@ struct Pane {
     delivery: olo_coder_core::Delivery,
     history: Vec<String>,
     history_at: usize,
-    rendered: std::sync::Arc<olo_ui::rich_text::Text>,
+    rendered: std::sync::Arc<crate::rich::Text>,
     width: usize,
     lines: Vec<Line<'static>>,
 }
@@ -125,7 +125,7 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) -> Result<
     execute!(std::io::stdout(), EnterAlternateScreen, event::EnableBracketedPaste)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(std::io::stdout()))?;
     let (tx, rx) = mpsc::channel();
-    let (wrap, jobs) = mpsc::channel::<(usize, std::sync::Arc<olo_ui::rich_text::Text>, usize)>();
+    let (wrap, jobs) = mpsc::channel::<(usize, std::sync::Arc<crate::rich::Text>, usize)>();
     let layout_updates = tx.clone();
     std::thread::Builder::new().name("coder-terminal-layout".into()).spawn(move || {
         while let Ok(job) = jobs.recv() {
@@ -546,7 +546,7 @@ mod tests {
     }
     #[test]
     fn rich_terminal_tables_align_cells_and_code_tabs_stay_indentation() {
-        let mut renderer = olo_ui::rich_text::Renderer::default();
+        let mut renderer = crate::rich::Renderer::default();
         let table = renderer.render("| Check | Result |\n| --- | --- |\n| Unicode 界 | A long result that wraps across several rows |\n| Tests | 31 |\n");
         let rows = styled_lines(&table, 40);
         let rendered: Vec<_> = rows.iter().map(ToString::to_string).collect();
@@ -578,8 +578,8 @@ fn expand_tabs(text: &str, mut column: usize) -> String {
     out
 }
 
-fn terminal_style(run: &olo_ui::rich_text::Run) -> Style {
-    use olo_ui::rich_text::Class;
+fn terminal_style(run: &crate::rich::Run) -> Style {
+    use crate::rich::Class;
     let mut style = Style::default();
     if run.style.bold {
         style = style.add_modifier(Modifier::BOLD);
@@ -641,8 +641,8 @@ fn wrap_spans(spans: Vec<Span<'static>>, width: usize) -> Vec<Line<'static>> {
     }
     lines
 }
-fn styled_lines(doc: &olo_ui::rich_text::Text, width: usize) -> Vec<Line<'static>> {
-    use olo_ui::rich_text::Kind;
+fn styled_lines(doc: &crate::rich::Text, width: usize) -> Vec<Line<'static>> {
+    use crate::rich::Kind;
     let mut lines = Vec::new();
     let mut at = 0;
     for text in doc.text.split_inclusive('\n') {

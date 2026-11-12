@@ -14,37 +14,84 @@ use std::{
 
 #[derive(Clone, Debug)]
 pub enum Update {
-    SettingsSaved { key: String, result: Result<(), String> },
+    SettingsSaved {
+        key: String,
+        result: Result<(), String>,
+    },
     Peers(Vec<Peer>),
-    SettingsResult { key: String, result: Result<Value, String> },
+    SettingsResult {
+        key: String,
+        result: Result<Value, String>,
+    },
     Session(Box<Session>),
     Profiles(Vec<olo_coder_core::profiles::ModelProfile>),
-    ProfileModels { key: String, profile: Box<olo_coder_core::profiles::ModelProfile>, models: Result<Vec<String>, String> },
-    Catalog { rows: Vec<Value>, next_offset: Option<usize> },
-    InputResult { session: String, text: String, error: Option<String> },
-    Repository { session: String, result: Value },
-    Models { session: String, model: Box<olo_coder_core::ModelConfig>, ids: Vec<String> },
+    ProfileModels {
+        key: String,
+        profile: Box<olo_coder_core::profiles::ModelProfile>,
+        models: Result<Vec<String>, String>,
+    },
+    Catalog {
+        rows: Vec<Value>,
+        next_offset: Option<usize>,
+    },
+    InputResult {
+        session: String,
+        text: String,
+        error: Option<String>,
+    },
+    Repository {
+        session: String,
+        result: Value,
+    },
+    Models {
+        session: String,
+        model: Box<olo_coder_core::ModelConfig>,
+        ids: Vec<String>,
+    },
     Event(Event),
     Notice(String),
     Connection(Option<String>),
     Opened(String),
-    Rendered(Arc<olo_ui::rich_text::Text>),
+    Rendered(Arc<crate::rich::Text>),
+    /// Open or close an action's output in the conversation.
+    Toggle(u64),
+    /// Open or close every action's output.
+    OpenAll(bool),
 }
 pub enum Action {
-    SubmitSettings { text: String, key: String },
-    SubmitForm { text: String, reply: tokio::sync::oneshot::Sender<Result<(), String>> },
-    SettingsRequest { key: String, command: Box<Command> },
+    SubmitSettings {
+        text: String,
+        key: String,
+    },
+    SubmitForm {
+        text: String,
+        reply: tokio::sync::oneshot::Sender<Result<(), String>>,
+    },
+    SettingsRequest {
+        key: String,
+        command: Box<Command>,
+    },
     Submit(String),
     Steer(String, Delivery),
-    Prompt { text: String, delivery: Option<Delivery>, session: String, generation: u64 },
+    Prompt {
+        text: String,
+        delivery: Option<Delivery>,
+        session: String,
+        generation: u64,
+    },
     Browse(SessionFilter),
     Refresh,
     Repository,
     Models,
     Profiles,
-    DiscoverProfile { key: String, profile: Box<olo_coder_core::profiles::ModelProfile> },
+    DiscoverProfile {
+        key: String,
+        profile: Box<olo_coder_core::profiles::ModelProfile>,
+    },
     Stop,
     Approve(bool),
+    /// Shown differently, nothing sent: an action's output opened or closed.
+    Show(Update),
     Quit,
 }
 #[derive(Clone)]
@@ -65,6 +112,13 @@ struct StopControl {
 }
 impl ActionSender {
     pub fn send(&self, action: Action) -> Result<(), mpsc::SendError<Action>> {
+        let action = match (action, &self.control) {
+            (Action::Show(update), Some(control)) => {
+                (control.callback)(update);
+                return Ok(());
+            }
+            (action, _) => action,
+        };
         let stop = matches!(&action, Action::Stop) || matches!(&action, Action::Submit(text) | Action::Steer(text, _) if text.trim() == "/stop");
         if stop {
             if let Some(control) = &self.control {
@@ -295,18 +349,19 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
         .name("coder-rich-text".into())
         .spawn(move || {
             let mut view = View::default();
-            let mut renderer = olo_ui::rich_text::Renderer::default();
-            let mut previous = String::new();
+            let mut renderer = crate::rich::Renderer::default();
+            let mut shown = u64::MAX;
             while let Ok(first) = updates.recv() {
                 for update in std::iter::once(first).chain(updates.try_iter().take(256)) {
+                    let quiet = matches!(update, Update::Toggle(_) | Update::OpenAll(_));
                     view.apply(update.clone());
-                    callback(update);
+                    if !quiet {
+                        callback(update);
+                    }
                 }
-                let source = view.markdown();
-                if source != previous {
-                    let rendered = renderer.render(&source);
-                    previous = source;
-                    callback(Update::Rendered(Arc::new(rendered)));
+                if view.feed.generation != shown {
+                    shown = view.feed.generation;
+                    callback(Update::Rendered(Arc::new(view.feed.document(&mut renderer))));
                 }
             }
         })
@@ -405,6 +460,10 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
                         let input = match action {
                             Action::SubmitSettings { .. } | Action::SubmitForm { .. } | Action::Prompt { .. } => unreachable!("prompt admission unwraps queued input"),
                             Action::Quit => return Err(anyhow::anyhow!("__quit")),
+                            Action::Show(update) => {
+                                callback(update);
+                                return Ok(());
+                            }
                             Action::SettingsRequest { key, command } => {
                                 let dir = dir.clone();
                                 let callback = callback.clone();
@@ -582,34 +641,41 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
         .expect("start client worker");
     handle
 }
-#[derive(Default)]
 pub struct View {
     pub peers: Vec<Peer>,
     pub session: Option<Session>,
     pub catalog: Arc<Vec<Value>>,
     pub next_offset: Option<usize>,
-    pub rich: Arc<olo_ui::rich_text::Text>,
+    pub rich: Arc<crate::rich::Text>,
     pub repository: Option<Value>,
     pub models: Vec<String>,
     pub profiles: Vec<olo_coder_core::profiles::ModelProfile>,
-    pub lines: std::collections::VecDeque<String>,
-    pub live: String,
-    pub live_code: bool,
+    pub feed: crate::feed::Feed,
     pub notice: String,
     pub compaction_progress: Option<String>,
     pub connection: Option<String>,
-    pub seq: i64,
     pub id: String,
 }
-impl View {
-    pub fn push(&mut self, text: &str) {
-        for line in text.lines() {
-            self.lines.push_back(olo_coder_core::tools::clip(line, 12000));
-        }
-        while self.lines.len() > 2000 || self.lines.iter().map(String::len).sum::<usize>() > 256000 {
-            self.lines.pop_front();
+impl Default for View {
+    fn default() -> Self {
+        Self {
+            peers: vec![],
+            session: None,
+            catalog: Arc::default(),
+            next_offset: None,
+            rich: Arc::default(),
+            repository: None,
+            models: vec![],
+            profiles: vec![],
+            feed: crate::feed::Feed::welcome(),
+            notice: String::new(),
+            compaction_progress: None,
+            connection: None,
+            id: String::new(),
         }
     }
+}
+impl View {
     pub fn apply(&mut self, u: Update) {
         match u {
             Update::Peers(peers) => self.peers = peers,
@@ -622,6 +688,8 @@ impl View {
             Update::InputResult { .. } => {}
             Update::Connection(status) => self.connection = status,
             Update::Rendered(doc) => self.rich = doc,
+            Update::Toggle(id) => self.feed.toggle(id),
+            Update::OpenAll(open) => self.feed.open_all(open),
             Update::Models { session, model, ids } => {
                 if self.session.as_ref().is_some_and(|s| s.id == session && s.config.model == *model) {
                     self.models = ids;
@@ -634,15 +702,12 @@ impl View {
             }
             Update::Opened(id) => {
                 self.id = id;
-                self.seq = 0;
-                self.lines.clear();
-                self.live.clear();
+                self.feed = crate::feed::Feed::welcome();
                 self.notice.clear();
                 self.compaction_progress = None;
                 self.connection = None;
                 self.rich = Arc::default();
                 self.repository = None;
-                self.push("# Make something remarkable\n\nA workspace for ideas, code, and the work between them.\n\n**Build** — describe what you want to create.\n\n**Explore** — ask about your codebase or review a change.\n\n**Plan together** — start with `/spec on` and shape a detailed specification.\n\nSet a `/goal` for ongoing work. Your session, decisions, and checkpoints stay with you.\n\n---\n");
             }
             Update::Session(s) => {
                 if self.session.as_ref().is_some_and(|old| old.id != s.id || old.config.model != s.config.model) {
@@ -652,232 +717,108 @@ impl View {
             }
             Update::Notice(t) => {
                 self.notice = t.clone();
-                self.push(&format!("\n{t}\n"));
+                self.feed.notice(&t);
             }
             Update::Event(e) => {
-                if e.session != self.id || (e.seq > 0 && e.seq <= self.seq) {
+                if e.session != self.id || (e.seq > 0 && e.seq <= self.feed.seq) {
                     return;
                 }
-                self.seq = self.seq.max(e.seq);
+                self.feed.seq = self.feed.seq.max(e.seq);
                 if matches!(e.kind.as_str(), "idle" | "error" | "paused" | "interrupted" | "compaction_applied" | "compaction_deferred") {
                     self.compaction_progress = None;
                 }
                 match e.kind.as_str() {
-                    "supervisor_started"=>self.push("\n> **Supervisor** · Reviewing progress…\n"),
-                    "supervisor_review"=>self.push(&format!("\n### Supervisor · {}\n\n{}\n\n{}\n",e.data["action"].as_str().unwrap_or("review"),e.data["reason"].as_str().unwrap_or(""),e.data["message"].as_str().unwrap_or(""))),
-                    "supervisor_error"=>self.push(&format!("\n> Supervisor review unavailable: {}\n",e.data["message"].as_str().unwrap_or(""))),
-                    "mcp_unavailable"=>self.push(&format!("\n> {} unavailable: {}\n",e.data["server"].as_str().unwrap_or("MCP"),e.data["message"].as_str().unwrap_or(""))),
-                    "integration_login"=>self.push(&format!("\n> **{}** · {} {}\n",e.data["server"].as_str().unwrap_or("Connection"),e.data["status"]["state"].as_str().unwrap_or(""),e.data["status"]["message"].as_str().unwrap_or(""))),
-                    "compaction_progress" => self.compaction_progress = Some(format!("Compacting {}/{}", e.data["completed"], e.data["total"])),
+                    "compaction_progress" => self.compaction_progress = Some(format!("Summarising {}/{}", e.data["completed"], e.data["total"])),
                     "compaction_ready" => self.compaction_progress = Some("Checkpoint ready".into()),
-                    "delta" => {
-                        self.live_code = false;
-                        self.live.push_str(e.data["text"].as_str().unwrap_or(""));
-                        if self.live.len() > 64000 {
-                            self.live = olo_coder_core::tools::clip(&self.live, 64000);
-                        }
-                    }
-                    "message_queued" => {
-                        let message = &e.data["message"];
-                        let from = message["from"]["title"].as_str().unwrap_or("You");
-                        self.push(&format!("\n### {} · {}\n\n{}\n\n", from, message["delivery"].as_str().unwrap_or("queued"), message["text"].as_str().unwrap_or("")));
-                    }
-                    "messages_delivered" => {
-                        self.live.clear();
-                        let skipped = e.data["skipped_calls"].as_array().map_or(0, Vec::len);
-                        if skipped > 0 {
-                            self.push(&format!("\n> Steering applied · {skipped} earlier actions skipped before execution.\n"));
-                        }
-                    }
-                    "user" => {
-                        self.live.clear();
-                        self.push(&format!("\n### You\n\n{}\n", e.data["text"].as_str().unwrap_or("")));
-                    }
-                    "assistant" => {
-                        self.live.clear();
-                        if let Some(text) = e.data["text"].as_str().filter(|t| !t.trim().is_empty()) {
-                            self.push(&format!("\n### Coder\n\n{text}\n"));
-                        }
-                    }
-                    "tool_started" => {
-                        let call = &e.data["call"];
-                        let name = call["name"].as_str().unwrap_or("tool");
-                        if !olo_coder_core::tools::internal(name) {
-                            let args = &call["arguments"];
-                            let detail = if name == "execute" {
-                                format!(
-                                    "{} {}",
-                                    args["program"].as_str().unwrap_or(""),
-                                    args["args"].as_array().map(|a| a.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(" ")).unwrap_or_default()
-                                )
-                            } else {
-                                args["path"].as_str().or(args["pattern"].as_str()).or(args["operation"].as_str()).unwrap_or("").to_string()
-                            };
-                            self.push(&format!("\n#### {}\n\n{}\n", name.replace('_', " "), if detail.is_empty() { String::new() } else { format!("`{}`", detail.replace('`', "'")) }));
-                        }
-                    }
                     "tool_result" => {
-                        self.live.clear();
                         let output = &e.data["output"];
                         if output.get("files").is_some() && output.get("branch").is_some() {
                             self.repository = Some(output.clone());
                         }
-                        let name = e.data["name"].as_str().unwrap_or("");
-                        if e.data["error"] == true {
-                            let reason = output["error"].as_str().unwrap_or("See action details.");
-                            if reason.starts_with("cancelled") {
-                                let details =
-                                    if reason.contains("partial output artifact ") { "Partial output is available in the action details." } else { "See action details for the recorded outcome." };
-                                self.push(&format!("\n> **Action stopped** — Review any changes before retrying. {details}\n"));
-                            } else {
-                                self.push(&format!("\n> **Action failed** — {reason}\n"));
-                            }
-                        } else if name == "set_todos" {
-                            self.push(&todo_component("Plan", &output["todos"]));
-                        } else if name == "complete_goal" {
-                            self.push(&format!("\n> **Goal completed**\n> {}\n", output["goal"]["evidence"].as_str().unwrap_or("Verified.")));
-                        } else if name == "remember" {
-                            self.push("\n> Session memory updated.\n");
-                        } else if name == "update_spec" {
-                            self.push(&format!("\n## Specification\n\n{}\n", output["spec"]["text"].as_str().or(output["text"].as_str()).unwrap_or("Specification updated.")));
-                        } else if name == "update_criterion" {
-                            self.push("\n> Acceptance criterion updated.\n");
-                        } else if name == "list_files" {
-                            if let Some(files) = output["results"].as_array() {
-                                self.push(&fenced("", &files.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("\n")));
-                            }
-                        } else if output.get("component").is_some() {
-                            self.push(&component(&output["component"]));
-                        } else if let Some(diff) = output["diff"].as_str() {
-                            self.push(&fenced("diff", diff));
-                        } else if let Some(text) = output["text"].as_str() {
-                            let language = output["path"].as_str().and_then(|p| olo_ui::code::detect(std::path::Path::new(p), text)).map(|l| l.id).unwrap_or("");
-                            let source = if output.get("total_lines").is_some() {
-                                text.lines().map(|l| l.split_once(": ").filter(|(n, _)| n.bytes().all(|b| b.is_ascii_digit())).map_or(l, |(_, line)| line)).collect::<Vec<_>>().join("\n")
-                            } else {
-                                text.into()
-                            };
-                            self.push(&fenced(language, &source));
-                        } else if let Some(text) = output["stdout"].as_str() {
-                            self.push(&fenced("", text));
-                            if let Some(stderr) = output["stderr"].as_str().filter(|s| !s.is_empty()) {
-                                self.push(&fenced("", stderr));
-                            }
-                            self.push(&format!("**{}** · exit {}", if output["success"] == true { "Succeeded" } else { "Failed" }, output["exit_code"]));
-                        } else if let Some(content) = output["content"].as_array() {
-                            for block in content {
-                                if let Some(text) = block["text"].as_str() {
-                                    self.push(text);
-                                }
-                            }
-                        } else {
-                            self.push(&fenced("json", &olo_coder_core::tools::clip(&serde_json::to_string_pretty(output).unwrap_or_default(), 12000)));
-                        }
-                        self.push(&format!("\n[Action details · {}](olo-coder:event/{})\n", e.seq, e.seq));
-                    }
-                    "tool_output" => {
-                        self.live_code = true;
-                        self.live.push_str(e.data["text"].as_str().unwrap_or(""));
-                        if self.live.len() > 16000 {
-                            let keep = self.live.char_indices().rev().nth(8000).map_or(0, |(n, _)| n);
-                            self.live = self.live[keep..].into();
-                        }
-                    }
-                    "approval" => self.push(&format!("\n> **Approval needed** — {}\n> {}\n", e.data["call"]["name"].as_str().unwrap_or("Action"), e.data["reason"].as_str().unwrap_or(""))),
-                    "error" | "paused" | "interrupted" => {
-                        self.live.clear();
-                        let reason = e.data["message"].as_str().or(e.data["reason"].as_str()).unwrap_or("See session history for details.");
-                        let label = match e.kind.as_str() {
-                            "paused" => "Paused",
-                            "interrupted" => "Session interrupted",
-                            _ => "Session needs attention",
-                        };
-                        let reason = if reason == "cancelled" { "Work has stopped. Pending messages stay available for Resume." } else { reason };
-                        self.push(&format!("\n\n> **{label}** — {reason}\n\n"));
-                    }
-                    "retry" => {
-                        let delay = e.data["seconds"].as_u64().map(|n| format!(" in {n} seconds")).unwrap_or_default();
-                        let reason = e.data["reason"].as_str().map(|s| format!(" · {s}")).unwrap_or_default();
-                        self.push(&format!("\n\n> **Reconnecting to the model**{delay} · attempt {}{reason}\n\n", e.data["attempt"]));
-                    }
-                    "compaction_applied" => self.push(&format!("\n\n> **Context checkpoint applied** — {} tokens in the working set. Original transcript preserved.\n\n[Inspect checkpoint](olo-coder:compaction/{}) · [Original transcript](olo-coder:transcript)\n\n", e.data["context_tokens"], e.data["checkpoint_id"].as_str().unwrap_or(""))),
-                    "compaction_restored" => self.push("\n\n> **Context restored** — Original messages are back in the working set.\n\n"),
-                    "compaction_deferred" => self.push(&format!("\n\n> **Compaction deferred** — {}\n\n", e.data["reason"].as_str().unwrap_or("Source context changed"))),
-                    "compacted" => self.push("\n\n> **Context compacted** — Provider context was saved. The full session history remains available.\n\n"),
-                    "auto_review" => {
-                        let decision = if e.data["allow"] == true { "Action approved" } else { "Approval needed" };
-                        self.push(&format!("\n\n> **{decision}** — {}\n\n", e.data["reason"].as_str().unwrap_or("Automatic review finished.")));
                     }
                     _ => {}
                 }
+                self.feed.event(&e);
             }
         }
     }
-    pub fn markdown(&self) -> String {
-        let mut text = self.lines.iter().map(String::as_str).collect::<Vec<_>>().join("\n");
-        if !self.live.is_empty() {
-            text.push_str("\n\n");
-            if self.live_code {
-                text.push_str(&fenced("", &self.live));
-            } else {
-                text.push_str(&self.live);
-            }
+    /// What the session is doing, in a few words.
+    pub fn activity(&self) -> String {
+        let Some(s) = &self.session else { return self.connection.clone().unwrap_or_else(|| "Connecting…".into()) };
+        if let Some(c) = &self.connection {
+            return c.clone();
         }
-        if let Some(status) = &self.connection {
-            text.push_str(&format!("\n\n> {status}\n"));
+        if let Some(p) = &self.compaction_progress {
+            return p.clone();
         }
-        text
+        match s.status {
+            Status::Running if !self.feed.live.is_empty() => "Writing…".into(),
+            Status::Running if !self.feed.reasoning.is_empty() => "Thinking…".into(),
+            Status::Running => s.in_flight.as_ref().map(|c| format!("Running {}…", c.name.replace('_', " "))).unwrap_or_else(|| "Working…".into()),
+            Status::Approval => "Waiting for your approval".into(),
+            Status::Paused => "Paused".into(),
+            Status::Interrupted => "Stopped".into(),
+            Status::Failed => "Stopped by an error".into(),
+            Status::Complete => "Goal reached".into(),
+            Status::Idle => "Ready".into(),
+        }
     }
     pub fn status(&self) -> String {
         self.session.as_ref().map_or_else(
             || "Connecting…".into(),
             |s| {
+                let window = s.config.model.context_window;
+                let context = if window > 0 { format!("context {}%", (s.usage.context * 100 / window).min(100)) } else { format!("context {}", crate::feed::thousands(s.usage.context)) };
                 format!(
-                    "{:?} · {}{} · {} tokens · {} compactions{}{}",
-                    s.status,
+                    "{}{} · {} · {} tokens used{}{}",
                     s.config.model.model,
-                    if s.config.model.effort.is_empty() { String::new() } else { format!(" · {}", s.config.model.effort) },
-                    s.usage.input + s.usage.output,
-                    s.compactions,
+                    if s.config.model.effort.is_empty() { String::new() } else { format!(" ({})", s.config.model.effort) },
+                    context,
+                    crate::feed::thousands(s.usage.input + s.usage.output),
+                    if s.compactions > 0 { format!(" · {} checkpoints", s.compactions) } else { String::new() },
                     if s.spec_mode { " · Spec mode" } else { "" },
-                    self.compaction_progress.as_ref().map(|v| format!(" · {v}")).unwrap_or_default()
                 )
             },
         )
     }
     pub fn work(&self) -> String {
         let Some(s) = &self.session else { return "Connecting…".into() };
-        let mut t = format!("Workspace\n{}\n\nSession\n{}\n\n", s.workspace.display(), s.id);
+        let mut t = format!("Workspace\n{}\n\n", s.workspace.display());
         if let Some(repo) = &self.repository {
             if let Some(branch) = repo["branch"].as_str() {
-                t += &format!("Branch · {branch}\n{} changed entries\n\n", repo["files"].as_array().map_or(0, Vec::len));
+                t += &format!("Branch {branch} · {} changed\n\n", repo["files"].as_array().map_or(0, Vec::len));
             }
         }
         if let Some(g) = &s.goal {
-            t += &format!("Goal · {}\n{}\n{}\n\n", g.status, g.objective, g.evidence);
+            t += &format!("Goal ({})\n{}\n", g.status, g.objective);
+            if !g.evidence.is_empty() {
+                t += &format!("{}\n", g.evidence);
+            }
+            t += "\n";
         }
-        t += "Todos\n";
-        for todo in &s.todos {
-            t += &format!("[{}] {} · {}\n{}\n", todo.status, todo.id, todo.text, todo.evidence);
+        if !s.todos.is_empty() {
+            t += "Plan\n";
+            for todo in &s.todos {
+                let mark = match todo.status.as_str() {
+                    "done" => "☑",
+                    "in_progress" => "▸",
+                    _ => "☐",
+                };
+                t += &format!("{mark} {}\n", todo.text);
+            }
+            t += "\n";
         }
         if !s.spec.text.is_empty() {
-            t += &format!(
-                "\nSpecification · revision {}{}\n{}\n",
-                s.spec.revision,
-                if s.spec.accepted_revision == Some(s.spec.revision) { " · accepted" } else { " · awaiting acceptance" },
-                s.spec.text
-            );
+            t += &format!("Specification (revision {}{})\n", s.spec.revision, if s.spec.accepted_revision == Some(s.spec.revision) { ", accepted" } else { ", not yet accepted" });
             for c in &s.spec.criteria {
-                t += &format!("[{}] {} · {}\n{}\n", c.status, c.id, c.text, c.evidence);
+                t += &format!("{} {}\n", if c.status == "done" || c.status == "met" { "☑" } else { "☐" }, c.text);
             }
+            t += "\n";
         }
-        if let Some(a) = &s.pending {
-            t += &format!("\nApproval\n{}\n{}\n{}\n", a.reason, a.call.name, serde_json::to_string_pretty(&a.call.arguments).unwrap_or_default());
+        if !s.memory.trim().is_empty() {
+            t += &format!("Memory\n{}\n\n", s.memory.trim());
         }
-        t += &format!(
-            "\nMemory\n{}\n\nApproval: {:?}\n{}\n\nInput: {} · Output: {} · Cached: {}\nActive context: {} tokens\n",
-            s.memory, s.config.approval, s.config.approval_guidance, s.usage.input, s.usage.output, s.usage.cached, s.usage.context
-        );
+        t += &format!("Tokens: {} in · {} out · {} cached\n", crate::feed::thousands(s.usage.input), crate::feed::thousands(s.usage.output), crate::feed::thousands(s.usage.cached));
         t
     }
 }
@@ -962,70 +903,7 @@ fn command_result(command: &Command, value: &Value) -> Result<String> {
     Ok(links)
 }
 
-fn fenced(language: &str, text: &str) -> String {
-    let width = text.lines().map(|l| l.trim_start().chars().take_while(|c| *c == '`').count() + 1).max().unwrap_or(3).max(3);
-    let language: String = language.chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '+' | '#' | '.')).take(64).collect();
-    let fence = "`".repeat(width);
-    format!("\n{fence}{language}\n{text}\n{fence}\n")
-}
-
-fn component(v: &Value) -> String {
-    let cell = |v: &Value| {
-        let text = match v {
-            Value::String(s) => s.clone(),
-            Value::Null => String::new(),
-            _ => v.to_string(),
-        };
-        text.replace('\n', " ").replace('|', "\\|")
-    };
-    let mut out = format!("\n## {}\n\n", v["title"].as_str().unwrap_or("Result"));
-    match v["kind"].as_str().unwrap_or("") {
-        "table" => {
-            if let Some(columns) = v["columns"].as_array() {
-                out += &format!("| {} |\n| {} |\n", columns.iter().map(cell).collect::<Vec<_>>().join(" | "), vec!["---"; columns.len()].join(" | "));
-            }
-            if let Some(rows) = v["rows"].as_array() {
-                for row in rows {
-                    if let Some(cells) = row.as_array() {
-                        out += &format!("| {} |\n", cells.iter().map(cell).collect::<Vec<_>>().join(" | "));
-                    }
-                }
-            }
-        }
-        "checklist" => {
-            if let Some(items) = v["items"].as_array() {
-                for item in items {
-                    out += &format!("- [{}] {}\n", if item["done"] == true { "x" } else { " " }, cell(&item["text"]));
-                }
-            }
-        }
-        "progress" => {
-            let value = v["value"].as_f64().unwrap_or(0.0);
-            let total = v["total"].as_f64().unwrap_or(1.0);
-            let done = ((value / total).clamp(0.0, 1.0) * 24.0).round() as usize;
-            out += &format!("{}{} **{value} / {total}**\n", "━".repeat(done), "─".repeat(24 - done));
-        }
-        "chart" => {
-            if let Some(values) = v["values"].as_array() {
-                let maximum = values.iter().filter_map(Value::as_f64).map(f64::abs).fold(0.0, f64::max).max(f64::EPSILON);
-                out += "| Measurement | Value | Chart |\n| --- | ---: | --- |\n";
-                for (i, value) in values.iter().enumerate() {
-                    let number = value.as_f64().unwrap_or(0.0);
-                    let bars = (number.abs() / maximum * 24.0).round() as usize;
-                    out += &format!("| {} | {number} | {} |\n", cell(&v["labels"][i]), "▰".repeat(bars));
-                }
-            }
-        }
-        "code" => out += &fenced(v["language"].as_str().unwrap_or(""), v["code"].as_str().unwrap_or("")),
-        _ => {}
-    }
-    out
-}
-
-fn todo_component(title: &str, todos: &Value) -> String {
-    let items = todos.as_array().map(|ts| ts.iter().map(|t| json!({"text":t["text"],"done":t["status"]=="done"})).collect::<Vec<_>>()).unwrap_or_default();
-    component(&json!({"kind":"checklist","title":title,"items":items}))
-}
+use crate::feed::fenced;
 
 #[cfg(test)]
 mod tests {
@@ -1062,12 +940,11 @@ mod tests {
         ] {
             view.apply(Update::Event(Event { seq, session: "session".into(), time: 0, kind: kind.into(), data }));
         }
-        let source = view.markdown();
-        assert!(source.contains("**Action stopped**"));
-        assert!(source.contains("olo-coder:event/1)\n\n\n> **Paused**"));
-        assert!(source.contains("Need the missing fixture"));
-        assert!(source.contains("**Context compacted**"));
-        assert!(!source.contains("opaque-id") && !source.contains("{\"message\""));
+        let doc = view.feed.document(&mut crate::rich::Renderer::default());
+        assert!(doc.text.contains("stopped"), "{}", doc.text);
+        assert!(doc.text.contains("Need the missing fixture"));
+        assert!(doc.text.contains("Context compacted"));
+        assert!(!doc.text.contains("opaque-id") && !doc.text.contains("{\"message\""));
     }
     #[test]
     fn stop_bypasses_busy_requests_and_holds_older_prompts() {
@@ -1124,24 +1001,24 @@ mod tests {
     #[test]
     fn reconnect_status_is_transient_and_preserves_transcript() {
         let mut view = View::default();
-        view.push("A durable conversation");
-        let before = view.markdown();
+        view.feed.notice("A durable conversation");
+        let mut r = crate::rich::Renderer::default();
+        let before = view.feed.document(&mut r).text;
         for _ in 0..100 {
             view.apply(Update::Connection(Some("Reconnecting…".into())));
         }
-        assert_eq!(view.markdown().matches("Reconnecting…").count(), 1);
-        assert_eq!(view.lines.len(), 1);
+        assert_eq!(view.activity(), "Reconnecting…");
         view.apply(Update::Connection(None));
-        assert_eq!(view.markdown(), before);
+        assert_eq!(view.feed.document(&mut r).text, before);
     }
     #[test]
     fn rich_components_preserve_numeric_cells_and_contain_fences() {
-        let table = component(&json!({"kind":"table","title":"Results","columns":["Metric","Value"],"rows":[["Tests",27],["Successful",true]]}));
+        let table = crate::feed::component(&json!({"kind":"table","title":"Results","columns":["Metric","Value"],"rows":[["Tests",27],["Successful",true]]}));
         assert!(table.contains("| Tests | 27 |"));
         assert!(table.contains("| Successful | true |"));
         let code = fenced("rust\n```", "fn main() {}\n   ```\nnot Markdown");
         assert!(code.starts_with("\n````rust\n"));
-        let mut renderer = olo_ui::rich_text::Renderer::default();
+        let mut renderer = crate::rich::Renderer::default();
         let doc = renderer.render(&code);
         assert!(doc.text.contains("   ```\nnot Markdown"));
     }

@@ -1,9 +1,10 @@
 mod client;
+mod feed;
 mod form;
 mod gui;
 mod models;
 mod options;
-mod transcript;
+mod rich;
 mod tui;
 mod tui_settings;
 use anyhow::{Context, Result};
