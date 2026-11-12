@@ -33,6 +33,61 @@ use crate::{
     state::{AnvilState, Backend},
 };
 
+/// A window that went a moment ago, in the stacking as it was then: its
+/// place among those that went, its id then, and the ids of what was
+/// under and over it (bottom first).
+struct Gone<'a> {
+    at: usize,
+    id: u64,
+    under: &'a [u64],
+    over: &'a [u64],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Who {
+    /// One showing, by its place among them (bottom first).
+    Showing(usize),
+    /// One that went, by its place among those ([`Gone::at`]).
+    Gone(usize),
+}
+
+/// Where a window that went is kept as the layout is saved: in the
+/// remembered list (its place there), or with the window itself, back
+/// and not shown yet (its place among all the windows).
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum WasAt {
+    Remembered(usize),
+    Back(usize),
+}
+
+/// The stacking the next app_server is to rebuild, bottom first: the
+/// windows showing (`showing`: their ids, bottom first) and, among them,
+/// each that went a moment ago (`gone`).
+///
+/// Apps go one after another, and each window that goes knows only what
+/// was around it then: one that went first has those that followed in
+/// what was under or over it, and they have nothing of it (it was gone
+/// by their turn). So each is put by what it says of those here and by
+/// what those here say of it: over the highest that was under it, else
+/// under the lowest that was over it, else on top.
+fn stacking_order(showing: &[u64], gone: &[Gone]) -> Vec<Who> {
+    let mut order: Vec<(u64, Who, Option<&Gone>)> = showing.iter().enumerate().map(|(i, id)| (*id, Who::Showing(i), None)).collect();
+    for g in gone {
+        let (mut over_these, mut under_this) = (None, None);
+        for (i, (id, _, said)) in order.iter().enumerate() {
+            // (What was under it: it says so, or that one said this was over it.)
+            if g.under.contains(id) || said.is_some_and(|other| other.over.contains(&g.id)) {
+                over_these = Some(i + 1);
+            } else if under_this.is_none() && (g.over.contains(id) || said.is_some_and(|other| other.under.contains(&g.id))) {
+                under_this = Some(i);
+            }
+        }
+        let at = over_these.or(under_this).unwrap_or(order.len());
+        order.insert(at, (g.id, Who::Gone(g.at), Some(g)));
+    }
+    order.into_iter().map(|(_, who, _)| who).collect()
+}
+
 /// How long a remembered place is offered to a returning window.
 const KEEP: Duration = Duration::from_secs(60);
 /// How long a closed window's place waits for its app to start again.
@@ -338,6 +393,18 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
             };
             p.stacking = ids.iter().position(|&id| id == w.id()).map(|i| (ids[..i].to_vec(), ids[i + 1..].to_vec()));
+            // One put back after a restart a moment ago keeps the depth
+            // it was put back at: while the others are still coming
+            // back, what's around it here isn't yet what it is to be
+            // among (an app told to become its new version after it had
+            // come back to the new app_server found nothing under it,
+            // and returned to the bottom of the stack).
+            // (One that went before it was shown has the depth it claimed
+            // already, `placement_of`.)
+            if let Some((depth, _)) = w.meta().restored_depth.get().filter(|(_, at)| at.elapsed() < KEEP) {
+                p.depth = depth;
+            }
+            info!(window = w.id(), title = %p.title, depth = p.depth, under = ?p.stacking.as_ref().map(|s| s.0.clone()), "a window went: its place remembered");
             self.layout.retain(|e| now().saturating_sub(e.at) < RESTART_KEEP.as_secs());
             if self.layout.len() >= MAX_REMEMBERED {
                 self.layout.remove(0);
@@ -352,14 +419,41 @@ impl<B: Backend + 'static> AnvilState<B> {
         let focused = self.seat.get_keyboard().and_then(|k| k.current_focus()).and_then(|f| f.wl_surface().map(|s| s.into_owned()));
         // Bottom-most first, so restoring in order rebuilds the stacking
         // (one not shown yet keeps the depth it is coming back to).
+        // Among those showing, the windows that went a moment ago and
+        // are coming back to the next app_server (their apps told to
+        // become their new versions as this one is told to go: an
+        // upgrade): each where it was (`Placement::stacking`). Without a
+        // depth they came back in whatever order their app showed them,
+        // and two windows of one app changed places under a third, four
+        // upgrades in six.
         let shown = self.space.elements().count();
+        let showing: Vec<u64> = self.space.elements().map(|w| w.id()).collect();
+        // Those that went: still away (remembered), or back already and
+        // not shown yet (one that reconnected just as this app_server is
+        // told to go keeps the place it claimed, `placement_of`).
+        let back: Vec<(usize, Placement)> =
+            self.all_windows().iter().enumerate().filter(|(_, w)| !w.meta().placed.get()).filter_map(|(i, w)| w.meta().returning.borrow().clone().map(|p| (i, p))).collect();
+        let away = self.layout.iter().enumerate().filter(|(_, p)| now().saturating_sub(p.at) < KEEP.as_secs()).map(|(at, p)| (WasAt::Remembered(at), p));
+        let went: Vec<(WasAt, &Placement)> = away.chain(back.iter().map(|(i, p)| (WasAt::Back(*i), p))).filter(|(_, p)| p.stacking.is_some()).collect();
+        let gone: Vec<Gone> = went.iter().enumerate().filter_map(|(at, (_, p))| p.stacking.as_ref().map(|(under, over)| Gone { at, id: p.id, under, over })).collect();
+        let order = stacking_order(&showing, &gone);
+        let depth_of = |who: Who| order.iter().position(|w| *w == who).map_or(0, |i| i as u32 + 1);
+        let depth_of_gone = |was: WasAt| went.iter().position(|(w, _)| *w == was).map_or(0, |at| depth_of(Who::Gone(at)));
         let mut list: Vec<Placement> = self
             .all_windows()
             .iter()
             .enumerate()
             .filter_map(|(i, w)| {
                 let p = self.placement_of(w, focused.as_ref())?;
-                Some(Placement { depth: if i < shown && w.meta().placed.get() { i as u32 + 1 } else { p.depth }, ..p })
+                let depth = if i < shown && w.meta().placed.get() {
+                    depth_of(Who::Showing(i))
+                } else {
+                    match depth_of_gone(WasAt::Back(i)) {
+                        0 => p.depth,
+                        depth => depth,
+                    }
+                };
+                Some(Placement { depth, ..p })
             })
             .collect();
         // Each window's slot, by its id (the list follows `all_windows`
@@ -367,7 +461,13 @@ impl<B: Backend + 'static> AnvilState<B> {
         let windows = self.all_windows();
         let ids: Vec<u64> = windows.iter().filter(|w| !w.app_id().is_empty() && (w.meta().placed.get() || w.meta().returning.borrow().is_some())).map(|w| w.id()).collect();
         let open = list.len();
-        list.extend(self.layout.iter().cloned());
+        list.extend(self.layout.iter().enumerate().map(|(at, p)| {
+            let depth = match depth_of_gone(WasAt::Remembered(at)) {
+                0 => p.depth,
+                depth => depth,
+            };
+            Placement { depth, ..p.clone() }
+        }));
         let (active, displays) = (self.workspace(), self.showing.iter().map(|(k, ws)| (k.clone(), *ws)).collect::<Vec<_>>());
         for (i, p) in list.iter_mut().enumerate() {
             p.showing = Some(active);
@@ -423,7 +523,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 if let Err(e) = std::fs::write(&path, text) {
                     warn!(?e, "could not save window layout");
                 } else {
-                    info!(windows = list.len(), "saved window layout");
+                    info!(windows = list.len(), depths = ?list.iter().map(|p| (p.title.as_str(), p.depth)).collect::<Vec<_>>(), "saved window layout");
                 }
             }
             Err(e) => warn!(?e, "could not encode window layout"),
@@ -628,14 +728,18 @@ impl<B: Backend + 'static> AnvilState<B> {
                 smithay::desktop::space::SpaceElement::set_activate(w, active.as_ref() == Some(w));
             }
         }
-        if alone
+        // By its depth after a restart (one that came back, went again
+        // and is back once more among those still returning included);
+        // else, back on its own, by what was around it as it went.
+        info!(window = window.id(), title = %p.title, depth = p.depth, alone, was = p.id, by_ids = p.stacking.is_some(), shown = self.space.element_location(&window).is_some(), "its place in the stacking");
+        if p.depth > 0 && self.space.element_location(&window).is_some() {
+            meta.restored_depth.set(Some((p.depth, std::time::Instant::now())));
+            self.restack_returning(&window, p.depth);
+        } else if alone
             && let Some((under, over)) = &p.stacking
             && self.space.element_location(&window).is_some()
         {
             self.restack_alone(&window, under, over);
-        } else if p.depth > 0 && self.space.element_location(&window).is_some() {
-            meta.restored_depth.set(Some((p.depth, std::time::Instant::now())));
-            self.restack_returning(&window, p.depth);
         }
         false
     }
@@ -840,6 +944,12 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// as they were, and have moved since), so only said; one moved on
     /// purpose since (by hand, a shortcut, an agent) is left as it is.
     pub fn check_restored(&mut self) {
+        // The windows are back: from here on one that goes and returns
+        // is put among the others as they are then, not by the depths
+        // of a stacking that the person may have changed since.
+        for w in self.all_windows() {
+            w.meta().restored_depth.set(None);
+        }
         let restored = std::mem::take(&mut self.restored);
         let (mut same, mut fixed) = (0, 0);
         for (window, p) in restored {
@@ -890,6 +1000,49 @@ impl<B: Backend + 'static> AnvilState<B> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Windows that went just before app_server did keep their places
+    /// among those still showing, whatever of them went and in whatever
+    /// order.
+    #[test]
+    fn windows_gone_a_moment_ago_keep_their_places_in_the_stacking() {
+        // The stack was X A K L Y (bottom first), ids 1 to 5; A, K and L
+        // are one app's, gone together (each by the stack before the
+        // first went); X and Y still show.
+        let g = |at, id, under: &'static [u64], over: &'static [u64]| Gone { at, id, under, over };
+        let three = [g(0, 2, &[1], &[3, 4, 5]), g(1, 3, &[1, 2], &[4, 5]), g(2, 4, &[1, 2, 3], &[5])];
+        use Who::{Gone as Went, Showing};
+        assert_eq!(stacking_order(&[1, 5], &three), [Showing(0), Went(0), Went(1), Went(2), Showing(1)]);
+        // In the other order of going.
+        let back = [g(0, 4, &[1, 2, 3], &[5]), g(1, 3, &[1, 2], &[4, 5]), g(2, 2, &[1], &[3, 4, 5])];
+        assert_eq!(stacking_order(&[1, 5], &back), [Showing(0), Went(2), Went(1), Went(0), Showing(1)]);
+        // Every window gone (three of one app, nothing else open).
+        let all = [g(0, 1, &[], &[2, 3]), g(1, 2, &[1], &[3]), g(2, 3, &[1, 2], &[])];
+        assert_eq!(stacking_order(&[], &all), [Went(0), Went(1), Went(2)]);
+        let all = [g(0, 3, &[1, 2], &[]), g(1, 1, &[], &[2, 3]), g(2, 2, &[1], &[3])];
+        assert_eq!(stacking_order(&[], &all), [Went(1), Went(2), Went(0)]);
+        // Two apps gone one after the other: the second's stack no
+        // longer had the first's window (id 2) in it.
+        let two = [g(0, 2, &[1], &[3, 4]), g(1, 4, &[1, 3], &[])];
+        assert_eq!(stacking_order(&[1, 3], &two), [Showing(0), Went(0), Showing(1), Went(1)]);
+        // The bottom one gone, and one whose neighbours have all gone
+        // for good (on top).
+        assert_eq!(stacking_order(&[5, 6], &[g(0, 4, &[], &[5, 6])]), [Went(0), Showing(0), Showing(1)]);
+        assert_eq!(stacking_order(&[5, 6], &[g(0, 4, &[8], &[9])]), [Showing(0), Showing(1), Went(0)]);
+        // None gone: as they show.
+        assert_eq!(stacking_order(&[7, 8], &[]), [Showing(0), Showing(1)]);
+        // Three apps gone one after another, as an upgrade has them go
+        // (the stack was 5 1 2 3 4 6): the bottom one's, then the top
+        // one's, which was over four that hadn't gone yet and that say
+        // nothing of it; then those four, the first of them back already
+        // and so looked at last.
+        let apps = [g(0, 5, &[], &[1, 2, 3, 4, 6]), g(1, 6, &[1, 2, 3, 4], &[]), g(2, 2, &[1], &[3, 4]), g(3, 3, &[1, 2], &[4]), g(4, 4, &[1, 2, 3], &[]), g(5, 1, &[], &[2, 3, 4])];
+        assert_eq!(stacking_order(&[], &apps), [Went(0), Went(5), Went(2), Went(3), Went(4), Went(1)]);
+        // The same with one that never went, in the middle of them (9,
+        // over 2 and under 3): each by what it says of it.
+        let around = [g(0, 6, &[1, 2, 9, 3], &[]), g(1, 1, &[], &[2, 9, 3]), g(2, 3, &[2, 9], &[]), g(3, 2, &[], &[9])];
+        assert_eq!(stacking_order(&[9], &around), [Went(1), Went(3), Showing(0), Went(2), Went(0)]);
+    }
 
     #[test]
     fn the_workspaces_showing_come_back() {

@@ -603,6 +603,9 @@ impl Hub {
         let (hidden, opened) = (hidden(), path.clone());
         let window = olo_kit::open_window(WindowOptions::new(fs::display_name(&path), w as f32, h as f32).min_size(240.0, 160.0), move |cx| {
             let mut f = FolderWin::new(id, opened, view, hidden, cx);
+            // (Its size as it's opened: what it keeps for an upgrade
+            // before it has drawn and found out.)
+            f.size = (w, h);
             setup(&mut f);
             f
         });

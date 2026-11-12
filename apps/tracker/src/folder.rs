@@ -1605,7 +1605,19 @@ impl View for FolderWin {
     }
 
     fn save_state(&mut self, _: &mut Cx<Self>) -> Option<String> {
-        self.told.as_ref().and_then(|t| serde_json::to_string(&crate::SavedWindow::Folder(t.folder.clone()?)).ok())
+        // By what the window is, not by what it last told the app: one
+        // brought back and not drawn yet has told nothing, and kept
+        // nothing. Told to become its new version and, before its
+        // windows had drawn, to start again for an app_server that went
+        // (an upgrade does both, a moment apart), Tracker came back
+        // without its folder windows one upgrade in three.
+        let selected = match self.selected_paths() {
+            // (Not listed yet: what it was to select once it is.)
+            none if none.is_empty() => self.pending_select.last().map(|(_, paths)| paths.clone()).unwrap_or_default(),
+            selected => selected,
+        };
+        let folder = crate::SavedFolder { path: self.path.clone(), size: self.size, view: self.view, sort: self.sort.unwrap_or((SortKey::Name, true)), own_sort: self.sort.is_some(), selected };
+        serde_json::to_string(&crate::SavedWindow::Folder(folder)).ok()
     }
 
     fn takes_drops(&self) -> bool {

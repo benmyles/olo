@@ -3324,6 +3324,37 @@ for a 3-second `sleep`.
   keyboard and the active window it took as it opened go back to what
   had them (`WindowMeta::focus_before`). Deskbar keeps a gone app's
   place in its list for 20 s, and saves its order to re-execute with.
+* **The stacking comes back through an upgrade whatever went when**
+  (`layout.rs`). An upgrade tells every app to become its new version
+  and app_server to go, a moment apart, and each app's windows may by
+  then be: still showing; gone and remembered; or back already and
+  not shown yet. The next app_server rebuilds the stacking from each
+  window's `Placement::depth`, so `save_layout` gives one to them all,
+  by one order (`stacking_order`): those showing as they are, and each
+  that went put among them by what it says was under and over it
+  *and by what those here say of it*. Apps go one after another, each
+  window remembering what was around it then, so the one that went
+  first names those that followed and they have nothing of it: by its
+  own word alone, the top window of three apps came back under the
+  windows of the app that went after it. A window put back at a depth
+  that then goes again (its app told to become its new version after
+  it had already come back) keeps that depth (`remember_placement`),
+  and is put back by it; once the windows are back
+  (`check_restored`) the depths are forgotten, and one that goes and
+  returns is placed by what's around it. Before: with three
+  Preferences windows, the lower two changed places four upgrades in
+  six; with six windows of three apps, most. After: 12 of 12, and 25
+  of 26. (The one in 26, a window one place higher a few seconds
+  after it was put back rightly, isn't explained: "its place in the
+  stacking" and "a window went" in app_server's log say each
+  window's depth and what was under it, the place to look.)
+* **A window saves itself by what it is** (`View::save_state`), not by
+  what it last told its app: one brought back and not yet drawn has
+  told nothing. Tracker's folder windows kept their state in what they
+  told (`told`), and an app told to re-execute twice a moment apart
+  (the upgrade, then app_server going) came back the second time with
+  no folder windows, one upgrade in three with other apps' windows
+  open.
 * **Every app with windows the user
   arranged must implement both**: save which windows are open (with
   their sizes), their documents/folders, view settings and
@@ -4026,7 +4057,11 @@ Chrome case with the opener's token.
 
 `tools/dev/upgrade-check NAME [--times N] [--reload-only] [--no-touch] [--auto-tiled]`
 checks that windows come back from an upgrade exactly (display,
-workspace, frame, minimized); `--auto-tiled` arranges three windows in
+workspace, frame, minimized, and which is over which); it touches the
+build the session runs, so a release session is run from a copy
+(`CARGO_TARGET_DIR=/var/tmp/… TSESSION_PROFILE=release`, the programs
+copied there with `cp --reflink`): touching `target/release` has the
+person's own session offer an upgrade. `--auto-tiled` arranges three windows in
 Auto-Tiling first, the case that broke when the kit first committed a
 window before naming it (it sets the app id and title before the first
 commit now: app_server claims a returning window's place, its tile, at

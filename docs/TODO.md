@@ -902,19 +902,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Two windows of one app can swap in the stacking after an upgrade**
-  (found 2026-11-11, testing Preferences' hand-over): Appearance,
-  Keyboard and the launcher open, the launcher in front; upgraded in
-  place (each program told to become its new version, app_server
-  reloaded), all three come back at their places and sizes, the
-  launcher in front, but Appearance and Keyboard have changed places
-  under it. The GPUI build of Preferences does it too (old to old), so
-  it's app_server's restacking of returning windows (`layout.rs`,
-  `restack_returning`, `Placement::stacking`), not the kit: look at
-  what it goes by when two windows of one client return together.
-  `tools/dev/upgrade-check` compares places, not the stacking: have it
-  compare `stack` too.
-
 - **The NVIDIA GPU's video encoding doesn't show in Activity Monitor or
   Deskbar's GPU widgets** (Ben, 2026-11-10: "when the nvidia chip is
   doing video encoding it doesn't properly show up in activity monitor
@@ -3691,6 +3678,27 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- **The stacking comes back through an upgrade** (found 2026-11-11:
+  two windows of one app changed places under a third; done
+  2026-11-12). It was app_server's, as thought, and not only for one
+  app's windows: a window that had gone before app_server saved the
+  layout (its app already becoming its new version), or was back and
+  not shown yet, was saved without its place in the stacking, and came
+  back in whatever order it was shown. Every window gets a depth now,
+  by one order worked out from what each that went says was around it
+  and what the others say of it (HACKING, "The stacking comes back
+  through an upgrade"). `tools/dev/upgrade-check` compares the
+  stacking too, and follows tsession's build (run a release session
+  from a copy: touching target/release offers the person an upgrade).
+  Three Preferences windows: 12 upgrades of 12 (4 of 6 failed before);
+  six windows of three apps: 25 of 26; the auto-tiled check, 6 of 6.
+  Found on the way and fixed: Tracker came back without its folder
+  windows when told to re-execute twice a moment apart, one upgrade in
+  three with other apps open (a window saved what it had last told its
+  app, and one not drawn yet had told nothing). *Left:* the one in 26
+  (a window one place higher a few seconds after it was put back
+  rightly: not explained).
 
 - ~~**A computer Olo's login screen can't show on was left at the
   console**~~ (found 2026-11-08 in the installer check's VM on a plain
