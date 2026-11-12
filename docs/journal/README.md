@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-12
 
+### Activity Monitor: an NVIDIA card's encoder and decoder
+
+*13:56* — The card's video encoder and decoder are engines of their own, which its library counts apart from graphics: a screen recording encoding on it read as an idle GPU. Each is a series now (here a 4K encode: the encoder at half, graphics at a seventh), and the card, in Activity Monitor and Deskbar's widget, is as busy as its busiest engine. Intel's render and media engines the same.
+
+![Activity Monitor: an NVIDIA card's encoder and decoder](2026-11-12/135642-activity-monitor-an-nvidia-card-s-encoder-and-de.png)
+
 ### Activity Monitor: a fan profile that isn't in force says so
 
 *11:08* — The Fans card said "the fan service isn't running" of a service that was running and couldn't set the fans. It reads the service's state through olo_system::fans now: not in force and why (the driver, until the next start; the service stopped), or the level held.

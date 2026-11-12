@@ -902,19 +902,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **The NVIDIA GPU's video encoding doesn't show in Activity Monitor or
-  Deskbar's GPU widgets** (Ben, 2026-11-10: "when the nvidia chip is
-  doing video encoding it doesn't properly show up in activity monitor
-  stats or the deskbar widgets whereas normal gpu usage does"). *To do:*
-  find what the GPU figures read for the NVIDIA card (its 3D engine's
-  share only, it seems) and take in its encoder's and decoder's own
-  (NVENC and NVDEC utilisation, which the driver reports apart from
-  the graphics engine's), natively; show them in Activity Monitor's GPU
-  section (the engines apart, and a total that counts them) and in
-  Deskbar's widget; check a screen recording or a call that encodes on
-  the card moves them, and that the Intel GPU's video engines are
-  counted the same way.
-
 - **The lowest brightness is off** (Ben, 2026-11-12: "putting the
   screen on min brightness should turn the screen off: right now it
   just gets dim but not off"). *Done 2026-11-12, waiting for Ben to
@@ -3678,6 +3665,23 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- **The NVIDIA GPU's video encoding shows in Activity Monitor and
+  Deskbar's GPU widgets** (Ben, 2026-11-10: "when the nvidia chip is
+  doing video encoding it doesn't properly show up in activity monitor
+  stats or the deskbar widgets whereas normal gpu usage does"; done
+  2026-11-12). The card's figure was its graphics engine's alone:
+  NVIDIA's library counts the encoder and the decoder apart. A GPU is
+  as busy as its busiest engine now, NVIDIA's three and Intel's two
+  (its media GT wasn't in Deskbar's figure either); Activity Monitor
+  graphs each engine (Graphics, Encoder, Decoder; Render, Media), and
+  a program's share of the card counts what it encodes and decodes.
+  An idle card is asked every time for 8 s after it wakes (a recording
+  begun on a sleeping card read as nothing for 20 s). Tried on the
+  P1's RTX PRO 2000, with olo-video's NVENC test encoding 4K beside
+  it: graphics 13 to 15%, encoder 46 to 53% (it would have read 14%).
+  *Not tried:* a screen recording or a call of Ben's own, and the
+  decoder's figure with something decoding on the card.
 
 - **The stacking comes back through an upgrade** (found 2026-11-11:
   two windows of one app changed places under a third; done

@@ -528,13 +528,19 @@ fn probe() -> Probe {
                 add(&format!("{x}-jobs"), &label("jobs"), Unit::PerSecond, Hue::Teal, None, Group::Gpu);
                 add(&format!("{x}-power"), &label("power"), Unit::Watts, Hue::Orange, None, Group::Gpu);
             }
+            // (A GPU of several engines: "busy" is its busiest, and each
+            // is a series of its own.)
             Kind::Xe { gts } => {
                 if gts.len() > 1 {
+                    add(&format!("{x}-render"), &label("render busy"), Unit::Percent, Hue::Purple, Some(100.0), Group::Gpu);
                     add(&format!("{x}-media"), &label("media busy"), Unit::Percent, Hue::Teal, Some(100.0), Group::Gpu);
                 }
                 add(&format!("{x}-freq"), &label("clock"), Unit::Megahertz, Hue::Blue, None, Group::Gpu);
             }
             Kind::Nvidia { .. } => {
+                add(&format!("{x}-render"), &label("graphics busy"), Unit::Percent, Hue::Purple, Some(100.0), Group::Gpu);
+                add(&format!("{x}-encode"), &label("encoder busy"), Unit::Percent, Hue::Orange, Some(100.0), Group::Gpu);
+                add(&format!("{x}-decode"), &label("decoder busy"), Unit::Percent, Hue::Teal, Some(100.0), Group::Gpu);
                 add(&format!("{x}-power"), &label("power"), Unit::Watts, Hue::Orange, None, Group::Gpu);
                 add(&format!("{x}-temp"), &label("temperature"), Unit::Celsius, Hue::Red, None, Group::Gpu);
                 add(&format!("{x}-freq"), &label("clock"), Unit::Megahertz, Hue::Blue, None, Group::Gpu);
@@ -1316,17 +1322,21 @@ pub fn start(control: Control, send_sources: impl FnOnce(Vec<Source>) + Send + '
                                 }
                             };
                             let render = gts.iter().find(|gt| crate::gpus::xe_gt_name(gt) == "render").or(gts.first());
-                            values.push(render.map_or(f64::NAN, &mut busy));
+                            let rendering = render.map_or(f64::NAN, &mut busy);
                             if gts.len() > 1 {
+                                // As busy as the busier of the two, and each.
                                 let media = gts.iter().find(|gt| crate::gpus::xe_gt_name(gt) == "media").or(gts.get(1));
-                                values.push(media.map_or(f64::NAN, &mut busy));
+                                let playing = media.map_or(f64::NAN, &mut busy);
+                                values.extend([crate::gpus::busiest(&[rendering, playing]), rendering, playing]);
+                            } else {
+                                values.push(rendering);
                             }
                             values.push(render.map_or(f64::NAN, |gt| crate::gpus::xe_mhz(gt)));
                         }
                         Kind::Nvidia { bus } => match crate::gpus::nvidia_now(&g.device, bus) {
-                            Some(n) => values.extend([n.busy, n.watts, n.celsius, n.mhz, n.memory_used as f64]),
+                            Some(n) => values.extend([n.total(), n.busy, n.encode, n.decode, n.watts, n.celsius, n.mhz, n.memory_used as f64]),
                             // Asleep: nothing runs on it, and it draws next to nothing.
-                            None => values.extend([0.0, 0.0, f64::NAN, 0.0, 0.0]),
+                            None => values.extend([0.0, 0.0, 0.0, 0.0, 0.0, f64::NAN, 0.0, 0.0]),
                         },
                     }
                 }

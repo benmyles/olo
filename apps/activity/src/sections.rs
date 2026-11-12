@@ -892,11 +892,18 @@ fn gpu(app: &Activity, me: &Me, area: f32, inner: f32, cx: &Cx<Activity>) -> Vec
     for (i, g) in sys.gpus.iter().enumerate() {
         let k = |what: &str| format!("{}-{what}", g.prefix);
         let (busy, media, jobs, power, memory, freq, temp) = (k("busy"), k("media"), k("jobs"), k("power"), k("memory"), k("freq"), k("temp"));
+        let (render, encode, decode) = (k("render"), k("encode"), k("decode"));
+        // Its engines apart where it has several (the figure is the
+        // busiest of them): Intel's render and media, NVIDIA's graphics,
+        // encoder and decoder.
         let mut keys: Vec<&str> = vec![&busy];
         let mut names = vec!["Busy"];
-        if app.source(&media).is_some() {
-            keys.push(&media);
+        if app.source(&media).is_some() && app.source(&render).is_some() {
+            keys = vec![&render, &media];
             names = vec!["Render", "Media"];
+        } else if app.source(&encode).is_some() {
+            keys = vec![&render, &encode, &decode];
+            names = vec!["Graphics", "Encoder", "Decoder"];
         }
         let mut items = legend_items(app, &p, &keys, &names);
         items.extend(legend_items(app, &p, &[&jobs], &["Jobs"]));

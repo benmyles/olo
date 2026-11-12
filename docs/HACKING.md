@@ -13901,8 +13901,21 @@ ProcessController put their bars in its tray.
   hwmon, the battery's `power_now`, and the GPUs through
   `olo_system::gpu_load` (Activity Monitor's, moved there for both: a
   GPU asleep is never asked, an idle NVIDIA one only every 20 s, each
-  question being use that keeps it awake; xe's busy is its render GT's
-  idle residency). A worker (`deskbar-widgets`) reads each widget when
+  question being use that keeps it awake, but every time for 8 s
+  after it wakes, when what woke it is about to show). **A GPU is as
+  busy as its busiest engine** (`gpu_load::busiest`): NVIDIA's
+  graphics engine, encoder and decoder (`NvidiaNow::total`: its
+  library counts NVENC and NVDEC apart from "GPU utilization", so a
+  screen recording encoding on the card read as an idle GPU, and as
+  one not worth asking; a 4K encode is graphics 14%, encoder 50%), and
+  xe's render and media GTs' idle residencies. Activity Monitor has a
+  series for each engine beside the card's own (`gpu-render`,
+  `gpu-media`; `gpu1-render`, `gpu1-encode`, `gpu1-decode`), and a
+  program's share of an NVIDIA card is the most of the three it
+  uses. `cargo test -p olo-system watch_nvidia -- --ignored
+  --nocapture` prints the card's engines a line a second, to run
+  beside something that encodes on it (olo-video's
+  `nvenc_cost_by_codec`); it never wakes a sleeping card. A worker (`deskbar-widgets`) reads each widget when
   it's due and sends them together (`Msg::Meters`); with no widgets
   there is no thread, and with the displays asleep or the screen locked
   nothing is read (`Live::pause`). What a widget draws is made once a
