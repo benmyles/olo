@@ -511,6 +511,48 @@ something nobody here has is in "Blocked", with what it waits for.
      accept from a sender that isn't Apple's, since "high quality"
      depends on which path they allow; tests against a receiver of
      the test's own on a private network, never the person's.
+     *Found out, 2026-11-12* (from what's published; nothing was run
+     against a receiver), and it decides the design, so **waiting for
+     Ben** on the two questions below:
+     - *Mirroring as Apple's devices do it is closed to Olo.* AirPlay
+       2's mirroring begins with a FairPlay exchange (`fp-setup`)
+       whose sender's side is Apple's own. What's open is the other
+       end: receivers that pass for an Apple TV (UxPlay, RPiPlay, the
+       shairplay crates, with the "playfair" code). The one open
+       sender for a Wayland compositor found
+       (rabits/wlroots-airplay-screen-mirror) speaks the first
+       AirPlay's mirroring, unencrypted, without sound, to MiraScreen
+       dongles, and says of AirPlay 2 "w/o fp-setup". So low-latency
+       mirroring to an Apple TV or a licensed television isn't to be
+       had.
+     - *Playing a URL is open, and is the high-quality path.* The
+       sender asks the receiver to play an address and the receiver
+       fetches it and decodes it itself: a file's own picture and
+       sound, untouched. pyatv does this to Apple TVs today ("AirPlay
+       play URL (including local files)"), after pairing once with a
+       PIN the television shows (Apple TV 4 and later ask for it).
+       tvOS 26.2 is reported to answer its status question with an
+       error (pyatv issue 2821, open, a fix proposed): to be watched.
+     - *So, the design:* a video file is played as itself from a
+       server Olo runs for the length of the play. A window, a
+       workspace or an agent screen is sent the same way, as a live
+       stream (HLS: what capture hands over, encoded on the GPU as
+       recordings are, with the session's or the window's sound as
+       AAC, in segments the receiver fetches). That is full quality
+       with sound, and it is **seconds behind** (a segment or two):
+       right for showing a film, a presentation, an agent at work;
+       not for pointing at something while talking, nor for playing.
+       All of it native: mDNS, HomeKit's pairing (SRP, Ed25519,
+       X25519, ChaCha20-Poly1305), the HTTP server, the segmenter.
+     - *Ben's to say:* (1) which receiver it's for (an Apple TV and
+       its tvOS, a television with AirPlay built in, something else):
+       it has to be tried against the real one, paired by him at the
+       television, since no test can stand in for Apple's end; (2)
+       whether seconds behind is acceptable for windows and screens,
+       or whether only files are wanted that way and live screens
+       should go another road (Miracast, or a receiver of Olo's own
+       on a small computer by the television, which could be as
+       quick as the network).
   7. **The installer, as BeOS's Installer** (Ben, 2026-11-11: "also can
      you redo the installer to be reminiscent of the beos installer
      instead of windows 95"). Done 2026-11-12 (HACKING, "The
