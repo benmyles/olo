@@ -235,6 +235,12 @@ pub struct WindowReview {
     /// A layer surface's namespace ("deskbar"); None for a window.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub layer: Option<String>,
+    /// The window is on its way to another size (one that follows what
+    /// it shows, laid out for what just came but not yet as tall): what
+    /// was found is of a window nobody is shown, so a lint asks again
+    /// rather than report it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub resizing: bool,
     pub findings: Vec<crate::review::Finding>,
 }
 

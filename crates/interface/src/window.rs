@@ -1810,6 +1810,12 @@ impl<'a> WindowCx<'a> {
         });
     }
 
+    /// Whether what the window is becoming is being held back
+    /// ([`Self::hold_commit`]): what's laid out isn't what's shown.
+    pub fn commit_is_held(&self) -> bool {
+        self.core.commit_held.is_some()
+    }
+
     /// What was held back is shown ([`Self::hold_commit`]).
     pub fn release_commit(&mut self) {
         if self.core.commit_held.take().is_some() {

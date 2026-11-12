@@ -212,5 +212,5 @@ pub(crate) fn review_window(cx: &mut WindowCx, dark: bool) -> (WindowReview, (f3
     let scale = cx.scale_factor();
     let findings = checks::review(&parts, w, h, scale);
     let fit = (checks::overflow_depth(&parts, scale), checks::bottom_slack(&parts, w, h));
-    (WindowReview { title: cx.window_title().to_string(), width: w as u32, height: h as u32, scale, dark, layer: None, findings }, fit)
+    (WindowReview { title: cx.window_title().to_string(), width: w as u32, height: h as u32, scale, dark, layer: None, resizing: cx.commit_is_held(), findings }, fit)
 }

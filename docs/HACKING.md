@@ -4359,7 +4359,12 @@ headless session of its own with a copy of the made-up home and its own
 sound server, three quarters of the processors' worth at a time (20 s
 for all of them on the ThinkPad, from 5 min 43 s one by one); the look
 and scale are set in one request and the app asked again until it has
-drawn them (`WindowReview::scale` and `dark`), never slept for. An app
+drawn them (`WindowReview::scale` and `dark`) and no window is on its
+way to another size (`resizing`: a window that follows what it shows
+is laid out for what just came before it's that tall, and what's found
+then is of a window nobody is shown; on a busy machine the lint once
+took Power's Graphics tab so, 22 points past its pane), never slept
+for. `tsession review` asks again the same way. An app
 whose build and lint are as when it last came out clean isn't run
 again (`~/.cache/olo-dev/ui-lint.json`: its binary's, app_server's and
 the fake sound server's size, time and inode, the lint's scripts, the
