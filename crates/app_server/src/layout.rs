@@ -70,8 +70,8 @@ enum WasAt {
 /// by their turn). So each is put by what it says of those here and by
 /// what those here say of it: over the highest that was under it, else
 /// under the lowest that was over it, else on top.
-fn stacking_order(showing: &[u64], gone: &[Gone]) -> Vec<Who> {
-    let mut order: Vec<(u64, Who, Option<&Gone>)> = showing.iter().enumerate().map(|(i, id)| (*id, Who::Showing(i), None)).collect();
+fn stacking_order(showing: &[u64], gone: &[Gone<'_>]) -> Vec<Who> {
+    let mut order: Vec<(u64, Who, Option<&Gone<'_>>)> = showing.iter().enumerate().map(|(i, id)| (*id, Who::Showing(i), None)).collect();
     for g in gone {
         let (mut over_these, mut under_this) = (None, None);
         for (i, (id, _, said)) in order.iter().enumerate() {
@@ -435,7 +435,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             self.all_windows().iter().enumerate().filter(|(_, w)| !w.meta().placed.get()).filter_map(|(i, w)| w.meta().returning.borrow().clone().map(|p| (i, p))).collect();
         let away = self.layout.iter().enumerate().filter(|(_, p)| now().saturating_sub(p.at) < KEEP.as_secs()).map(|(at, p)| (WasAt::Remembered(at), p));
         let went: Vec<(WasAt, &Placement)> = away.chain(back.iter().map(|(i, p)| (WasAt::Back(*i), p))).filter(|(_, p)| p.stacking.is_some()).collect();
-        let gone: Vec<Gone> = went.iter().enumerate().filter_map(|(at, (_, p))| p.stacking.as_ref().map(|(under, over)| Gone { at, id: p.id, under, over })).collect();
+        let gone: Vec<Gone<'_>> = went.iter().enumerate().filter_map(|(at, (_, p))| p.stacking.as_ref().map(|(under, over)| Gone { at, id: p.id, under, over })).collect();
         let order = stacking_order(&showing, &gone);
         let depth_of = |who: Who| order.iter().position(|w| *w == who).map_or(0, |i| i as u32 + 1);
         let depth_of_gone = |was: WasAt| went.iter().position(|(w, _)| *w == was).map_or(0, |at| depth_of(Who::Gone(at)));

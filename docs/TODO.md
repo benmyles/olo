@@ -902,6 +902,89 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+(Nothing: what was here on 2026-11-12 is done, or done and waiting
+for Ben below; the leftovers the 2026-11-08 audit found in
+finished entries are all done, and are in Done, newest first.)
+
+## Done, waiting for Ben to try or confirm
+
+(Audited again 2026-11-08, all 51: each is done, and what's left in
+each is Ben's alone: his accounts (Google, GitHub, 1Password), his
+hands, face, keys, dock or displays at the machine, his upgrade, or his
+say on how it looks and sounds. Their checks re-run the same day on the
+final release build: the whole workspace's tests, 1,546 passed, 0
+failed (two test targets that no longer built or matched, and six of
+smithay's doctests, fixed first); agent-title-check, hdr-check,
+order-check, rescue-check, outside-check (GTK, Slack, Chrome through
+three restarts), layout-check (plain, auto-tiled, unplugged, and each
+with the screens found late), upgrade-check --auto-tiled (15 rounds),
+wm-sweep (510 steps), plymouth-check at 1×, 1.5× and 2×,
+voice-latency (0.0 ms added, no dropouts), the Slack status check, and
+the layout lint with review at 1×, 1.5× and 2× (40 windows, 0 errors, 0
+to look at). upgrade-check found a Terminal tab coming back out of its
+repository's group: fixed (Done). Then the ignored tests, by hand:
+every timing, against HACKING's figures (one out of date, corrected);
+the keyring tests on private keyrings; recording in a PipeWire
+sandbox; the read-only live ones; Doctor's and xdg's; the encoders and
+4K60 clips (the Viewer played each to its end on Intel's GPU, nothing
+dropped or late); the reference streams on Intel's and NVIDIA's
+decoders; face recognition on NASA's portraits; Chromium's and
+libheif's samples; a GTK app's tree read and typed into on an agent
+screen; and the installer check from scratch in a VM. Found and fixed
+(Done): threads rtkit made realtime seen as not (a0dad3dc), MP4s with
+a pasp before their avcC not opening (66af29d4), the MacBook palm
+model's tests judging a ThinkPad run (138f0c16), two keyring tests
+(4b4ed710), the Opus file test's track (f9536320), the seek tests
+hanging on a decoder's error. Then the rest that could run without
+Ben: the sound tests that change settings, in a private PipeWire
+sandbox (mute, no output, the input rewritten, devices, who
+listens); dconf's write on a private bus (read back there, Ben's own
+untouched); the backlight and the Studio Display written as they
+were (full, nothing seen to change); the presence sensor read (the
+sensor hub's, not a camera); the fingerprint start and stop against
+fake-readers (fixed to report a stopped scan as fprintd does,
+3948c7e6) and a wrong password against a PAM stand-in, neither
+touching Ben's reader or PAM; gcr's own handshake (it reads
+"olo-secret" from Olo's reply); and every Viewer sample test on the
+samples made as HACKING says (ffmpeg's testsrc2 through SVT-AV1,
+libvpx, NVENC; the JCT-VC stream remuxed): all pass, and the 4K60
+VP9 from make_4k60_y4m played by the Viewer to its end on Intel's
+GPU, nothing dropped. And the ones that looked as if they did need
+him but don't: Token Pool's three client tests (the real Claude Code
+and Codex, signed in with fake subscriptions, through the pool to a
+fake provider: every model request signed with the pool's token),
+DiskBackup's `serve_google` (its fake Google: the Google Drive setup
+window driven on an agent screen, sandboxed, from the client's ID
+through the sign-in to a backup in the fake Drive), `replay_capture`
+(Ben's ThinkPad capture in the repo, as raw events: 12,360 frames,
+none too big, libinput's touches always the filter's), the AirPods
+decoder against libfdk (a speech stream libfdk encoded with the
+AirPods' config, f8e63000: 82.6 dB SNR, 50 wanted) and the
+accessibility tree test on an agent screen (GTK's Text Editor, 30
+nodes). What's left needs Ben: in Blocked, "The ignored tests that
+need Ben".)
+
+- **A display that left with its dock is still "plugged in"** (Ben,
+  2026-11-10: "there are no externals just my builtin display now why
+  does it think there's still an external"). What happened is in
+  HACKING ("A display that leaves without a word"): the dock's second
+  display was still `connected` to the kernel when Olo scanned, the
+  kernel gave up on it eleven seconds later and sent no event, and
+  nothing looked again. *Done 2026-11-12:* app_server looks at a card
+  again by itself after a display leaves it (1.5, 4, 10 and 20 seconds
+  after, each a forced probe, starting over if a look finds another
+  gone), and once in ten seconds for a display a frame couldn't be put
+  on. Nothing runs otherwise. *Ben's to try, with the dock:* unplug it
+  with two displays on it; within some twenty seconds Olo should have
+  let both go (`journalctl`: "Failed to enable link training" from the
+  kernel, then Olo's output gone; `loginctl show-session` says
+  `Docked=no`). Not known: whether the kernel says "disconnected" to a
+  forced probe before it gives up on the link (if not, the look at
+  twenty seconds is the one that finds it; if even that is too soon,
+  the times want stretching), and whether closing the lid should look
+  too. Not tried at all: there is no dock here to pull, and a test's
+  session has no connectors.
+
 - **The lowest brightness is off** (Ben, 2026-11-12: "putting the
   screen on min brightness should turn the screen off: right now it
   just gets dim but not off"). *Done 2026-11-12, waiting for Ben to
@@ -1041,100 +1124,6 @@ something nobody here has is in "Blocked", with what it waits for.
     the scheduler switched on the real machine, with Ben.
   (Costs measured since 2026-11-10 are under LAVD, not EEVDF: an app
   is compared with its other build in the same sitting.)
-
-- **A display that left with its dock is still "plugged in"** (Ben,
-  2026-11-10: "there are no externals just my builtin display now why
-  does it think there's still an external"; then "manually fix it and
-  then add a todo in the repo to fix properly later"). What happened,
-  on the ThinkPad (xe, kernel 7.2.15): the Thunderbolt dock came out at
-  13:24:06 with a Studio Display (DP-2) and a Dell S2425HS (DP-3) on
-  it. Two udev changes came within 0.3 s; `device_changed`'s scan
-  (which force-probes, as the DRM master: `get_connector(conn, true)`
-  in smithay-drm-extras' `connector_scanner.rs`) found DP-2 gone and
-  DP-3 still there. At 13:24:17 the kernel logged "[CONNECTOR:549:DP-3]
-  … [DPRX] Failed to enable link training" and sent no hotplug event
-  after it, so nothing looked again. For five minutes DP-3 stayed
-  `connected` in sysfs with the Dell's EDID, and an output of Olo's
-  (enabled, DPMS on: a desktop nobody could see); logind, which counts
-  connected connectors, said `Docked`, so closing the lid would not
-  have suspended (`HandleLidSwitchDocked=ignore`; Olo leaves the lid to
-  logind). Cleared by hand: `echo detect >
-  /sys/class/drm/card0-DP-3/status` as root, on which the kernel said
-  disconnected and sent the event, Olo let the output go two seconds
-  later and `Docked` went false. *To do,* so that it heals by itself (no step for a
-  person) and without a timer that runs while idle: app_server scans a
-  card again when it has reason to doubt what it was told. (1) After a scan in which a connector left,
-  one more scan of that card a second or two later (and again if that
-  one found another gone): a dock's displays don't all leave in the
-  one event. (2) When a frame can't be put on an output (a commit or
-  flip that fails, a connector's `link-status` gone Bad), a scan of its
-  card then. (3) Find out on the dock whether (1) and (2) are enough
-  against a kernel that says nothing, or whether the lid closing
-  should scan too, that being when a ghost costs most. Not checked:
-  whether a forced probe at 13:24:07 would already have said
-  disconnected (how long the kernel takes), and whether the pointer
-  could go onto the ghost. Needs Ben's dock to try.
-
-(Otherwise nothing: the leftovers the 2026-11-08 audit found in
-finished entries are all done, and are in Done, newest first.)
-
-## Done, waiting for Ben to try or confirm
-
-(Audited again 2026-11-08, all 51: each is done, and what's left in
-each is Ben's alone: his accounts (Google, GitHub, 1Password), his
-hands, face, keys, dock or displays at the machine, his upgrade, or his
-say on how it looks and sounds. Their checks re-run the same day on the
-final release build: the whole workspace's tests, 1,546 passed, 0
-failed (two test targets that no longer built or matched, and six of
-smithay's doctests, fixed first); agent-title-check, hdr-check,
-order-check, rescue-check, outside-check (GTK, Slack, Chrome through
-three restarts), layout-check (plain, auto-tiled, unplugged, and each
-with the screens found late), upgrade-check --auto-tiled (15 rounds),
-wm-sweep (510 steps), plymouth-check at 1×, 1.5× and 2×,
-voice-latency (0.0 ms added, no dropouts), the Slack status check, and
-the layout lint with review at 1×, 1.5× and 2× (40 windows, 0 errors, 0
-to look at). upgrade-check found a Terminal tab coming back out of its
-repository's group: fixed (Done). Then the ignored tests, by hand:
-every timing, against HACKING's figures (one out of date, corrected);
-the keyring tests on private keyrings; recording in a PipeWire
-sandbox; the read-only live ones; Doctor's and xdg's; the encoders and
-4K60 clips (the Viewer played each to its end on Intel's GPU, nothing
-dropped or late); the reference streams on Intel's and NVIDIA's
-decoders; face recognition on NASA's portraits; Chromium's and
-libheif's samples; a GTK app's tree read and typed into on an agent
-screen; and the installer check from scratch in a VM. Found and fixed
-(Done): threads rtkit made realtime seen as not (a0dad3dc), MP4s with
-a pasp before their avcC not opening (66af29d4), the MacBook palm
-model's tests judging a ThinkPad run (138f0c16), two keyring tests
-(4b4ed710), the Opus file test's track (f9536320), the seek tests
-hanging on a decoder's error. Then the rest that could run without
-Ben: the sound tests that change settings, in a private PipeWire
-sandbox (mute, no output, the input rewritten, devices, who
-listens); dconf's write on a private bus (read back there, Ben's own
-untouched); the backlight and the Studio Display written as they
-were (full, nothing seen to change); the presence sensor read (the
-sensor hub's, not a camera); the fingerprint start and stop against
-fake-readers (fixed to report a stopped scan as fprintd does,
-3948c7e6) and a wrong password against a PAM stand-in, neither
-touching Ben's reader or PAM; gcr's own handshake (it reads
-"olo-secret" from Olo's reply); and every Viewer sample test on the
-samples made as HACKING says (ffmpeg's testsrc2 through SVT-AV1,
-libvpx, NVENC; the JCT-VC stream remuxed): all pass, and the 4K60
-VP9 from make_4k60_y4m played by the Viewer to its end on Intel's
-GPU, nothing dropped. And the ones that looked as if they did need
-him but don't: Token Pool's three client tests (the real Claude Code
-and Codex, signed in with fake subscriptions, through the pool to a
-fake provider: every model request signed with the pool's token),
-DiskBackup's `serve_google` (its fake Google: the Google Drive setup
-window driven on an agent screen, sandboxed, from the client's ID
-through the sign-in to a backup in the fake Drive), `replay_capture`
-(Ben's ThinkPad capture in the repo, as raw events: 12,360 frames,
-none too big, libinput's touches always the filter's), the AirPods
-decoder against libfdk (a speech stream libfdk encoded with the
-AirPods' config, f8e63000: 82.6 dB SNR, 50 wanted) and the
-accessibility tree test on an agent screen (GTK's Text Editor, 30
-nodes). What's left needs Ben: in Blocked, "The ignored tests that
-need Ben".)
 
 - **DiskBackup: unfinished backups, validation, the Drive connection**
   (Ben, 2026-11-08: "it needs to track in-progress / unfinished backups

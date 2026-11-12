@@ -7303,6 +7303,41 @@ binaries, no linux-enable-ir-emitter.
   the other man's didn't, and the right password still did after the
   look.
 
+## A display that leaves without a word (app_server udev.rs)
+
+app_server looks at a card's connectors when the kernel says something
+changed there (`device_changed`: a forced probe of each, as the DRM
+master), and lets a display go when it's found gone. The kernel doesn't
+always say. Ben's ThinkPad (xe, kernel 7.2.15), 2026-11-10: a
+Thunderbolt dock pulled out with a Studio Display (DP-2) and a Dell
+(DP-3) on it. Two events came within 0.3 s; the scan found DP-2 gone
+and DP-3 still there. Eleven seconds later the kernel logged
+"[CONNECTOR:549:DP-3] … Failed to enable link training" and sent no
+event after it. For five minutes DP-3 was `connected` in sysfs with the
+Dell's EDID, Olo had a desktop on it that nobody could see, and logind,
+which counts connected connectors, said `Docked` (so a lid shut
+wouldn't have suspended). `echo detect >
+/sys/class/drm/card0-DP-3/status` as root cleared it.
+
+So app_server looks again when it has reason to doubt, and at no other
+time (no timer runs while nothing has happened):
+
+- **After a display leaves a card**, the card is looked at again 1.5,
+  4, 10 and 20 seconds after (`LOOKS_AFTER_LEAVING`, `look_again`),
+  and those start over if a look finds another gone: a dock's displays
+  don't all leave in the one event, and the last look is after the
+  kernel has given up on a link.
+- **When a frame can't be put on a display** (`frame_finish`'s
+  error), its card is looked at 0.3 s later, once in ten seconds for
+  that display however many frames fail.
+
+A look is a probe of every connector of the card on app_server's own
+thread (some milliseconds each; a hitch after an unplugging, not in a
+frame's ordinary way). Not tried on a dock: a test's session has no
+connectors, so this is by reading and by the kernel's log of that day;
+TODO has what Ben is to try, and what isn't known (whether a forced
+probe says "disconnected" before the kernel gives up on the link).
+
 ## Each display on its own GPU (app_server udev.rs; Preferences ▸ Display ▸ Graphics)
 
 Each display is composed by the GPU it is wired to (`render_surface`:

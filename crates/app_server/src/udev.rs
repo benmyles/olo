@@ -1533,6 +1533,10 @@ struct SurfaceData {
     /// The timer for its next look when no frame is on its way (resting,
     /// woken, or after a frame with nothing new); a look sooner cancels it.
     retest: Option<RegistrationToken>,
+    /// When a frame last couldn't be put on it and its card was looked
+    /// at again for that (`frame_finish`): not again for a while, however
+    /// many frames fail.
+    doubted: Option<Instant>,
     /// When it last looked, so a wake comes no sooner than a frame after.
     last_look: Option<Instant>,
     /// Its frames' pacing and record (frames.rs).
@@ -1600,7 +1604,25 @@ struct BackendData {
     /// Tiles of a monitor shown whole through another of its connectors,
     /// left off (`tiles`): connector, the screen it was given.
     covered: Vec<(connector::Handle, crtc::Handle)>,
+    /// The card is being looked at again by itself, a display having
+    /// left it (`look_again`): which of `LOOKS_AFTER_LEAVING` is next,
+    /// and its timer.
+    looking_again: Option<(usize, RegistrationToken)>,
 }
+
+/// After a display leaves a card, the card is looked at again, this long
+/// after and then after each look, without being told to. A dock's
+/// displays don't all leave in the one event, and the kernel doesn't
+/// always say when the rest have: Ben's ThinkPad, 2026-11-10, a dock
+/// unplugged with two displays on it. The scan its events asked for found
+/// one gone; eleven seconds later the kernel gave up on the other ("Failed
+/// to enable link training") and sent nothing, and for five minutes Olo
+/// had a desktop on a display that wasn't there (and logind a computer
+/// that was "docked", which wouldn't have slept with its lid shut).
+/// Looking is a forced probe of the card's connectors, which says what's
+/// so. Nothing runs unless a display has just left, or a frame couldn't
+/// be put on one.
+const LOOKS_AFTER_LEAVING: [Duration; 4] = [Duration::from_millis(1500), Duration::from_secs(4), Duration::from_secs(10), Duration::from_secs(20)];
 
 /// How long a display is waited for to tell who it is (its EDID) before
 /// it is set up by its connector alone.
@@ -1755,6 +1777,7 @@ impl AnvilState<UdevData> {
                 drm_scanner: DrmScanner::new(),
                 non_desktop_connectors: Vec::new(),
                 covered: Vec::new(),
+                looking_again: None,
                 render_node,
                 surfaces: HashMap::new(),
                 leasing_global: DrmLeaseState::new::<AnvilState<UdevData>>(&self.display_handle, &node)
@@ -2061,6 +2084,7 @@ impl AnvilState<UdevData> {
                 idle_frames: 0,
                 asleep: false,
                 retest: None,
+                doubted: None,
                 last_look: None,
                 pacing: Default::default(),
                 planes_refused: false,
@@ -2217,12 +2241,14 @@ impl AnvilState<UdevData> {
             }
         };
 
+        let mut left = false;
         for event in scan_result {
             match event {
                 DrmScanEvent::Connected { connector, crtc: Some(crtc) } => {
                     self.connector_connected(node, connector, crtc);
                 }
                 DrmScanEvent::Disconnected { connector, crtc: Some(crtc) } => {
+                    left = true;
                     self.connector_disconnected(node, connector, crtc);
                 }
                 // The connector's mode list changed while it stayed connected (e.g. EDID
@@ -2240,6 +2266,38 @@ impl AnvilState<UdevData> {
         self.follow_main_output();
         // Windows back before their display was found go to it now.
         self.displays_changed();
+        // One left: others on its dock may be leaving without a word.
+        if left {
+            self.look_again(node, 0);
+        }
+    }
+
+    /// Have the card looked at again by itself, `LOOKS_AFTER_LEAVING[n]`
+    /// from now and then at each time after it (a look already due is
+    /// put off for this one: the last display to leave starts them
+    /// over). A look that finds another gone starts them over too
+    /// (`device_changed`).
+    fn look_again(&mut self, node: DrmNode, n: usize) {
+        let Some(device) = self.backend_data.backends.get_mut(&node) else { return };
+        if let Some((_, timer)) = device.looking_again.take() {
+            self.handle.remove(timer);
+        }
+        let Some(after) = LOOKS_AFTER_LEAVING.get(n).copied() else { return };
+        let timer = self.handle.insert_source(Timer::from_duration(after), move |_, _, data| {
+            if let Some(device) = data.backend_data.backends.get_mut(&node) {
+                device.looking_again = None;
+            }
+            data.device_changed(node);
+            // (Nothing more left: the next look. Something did: they've
+            // started over.)
+            if data.backend_data.backends.get(&node).is_some_and(|d| d.looking_again.is_none()) {
+                data.look_again(node, n + 1);
+            }
+            TimeoutAction::Drop
+        });
+        if let (Ok(timer), Some(device)) = (timer, self.backend_data.backends.get_mut(&node)) {
+            device.looking_again = Some((n, timer));
+        }
     }
 
     fn device_removed(&mut self, node: DrmNode) {
@@ -2379,6 +2437,17 @@ impl AnvilState<UdevData> {
             }
             Err(err) => {
                 warn!("Error during rendering: {:?}", err);
+                // A frame that couldn't be put on a display is reason to
+                // doubt it's there: its card looked at again, once in ten
+                // seconds however many frames fail (a look is a probe of
+                // every connector, on this thread).
+                if !matches!(err, SwapBuffersError::AlreadySwapped) && surface.doubted.is_none_or(|at| at.elapsed() > Duration::from_secs(10)) {
+                    surface.doubted = Some(Instant::now());
+                    let _ = self.handle.insert_source(Timer::from_duration(Duration::from_millis(300)), move |_, _, data| {
+                        data.device_changed(dev_id);
+                        TimeoutAction::Drop
+                    });
+                }
                 match err {
                     SwapBuffersError::AlreadySwapped => true,
                     // If the device has been deactivated do not reschedule, this will be done
