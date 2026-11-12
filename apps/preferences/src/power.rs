@@ -113,7 +113,7 @@ impl State {
         // (Tests: a ThinkPad's fans kept cool, at work.)
         let fans: Arc<Mutex<Fans>> = Default::default();
         if cfg!(test) {
-            fans.lock().unwrap().state = Some(Some(fans::State { profile: Profile::Cool, installed: true, control: true, held: Some(("4".into(), "19 W".into())) }));
+            fans.lock().unwrap().state = Some(Some(fans::State { profile: Profile::Cool, installed: true, control: true, control_kept: true, running: true, held: Some(("4".into(), "19 W".into())) }));
         }
         State { battery: poll(olo_kit::proxy(), fans.clone()), fans, modes, limit, presence, gpus_follow, tab: 0, gpus: crate::gpus::State::new() }
     }

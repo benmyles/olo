@@ -116,6 +116,41 @@ impl Places {
     pub fn modprobe(&self) -> PathBuf {
         self.at("/etc/modprobe.d/olo-fans.conf")
     }
+
+    /// The service's own folder, there while it runs and only then:
+    /// systemd makes it as the service starts and takes it away as it
+    /// ends (the unit's `RuntimeDirectory`).
+    pub fn running(&self) -> PathBuf {
+        self.at("/run/olo-fans")
+    }
+}
+
+/// What tells thinkpad_acpi to take levels at its next loading
+/// (`Places::modprobe`). Olo Doctor's helper writes it, and so does
+/// `olo-fans` itself when it finds the driver doesn't.
+pub const CONF: &str = "# Olo's fan profile (Preferences > Power): the fans' level may be set.\noptions thinkpad_acpi fan_control=1\n";
+
+/// Why a chosen Cool isn't in force.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Amiss {
+    /// The driver doesn't take levels, and is told to at its next
+    /// loading: in force from the computer's next start.
+    NextStart,
+    /// The driver doesn't take levels and nothing tells it to.
+    Driver,
+    /// The service isn't running.
+    Stopped,
+}
+
+impl Amiss {
+    /// For people, after "Cool profile ·" or "Not in force:".
+    pub fn words(self) -> &'static str {
+        match self {
+            Amiss::NextStart => "the fans can't be set until the computer's next start",
+            Amiss::Driver => "the fans' driver doesn't let them be set",
+            Amiss::Stopped => "the fan service isn't running",
+        }
+    }
 }
 
 /// The fans' keeper as it is now.
@@ -129,8 +164,15 @@ pub struct State {
     /// thinkpad_acpi takes levels (`fan_control=1`); if not, a chosen
     /// profile waits for the next start of the computer.
     pub control: bool,
+    /// It is told to at its next loading ([`CONF`] is in its place).
+    pub control_kept: bool,
+    /// The service is running ([`Places::running`]). Not the same as
+    /// its saying something: one from before 2026-11-12 says nothing
+    /// until it first changes the level, and was read as not running
+    /// through a cool morning.
+    pub running: bool,
     /// The level the service holds ("auto", "3" to "7", "full-speed")
-    /// and what asked for it; None: it says nothing (not running).
+    /// and what asked for it; None: it has said nothing.
     pub held: Option<(String, String)>,
 }
 
@@ -143,8 +185,10 @@ pub fn look(places: &Places) -> Option<State> {
     let installed = places.program().is_file() && places.unit().is_file();
     let chosen = std::fs::read_to_string(places.profile()).ok().and_then(|w| Profile::parse(&w));
     let control = std::fs::read_to_string(places.fan_control()).is_ok_and(|v| matches!(v.trim(), "Y" | "1"));
-    let held = std::fs::read_to_string(places.status()).ok().and_then(|line| status(&line));
-    Some(State { profile: if installed { chosen.unwrap_or(Profile::Auto) } else { Profile::Auto }, installed, control, held })
+    let control_kept = std::fs::read_to_string(places.modprobe()).ok().as_deref() == Some(CONF);
+    let running = places.running().is_dir();
+    let held = if running { std::fs::read_to_string(places.status()).ok().and_then(|line| status(&line)) } else { None };
+    Some(State { profile: if installed { chosen.unwrap_or(Profile::Auto) } else { Profile::Auto }, installed, control, control_kept, running, held })
 }
 
 /// `olo-fans`' status line ("level=6 why=coretemp Package id 0 74°"):
@@ -158,15 +202,42 @@ pub fn status(line: &str) -> Option<(String, String)> {
 }
 
 impl State {
+    /// Why Cool, chosen, isn't what the fans are doing (None: it is, or
+    /// it isn't chosen).
+    pub fn amiss(&self) -> Option<Amiss> {
+        if self.profile != Profile::Cool {
+            None
+        } else if !self.control {
+            Some(if self.control_kept { Amiss::NextStart } else { Amiss::Driver })
+        } else if !self.running {
+            Some(Amiss::Stopped)
+        } else {
+            None
+        }
+    }
+
+    /// The level held, as the service says it; "auto" where it's
+    /// running and has said nothing (an older one, until its first
+    /// change), None where Cool isn't in force.
+    pub fn level(&self) -> Option<(&str, &str)> {
+        if self.profile != Profile::Cool || self.amiss().is_some() {
+            return None;
+        }
+        Some(self.held.as_ref().map_or(("auto", ""), |(level, why)| (level.as_str(), why.as_str())))
+    }
+
     /// What the fans are doing now, in a line.
     pub fn now(&self) -> String {
-        match (&self.held, self.profile) {
-            (_, Profile::Auto) => "Now: left to the computer.".to_owned(),
-            (_, Profile::Cool) if !self.control => "Starts with the computer's next start.".to_owned(),
-            (None, Profile::Cool) => "Now: starting.".to_owned(),
-            (Some((level, _)), Profile::Cool) if level == "auto" => "Now: all is cool, the fans left to the computer.".to_owned(),
-            (Some((level, why)), Profile::Cool) => {
+        if self.profile == Profile::Auto {
+            return "Now: left to the computer.".to_owned();
+        }
+        match (self.amiss(), self.level()) {
+            (Some(Amiss::NextStart), _) => "Starts with the computer's next start.".to_owned(),
+            (Some(amiss), _) => format!("Not in force: {}. Olo Doctor repairs it.", amiss.words()),
+            (None, Some(("auto", _))) | (None, None) => "Now: all is cool, the fans left to the computer.".to_owned(),
+            (None, Some((level, why))) => {
                 let level = if level == "full-speed" { "full speed".to_owned() } else { format!("level {level} of 7") };
+                // (What the service couldn't do, said as it says it.)
                 if why.is_empty() { format!("Now: {level}.") } else { format!("Now: {level}, for {why}.") }
             }
         }
@@ -204,10 +275,20 @@ mod tests {
         put(p.profile(), "cool\n");
         let s = look(&p).unwrap();
         assert_eq!((s.profile, s.installed, s.control, s.held.clone()), (Profile::Auto, false, true, None));
-        assert_eq!(s.now(), "Now: left to the computer.");
+        assert_eq!((s.now(), s.amiss(), s.level()), ("Now: left to the computer.".to_owned(), None, None));
         put(p.program(), "");
         put(p.unit(), "");
-        assert_eq!(look(&p).unwrap().now(), "Now: starting.");
+        // Chosen, and its service not running.
+        let s = look(&p).unwrap();
+        assert_eq!((s.amiss(), s.level()), (Some(Amiss::Stopped), None));
+        assert_eq!(s.now(), "Not in force: the fan service isn't running. Olo Doctor repairs it.");
+        // Running, and saying nothing yet (an older service until its
+        // first change of level): the fans are the firmware's for now,
+        // which isn't "not running".
+        std::fs::create_dir_all(p.running()).unwrap();
+        let s = look(&p).unwrap();
+        assert_eq!((s.running, s.amiss(), s.level()), (true, None, Some(("auto", ""))));
+        assert_eq!(s.now(), "Now: all is cool, the fans left to the computer.");
         put(p.status(), "level=4 why=19 W\n");
         let s = look(&p).unwrap();
         assert_eq!((s.profile, s.installed), (Profile::Cool, true));
@@ -216,11 +297,42 @@ mod tests {
         assert_eq!(look(&p).unwrap().now(), "Now: all is cool, the fans left to the computer.");
         put(p.status(), "level=full-speed why=SEN1 66°\n");
         assert_eq!(look(&p).unwrap().now(), "Now: full speed, for SEN1 66°.");
+        // The driver doesn't take levels (loaded without fan_control=1):
+        // whatever the service says, nothing is set. Not until someone
+        // tells the driver; from the next start once it's told.
         put(p.fan_control(), "N\n");
-        assert_eq!(look(&p).unwrap().now(), "Starts with the computer's next start.");
+        let s = look(&p).unwrap();
+        assert_eq!((s.amiss(), s.level()), (Some(Amiss::Driver), None));
+        assert_eq!(s.now(), "Not in force: the fans' driver doesn't let them be set. Olo Doctor repairs it.");
+        put(p.modprobe(), CONF);
+        let s = look(&p).unwrap();
+        assert_eq!((s.amiss(), s.control_kept), (Some(Amiss::NextStart), true));
+        assert_eq!(s.now(), "Starts with the computer's next start.");
         put(p.profile(), "auto\n");
         assert_eq!(look(&p).unwrap().profile, Profile::Auto);
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// What a look costs (Activity Monitor takes one with each sample,
+    /// Preferences every five seconds): `cargo test --release -p
+    /// olo-system look_costs -- --ignored --nocapture`, on a ThinkPad.
+    #[test]
+    #[ignore]
+    fn look_costs() {
+        let places = Places::here();
+        let n = 20_000;
+        let began = std::time::Instant::now();
+        let mut found = 0;
+        for _ in 0..n {
+            found += look(&places).is_some() as u32;
+        }
+        let each = began.elapsed().as_secs_f64() * 1e6 / n as f64;
+        let began = std::time::Instant::now();
+        for _ in 0..n {
+            found += std::fs::read_to_string(places.fan_control()).is_ok() as u32;
+        }
+        let one = began.elapsed().as_secs_f64() * 1e6 / n as f64;
+        println!("look: {each:.1} µs; the driver's fan_control read alone: {one:.1} µs ({found})");
     }
 
     #[test]

@@ -862,6 +862,16 @@ other side.
   cause began, not when it was drawn. (Fixed in the kit.) The lesson:
   when a number looks too good or too bad, read how it's made before
   believing it.
+- **A service that was running, useless, and reported as not
+  running.** Three mistakes in a row. Something was set by hand to get
+  going (a driver loaded with an option) and nothing kept it, so a
+  restart undid it. The service ended when the driver refused it,
+  instead of saying so and going on. And its reader took "has said
+  nothing" for "isn't running". Whatever a thing needs to work, the
+  thing itself keeps (or its installer does, every time, not "where
+  it's missing now"); a service says what it can't do and stays; and
+  "is it running" is asked of what knows (its folder in /run, systemd),
+  never inferred from a file it may not have written yet.
 - **A test that pressed Return on a list** opened a real browser in
   the test session. Know what a key does to what has the keyboard
   before sending it; tests act on made-up data, fixture homes and

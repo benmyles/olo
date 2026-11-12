@@ -31,9 +31,23 @@
 //! takes the fans back to `auto` within [`WATCHDOG`] seconds. Ending, it
 //! hands them back itself.
 //!
+//! It never ends for something it can't do. Where the driver doesn't
+//! take levels (loaded without `fan_control=1`: every write is refused,
+//! "Invalid argument"), the fans stay the firmware's, it says so, and it
+//! puts the file that turns levels on where the driver's next loading
+//! reads it (`/etc/modprobe.d/olo-fans.conf`), so the computer's next
+//! start has them; it looks again once a minute, for a driver loaded
+//! again by hand. A level the fans didn't take is said and tried again
+//! half a minute later. (Ben's P1, 2026-11-12: levels had been turned on
+//! by loading the driver again by hand, which a restart undid. The
+//! service ended at its first write, twice, came up a third time into a
+//! cool moment, and sat there, running and useless, its status never
+//! written: Activity Monitor said it wasn't running.)
+//!
 //! `olo-fans --status` prints what it reads and would do, changing
 //! nothing (as anyone). `/run/olo-fans/status` says what the service is
-//! doing, a line of `key=value`, written when the level changes.
+//! doing, a line of `key=value`: there from its start to its end,
+//! written again when the level or the profile changes.
 
 use std::{
     fs::File,
@@ -45,6 +59,17 @@ use std::{
 const FAN: &str = "/proc/acpi/ibm/fan";
 const PROFILE: &str = "/etc/olo/fans";
 const STATUS: &str = "/run/olo-fans/status";
+/// Whether thinkpad_acpi takes levels (`Y`): its `fan_control`, set as
+/// it's loaded and not after.
+const CONTROL: &str = "/sys/module/thinkpad_acpi/parameters/fan_control";
+/// What tells it to, at its next loading (olo_system::fans::CONF and
+/// Olo Doctor's helper write the same).
+const MODPROBE: &str = "/etc/modprobe.d/olo-fans.conf";
+const CONF: &str = "# Olo's fan profile (Preferences > Power): the fans' level may be set.\noptions thinkpad_acpi fan_control=1\n";
+/// How long after a level the fans didn't take before another is tried.
+const AGAIN: Duration = Duration::from_secs(30);
+/// How often a driver that doesn't take levels is looked at again.
+const LOOK_AGAIN: Duration = Duration::from_secs(60);
 /// Seconds without a word from us after which the firmware takes the
 /// fans back.
 const WATCHDOG: u32 = 30;
@@ -338,6 +363,9 @@ fn wanted(sensors: &[Sensor], watts: f32, margin: f32) -> (Level, String) {
 
 /// The fans, as they were last set.
 struct Fans {
+    /// thinkpad_acpi's fan file, and where what's being done is said.
+    file: PathBuf,
+    status: PathBuf,
     level: Level,
     /// When the level last changed, and was last said.
     changed: Instant,
@@ -346,20 +374,34 @@ struct Fans {
     /// soon after (held longer, then).
     came_down: Option<Instant>,
     hunting: bool,
-}
-
-fn say(command: &str) -> std::io::Result<()> {
-    std::fs::OpenOptions::new().write(true).open(FAN)?.write_all(command.as_bytes())
+    /// When they last didn't take a level, and what was said of it (said
+    /// once, not every time it's tried).
+    refused: Option<Instant>,
+    complaint: String,
 }
 
 impl Fans {
+    fn new(file: &Path, status: &Path, now: Instant) -> Fans {
+        Fans { file: file.to_owned(), status: status.to_owned(), level: AUTO, changed: now, said: now, came_down: None, hunting: false, refused: None, complaint: String::new() }
+    }
+
+    fn say(&self, command: &str) -> std::io::Result<()> {
+        std::fs::OpenOptions::new().write(true).open(&self.file)?.write_all(command.as_bytes())
+    }
+
+    /// What the service is doing, for whoever asks (Activity Monitor,
+    /// Preferences): the level held and why.
+    fn note(&self, why: &str) {
+        let _ = std::fs::write(&self.status, format!("level={} why={why}\n", level_word(self.level)));
+    }
+
     fn set(&mut self, level: Level, why: &str, now: Instant) -> std::io::Result<()> {
         if level != AUTO && self.level == AUTO {
-            say(&format!("watchdog {WATCHDOG}"))?;
+            self.say(&format!("watchdog {WATCHDOG}"))?;
         }
-        say(&format!("level {}", level_word(level)))?;
+        self.say(&format!("level {}", level_word(level)))?;
         if level == AUTO {
-            say("watchdog 0")?;
+            self.say("watchdog 0")?;
         }
         if level != self.level {
             if level < self.level {
@@ -370,11 +412,53 @@ impl Fans {
             eprintln!("olo-fans: {} → {} ({why})", level_word(self.level), level_word(level));
             self.level = level;
             self.changed = now;
-            let _ = std::fs::write(STATUS, format!("level={} why={why}\n", level_word(level)));
+            self.note(why);
         }
         self.said = now;
+        self.refused = None;
+        self.complaint.clear();
         Ok(())
     }
+
+    /// The fans didn't take a level (`e`): they're the firmware's (handed
+    /// back if they can be; its watchdog takes them within [`WATCHDOG`]
+    /// seconds if not), which is said, once for each thing that went
+    /// wrong, and the service goes on: tried again [`AGAIN`] later.
+    fn refuse(&mut self, wanted: Level, e: &std::io::Error, now: Instant) {
+        let _ = self.say("level auto");
+        let _ = self.say("watchdog 0");
+        self.level = AUTO;
+        self.changed = now;
+        self.refused = Some(now);
+        let complaint = format!("the fans didn't take level {}: {e}", level_word(wanted));
+        if complaint != self.complaint {
+            eprintln!("olo-fans: {complaint}; they're the firmware's, and tried again every {} s", AGAIN.as_secs());
+            self.note(&complaint);
+            self.complaint = complaint;
+        }
+    }
+}
+
+/// Whether the driver takes levels at all (`control`: its `fan_control`).
+fn takes_levels(control: &Path) -> bool {
+    read_trim(control).is_some_and(|v| v == "Y" || v == "1")
+}
+
+/// Has the driver told to take levels at its next loading (the
+/// computer's next start): `conf` written where it isn't as it should
+/// be. True if it was written now.
+fn keep_levels(conf: &Path) -> std::io::Result<bool> {
+    if std::fs::read_to_string(conf).ok().as_deref() == Some(CONF) {
+        return Ok(false);
+    }
+    if let Some(dir) = conf.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    // (Whole or not at all: modprobe reads every file there.)
+    let tmp = conf.with_extension("conf.olo-new");
+    std::fs::write(&tmp, CONF)?;
+    std::fs::rename(&tmp, conf)?;
+    Ok(true)
 }
 
 /// Waits up to `wait` (None: for good): true if the profile's file may
@@ -465,14 +549,20 @@ fn main() -> std::process::ExitCode {
     let mut power = Power::new();
     eprintln!("olo-fans: watching {} sensors{}", list.len(), if power.file.is_some() { " and the processor's power" } else { "" });
     let start = Instant::now();
-    let mut fans = Fans { level: AUTO, changed: start, said: start, came_down: None, hunting: false };
+    let mut fans = Fans::new(Path::new(FAN), Path::new(STATUS), start);
     let mut current = None;
-    let code = loop {
+    // Whether the driver was last seen not to take levels (said once).
+    let mut untaken = false;
+    loop {
         let now = Instant::now();
         let p = profile();
         if current != Some(p) {
             eprintln!("olo-fans: profile {p:?}");
             current = Some(p);
+            untaken = false;
+            // (There from the start: a service that says nothing reads
+            // as one that isn't running.)
+            fans.note("");
             // (What was read under another profile is stale.)
             for s in &mut list {
                 s.last = None;
@@ -486,12 +576,41 @@ fn main() -> std::process::ExitCode {
                 if fans.level != AUTO
                     && let Err(e) = fans.set(AUTO, "profile auto", now)
                 {
-                    eprintln!("olo-fans: {e}");
-                    break 1;
+                    // (Its watchdog hands them back.)
+                    fans.refuse(AUTO, &e, now);
                 }
                 None
             }
+            // The driver doesn't take levels: nothing can be set until it
+            // is loaded again told to (the computer's next start, by the
+            // file kept here). Said once, and looked at again now and
+            // then, for a driver loaded again by hand.
+            Profile::Cool if !takes_levels(Path::new(CONTROL)) => {
+                if !untaken {
+                    untaken = true;
+                    let kept = match keep_levels(Path::new(MODPROBE)) {
+                        Ok(true) => format!("{MODPROBE} written: it takes them from the computer's next start"),
+                        Ok(false) => "it takes them from the computer's next start".to_owned(),
+                        Err(e) => format!("{MODPROBE} couldn't be written ({e}): Olo Doctor repairs it"),
+                    };
+                    eprintln!("olo-fans: the fans' driver doesn't take levels (thinkpad_acpi's fan_control); {kept}. The fans are the firmware's until then");
+                    fans.level = AUTO;
+                    fans.note("the fans' driver doesn't take levels until the computer's next start");
+                }
+                Some(LOOK_AGAIN)
+            }
             Profile::Cool => {
+                if untaken {
+                    untaken = false;
+                    eprintln!("olo-fans: the fans' driver takes levels now");
+                    fans.note("");
+                    for s in &mut list {
+                        s.last = None;
+                        s.rise = 0.0;
+                        s.due = now;
+                    }
+                    power.last = None;
+                }
                 for s in &mut list {
                     if now >= s.due {
                         s.read(now);
@@ -508,11 +627,12 @@ fn main() -> std::process::ExitCode {
                     // firmware's own).
                     next = if fans.level <= FIRST { AUTO } else { fans.level - 1 };
                 }
-                if (next != fans.level || (fans.level != AUTO && now.duration_since(fans.said) >= KEEP))
+                let may = fans.refused.is_none_or(|at| now.duration_since(at) >= AGAIN);
+                if may
+                    && (next != fans.level || (fans.level != AUTO && now.duration_since(fans.said) >= KEEP))
                     && let Err(e) = fans.set(next, &why, now)
                 {
-                    eprintln!("olo-fans: {e}");
-                    break 1;
+                    fans.refuse(next, &e, now);
                 }
                 // Looked at every second while anything is warm, every
                 // two while all is cool.
@@ -521,15 +641,15 @@ fn main() -> std::process::ExitCode {
             }
         };
         if wait_for(inotify, signals, wait).is_none() {
-            break 0;
+            break;
         }
-    };
+    }
     // The fans are the firmware's again.
-    let _ = say("level auto");
-    let _ = say("watchdog 0");
+    let _ = fans.say("level auto");
+    let _ = fans.say("watchdog 0");
     let _ = std::fs::remove_file(STATUS);
     eprintln!("olo-fans: ending; the fans are the firmware's again");
-    std::process::ExitCode::from(code)
+    std::process::ExitCode::SUCCESS
 }
 
 #[cfg(test)]
@@ -563,6 +683,60 @@ mod tests {
         assert_eq!(level_for(49.0, board), AUTO);
         assert_eq!(level_for(50.0, board), FIRST);
         assert_eq!(level_for(61.0, board), FULL);
+    }
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = PathBuf::from(format!("/var/tmp/olo-fans-test-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// A level the fans don't take doesn't end the service: they're the
+    /// firmware's, it's said (once), and tried again later; a level
+    /// taken after that is as any other.
+    #[test]
+    fn a_level_not_taken_is_said_and_tried_again() {
+        let dir = scratch("refused");
+        // (A fan file that can't be written: a folder.)
+        let now = Instant::now();
+        let mut fans = Fans::new(&dir, &dir.join("status"), now);
+        fans.note("");
+        assert_eq!(std::fs::read_to_string(dir.join("status")).unwrap(), "level=auto why=\n");
+        let e = fans.set(5, "19 W", now).unwrap_err();
+        fans.refuse(5, &e, now);
+        assert_eq!((fans.level, fans.refused), (AUTO, Some(now)));
+        let said = std::fs::read_to_string(dir.join("status")).unwrap();
+        assert!(said.starts_with("level=auto why=the fans didn't take level 5: "), "{said}");
+        // A fan file that takes what's written.
+        std::fs::write(dir.join("fan"), "").unwrap();
+        fans.file = dir.join("fan");
+        fans.set(5, "19 W", now + AGAIN).unwrap();
+        assert_eq!((fans.level, fans.refused), (5, None));
+        assert_eq!(std::fs::read_to_string(dir.join("status")).unwrap(), "level=5 why=19 W\n");
+        // (A plain file keeps the tail of the longer "watchdog 30" said first.)
+        assert!(std::fs::read_to_string(dir.join("fan")).unwrap().starts_with("level 5"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// The driver is told to take levels at its next loading, once.
+    #[test]
+    fn the_driver_is_told_to_take_levels() {
+        let dir = scratch("conf");
+        let control = dir.join("fan_control");
+        assert!(!takes_levels(&control));
+        std::fs::write(&control, "N\n").unwrap();
+        assert!(!takes_levels(&control));
+        std::fs::write(&control, "Y\n").unwrap();
+        assert!(takes_levels(&control));
+        let conf = dir.join("modprobe.d/olo-fans.conf");
+        assert!(keep_levels(&conf).unwrap());
+        assert!(std::fs::read_to_string(&conf).unwrap().contains("options thinkpad_acpi fan_control=1"));
+        assert!(!keep_levels(&conf).unwrap());
+        std::fs::write(&conf, "options thinkpad_acpi fan_control=0\n").unwrap();
+        assert!(keep_levels(&conf).unwrap());
+        assert_eq!(std::fs::read_to_string(&conf).unwrap(), CONF);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

@@ -958,15 +958,28 @@ something nobody here has is in "Blocked", with what it waits for.
   by hand on 2026-11-10 and says `cool`; the first choice of Cool
   from the panel will ask for the password and replace root's copy of
   the program with this build's), and a computer whose driver doesn't
-  take levels yet. *To do:* the service's status
+  take levels yet. *2026-11-12:* that computer turned out to be Ben's
+  own after a restart (levels had been turned on by hand, not kept):
+  the service ended at its first write and then sat running and
+  useless, and Activity Monitor said it wasn't running. Put right on
+  the computer by hand as root at Ben's asking (the driver's file
+  written, the driver loaded again, the service started again), and
+  in the code: the service doesn't end for it, keeps the file itself
+  and says its status from the start; `olo_system::fans` knows
+  running from in force (`Amiss`); Olo Doctor finds each case and an
+  older service, with a fix (HACKING, "The fans"). *Not tried:* the
+  new service on the real computer (root's copy there is still
+  2026-11-11's until Doctor's Update the Fan Service is chosen).
+  *To do:* the service's status
   (`/run/olo-fans/status`) grown to what the panels need (each
   sensor's reading and room, what set the level), written only while
   something reads it; the curve's numbers tuned from that (where each
   kind of sensor starts the fans and has them at full speed: `span`),
-  and other machines by their hwmon `pwm*`; Olo Doctor saying when
-  root's copy of `olo-fans` is older than the build's, as it does for
-  the login screen's; Activity Monitor reading through
-  `olo_system::fans` (it has a reader of its own).
+  and other machines by their hwmon `pwm*`; levels in force without a
+  restart where the driver was loaded without them (loading it again
+  from Doctor's helper: `delete_module` and `finit_module` ourselves,
+  with the way back thought through first, since a driver that doesn't
+  come back takes the Fn keys with it).
 
 - **A scheduler of the person's choosing, in Preferences ▸ Performance**
   (Ben, 2026-11-10: "add to olo the ability to pick a custom scheduler

@@ -1429,19 +1429,14 @@ fn times(n: u64) -> String {
 /// What the fan profile and the service's level say, for people: the
 /// card's caption, and the Profile and Level facts.
 fn fan_words(cool: &crate::sample::Cooling) -> (String, Option<&'static str>, Option<String>) {
-    let level = match cool.level.as_str() {
-        "" => "The fan service isn't running".to_owned(),
-        "auto" => "Left to the firmware for now".to_owned(),
-        "full-speed" => "Full speed".to_owned(),
-        n => format!("{n} of 7"),
-    };
     match cool.profile.as_str() {
+        // Chosen and not what the fans are doing: said, with why.
+        "cool" if !cool.amiss.is_empty() => (format!("Cool profile · not in force: {}", cool.amiss), Some("Cool: cooler and louder"), Some(format!("Not in force: {}", cool.amiss))),
         "cool" => {
-            let short = match cool.level.as_str() {
-                "" => "the fan service isn't running".to_owned(),
-                "auto" => "left to the firmware for now".to_owned(),
-                "full-speed" => "full speed".to_owned(),
-                n => format!("level {n} of 7"),
+            let (short, level) = match cool.level.as_str() {
+                "" | "auto" => ("left to the firmware for now".to_owned(), "Left to the firmware for now".to_owned()),
+                "full-speed" => ("full speed".to_owned(), "Full speed".to_owned()),
+                n => (format!("level {n} of 7"), format!("{n} of 7")),
             };
             (format!("Cool profile · {short}"), Some("Cool: cooler and louder"), Some(level))
         }
@@ -1514,7 +1509,7 @@ fn fans_card(app: &Activity, inner: f32, cx: &Cx<Activity>) -> Option<Element> {
     if let Some(level) = level {
         rows.push(("Level".into(), level));
     }
-    if !cool.why.is_empty() {
+    if cool.profile == "cool" && !cool.why.is_empty() {
         rows.push(("Because".into(), cool.why.clone()));
     }
     if let Some(n) = cool.throttled {

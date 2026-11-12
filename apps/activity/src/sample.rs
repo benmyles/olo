@@ -223,9 +223,14 @@ pub struct Cooling {
     pub profile: String,
     /// The level the service holds the fans at ("auto": left to the
     /// firmware; "3" to "7"; "full-speed"), and what asked for it;
-    /// empty: it isn't running.
+    /// empty: Cool isn't chosen, or isn't in force (`amiss`).
     pub level: String,
     pub why: String,
+    /// Why a chosen Cool isn't what the fans are doing, for people ("the
+    /// fan service isn't running", "the fans can't be set until the
+    /// computer's next start"); empty: it is.
+    #[serde(default)]
+    pub amiss: String,
     /// How often the processor's package was throttled for heat since
     /// the computer started, and for how long in all (None: the
     /// processor doesn't say).
@@ -233,20 +238,21 @@ pub struct Cooling {
     pub throttled_ms: Option<u64>,
 }
 
-/// `olo-fans`' status line ("level=6 why=coretemp Package id 0 74°"):
-/// its level and why.
-fn fan_status(line: &str) -> (String, String) {
-    let Some(rest) = line.trim().strip_prefix("level=") else { return Default::default() };
-    match rest.split_once(" why=") {
-        Some((level, why)) => (level.to_owned(), why.to_owned()),
-        None => (rest.to_owned(), String::new()),
-    }
+/// The fans' keeper as `olo_system::fans` finds it (the one reader of
+/// the service's files: what Preferences ▸ Power and Olo Doctor go by).
+/// A service that's running and has said nothing holds "auto": this
+/// read the missing line as "isn't running" once, of a service that was
+/// (Ben, 2026-11-12).
+fn fan_state(state: Option<&olo_system::fans::State>) -> (String, String, String, String) {
+    let Some(state) = state.filter(|s| s.installed) else { return Default::default() };
+    let (level, why) = state.level().map(|(l, w)| (l.to_owned(), w.to_owned())).unwrap_or_default();
+    (state.profile.word().to_owned(), level, why, state.amiss().map(|a| a.words().to_owned()).unwrap_or_default())
 }
 
 fn cooling() -> Cooling {
-    let (level, why) = fan_status(&read("/run/olo-fans/status"));
+    let (profile, level, why, amiss) = fan_state(olo_system::fans::look(&olo_system::fans::Places::here()).as_ref());
     let count = |name: &str| read(format!("/sys/devices/system/cpu/cpu0/thermal_throttle/{name}")).trim().parse().ok();
-    Cooling { profile: read("/etc/olo/fans").trim().to_owned(), level, why, throttled: count("package_throttle_count"), throttled_ms: count("package_throttle_total_time_ms") }
+    Cooling { profile, level, why, amiss, throttled: count("package_throttle_count"), throttled_ms: count("package_throttle_total_time_ms") }
 }
 
 /// What isn't a series: the machine, and the state of things now.
@@ -1449,11 +1455,28 @@ mod tests {
     }
 
     #[test]
-    fn fan_service_status() {
-        assert_eq!(fan_status("level=6 why=coretemp Package id 0 74° (+4 rising)\n"), ("6".to_owned(), "coretemp Package id 0 74° (+4 rising)".to_owned()));
-        assert_eq!(fan_status("level=auto why=profile auto"), ("auto".to_owned(), "profile auto".to_owned()));
-        assert_eq!(fan_status("level=7"), ("7".to_owned(), String::new()));
-        assert_eq!(fan_status(""), (String::new(), String::new()));
+    fn fan_service_state() {
+        use olo_system::fans::{Profile, State};
+        let own = |(a, b, c, d): (&str, &str, &str, &str)| (a.to_owned(), b.to_owned(), c.to_owned(), d.to_owned());
+        let mut s = State { profile: Profile::Cool, installed: true, control: true, control_kept: true, running: true, held: Some(("6".into(), "coretemp Package id 0 74° (+4 rising)".into())) };
+        assert_eq!(fan_state(Some(&s)), own(("cool", "6", "coretemp Package id 0 74° (+4 rising)", "")));
+        // Running and silent (an older service before its first change):
+        // the firmware's for now, not "isn't running".
+        s.held = None;
+        assert_eq!(fan_state(Some(&s)), own(("cool", "auto", "", "")));
+        s.running = false;
+        assert_eq!(fan_state(Some(&s)), own(("cool", "", "", "the fan service isn't running")));
+        // A driver that takes no levels: whatever the service says.
+        (s.running, s.control, s.held) = (true, false, Some(("auto".into(), String::new())));
+        assert_eq!(fan_state(Some(&s)), own(("cool", "", "", "the fans can't be set until the computer's next start")));
+        s.control_kept = false;
+        assert_eq!(fan_state(Some(&s)), own(("cool", "", "", "the fans' driver doesn't let them be set")));
+        s.profile = Profile::Auto;
+        assert_eq!(fan_state(Some(&s)), own(("auto", "", "", "")));
+        // Not installed, or no fans to set: no profile to speak of.
+        s.installed = false;
+        assert_eq!(fan_state(Some(&s)), own(("", "", "", "")));
+        assert_eq!(fan_state(None), own(("", "", "", "")));
     }
 
     #[test]

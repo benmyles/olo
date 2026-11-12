@@ -599,6 +599,7 @@ pub fn scan(roots: &Roots) -> Report {
     login_entry(roots, &mut r);
     login_screen_handed_over(roots, &mut r);
     own_login_screen(roots, &mut r);
+    fan_profile(roots, &mut r);
     temp_files(roots, &mut r);
     file_manager(roots, &mut r);
     diskbackup(roots, &mut r);
@@ -2446,6 +2447,70 @@ fn own_login_screen(roots: &Roots, r: &mut Report) {
     });
 }
 
+/// The fan profile (fans.rs): Cool, chosen, that isn't what the fans are
+/// doing, and a service an upgrade has left older (Ben, 2026-11-12: "why
+/// does it say the fan service isn't started in activity monitor?": it
+/// was running, and the fans' driver had taken no level since that
+/// morning's restart, having been told to only by hand). Nothing where
+/// the firmware's own curve is chosen, or the fans can't be set at all.
+fn fan_profile(roots: &Roots, r: &mut Report) {
+    use olo_system::fans::{Amiss, Places, Profile, look};
+    let places = if roots.fs == Path::new("/") { Places::here() } else { Places::under(&roots.fs) };
+    let Some(state) = look(&places) else { return };
+    if !state.installed || state.profile != Profile::Cool {
+        return;
+    }
+    // (A build tree's: nothing to bring it up to date from.)
+    if !roots.bin.join(crate::fans::PROGRAM).is_file() {
+        return;
+    }
+    let mut steps = crate::fans::steps_with(Profile::Cool, &roots.bin, &places, &*roots.units);
+    let amiss = state.amiss();
+    let restarts = |steps: &[Step]| steps.iter().any(|s| matches!(s, Step::Unit { action: UnitAction::Restart, .. }));
+    if amiss == Some(Amiss::Stopped) && !restarts(&steps) {
+        steps.push(Step::Unit { name: crate::fans::SERVICE.into(), action: UnitAction::Restart });
+    }
+    let older = steps.iter().any(|s| matches!(s, Step::CopyFile { .. }));
+    let firmware = "Until then the fans are the firmware's own, which wait for the heat and fall behind it: the processor is slowed for it under load.";
+    let fix = |label: &str, steps: Vec<Step>| Some(Fix { label: label.into(), root: true, steps });
+    match amiss {
+        Some(Amiss::NextStart) => r.findings.push(Finding {
+            id: "fans:next-start".into(),
+            severity: Severity::Advice,
+            title: "The Cool fan profile starts with the computer's next start".into(),
+            detail: format!(
+                "The fans' driver (thinkpad_acpi) lets them be set only if it's told to as it's loaded, and this time it wasn't. It is told to from the next start on: nothing more is needed. {firmware}{}",
+                if steps.is_empty() { "" } else { " The fix brings Olo's fan service up to date meanwhile." }
+            ),
+            fix: if steps.is_empty() { None } else { fix("Update the Fan Service", steps) },
+        }),
+        Some(Amiss::Driver) => r.findings.push(Finding {
+            id: "fans:driver".into(),
+            severity: Severity::Problem,
+            title: "The Cool fan profile isn't in force".into(),
+            detail: format!(
+                "The fans' driver (thinkpad_acpi) doesn't let them be set, and nothing tells it to when it's loaded (it may have been told by hand before the computer last started). The fix tells it to at every start (/etc/modprobe.d/olo-fans.conf): Cool is in force from the next one. {firmware}"
+            ),
+            fix: fix("Repair the Fan Profile", steps),
+        }),
+        Some(Amiss::Stopped) => r.findings.push(Finding {
+            id: "fans:stopped".into(),
+            severity: Severity::Problem,
+            title: "The Cool fan profile isn't in force".into(),
+            detail: format!("Olo's fan service (olo-fans) isn't running. The fix starts it{}. {firmware}", if older { ", from the installed version of Olo" } else { "" }),
+            fix: fix("Start the Fan Service", steps),
+        }),
+        None if !steps.is_empty() => r.findings.push(Finding {
+            id: "fans:older".into(),
+            severity: Severity::Advice,
+            title: if older { "Olo's fan service runs an older version".into() } else { "Olo's fan service isn't set up as this version sets it up".into() },
+            detail: "It runs as the system's, from a copy of its own (/usr/local/libexec/olo/olo-fans) that an upgrade doesn't replace. The fix brings the copy and its settings up to date and starts it again; the fans are the firmware's for the moment that takes.".into(),
+            fix: fix("Update the Fan Service", steps),
+        }),
+        None => r.fine.push(Fine { title: "The fans run ahead of the heat".into(), detail: "The Cool fan profile is in force: Olo's fan service is running, the installed version.".into() }),
+    }
+}
+
 fn login_entry(roots: &Roots, r: &mut Report) {
     let atomic = roots.fs.join("run/ostree-booted").exists();
     let home = if atomic { SESSION_ENTRY_LOCAL_PATH } else { SESSION_ENTRY_PATH };
@@ -2869,6 +2934,62 @@ mod tests {
         let f = r.find("login:own-older").expect("its update offered");
         assert!(f.detail.contains("olo-greeter") && !f.detail.contains("olo-session"), "{}", f.detail);
         assert_eq!(f.fix.as_ref().unwrap().label, "Update the Login Screen");
+    }
+
+    /// Cool, chosen: in force and said so; and each way it isn't, with
+    /// what puts it right.
+    #[test]
+    fn a_cool_fan_profile_not_in_force_is_found() {
+        use olo_system::fans::{CONF, Places};
+        let (fs, roots) = machine("fans");
+        let places = Places::under(&fs);
+        let w = |path: PathBuf, c: &str| {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        let ids = |r: &Report| r.findings.iter().filter(|f| f.id.starts_with("fans:")).map(|f| f.id.clone()).collect::<Vec<_>>();
+        // Not a ThinkPad, then one with the firmware's curve: nothing said.
+        assert!(ids(&scan(&roots)).is_empty());
+        w(places.fan(), "status:\t\tenabled\nspeed:\t\t2880\nlevel:\t\tauto\n");
+        w(places.fan_control(), "Y\n");
+        w(roots.bin.join(crate::fans::PROGRAM), "the program");
+        assert!(ids(&scan(&roots)).is_empty());
+        // Cool, as Preferences puts it there, the service running.
+        w(places.program(), "the program");
+        w(places.unit(), crate::fans::UNIT);
+        w(places.profile(), "cool\n");
+        w(places.modprobe(), CONF);
+        w(places.status(), "level=auto why=\n");
+        let r = scan(&roots);
+        assert!(ids(&r).is_empty(), "{:?}", ids(&r));
+        assert!(r.fine.iter().any(|f| f.title == "The fans run ahead of the heat"));
+        // The computer started again with a driver that takes no levels
+        // and nothing telling it to (it had been told by hand).
+        w(places.fan_control(), "N\n");
+        std::fs::remove_file(places.modprobe()).unwrap();
+        let r = scan(&roots);
+        assert_eq!(ids(&r), ["fans:driver"]);
+        let f = r.find("fans:driver").unwrap();
+        assert_eq!((f.severity, f.fix.as_ref().unwrap().label.as_str()), (Severity::Problem, "Repair the Fan Profile"));
+        assert!(matches!(f.fix.as_ref().unwrap().steps.as_slice(), [Step::WriteFile { path, content, .. }] if *path == places.modprobe() && content == CONF), "{:?}", f.fix);
+        // Told to: the next start has it, and nothing is left to fix.
+        w(places.modprobe(), CONF);
+        let r = scan(&roots);
+        assert_eq!(ids(&r), ["fans:next-start"]);
+        assert!(r.find("fans:next-start").unwrap().fix.is_none());
+        // The driver takes levels and the service isn't running.
+        w(places.fan_control(), "Y\n");
+        std::fs::remove_dir_all(places.running()).unwrap();
+        let r = scan(&roots);
+        assert_eq!(ids(&r), ["fans:stopped"]);
+        assert!(matches!(r.find("fans:stopped").unwrap().fix.as_ref().unwrap().steps.as_slice(), [Step::Unit { action: UnitAction::Restart, .. }]));
+        // Running, and older than the installed Olo.
+        w(places.status(), "level=4 why=19 W\n");
+        w(roots.bin.join(crate::fans::PROGRAM), "the program, a newer build's");
+        let r = scan(&roots);
+        assert_eq!(ids(&r), ["fans:older"]);
+        let f = r.find("fans:older").unwrap();
+        assert_eq!((f.severity, f.title.as_str(), f.fix.as_ref().unwrap().label.as_str()), (Severity::Advice, "Olo's fan service runs an older version", "Update the Fan Service"));
     }
 
     #[test]

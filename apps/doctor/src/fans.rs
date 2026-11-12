@@ -15,7 +15,7 @@
 
 use std::path::Path;
 
-use olo_system::fans::{Places, Profile, look};
+use olo_system::fans::{CONF, Places, Profile, look};
 
 use crate::{
     fix::{Step, UnitAction},
@@ -39,13 +39,20 @@ fn same(a: &Path, b: &Path) -> bool {
 /// only what isn't so already (every one can be done again).
 ///
 /// Cool: the service's program and unit, where they're missing or not
-/// this build's; thinkpad_acpi told to take levels from the next start
-/// of the computer, where it doesn't; the word; the service enabled, and
-/// started again if its program or unit changed (running already, it
-/// reads the word by itself).
+/// this build's; thinkpad_acpi told to take levels at its every loading
+/// (in force from the computer's next start, where it doesn't take them
+/// now); the word; the service enabled, and started again if its
+/// program or unit changed (running already, it reads the word by
+/// itself).
 /// Auto: the word alone, and only where the service is installed (the
 /// firmware's curve is what a computer without it has).
 pub fn steps(profile: Profile, bin: &Path, places: &Places) -> Vec<Step> {
+    steps_with(profile, bin, places, &crate::fix::unit_state)
+}
+
+/// [`steps`], with what systemd says of a unit asked of `units` (Olo
+/// Doctor's check, whose tests have a systemd of their own).
+pub fn steps_with(profile: Profile, bin: &Path, places: &Places, units: &dyn Fn(&str) -> Result<crate::fix::UnitState, String>) -> Vec<Step> {
     let mut steps = Vec::new();
     let word = |steps: &mut Vec<Step>| {
         if std::fs::read_to_string(places.profile()).ok().and_then(|w| Profile::parse(&w)) != Some(profile) {
@@ -73,11 +80,12 @@ pub fn steps(profile: Profile, bin: &Path, places: &Places) -> Vec<Step> {
         steps.push(Step::WriteFile { path: places.unit(), content: UNIT.to_owned(), mode: 0o644 });
         changed = true;
     }
-    if !std::fs::read_to_string(places.fan_control()).is_ok_and(|v| matches!(v.trim(), "Y" | "1")) {
-        let conf = "# Olo's fan profile (Preferences > Power): the fans' level may be set.\noptions thinkpad_acpi fan_control=1\n";
-        if std::fs::read_to_string(places.modprobe()).ok().as_deref() != Some(conf) {
-            steps.push(Step::WriteFile { path: places.modprobe(), content: conf.to_owned(), mode: 0o644 });
-        }
+    // Kept whether or not the driver takes levels now: it may only do so
+    // because someone loaded it again by hand, which the computer's next
+    // start undoes (Ben's P1, 2026-11-12: Cool chosen, the service
+    // running, and nothing set since that morning's restart).
+    if std::fs::read_to_string(places.modprobe()).ok().as_deref() != Some(CONF) {
+        steps.push(Step::WriteFile { path: places.modprobe(), content: CONF.to_owned(), mode: 0o644 });
     }
     word(&mut steps);
     // (systemd's part: not in a test's tree, which has none.)
@@ -85,7 +93,7 @@ pub fn steps(profile: Profile, bin: &Path, places: &Places) -> Vec<Step> {
         if changed {
             steps.push(Step::Unit { name: SERVICE.into(), action: UnitAction::Reload });
         }
-        let state = olo_system::systemd::unit_state(SERVICE).ok();
+        let state = units(SERVICE).ok();
         if changed || !state.as_ref().is_some_and(|s| s.enabled) {
             steps.push(Step::Unit { name: SERVICE.into(), action: UnitAction::Enable });
         }
@@ -199,12 +207,14 @@ mod tests {
         // Nothing installed: the firmware's curve is what there is.
         assert!(steps(Profile::Auto, &bin, &places).is_empty());
         let first = steps(Profile::Cool, &bin, &places);
-        assert_eq!(first.len(), 3, "{first:?}");
+        assert_eq!(first.len(), 4, "{first:?}");
         run(&first);
         assert_eq!(std::fs::read_to_string(places.program()).unwrap(), "the program, build one");
         assert_eq!(std::fs::read_to_string(places.unit()).unwrap(), UNIT);
         assert_eq!(std::fs::read_to_string(places.profile()).unwrap(), "cool\n");
-        assert!(!places.modprobe().exists(), "the driver takes levels already");
+        // (Kept though the driver takes levels now: it may only because
+        // it was loaded again by hand, which a restart undoes.)
+        assert_eq!(std::fs::read_to_string(places.modprobe()).unwrap(), CONF);
         let s = look(&places).unwrap();
         assert_eq!((s.profile, s.installed), (Profile::Cool, true));
         // Again: nothing to do.

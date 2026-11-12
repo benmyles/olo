@@ -9302,12 +9302,16 @@ never turned left out beside ones that do), the processor's package
 temperature (the hottest sensor where there's no package) and how
 often a second the package was throttled for heat, each to its own
 scale; under it the fan profile in use and the level Olo's fan service
-holds with what asked for it (`sample::Cooling`: `/etc/olo/fans`,
-`/run/olo-fans/status`; "The fans", below), and the throttling counted
+holds with what asked for it, or why a chosen Cool isn't in force
+(`sample::Cooling`, from `olo_system::fans::look`, the one reader of
+the service's files; "The fans", below), and the throttling counted
 (`cpu0/thermal_throttle/package_throttle_count` and its total time):
 since the computer started, in the last minute and since the window
 opened (`Activity::throttled_lately`), so a fan curve can be seen to
-work. The sampler reads those three small files with each sample.
+work. The sampler reads those few small files with each sample. It
+had a reader of its own once, which took a missing status line for
+"the fan service isn't running", of a service that was running and
+hadn't changed the level yet.
 
 A process's inspector (double-click, ⌘I, Inspect) reads `details.rs` on
 a worker at each sample: General (program, command, folder, parent,
@@ -9383,10 +9387,51 @@ while it holds a level it says so every few seconds, and if it stops
 the firmware takes the fans back within 30 seconds; ending, it hands
 them back itself. `olo-fans --status` prints what it reads and would
 do, changing nothing (as anyone); `/run/olo-fans/status` is a line of
-`level=… why=…`, written when the level changes (Activity Monitor ▸
-Sensors reads it). Its source's doc comment has the rest. Never run
-the service, or write a fan level, from a test: `--status` and its
-unit tests only.
+`level=… why=…`, there from the service's start to its end and
+written again when the level or the profile changes. Its source's doc
+comment has the rest. Never run the service, or write a fan level,
+from a test: `--status` and its unit tests only.
+
+**It never ends for something it can't do**, and what it can't do is
+said where people look. Two things went wrong on Ben's P1 on
+2026-11-12, both from one cause: levels had been turned on by loading
+thinkpad_acpi again by hand (`fan_control=1`), which that morning's
+restart undid, and nothing kept the setting.
+
+- The driver refuses every write then ("Invalid argument"). The
+  service ended at its first, twice; systemd started it a third time
+  into a cool moment, and it sat there, running, setting nothing and
+  saying nothing (its status was written only when the level changed).
+  Three ends in two minutes and systemd would have given it up for
+  good. Now: where the driver doesn't take levels (`CONTROL`) nothing
+  is tried; the fans are the firmware's; the service says so; it
+  writes the file that turns levels on at the driver's next loading
+  (`MODPROBE`: `olo_system::fans::CONF`, the same Olo Doctor's helper
+  writes), and looks again once a minute, for a driver loaded again by
+  hand. A level refused for any other reason is said once and tried
+  again 30 seconds later (`Fans::refuse`).
+- "Running" is the service's folder in /run (`Places::running`:
+  systemd's `RuntimeDirectory`, there for the service's life and no
+  longer), not its having said something. `State::amiss` is why a
+  chosen Cool isn't in force (`Amiss`: the driver doesn't take levels
+  and will from the next start; doesn't and nothing tells it to; the
+  service isn't running), `State::level` the level held ("auto" for a
+  running service that has said nothing), and `State::now` and
+  Activity Monitor say those. A driver that doesn't take levels comes
+  first: whatever the service says, nothing is set.
+
+Olo Doctor finds each (`checks::fan_profile`, only where Cool is
+chosen): "The Cool fan profile isn't in force" with Repair the Fan
+Profile (the driver's file) or Start the Fan Service, "…starts with the
+computer's next start" (nothing to fix), and "Olo's fan service runs
+an older version" with Update the Fan Service, since root's copy is
+one an upgrade doesn't replace. Its fix is `fans::steps`, the same
+steps choosing Cool runs. Loading the driver again, which would put
+levels in force without a restart, is not something Olo does (a
+driver that didn't come back would take the Fn keys and the battery's
+limits with it until the next start): by hand, as root,
+`modprobe -r thinkpad_acpi && modprobe thinkpad_acpi`, then
+`systemctl restart olo-fans`.
 
 **Choosing the profile** (Ben, 2026-11-10: "have in the power prefs
 the option for the default auto and this new cooler/louder auto
@@ -9407,8 +9452,10 @@ profile"). Three parts, each knowing only its own:
   to date) with its SELinux label put right, its unit
   (`data/systemd/olo-fans.service`, carried in the program),
   `/etc/modprobe.d/olo-fans.conf` (`options thinkpad_acpi
-  fan_control=1`) where the driver doesn't take levels, in force from
-  the computer's next start and said so, the word, and the unit
+  fan_control=1`), kept whether or not the driver takes levels now (it
+  may only because someone loaded it again by hand) and, where it
+  doesn't, in force from the computer's next start and said so, the
+  word, and the unit
   enabled and, if its program or unit changed, started again (running
   already, the service reads the word by itself). Automatic: the word
   alone, and only where the service is installed. `olo-doctor --fans`
@@ -9436,7 +9483,11 @@ The whole of it was driven so (2026-11-12): Cool chosen from the menu
 (the program, unit and word written under DIR), the status following,
 Automatic refused by a folder made read-only (said in red), the panel
 reviewed at 1×, 1.25×, 1.5×, 1.75× and 2×, light and dark. On the
-real computer it has not been chosen from the panel yet.
+real computer it has not been chosen from the panel yet. Activity
+Monitor's Fans card and Doctor's finding were looked at the same way
+in each state (2026-11-12: a driver that takes no levels, kept and
+not; the service stopped; running and silent; a level held; a level
+refused), the card at 1×, 1.5× and 2×.
 
 ## The scheduler (`scx_lavd`, tools/build-scheduler.sh)
 
