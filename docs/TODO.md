@@ -661,7 +661,28 @@ something nobody here has is in "Blocked", with what it waits for.
        code 10.3 [9.2] → 9.4 [9.4]; the same to the pixel in 36
        shots. Logs' resize copies 2.7 MB a step where it copied 4.0,
        and allocates 3,900 times where it did 5,400.
+       *And then, the same day:* a kept drawing's orders by what's
+       over what (a draw a kind, not a draw a change of kind: Tracker
+       108 → 5 draws a frame), a frame taking whole drawings without
+       cutting each thing, menus' shortcuts looked up, the standard
+       folders kept two seconds. Against the build from before the
+       kits, in turn, three runs each, the middle run, a live resize
+       by instructions and by cycles a step: Notifications' history
+       +5% and −10%, StyledEdit on 100,000 lines of code −4% and −5%,
+       Tracker on 3,000 files +18% and +15% (it was +78% and +43%
+       before any of this). Loading that source file is 5.8 G
+       instructions against the old build's 7.1 to 8.5: the "395 →
+       525 ms" above was the machine, not the kits (one parse, 520
+       ms, on a worker, in both).
        *Left, found the same way:*
+       - Tracker's resize is half the display thread's: every glyph
+         of the list copied into the frame and cut by the list's
+         edge, a thing at a time (`Scene::append`, 20% of the
+         instructions). The list is one drawing taller than what
+         shows of it; rows as drawings of their own would go in
+         whole.
+       - Disk Usage is still 35 draws for 520 things (its chart's
+         sectors and labels, over one another).
        - Notifications' cards are laid out anew for every width with
          everything made again: 9,200 allocations a step (ten
          strings copied a card, six made shared, its spans cloned)

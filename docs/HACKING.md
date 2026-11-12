@@ -297,8 +297,10 @@ message):
   putting it together from the drawings kept, drawing and completing
   it (which waits for the previous frame's GPU work), which part of
   the window it was, how many of the window's drawings, sprites and
-  quads it has, and how long the looper worked on what it shows; and
-  the lines it shaped and glyphs it drew afresh.
+  quads it has, how many draws it was ("batches": things of a kind at
+  one order are one; ten is usual, a hundred means a drawing whose
+  orders pile up), and how long the looper worked on what it shows;
+  and the lines it shaped and glyphs it drew afresh.
   A frame much slower than the same work warm may have run on a slow
   core (rule 9: compare `OLO_UTIL_MIN=0`). Where its time goes inside: sample its window's
   looper with `eu-stack -1 -i -p PID` a few hundred times while the bench's
@@ -348,6 +350,26 @@ message):
   the allocations of a Logs resize, 15 to 21% of the cycles of
   Notifications'. Apps had the same kind (Logs lowercased every word
   of every row, a new string each, to look it up in a short list).
+  And what perf's own listing showed once the copying was gone:
+  **a quarter of a Tracker frame was in the GPU's driver**, for 108
+  draws of 616 things. A kept drawing gave a thing a new order at
+  every change of kind, so a list painted row by row (icon, name,
+  arrow; icon, name, arrow) was three draws a row, where GPUI's
+  scene, which looked at what overlapped what, had three in all.
+  `Scene::next_order` puts a thing in the lowest order of its kind
+  above everything it's over (each order's reach is kept; over none
+  of it, over none of its things), and with what it's over where
+  that's drawn after it anyway (a kind is drawn as painted; sprites
+  texture by texture, then as painted). Tracker 108 → 5 draws,
+  StyledEdit's Markdown 67 → 12, Disk Usage 54 → 35, Logs 14 → 9;
+  the same to the pixel in 60 shots, and a test paints 4,800 things
+  at random and checks each is drawn after all it's over. With it:
+  a frame takes a drawing that shows whole without cutting each of
+  its things by what holds it (`Scene::append`); menus' shortcuts
+  are looked up, not searched for (`keys::evdev`, 140 times a
+  step); the standard folders are looked for at most every two
+  seconds (`places::standard`: a file read and six looks at the disk
+  each time a Tracker window said its menus).
 * GPU time: a kit app run with `OLO_GPU_TIMINGS=1` prints each frame's
   passes as the GPU timed them, its quads (in screens filled: more than
   one is overdraw) and its sprites. A frame shows on time only if its

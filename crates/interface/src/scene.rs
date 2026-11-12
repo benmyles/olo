@@ -17,8 +17,8 @@ pub(crate) type PathVertex_ScaledPixels = PathVertex<ScaledPixels>;
 
 pub(crate) type DrawOrder = u32;
 
-/// What a scene's things are, for telling a change of kind (a
-/// recording's order goes up one at each).
+/// What a scene's things are: a recording's orders each hold things
+/// of one kind (`Scene::next_order`).
 #[derive(Clone, Copy, Default, PartialEq)]
 enum Kind {
     #[default]
@@ -33,6 +33,15 @@ enum Kind {
     Poly,
     ImageTriangle,
     Surface,
+}
+
+/// One of a recording's orders: the kind of thing at it, what those
+/// things reach, together, and the last of their textures as an order's
+/// sprites are drawn (texture by texture; (0, 0) for what has none).
+struct Order {
+    kind: Kind,
+    reach: Bounds<ScaledPixels>,
+    last_texture: (u8, u32),
 }
 
 #[derive(Default)]
@@ -72,11 +81,8 @@ pub(crate) struct Scene {
     /// ([`Scene::append`]) puts all of it above whatever it overlaps
     /// there, at once.
     recording: bool,
-    /// (A recording's) the kind last painted (and, a sprite, its
-    /// texture), and its order.
-    last_kind: Kind,
-    last_texture: (u8, u32),
-    last_order: DrawOrder,
+    /// (A recording's) each of its orders (`next_order`).
+    orders: Vec<Order>,
     /// What a recording painted reaches (with each thing's own clip).
     extent: Option<Bounds<ScaledPixels>>,
 }
@@ -129,9 +135,7 @@ impl Scene {
         self.extent = None;
         self.culled = 0;
         self.count = 0;
-        self.last_kind = Kind::None;
-        self.last_texture = (0, 0);
-        self.last_order = 0;
+        self.orders.clear();
         self.primitive_bounds.clear();
         self.layer_stack.clear();
         self.paths.clear();
@@ -156,20 +160,47 @@ impl Scene {
 
     /// How many orders a recording uses (its own run from zero).
     fn depth(&self) -> DrawOrder {
-        if self.count == 0 { 0 } else { self.last_order + 1 }
+        if self.count == 0 { 0 } else { self.orders.len() as DrawOrder }
     }
 
-    /// A recording's order for a thing of `kind` painted now (a
-    /// sprite, of `texture`: sprites of an order are drawn texture by
-    /// texture, so one of another texture over the last is another
-    /// order).
-    fn next_order(&mut self, kind: Kind, texture: (u8, u32)) -> DrawOrder {
-        if self.last_kind != Kind::None && (self.last_kind != kind || self.last_texture != texture) {
-            self.last_order += 1;
+    /// A recording's order for a thing of `kind` painted now, reaching
+    /// `bounds` (sprites: of textures from `textures.0` to `.1`).
+    ///
+    /// Things at one order are drawn together, a kind at a time, so an
+    /// order is a draw: the fewer the better. What matters is only that
+    /// a thing is drawn after everything painted before it that it's
+    /// over. So a thing goes to the lowest order of its own kind that's
+    /// above everything it may be over (each order's things' reach,
+    /// together, is kept: over none of an order's reach, it's over none
+    /// of its things), a new order only when there's none. And it goes
+    /// *with* what it's over, in its order, where that's drawn after it
+    /// anyway: things of a kind are drawn as they were painted, and
+    /// sprites texture by texture, then as painted.
+    ///
+    /// A list drawn row by row (an icon, a name, an arrow; an icon, a
+    /// name, an arrow) is three orders so, whatever its length: with a
+    /// new order at each change of kind, as it was, it was three a row,
+    /// each a draw of its own (a Tracker window of 20 rows: 74 draws a
+    /// frame, a quarter of the frame's time in the GPU's driver).
+    fn next_order(&mut self, kind: Kind, textures: ((u8, u32), (u8, u32)), bounds: Bounds<ScaledPixels>) -> DrawOrder {
+        // The highest order with something this may be over.
+        let over = self.orders.iter().rposition(|order| order.reach.intersects(&bounds));
+        let from = match over {
+            // (With it: of its kind, and drawn after all of it.)
+            Some(over) if self.orders[over].kind == kind && textures.0 >= self.orders[over].last_texture => over,
+            Some(over) => over + 1,
+            None => 0,
+        };
+        let top = self.orders.len();
+        let order = (from..top).find(|&order| self.orders[order].kind == kind).unwrap_or(top);
+        match self.orders.get_mut(order) {
+            Some(at) => {
+                at.reach = at.reach.union(&bounds);
+                at.last_texture = at.last_texture.max(textures.1);
+            }
+            None => self.orders.push(Order { kind, reach: bounds, last_texture: textures.1 }),
         }
-        self.last_kind = kind;
-        self.last_texture = texture;
-        self.last_order
+        order as DrawOrder
     }
 
     /// What's painted until [`Self::pop_layer`] shares one order, above
@@ -218,7 +249,7 @@ impl Scene {
                 Primitive::PolychromeSprite(sprite) => texture_key(&sprite.tile),
                 _ => (0, 0),
             };
-            self.next_order(kind, texture)
+            self.next_order(kind, (texture, texture), clipped_bounds)
         } else {
             self.layer_stack.last().copied().unwrap_or_else(|| self.primitive_bounds.insert(clipped_bounds))
         };
@@ -272,7 +303,7 @@ impl Scene {
 
     /// Olo: many segments at once (`Painter::paint_segments`).
     pub fn insert_segments(&mut self, mut segments: Vec<Segment>) {
-        let recording = self.recording.then(|| self.next_order(Kind::Segment, (0, 0)));
+        let recording = self.recording;
         let layer = self.layer_stack.last().copied();
         let mut reach: Option<Bounds<ScaledPixels>> = None;
         segments.retain_mut(|segment| {
@@ -280,17 +311,20 @@ impl Scene {
             if clipped.is_empty() {
                 return false;
             }
-            segment.order = match recording {
-                Some(order) => {
-                    reach = Some(reach.map_or(clipped, |r| r.union(&clipped)));
-                    order
-                }
-                None => layer.unwrap_or_else(|| self.primitive_bounds.insert(clipped)),
-            };
+            if recording {
+                reach = Some(reach.map_or(clipped, |r| r.union(&clipped)));
+            } else {
+                segment.order = layer.unwrap_or_else(|| self.primitive_bounds.insert(clipped));
+            }
             true
         });
+        // (A recording's: one order for them all, by what they reach.)
         if let Some(reach) = reach {
             self.reach(reach);
+            let order = self.next_order(Kind::Segment, ((0, 0), (0, 0)), reach);
+            for segment in &mut segments {
+                segment.order = order;
+            }
         }
         self.count += segments.len();
         self.segments.append(&mut segments);
@@ -303,8 +337,10 @@ impl Scene {
         let mut sprites = sprites.into_iter().peekable();
         // (A line's glyphs share an order, whatever their textures: they
         // go texture by texture, `record_runs`.)
-        let texture = sprites.peek().map_or((0, 0), |sprite| texture_key(&sprite.tile));
-        let recording = self.recording.then(|| self.next_order(Kind::Mono, texture));
+        let recording = self.recording;
+        // (A recording's: the first and last of the line's textures, as
+        // its glyphs are drawn.)
+        let mut textures: Option<((u8, u32), (u8, u32))> = None;
         let layer = self.layer_stack.last().copied();
         let start = self.mono_staging.len();
         let mut reach: Option<Bounds<ScaledPixels>> = None;
@@ -314,21 +350,26 @@ impl Scene {
                 self.culled += 1;
                 continue;
             }
-            sprite.order = match recording {
-                Some(order) => {
-                    reach = Some(reach.map_or(clipped, |r| r.union(&clipped)));
-                    order
-                }
-                None => layer.unwrap_or_else(|| self.primitive_bounds.insert(clipped)),
-            };
+            if recording {
+                reach = Some(reach.map_or(clipped, |r| r.union(&clipped)));
+                let texture = texture_key(&sprite.tile);
+                textures = Some(textures.map_or((texture, texture), |(first, last)| (first.min(texture), last.max(texture))));
+            } else {
+                sprite.order = layer.unwrap_or_else(|| self.primitive_bounds.insert(clipped));
+            }
             self.mono_staging.push(sprite);
         }
         let end = self.mono_staging.len();
         if end == start {
             return;
         }
+        // (A recording's: one order for the line, by what it reaches.)
         if let Some(reach) = reach {
             self.reach(reach);
+            let order = self.next_order(Kind::Mono, textures.unwrap_or_default(), reach);
+            for sprite in &mut self.mono_staging[start..end] {
+                sprite.order = order;
+            }
         }
         self.count += end - start;
         self.record_runs(start);
@@ -391,20 +432,51 @@ impl Scene {
                 !$x.bounds.intersect(&$x.content_mask.bounds).is_empty()
             }};
         }
+        // All of it shows: `clip` cuts nothing of the drawing, so nothing
+        // of any one thing in it (what a thing shows is within the
+        // drawing's reach, which is what each showed when recorded, and
+        // nothing recorded showed nothing). Each goes as it is, moved,
+        // its own clip left as it was: no cutting and no looking at
+        // whether it's still there, a thing at a time. Most drawings in
+        // most frames: a row wholly in its list, a control in its window.
+        let whole = reach == mv(extent);
+        macro_rules! place {
+            ($x:ident) => {{
+                $x.bounds = mv($x.bounds);
+                $x.content_mask.bounds = mv($x.content_mask.bounds);
+                $x.order += base;
+            }};
+        }
+        // (A list of one kind: placed, when all of it shows; else taken,
+        // those still there. `$moved`: what else of it moves.)
+        macro_rules! put {
+            ($list:ident, |$x:ident| $moved:block) => {
+                if whole {
+                    self.$list.extend(recorded.$list.iter().cloned().map(|mut $x| {
+                        $moved
+                        place!($x);
+                        $x
+                    }));
+                } else {
+                    self.$list.extend(recorded.$list.iter().cloned().filter_map(|mut $x| {
+                        $moved
+                        take!($x).then_some($x)
+                    }));
+                }
+            };
+        }
         let before = self.shadows.len() + self.quads.len() + self.underlines.len() + self.segments.len() + self.sectors.len() + self.polychrome_sprites.len() + self.surfaces.len();
-        self.shadows.extend(recorded.shadows.iter().cloned().filter_map(|mut x| take!(x).then_some(x)));
-        self.quads.extend(recorded.quads.iter().cloned().filter_map(|mut x| take!(x).then_some(x)));
-        self.underlines.extend(recorded.underlines.iter().cloned().filter_map(|mut x| take!(x).then_some(x)));
-        self.polychrome_sprites.extend(recorded.polychrome_sprites.iter().cloned().filter_map(|mut x| take!(x).then_some(x)));
-        self.surfaces.extend(recorded.surfaces.iter().cloned().filter_map(|mut x| take!(x).then_some(x)));
-        self.segments.extend(recorded.segments.iter().cloned().filter_map(|mut x| {
+        put!(shadows, |x| {});
+        put!(quads, |x| {});
+        put!(underlines, |x| {});
+        put!(polychrome_sprites, |x| {});
+        put!(surfaces, |x| {});
+        put!(segments, |x| {
             (x.from, x.to, x.bottom) = (x.from + by, x.to + by, x.bottom + by.y);
-            take!(x).then_some(x)
-        }));
-        self.sectors.extend(recorded.sectors.iter().cloned().filter_map(|mut x| {
+        });
+        put!(sectors, |x| {
             x.center = x.center + by;
-            take!(x).then_some(x)
-        }));
+        });
         self.count += self.shadows.len() + self.quads.len() + self.underlines.len() + self.segments.len() + self.sectors.len() + self.polychrome_sprites.len() + self.surfaces.len() - before;
         for path in &recorded.paths {
             // (Looked at before its vertices are copied.)
@@ -445,7 +517,15 @@ impl Scene {
         // Glyphs, run by run (each of one order and texture already).
         for run in &recorded.mono_runs {
             let start = self.mono_staging.len();
-            self.mono_staging.extend(recorded.mono_staging[run.range.start as usize..run.range.end as usize].iter().cloned().filter_map(|mut x| take!(x).then_some(x)));
+            let glyphs = &recorded.mono_staging[run.range.start as usize..run.range.end as usize];
+            if whole {
+                self.mono_staging.extend(glyphs.iter().cloned().map(|mut x| {
+                    place!(x);
+                    x
+                }));
+            } else {
+                self.mono_staging.extend(glyphs.iter().cloned().filter_map(|mut x| take!(x).then_some(x)));
+            }
             let end = self.mono_staging.len();
             if end > start {
                 self.mono_runs.push(SpriteRun { order: run.order + base, texture: run.texture, range: start as u32..end as u32 });
@@ -1565,19 +1645,156 @@ mod tests {
         Quad { bounds: mask(x, y, w, h).bounds, content_mask: mask(-1e4, -1e4, 2e4, 2e4), ..Default::default() }
     }
 
-    /// A kept drawing orders what it paints by itself: one order for
-    /// things of a kind painted in a row, one more at each change.
+    /// A kept drawing orders what it paints by itself: things of a kind
+    /// painted in a row share an order; a thing of another kind goes to
+    /// the lowest order of its kind above everything it may be over.
     #[test]
-    fn a_recording_orders_by_changes_of_kind() {
+    fn a_recording_orders_by_what_is_over_what() {
         let mut kept = Scene::recording();
         kept.insert_primitive(quad(0.0, 0.0, 100.0, 20.0));
         kept.insert_primitive(quad(0.0, 0.0, 100.0, 1.0));
         kept.insert_sprites([sprite(4.0, 0, 1), sprite(12.0, 0, 2)]);
+        // A rule over the ground and beside the glyphs: with the ground,
+        // after it (quads are drawn as they were painted).
         kept.insert_primitive(quad(50.0, 0.0, 1.0, 20.0));
-        assert_eq!(kept.quads.iter().map(|q| q.order).collect::<Vec<_>>(), vec![0, 0, 2]);
+        assert_eq!(kept.quads.iter().map(|q| q.order).collect::<Vec<_>>(), vec![0, 0, 0]);
         assert_eq!(kept.mono_staging.iter().map(|s| s.order).collect::<Vec<_>>(), vec![1, 1]);
-        assert_eq!(kept.depth(), 3);
+        assert_eq!(kept.depth(), 2);
+        // One over the glyphs: above them.
+        kept.insert_primitive(quad(6.0, 2.0, 4.0, 4.0));
+        assert_eq!(kept.quads.last().unwrap().order, 2);
+        // Glyphs beside everything but the ground: with the first.
+        kept.insert_sprites([sprite(70.0, 0, 3)]);
+        assert_eq!(kept.mono_staging.last().unwrap().order, 1);
+        // Glyphs over the quad that's over glyphs: above it.
+        kept.insert_sprites([sprite(5.0, 0, 4)]);
+        assert_eq!(kept.mono_staging.last().unwrap().order, 3);
+        assert_eq!(kept.depth(), 4);
         assert_eq!(kept.extent(), mask(0.0, 0.0, 100.0, 20.0).bounds);
+    }
+
+    fn picture(x: f32, y: f32, texture: u32) -> PolychromeSprite {
+        PolychromeSprite {
+            order: 0,
+            nearest: 0,
+            grayscale: false,
+            opacity: 1.0,
+            bounds: mask(x, y, 16.0, 16.0).bounds,
+            content_mask: mask(-1e4, -1e4, 2e4, 2e4),
+            corner_radii: Default::default(),
+            tile: AtlasTile {
+                texture_id: AtlasTextureId { index: texture, kind: AtlasTextureKind::Polychrome },
+                tile_id: TileId(0),
+                padding: 0,
+                bounds: Bounds { origin: point(DevicePixels(0), DevicePixels(0)), size: size(DevicePixels(16), DevicePixels(16)) },
+            },
+        }
+    }
+
+    /// A list drawn row by row, each row a ground, an icon, a name and a
+    /// rule, is as many orders as a row has kinds over one another,
+    /// however many rows: every row's icons one draw, every row's names
+    /// another.
+    #[test]
+    fn rows_drawn_one_by_one_share_their_orders() {
+        let mut kept = Scene::recording();
+        for row in 0..40 {
+            let y = row as f32 * 20.0;
+            // (Every other row has a ground of its own.)
+            if row % 2 == 0 {
+                kept.insert_primitive(quad(0.0, y, 300.0, 20.0));
+            }
+            kept.insert_primitive(picture(2.0, y + 2.0, row % 3));
+            let mut name = [sprite(24.0, 0, row), sprite(32.0, 0, row), sprite(40.0, 1, row)];
+            for glyph in &mut name {
+                glyph.bounds.origin.y = ScaledPixels(y + 6.0);
+            }
+            kept.insert_sprites(name);
+            // A rule at the row's right, over its ground.
+            kept.insert_primitive(quad(290.0, y + 4.0, 1.0, 12.0));
+        }
+        // Grounds and rules; icons; names.
+        assert_eq!(kept.depth(), 3);
+        assert!(kept.quads.iter().all(|q| q.order == 0));
+        assert!(kept.polychrome_sprites.iter().all(|p| p.order == 1));
+        assert!(kept.mono_staging.iter().all(|g| g.order == 2));
+        // And in a frame: six draws (the quads; the icons of each of
+        // three textures; the glyphs of each of two).
+        let mut frame = Scene::default();
+        frame.append(&kept, point(ScaledPixels(0.0), ScaledPixels(0.0)), &mask(0.0, 0.0, 300.0, 800.0).bounds);
+        frame.finish();
+        assert_eq!(frame.batches().count(), 6);
+    }
+
+    /// Whatever is painted over something painted before is drawn after
+    /// it: a higher order, or the same order where things of one order
+    /// are drawn as they were painted (one kind, and for sprites one
+    /// texture).
+    #[test]
+    fn what_is_painted_over_is_drawn_after() {
+        // (A fixed sequence, the same every run.)
+        let mut seed = 0x2545f4914f6cdd1du64;
+        let mut next = |below: u32| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            (seed >> 33) as u32 % below
+        };
+        for round in 0..40 {
+            let mut kept = Scene::recording();
+            // (kind, texture, what it shows, its order)
+            let mut painted: Vec<(u8, u32, Bounds<ScaledPixels>)> = Vec::new();
+            let spread = if round % 2 == 0 { 400 } else { 60 };
+            for _ in 0..120 {
+                let (x, y) = (next(spread) as f32, next(spread) as f32);
+                match next(4) {
+                    0 | 1 => {
+                        let (w, h) = (4.0 + next(60) as f32, 4.0 + next(30) as f32);
+                        kept.insert_primitive(quad(x, y, w, h));
+                        painted.push((0, 0, mask(x, y, w, h).bounds));
+                    }
+                    2 => {
+                        let texture = next(2);
+                        let mut glyphs = [sprite(x, texture, 1), sprite(x + 8.0, texture, 2)];
+                        for glyph in &mut glyphs {
+                            glyph.bounds.origin.y = ScaledPixels(y);
+                        }
+                        kept.insert_sprites(glyphs);
+                        painted.push((1, texture, mask(x, y, 8.0, 8.0).bounds));
+                        painted.push((1, texture, mask(x + 8.0, y, 8.0, 8.0).bounds));
+                    }
+                    _ => {
+                        let texture = next(3);
+                        kept.insert_primitive(picture(x, y, texture));
+                        painted.push((2, texture, mask(x, y, 16.0, 16.0).bounds));
+                    }
+                }
+            }
+            let orders: Vec<DrawOrder> = {
+                let (mut q, mut g, mut p) = (kept.quads.iter(), kept.mono_staging.iter(), kept.polychrome_sprites.iter());
+                painted
+                    .iter()
+                    .map(|(kind, ..)| match kind {
+                        0 => q.next().unwrap().order,
+                        1 => g.next().unwrap().order,
+                        _ => p.next().unwrap().order,
+                    })
+                    .collect()
+            };
+            for later in 0..painted.len() {
+                for earlier in 0..later {
+                    if !painted[later].2.intersects(&painted[earlier].2) {
+                        continue;
+                    }
+                    let (a, b) = (orders[earlier], orders[later]);
+                    // (Quads of an order: as painted. Sprites of an
+                    // order: texture by texture, then as painted.)
+                    let as_painted = painted[earlier].0 == painted[later].0 && (painted[later].0 == 0 || painted[later].1 >= painted[earlier].1);
+                    assert!(b > a || (b == a && as_painted), "round {round}: {:?} at order {b} is over {:?} at order {a}", painted[later], painted[earlier]);
+                }
+            }
+            assert!(kept.depth() as usize <= painted.len());
+        }
     }
 
     /// A frame takes kept drawings whole: one above what it overlaps,
@@ -1632,5 +1849,49 @@ mod tests {
         frame.append(&second, point(ScaledPixels(0.0), ScaledPixels(20.0)), &list);
         assert_eq!(frame.quads.iter().map(|q| q.order).collect::<Vec<_>>(), vec![1, 1]);
         assert_eq!(frame.mono_staging.iter().map(|s| s.order).collect::<Vec<_>>(), vec![2, 2, 2, 2]);
+    }
+
+    /// A drawing that shows whole goes into the frame without its
+    /// things' clips being cut by what holds it: each still shows
+    /// exactly what it showed, moved. One that's cut shows what's left.
+    #[test]
+    fn a_drawing_that_shows_whole_shows_as_it_was() {
+        let mut kept = Scene::recording();
+        // A ground clipped by nothing near, a cell's ground clipped to
+        // its cell, and glyphs: one within its cell, one cut by it.
+        kept.insert_primitive(quad(10.0, 10.0, 200.0, 40.0));
+        let mut cell = quad(20.0, 10.0, 300.0, 40.0);
+        cell.content_mask = mask(20.0, 10.0, 80.0, 40.0);
+        kept.insert_primitive(cell);
+        for x in [24.0, 96.0] {
+            let mut glyph = sprite(x, 0, 1);
+            glyph.bounds.origin.y = ScaledPixels(20.0);
+            glyph.content_mask = mask(20.0, 10.0, 80.0, 40.0);
+            kept.insert_sprites([glyph]);
+        }
+        let shows = |b: &Bounds<ScaledPixels>, m: &ContentMask<ScaledPixels>| b.intersect(&m.bounds);
+        let moved = |b: Bounds<ScaledPixels>, by: Point<ScaledPixels>| Bounds { origin: b.origin + by, size: b.size };
+        let recorded: Vec<_> = kept.quads.iter().map(|q| shows(&q.bounds, &q.content_mask)).chain(kept.mono_staging.iter().map(|g| shows(&g.bounds, &g.content_mask))).collect();
+        assert_eq!(recorded.len(), 4);
+        for by in [point(ScaledPixels(0.0), ScaledPixels(0.0)), point(ScaledPixels(30.0), ScaledPixels(-5.0))] {
+            // Held by something that cuts none of it (its reach, moved,
+            // and room to spare on one side only).
+            let hold = moved(kept.extent(), by);
+            let hold = Bounds { origin: hold.origin, size: size(hold.size.width + ScaledPixels(50.0), hold.size.height) };
+            let mut frame = Scene::default();
+            frame.append(&kept, by, &hold);
+            let got: Vec<_> = frame.quads.iter().map(|q| shows(&q.bounds, &q.content_mask)).chain(frame.mono_staging.iter().map(|g| shows(&g.bounds, &g.content_mask))).collect();
+            assert_eq!(got, recorded.iter().map(|r| moved(*r, by)).collect::<Vec<_>>(), "moved by {by:?}");
+            assert_eq!(frame.len(), 4);
+            // Cut on the right, through the cell: what's left of each,
+            // and the glyph past the cut gone.
+            let cut = Bounds { origin: hold.origin, size: size(ScaledPixels(70.0), hold.size.height) };
+            let mut frame = Scene::default();
+            frame.append(&kept, by, &cut);
+            let got: Vec<_> = frame.quads.iter().map(|q| shows(&q.bounds, &q.content_mask)).chain(frame.mono_staging.iter().map(|g| shows(&g.bounds, &g.content_mask))).collect();
+            let left: Vec<_> = recorded.iter().map(|r| moved(*r, by).intersect(&cut)).filter(|r| !r.is_empty()).collect();
+            assert_eq!(got, left, "cut, moved by {by:?}");
+            assert_eq!(frame.len(), 3);
+        }
     }
 }

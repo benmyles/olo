@@ -100,6 +100,23 @@ pub fn left_in(app: &str, saving: bool, dir: &Path) {
 /// The standard folders that are there: Home, then Desktop, Documents,
 /// Downloads, Pictures, Music and Videos (as `user-dirs.dirs` names them).
 pub fn standard() -> Vec<(String, PathBuf)> {
+    // (Asked for whenever a window's menus are said again, which is
+    // whenever the window is: every step of a resize. Looked up afresh
+    // at most every two seconds: it reads the environment and
+    // user-dirs.dirs and looks at each folder on the disk.)
+    static KEPT: std::sync::Mutex<Option<(std::time::Instant, Vec<(String, PathBuf)>)>> = std::sync::Mutex::new(None);
+    let mut kept = KEPT.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((at, list)) = kept.as_ref()
+        && at.elapsed() < std::time::Duration::from_secs(2)
+    {
+        return list.clone();
+    }
+    let list = standard_now();
+    *kept = Some((std::time::Instant::now(), list.clone()));
+    list
+}
+
+fn standard_now() -> Vec<(String, PathBuf)> {
     let home = std::env::var_os("HOME").map_or_else(|| PathBuf::from("/"), PathBuf::from);
     let mut out = vec![("Home".to_owned(), home.clone())];
     for (key, label, fallback) in [

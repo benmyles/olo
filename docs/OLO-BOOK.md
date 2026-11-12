@@ -478,6 +478,17 @@ its key differs, or it asked to be. So:
 - `g.paint_again_within(seconds)` for what moves with time (a clock's
   hand, a spinner): asked for per drawing, so nothing else runs.
   Never a timer that invalidates the view to animate.
+- **Paint in any order that reads well; it's drawn in few draws.** A
+  drawing keeps what it paints in *orders*: things of one kind (boxes,
+  glyphs, pictures, lines) that aren't over one another share one,
+  wherever they were painted, and an order is one draw on the GPU. A
+  thing goes above what it's painted over and nothing else, so a list
+  painted row by row (ground, icon, name; ground, icon, name) is
+  three draws, not three a row. What you paint over something is
+  always drawn after it. You needn't sort by kind to be fast, and
+  mustn't rely on paint order between things that don't overlap.
+  `OLO_FRAME_PHASES=1` says how many draws ("batches") each frame
+  was.
 - Everything lands on whole device pixels at every scale when it goes
   through `style` (`fill_rect`, `inset`, `hline`, `sunken`, `raised`,
   `label`, `snap`, `snap_centred`) and `icons::paint`. Use them.

@@ -171,7 +171,10 @@ pub fn list_counting(dir: &Path, hidden: bool, count: &std::sync::atomic::Atomic
 }
 
 pub fn home() -> PathBuf {
-    std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| "/".into())
+    // (Read once: it's asked for every row drawn, and the environment
+    // is searched from its start each time.)
+    static HOME: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    HOME.get_or_init(|| std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| "/".into())).clone()
 }
 
 /// A path for display, with the home folder shortened to `~`.

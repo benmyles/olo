@@ -952,8 +952,12 @@ impl Stage {
                     Some(p) => format!("{}×{} at {},{}", p.size.width.0, p.size.height.0, p.origin.x.0, p.origin.y.0),
                     None => "all".to_owned(),
                 };
+                // (How many draws it was: things of a kind at one order
+                // are one, so a frame of rows drawn row by row, each
+                // above the last, is hundreds where it could be ten.)
+                let batches = scene.batches().count();
                 eprintln!(
-                    "frame {:.3} ms: begin {:.3}, assemble {:.3}, draw {:.3}, complete {:.3}; {part}; {} of {} items, {} sprites, {} quads; looper {:.3} ms",
+                    "frame {:.3} ms: begin {:.3}, assemble {:.3}, draw {:.3}, complete {:.3}; {part}; {} of {} items, {} sprites, {} quads, {batches} batches; looper {:.3} ms",
                     ms(started.elapsed()),
                     ms(begun),
                     ms(assembled - begun),
