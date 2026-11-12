@@ -513,17 +513,28 @@ something nobody here has is in "Blocked", with what it waits for.
      the test's own on a private network, never the person's.
   7. **The installer, as BeOS's Installer** (Ben, 2026-11-11: "also can
      you redo the installer to be reminiscent of the beos installer
-     instead of windows 95"). `apps/installer` (Olo Setup, on olo-kit)
-     is a wizard of pages with Back and Next, as Windows 95's Setup.
-     BeOS R5's Installer is one small window: what's said at the top
-     (a status line and a scrolling text of what it's doing), "Install
-     from" and "Onto" as pop-up menus, the choices to make under a
-     "More Options" that opens the window downward (its list of
-     optional parts with their sizes), a bar that fills, and one
-     button, Begin, which becomes Stop. Redo Olo Setup so: one window,
-     everything chosen in it before Begin, what it's doing said in
-     place as it goes, the mascot kept; then its checks again (the lint,
-     old against new, the installer check in a VM). After Preferences.
+     instead of windows 95"). Done 2026-11-12 (HACKING, "The
+     Installer"): `apps/installer`'s window is BeOS's Installer for
+     Olo, on the BeOS desktop's blue: the licence first (Disagree,
+     Agree), then one window, "Installer": Olo's mark and a white box
+     of words that says what to do and then what is being done,
+     "Install from:" and "Onto:" as pop-ups, "More Options" (a latch:
+     the kit's new `PaneSwitch`) opening the optional parts under it
+     with the window growing downwards, a status bar while it works,
+     About… and Begin, which is Stop while it works (stopped, it can
+     be begun again). The wizard's five pages, Back and Next are gone,
+     and it's called the Installer (the name Olo Setup was Windows').
+     What it installs and how (`plan.rs`) is as it was.
+     `OLO_SETUP_DEMO=done|restart|fail` plays an install without one,
+     on a made-up computer, with Log Out and Restart only printed:
+     every state was walked with it (the licence, ready, fewer
+     options, the wait for the password, a failure, at work, stopped,
+     About, installed) at 1×, 1.25×, 1.5×, 1.75× and 2× in light, and
+     1×, 1.5× and 2× in dark, on a 1280 × 800 screen: the layout
+     review finds nothing in any; `--yes` agrees, begins and quits by
+     itself. *Not tried:* a real install with it
+     (`tools/dev/installer-check`, in its virtual machine: the next
+     release's check), and so the real password wait and Log Out.
   6. **The build from before all this, on the login screen** (Ben,
      2026-11-11: "when you finish can you also make the pre-refactor
      known good build available as a login option in the display

@@ -3,6 +3,20 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-11-12
+
+### The Installer
+
+*03:59* — As it opens once the licence is agreed to: what will happen, where from and onto what, More Options closed, About, Quit and Begin. BeOS's Installer for Olo, in place of the Windows 95 wizard of five pages.
+
+![The Installer](2026-11-12/035914-the-installer.png)
+
+### The Installer, at work
+
+*03:59* — Olo Setup redone after BeOS's Installer (Ben: "redo the installer to be reminiscent of the beos installer instead of windows 95"): one window on the BeOS desktop's blue, with Olo's mark, a box of words saying what is being done, Install from and Onto as pop-ups, More Options opening the optional parts under a latch, a status bar, and Begin, which is Stop while it works. Shown in its demo mode (a made-up computer; nothing is installed).
+
+![The Installer, at work](2026-11-12/035913-the-installer-at-work.png)
+
 ## 2026-11-11
 
 ### Preferences on olo-kit

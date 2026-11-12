@@ -706,7 +706,7 @@ fn control_edges(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
     let right_room = SAME.max(1.0 / ppp + 0.01);
     // (A check box or radio button ends where its label does: its right
     // edge lines up with nothing.)
-    let sized = |c: &Control| !matches!(c.role.as_str(), "CheckBox" | "RadioButton" | "Label" | "Link" | "Clickable");
+    let sized = |c: &Control| !matches!(c.role.as_str(), "CheckBox" | "RadioButton" | "DisclosureTriangle" | "Label" | "Link" | "Clickable");
     for a in &shown {
         for b in &shown {
             let (ra, rb) = (a.shown(), b.shown());

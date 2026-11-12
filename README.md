@@ -20,7 +20,7 @@ agents, and upgrades in place that keep every window open.
 
 ## Install
 
-On a stock **Fedora 44 or 45 Workstation** (x86_64), download Olo Setup
+On a stock **Fedora 44 or 45 Workstation** (x86_64), download the Installer
 from the [latest release](https://github.com/benmyles/olo/releases/latest)
 and run it:
 
@@ -29,9 +29,10 @@ curl -LO https://github.com/benmyles/olo/releases/latest/download/olo-installer-
 chmod +x olo-installer-x86_64 && ./olo-installer-x86_64
 ```
 
-<p align="center"><img src="docs/img/olo-setup.png" alt="Olo Setup" width="640"></p>
+<p align="center"><img src="docs/img/olo-installer.png" alt="Olo's Installer" width="640"></p>
 
-Setup is one full-screen program, Windows 95's Setup in BeOS's look:
+The Installer is one full-screen program, after BeOS's own: agree to the
+licence, then click Begin.
 - It installs what Olo needs from Fedora.
 - It downloads Olo and checks it.
 - It puts Olo in your home folder (`~/.local`) and adds it to the login screen.

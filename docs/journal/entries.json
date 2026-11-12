@@ -3898,5 +3898,17 @@
   "title": "Preferences on olo-kit",
   "caption": "Preferences, every panel, on Olo's own kits: each panel's window a view on a looper of its own. The same to the pixel as it was but for two things meant: the launcher's cells are wider (the longest names ran into the cell beside them) and Notifications' From and to line up with the words above them. Typing in a field draws in a quarter of the time, a slider in half.",
   "image": "2026-11-11/223417-preferences-on-olo-kit.png"
+ },
+ {
+  "time": "2026-11-12T03:59:13",
+  "title": "The Installer, at work",
+  "caption": "Olo Setup redone after BeOS's Installer (Ben: \"redo the installer to be reminiscent of the beos installer instead of windows 95\"): one window on the BeOS desktop's blue, with Olo's mark, a box of words saying what is being done, Install from and Onto as pop-ups, More Options opening the optional parts under a latch, a status bar, and Begin, which is Stop while it works. Shown in its demo mode (a made-up computer; nothing is installed).",
+  "image": "2026-11-12/035913-the-installer-at-work.png"
+ },
+ {
+  "time": "2026-11-12T03:59:14",
+  "title": "The Installer",
+  "caption": "As it opens once the licence is agreed to: what will happen, where from and onto what, More Options closed, About, Quit and Begin. BeOS's Installer for Olo, in place of the Windows 95 wizard of five pages.",
+  "image": "2026-11-12/035914-the-installer.png"
  }
 ]

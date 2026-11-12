@@ -172,7 +172,7 @@ pub fn look() -> Computer {
 pub fn unsuitable(c: &Computer) -> Option<String> {
     // SAFETY: geteuid has no preconditions.
     if unsafe { libc::geteuid() } == 0 {
-        return Some("Setup runs as you, not as root: it asks for the administrator's password when it needs it.".into());
+        return Some("The Installer runs as you, not as root: it asks for the administrator's password when it needs it.".into());
     }
     match c.fedora {
         None => return Some("Olo installs on Fedora (44 or 45); this isn't Fedora.".into()),
@@ -180,7 +180,7 @@ pub fn unsuitable(c: &Computer) -> Option<String> {
         _ => {}
     }
     if c.atomic {
-        return Some("This is an atomic Fedora (Silverblue, Kinoite): Setup installs on Fedora Workstation. tools/setup.sh in Olo's repository sets up an atomic one.".into());
+        return Some("This is an atomic Fedora (Silverblue, Kinoite): the Installer installs on Fedora Workstation. tools/setup.sh in Olo's repository sets up an atomic one.".into());
     }
     if !matches!(bundle::arch(), "x86_64" | "aarch64") {
         return Some(format!("Olo is made for x86_64 and aarch64 computers; this is {}.", bundle::arch()));
@@ -338,7 +338,7 @@ pub fn install(choices: Choices, given: Option<String>, stop: Arc<AtomicBool>, t
 
     stage(stages[0]);
     if let Some(why) = unsuitable(&c) {
-        return say(fail("This computer", why, "Olo Setup installs on Fedora Workstation 44 or newer."));
+        return say(fail("This computer", why, "The Installer installs on Fedora Workstation 44 or newer."));
     }
     say(Event::Note(format!("Fedora {} {}, {}; {:.0} GB free.", c.fedora.unwrap_or(0), c.variant, bundle::arch(), c.free as f64 / (1u64 << 30) as f64)));
 

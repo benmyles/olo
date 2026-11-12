@@ -525,7 +525,7 @@ network:
 - a download goes on where it broke off (`http::Download`: `Range` from
   where it got to, `If-Range` so it's the same file, the whole file again
   passed over to there from a server that takes no ranges), Chrome's,
-  Olo Setup's and Doctor's;
+  the Installer's and Doctor's;
 - a wait for a network is `wait_online(until, stop)`, woken by a change
   or `nudge()` (call it after asking a worker to stop); say so while it
   waits (`waiting()`: DiskBackup's "Waiting for the network");
@@ -561,7 +561,7 @@ long after a way out comes back.
 | `crates/system` | `olo-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
 | `apps/airpods` | `olo-airpods`: AirPods, natively (see "AirPods"): the session's service and its command line. |
 | `apps/voice` | `olo-voice`: the voice service (see "The voice service"): every microphone through voice processing, and its command line. |
-| `apps/installer` | `olo-installer`: Olo Setup, a stock Fedora Workstation made Olo in one full-screen program (see "Olo Setup"). |
+| `apps/installer` | `olo-installer`: the Installer (first called Olo Setup), a stock Fedora Workstation made Olo in one full-screen program (see "The Installer"). |
 | `apps/dconf` | `olo-dconf`: Olo's dconf service (`ca.desrt.dconf`), GSettings programs' settings written into dconf's own database in place of GNOME's dconf-service (see "Other toolkits' programs"). |
 | `apps/secrets` | `olo-secrets`: Olo's own Secret Service and Secret portal, programs' secrets kept in place of GNOME Keyring unless Preferences ▸ Security says otherwise, its store opened by the login password (see "Programs' secrets"). |
 | `crates/pam-keyring`, `crates/login-key` | `pam_olo_keyring.so`: the login password opens Olo's keyring, the key it gives handed to olo-secrets in the login's kernel keyring; `olo-login-key`: that key's derivation, shared (see "Programs' secrets"). |
@@ -1971,6 +1971,14 @@ it.
   and `widgets` examples, `crates/kit/examples`, run in a test
   session): `Button` (`default`, `pushed`, `small`, `on_click`),
   `CheckBox` (`mixed`, `on_toggle`), `RadioButton` (`on_select`),
+  `PaneSwitch` (BeOS's Installer's "More Options": a latch,
+  `style::latch`, and beside it what it opens; `on_toggle` gets whether
+  it's open now, and whoever shows it keeps that, puts the pane under
+  it and may change its label with it, "Fewer Options", with an `id`
+  that stays so the keyboard stays on it; Space turns it; agents read
+  it as a `DisclosureTriangle`, checked while open; for a part of a
+  window most people leave alone, the window growing to hold it, as a
+  window that follows its content does),
   `MenuField` (label, divider, `quiet_label`: a field set among facts,
   its label theirs and its choice on their values' line; `name`: its
   name for agents and the settings index with no label shown, a field in
@@ -3257,14 +3265,6 @@ against Fedora 45's x86_64 repository (2026-11-03). `tools/dev/x86-check` type-c
 from an aarch64 machine (x86 headers unpacked under ~/.cache; nothing
 installed).
 
-Install for the login screen with `tools/install-session.sh` (as
-yourself; it asks for sudo once). It builds release binaries into
-`~/.local/bin` (so upgrades need no root), icons into
-`~/.local/share/olo`, and the session entry into
-`/usr/share/wayland-sessions/olo.desktop` (Exec is the installed
-path; no TryExec, as the greeter can't look inside a private home):
-where GDM and SDDM always look, as GDM reads
-`/usr/local/share/wayland-sessions` only when its `XDG_DATA_DIRS` names
 **A build kept to fall back to** (`tools/keep-build.sh NAME "Label" TREE
 RELEASE`; `--list`, `--remove NAME`). Before a change that touches
 everything, the build from before it is kept as a login option of its
@@ -3287,6 +3287,14 @@ their desktop. Build the old tree in a worktree of its own with its
 own `CARGO_TARGET_DIR` under /var/tmp, never in the tree the session
 watches.
 
+Install for the login screen with `tools/install-session.sh` (as
+yourself; it asks for sudo once). It builds release binaries into
+`~/.local/bin` (so upgrades need no root), icons into
+`~/.local/share/olo`, and the session entry into
+`/usr/share/wayland-sessions/olo.desktop` (Exec is the installed
+path; no TryExec, as the greeter can't look inside a private home):
+where GDM and SDDM always look, as GDM reads
+`/usr/local/share/wayland-sessions` only when its `XDG_DATA_DIRS` names
 it (on Fedora a Flatpak's environment generator does; a machine without
 one listed no Olo). On an atomic system, whose `/usr` can't be written,
 it goes in `/usr/local/share/wayland-sessions`; an entry in the other
@@ -3499,7 +3507,7 @@ nothing switches without those.
   `gdm.service` does.
 
 **On a stock Fedora, as GDM is** (each found in a fresh Fedora 45 in a
-virtual machine, Olo Setup's test, 2026-11-07, and each one kept anyone
+virtual machine, the Installer's test, 2026-11-07, and each one kept anyone
 from logging in):
 
 * **The first terminal its own.** Fedora 45 runs its text consoles in
@@ -3518,7 +3526,7 @@ from logging in):
   socket's folder `xdm_var_run_t` and the greeter's home
   `xdm_var_lib_t`, as `/run/gdm` and `/var/lib/gdm` are (recorded with
   `semanage fcontext` and put on with `restorecon`: install-login.sh,
-  and Olo Setup's `Step::SelinuxLabels`). As an ordinary program it ran
+  and the Installer's `Step::SelinuxLabels`). As an ordinary program it ran
   as `unconfined_service_t`, which SELinux won't let start a session in
   the person's domain (`unconfined_t`). And the person's session starts
   through the system's own copy of olo-session (`olo-session --exec
@@ -5439,7 +5447,7 @@ where it's drawn, its render location: its place less its geometry's
 offset, a client-decorated window's shadow, as `Space::element_under`
 does): drawn alone,
 the full-screen window hid them, and a password dialog asked for while
-Olo Setup filled the screen had the keyboard but was never seen (a
+the Installer filled the screen had the keyboard but was never seen (a
 stock Fedora 45, 2026-11-07). A click on the full-screen window raises
 it, as any window clicked (its own dialogs kept over it), so what was
 over it goes behind until it's brought forward again (Deskbar, the
@@ -9377,7 +9385,7 @@ scan made for the sudo user). What it looks for:
   another display manager's (`display-manager.service`'s link,
   `login_screen::display_manager`) is advice, "The login screen is
   GNOME's (GDM), not Olo's own", and Use Olo's Login Screen runs what
-  Olo Setup's login-screen stage runs (`login_screen::steps`, the one
+  the Installer's login-screen stage runs (`login_screen::steps`, the one
   list both use: programs copied to /usr/local/libexec/olo, data to
   /usr/local/share/olo, PAM, `pam_olo_keyring.so`, sysusers and
   tmpfiles, its user and folders, SELinux's labels, its unit, the other
@@ -9694,48 +9702,78 @@ ones it knows.
     wakeups a second; while Activity Monitor's AI shows, one a second
     in the daemon and 3 in Activity Monitor's poller (0.1% of a core).
 
-## Olo Setup (apps/installer, tools/release.sh)
+## The Installer (apps/installer, tools/release.sh)
 
 One program a person downloads from Olo's releases and runs on a stock
 Fedora Workstation (Ben, 2026-11-06: "a full screen gui app that
-\"olo-fies\" their fedora … windows 95 setup.exe vibes but windows 95
-crossed with beos"). `olo-installer`, full screen, is Windows 95's
-Setup in BeOS's look (`ui.rs`): the deep blue backdrop fading to black
-with "Olo Setup" in big white bold italic serif and its shadow at the
-top left (Liberation Serif, Times New Roman's metric twin, as Windows
-95's), and on it one window at a time drawn as BeOS draws them (the
-yellow tab with its title, the grey panel and its frame, from the
-palette), each a page: a picture panel down the left (a sunken well,
-the backdrop's gradient, the page's icon), the words on the right, `<
-Back`, `Next >` and `Cancel` along the bottom. Welcome (what it does,
-the password asked once, Windows 95's "it is strongly recommended";
-why this computer can't, in red, if it can't: `plan::unsuitable`, not
-Fedora 44 or newer, an atomic Fedora, root, under 6 GB free), Licence
-Agreement (`licence.txt`: Olo's MIT terms, as Cargo.toml says, and the
-others' work it carries, in a scroll box; Next only once "I accept"),
-Choose What to Install (Olo Desktop always; Olo's login screen, its
-boot splash and RPM Fusion, each with its words under it; what the
-computer has already, chosen again and said so, "Installed already:
-Setup brings it up to date": `Choices::installed_under`, Olo's login
-screen as `display-manager.service`, Plymouth's theme `olo`, RPM
-Fusion's repository file; the login screen runs copies of its own in
-`/usr/local/libexec/olo`, which an update leaving it out kept old),
-Installing
-(a BeOS status bar, the stage over it and "n of m" at its right, what
-it's doing under it, the stages and notes so far; a failure says what
-and why in red, what to do, and Try Again), and Olo Is Installed (Log
-Out, or Restart when the login screen or splash changed; and "Olo is a
-work of love, dedicated to Sir Samwise, the bestest English Labrador
-that ever walked the earth." in Ben's words).
-About, from Welcome, says what Olo is and the dedication. None of Olo
-is installed when it starts, so it carries what the kit draws with
-(build.rs: Olo's fonts, its pages' icons at every size, the wordmark),
-unpacks it into the runtime folder and points the kit there
-(`OLO_DATA`).
+\"olo-fies\" their fedora"; first made as Windows 95's Setup in BeOS's
+look and called Olo Setup, a wizard of five pages; then, 2026-11-11:
+"redo the installer to be reminiscent of the beos installer instead of
+windows 95"). `olo-installer`, full screen, is BeOS's Installer for Olo
+(`ui.rs`): the plain blue of BeOS's desktop (51, 102, 152: its
+Installer ran on the bare desktop of the CD it started from), and on it
+one window drawn as BeOS draws them (the yellow tab with its title, the
+grey panel and its frame, from the palette; as tall as what it holds,
+its top fixed, so it grows downwards).
+
+First "Licence", as BeOS showed its own before anything else:
+`licence.txt` (Olo's MIT terms, as Cargo.toml says, and the others'
+work it carries) in a white scroll box, Disagree (quits) and Agree.
+
+Then "Installer", the one window everything happens in. Olo's mark at
+its top left where BeOS's had Be's, and beside it a white box of words
+that says what to do and then what is being done: what installing
+does and that the password is asked for once (why this computer can't
+have Olo, in red, if it can't: `plan::unsuitable`, not Fedora 44 or
+newer, an atomic Fedora, root, under 6 GB free; Begin is dimmed), then
+the stages and their notes as they come, a failure in red with what to
+do, and at the end "Installation completed", how to get to Olo, and
+"Olo is a work of love, dedicated to Sir Samwise, the bestest English
+Labrador that ever walked the earth." in Ben's words. Under it
+"Install from:" and "Onto:" as pop-ups, as BeOS's chose a CD and a
+volume: here there is one of each (Olo's newest release, or
+`--bundle`'s archive; this computer's Fedora, for this person), so they
+say what will happen. "More Options", a latch (the kit's `PaneSwitch`;
+"Fewer Options" while open), opens the optional parts under it and the
+window grows to hold them: Olo's login screen, its boot splash and RPM
+Fusion, each a check box with its words under it (BeOS's showed what a
+part was only under the pointer: no use to whoever reads the window
+without one), what the computer has already chosen again and said so
+("Installed already: it's brought up to date": `Choices::
+installed_under`, Olo's login screen as `display-manager.service`,
+Plymouth's theme `olo`, RPM Fusion's repository file; the login screen
+runs copies of its own in `/usr/local/libexec/olo`, which an update
+leaving it out kept old), and "Disk space required", as BeOS's pane
+ended. It starts open when something in it is chosen. While it works, a
+BeOS status bar (the stage over it and "n of m" at its right, what
+it's doing under it) and everything that chooses dimmed. Along the
+bottom, About… at the left (where BeOS's had "Setup partitions…") and
+Begin at the right, which is Stop while it works: stopped, the window
+is as it was with "Installation stopped" in its words, and Begin goes
+on from there. A failure leaves Quit and Try Again; installed, Log Out
+(Restart when the login screen or splash changed) and Quit, which is
+what Return does: leaving the desktop it runs in is asked for with a
+click of its own. The whole of it, More Options open and at work, fits
+1280 × 800. About comes in front, alone on the desktop until OK (one
+surface has no windows to stack: a window drawn over another reads, to
+the layout review and to an agent, as its parts among the other's),
+with what Olo is and the dedication. None of Olo is installed when it
+starts, so it carries what the kit draws with (build.rs: Olo's fonts,
+its icons at every size, the wordmark), unpacks it into the runtime
+folder and points the kit there (`OLO_DATA`).
+
+`OLO_SETUP_DEMO=done|restart|fail` is for looking at it on a computer
+that mustn't be changed (a test session, the layout review): Begin
+installs nothing and plays an install's events instead (`ui::pretend`:
+the stages, a wait for the password, progress, notes, and its end),
+and Log Out and Restart only print what they would do. Without it,
+Begin installs for real (PackageKit, the helper) and Log Out and
+Restart end the session of whoever started it: never click them in a
+test.
 
 The work (`plan.rs`) runs on a worker, each stage told to the window
 (`Event`), each doing only what isn't done, so it can be stopped
-(Cancel) and run again: checking the computer; what Olo needs from
+(Stop) and begun again: checking the computer; what Olo needs from
 Fedora (`PACKAGES`: what its programs link, `ldd` on every program,
 22 packages, and the services and fonts a session uses) through
 PackageKit; RPM Fusion's two repositories if chosen (Olo Doctor's
@@ -9774,8 +9812,8 @@ needs root then fails, safely). PackageKit's lookups now find what is
 installed first and only look for the rest in this architecture
 (`olo_system::packages::resolve`: asked for the newest alone, an update
 waiting showed as not installed, and installing what was missing
-became an update, which asked for a password). `--yes` goes through the
-pages by itself, a page every four seconds (`--login-screen`,
+became an update, which asked for a password). `--yes` agrees, begins
+and quits by itself, a step every four seconds (`--login-screen`,
 `--boot-splash`, `--rpm-fusion` choose), for tests and agents; `--check`
 says as JSON whether this computer can have Olo and opens nothing.
 

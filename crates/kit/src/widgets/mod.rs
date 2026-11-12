@@ -33,7 +33,7 @@ pub use alert::{
     open_app_alert, open_timed_alert, paragraph, paragraph_height, ways_in,
 };
 pub use banner::{Banner, Tone, banner_back, banner_height, verdict_mark};
-pub use buttons::{Button, CheckBox, LinkButton, RadioButton, SMALL_BUTTON_HEIGHT, button_width, check_box_look, link_button_width};
+pub use buttons::{Button, CheckBox, LinkButton, PaneSwitch, RadioButton, SMALL_BUTTON_HEIGHT, button_width, check_box_look, link_button_width};
 pub use charts::{CellGrid, Graph, GridCell, LegendItem, SPECTRUM_LABELS, Series, Spectrum, SpectrumSeries, legend, legend_height, nice_ceiling};
 pub use color::{ColorControl, ColorWell, color_control_height};
 pub use control::{Control, ControlState, DISABLED_OPACITY, control};
