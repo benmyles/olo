@@ -675,12 +675,41 @@ something nobody here has is in "Blocked", with what it waits for.
        525 ms" above was the machine, not the kits (one parse, 520
        ms, on a worker, in both).
        *Left, found the same way:*
-       - Tracker's resize is half the display thread's: every glyph
-         of the list copied into the frame and cut by the list's
-         edge, a thing at a time (`Scene::append`, 20% of the
-         instructions). The list is one drawing taller than what
-         shows of it; rows as drawings of their own would go in
-         whole.
+       - *Tracker's resize, done 2026-11-12.* (What was written here
+         before, that half of it was the display thread cutting the
+         list's glyphs, was true of the day before: the orders and
+         whole drawings took that away, and the display thread is a
+         sixth of it.) Looked at again, the window measured is the
+         column view, fifty folders, and its cost was the window's
+         looper painting them (0.61 of a 1.12 ms flush,
+         `OLO_FRAME_PHASES`) and allocating: 2,808 times and 756 KB a
+         step (memhist). Half of the bytes and a fifth of the calls
+         were each row's little arrow, a path of three corners whose
+         triangles lyon made every painting and nothing drew (a small
+         shape in a plain colour is drawn from its outline's mask):
+         a polygon's triangles are made only if it's drawn by them
+         (`PathBuilder::build`, for every app). Also: an icon looked
+         up with its name copied for the asking (`icons`), three
+         paths made and taken apart to ask whether a folder is Home,
+         Desktop or the Trash (`items::icon_of`), and the app's own
+         looper woken at every step for the window's size, to work
+         out every window's watches again (`tell_app`, a sixth of the
+         cycles). After: a flush 0.90 ms, painting 0.40; 1,289
+         allocations and 321 KB a step. Against the build from before
+         the kits, each step given time to be drawn by both, four
+         runs each in turn, by instructions and cycles a step
+         (medians): before the kits 3.48 M and 3.21 M, this morning's
+         3.68 and 3.66, now 2.47 and 2.85: 29% and 11% under the old
+         build, and under it in each of the four rounds. The same to
+         the pixel (the column view, two menus, three Preferences
+         panels, DeskCalc). *Left of it:* Tracker's own drawings (a
+         column, the icons, the Desktop) have no key, so each is
+         painted again whenever its window says anything (HACKING's
+         rule; a key needs every row's look in it, and the place
+         each kept for the pointer told when it moves without being
+         drawn); the column and icon views as rows of their own
+         (`uniform_rows`), so a taller window paints only the rows it
+         uncovers; the menus made again at every body (33 strings).
        - Disk Usage is still 35 draws for 520 things (its chart's
          sectors and labels, over one another).
        - Notifications' cards are laid out anew for every width with
@@ -691,9 +720,9 @@ something nobody here has is in "Blocked", with what it waits for.
          (`history.rs`: `card`, `lay_out`). To do: a card's face made
          once an entry and kept, shared strings in `look::Face`,
          `CardLaid` behind an `Rc`.
-       - Tracker allocates 3,000 times a step, 600 of them strings
-         grown as cells are formatted at every paint (sizes, dates):
-         kept with the entry they're of.
+       - Tracker's list view (the above is its column view) formats
+         each cell's string at every paint (sizes, dates): kept with
+         the entry they're of. Not measured since the change above.
        - Logs makes a shared string of a `String` for 490 cells a
          step.
        - An element is 800 bytes (its style, 632 of them) and is
@@ -967,9 +996,12 @@ something nobody here has is in "Blocked", with what it waits for.
   in the code: the service doesn't end for it, keeps the file itself
   and says its status from the start; `olo_system::fans` knows
   running from in force (`Amiss`); Olo Doctor finds each case and an
-  older service, with a fix (HACKING, "The fans"). *Not tried:* the
-  new service on the real computer (root's copy there is still
-  2026-11-11's until Doctor's Update the Fan Service is chosen).
+  older service, with a fix (HACKING, "The fans"). The new service
+  has run on the real computer since 09:56 that day (Ben took the
+  build and Doctor's helper copied it over root's: 17 changes of
+  level in its first half hour, none refused), and the real session's
+  own mark was written at his upgrade of 11:10 (`olo-real-session`:
+  HACKING, "The person's own session").
   *To do:* the service's status
   (`/run/olo-fans/status`) grown to what the panels need (each
   sensor's reading and room, what set the level), written only while

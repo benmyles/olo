@@ -204,15 +204,70 @@ impl PathBuilder {
                     None => path,
                 };
                 let mut built = Self::tessellate_stroke(None, &path, &options)?;
-                built.outline = Some(std::sync::Arc::new(crate::outline::PathOutline { path, stroke: Some(options), fill_rule: lyon::tessellation::FillRule::NonZero }));
+                built.outline = Some(std::sync::Arc::new(crate::outline::PathOutline { path, stroke: Some(options), fill_rule: lyon::tessellation::FillRule::NonZero, unmade: None }));
                 Ok(built)
             }
             PathStyle::Fill(options) => {
+                // Olo: a polygon's triangles are made only if it comes to
+                // be drawn by them (a large one, or one not in a plain
+                // colour). A small shape in a plain colour, which is
+                // most of them (a menu's triangle, a check mark, an
+                // arrow, a row's disclosure), is drawn from its outline's
+                // mask, kept from frame to frame, and never looks at
+                // them: making them was a dozen allocations and six
+                // kilobytes a shape, every time it was painted (Tracker's
+                // column of fifty folders: 600 allocations and half of
+                // all it allocated, each step of a resize). What's
+                // needed of them before then is where they'd reach, and
+                // for straight sides that is where the corners are.
+                if let Some(bounds) = Self::polygon_bounds(&path) {
+                    let mut built = Path::new(bounds.origin);
+                    built.bounds = bounds;
+                    built.outline = Some(std::sync::Arc::new(crate::outline::PathOutline { path, stroke: None, fill_rule: options.fill_rule, unmade: Some(options) }));
+                    return Ok(built);
+                }
                 let mut built = Self::tessellate_fill(&path, &options)?;
-                built.outline = Some(std::sync::Arc::new(crate::outline::PathOutline { path, stroke: None, fill_rule: options.fill_rule }));
+                built.outline = Some(std::sync::Arc::new(crate::outline::PathOutline { path, stroke: None, fill_rule: options.fill_rule, unmade: None }));
                 Ok(built)
             }
         }
+    }
+
+    /// What a path of straight sides alone spans (None: it has a curve,
+    /// whose flattening says where it reaches, or no points): what its
+    /// triangles' corners would span, since those are its own corners.
+    fn polygon_bounds(path: &lyon::path::Path) -> Option<crate::Bounds<Pixels>> {
+        use lyon::path::PathEvent;
+        let (mut min, mut max): (Option<lyon::math::Point>, lyon::math::Point) = (None, lyon::math::Point::new(0.0, 0.0));
+        let mut take = |p: lyon::math::Point| match &mut min {
+            None => (min, max) = (Some(p), p),
+            Some(min) => {
+                (min.x, min.y) = (min.x.min(p.x), min.y.min(p.y));
+                (max.x, max.y) = (max.x.max(p.x), max.y.max(p.y));
+            }
+        };
+        let mut corners = 0;
+        for event in path.iter() {
+            match event {
+                PathEvent::Begin { at } => take(at),
+                PathEvent::Line { to, .. } => {
+                    take(to);
+                    corners += 1;
+                }
+                PathEvent::End { .. } => {}
+                PathEvent::Quadratic { .. } | PathEvent::Cubic { .. } => return None,
+            }
+        }
+        // (Fewer than a triangle's sides: nothing to fill, and its
+        // tessellation says so as it always did.)
+        let min = min.filter(|_| corners >= 2)?;
+        Some(crate::Bounds { origin: point(px(min.x), px(min.y)), size: crate::size(px(max.x - min.x), px(max.y - min.y)) })
+    }
+
+    /// The triangles of a polygon built without them (`build`), for
+    /// drawing it by them after all; None if it has none.
+    pub(crate) fn made(outline: &crate::outline::PathOutline) -> Option<Path<Pixels>> {
+        Self::tessellate_fill(&outline.path, outline.unmade.as_ref()?).ok()
     }
 
     /// `path` cut into dashes and gaps, `dash_array` long by turns.
@@ -305,5 +360,78 @@ impl PathBuilder {
         }
 
         path
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn polygon(points: &[(f32, f32)]) -> PathBuilder {
+        let mut b = PathBuilder::fill();
+        b.move_to(point(px(points[0].0), px(points[0].1)));
+        for p in &points[1..] {
+            b.line_to(point(px(p.0), px(p.1)));
+        }
+        b.close();
+        b
+    }
+
+    /// A polygon built without its triangles spans what they would:
+    /// where its mask is put on the pixel grid goes by that, so it must
+    /// be the same to the bit, whatever the shape.
+    #[test]
+    fn a_polygon_put_off_spans_what_its_triangles_would() {
+        let shapes: &[&[(f32, f32)]] = &[
+            // A row's disclosure, a menu's triangle, each way, off the grid.
+            &[(101.3, 20.25), (105.3, 24.25), (101.3, 28.25)],
+            &[(7.5, 3.0), (3.5, 7.0), (7.5, 11.0)],
+            &[(0.0, 0.0), (8.0, 0.0), (4.0, 4.0)],
+            &[(4.0, 0.0), (8.0, 4.0), (0.0, 4.0)],
+            // A check mark's outline, a box, an arrow with a notch.
+            &[(2.0, 7.5), (5.0, 10.5), (11.0, 3.0), (12.5, 4.2), (5.2, 13.0), (0.6, 8.9)],
+            &[(10.0, 10.0), (30.0, 10.0), (30.0, 22.0), (10.0, 22.0)],
+            &[(0.0, 4.0), (6.0, 4.0), (6.0, 0.0), (12.0, 6.0), (6.0, 12.0), (6.0, 8.0), (0.0, 8.0)],
+            // One that crosses itself.
+            &[(0.0, 6.0), (16.0, 6.0), (3.0, 16.0), (8.0, 0.0), (13.0, 16.0)],
+            // Corners in a line, and one said twice.
+            &[(0.0, 0.0), (5.0, 0.0), (10.0, 0.0), (10.0, 10.0), (10.0, 10.0), (0.0, 10.0)],
+        ];
+        for points in shapes {
+            let lazy = polygon(points).build().unwrap();
+            assert!(lazy.vertices.is_empty(), "its triangles are put off: {points:?}");
+            let outline = lazy.outline.clone().unwrap();
+            let made = PathBuilder::made(&outline).unwrap();
+            assert!(!made.vertices.is_empty(), "{points:?}");
+            assert_eq!(lazy.bounds, made.bounds, "{points:?}");
+        }
+        // Two shapes in one path.
+        let mut two = polygon(&[(0.0, 0.0), (4.0, 0.0), (2.0, 3.0)]);
+        two.move_to(point(px(20.5), px(9.0)));
+        two.line_to(point(px(24.5), px(9.0)));
+        two.line_to(point(px(22.5), px(12.5)));
+        two.close();
+        let lazy = two.build().unwrap();
+        assert_eq!(lazy.bounds, PathBuilder::made(lazy.outline.as_ref().unwrap()).unwrap().bounds);
+    }
+
+    /// A curve's reach is its flattening's to say: built as it always
+    /// was, with its triangles. And a stroke.
+    #[test]
+    fn curves_and_strokes_are_built_whole() {
+        let mut disc = PathBuilder::fill();
+        disc.move_to(point(px(0.0), px(5.0)));
+        disc.curve_to(point(px(10.0), px(5.0)), point(px(5.0), px(-5.0)));
+        disc.curve_to(point(px(0.0), px(5.0)), point(px(5.0), px(15.0)));
+        disc.close();
+        let built = disc.build().unwrap();
+        assert!(!built.vertices.is_empty());
+        assert!(built.outline.as_ref().unwrap().unmade.is_none());
+        let mut line = PathBuilder::stroke(px(1.0));
+        line.move_to(point(px(0.0), px(0.0)));
+        line.line_to(point(px(10.0), px(4.0)));
+        let built = line.build().unwrap();
+        assert!(!built.vertices.is_empty());
+        assert!(built.outline.as_ref().unwrap().unmade.is_none());
     }
 }

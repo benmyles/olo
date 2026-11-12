@@ -187,6 +187,19 @@ pub struct WinInfo {
 }
 
 impl WinInfo {
+    /// Whether `other` says the same of everything the app acts on: all
+    /// but the window's size.
+    pub fn same_but_for_size(&self, other: &WinInfo) -> bool {
+        let sized = |f: &Option<SavedFolder>, size| f.clone().map(|f| SavedFolder { size, ..f });
+        let size = self.folder.as_ref().map_or((0, 0), |f| f.size);
+        self.path == other.path
+            && self.surface == other.surface
+            && self.watched == other.watched
+            && self.selected.as_ref().map(|e| &e.path) == other.selected.as_ref().map(|e| &e.path)
+            && sized(&self.folder, size) == sized(&other.folder, size)
+            && self.find == other.find
+    }
+
     /// Whether `other` says the same.
     pub fn same(&self, other: &WinInfo) -> bool {
         self.path == other.path
@@ -235,6 +248,14 @@ fn shared() -> &'static Shared {
 pub fn publish(id: u64, info: WinInfo) {
     shared().infos.lock().unwrap_or_else(|e| e.into_inner()).insert(id, info);
     to_hub(ToHub::Told(id));
+}
+
+/// [`publish`], of something the app only keeps (the window's size, for
+/// an upgrade to bring back): kept, and the app's looper not woken for
+/// it. A window resized live said its size sixty times a second, and
+/// each had the app work out every window's watches again.
+pub fn keep(id: u64, info: WinInfo) {
+    shared().infos.lock().unwrap_or_else(|e| e.into_inner()).insert(id, info);
 }
 
 fn info_of(id: u64) -> Option<WinInfo> {

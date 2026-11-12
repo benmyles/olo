@@ -472,9 +472,10 @@ impl<'a> Painter<'a> {
         let opacity = self.element_opacity();
         let color: Background = color.into();
         // Olo: a small one in a plain colour, with exact coverage.
-        if let Some(outline) = path.outline.take()
+        let outline = path.outline.take();
+        if let Some(outline) = &outline
             && color.tag == crate::BackgroundTag::Solid
-            && let Some(placed) = crate::outline::place(&outline, path.bounds, scale_factor)
+            && let Some(placed) = crate::outline::place(outline, path.bounds, scale_factor)
             && let Ok(tile) = self.gfx.outlines.tile(self.gfx.sprite_atlas.as_ref(), &placed.key)
         {
             if let Some(tile) = tile {
@@ -489,6 +490,12 @@ impl<'a> Painter<'a> {
                 });
             }
             return;
+        }
+        // Drawn by its triangles after all: a polygon built without
+        // them has them made now (`PathBuilder::build`).
+        if let Some(outline) = outline.filter(|o| o.unmade.is_some()) {
+            let Some(made) = crate::PathBuilder::made(&outline) else { return };
+            path = made;
         }
         path.content_mask = content_mask;
         path.color = color.opacity(opacity);

@@ -2111,7 +2111,10 @@ it.
 - Custom drawing in a `canvas` paints with its `Painter` (`g`): `g.paint_quad`
   (rectangles, rounded, bordered; circles as fully rounded quads),
   `style::label` (text), `icons::paint`, `PathBuilder` (filled or stroked
-  shapes, small ones with exact coverage), `g.paint_segment`
+  shapes, small ones with exact coverage: drawn from a mask of the
+  outline kept from frame to frame, so a polygon's triangles aren't
+  made at all unless it's large or not in a plain colour, when
+  `paint_path` makes them), `g.paint_segment`
   (lines of any angle on the GPU, for graphs and strokes:
   the kit's `examples/lines.rs`; `g.paint_segments(pieces, width, round,
   color)` for many of one colour at once, a polyline's pieces: one

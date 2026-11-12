@@ -309,14 +309,24 @@ pub fn paint_progress(window: &mut Painter, icon: Bounds<Pixels>, done: f32, p: 
 /// The icon for an entry (folders that are special have their own).
 pub fn icon_of(e: &Entry) -> &'static str {
     if e.is_dir {
-        let home = fs::home();
-        if e.path == home {
+        // (The three folders with icons of their own, worked out once:
+        // this is asked for every row at every painting, and each was a
+        // path made to be compared and thrown away.)
+        static SPECIAL: std::sync::OnceLock<[std::path::PathBuf; 3]> = std::sync::OnceLock::new();
+        let [home, desktop, trash] = SPECIAL.get_or_init(|| {
+            let home = fs::home();
+            [home.clone(), home.join("Desktop"), fs::trash_files()]
+        });
+        // (As they're written: a path compared as a path is taken apart
+        // into its components, both of them, for every row.)
+        let path = e.path.as_os_str();
+        if path == home.as_os_str() {
             return "home";
         }
-        if e.path == home.join("Desktop") {
+        if path == desktop.as_os_str() {
             return "desktop";
         }
-        if e.path == fs::trash_files() {
+        if path == trash.as_os_str() {
             return if fs::trash_is_empty() { "trash-empty" } else { "trash-full" };
         }
     }

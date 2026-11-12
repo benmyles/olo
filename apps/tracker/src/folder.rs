@@ -1497,9 +1497,17 @@ impl FolderWin {
             }),
             find: false,
         };
-        if self.told.as_ref().is_none_or(|t| !t.same(&info)) {
-            crate::publish(self.id, info.clone());
-            self.told = Some(info);
+        match &self.told {
+            Some(told) if told.same(&info) => {}
+            // (Its size alone: kept for the app to find, not said.)
+            Some(told) if told.same_but_for_size(&info) => {
+                crate::keep(self.id, info.clone());
+                self.told = Some(info);
+            }
+            _ => {
+                crate::publish(self.id, info.clone());
+                self.told = Some(info);
+            }
         }
     }
 }

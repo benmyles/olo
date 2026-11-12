@@ -871,6 +871,17 @@ other side.
   else that change draws. Test a shortcut by pressing it, with the
   state it needs made the way a person makes it (a double-click, not a
   call), not by choosing its item.
+- **Work done for a result nothing used.** Every small shape (a
+  menu's triangle, a check mark, a row's arrow) was cut into
+  triangles as it was built, a dozen allocations and six kilobytes
+  each, and then drawn from a cached mask that never looked at them:
+  half of all a Tracker window allocated as it was resized. Found by
+  counting allocations by who asked (`tools/dev/memhist`), not by the
+  profile, which said "malloc". When something is made on the way to a
+  drawing, check that the drawing reads it. And the same window told
+  its app its size at every step of a resize, for the app to work out
+  what it watches again: say to another looper what it acts on, and
+  keep the rest where it can find it.
 - **A key read as it is "now"**, by a thread that takes it later. The
   display thread hears the keys; a window's looper handles them when
   it gets to them. Whether ⌘ was held was a global the looper read at
