@@ -286,7 +286,12 @@ message):
   answers, growth). Not beside a build: with cargo on every core the
   same gallery that scrolls 0.95 to 1.04 times as far as the fingers,
   no frame skipped, read 0.00 to 2.20 with five skipped. Look at
-  `uptime` first, and wait for a build to end.
+  `uptime` first, and wait for a build to end. Nor straight after one:
+  with memory full of what the build wrote, buffers are slow to come
+  by for every program, and the benchmark's live resizes cost ten
+  times the processor (DeskCalc 208 ms for a drag that takes 24), which
+  no frame's mark shows. A result that surprises is run again, alone,
+  before anything is made of it.
 * Where a kit app's frame goes: `OLO_FRAME_PHASES=1` prints each
   frame the display thread draws: beginning it (a buffer to draw in),
   putting it together from the drawings kept, drawing and completing
@@ -351,6 +356,58 @@ How Olo keeps it (do the same):
   prints `frame due: drawn N ms after the looper was asked`. Everything
   else stays `invalidate()`: what changes at the person's pace gains
   nothing from waiting.
+* **A frame waits for the answer to input that's on its way**
+  (olo-kit, `stage::INPUT_HOLD`). The compositor sends input and then
+  calls for a frame, at once; what a looper makes of the input (a
+  wheel's step in a view that scrolls itself, a key, the pointer over
+  something that lights) comes back as a commit half a millisecond
+  later. With nothing else to draw the call draws nothing and the
+  commit is drawn as it comes, in time for the display's next frame.
+  With something else to draw (colours or layout a worker brought, a
+  caret), the call drew that, and the commit, a moment too late, waited
+  for the next call: one frame in which nothing moved, and every step
+  after it shown a frame late (the benchmark: "frames moved 0.00×" in
+  StyledEdit's code and Markdown). So what a call would draw waits for
+  the answer and is drawn with it, once; four milliseconds at most, and
+  a looper that makes nothing to show of what it took says so at once
+  (`FramePace::holding`, `Stage::input_answered`), only when a frame
+  waits. (Drawing the answer at once as well, a second frame in the
+  same call, was tried first: no stall, but forty frames more in a drag
+  through a document still being laid out.) Three things keep the wait
+  what it says. Its four milliseconds run from the first input not yet
+  answered: more input to a looper that's taking its time doesn't
+  restart them. A timer draws what was kept back when they're over
+  (`PlatformWindow::frame_after`), since nothing else may ask for a
+  frame by then; it's taken away when the frame is drawn first, as
+  nearly all are, so it wakes nothing. And nothing made inside a frame
+  call may be input that starts a wait: a wheel's notches are eased in
+  by the frame calls themselves (`wheel_step`), one step a display
+  frame, and never a step in the frame the looper's answer asks for.
+  When each of those took a sliver of the ease too, the sliver kept the
+  frame back for its own answer, whose frame took another sliver: every
+  notch in the editor and Terminal showed as one jump when the ease ran
+  out, 180 ms late, with a core busy throughout (the benchmark: "wheel:
+  a frame every 246 ms"; scroll-check's wheel is what finds it, so run
+  all three of drag, flick and wheel after touching any of this).
+  And the answer is the commit made after the looper took the input,
+  not the next commit to arrive: input is numbered as it's sent
+  (`WindowEvent::Input`'s number; motion gathered on its way carries
+  its last), the looper keeps the last number it took, and each commit
+  (`Commit::answered`) and each "nothing came of it" says how far it
+  had got. While a document is still being laid out or coloured, a
+  worker's commit lands between a scroll step and its answer; taken for
+  the answer, it was drawn alone and the step showed a frame late
+  (drags through a 20,000-line document just after a change of scale:
+  a frame that didn't move in five drags of eight, the steps spread
+  0.22 to 0.26 of the fingers' speed about it; numbered, none in 12
+  of 12, the spread under 0.005, steps 0.97 to 1.02 of the fingers').
+* **What isn't to be seen isn't drawn.** The editor draws on whole
+  device pixels, so a scroll step that leaves the text on the same ones
+  (the end of a glide, a fraction of a pixel a frame) is kept, not
+  drawn: some twenty-five frames at the end of every flick. A wheel
+  turned over what neither scrolls nor takes it wakes no looper
+  (`Stage::input`: only its end is passed on, for what took the steps
+  before the pointer left it).
 * **Ask for less**: events by kind (`EventKind`: `OwnWindows`, not every
   window's title), files by inotify, an event written out once for all.
   Something that wakes every app costs every app: an agent's spinning
@@ -3208,6 +3265,28 @@ yourself; it asks for sudo once). It builds release binaries into
 path; no TryExec, as the greeter can't look inside a private home):
 where GDM and SDDM always look, as GDM reads
 `/usr/local/share/wayland-sessions` only when its `XDG_DATA_DIRS` names
+**A build kept to fall back to** (`tools/keep-build.sh NAME "Label" TREE
+RELEASE`; `--list`, `--remove NAME`). Before a change that touches
+everything, the build from before it is kept as a login option of its
+own, so that if the new one has a problem the old one is a choice away
+on the login screen (Ben, 2026-11-11, of the kits: "make the
+pre-refactor known good build available as a login option in the
+display manager so that if there are any problems i can go back to
+that"). It goes into `~/.local/olo-kept/NAME` (`bin/` and
+`share/olo/`, laid out as the current one is in `~/.local`), each
+program a clone where the file system can (btrfs: no space until the
+build it came from is deleted), with an entry of its own on the login
+screen (`olo-kept-NAME.desktop`, which needs root once; Olo's greeter,
+GDM and SDDM list it under its label). Its session finds its own
+programs beside itself (`olo_xdg::find_program`, and they come first on
+the `PATH` of what it starts) and its own data first (`OLO_DATA`, set
+by its entry), and it has no `build-dir`, so it watches no tree and
+never offers an upgrade: it stays as it was kept. It shares the
+person's settings and state with the current build, so it comes up as
+their desktop. Build the old tree in a worktree of its own with its
+own `CARGO_TARGET_DIR` under /var/tmp, never in the tree the session
+watches.
+
 it (on Fedora a Flatpak's environment generator does; a machine without
 one listed no Olo). On an atomic system, whose `/usr` can't be written,
 it goes in `/usr/local/share/wayland-sessions`; an entry in the other
@@ -3594,13 +3673,44 @@ frames come is read from the marks; and commits that changed nothing
 to draw leave nothing behind for the next frame's mark (it once said
 it began when they had, and counted their work as its own: a frame
 after an idle second read as a late one, and the benchmark found no
-frame at all in a launch).
+frame at all in a launch). A frame's `ui_us` is the looper's work for
+the window since its last commit (`WindowCore::busy`: every turn it
+took, `with_window`), not how long ago that work began: a view kept
+for a frame waits for the frame, a new window for the compositor to
+say its size, and neither is the program's time. Making a window (its
+surface and renderer, on the display thread, while the looper waits)
+is left out of the frame of the window that opened it, and
+`OLO_FRAME_PHASES=1` prints it by itself (`window made in N ms`): a
+menu's opening read 9 to 17 ms as a frame of the window under it, and
+the benchmark failed every app's menus for it, though from the press
+to the menu's picture reaching the compositor takes what it took on
+GPUI (3.7 to 4.9 ms against 3.0 to 4.6, most of it app_server's
+answer: measured from each client's own `WAYLAND_DEBUG` log).
+
+**Marks are one kit's own count; the processor's time is the measure
+between builds.** GPUI's marks left out what an input handler did
+before the frame and what making a window cost; the kits' count the
+looper's work. So two builds are compared by what each step cost the
+process, every thread (`cpu_ms` in the benchmark, from the
+scheduler's own count, `/proc/PID/task/*/schedstat`), or by a time
+both show the same way (a client's Wayland log), never by one's marks
+against the other's. So measured, the kits use 88% of what the GPUI
+build did over the whole benchmark at 2× (2026-11-12: scrolling 80%,
+typing 76%, an idle second 52%, tabs 62%, menus 93%, a live resize
+98%), and more where a whole window is drawn again every frame, the
+price of drawing on a thread of its own: a list-heavy window resized
+live (Logs 65 → 95 ms for 36 steps, Notifications 128 → 195), a
+drawing that moves every frame (StringTheme 44 → 70 ms for 210
+frames), and what's first shown as a program starts.
 
 `tools/dev/scroll-check NAME --app NAME` measures scrolling with them: on
 a long list under the pointer it drives a steady two-finger scroll (at a
 touchpad's rate, `--rate 90`), a flick and its glide, and three wheel
 notches, and prints for each how regularly frames came (hitches: a frame
-later than 1.5× the usual while the content moved), how evenly it moved
+later than 1.5× the usual while the content moved, by more than a
+device pixel for each frame that passed: at the end of a glide a view
+that draws only when what it shows moves has nothing to draw in
+between), how evenly it moved
 (each frame's step against the fingers' speed; the glide's against its
 neighbours, as it slows evenly; each notch easing out with no step
 bigger than the one before; both only until the content reaches its end,
@@ -4124,7 +4234,9 @@ from its `{"frames":true}` marks (menus' too), app_server's from
 with it, so the fix starts in the right place), a skipped frame while
 scrolling, or app_server over budget or stalled; switching the theme or scale, an
 app's first frames and the start of a live resize (a new swapchain)
-are transitions, listed with their slowest frame. `--apps a,b`,
+are transitions, listed with their slowest frame. Each step also says
+what it cost the app's process, every thread (`cpu_ms`): the measure
+to compare two builds by (above). `--apps a,b`,
 `--scales 2`, `--json FILE`, `--list`. It only looks at Preferences
 (its sidebar and tabs), never presses Return in a menu, and leaves out
 what needs the real system or other sessions. Run it after changing

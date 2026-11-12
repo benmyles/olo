@@ -385,6 +385,12 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     /// the step just handed out drew nothing in its frame: what took it
     /// draws from another thread.
     fn hold_wheel(&self) {}
+
+    /// Olo: asks for a frame `after` from now unless one is drawn
+    /// before then: the stage kept one back for its looper's answer to
+    /// input (`stage::INPUT_HOLD`), and draws it without the answer if
+    /// that takes longer.
+    fn frame_after(&self, _after: std::time::Duration) {}
 }
 
 /// Olo: data dragged out of a window to another app or a folder (the

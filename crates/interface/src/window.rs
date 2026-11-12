@@ -177,6 +177,9 @@ pub(crate) struct WindowCore {
     /// frame, and neither is the program's time (a menu's first frame
     /// read 9 to 17 ms, most of it app_server's answer on its way).
     pub(crate) busy: Duration,
+    /// The last input from the stage taken (`WindowEvent::Input`'s
+    /// number): what's committed says so (`Commit::answered`).
+    pub(crate) answered: u64,
     pub(crate) entered: Instant,
     pub(crate) mouse: Point<Pixels>,
     /// The pointer is over the window (or files dragged from elsewhere
@@ -439,7 +442,12 @@ pub(crate) fn open<V: View>(looper: &mut Looper, id: WindowId, params: WindowPar
     let display = display();
     let link = WindowLink { looper: looper.handle(), id };
     let shell = params.layer_shell.is_some() || matches!(params.kind, crate::WindowKind::LayerShell | crate::WindowKind::SessionLock);
+    let asked = Instant::now();
     let opened = display.open_window(id, params, link)?;
+    if crate::stats::frame_phases() {
+        eprintln!("window made in {:.3} ms (its surface and renderer, on the display thread: the looper waited)", asked.elapsed().as_secs_f64() * 1000.0);
+    }
+    let building = Instant::now();
     let mut core = Box::new(WindowCore::new(id, opened, title));
     core.shell = shell;
     {
@@ -452,6 +460,8 @@ pub(crate) fn open<V: View>(looper: &mut Looper, id: WindowId, params: WindowPar
         let node = cx.core.create(crate::Element::new(crate::element::Kind::View(view)), view, None);
         cx.core.root = Some(node);
     }
+    // (Making its view is its first frame's work.)
+    core.busy = building.elapsed();
     if looper.state::<Windows>().is_none() {
         looper.set_state(Windows::default());
     }
@@ -496,6 +506,20 @@ fn flush_all(looper: &mut Looper) {
 }
 
 impl WindowCore {
+    /// The looper took what it was sent and has nothing for the stage to
+    /// show for it (now): a frame the stage kept back for its answer
+    /// (`stage::INPUT_HOLD`) is drawn. Nothing is sent unless one is.
+    fn nothing_for_the_stage(&mut self) {
+        if self.pace.holding.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            let (id, upto) = (self.id, self.answered);
+            display().post(move |on| {
+                if let Some(stage) = on.stage(id) {
+                    stage.input_answered(upto);
+                }
+            });
+        }
+    }
+
     fn new(id: WindowId, opened: Opened, title: SharedString) -> WindowCore {
         let text_system = thread_text_system();
         let gfx = Gfx {
@@ -553,6 +577,7 @@ impl WindowCore {
             everything: true,
             started: Some(Instant::now()),
             busy: Duration::ZERO,
+            answered: 0,
             entered: Instant::now(),
             mouse: Point::default(),
             pointer_in: false,
@@ -1100,7 +1125,10 @@ impl<'a> WindowCx<'a> {
     fn handle(&mut self, event: WindowEvent) {
         self.core.started.get_or_insert_with(Instant::now);
         match event {
-            WindowEvent::Input(input) => self.dispatch_input(input),
+            WindowEvent::Input(input, number) => {
+                self.core.answered = self.core.answered.max(number);
+                self.dispatch_input(input)
+            }
             WindowEvent::Ime(ime) => self.dispatch_ime(ime),
             WindowEvent::Resized { size, scale } => self.resized(size, scale),
             WindowEvent::Active(active) => {
@@ -1519,6 +1547,7 @@ impl<'a> WindowCx<'a> {
             core.started = None;
             core.busy = Duration::ZERO;
             core.entered = Instant::now();
+            core.nothing_for_the_stage();
             return;
         }
         // Held back (a window being sized to fit what it shows isn't
@@ -1526,6 +1555,7 @@ impl<'a> WindowCx<'a> {
         // or the wait is over.
         if let Some(until) = core.commit_held {
             if Instant::now() < until {
+                core.nothing_for_the_stage();
                 return;
             }
             core.commit_held = None;
@@ -1615,6 +1645,7 @@ impl<'a> WindowCx<'a> {
             animating: !core.next_frame.is_empty(),
             externals,
             noted,
+            answered: core.answered,
         };
         let id = core.id;
         // (On its way to be drawn: what's invalidated for a frame from
@@ -1775,7 +1806,15 @@ impl<'a> WindowCx<'a> {
         let id = display().next_window_id();
         let title = spec.title.clone();
         let menu = spec.focus && matches!(spec.kind, crate::WindowKind::Popup { .. });
-        match open(self.looper, id, spec.params(), title, build) {
+        let asked = Instant::now();
+        let opened = open(self.looper, id, spec.params(), title, build);
+        // (Making a window isn't this window's work for its next frame:
+        // most of it is the display thread making a surface and a
+        // renderer while the looper waits, and the rest the new window's
+        // own first view. A menu's opening read as a slow frame of the
+        // window under it.)
+        self.core.entered += asked.elapsed();
+        match opened {
             Ok(id) => {
                 let owner = self.core.id;
                 if let Some(core) = self.looper.state_mut::<Windows>().and_then(|w| w.map.get_mut(&id)) {
@@ -1925,7 +1964,7 @@ impl<'a> WindowCx<'a> {
             crate::PlatformInput::MouseDown(crate::MouseDownEvent { button, position: at, modifiers, click_count: 1, first_mouse: false }),
             crate::PlatformInput::MouseUp(crate::MouseUpEvent { button, position: at, modifiers, click_count: 1 }),
         ] {
-            self.looper.defer(move |looper| deliver(looper, id, WindowEvent::Input(input)));
+            self.looper.defer(move |looper| deliver(looper, id, WindowEvent::Input(input, 0)));
         }
     }
 

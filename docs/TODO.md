@@ -554,17 +554,76 @@ something nobody here has is in "Blocked", with what it waits for.
      of the kits throughout (its GPUI mentions are history), and the
      Olo Book is `docs/OLO-BOOK.md`, its example
      `crates/kit/examples/book.rs`.
-     *Left:* what the whole benchmark still fails, on a quiet machine
-     at 2× (4 of 155 steps, 2026-11-12; three scales to run again):
-     Deskbar's menu's first frame (14 ms of the looper's work),
-     one frame of 12.8 ms scrolling Telegram's conversation (rows
-     made as they come near), and a frame that draws without moving
-     in the middle of a drag in StyledEdit's code and Markdown (a
-     commit of colours drawn at a frame's start takes the place of the
-     scroll's, which comes a millisecond later and is shown a frame
-     late from then on: the stage should wait for a commit it knows is
-     on its way); each to be compared with the pre-refactor build's
-     (`cc785d65`, built under /var/tmp/olo-pre for item 6) and fixed;
+     *Measured against the build from before the kits* (`cc785d65`,
+     built under /var/tmp/olo-pre; the whole benchmark at 2× on each,
+     by what each step cost the process, 2026-11-12): the kits use 88%
+     of its processor time overall (scrolling 80%, typing 76%, an idle
+     second 52%, tabs 62%, menus 93%, a live resize 98%; the gallery
+     39%, Notifications 70%, Logs 78%); a click to a menu's picture
+     takes what it took (4 ms, Tracker's and Deskbar's).
+     *Left, where the kits cost more* (each within a frame's budget;
+     to be brought down):
+     - A whole window drawn again every frame costs more than GPUI's
+       one thread did: the looper paints each node's drawing, the
+       display thread copies them into the frame, then draws. A
+       list-heavy window resized live: Logs 65 → 95 ms for 36 steps,
+       Notifications 128 → 195, Tracker 27 → 43; a drawing that moves
+       every frame: StringTheme 44 → 70 ms for 210 frames (0.12 ms a
+       frame more: two threads woken, the drawing copied once more).
+       To try: a drawing that's the only thing changed handed to the
+       frame without the copy; `Scene::append` moving a recording
+       whose clip holds all of it without looking at each thing in it;
+       `finish` swapping the glyphs' list in when the runs are in
+       order already; a list's rows of text keeping their recordings
+       when only their width grew.
+     - What's first shown as a program starts: StyledEdit's code
+       395 → 525 ms (100,000 lines coloured), the emoji picker
+       258 → 353; a few milliseconds more in most (Tracker 2 → 13,
+       Screenshot 5.5 → 17). Logs' 622 → 929 is its window coming up
+       sooner, with more of the journal still being read (from its
+       start: 1,110 → 921).
+     - The pointer moved over a window wakes two threads where it
+       woke one (Tracker 10 → 15 ms for a sweep that changes nothing).
+     - app_server sends each size of a live resize twice, the second a
+       point wider 20 ms later (old build and new alike): every step
+       is laid out and drawn twice. Find why (`shell/grabs.rs`).
+     - Scrolling fails the benchmark's evenness now and then in both
+       builds (a frame skipped in a drag or a glide), and the
+       Viewer's live resize its budget in both. Looked into
+       2026-11-12 with Notifications' history (3456 × 2234 at 1.5×,
+       120 Hz, the Wayland messages timed): in the cycle of a skipped
+       frame app_server sends the scroll's step and no frame
+       callback. It holds a commit until its buffer's GPU work is
+       done (`shell/mod.rs`, the dmabuf gate), and a frame whose
+       work isn't done by the next tick gets its callback a tick
+       late: on a GPU shared with the live desktop and other
+       sessions, as the benchmark's is. Under the same load, ten
+       drags each, back to back: the build from before the kits
+       skipped 73 frames (0 to 23 a drag), the kits 7 (0 to 2). So
+       it isn't the kits'; what's left is to run the whole benchmark
+       with the machine to itself (it never was, the night it was
+       measured), and to see whether a client can be told to draw
+       while its last frame's GPU work is still finishing.
+     *Found by the benchmark at three scales, and fixed, 2026-11-12*
+     (HACKING, "Fast and light", the frame that waits for input's
+     answer): a wheel's notch in the editor and Terminal drew one
+     frame, 180 ms late, with a core busy (the frame's hold and the
+     wheel's ease fed each other: the ease makes a step a display
+     frame now, the hold lasts 4 ms from the first input not yet
+     answered and a timer ends it); a scroll step shown a frame late
+     while a document was still being laid out (a worker's commit
+     taken for the answer: input is numbered and a commit says how
+     far the looper had got); the checker took a glide's last pixels
+     at 1× and 1.5× for hitches (two frames' worth in one frame, of
+     a view that draws only when what it shows moves). The scrolling
+     apps at 1×, 1.5× and 2× afterwards (174 steps, the machine
+     busy): 7 fail, each a frame or two skipped or one of 9 ms, as
+     above; before the fixes 21 of 465, every editor and Terminal
+     scroll among them.
+     - A window's making blocks its opener's looper while the display
+       thread makes the surface and renderer (2 to 3 ms of a menu's
+       4): the looper could build the view meanwhile.
+     Also left:
      Smithay's `winit` dev-dependency
      pulls winit-x11 into test builds (no X11 code runs, but the rule
      is no X11 dependencies: drop the winit backend from the vendored

@@ -642,9 +642,17 @@ draws a frame. A burst of messages is one flush.
 - `invalidate_at_frame()` holds a view's change for the next frame
   the compositor asks for, so a flood (a shell printing megabytes) is
   laid out and painted once a frame, as it is then.
+- The compositor sends input and then calls for a frame. What a
+  looper makes of that input comes back half a millisecond later, so
+  a frame the stage would draw at the call waits for it (four
+  milliseconds at most) and both are drawn at once: a view that
+  scrolls itself stays in step with the fingers while a worker's
+  results arrive around it.
 - Every frame is marked (`{"frames":true}` on the app's socket): when
   it was drawn, the looper's work, the whole, and where each scroller
-  was. `cost`, `bench` and `scroll-check` read those.
+  was. `cost`, `bench` and `scroll-check` read those. A mark's `ui` is
+  the looper's work for the window, not time spent waiting (for a
+  frame, for the compositor, for a new window to be made).
 
 ## The kit (olo-kit)
 
@@ -806,7 +814,30 @@ other side.
   of every batch.
 - **A measurement taken beside a build**: the same scroll read 0.95 to
   1.04 of the fingers' speed alone, and 0.00 to 2.20 with cargo on
-  every core. Look at `uptime` first.
+  every core. Look at `uptime` first. **And one taken straight after
+  a build**: live resizes cost ten times the processor (buffers are
+  slow to come by while memory is full of what the build wrote), which
+  looked like a regression in the kit for an hour. A result that
+  surprises is run again, alone, before anything is made of it.
+- **Two builds compared by their own marks**: every menu in every app
+  "took 9 to 17 ms" on the kits against 1 on GPUI, because the kits'
+  marks counted the window's making and GPUI's didn't. From the press
+  to the menu's picture, measured the same way for both, it was 4 ms
+  in each.
+- **A fix that drew twice**: to keep a scroll in step, the answer to
+  input was drawn at once even when a frame had just been drawn. No
+  stall, and forty frames too many in one drag. The fix that stayed
+  holds the first frame for the answer instead. Count the frames a
+  fix draws, not only the ones it stops skipping.
+- **And that fix, checked on what it was for and nothing else**: the
+  hold was tried on a drag and a flick, which it mended, and committed
+  to a whole benchmark only afterwards, which found every wheel notch
+  in the editor and Terminal drawn as one jump, 180 ms late: the
+  wheel's ease made its steps inside the frame call, each step started
+  a hold, and each hold's end asked for a frame. A change to how
+  frames are paced is checked against every way a frame comes about
+  (fingers, a glide, the wheel, typing, a resize), before anything
+  else is built on it.
 - **A frame's cost over-counted**, because marks said when a frame's
   cause began, not when it was drawn. (Fixed in the kit.) The lesson:
   when a number looks too good or too bad, read how it's made before
@@ -864,7 +895,14 @@ message.
   wakeups, and each window's frames with their cost. At rest: 0
   frames, 0.0%. Doing the thing you changed: compare with before.
 - `tools/dev/bench [--apps a,b] [--scales 2]`: every app driven as
-  people use it at 120 Hz, every frame against the 8.3 ms budget.
+  people use it at 120 Hz, every frame against the 8.3 ms budget, and
+  what each step cost the process (`cpu_ms`). **Compare two builds by
+  that**, the processor's own time, not by their frames' marks: a mark
+  is made by the build it measures, and two builds needn't count the
+  same things (GPUI's left out what input handlers did; the kits'
+  count the looper's work). For a wait the person feels (a click to a
+  menu), compare what both show the same way: each client's Wayland
+  log (`WAYLAND_DEBUG=client`), from the event to the commit.
 - `tools/dev/scroll-check NAME --at X Y`: a drag, a flick and wheel
   notches, frame by frame: none skipped, steps as far as the fingers,
   how long the first move took to show.

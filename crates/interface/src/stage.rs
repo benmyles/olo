@@ -133,12 +133,21 @@ pub(crate) struct Commit {
     /// Where what scrolls itself was as it drew
     /// (`Painter::note_scroll`), for the frames' marks.
     pub(crate) noted: Vec<[f32; 4]>,
+    /// The last input the looper had taken when it made this
+    /// (`WindowEvent::Input`'s number): a frame kept back for the answer
+    /// to input (`INPUT_HOLD`) is kept until the commit that has it, not
+    /// drawn with one made before the looper got to it (a worker's
+    /// layout or colours arriving in between).
+    pub(crate) answered: u64,
 }
 
 /// What the display thread tells a window's looper.
 #[derive(Debug)]
 pub(crate) enum WindowEvent {
-    Input(PlatformInput),
+    /// Input, and its number among what this window's stage has sent
+    /// its looper (0: not from the stage): what the looper commits says
+    /// how far through them it has got (`Commit::answered`).
+    Input(PlatformInput, u64),
     Ime(ImeInput),
     /// The window is this size now, at this scale: laid out again and
     /// committed for it.
@@ -242,6 +251,10 @@ pub(crate) struct FramePace {
     /// Nothing asks this window for frames (it's drawn nowhere: a test's
     /// window with no display): nothing is kept for one.
     pub(crate) unpaced: bool,
+    /// The stage keeps a frame back for the looper's answer to input
+    /// (`INPUT_HOLD`): a looper that makes nothing to show of what it
+    /// was sent says so, and the frame is drawn.
+    pub(crate) holding: AtomicBool,
 }
 
 /// How long a new size waits for the looper to lay out for it before
@@ -311,7 +324,7 @@ pub(crate) struct Stage {
     waker: RefCell<Option<Rc<dyn Fn()>>>,
     /// Pointer motion not yet taken by the looper: the latest stands for
     /// all of it.
-    motion: RefCell<Latest<PlatformInput>>,
+    motion: RefCell<Latest<(PlatformInput, u64)>>,
     /// Where the scrollers are, not yet taken by the looper.
     scrolled: Latest<Vec<ScrollReport>>,
     /// How app_server held the window, as the looper was last told.
@@ -325,7 +338,29 @@ pub(crate) struct Stage {
     asked: Cell<Option<Instant>>,
     /// Frames drawn in a row while the looper kept something for one.
     passed_over: Cell<u8>,
+    /// Input went to the looper and what it makes of it hasn't come
+    /// back (a commit, or word that nothing came of it): how many have
+    /// gone, how far the looper has said it's got, and when the first
+    /// not yet answered went.
+    sent: Cell<u64>,
+    answered: Cell<u64>,
+    input_at: Cell<Instant>,
 }
+
+/// How long a frame waits for the looper's answer to input that has
+/// just gone to it. The compositor sends input and then calls for a
+/// frame, at once: a wheel's step for a view that scrolls itself (the
+/// editor, a terminal) goes to the looper, whose commit comes back half
+/// a millisecond later. With nothing else to draw, the call draws
+/// nothing and the commit is drawn as it comes, in time for the
+/// display's next frame. But with something else to draw (colours or
+/// layout a worker brought, a caret), the call drew that, and the
+/// commit, a moment too late, waited for the next call: shown a frame
+/// later, and so was every step after it, with one frame in which
+/// nothing moved. So what the call would draw waits for the answer and
+/// is drawn with it, once. No longer than this: a looper that takes its
+/// time holds nothing up.
+const INPUT_HOLD: Duration = Duration::from_millis(4);
 
 impl Stage {
     pub(crate) fn new(id: WindowId, window: Box<dyn PlatformWindow>, link: WindowLink) -> (Rc<Stage>, Opened) {
@@ -368,6 +403,9 @@ impl Stage {
             pace,
             asked: Cell::new(None),
             passed_over: Cell::new(0),
+            sent: Cell::new(0),
+            answered: Cell::new(0),
+            input_at: Cell::new(Instant::now()),
         });
         let weak = Rc::downgrade(&stage);
         let on = |f: fn(&Stage)| {
@@ -490,6 +528,39 @@ impl Stage {
         }
     }
 
+    /// Input goes to the looper: a frame that would be drawn before its
+    /// answer waits for it ([`INPUT_HOLD`]).
+    /// Its number goes with it.
+    fn input_sent(&self) -> u64 {
+        // (From the first of it not yet answered: more input to a looper
+        // that's taking its time doesn't hold a frame any longer.)
+        if !self.answering() {
+            self.input_at.set(Instant::now());
+        }
+        let number = self.sent.get() + 1;
+        self.sent.set(number);
+        number
+    }
+
+    /// The looper hasn't said what it makes of the last input sent it.
+    fn answering(&self) -> bool {
+        self.answered.get() < self.sent.get()
+    }
+
+    /// Nothing to show came of the input the looper took (as far as
+    /// number `upto`): what waited for its answer is drawn, if that was
+    /// the last of it.
+    pub(crate) fn input_answered(&self, upto: u64) {
+        self.answered.set(self.answered.get().max(upto));
+        if self.answering() {
+            // (Not the last of it yet: the looper says again when it
+            // has taken that.)
+            self.pace.holding.store(true, Ordering::SeqCst);
+        } else if self.showing.borrow().dirty {
+            self.wake();
+        }
+    }
+
     /// The next motion starts afresh: something else was sent, and
     /// motion from before it mustn't be taken for motion after.
     fn break_motion(&self) {
@@ -500,8 +571,11 @@ impl Stage {
         let id = self.id;
         match input {
             PlatformInput::MouseMove(_) => {
+                // (Motion gathers on its way: the last of it has the
+                // number that answers for all it stood in for.)
+                let number = self.input_sent();
                 let motion = self.motion.borrow().clone();
-                motion.put(&self.link.looper, input, move |looper, input| crate::window::deliver(looper, id, WindowEvent::Input(input)));
+                motion.put(&self.link.looper, (input, number), move |looper, (input, number)| crate::window::deliver(looper, id, WindowEvent::Input(input, number)));
             }
             // The wheel and the touchpad scroll here, at once: the
             // looper hears where things got to. What nothing here
@@ -509,6 +583,12 @@ impl Stage {
             // itself).
             PlatformInput::ScrollWheel(event) => {
                 let whose = self.scroll(&event);
+                // (Nothing under the pointer scrolls or takes the wheel:
+                // nobody is told. Its end is, though: what took the steps
+                // before the pointer left it waits for that.)
+                if whose == Wheel::Nobody && !matches!(event.touch_phase, TouchPhase::Ended) {
+                    return;
+                }
                 if whose != Wheel::Here {
                     if whose == Wheel::Taker {
                         // (Its notches' ease isn't dropped for want of
@@ -518,12 +598,14 @@ impl Stage {
                         }
                     }
                     self.break_motion();
-                    self.link.send(WindowEvent::Input(PlatformInput::ScrollWheel(event)));
+                    let number = self.input_sent();
+                    self.link.send(WindowEvent::Input(PlatformInput::ScrollWheel(event), number));
                 }
             }
             other => {
                 self.break_motion();
-                self.link.send(WindowEvent::Input(other));
+                let number = self.input_sent();
+                self.link.send(WindowEvent::Input(other, number));
             }
         }
     }
@@ -648,6 +730,7 @@ impl Stage {
             self.with_window(|window| window.place_externals(&commit.externals));
             *self.externals.borrow_mut() = commit.externals.clone();
         }
+        self.answered.set(self.answered.get().max(commit.answered));
         {
             let mut showing = self.showing.borrow_mut();
             let showing = &mut *showing;
@@ -693,6 +776,12 @@ impl Stage {
             }
             showing.work += commit.work;
             showing.commit = Some(commit);
+        }
+        // (The looper's answer to what it was sent, if it had got to
+        // the last of it: else its next is, and what's kept back for
+        // that stays so.)
+        if !self.answering() {
+            self.pace.holding.store(false, Ordering::SeqCst);
         }
         self.wake();
     }
@@ -803,6 +892,27 @@ impl Stage {
             if told {
                 self.report(&showing.scrollers);
             }
+        }
+        // The looper's answer to input just sent is on its way: what
+        // there is to draw is drawn with it ([`INPUT_HOLD`]).
+        if showing.dirty && !options.force_render && showing.resized_at.is_none() && self.answering() {
+            let waited = self.input_at.get().elapsed();
+            if waited < INPUT_HOLD {
+                // (Drawn when the hold is over whether or not the looper
+                // has answered: nothing else may ask for a frame by then.)
+                if !self.pace.holding.swap(true, Ordering::SeqCst) {
+                    if let Some(window) = self.window.borrow().as_ref() {
+                        window.frame_after(INPUT_HOLD - waited);
+                    }
+                }
+                if crate::stats::frame_phases() {
+                    eprintln!("frame kept back: input {} sent, {} answered, {:.2} ms ago", self.sent.get(), self.answered.get(), waited.as_secs_f64() * 1000.0);
+                }
+                return false;
+            }
+            // (Too long: what it answers when it does is another frame's.)
+            self.answered.set(self.sent.get());
+            self.pace.holding.store(false, Ordering::SeqCst);
         }
         if !showing.dirty {
             // (Commits that changed nothing to draw made no frame: the

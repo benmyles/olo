@@ -16,7 +16,9 @@ app's first window) and stays there. Then:
   wheel  three notches 0.25 s apart.
 
 For each, over the frames from the first that moved to the last: how
-regularly frames came (a frame later than 1.5× the usual is a hitch),
+regularly frames came (a frame later than 1.5× the usual is a hitch,
+unless the content moved no more than a device pixel a frame meanwhile:
+the end of a glide, where there was nothing to draw in between),
 how evenly the content moved (each frame's step against the speed the
 input had; for the glide, against its neighbours, as it slows evenly),
 frames that drew without moving, and how long the first move took to
@@ -94,6 +96,14 @@ class Check:
     def synth(self, events):
         req(self.sock, {"type": "synthetic", "events": events})
 
+    def pixel(self):
+        """A device pixel in points, on the session's (first) screen."""
+        try:
+            outs = req(self.sock, {"type": "outputs"}).get("outputs", [])
+            return 1.0 / float(outs[0]["scale"])
+        except Exception:
+            return 0.5
+
     def marks(self):
         out = []
         for w in ask_app(self.runtime, self.pid):
@@ -136,10 +146,10 @@ class Check:
                 self.synth([{"type": "wheel", "dx": 0, "dy": sign}])
             time.sleep(0.8)
         marks = [m for m in self.marks() if m["at_us"] >= start]
-        return analyse(kind, marks, start, expect, flick_lift=(start + (max(int(0.15 * rate), 3) * period) * 1e6) if kind == "flick" else None)
+        return analyse(kind, marks, start, expect, flick_lift=(start + (max(int(0.15 * rate), 3) * period) * 1e6) if kind == "flick" else None, pixel=self.pixel())
 
 
-def analyse(kind, marks, start, speed, flick_lift=None):
+def analyse(kind, marks, start, speed, flick_lift=None, pixel=0.5):
     # (when, offset, draw µs, lowest, highest): the first scroll view's
     # offset and how far it goes ([x, y, max x, max y] in a FrameMark;
     # an offset past either end is the content pulled past its edge).
@@ -175,7 +185,13 @@ def analyse(kind, marks, start, speed, flick_lift=None):
         # A frame later than it should be while the content moved, on
         # both sides of it (at rest, there is nothing to draw till it
         # moves again).
-        "hitches": sum(1 for i in range(1, len(dts)) if dts[i] > 1.5 * usual and abs(steps[i - 1]) > 1e-3 and abs(steps[i]) > 1e-3),
+        # (Not one in which the content moved no more than a device
+        # pixel for each frame that passed: at the end of a glide, a
+        # fraction of a pixel a frame, a view that draws only when what
+        # it shows moves has nothing to draw in between. `pixel`: a
+        # device pixel in points.)
+        "hitches": sum(1 for i in range(1, len(dts)) if dts[i] > 1.5 * usual and abs(steps[i - 1]) > 1e-3 and abs(steps[i]) > 1e-3
+                       and abs(steps[i]) > pixel * round(dts[i] / usual) + 1e-3),
         "still": sum(1 for s in steps if abs(s) <= 1e-3),
         "first_move_ms": round((seg[1][0] - start) / 1000, 1),
         "slowest_draw_ms": round(max(m[2] for m in ys) / 1000, 2),
@@ -196,16 +212,21 @@ def analyse(kind, marks, start, speed, flick_lift=None):
         # each step against its neighbours' geometric mean (an even
         # slowing is 1 everywhere).
         g = []
-        for (t, *_), st, f in zip(seg[1:], steps, free):
+        for (t, *_), st, f, dt in zip(seg[1:], steps, free, dts):
             if not flick_lift or t <= flick_lift + 20000 or abs(st) <= 0.05:
                 continue
             if not f:
                 break
-            g.append(abs(st))
-        # (Offsets land on half or whole pixels: a step within half a
-        # pixel of its neighbours' is as even as they can be. A glide's
-        # last pixels, 1, 1, 0.5, aren't a hitch.)
-        jerk = [b / (a * c) ** 0.5 - 1 if abs(b - (a * c) ** 0.5) > 0.5 else 0.0 for a, b, c in zip(g, g[1:], g[2:]) if a > 0 and c > 0]
+            # (How far a frame, over the frames that passed: at a
+            # glide's end, under a device pixel a frame, a view that
+            # draws only when what it shows moves draws every second or
+            # third frame, each a pixel on. Two frames' worth in one
+            # isn't a frame twice as fast as its neighbours.)
+            g.append(abs(st) / max(1, round(dt / usual)))
+        # (Offsets land on whole device pixels: a step within one of its
+        # neighbours' is as even as they can be. A glide's last pixels,
+        # 1, 1, 0.5 at 2×, or 2, 1, 2 at 1×, aren't a hitch.)
+        jerk = [b / (a * c) ** 0.5 - 1 if abs(b - (a * c) ** 0.5) > pixel + 1e-3 else 0.0 for a, b, c in zip(g, g[1:], g[2:]) if a > 0 and c > 0]
         if jerk:
             r["glide"] = {"frames": len(g), "sd": round(statistics.pstdev(jerk), 3), "worst": round(max(jerk, key=abs), 3),
                           "off_10pct": sum(1 for x in jerk if abs(x) > 0.10)}

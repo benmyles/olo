@@ -305,6 +305,11 @@ struct FrameLoop {
     /// The step just handed out is with a looper: what's left isn't
     /// dropped for nothing drawn in this frame (`hold_wheel`).
     wheel_held: Cell<bool>,
+    /// A frame was kept back and is to be drawn in a moment whatever
+    /// happens (`frame_after`): its timer, taken away if one is drawn
+    /// first (so a frame kept back and drawn half a millisecond later,
+    /// as most are, wakes nothing).
+    frame_after: Cell<Option<calloop::RegistrationToken>>,
     /// Olo: the window is gone (its surface destroyed): a frame queued
     /// before draws nothing.
     closed: Cell<bool>,
@@ -822,6 +827,7 @@ impl WaylandWindow {
                 signal,
                 wheel: RefCell::new(None),
                 wheel_held: Cell::new(false),
+                frame_after: Cell::new(None),
                 closed: Cell::new(false),
                 in_frame: Cell::new(false),
                 wanted: Cell::new(false),
@@ -1043,6 +1049,11 @@ impl WaylandWindowStatePtr {
         frames.in_frame.set(false);
         drop(cb);
         log::trace!(target: "olo_frames", "frame: drew {drew}, callback {:?}", frames.callback.get());
+        if drew {
+            if let Some(timer) = frames.frame_after.take() {
+                frames.handle.remove(timer);
+            }
+        }
         if wheel.is_some() && !drew && !frames.wheel_held.take() {
             // Nothing moved (an edge): the rest goes.
             frames.wheel.take();
@@ -1100,6 +1111,18 @@ impl WaylandWindowStatePtr {
         }
         let w = slot.as_mut()?;
         let interval = self.frame_interval();
+        // A step a display frame, no more. A step for a view that
+        // scrolls itself goes to its looper, whose answer asks for a
+        // frame at once, within the same display frame, to be drawn in:
+        // that frame takes no step of its own. (It did, half a
+        // millisecond's worth: that sliver's commit was what the next
+        // display frame drew, so every real step showed a frame late;
+        // and each sliver kept a frame back for its answer
+        // (`stage::INPUT_HOLD`), whose answer asked for a frame, which
+        // took a sliver: nothing was drawn until the ease ran out.)
+        if w.last.is_some_and(|t| (now - t).as_secs_f64() < interval / 2.0) {
+            return None;
+        }
         let dt = w.last.map_or(interval, |t| (now - t).as_secs_f64().min(4.0 * interval));
         w.last = Some(now);
         let k = (1.0 - (-dt / WHEEL_EASE).exp()) as f32;
@@ -1607,6 +1630,26 @@ impl WaylandWindowStatePtr {
         popup.reposition(&positioner, 0);
         positioner.destroy();
         state.popup_placed = size;
+    }
+
+    /// Olo: a frame, `after` from now, unless one is drawn first (what
+    /// the stage kept back for its looper's answer is drawn with or
+    /// without it). One timer, and only while something is kept back.
+    /// Asked again, it's from then.
+    fn frame_after(&self, after: std::time::Duration) {
+        if let Some(timer) = self.frames.frame_after.take() {
+            self.frames.handle.remove(timer);
+        }
+        let this = self.downgrade();
+        let timer = self.frames.handle.insert_source(calloop::timer::Timer::from_duration(after), move |_, _, _| {
+            if let Some(this) = this.upgrade() {
+                // (Its source goes with this call: nothing to take away.)
+                this.frames.frame_after.set(None);
+                this.schedule_frame();
+            }
+            calloop::timer::TimeoutAction::Drop
+        });
+        self.frames.frame_after.set(timer.ok());
     }
 
     /// Olo: a resize by hand ended: once the size has rested, the
@@ -2257,6 +2300,10 @@ impl PlatformWindow for WaylandWindow {
 
     fn hold_wheel(&self) {
         self.0.frames.wheel_held.set(true);
+    }
+
+    fn frame_after(&self, after: std::time::Duration) {
+        self.0.frame_after(after);
     }
 
     fn gpu_specs(&self) -> Option<GpuSpecs> {

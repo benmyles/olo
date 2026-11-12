@@ -1536,7 +1536,9 @@ impl Editor {
         self.springing = springing;
         let stretched = (-f32::from(at.x), -f32::from(at.y));
         let drawn = ((stretched.0 * scale).round() / scale, (stretched.1 * scale).round() / scale);
-        self.scrolled = [drawn.0, drawn.1, (cw - vw).max(0.0), (ch - vh).max(0.0)];
+        // (Where it's scrolled to, as it is: the frames' marks have each
+        // scroller's place so, not as rounded for the pixels.)
+        self.scrolled = [stretched.0, stretched.1, (cw - vw).max(0.0), (ch - vh).max(0.0)];
         let origin = point(view.origin.x - px(drawn.0), view.origin.y - px(drawn.1));
         self.span = Some((f32::from(origin.x) + o.margin.0, inner.round()));
         // The sheets showing.
@@ -2507,6 +2509,7 @@ fn wheel<V: EditorHost>(host: &mut V, key: usize, e: &ScrollWheelEvent, cx: &mut
     let d = e.delta.pixel_delta(px(16.0));
     host.editor(key, cx, &mut |ed, _, cx| {
         let o = ed.shown.o;
+        let scale = cx.scale_factor();
         let (dx, dy) = (f32::from(d.x), f32::from(d.y));
         let sideways = !o.wrap || o.pages.is_some();
         // Fingers and a glide stretch past an end and spring back (their
@@ -2518,7 +2521,15 @@ fn wheel<V: EditorHost>(host: &mut V, key: usize, e: &ScrollWheelEvent, cx: &mut
             let stretched = ed.elastic.scroll(&mut to, by, e.kind, e.touch_phase);
             ed.scroll_by.0 += -f32::from(to.x) - at.0;
             ed.scroll_by.1 += -f32::from(to.y) - at.1;
-            if stretched || (-f32::from(to.x), -f32::from(to.y)) != at {
+            // Drawn again when it shows somewhere else: the text is drawn
+            // on whole device pixels, and a step that leaves it on the
+            // same ones (the end of a glide, a fraction of a pixel a
+            // frame) changes nothing to see. It's kept all the same (the
+            // steps add up), and the frames it would have drawn aren't:
+            // some twenty-five at the end of every flick.
+            let pixel = |v: f32| (v * scale).round();
+            let moved = pixel(-f32::from(to.x)) != pixel(at.0) || pixel(-f32::from(to.y)) != pixel(at.1);
+            if stretched || moved {
                 cx.invalidate();
             }
             return;
