@@ -3265,8 +3265,8 @@ against Fedora 45's x86_64 repository (2026-11-03). `tools/dev/x86-check` type-c
 from an aarch64 machine (x86 headers unpacked under ~/.cache; nothing
 installed).
 
-**A build kept to fall back to** (`tools/keep-build.sh NAME "Label" TREE
-RELEASE`; `--list`, `--remove NAME`). Before a change that touches
+**A build kept to fall back to** (`tools/keep-build.sh [--with-symbols]
+NAME "Label" TREE RELEASE`; `--list`, `--remove NAME`). Before a change that touches
 everything, the build from before it is kept as a login option of its
 own, so that if the new one has a problem the old one is a choice away
 on the login screen (Ben, 2026-11-11, of the kits: "make the
@@ -3274,10 +3274,14 @@ pre-refactor known good build available as a login option in the
 display manager so that if there are any problems i can go back to
 that"). It goes into `~/.local/olo-kept/NAME` (`bin/` and
 `share/olo/`, laid out as the current one is in `~/.local`), each
-program a clone where the file system can (btrfs: no space until the
-build it came from is deleted), with an entry of its own on the login
-screen (`olo-kept-NAME.desktop`, which needs root once; Olo's greeter,
-GDM and SDDM list it under its label). Its session finds its own
+program stripped as a release's are (the build from before the kits
+was 13 GB with its line tables and 2.1 without, wallpapers and all:
+it's there to be fallen back to, not debugged; `--with-symbols` keeps
+them, a clone of each program where the file system can), with an
+entry of its own on the login screen (`olo-kept-NAME.desktop`, which
+needs root once, and not again when a build is kept anew under the
+same name and label; Olo's greeter, GDM and SDDM list it under its
+label). Its session finds its own
 programs beside itself (`olo_xdg::find_program`, and they come first on
 the `PATH` of what it starts) and its own data first (`OLO_DATA`, set
 by its entry), and it has no `build-dir`, so it watches no tree and
@@ -3285,7 +3289,15 @@ never offers an upgrade: it stays as it was kept. It shares the
 person's settings and state with the current build, so it comes up as
 their desktop. Build the old tree in a worktree of its own with its
 own `CARGO_TARGET_DIR` under /var/tmp, never in the tree the session
-watches.
+watches; once it's kept, the worktree and its target can go. To see
+that a kept build runs without logging out, start its session
+headless from its own folder: a folder whose `release` is a link to
+its `bin/` as `CARGO_TARGET_DIR`, `OLO_DATA` as its entry sets it, and
+its own tree's `tsession start NAME --session --shell --home` a
+scratch home (the one from before the kits, 2026-11-12: its desktop,
+Deskbar and DeskCalc came up from `~/.local/olo-kept/before-kits`). To
+measure against it again, the same folder is the old build for
+`tools/dev/bench` run from a worktree of its commit.
 
 Install for the login screen with `tools/install-session.sh` (as
 yourself; it asks for sudo once). It builds release binaries into

@@ -3,7 +3,7 @@
 # (before a change that touches everything, so that if the new build
 # has a problem the old one is one choice away on the login screen).
 #
-#   tools/keep-build.sh NAME "Label" TREE RELEASE
+#   tools/keep-build.sh [--with-symbols] NAME "Label" TREE RELEASE
 #       NAME     a word for it ("before-kits"): its folder and its entry
 #       Label    as the login screen shows it
 #       TREE     the checkout it was built from (its data/: icons, fonts,
@@ -14,13 +14,17 @@
 #   tools/keep-build.sh --list
 #
 # It goes into ~/.local/olo-kept/NAME (bin/ and share/olo/, as
-# tools/install-session.sh lays the current one out in ~/.local), a
-# clone of each program where the file system can (btrfs: no space
-# until the build it came from is deleted), else a copy. Its session
+# tools/install-session.sh lays the current one out in ~/.local), each
+# program stripped as a release's are (a build with its line tables is
+# 13 GB, without them 1.5: it's there to be fallen back to, not
+# debugged); --with-symbols keeps them, as a clone of each program
+# where the file system can (btrfs: no space until the build it came
+# from is deleted), else a copy. Its session
 # finds its own programs beside itself and its own data first
 # (OLO_DATA), and it has no build-dir: it never watches a tree and
 # never offers an upgrade, so it stays as it was kept. The login
-# screen's entry (olo-kept-NAME.desktop) needs root, asked for once.
+# screen's entry (olo-kept-NAME.desktop) needs root, asked for once:
+# kept again with the entry as it is, nothing asks.
 #
 # What it shares with the current build: the person's settings and state
 # (~/.config/olo, ~/.local/state/olo), so it comes up as their desktop;
@@ -60,8 +64,12 @@ case "${1:-}" in
     echo "Removed the kept build \"$NAME\" and its login screen entry."
     exit 0
     ;;
+--with-symbols)
+    SYMBOLS=1
+    shift
+    ;;
 "" | -*)
-    sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'
     exit 1
     ;;
 esac
@@ -81,7 +89,9 @@ for b in "$RELEASE"/olo-*; do
     [ -x "$b" ] && [ -f "$b" ] || continue
     name=$(basename "$b")
     case "$name" in *.*) continue ;; esac
-    cp --reflink=auto "$b" "$P/bin/.$name.new"
+    if [ -n "${SYMBOLS:-}" ] || ! strip -o "$P/bin/.$name.new" "$b" 2> /dev/null; then
+        cp --reflink=auto "$b" "$P/bin/.$name.new"
+    fi
     chmod 755 "$P/bin/.$name.new"
     mv -f "$P/bin/.$name.new" "$P/bin/$name"
     n=$((n + 1))
@@ -116,7 +126,9 @@ To remove it and its entry:
 (or: rm -rf $P; sudo rm $SESSIONS/olo-kept-$NAME.desktop)
 EOF
 echo "Kept $n programs in $P ($(du -sh "$P" | cut -f1))."
-if as_root install -D -m 644 "$P/olo-kept.desktop" "$SESSIONS/olo-kept-$NAME.desktop"; then
+if cmp -s "$P/olo-kept.desktop" "$SESSIONS/olo-kept-$NAME.desktop"; then
+    echo "\"$LABEL\" is on the login screen's session menu already ($SESSIONS/olo-kept-$NAME.desktop)."
+elif as_root install -D -m 644 "$P/olo-kept.desktop" "$SESSIONS/olo-kept-$NAME.desktop"; then
     echo "\"$LABEL\" is on the login screen's session menu ($SESSIONS/olo-kept-$NAME.desktop)."
 else
     echo "The login screen's entry wasn't installed (it needs root). To finish:" >&2

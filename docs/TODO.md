@@ -539,11 +539,21 @@ something nobody here has is in "Blocked", with what it waits for.
      2026-11-11: "when you finish can you also make the pre-refactor
      known good build available as a login option in the display
      manager so that if there are any problems i can go back to that").
-     When the port is done: the last commit before the kits (find it:
-     the parent of the first `crates/interface` commit) built into a
-     prefix of its own, with its own session entry beside Olo's
-     (`tools/install-session.sh` shows what an entry needs), named so
-     it can't be taken for the current one; say how to remove it.
+     Done 2026-11-12: the last commit before the kits (`cc785d65`
+     of 2026-11-09) is "Olo Desktop (before the kits)" on the login
+     screen's session menu: 56 programs and their data in
+     `~/.local/olo-kept/before-kits` (2.1 GB, stripped), its entry
+     `/usr/share/wayland-sessions/olo-kept-before-kits.desktop` (one
+     sudo). It finds its own programs and data, shares the settings
+     and state of the current build, and never upgrades itself
+     (`tools/keep-build.sh`; HACKING, "A build kept to fall back
+     to"). Its session was started headless from that folder in a
+     test (the desktop, Deskbar and DeskCalc came up); *not tried:*
+     choosing it on the login screen and logging in, which is Ben's
+     to do. To remove it: `tools/keep-build.sh --remove before-kits`
+     (asks for sudo, for the entry). The worktree and target it was
+     built in (/var/tmp/olo-pre, 28 GB) are gone; to measure against
+     it again, its `bin/` serves as the old build.
   5. **Tools, HACKING and the Olo Book; GPUI and olo-ui gone** (Ben,
      2026-11-11: "you can also remove GPUI and olo-ui as soon as you're
      done we don't need to wait for the coder and browser branches":
