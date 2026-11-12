@@ -9463,8 +9463,8 @@ gauge menu use it; with a copy running, both are handed to it).
 Sending to an AirPlay receiver (Ben, 2026-11-12: a window, a
 workspace, an agent screen or a video file, "high quality video and
 audio"). docs/TODO.md has the plan and what a sender that isn't
-Apple's may and may not do. So far, the first part: **finding the
-receivers**.
+Apple's may and may not do. So far, the first two parts: **finding the
+receivers** and **pairing with one**.
 
 - `olo_airplay::receivers(wait)` asks the networks the computer is on
   who offers `_airplay._tcp`, by mDNS, itself (`dns`: a question
@@ -9480,14 +9480,54 @@ receivers**.
   mean here (`plays_video`, `shows_screens`, `plays_sound`,
   `asks_to_pair`).
 - `olo-airplay list [--json] [--wait SECONDS]` prints them, for people
-  and agents. It prints and ends: no window.
+  and agents, with "paired" beside the ones paired with and "pairs
+  first" beside the ones that ask. It prints and ends: no window.
+- **Pairing** (`pairing`) is AirPlay 2's, which is HomeKit's. Once,
+  with the code the receiver shows on its screen (`Setup::begin` asks
+  it to show one, `finish(code, name)` proves the code both ways by
+  SRP (`srp`: SRP-6a, the 3072-bit group, SHA-512) and swaps long-term
+  Ed25519 keys under it): that leaves `Credentials`, each side's key
+  for the other. Then at every connection `verify(credentials)` has
+  each prove it holds its key (X25519, a signature each way) and gives
+  a `Session`, whose `control()` is the `Cipher` the rest of that
+  connection is spoken through (ChaCha20-Poly1305 in frames of up to
+  1024 bytes) and whose `key(salt, info)` derives the others a play
+  needs. `Http` is the connection (`request`, `encipher`); `Post` is
+  what the pairing asks of one, so a test's receiver can stand behind
+  it without a socket. The messages are TLV8 (`tlv8`). What an error
+  is says what to tell the person (`Error`: the wrong code, asked to
+  wait, refused, *not the receiver that was paired with*, forgotten by
+  it, not reached).
+- **What's kept** (`kept`): `airplay/pairings.json` in Olo's state
+  folder, mode 0600 in a folder of mode 0700, written whole or not at
+  all: each receiver's id, its name when paired with and its
+  `Credentials` as one line (pyatv's form, so a pairing made with
+  either reads in the other). A receiver is one by its id, whatever
+  it's renamed to. A pairing's key lets its holder send to that
+  receiver and nothing else; it could move into Passwords.
+- `olo-airplay pair NAME [--code CODE] [--at HOST:PORT]` pairs (the
+  code is asked for on the terminal when not given), `check NAME`
+  proves a kept pairing at a new connection, `paired` lists them,
+  `unpair NAME` forgets one here (the receiver keeps its side until
+  the computer is removed there). NAME is a receiver's name or the
+  start of it, in any case; `--at` says where it is without asking
+  the network.
 
 **Tests answer their own questions**: a responder of the test's own on
 the loopback (`Via { to, from }` says where a question goes; `Via::lan`
-is mDNS's group from every network). No test asks the network it
-happens to be on, and nothing is ever sent to a real receiver by a
-test: pairing with one and playing to one are the person's to do, at
-the receiver.
+is mDNS's group from every network), and a receiver of the test's own
+to pair with (`pairing::fake::Receiver`, the other side of every
+message, with a code, a memory of who paired and a `reset`;
+`fake::serve` puts it on a loopback port, which `tests/cli.rs` runs
+the built `olo-airplay` against by `--at`, its pairings in a state
+folder of its own). No test asks the network it happens to be on, and
+nothing is ever sent to a real receiver by a test: pairing with one
+and playing to one are the person's to do, at the receiver. **So the
+pairing has not yet met a real receiver**: it follows HomeKit's
+published protocol and the paths and headers pyatv uses with Apple
+TVs, and the first `olo-airplay pair` at a real screen is its real
+test (a receiver that doesn't sign its key as HomeKit says is paired
+with all the same, and said: `Paired::signed`).
 
 ## The fans (apps/fans, `olo-fans`)
 

@@ -235,7 +235,7 @@ fn prune(dir: &Path, program: &str) {
             Some((at, e.path()))
         })
         .collect();
-    ours.sort_by(|a, b| b.0.cmp(&a.0));
+    ours.sort_by_key(|a| std::cmp::Reverse(a.0));
     for (_, path) in ours.into_iter().skip(KEPT) {
         let _ = std::fs::remove_file(path);
     }

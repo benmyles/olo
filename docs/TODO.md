@@ -555,9 +555,21 @@ something nobody here has is in "Blocked", with what it waits for.
        once" bit). So the first question below is answered in kind
        (Apple TVs and Macs, all wanting HomeKit's pairing), though
        not which one is his: a shared network, and only he pairs, at
-       the screen. *Next:* the pairing (pair-setup with the code the
-       receiver shows, pair-verify, the encrypted channel), kept in
-       Passwords; then a video file played by its address.
+       the screen.
+     - *Then the pairing, 2026-11-12* (HACKING, "AirPlay"):
+       pair-setup with the code the receiver shows, pair-verify at
+       each connection, the enciphered channel after it, and the
+       pairings kept in a file only the person reads
+       (`olo-airplay pair|check|paired|unpair`). **Never yet tried on
+       a real receiver**: tests pair with one of their own, and the
+       first real one is Ben's to do at its screen: `olo-airplay
+       list`, then `olo-airplay pair "ITS NAME"` and the code it
+       shows; `olo-airplay check "ITS NAME"` then says whether it
+       knows the computer. What it says if it fails is what's needed
+       to fix it. *Next:* a video file played by its address (the
+       event channel, `/play`, a server for the file for the length
+       of the play), then the Viewer's and Deskbar's "Send to", then
+       live screens as HLS. The keys could move into Passwords.
      - *Ben's to say:* (1) which receiver it's for (an Apple TV and
        its tvOS, a television with AirPlay built in, something else):
        it has to be tried against the real one, paired by him at the
