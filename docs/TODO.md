@@ -1042,29 +1042,6 @@ something nobody here has is in "Blocked", with what it waits for.
   (Costs measured since 2026-11-10 are under LAVD, not EEVDF: an app
   is compared with its other build in the same sitting.)
 
-- **What a restart undoes, Olo sets again by itself as the session
-  starts** (Ben, 2026-11-10, with a picture of Olo Doctor: "this comes
-  up after every reboot olo should just set ephemeral stuff like that
-  as needed on startup when logging into olo"). What it showed, after a
-  restart: "1 problem found. Yubico YubiKey OTP+FIDO+CCID may be put to
-  sleep: USB power management autosuspends it (power/control is “auto”
-  at USB port 3-1) … The fix keeps it on", with Ignore and Keep It
-  Awake; the other 24 things fine. Keep It Awake writes
-  `power/control`, which lasts until the next restart (or the next
-  plug), so the same finding comes back each time. *To do:* go through
-  every Doctor fix and say which last (a file installed, a unit
-  enabled) and which don't (a sysfs or procfs value, anything "until
-  the next restart": the Thunderbolt 5 ports' USB kept awake reads so
-  too). Each that doesn't last is set by Olo itself as someone logs in
-  to it, and again when what it's about comes (a device plugged in),
-  with nothing for a person to press: by a rule or a unit Olo installs
-  where one can do it (71-olo-input.rules keeps mice, keyboards and
-  receivers awake: a security key belongs in it, or in a rule of its
-  own), else by the session as it starts. Doctor then finds nothing to
-  say, and its fix for such a thing installs what makes it last, not
-  the value for today. Read the code that does each fix before
-  deciding which it is; nothing here was looked at beyond the picture.
-
 - **A display that left with its dock is still "plugged in"** (Ben,
   2026-11-10: "there are no externals just my builtin display now why
   does it think there's still an external"; then "manually fix it and
@@ -3666,6 +3643,31 @@ people.
 
 ## Done (most recently finished first)
 
+- **What Doctor fixes stays fixed through a restart** (Ben,
+  2026-11-10, with a picture of the YubiKey's finding back again:
+  "this comes up after every reboot olo should just set ephemeral
+  stuff like that as needed on startup"; done 2026-11-12). Every fix
+  was read: three wrote a value that a restart or a replugging undoes.
+  - *The security key put to sleep.* Olo's input rule was installed
+    and had set it; the smart-card readers' rule (92_pcscd_ccid.rules)
+    set it back when the key's driver bound, after its interfaces had
+    come, because the key is a smart card too. Olo's rule comes after
+    that one now (95-olo-input.rules, at every event of the device);
+    Doctor finds the old one out of date and replaces it.
+  - *The Thunderbolt 5 ports' USB controller*, kept awake "for now":
+    by a rule (75-olo-thunderbolt-usb.rules), with a way back in
+    Doctor (Let It Sleep).
+  - *A Thunderbolt device let in*: boltd is told to remember it, so
+    it's let in whenever it comes.
+  HACKING ("A fix lasts"). Checked by udev's own dry run on the P1
+  (which rule writes what at the key's events) and its verifier for
+  the two rule files, and Doctor's tests. *Ben's:* Doctor will show
+  "Olo's input rule is out of date" once (Install the Rule), and the
+  Thunderbolt 5 finding once more if he wants it kept awake; after
+  the next restart neither should be back. *Not tried:* the rules
+  on the real udev (they need root to install), and boltd's
+  remembering (no device was waiting).
+
 - **The NVIDIA GPU's video encoding shows in Activity Monitor and
   Deskbar's GPU widgets** (Ben, 2026-11-10: "when the nvidia chip is
   doing video encoding it doesn't properly show up in activity monitor
@@ -4089,7 +4091,7 @@ people.
   mouse's reports (Razer Viper V2 Pro, 2.4 GHz receiver on a hub,
   USB autosuspend on): 429 gaps over 5 ms a minute, the longest 39 ms,
   673 of 1000 reports a second (`PointerHealth`, Activity Monitor ▸
-  Displays ▸ Pointer). `71-olo-input.rules` keeps receivers awake;
+  Displays ▸ Pointer). `95-olo-input.rules` (then 71) keeps receivers awake;
   the radio is the person's to fix (the receiver nearer, its
   extender, a lower polling rate). **Next**: windows on overlay
   planes (OLO_OVERLAY_PLANES=1) once the pointer and such a plane

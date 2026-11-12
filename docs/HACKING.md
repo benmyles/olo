@@ -6946,9 +6946,9 @@ The pointer's reports themselves are watched (`Track::health`,
 Pointer card): reports a second, the device's interval (1 ms for a
 1 kHz mouse), gaps over 5 ms within a run of motion in the last minute
 and the longest. A gap is the mouse's, not a frame's: a receiver asleep
-(USB autosuspend; `data/udev/71-olo-input.rules`, installed by
-`tools/install-session.sh`, keeps every USB HID interface's device
-awake) or a 2.4 GHz link dropping packets (Ben's Razer receiver on a
+(USB autosuspend; `data/udev/95-olo-input.rules`, installed by
+`tools/install-session.sh`, keeps every USB device with a HID
+interface awake) or a 2.4 GHz link dropping packets (Ben's Razer receiver on a
 hub, 2026-11-01: frames of 67, 10, 50 px with reports 1 ms apart, and
 "stuck for a second" after a pause). No frame can make up for a report
 that never came.
@@ -9666,9 +9666,31 @@ profile: "The fans", above), `olo-doctor --scheduler [kernel|lavd]`
   nothing of another desktop either: "Nothing of GNOME's runs".
 - **USB input devices allowed to sleep** (an interface of class 03 with
   an input node under it, a receiver's paired devices a level down;
-  `power/control` not `on`), and **Olo's udev rules** (71-olo-input,
+  `power/control` not `on`), and **Olo's udev rules** (95-olo-input,
   70-olo-displays; the Doctor carries them with `include_str!`) missing or
   out of date: installed and applied to what is plugged in now.
+  The input rule is numbered to come *after* the smart-card readers'
+  (`92_pcscd_ccid.rules`), and applies at every event of the device,
+  not only as its interfaces come: that rule turns autosuspend on for
+  anything with a smart-card interface when the device's driver
+  binds, which the kernel says after the interfaces, so a YubiKey (a
+  keyboard, a FIDO device and a smart card) was back to `auto` at
+  every start and every plugging in, whatever Olo's rule (then
+  71-olo-input) had set, and Doctor's fix lasted a day (`udevadm test
+  --action=bind /sys/bus/usb/devices/PORT` shows which rule writes
+  what, changing nothing). Where it was is taken away as the new one
+  goes in.
+- **A fix lasts.** What Doctor fixes stays fixed through a restart and
+  a replugging, with nothing to press again (Ben, 2026-11-10, of a
+  finding back after every reboot: "olo should just set ephemeral
+  stuff like that as needed on startup"): a fix installs what makes
+  the thing so (a rule, a unit, a file, a daemon told to remember),
+  and writes today's value only beside that. `Step::WriteSysfs`
+  alone is for nothing; it says so. Every fix was gone through
+  (2026-11-12): three didn't last, the security key's (above), the
+  Thunderbolt 5 ports' USB (below) and a Thunderbolt device let in
+  (boltd is told to remember it, `Step::AllowThunderbolt`, where the
+  kernel's `authorized` was written for the once).
 - **rtkit** not running (the supervisor's priority tiers need it).
 - **Bluetooth not listening for the AirPods** (only with AirPods
   paired): BlueZ started without its experimental interfaces, where its
@@ -9679,10 +9701,12 @@ profile: "The fans", above), `olo-doctor --scheduler [kernel|lavd]`
   Intel's Barlow Ridge USB controller, 8086:5782, is present): Ben's
   YubiKey in such a port wasn't seen at all (2026-11-04; the kernel heard
   nothing) while USB 3 drives were and the key worked in another port.
-  It says to use another port meanwhile, and Keep It Awake for Now writes
-  `on` to the controller's and its root hubs' `power/control` until the
-  next restart, so plugging the device in again tells whether the
-  sleeping controller misses the plug; once awake, it's fine.
+  It says to use another port meanwhile, and Keep It Awake installs
+  `75-olo-thunderbolt-usb.rules` (the controller's and its root hubs'
+  `power/control` `on` at every start) and writes them now, so
+  plugging the device in again tells whether the sleeping controller
+  misses the plug; once awake, it's fine, and Let It Sleep (the way
+  back) takes the rule away.
 - **Voice processing's sound not realtime**: a voice service's PipeWire
   thread that rtkit refused (its processes-per-user limit reached).
   Fixed by an rtkit drop-in (`/etc/systemd/system/rtkit-daemon.service.d/olo.conf`:

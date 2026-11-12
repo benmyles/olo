@@ -1,0 +1,15 @@
+# Olo: a mouse, a keyboard, a wireless receiver or a security key (any USB
+# device with a HID interface) is never autosuspended. A receiver asleep
+# loses the first reports when the hand moves again, and the pointer sits
+# still for a moment (a Razer Viper receiver on a hub, 2026-11-01); the
+# power it saves is nothing.
+#
+# Last among the rules, and at every event of the device, not only as its
+# interfaces come: the smart-card readers' rule (92_pcscd_ccid.rules) turns
+# autosuspend on for anything with a smart-card interface whenever the
+# device's driver binds, which the kernel says after its interfaces have
+# come. A YubiKey (a keyboard, a FIDO device and a smart card in one) was
+# put to sleep again at every start and every plugging in while this rule
+# came before that one (it was 71-olo-input.rules).
+ACTION!="remove", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ENV{ID_USB_INTERFACES}=="*:03*", TEST=="power/control", ATTR{power/control}="on"
+ACTION=="add|change", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_interface", ATTR{bInterfaceClass}=="03", ATTR{../power/control}="on"

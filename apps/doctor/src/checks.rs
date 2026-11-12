@@ -23,7 +23,9 @@ use crate::fix::{Step, UnitAction, UnitState};
 /// Olo's udev rules, as the repository has them (installed by
 /// tools/install-session.sh; here so the Doctor can install or refresh
 /// them without the repository).
-pub const INPUT_RULE: &str = include_str!("../../../data/udev/71-olo-input.rules");
+pub const INPUT_RULE: &str = include_str!("../../../data/udev/95-olo-input.rules");
+/// The Thunderbolt 5 ports' USB controller kept awake (`thunderbolt_usb2`).
+pub const THUNDERBOLT_USB_RULE: &str = include_str!("../../../data/udev/75-olo-thunderbolt-usb.rules");
 pub const DISPLAY_RULE: &str = include_str!("../../../data/udev/70-olo-displays.rules");
 pub const IDLE_GPU_RULE: &str = include_str!("../../../data/udev/72-olo-idle-gpu.rules");
 /// The login screen's entry (its Exec made absolute on install).
@@ -39,7 +41,12 @@ const BRCMFMAC_CONF_PATH: &str = "etc/NetworkManager/conf.d/80-olo-brcmfmac.conf
 /// Wi-Fi drivers whose firmware the healer resets.
 const HEALED_DRIVERS: &[&str] = &["brcmfmac"];
 
-const INPUT_RULE_PATH: &str = "etc/udev/rules.d/71-olo-input.rules";
+const INPUT_RULE_PATH: &str = "etc/udev/rules.d/95-olo-input.rules";
+/// Where it was until 2026-11-12: before the smart-card readers' rule,
+/// which undid it for a security key at every start (taken away as the
+/// rule is installed in its new place).
+const INPUT_RULE_OLD_PATH: &str = "etc/udev/rules.d/71-olo-input.rules";
+const THUNDERBOLT_USB_RULE_PATH: &str = "etc/udev/rules.d/75-olo-thunderbolt-usb.rules";
 const DISPLAY_RULE_PATH: &str = "etc/udev/rules.d/70-olo-displays.rules";
 const IDLE_GPU_RULE_PATH: &str = "etc/udev/rules.d/72-olo-idle-gpu.rules";
 /// A FIDO security key's node for the person at the seat (`security_keys`).
@@ -587,7 +594,7 @@ pub fn scan(roots: &Roots) -> Report {
     intel_video(roots, &gpus, &mut r);
     builtin_sound(roots, &gpus, &mut r);
     thunderbolt(roots, &mut r);
-    thunderbolt_usb2(&gpus, &mut r);
+    thunderbolt_usb2(roots, &gpus, &mut r);
     login_keyring(roots, &mut r);
     secrets_store(roots, &procs, &mut r);
     presence_rule(roots, &mut r);
@@ -989,11 +996,12 @@ fn gnome_services(roots: &Roots, procs: &[Proc], r: &mut Report) {
 fn input_rule(roots: &Roots, r: &mut Report) -> bool {
     let path = roots.fs.join(INPUT_RULE_PATH);
     let installed = std::fs::read_to_string(&path).ok();
-    if installed.as_deref() == Some(INPUT_RULE) {
-        r.fine.push(Fine { title: "Olo's input rule is installed".into(), detail: "USB mice, keyboards and receivers are never put to sleep (71-olo-input.rules).".into() });
+    let old = roots.fs.join(INPUT_RULE_OLD_PATH).exists();
+    if installed.as_deref() == Some(INPUT_RULE) && !old {
+        r.fine.push(Fine { title: "Olo's input rule is installed".into(), detail: "USB mice, keyboards, receivers and security keys are never put to sleep (95-olo-input.rules).".into() });
         return true;
     }
-    let mut steps = vec![Step::WriteFile { path: PathBuf::from("/").join(INPUT_RULE_PATH), content: INPUT_RULE.into(), mode: 0o644 }];
+    let mut steps = input_rule_steps(roots);
     // Applied to what is plugged in now (udev reads the rule itself for
     // what comes later).
     for d in usb_inputs(&roots.fs) {
@@ -1001,15 +1009,25 @@ fn input_rule(roots: &Roots, r: &mut Report) -> bool {
             steps.push(Step::WriteSysfs { path: PathBuf::from("/sys/bus/usb/devices").join(&d.port).join("power/control"), value: "on".into() });
         }
     }
-    let (title, verb) = if installed.is_some() { ("Olo's input rule is out of date", "updates") } else { ("Olo's input rule isn't installed", "installs") };
+    let (title, verb) = if installed.is_some() || old { ("Olo's input rule is out of date", "updates") } else { ("Olo's input rule isn't installed", "installs") };
     r.findings.push(Finding {
         id: "rule:input".into(),
         severity: Severity::Problem,
         title: title.into(),
-        detail: format!("Without it, a USB mouse, keyboard or wireless receiver may be put to sleep after a pause and lose the first reports when the hand moves again (the pointer sits still for a moment). The fix {verb} /etc/udev/rules.d/71-olo-input.rules and applies it to what is plugged in now."),
+        detail: format!("Without it, a USB mouse, keyboard or wireless receiver may be put to sleep after a pause and lose the first reports when the hand moves again (the pointer sits still for a moment). A security key that is a smart card too is put to sleep by the smart-card readers' own rule unless Olo's comes after it. The fix {verb} /etc/udev/rules.d/95-olo-input.rules and applies it to what is plugged in now."),
         fix: Some(Fix { label: "Install the Rule".into(), root: true, steps }),
     });
     false
+}
+
+/// The steps that put Olo's input rule in place: the file, and its old
+/// one taken away where it's still there.
+fn input_rule_steps(roots: &Roots) -> Vec<Step> {
+    let mut steps = vec![Step::WriteFile { path: PathBuf::from("/").join(INPUT_RULE_PATH), content: INPUT_RULE.into(), mode: 0o644 }];
+    if roots.fs.join(INPUT_RULE_OLD_PATH).exists() {
+        steps.push(Step::RemoveFile { path: PathBuf::from("/").join(INPUT_RULE_OLD_PATH) });
+    }
+    steps
 }
 
 fn autosuspend(roots: &Roots, rule_current: bool, r: &mut Report) {
@@ -1025,10 +1043,9 @@ fn autosuspend(roots: &Roots, rule_current: bool, r: &mut Report) {
         return;
     }
     for d in asleep {
-        let mut steps = Vec::new();
-        if !rule_current {
-            steps.push(Step::WriteFile { path: PathBuf::from("/").join(INPUT_RULE_PATH), content: INPUT_RULE.into(), mode: 0o644 });
-        }
+        // (The rule is what keeps it so from its next plugging in and
+        // the computer's next start; the value is for now.)
+        let mut steps = if rule_current { Vec::new() } else { input_rule_steps(roots) };
         steps.push(Step::WriteSysfs { path: PathBuf::from("/sys/bus/usb/devices").join(&d.port).join("power/control"), value: "on".into() });
         let _ = &d.dir;
         r.findings.push(Finding {
@@ -2122,12 +2139,15 @@ fn thunderbolt(roots: &Roots, r: &mut Report) {
         return;
     }
     let names: Vec<String> = waiting.iter().map(|(_, w)| w.clone()).collect();
-    let steps = waiting.iter().map(|(n, _)| Step::WriteSysfs { path: PathBuf::from("/sys/bus/thunderbolt/devices").join(n).join("authorized"), value: "1".into() }).collect();
+    // (Remembered, so it's let in whenever it comes: allowed by the
+    // kernel's `authorized` alone it waited again at its next plugging
+    // in and at every start.)
+    let steps = waiting.iter().map(|(n, _)| Step::AllowThunderbolt { device: n.clone(), uid: read(&dir.join(n).join("unique_id")).map(|u| u.trim().to_owned()).unwrap_or_default() }).collect();
     r.findings.push(Finding {
         id: format!("thunderbolt:{}", waiting.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>().join(",")),
         severity: Severity::Problem,
         title: format!("{} is plugged in but not allowed", names.join(", ")),
-        detail: "This computer's Thunderbolt lets a device in only once it's allowed, and it hasn't been: until then a dock, a display or a drive on it does nothing. Allow it if you know it.".into(),
+        detail: "This computer's Thunderbolt lets a device in only once it's allowed, and it hasn't been: until then a dock, a display or a drive on it does nothing. Allow it if you know it: it's remembered, and let in whenever it's plugged in from then on.".into(),
         fix: Some(Fix { label: "Allow It".into(), root: true, steps }),
     });
 }
@@ -2137,9 +2157,12 @@ fn thunderbolt(roots: &Roots, r: &mut Report) {
 /// port (Ben's YubiKey, 2026-11-04) wasn't seen at all, the kernel hearing
 /// nothing, while USB 3 drives were and the key worked at once in another
 /// port: so said, with what to do meanwhile. Whether the controller,
-/// asleep, misses a USB 2 plug is still to find; the fix keeps it awake
-/// until the next restart, so plugging the device in again tells.
-fn thunderbolt_usb2(pcis: &[Pci], r: &mut Report) {
+/// asleep, misses a USB 2 plug is still to find; the fix keeps it awake,
+/// by a rule so it's awake at every start (it was a value written for
+/// the day, and the finding came back with each restart: Ben,
+/// 2026-11-10, "olo should just set ephemeral stuff like that"), and
+/// the way back takes the rule away.
+fn thunderbolt_usb2(roots: &Roots, pcis: &[Pci], r: &mut Report) {
     let Some(xhci) = pcis.iter().find(|p| p.vendor == 0x8086 && read(&p.dir.join("device")).is_some_and(|d| d.trim().trim_start_matches("0x").eq_ignore_ascii_case("5782"))) else { return };
     // Its root hubs (usbN), kept awake with it.
     let mut hubs: Vec<String> = std::fs::read_dir(&xhci.dir)
@@ -2150,21 +2173,34 @@ fn thunderbolt_usb2(pcis: &[Pci], r: &mut Report) {
         .collect();
     hubs.sort();
     let sys = PathBuf::from("/sys/bus/pci/devices").join(&xhci.address);
-    if xhci.power_control.as_deref() == Some("on") {
+    let rule = std::fs::read_to_string(roots.fs.join(THUNDERBOLT_USB_RULE_PATH)).ok().as_deref() == Some(THUNDERBOLT_USB_RULE);
+    let power = |value: &str| -> Vec<Step> {
+        std::iter::once(sys.join("power/control")).chain(hubs.iter().map(|h| sys.join(h).join("power/control"))).map(|path| Step::WriteSysfs { path, value: value.into() }).collect()
+    };
+    if rule && xhci.power_control.as_deref() == Some("on") {
+        let title = "The Thunderbolt 5 ports' USB is kept awake";
         r.fine.push(Fine {
-            title: "The Thunderbolt 5 ports' USB is kept awake".into(),
-            detail: "Plug a USB 2 device (a security key, a keyboard) into a Thunderbolt 5 port: if it's seen now, its controller was missing the plug while asleep. Until the next restart.".into(),
+            title: title.into(),
+            detail: "At every start (75-olo-thunderbolt-usb.rules). Plug a USB 2 device (a security key, a keyboard) into a Thunderbolt 5 port: if it's seen now, its controller was missing the plug while asleep.".into(),
         });
+        // The way back: the rule away, and asleep when idle again.
+        let mut steps = vec![Step::RemoveFile { path: PathBuf::from("/").join(THUNDERBOLT_USB_RULE_PATH) }];
+        steps.extend(power("auto"));
+        r.undo.push(Undo { id: format!("usb2:thunderbolt5:{}:undo", xhci.address), title: title.into(), fix: Fix { label: "Let It Sleep".into(), root: true, steps } });
         return;
     }
-    let mut steps = vec![Step::WriteSysfs { path: sys.join("power/control"), value: "on".into() }];
-    steps.extend(hubs.iter().map(|h| Step::WriteSysfs { path: sys.join(h).join("power/control"), value: "on".into() }));
+    // The rule, for every start from now; and awake now.
+    let mut steps = Vec::new();
+    if !rule {
+        steps.push(Step::WriteFile { path: PathBuf::from("/").join(THUNDERBOLT_USB_RULE_PATH), content: THUNDERBOLT_USB_RULE.into(), mode: 0o644 });
+    }
+    steps.extend(power("on"));
     r.findings.push(Finding {
         id: format!("usb2:thunderbolt5:{}", xhci.address),
         severity: Severity::Advice,
         title: "A USB 2 device in a Thunderbolt 5 port may go unseen".into(),
-        detail: "This computer's Thunderbolt 5 ports have a USB controller of their own, and a USB 2 device in one (a security key, a keyboard, a mouse's receiver) wasn't seen at all here, though USB 3 drives were and the same key worked at once in another port. Meanwhile, plug such devices into another USB-C port. To find out whether the controller misses the plug while it sleeps, the fix keeps it awake until the next restart (a little power): then plug the device in again.".into(),
-        fix: Some(Fix { label: "Keep It Awake for Now".into(), root: true, steps }),
+        detail: "This computer's Thunderbolt 5 ports have a USB controller of their own, and a USB 2 device in one (a security key, a keyboard, a mouse's receiver) wasn't seen at all here, though USB 3 drives were and the same key worked at once in another port. Meanwhile, plug such devices into another USB-C port. To find out whether the controller misses the plug while it sleeps, the fix keeps it awake, now and at every start (a little power; Olo Doctor can let it sleep again): then plug the device in again.".into(),
+        fix: Some(Fix { label: "Keep It Awake".into(), root: true, steps }),
     });
 }
 
@@ -2863,11 +2899,26 @@ mod tests {
                 other => format!("{other:?}"),
             })
             .collect();
-        assert_eq!(paths, ["/sys/bus/pci/devices/0000:a9:00.0/power/control=on", "/sys/bus/pci/devices/0000:a9:00.0/usb5/power/control=on", "/sys/bus/pci/devices/0000:a9:00.0/usb6/power/control=on"]);
+        // The rule that keeps it so at every start, and the value now.
+        assert!(paths[0].contains("75-olo-thunderbolt-usb.rules"), "{paths:?}");
+        assert_eq!(
+            paths[1..],
+            ["/sys/bus/pci/devices/0000:a9:00.0/power/control=on", "/sys/bus/pci/devices/0000:a9:00.0/usb5/power/control=on", "/sys/bus/pci/devices/0000:a9:00.0/usb6/power/control=on"]
+        );
+        // Awake for the day, by the value alone (as the fix once left
+        // it): still said, for the rule.
         w(&format!("{dev}/power/control"), "on");
+        let r = scan(&roots);
+        let f = r.find("usb2:thunderbolt5:0000:a9:00.0").expect("awake only until the next start");
+        assert!(matches!(&f.fix.as_ref().unwrap().steps[0], Step::WriteFile { content, .. } if content == THUNDERBOLT_USB_RULE));
+        // With the rule: as it should be, and a way back.
+        w("etc/udev/rules.d/75-olo-thunderbolt-usb.rules", THUNDERBOLT_USB_RULE);
         let r = scan(&roots);
         assert!(r.find("usb2:thunderbolt5:0000:a9:00.0").is_none());
         assert!(r.fine.iter().any(|f| f.title == "The Thunderbolt 5 ports' USB is kept awake"));
+        let back = r.undo.iter().find(|u| u.id == "usb2:thunderbolt5:0000:a9:00.0:undo").expect("a way back");
+        assert!(matches!(&back.fix.steps[0], Step::RemoveFile { path } if path == Path::new("/etc/udev/rules.d/75-olo-thunderbolt-usb.rules")));
+        assert!(matches!(&back.fix.steps[1], Step::WriteSysfs { value, .. } if value == "auto"));
     }
 
     /// What's ignored is out of the counts and Fix All, still found and
@@ -2992,6 +3043,43 @@ mod tests {
         assert_eq!((f.severity, f.title.as_str(), f.fix.as_ref().unwrap().label.as_str()), (Severity::Advice, "Olo's fan service runs an older version", "Update the Fan Service"));
     }
 
+    /// Olo's input rule has the last word on a USB input device's
+    /// power: after the smart-card readers' rule, which turns
+    /// autosuspend on for a security key as its driver binds. Where it
+    /// was is out of date, and taken away as the new one is installed.
+    #[test]
+    fn the_input_rule_comes_after_the_smart_card_rule() {
+        // (udev reads rule files by name, whatever folder each is in.)
+        assert!("95-olo-input.rules" > "92_pcscd_ccid.rules");
+        assert!(INPUT_RULE_PATH.ends_with("/95-olo-input.rules"));
+        // The device itself, at each of its events (its driver's
+        // binding, which follows its interfaces, among them).
+        assert!(INPUT_RULE.lines().any(|l| l.starts_with("ACTION!=\"remove\"") && l.contains("usb_device") && l.contains("ID_USB_INTERFACES") && l.contains("ATTR{power/control}=\"on\"")));
+        let (fs, roots) = machine("input-rule");
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        // As an Olo from before installed it.
+        let _ = std::fs::remove_file(fs.join(INPUT_RULE_PATH));
+        w(INPUT_RULE_OLD_PATH, "ACTION==\"add|change\", SUBSYSTEM==\"usb\", ENV{DEVTYPE}==\"usb_interface\", ATTR{bInterfaceClass}==\"03\", ATTR{../power/control}=\"on\"\n");
+        let r = scan(&roots);
+        let f = r.find("rule:input").expect("out of date");
+        assert_eq!(f.title, "Olo's input rule is out of date");
+        let steps = &f.fix.as_ref().unwrap().steps;
+        assert!(matches!(&steps[0], Step::WriteFile { path, content, .. } if path == Path::new("/etc/udev/rules.d/95-olo-input.rules") && content == INPUT_RULE));
+        assert_eq!(steps[1], Step::RemoveFile { path: "/etc/udev/rules.d/71-olo-input.rules".into() });
+        // Both there (the new one written, the old not yet gone): still
+        // to do.
+        w(INPUT_RULE_PATH, INPUT_RULE);
+        assert!(scan(&roots).find("rule:input").is_some());
+        std::fs::remove_file(fs.join(INPUT_RULE_OLD_PATH)).unwrap();
+        let r = scan(&roots);
+        assert!(r.find("rule:input").is_none());
+        assert!(r.fine.iter().any(|f| f.title == "Olo's input rule is installed"));
+    }
+
     #[test]
     fn a_login_screen_handed_over_is_said() {
         let (fs, roots) = machine("handed");
@@ -3089,7 +3177,7 @@ mod tests {
         let mouse = r.find("autosuspend:3-1.3").unwrap();
         assert_eq!(mouse.title, "Logitech G309 (Logitech USB Receiver) may be put to sleep");
         let steps = &mouse.fix.as_ref().unwrap().steps;
-        assert!(matches!(&steps[0], Step::WriteFile { path, content, .. } if path == Path::new("/etc/udev/rules.d/71-olo-input.rules") && content == INPUT_RULE));
+        assert!(matches!(&steps[0], Step::WriteFile { path, content, .. } if path == Path::new("/etc/udev/rules.d/95-olo-input.rules") && content == INPUT_RULE));
         assert_eq!(steps[1], Step::WriteSysfs { path: "/sys/bus/usb/devices/3-1.3/power/control".into(), value: "on".into() });
         // The display is a HID device without input nodes: not a finding
         // of its own, but the display rule applies to it.
@@ -3336,6 +3424,7 @@ mod tests {
         w(&format!("{tb}/domain0/security"), "user\n");
         w(&format!("{tb}/0-0/authorized"), "1\n");
         w(&format!("{tb}/0-1/authorized"), "0\n");
+        w(&format!("{tb}/0-1/unique_id"), "c4010000-0080-7e18-23c0-5a0c2c111122\n");
         w(&format!("{tb}/0-1/vendor_name"), "Lenovo\n");
         w(&format!("{tb}/0-1/device_name"), "ThinkPad Thunderbolt 4 Dock\n");
         let mut r = Report::default();
@@ -3344,7 +3433,8 @@ mod tests {
         assert_eq!(f.title, "Lenovo ThinkPad Thunderbolt 4 Dock is plugged in but not allowed");
         let fix = f.fix.as_ref().unwrap();
         assert!(fix.root);
-        assert_eq!(fix.steps, vec![Step::WriteSysfs { path: "/sys/bus/thunderbolt/devices/0-1/authorized".into(), value: "1".into() }]);
+        // (Remembered by boltd, by its unique id: let in from now on.)
+        assert_eq!(fix.steps, vec![Step::AllowThunderbolt { device: "0-1".into(), uid: "c4010000-0080-7e18-23c0-5a0c2c111122".into() }]);
         // Allowed: fine.
         w(&format!("{tb}/0-1/authorized"), "1\n");
         let mut r = Report::default();

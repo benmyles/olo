@@ -1,5 +1,0 @@
-# Olo: a mouse, keyboard or wireless receiver (any USB HID interface) is
-# never autosuspended. A receiver asleep loses the first reports when the
-# hand moves again, and the pointer sits still for a moment (a Razer
-# Viper receiver on a hub, 2026-11-01); the power it saves is nothing.
-ACTION=="add|change", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_interface", ATTR{bInterfaceClass}=="03", ATTR{../power/control}="on"
