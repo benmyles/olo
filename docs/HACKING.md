@@ -308,6 +308,46 @@ message):
   ("body of olo_styled_edit::DocView: 8.297 ms, and 0.121 putting it
   in the tree"): which view is the slow one, when "bodies" is most of
   a flush.
+* **Whose time it is: perf, and `tools/dev/memhist`.** `perf` works
+  here for a program it starts itself, in user space, with no call
+  graphs: `tsession run NAME perf record -e cycles:u -F 5000 -D 7000
+  -o FILE -- /whole/path/to/target/release/olo-app` (`-D`: not the
+  launch's seven seconds), drive the app, `kill -INT` that perf, then
+  `perf report -i FILE --no-children --sort symbol --stdio`. What's
+  refused to an unprivileged user: a process already running (`-p`),
+  the kernel's side (`cycles` without `:u`), and every kind of call
+  graph (fp, dwarf, lbr). `perf stat -I 200 -x, -e
+  instructions:u,cycles:u` the same way counts what a stretch of work
+  cost: sum the intervals of that stretch. Counts barely depend on
+  what else the machine is doing, where times do; two builds are
+  compared by running each three times, in turn, and taking the
+  middle. (Instructions don't see copying: a copy of 3 KB is a few
+  instructions and hundreds of cycles.) perf ending a program doesn't
+  end what it started: end that too, or the app's next start hands
+  over to it and leaves.
+  When the profile says a fifth of a frame is libc's `memmove` and
+  `malloc` and can't say whose, `tools/dev/memhist` can: it runs the
+  app with a small probe (`memhist.c`, built into /var/tmp) that
+  counts every copy and every allocation against the function that
+  asked, exactly, and names the biggest (`memhist run NAME app`,
+  `count PID` before and after the work, `report PID --per STEPS`).
+  What it found the first time it was used (2026-11-12, lists resized
+  live), all in the kits and none of it visible in a frame's phases:
+  a shaped line was 3 KB, for the 32 decoration runs GPUI kept room
+  for in it, and every label painted copied that twice (now one run
+  in the line, the rest on the heap: `DecorationRuns`); every `font()`
+  allocated its empty list of features (one shared now); every line
+  shaped allocated and copied its text to look in the layout cache
+  for a layout that was there (`Lent`: looked up by `&str`); a
+  paragraph's lines were each allocated twice on their way to a
+  shared string; a paragraph of three rows grew its list of breaks
+  twice (`WrapBoundaries`: three kept in the layout); and a view
+  drawn again grew its drawing's lists from nothing, four, eight,
+  sixteen, each a copy (`Scene::reserve_like`: made the size the last
+  drawing's were). Together: a third of the copying and a quarter of
+  the allocations of a Logs resize, 15 to 21% of the cycles of
+  Notifications'. Apps had the same kind (Logs lowercased every word
+  of every row, a new string each, to look it up in a short list).
 * GPU time: a kit app run with `OLO_GPU_TIMINGS=1` prints each frame's
   passes as the GPU timed them, its quads (in screens filled: more than
   one is overdraw) and its sprites. A frame shows on time only if its

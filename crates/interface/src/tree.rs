@@ -702,6 +702,9 @@ impl WindowCore {
         let mut kept = node.state.take();
         // Behind what it holds: its ground, and what it is.
         let mut scene = recycled.pop().unwrap_or_else(crate::Scene::recording);
+        if let Some(last) = &node.behind {
+            scene.reserve_like(&last.scene);
+        }
         {
             let mut p = Painter::new(gfx, &mut scene, &mut notes, &mut kept, visible, opacity, text_styles.clone());
             p.shift = shift;
@@ -722,9 +725,12 @@ impl WindowCore {
         }
         node.behind = keep(scene, recycled);
         // Over it: its border.
-        node.over = None;
+        let last_over = node.over.take();
         if node.style.paints_over() {
             let mut scene = recycled.pop().unwrap_or_else(crate::Scene::recording);
+            if let Some(last) = &last_over {
+                scene.reserve_like(&last.scene);
+            }
             {
                 let mut p = Painter::new(gfx, &mut scene, &mut notes, &mut kept, visible, opacity, text_styles);
                 p.shift = shift;

@@ -552,7 +552,9 @@ impl WindowTextSystem {
     pub fn shape_line(&self, text: SharedString, font_size: Pixels, runs: &[TextRun], force_width: Option<Pixels>) -> ShapedLine {
         debug_assert!(text.find('\n').is_none(), "text argument should not contain newlines");
 
-        let mut decoration_runs = SmallVec::<[DecorationRun; 32]>::new();
+        // (Room for them all at once: a coloured line's list isn't grown
+        // run by run.)
+        let mut decoration_runs = line::DecorationRuns::with_capacity(runs.len());
         for run in runs {
             if let Some(last_run) = decoration_runs.last_mut()
                 && last_run.color == run.color
@@ -566,7 +568,7 @@ impl WindowTextSystem {
             decoration_runs.push(DecorationRun { len: run.len as u32, color: run.color, background_color: run.background_color, underline: run.underline, strikethrough: run.strikethrough });
         }
 
-        let layout = self.layout_line(&text, font_size, runs, force_width);
+        let layout = self.layout_line_as(&text, font_size, runs, force_width);
 
         ShapedLine { layout, text, decoration_runs }
     }
@@ -587,7 +589,7 @@ impl WindowTextSystem {
             font_runs.clear();
             let line_end = line_start + line_text.len();
 
-            let mut decoration_runs = SmallVec::<[DecorationRun; 32]>::new();
+            let mut decoration_runs = line::DecorationRuns::new();
             let mut run_start = line_start;
             while run_start < line_end {
                 let Some(run) = runs.peek_mut() else {
@@ -657,10 +659,12 @@ impl WindowTextSystem {
             && let Some(second_line) = split_lines.next()
         {
             processed = true;
-            process_line(first_line.to_string().into());
-            process_line(second_line.to_string().into());
+            // (Each line's text copied once, into what's shared: through
+            // a String it was allocated twice.)
+            process_line(SharedString::new(first_line));
+            process_line(SharedString::new(second_line));
             for line_text in split_lines {
-                process_line(line_text.to_string().into());
+                process_line(SharedString::new(line_text));
             }
         }
 
@@ -682,6 +686,19 @@ impl WindowTextSystem {
     /// Generally, you should prefer to use [`Self::shape_line`] instead, which
     /// can be painted directly.
     pub fn layout_line(&self, text: &str, font_size: Pixels, runs: &[TextRun], force_width: Option<Pixels>) -> Arc<LineLayout> {
+        self.layout_line_as(line_layout::Lent(text), font_size, runs, force_width)
+    }
+
+    /// [`Self::layout_line`] for text as it's held: looked up by what it
+    /// says, and made shared only when its layout is new and kept (a
+    /// `&SharedString` is cloned then, a `&str` copied: through a
+    /// `SharedString` made for every call, as it was, each line shaped
+    /// allocated and copied its text to find a layout that was there).
+    fn layout_line_as<Text>(&self, text: Text, font_size: Pixels, runs: &[TextRun], force_width: Option<Pixels>) -> Arc<LineLayout>
+    where
+        Text: AsRef<str>,
+        SharedString: From<Text>,
+    {
         let mut last_run = None::<&TextRun>;
         let mut font_runs = self.font_runs_pool.lock().pop().unwrap_or_default();
         font_runs.clear();
@@ -715,7 +732,7 @@ impl WindowTextSystem {
             }
         }
 
-        let layout = self.line_layout_cache.layout_line(&SharedString::new(text), font_size, &font_runs, force_width);
+        let layout = self.line_layout_cache.layout_line(text, font_size, &font_runs, force_width);
 
         self.font_runs_pool.lock().push(font_runs);
 

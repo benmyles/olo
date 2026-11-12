@@ -839,6 +839,14 @@ other side.
   frames are paced is checked against every way a frame comes about
   (fingers, a glide, the wheel, typing, a resize), before anything
   else is built on it.
+- **A structure handed about by value that was 3 KB**: a shaped line
+  had room in it for 32 decoration runs, and every label painted
+  copied it twice. Nothing in a frame's phases said so; `perf` said
+  "libc", and `tools/dev/memhist` said whose. Before keeping a list
+  inside a structure (`SmallVec<[T; N]>`), multiply: N times the
+  size of T is moved every time the structure is. And an allocation
+  in something called for every label (a font's empty feature list,
+  a string copied to make a key for a lookup) is thousands a frame.
 - **A frame's cost over-counted**, because marks said when a frame's
   cause began, not when it was drawn. (Fixed in the kit.) The lesson:
   when a number looks too good or too bad, read how it's made before

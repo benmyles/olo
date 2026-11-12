@@ -646,9 +646,53 @@ something nobody here has is in "Blocked", with what it waits for.
        changed, nothing shaped or rasterized), the display thread
        0.41 (putting the recordings in the frame 0.19, drawing 0.19),
        and some 0.4 ms a frame that neither counts (2.2 ms a frame
-       by the process's own time). Recordings' buffers are reused
-       already (`tree.rs`: `recycled`). No one part is the
-       difference; the row recordings are the largest.
+       by the process's own time).
+       *Followed further, 2026-11-12* (perf, which does work for a
+       program it starts itself, and `tools/dev/memhist`: HACKING,
+       "Whose time it is"): a quarter of a resize frame was libc's,
+       copying and allocating, and most of that was the kits' own
+       waste, now gone (a 3 KB shaped line copied twice a label, an
+       allocation a `font()`, a line's text copied for every cache
+       lookup, a drawing's lists grown from nothing at every
+       repaint). Before and after in turn, three runs each, by cycles
+       a resize step, the middle run [the least]: Notifications'
+       history 17.1 [16.4] → 14.5 [12.9] million, Tracker on 3,000
+       files 5.0 [4.3] → 4.2 [4.2], StyledEdit on 100,000 lines of
+       code 10.3 [9.2] → 9.4 [9.4]; the same to the pixel in 36
+       shots. Logs' resize copies 2.7 MB a step where it copied 4.0,
+       and allocates 3,900 times where it did 5,400.
+       *Left, found the same way:*
+       - Notifications' cards are laid out anew for every width with
+         everything made again: 9,200 allocations a step (ten
+         strings copied a card, six made shared, its spans cloned)
+         and 3.6 MB copied, a megabyte of it `CardLaid` (400 to 800
+         bytes) moved by value eleven times a card
+         (`history.rs`: `card`, `lay_out`). To do: a card's face made
+         once an entry and kept, shared strings in `look::Face`,
+         `CardLaid` behind an `Rc`.
+       - Tracker allocates 3,000 times a step, 600 of them strings
+         grown as cells are formatted at every paint (sizes, dates):
+         kept with the entry they're of.
+       - Logs makes a shared string of a `String` for 490 cells a
+         step.
+       - An element is 800 bytes (its style, 632 of them) and is
+         moved six or seven times on its way into the tree: 0.6 MB a
+         step in Logs. A boxed style would trade those for an
+         allocation an element: about even, not done.
+       - taffy makes a list a block container a layout (260 a step
+         in Logs): the vendored taffy's, left.
+       - **The editor walks every paragraph of the document when the
+         width it wraps to changes** (`set_look`, in `prepare`,
+         estimates each one's height again and `ensure_tops` adds
+         them up: those two functions are 43% of the cycles of a
+         resize on 100,000 lines of code, which wraps by default),
+         and `ensure_tops` again whenever one paragraph's height
+         changes (typing). Both builds alike. To do: heights in a tree that sums
+         (a change costs log n), estimates made lazily.
+       (app_server sending each size of a live resize twice wasn't
+       seen again: 38 configures for 36 steps, DeskCalc, 2026-11-12.
+       The app commits twice a step, once to acknowledge the size
+       and once with its picture.)
      - What's first shown as a program starts, by the processor
        time of launching and loading (not by how soon the window
        comes, which is as soon or sooner on the kits: Tracker 43 →
@@ -667,9 +711,6 @@ something nobody here has is in "Blocked", with what it waits for.
        start: 1,110 → 921).
      - The pointer moved over a window wakes two threads where it
        woke one (Tracker 10 → 15 ms for a sweep that changes nothing).
-     - app_server sends each size of a live resize twice, the second a
-       point wider 20 ms later (old build and new alike): every step
-       is laid out and drawn twice. Find why (`shell/grabs.rs`).
      - Scrolling fails the benchmark's evenness now and then in both
        builds (a frame skipped in a drag or a glide), and the
        Viewer's live resize its budget in both. Looked into

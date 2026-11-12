@@ -87,6 +87,27 @@ impl Scene {
         Scene { recording: true, ..Default::default() }
     }
 
+    /// Room for what `last` held, in a scene about to record the same
+    /// view again: its lists are made once, the size they were, where
+    /// they'd be grown from nothing as it paints (a row of text's
+    /// glyphs: four, eight, sixteen, thirty-two, sixty-four, each a new
+    /// list and a copy). A drawing that's kept can't hand its lists
+    /// back to be drawn into again: the frame showing still holds it.
+    pub(crate) fn reserve_like(&mut self, last: &Scene) {
+        self.paths.reserve(last.paths.len());
+        self.shadows.reserve(last.shadows.len());
+        self.quads.reserve(last.quads.len());
+        self.underlines.reserve(last.underlines.len());
+        self.segments.reserve(last.segments.len());
+        self.sectors.reserve(last.sectors.len());
+        self.mono_staging.reserve(last.mono_staging.len());
+        self.mono_runs.reserve(last.mono_runs.len());
+        self.polychrome_sprites.reserve(last.polychrome_sprites.len());
+        self.image_triangles.reserve(last.image_triangles.len());
+        self.surfaces.reserve(last.surfaces.len());
+        self.images.reserve(last.images.len());
+    }
+
     /// What a recording painted reaches, where it was painted.
     pub fn extent(&self) -> Bounds<ScaledPixels> {
         self.extent.unwrap_or_default()
