@@ -1,6 +1,5 @@
-//! A window that asks with an alert, the same as olo-ui's `alert_gpui`
-//! example: the two are compared pixel for pixel
-//! (`tools/dev/kit-compare … --window Erase`).
+//! A window that asks with an alert (to compare with a build from
+//! before a change: `tools/dev/kit-compare … --window Erase`).
 
 use olo_kit::{
     Cx, Element, ParentElement as _, Styled as _, View, WindowOptions, div, metrics as m, px,

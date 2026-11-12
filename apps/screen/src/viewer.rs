@@ -472,7 +472,7 @@ fn send(client: &mut Option<(String, Client)>, screen: &Screen, mut events: Vec<
     }
 }
 
-/// The evdev code of the key GPUI names `key` ("a", "f3", "!"): its place
+/// The evdev code of the key the kit names `key` ("a", "f3", "!"): its place
 /// on a US keyboard (the agent's), Shift aside.
 fn evdev(key: &str) -> Option<u32> {
     match key {

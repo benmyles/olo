@@ -1,6 +1,5 @@
-//! The kit's BeOS controls in one window, the same as olo-ui's
-//! `controls` example draws them on GPUI: the two are compared pixel
-//! for pixel (`tools/dev/kit-compare`).
+//! The kit's BeOS controls in one window (to compare with a build from
+//! before a change, pixel for pixel: `tools/dev/kit-compare`).
 
 use olo_kit::{
     Child, Cx, Element, InteractiveElement as _, Menu, MenuBar, MouseButton, ParentElement as _, Styled as _, View, WindowOptions, div, menu, metrics as m, px,

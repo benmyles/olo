@@ -613,6 +613,11 @@ pub struct Editor {
     /// whether it's springing back (drawn again next frame).
     elastic: olo_interface::Elastic,
     springing: bool,
+    /// Where it shows its text from as last laid out (how far across and
+    /// down, stretched past an end or not) and the furthest it goes: it
+    /// scrolls itself, so it says so as it draws (`Painter::note_scroll`,
+    /// for the frames' marks).
+    scrolled: [f32; 4],
     caret_on: bool,
     /// The blink's timer, and how long it has blinked.
     blink: Option<olo_interface::TimerId>,
@@ -742,6 +747,7 @@ impl Editor {
             more: false,
             elastic: olo_interface::Elastic::default(),
             springing: false,
+            scrolled: [0.0; 4],
             caret_on: true,
             blink: None,
             blinked: Duration::ZERO,
@@ -1530,6 +1536,7 @@ impl Editor {
         self.springing = springing;
         let stretched = (-f32::from(at.x), -f32::from(at.y));
         let drawn = ((stretched.0 * scale).round() / scale, (stretched.1 * scale).round() / scale);
+        self.scrolled = [drawn.0, drawn.1, (cw - vw).max(0.0), (ch - vh).max(0.0)];
         let origin = point(view.origin.x - px(drawn.0), view.origin.y - px(drawn.1));
         self.span = Some((f32::from(origin.x) + o.margin.0, inner.round()));
         // The sheets showing.
@@ -1860,6 +1867,7 @@ impl Editor {
     fn paint(&self, text: &str, window: &mut Painter) {
         let p = theme::palette();
         let s = window.scale_factor();
+        window.note_scroll(self.scrolled);
         let view = self.shown.view;
         let o = self.shown.o;
         let origin = self.shown.origin;

@@ -1,7 +1,7 @@
 //! A window tab's title whole, where the tab cuts it short ("…": more
 //! than a tab shows, or wider than its room): on a tooltip's plate under
 //! the tab once the pointer rests on the title, at once while ⌘ is held,
-//! as Olo's apps show the text they cut (`olo_ui::cut`). One at a time;
+//! as Olo's apps show the text they cut (`olo_kit::cut`). One at a time;
 //! gone when the pointer leaves the title, and after a press until it
 //! does. Drawn with the display's frame over everything but the pointer,
 //! as the level indicator is (`osd`).

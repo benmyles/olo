@@ -143,7 +143,7 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// Preferences ▸ Touchpad said when it began).
     pub pinching: bool,
     /// The touch screen's fingers being the pointer where they went down
-    /// on what takes no touch (an app with no `wl_touch`, as every GPUI
+    /// on what takes no touch (an app with no `wl_touch`, as every Olo
     /// app, or app_server's own frames and tabs): one drags or taps, two
     /// scroll. `input_handler::touch_down`.
     pub touch_pointer: Option<crate::input_handler::TouchPointer>,

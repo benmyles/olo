@@ -1,7 +1,7 @@
 #!/bin/bash
 # Before each commit (installed by tools/hooks/install, from tools/setup.sh):
 #  1. Rust staged is formatted (rustfmt, each file by the rustfmt.toml
-#     nearest it: Olo's wide style, upstream's in gpui/ and smithay/) and
+#     nearest it: Olo's wide style, upstream's in smithay/) and
 #     staged again, so the repo stays formatted without anyone asking.
 #  2. When something the lint builds is staged (Preferences, DiskBackup,
 #     the kits and what they're built on), the layout lint runs

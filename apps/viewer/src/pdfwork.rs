@@ -256,7 +256,7 @@ pub fn start(path: PathBuf, send: impl Fn(Event) + Send + 'static) -> mpsc::Send
 }
 
 /// A page's pixels (premultiplied RGBA on white: opaque) as tiles of
-/// BGRA, which GPUI's images take.
+/// BGRA, which the kit's pictures take (`RenderImage`).
 fn tiles(rgba: &[u8], w: u32, h: u32) -> Vec<Tile> {
     let mut out = Vec::new();
     for y in (0..h).step_by(TILE as usize) {

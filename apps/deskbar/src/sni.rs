@@ -704,7 +704,7 @@ fn mnemonic_free(label: &str) -> String {
 
 /// The item's picture for `px` device pixels square: the smallest size it
 /// sent that is as big (else its biggest), scaled to fit exactly, aspect
-/// kept, so it is drawn a texel to a device pixel; as GPUI wants it
+/// kept, so it is drawn a texel to a device pixel; as the kit wants it
 /// (BGRA, straight alpha). None if it sent none.
 pub fn picture(item: &Item, px: u32) -> Option<std::sync::Arc<RenderImage>> {
     let best = item.pixmaps.iter().filter(|p| p.width >= px && p.height >= px).min_by_key(|p| p.width * p.height).or_else(|| item.pixmaps.iter().max_by_key(|p| p.width * p.height))?;

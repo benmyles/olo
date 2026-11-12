@@ -150,6 +150,9 @@ pub(crate) struct WindowCore {
     /// The nodes whose drawings place another program's pictures
     /// (`Painter::place_external`), as they were last drawn.
     pub(crate) with_externals: Vec<NodeId>,
+    /// The nodes whose drawings scroll themselves and say where they
+    /// are (`Painter::note_scroll`).
+    pub(crate) with_scrolls: Vec<NodeId>,
     /// Nodes that hold rows made as they come near what shows.
     pub(crate) row_nodes: Vec<NodeId>,
     /// Nodes layout moved or sized, whose listeners haven't heard.
@@ -165,6 +168,16 @@ pub(crate) struct WindowCore {
     pub(crate) everything: bool,
     /// When what's being worked on now was first taken.
     pub(crate) started: Option<Instant>,
+    /// How long the looper has worked for this window since its last
+    /// commit (every turn it took, `with_window`: input, its views'
+    /// messages, laying out, painting), and when the turn it's in
+    /// began: a frame's `ui` time in its mark. Its work, not how long
+    /// ago it began: a new window waits for the compositor to say its
+    /// size, a view kept for a frame (`invalidate_at_frame`) for the
+    /// frame, and neither is the program's time (a menu's first frame
+    /// read 9 to 17 ms, most of it app_server's answer on its way).
+    pub(crate) busy: Duration,
+    pub(crate) entered: Instant,
     pub(crate) mouse: Point<Pixels>,
     /// The pointer is over the window (or files dragged from elsewhere
     /// are): until it has come, and once it has left, nothing in the
@@ -314,7 +327,9 @@ impl<V: View> LocalWindow<V> {
 pub(crate) fn with_window<R>(looper: &mut Looper, id: WindowId, f: impl FnOnce(&mut WindowCx) -> R) -> Option<R> {
     let mut core = looper.state_mut::<Windows>()?.map.remove(&id)?;
     let outer = (SCALE.with(|s| s.replace(core.gfx.scale_factor)), SIZE.with(|s| s.replace(core.size)));
+    core.entered = Instant::now();
     let result = f(&mut WindowCx { core: &mut core, looper });
+    core.busy += core.entered.elapsed();
     SCALE.with(|s| s.set(outer.0));
     SIZE.with(|s| s.set(outer.1));
     for timer in core.ended_timers.drain(..) {
@@ -529,6 +544,7 @@ impl WindowCore {
             ended_timers: Vec::new(),
             by_visible: Vec::new(),
             with_externals: Vec::new(),
+            with_scrolls: Vec::new(),
             row_nodes: Vec::new(),
             bounds_changed: Vec::new(),
             commit_held: None,
@@ -536,6 +552,8 @@ impl WindowCore {
             relayout: true,
             everything: true,
             started: Some(Instant::now()),
+            busy: Duration::ZERO,
+            entered: Instant::now(),
             mouse: Point::default(),
             pointer_in: false,
             modifiers: Modifiers::default(),
@@ -1497,7 +1515,10 @@ impl<'a> WindowCx<'a> {
         }
         let paint_done = flushing.elapsed();
         if !core.needs_commit {
+            // (Nothing to show came of it: no frame's work.)
             core.started = None;
+            core.busy = Duration::ZERO;
+            core.entered = Instant::now();
             return;
         }
         // Held back (a window being sized to fit what it shows isn't
@@ -1549,7 +1570,7 @@ impl<'a> WindowCx<'a> {
             layer.set = None;
         }
         core.commits += 1;
-        let started = core.started.take().unwrap_or(flushing);
+        core.started = None;
         // Where other programs' pictures show now: where each was drawn,
         // moved as its node has been since (laid out elsewhere, scrolled).
         let mut externals = Vec::new();
@@ -1564,8 +1585,37 @@ impl<'a> WindowCx<'a> {
                 core.with_externals.push(id);
             }
         }
-        let commit =
-            Commit { size: core.size, scale, items, layers, wheel, work: started.elapsed(), everything: std::mem::take(&mut core.everything), animating: !core.next_frame.is_empty(), externals };
+        // Where what scrolls itself is, for the frames' marks.
+        let mut noted = Vec::new();
+        if !core.with_scrolls.is_empty() {
+            let nodes = &core.nodes;
+            core.with_scrolls.retain(|id| match nodes.get(*id).and_then(|n| n.notes.as_ref()).and_then(|n| n.scrolled) {
+                Some(at) => {
+                    noted.push(at);
+                    true
+                }
+                None => false,
+            });
+        }
+        let commit = Commit {
+            size: core.size,
+            scale,
+            items,
+            layers,
+            wheel,
+            work: {
+                // (What this turn has taken so far, and the turns before
+                // it since the last commit; the rest of this turn is the
+                // next commit's.)
+                let work = std::mem::take(&mut core.busy) + core.entered.elapsed();
+                core.entered = Instant::now();
+                work
+            },
+            everything: std::mem::take(&mut core.everything),
+            animating: !core.next_frame.is_empty(),
+            externals,
+            noted,
+        };
         let id = core.id;
         // (On its way to be drawn: what's invalidated for a frame from
         // here on is for the one after it.)

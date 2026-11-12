@@ -23,8 +23,8 @@ one, outside programs). Then each round:
 a Terminal, a StyledEdit and a Tracker opened into it if it has fewer
 than three windows (an in-place reload put them in each other's tiles
 for a while, the kit claiming its place only after a window's first
-commit; run it so after changing the kit's windows or GPUI's Wayland
-platform too).
+commit; run it so after changing the kit's windows or the Interface
+Kit's Wayland platform too).
 
 --reload-only restarts app_server without the SIGURGs (the apps
 re-execute as they reconnect: windows all come back at once);

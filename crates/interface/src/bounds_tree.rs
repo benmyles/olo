@@ -157,7 +157,7 @@ mod tests {
 
     /// Olo: a frame of cards in columns as Notifications' history paints
     /// it (a ground, then each card's shadow, plate, icon and lines of
-    /// text), timed: `cargo test -p gpui --release bounds_tree_cards --
+    /// text), timed: `cargo test -p olo-interface --release bounds_tree_cards --
     /// --ignored --nocapture`.
     #[test]
     #[ignore]

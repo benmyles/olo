@@ -96,7 +96,7 @@ impl View for Texts {
 /// Text is read whole whether or not all of it shows (agents find each
 /// as a label by its whole text; what's cut is shown whole in a tip,
 /// `olo_kit::cut`): the interface's own text is in the window's tree,
-/// where olo-ui's lint read only what GPUI's text elements cut.
+/// where the GPUI kit's lint read only what GPUI's text elements cut.
 #[test]
 fn ui_lint_text_is_read_whole() {
     let mut lint = Lint::new();

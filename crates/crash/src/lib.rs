@@ -1,6 +1,6 @@
 //! What every Olo program leaves when it crashes, so the crash can be
 //! looked into after: [`install`], the first thing `main` does
-//! (`olo_ui::run` does it for the kit's apps; a test checks every
+//! (`olo_kit::run` does it for the kit's apps; a test checks every
 //! program does, tests/every_program.rs).
 //!
 //! - **A report**, one JSON file a crash in `~/.local/state/olo/crashes/`

@@ -615,3 +615,34 @@ impl View for ImageView {
             )
     }
 }
+
+/// How long each filter takes to resample a screen (`cargo test -p
+/// olo-kit resample_timing -- --ignored --nocapture`): why a picture
+/// made bigger takes Catmull-Rom, not Lanczos (3 ms against 9 for a
+/// 1024 × 640 screen to 1421 × 888).
+#[cfg(test)]
+mod resample_timing {
+    #[test]
+    #[ignore]
+    fn filters() {
+        use fast_image_resize::{
+            FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer,
+            images::{Image, ImageRef},
+        };
+        let (sw, sh) = (1024u32, 640u32);
+        let src: Vec<u8> = (0..sw * sh * 4).map(|i| (i * 7 % 251) as u8).collect();
+        for (to_w, to_h) in [(1421u32, 888u32), (710, 444)] {
+            for f in [FilterType::Lanczos3, FilterType::CatmullRom, FilterType::Bilinear] {
+                let from = ImageRef::new(sw, sh, &src, PixelType::U8x4).unwrap();
+                let mut to = Image::new(to_w, to_h, PixelType::U8x4);
+                let options = ResizeOptions::new().resize_alg(ResizeAlg::Convolution(f)).use_alpha(false);
+                let mut r = Resizer::new();
+                let t = std::time::Instant::now();
+                for _ in 0..10 {
+                    r.resize(&from, &mut to, &options).unwrap();
+                }
+                eprintln!("{to_w}x{to_h} {f:?}: {:.2} ms", t.elapsed().as_secs_f64() * 100.0);
+            }
+        }
+    }
+}

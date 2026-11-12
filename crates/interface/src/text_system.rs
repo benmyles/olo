@@ -42,7 +42,7 @@ pub(crate) const SUBPIXEL_VARIANTS_X: u8 = 4;
 
 pub(crate) const SUBPIXEL_VARIANTS_Y: u8 = if cfg!(target_os = "windows") || cfg!(target_os = "linux") { 1 } else { SUBPIXEL_VARIANTS_X };
 
-/// The GPUI text rendering sub system.
+/// The text rendering subsystem.
 pub struct TextSystem {
     platform_text_system: Arc<dyn PlatformTextSystem>,
     font_ids_by_font: RwLock<FxHashMap<Font, Result<FontId>>>,
@@ -503,7 +503,7 @@ impl TextSystem {
     }
 }
 
-/// The GPUI text layout subsystem.
+/// The text layout subsystem.
 #[derive(Deref)]
 pub struct WindowTextSystem {
     line_layout_cache: LineLayoutCache,
@@ -1136,7 +1136,7 @@ mod olo_shaping_speed {
     }
 
     /// Olo: how long shaping takes, a screen of log rows in the UI face
-    /// (`cargo test -p gpui --release --lib shaping_speed -- --ignored
+    /// (`cargo test -p olo-interface --release --lib shaping_speed -- --ignored
     /// --nocapture`).
     #[test]
     #[ignore]

@@ -145,7 +145,7 @@ pub fn unpremultiply(px: &mut [u8]) {
     }
 }
 
-/// Premultiplied RGBA to straight BGRA (GPUI's images), in place.
+/// Premultiplied RGBA to straight BGRA (the kit's pictures), in place.
 pub fn to_straight_bgra(px: &mut [u8]) {
     for p in px.as_chunks_mut::<4>().0 {
         let [r, g, b, a] = straight(*p);

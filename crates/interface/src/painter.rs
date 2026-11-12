@@ -103,11 +103,14 @@ pub(crate) struct Notes {
     /// Pictures of another program's, shown by the compositor itself
     /// (`Painter::place_external`): which, and where.
     pub(crate) externals: Vec<(u64, Bounds<Pixels>)>,
+    /// It scrolls what it draws itself ([`Painter::note_scroll`]): where
+    /// that was as it drew.
+    pub(crate) scrolled: Option<[f32; 4]>,
 }
 
 impl Notes {
     pub(crate) fn is_empty(&self) -> bool {
-        !self.unfinished && !self.by_visible && self.agent.is_empty() && self.cursors.is_empty() && self.cuts.is_empty() && self.externals.is_empty()
+        !self.unfinished && !self.by_visible && self.agent.is_empty() && self.cursors.is_empty() && self.cuts.is_empty() && self.externals.is_empty() && self.scrolled.is_none()
     }
 }
 
@@ -371,6 +374,18 @@ impl<'a> Painter<'a> {
     /// placed finer): draw round it at [`Self::external_bounds`].
     pub fn place_external(&mut self, key: u64, bounds: Bounds<Pixels>) {
         self.notes.externals.push((key, bounds));
+    }
+
+    /// What's being drawn scrolls itself (a text editor, a terminal's
+    /// scrollback: its view moves what it draws, not a scroller the
+    /// display thread keeps), and is here: how far it's scrolled across
+    /// and down, and the furthest it goes each way (points; past either
+    /// end, pulled past its edge). It goes in the marks of the frames
+    /// that show this drawing, with the window's scrollers' places, so
+    /// how evenly it scrolls can be measured (`tools/dev/scroll-check`,
+    /// the benchmark). Costs nothing when nobody asks.
+    pub fn note_scroll(&mut self, at: [f32; 4]) {
+        self.notes.scrolled = Some(at);
     }
 
     /// Where a picture placed at `bounds` shows, to the device pixel:

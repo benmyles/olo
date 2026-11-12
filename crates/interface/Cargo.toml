@@ -1,7 +1,9 @@
 # Olo's Interface Kit (docs/HACKING.md, "The Interface Kit"; the Olo
 # Book). Its lower half (the Wayland client, text, the scene and the
-# renderer) began as Olo's GPUI (gpui/, from Zed's GPUI 0.2.2,
-# Apache-2.0: see LICENSE-APACHE there); the rest is Olo's own.
+# renderer) began as GPUI 0.2.2 (Zed Industries, Apache-2.0: see
+# LICENSE-APACHE here), as Olo had changed it; the rest is Olo's own.
+# What it still uses of GPUI's helper crates is in vendor/ (see
+# vendor/README.md, "From GPUI").
 [package]
 name = "olo-interface"
 description = "Olo's Interface Kit: windows, views and drawing, retained, a looper a window"
@@ -26,11 +28,11 @@ olo-sync = { workspace = true }
 olo-yuv = { workspace = true }
 anyhow = "1.0.86"
 async-task = "4.7"
-collections = { path = "../../gpui/collections", package = "gpui_collections" }
+collections = { path = "../../vendor/gpui_collections", package = "gpui_collections" }
 derive_more = "0.99.17"
 etagere = "0.2"
 futures = "0.3"
-gpui_macros = { path = "../../gpui/macros", package = "gpui-macros" }
+gpui_macros = { path = "../../vendor/gpui-macros", package = "gpui-macros" }
 image = "0.25.1"
 itertools = "0.14.0"
 libc = "0.2"
@@ -40,7 +42,7 @@ parking = "2.0.0"
 parking_lot = "0.12.1"
 profiling = "1"
 raw-window-handle = "0.6"
-refineable = { path = "../../gpui/refineable", package = "gpui_refineable" }
+refineable = { path = "../../vendor/gpui_refineable", package = "gpui_refineable" }
 resvg = { version = "0.45.0", default-features = false, features = ["text", "system-fonts", "memmap-fonts"] }
 schemars = { version = "1.0", features = ["indexmap2"] }
 seahash = "4.1"
@@ -54,13 +56,13 @@ taffy = "=0.9.0"
 thiserror = "2.0.12"
 tracing = { workspace = true }
 usvg = { version = "0.45.0", default-features = false }
-util = { path = "../../gpui/util", package = "gpui_util" }
+util = { path = "../../vendor/gpui_util", package = "gpui_util" }
 uuid = { version = "1.1.2", features = ["v4", "v5", "v7", "serde"] }
 waker-fn = "1.2.0"
 ashpd = { version = "0.11", default-features = false, features = ["async-std", "wayland"] }
 blade-graphics = { version = "0.7.0" }
 blade-macros = { version = "0.3.0" }
-blade-util = { path = "../../gpui/blade-util" }
+blade-util = { path = "../../vendor/blade-util" }
 fontdb = "0.23"
 harfrust = "0.12"
 skrifa = { version = "0.44", default-features = false, features = ["std", "autohint_shaping"] }

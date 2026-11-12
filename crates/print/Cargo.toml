@@ -11,21 +11,13 @@ krilla = "0.4"
 fontdb = "0.23"
 ttf-parser = "0.25"
 olo-theme.workspace = true
-olo-ui = { workspace = true, optional = true }
-olo-kit-base = { workspace = true, optional = true }
 olo-kit = { workspace = true, optional = true }
 tracing.workspace = true
 
 [features]
-# The Print panel on Olo's GPUI.
-gpui = ["dep:olo-ui", "dep:olo-kit-base"]
-# The Print panel on olo-kit.
+# The Print panel (on olo-kit).
 kit = ["dep:olo-kit"]
 
 [[example]]
 name = "print_panel"
 required-features = ["kit"]
-
-[[example]]
-name = "print_panel_gpui"
-required-features = ["gpui"]

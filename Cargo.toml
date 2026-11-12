@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "apps/*", "gpui/*", "smithay/*"]
+members = ["crates/*", "apps/*", "smithay/*"]
 exclude = ["vendor"]
 
 [workspace.package]
@@ -24,8 +24,6 @@ olo-video = { path = "crates/video" }
 olo-vaapi = { path = "crates/vaapi" }
 olo-syntax = { path = "crates/syntax" }
 olo-camera = { path = "crates/camera" }
-olo-ui = { path = "crates/ui" }
-gpui = { path = "gpui/gpui" }
 olo-theme = { path = "crates/theme" }
 olo-preview = { path = "crates/preview" }
 olo-richtext = { path = "crates/richtext" }
@@ -67,7 +65,7 @@ path = "smithay/smithay-drm-extras"
 
 # See vendor/README.md.
 [patch.crates-io]
-blade-graphics = { path = "gpui/blade-graphics" }
+blade-graphics = { path = "vendor/blade-graphics" }
 matroska-demuxer = { path = "vendor/matroska-demuxer" }
 blocking = { path = "vendor/blocking" }
 brush-interactive = { path = "vendor/brush-interactive" }

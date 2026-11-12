@@ -295,8 +295,8 @@ struct FrameLoop {
     text_rendering: Cell<crate::TextRendering>,
     text_generation: Cell<u64>,
     handle: LoopHandle<'static, WaylandClientStatePtr>,
-    /// Wakes the loop for the frame queued: GPUI runs the main thread's
-    /// tasks in idle callbacks, and calloop doesn't wake for an idle
+    /// Wakes the loop for the frame queued: the display thread's tasks
+    /// run in idle callbacks, and calloop doesn't wake for an idle
     /// queued from one (a task's `refresh`), so without it the frame
     /// would wait for the next input.
     signal: calloop::LoopSignal,
@@ -523,7 +523,7 @@ impl Drop for WaylandWindow {
     fn drop(&mut self) {
         self.0.frames.closed.set(true);
         // Olo: what the window's callbacks hold (its views, through
-        // GPUI's handlers and an app's close-from-its-tab) goes with it,
+        // the kit's handlers and an app's close-from-its-tab) goes with it,
         // not once the task below runs: nothing may come after that to
         // release them (a dialog's view, answering no as it goes, didn't
         // until the next event). The close callback that task runs stays.

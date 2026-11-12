@@ -1,6 +1,5 @@
-//! Labels at whole and fractional places, the same as olo-ui's
-//! `labels_gpui` example draws them on GPUI: the two are compared pixel
-//! for pixel (`tools/dev/kit-compare`), glyph by glyph.
+//! Labels at whole and fractional places (to compare with a build from
+//! before a change, glyph by glyph: `tools/dev/kit-compare`).
 
 use olo_kit::{Cx, Element, FontWeight, Styled as _, View, WindowOptions, canvas, px, style};
 

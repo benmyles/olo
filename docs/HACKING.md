@@ -22,10 +22,12 @@ like pixel alignment is.
 1. **The UI thread only draws and reacts.** Anything that can take more than
    a frame (~8 ms), or that *might* (disk, network, subprocesses, D-Bus,
    large folders, image decoding, hashing, searching, sysfs on a slow
-   device), runs on a worker thread and reports back through a `Proxy`
-   (`olo_ui::proxy(cx)`, taken in `message_handler`) or a channel a GPUI
-   task waits on. No `std::fs` on folders of unknown size, no blocking IPC
-   round-trips and no `wait()` on the UI thread. Nor the clipboard: the
+   device), runs on a worker thread and reports back with a message: a
+   view's own (`cx.work(work, then)`; `cx.messenger()` for its progress),
+   or, for the app as a whole, through a `Proxy` (`olo_kit::proxy()`,
+   taken in `message_handler`). No `std::fs` on folders of unknown size,
+   no blocking IPC round-trips and no `wait()` on a looper (a window's,
+   or the app's). Nor the clipboard: the
    program that copied writes it when it gets round to it (or never, if
    it's stuck), so Paste reads it with `cx.paste_item()` (or
    `paste_as(types)` for one form) and puts it in when it comes, and a
@@ -40,7 +42,8 @@ like pixel alignment is.
    `AtomicBool`).
 4. **The interface reacts in the same frame** as the input that caused it:
    pressed states, selection, menus and text never wait for work to finish.
-   When an action changes state, `cx.notify()` the view that shows it.
+   When an action changes state, the view that shows it says so
+   (`cx.invalidate()`) in the same message.
 5. **Batch updates** from workers (every ~100–150 ms) so streaming results
    never flood the event loop, and look at shared progress counters on a
    timer only while work is running.
@@ -63,7 +66,7 @@ like pixel alignment is.
    most of it: a commit by its role, a new popup, a popup's grab, as
    `Timings::within` notes them).
 7. **Stay current without polling.** What is on screen reflects the system
-   as it changes: follow files and folders with `olo_ui::watch` (inotify:
+   as it changes: follow files and folders with `olo_kit::watch` (inotify:
    one thread per app, asleep until the kernel has an event; a burst
    gathered for 25 ms and read whole at its end; a path followed whether
    it is a file or a folder, exists yet or not, is replaced by a rename or
@@ -89,7 +92,7 @@ like pixel alignment is.
    for the kinds used (`EventKind`): `Windows` is every window whenever
    anything about any changes, an agent's spinning title ten times a
    second, so only what shows windows asks for it (Deskbar); `OwnWindows`
-   is the program's own, only when where they are changes (olo-ui's
+   is the program's own, only when where they are changes (olo-kit's
    `workspaces::follow`), and `Focus` the focused one as the focus moves (the
    supervisor). `Painted` says a display drew something new (headless
    screens; only to whoever names it, as it comes with frames): Agent
@@ -122,28 +125,28 @@ like pixel alignment is.
    lock and its state's in both orders.) `tools/dev/lockcheck` looks
    without running: clippy's lints for guards held through a `match`
    or past their last use, `lockcheck lockbud`, a static analysis
-   of double locks and conflicting orders across functions and crates,
-   and `lockcheck reentry`, GPUI's double lock: an entity read or
-   updated while it's being updated ("The GPUI kit").
+   of double locks and conflicting orders across functions and crates.
+   (A view has no lock to take twice: it has one owner, who alone
+   reaches into it, `Child::update`; everyone else sends it a message.)
    Hold a lock for as little as you can: take what you need, let go,
    then call out; never hold one across a call back into app_server or
    anything that might take another lock.
 9. **Every frame within 8.3 ms: 120 frames a second, always.** Olo's
    displays run at 120 Hz, and a frame that takes longer than one
-   skips. That covers a whole frame (the app's code, GPUI's layout and
-   paint, and the GPU) on release builds, filling a 16" MacBook Pro's
+   skips. That covers a whole frame (the app's code, the kit's layout
+   and paint, and the GPU) on release builds, filling a 16" MacBook Pro's
    screen, at 1×, 1.5× and 2×. Nothing per frame touches the disk or
    waits on anyone (an icon is decoded off the thread; a desktop entry
    looked up once, on a worker); what a frame lays out is what shows,
-   not all there is (a list's rows, `uniform_list`; the editor's
+   not all there is (a list's rows, `uniform_rows`; the editor's
    paragraphs; History's cards). Nor does it set the GPU up: a swapchain
    made is new GPU memory, 10 ms and more for a big one on Apple's GPU,
    so a window resized by hand gets one as big as its screen on the
    press and shows only its part (`wp_viewport`), made to fit 1.5 s
    after it ends; windows and menus share the device's pipelines and
    glyph atlas, so one opens without building them; glyphs a window will
-   show are drawn ahead on a thread (gpui/README.md). A frame runs on a
-   fast core at a high clock: GPUI's main thread asks the scheduler for
+   show are drawn ahead on a thread. A frame runs on a
+   fast core at a high clock: a window's threads ask the scheduler for
    it as it starts (its `uclamp.min`, `olo_protocol::performance::
    UI_UTIL_MIN`, 768 of 1024; threads it starts afterwards don't
    inherit it), app_server's main thread too (`CORE_UTIL_MIN`, 1024).
@@ -208,8 +211,10 @@ like pixel alignment is.
    so they have the whole frame.
 
    What looks the same frame after frame isn't made again: a view that
-   didn't change is replayed from its last paint (cached views,
-   `part::Part`: "The GPUI kit"), a row of text keeps its glyphs placed
+   didn't change isn't asked what it shows, an element that didn't
+   change isn't laid out, and a drawing whose key is the same is kept
+   as it was drawn (its display list: the Olo Book, "Drawing"); a row
+   of text keeps its glyphs placed
    (`GlyphRun`: Terminal's rows, the editor's), and work a frame can't do
    in its budget is spread over frames (the editor measures paragraphs
    ahead a millisecond a frame; formatted documents lay out what shows
@@ -237,15 +242,15 @@ What it means in numbers, on release builds:
   digits of one core with an agent working in a full-screen Terminal
   (Terminal: 1.2 ms a frame whole, 0.1 ms of it for the grid). A widget
   whose look follows the pointer (lit when hovered, pushed when
-  pressed) has the view it's painted in drawn again: `let view =
-  window.current_view()` as it paints, `cx.notify(view)` in its
-  handler, as GPUI's own hover styles do. Not `window.refresh()`,
-  which renders every view of the window again, cached or not: the
-  kit's buttons, sidebars, dashboard cards, slim scroll bars and tab
-  strips did, and a pointer swept over Notifications' history (a
-  screen of 200 cards) took frames of 9 to 46 ms, its others 2 ms
-  (now 3.1 to 3.3 ms at worst; refresh is for what changes the whole
-  window: its size, its scale, its look).
+  pressed) is a `control_canvas`, handed whether it's hovered, pressed
+  or focused and drawn again, alone, when that changes (or an element
+  styled with `.hover(..)`/`.active(..)`): no handler, no view asked
+  what it shows. Never `cx.refresh()` for it, which draws the whole
+  window again (that is for what changes all of it: its look, its
+  text's rendering): on the GPUI kit, buttons, sidebars, cards, slim
+  scroll bars and tab strips once did, and a pointer swept over
+  Notifications' history (a screen of 200 cards) took frames of 9 to
+  46 ms.
 * **A lot changing** (scrolling, a live resize, video): every frame
   within 8.3 ms (rule 9), drawn by the GPU, and no more CPU than that
   takes.
@@ -275,23 +280,26 @@ message):
   minute after.
 * `tools/dev/bench` (every app's frames against the budget; `--env
   K=V` gives every app a switch, to compare without a rebuild, as
-  `--env OLO_PAINT_MEMO=0`),
+  `--env OLO_EXACT_PATHS=0`),
   `tools/dev/scroll-check` (smoothness and the first frame's latency;
   `--trace` for each frame), `tools/dev/perf-fuzz` (stalls, slow
   answers, growth). Not beside a build: with cargo on every core the
   same gallery that scrolls 0.95 to 1.04 times as far as the fingers,
   no frame skipped, read 0.00 to 2.20 with five skipped. Look at
   `uptime` first, and wait for a build to end.
-* Where a GPUI app's frame goes: `OLO_FRAME_PHASES=1` prints each
-  frame's layout, paint, scene finish and present (which waits for the
-  previous frame's GPU work), how many sprites, quads and paint
-  operations it has, and the lines it shaped and glyphs it drew afresh.
+* Where a kit app's frame goes: `OLO_FRAME_PHASES=1` prints each
+  frame the display thread draws: beginning it (a buffer to draw in),
+  putting it together from the drawings kept, drawing and completing
+  it (which waits for the previous frame's GPU work), which part of
+  the window it was, how many of the window's drawings, sprites and
+  quads it has, and how long the looper worked on what it shows; and
+  the lines it shaped and glyphs it drew afresh.
   A frame much slower than the same work warm may have run on a slow
-  core (rule 9: compare `OLO_UTIL_MIN=0`). Where its time goes inside: sample its UI thread
-  with `eu-stack -1 -i -p PID` a few hundred times while the bench's
+  core (rule 9: compare `OLO_UTIL_MIN=0`). Where its time goes inside: sample its window's
+  looper with `eu-stack -1 -i -p PID` a few hundred times while the bench's
   pointer sweeps it and count the functions on the stacks (perf isn't
   installed).
-* GPU time: a GPUI app run with `OLO_GPU_TIMINGS=1` prints each frame's
+* GPU time: a kit app run with `OLO_GPU_TIMINGS=1` prints each frame's
   passes as the GPU timed them, its quads (in screens filled: more than
   one is overdraw) and its sprites. A frame shows on time only if its
   CPU *and* GPU work are done before app_server draws the screen, which
@@ -306,15 +314,17 @@ message):
 How Olo keeps it (do the same):
 
 * **Nothing changed, nothing done.** app_server's displays rest and are
-  woken by what can change them (rule 9); a window draws only when a
-  view in it is notified or asks for an animation frame, and one that
-  doesn't show gets no frame callbacks. Don't notify on a timer to look
-  for changes.
+  woken by what can change them (rule 9); a window's looper sleeps
+  until it's told something, a view says what it shows only after it
+  was invalidated, and the display thread draws a frame only for a
+  commit, a scroller that moved or a drawing that asked to be drawn
+  again in time; a window that doesn't show gets no frame callbacks.
+  Don't invalidate on a timer to look for changes.
 * **Work done once is kept**, keyed by what it was made from:
   Terminal's rows (`RowCache`: each row's cells compared with those it
-  was drawn from, only changed rows laid out and tessellated again),
-  `recorded::Recorded`, `Cell::text_cached`, window tab looks, the
-  wallpaper's strips. Compare the source (cells, a version counter)
+  was drawn from, only changed rows laid out again), a drawing's
+  display list (`paint_key`, `key_by`), a list's rows (`row_key`),
+  window tab looks, the wallpaper's strips. Compare the source (cells, a version counter)
   rather than hashing what you'd draw: finding out what changed must
   cost far less than drawing it.
 * **Only what shows, only what changed**: virtualised lists, per-row
@@ -365,7 +375,7 @@ How Olo keeps it (do the same):
 
 **Every Olo program leaves what's needed to look into its crash.**
 `olo_crash::install()` is the first thing each program's `main` does
-(`olo_ui::run` does it again, harmlessly; `crates/crash/tests/
+(`olo_kit::run` does it again, harmlessly; `crates/crash/tests/
 every_program.rs` fails for a `main` in apps/ or crates/ that doesn't
 start with it). It has nothing but libc, so app_server, the session,
 brush and the root Wi-Fi healer carry it as lightly as the kit's apps.
@@ -484,10 +494,11 @@ long after a way out comes back.
 | `crates/session` | `olo-session`: starts and supervises app_server, Deskbar and the desktop; in-place reload and upgrade (see below). |
 | `crates/protocol` | JSON-lines IPC between app_server and our apps (`Client`, `Request`, `Reply`, `Event`, `Settings`). |
 | `crates/theme` | `Palette` (light/dark), BeOS tint helpers, decorator metrics, font lists. |
-| `crates/ui` | `olo-ui`, the Interface Kit on Olo's GPUI: windows, layer surfaces and popups, menus and the menu bar, BeOS widgets, icons, the agent tree and socket, upgrades. **All apps are built on it** ("The GPUI kit" below). |
-| `crates/kit-base` | `olo-kit-base`: what the kit has that doesn't draw, re-exported by olo-ui under the same names: `instance` (one process per app), `settings`, `notify`, `files`, `places`, `watch`, `tracker`, `metrics` (the spacing system), `Proxy`, `search` (the query language, facets and suggestions), `masonry` (cards in columns), and `store` (an app's own files, written whole), `commands`, the socket agents and the command palette read apps through (its protocol, server and client), with `review`'s findings and `layout_review`'s checks, `list` (a list's selection and type-select), `spell` and `keys` (the keyboard profile's keys). No GPUI. |
-| `gpui/` | Olo's GPUI, which the kit is built on: GPUI 0.2.2 and blade-graphics 0.7.1, Olo's own from now on (Wayland only, idle windows draw nothing); `gpui/README.md` says what changed. |
-| `crates/yuv` | `olo-yuv`: a video's picture as its decoder made it (`YuvFrame`: Y'CbCr 4:2:0 planes, or `YuvMemory`, the decoder's own memory) and the matrix that makes RGB of it. One type for Olo's GPUI (`Window::paint_yuv`) and olo-interface (`Painter::paint_yuv`), both of which re-export it, so olo-preview's players serve either. |
+| `crates/app` | `olo-app`, the Application Kit: loopers (a thread and its queue, taken one message at a time, asleep when there's none), handlers and messengers with typed messages, timers, `ask` and its `Answer`, `Latest` (what would flood a queue, gathered) and the pool that work longer than a frame runs on. No drawing. |
+| `crates/interface` | `olo-interface`, the Interface Kit: a window on a looper of its own; views (`View`: its state, the messages it takes, the `body` that says what it shows) and the elements they're made of, kept and laid out between frames (taffy); what each draws kept as a display list (`Painter`, `canvas`); the display thread (`Stage`), which draws the frames, scrolls and springs without the looper; text, the Wayland client and the GPU renderer (which began as GPUI's: `vendor/README.md`, "From GPUI"). |
+| `crates/kit` | `olo-kit`: the Interface Kit (re-exported whole) with Olo's look, the BeOS widgets, menus and the menu bar, alerts, panels, the editor, icons, the agent tree and socket, the layout review and lint, upgrades. **All apps are built on it** ("The kit" below; the Olo Book, `docs/OLO-BOOK.md`). |
+| `crates/kit-base` | `olo-kit-base`: what the kit has that doesn't draw, re-exported by olo-kit under the same names: `instance` (one process per app), `settings`, `notify`, `files`, `places`, `watch`, `tracker`, `metrics` (the spacing system), `Proxy`, `search` (the query language, facets and suggestions), `masonry` (cards in columns), and `store` (an app's own files, written whole), `commands`, the socket agents and the command palette read apps through (its protocol, server and client), with `review`'s findings and `layout_review`'s checks, `list` (a list's selection and type-select), `spell` and `keys` (the keyboard profile's keys). Nothing in it draws. |
+| `crates/yuv` | `olo-yuv`: a video's picture as its decoder made it (`YuvFrame`: Y'CbCr 4:2:0 planes, or `YuvMemory`, the decoder's own memory) and the matrix that makes RGB of it. olo-interface draws it (`Painter::paint_yuv`) and re-exports it; what decodes (olo-images, olo-video, olo-vaapi) makes it. |
 | `crates/xdg` | `olo-xdg`: freedesktop plumbing shared by app_server and the kit: data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`, in the current theme: `themes`), our own apps (`apps::our_app`), MIME types (`mime::for_path`), opening files and URLs with the right app (`open::open`, `open::handler_cached`: never `xdg-open`; the person's own choice first (`open::set_default`, kept in `~/.config/olo/default-apps.list` in mimeapps.list's form and copied into `olo-mimeapps.list` for other programs; `handler_cached` notices it changed, in any process), then Olo's apps, except that links and web pages go to the browser chosen in mimeapps.list, else `olo-chrome`; Open With's few apps for a kind, `open::handlers_for`: as the person set them (`set_offered`, Preferences ▸ Default Apps ▸ Open With), else the one it opens in, Olo's own for it, then those whose entries claim it or a broader kind, by name, eight at most; worked out off the UI thread by `open::warm` (a folder's kinds, as Tracker lists it) and read by menus from `offer_cached`; `open::kind_of` names a kind by the file's name alone; `open::every_app` is every app whose command takes files (`DesktopEntry::takes_files`), Olo's first, and `Handler::icon` its icon; the person's own kinds of file are `mime::own_kinds` (`set_own_kinds`; `mime::type_for_extensions` keeps the type its extensions all share, else makes one of Olo's own, `application/x-olo-kind-EXT`, which `mime::from_name` gives first); desktop entries are kept until an applications folder changes, `desktop_entry::all_cached`; and the same for other programs: `open::for_others` gives the hidden `olo.viewer`, `olo.styled-edit` and `olo.tracker` desktop entries, each listing every type shared-mime-info knows that Olo opens with it, and an `olo-mimeapps.list` making them the defaults, which GIO, `gio open`/xdg-open and xdg-desktop-portal's OpenURI read before `mimeapps.list` while `XDG_CURRENT_DESKTOP` names Olo; olo-session writes them into `~/.local/share/applications` at start, makes that folder's `mimeinfo.cache` again when they change (`open::mime_cache`, as update-desktop-database would: GIO only finds an app for a type through it) and removes ones it wrote that are no longer wanted, `X-Olo-Written=true`; and, once Olo's Chrome is installed, `open::offer_browser` writes `~/.local/share/applications/olo-mimeapps.list` naming it for web pages and links, read after every `mimeapps.list` in the config directories so a browser the person chose wins, but ahead of the system's lists), `find_program`, `spawn_detached` (`spawn_detached_app` and `open::spawn_app` for a desktop entry's program, in a scope of its own: `scope`; Olo's own programs keep the launcher's stderr, the session's journal, so what Deskbar, Tracker or the palette starts logs like the rest; others' goes nowhere). |
 | `crates/net` | `olo-net`: the network changing under a program that talks over it (see "The network changing"): connections on a network that went cut at once, what's kept for the network (`PerNetwork`: an HTTP client) made again for the new one, requests tried again across a change (`across_changes`), waits for a network (`wait_online`), and with its `ureq` feature a download that goes on where it broke off (`http::Download`). |
 | `crates/system` | `olo-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
@@ -505,12 +516,12 @@ long after a way out comes back.
 | `crates/voice` | `olo-voice`: what Olo does to every microphone, 10 ms at a time: echo cancellation (its own fullband Kalman filter), noise suppression (DeepFilterNet3, vendored in `vendor/deep_filter`), level normalization (WebRTC's AGC2, vendored in `vendor/sonora`). See "Voice processing". |
 | `crates/pool` | `olo-token-pool`: token pooling for Claude Code and Codex (see "Token Pool"): the accounts, their sealed store, the drain order, the loopback gateway and the clients' proxy (its own certificate authority, and which program is connecting, from /proc). |
 | `crates/ai` | `olo-ai`: how AI features reach their models (see "AI features"): `ask(&settings.ai, &feature, &Ask)` → the answer's JSON. Blocking; call off the UI thread. |
-| `crates/preview` | `olo-preview`: native previews of every file kind (text, images, PDF, audio, video, archives, office documents, fonts). Its decoding needs no toolkit (pictures are `Bitmap`s, premultiplied RGBA; token classes are `olo_theme::Syntax`, coloured by `Palette::syntax`)); its views (`PreviewView`, `rich::RichView`, `table::TableView`) are there twice while apps move: `ui`, on Olo's GPUI, behind its `gpui` feature (Tracker's Quick Look), and `kit`, the same views on olo-kit, behind `kit` (what the loader finds comes as messages, `kit::Msg`; a document is laid out as its `body` runs, for the width layout says, and draws only what `Painter::visible_bounds` shows; pictures let go leave the GPU's atlas by themselves). Either turns on `gpu`: pictures as planes for a window's GPU (`olo_yuv::YuvFrame`, one type both frameworks draw) and video decoded on GPUs. Source code is coloured by syntect's bundled Sublime grammars plus Olo's own in `src/syntaxes` (TOML, with Cargo.lock and other lock files; INI, with systemd units, .desktop entries and git and editor configs; just, `justfile`, `Justfile`, `.justfile` and `*.just`, its recipe bodies bash with `{{ }}` found in them, in the shell's strings too, through `with_prototype`), its scopes mapped onto the theme's token classes (`text::classify`). Spreadsheets and CSV (`table.rs`, sheets shared as `Arc`s): every column, scrolled sideways; the first row as the columns' names when it looks like a header (all text, with numbers or blanks below); number columns lined up on the right; a bar with Search (every word, in all columns or the one chosen beside it; Escape clears, then lets go) and how many rows show ("14 of 120 rows"); a header click sorts (again to reverse): numbers as numbers (a thousands comma, a currency sign or a percent allowed) before text, text naturally and without case ("file2" before "file10"), empty cells last, ties in the file's order. A sheet of more than 40,000 cells is searched and sorted on a worker (cancelled when asked again), the rows shown until then staying put and the bar saying "Searching…". Quick Look's own keys (Space, the arrows, F) stand aside while a field has the keyboard. Formatted documents (Markdown, and Word, OpenDocument, RTF and PowerPoint text) are blocks (`doc::Block`) set as a page by `rich.rs`: Word, OpenDocument text and RTF are read by `olo-richtext` (`doc::rich`: headings, lists numbered as they count, quotations, neighbouring code lines as one block, tables as tables; empty paragraphs are spacing, left out), slides by `doc.rs`'s own zip and XML; Markdown is CommonMark with GitHub's tables (their alignment, and styled cells), task lists, strikethrough and alerts (`> [!NOTE]` and the rest, a bar and title in the alert's hue), typographer's quotes and dashes; raw HTML keeps its text (`<br>` breaks, `<img>` is an image, comments go); code blocks are coloured by their fence's language (`text::highlight`, the text preview's grammars); pictures beside the document are shown (local files only, never fetched; a remote one's alt text shows instead), resampled exactly to their device size. The page is at most 680 points wide, centred, body text 13 points on a 20-point line, headings 26 to 13 points with room above them (rules under the first two), lists with hanging indents (bullets drawn, numbers lined up on the right, tasks as `check_box_look`s), inline code on a tint with a small no-break space either side (a line doesn't break between "(" and code), and links in the link hue, underlined under the pointer; they open with `olo_xdg::open` (a relative one beside the document) and a `#heading` scrolls to it (GitHub's anchors). Blocks are laid out once for a width, scale, look and font generation: those in view first (at most 5 ms), the rest 3 ms a frame after, and a spinner shows over a part not laid out yet; only blocks in view are drawn. Agents read each block (`Heading`, `Paragraph`, `ListItem`, `Code`, `Table`, `Image`) and click its links (`Link`). Text and formatted documents' text is selected as anywhere in Olo (a drag; a word with a double-click, a line with a triple; ⇧ extends; an I-beam over it), drawn behind the text in the kit's selection (`style::selection_behind`, the text fields' too): the text preview's places are a line and a byte, hit by each line shaped as drawn (any characters, not only monospaced ASCII), a whole line's selection taking its line break; a document's are a block, one of its texts, a line and a byte (`WrappedLine::closest_index_for_position`, painted row by row from `position_for_index`, just behind each text so a code block's ground stays under it). `PreviewView::copy` gives what's selected (a document's partial selection: paragraphs apart, a list's items a line apart, a table's cells by tabs and its rows by lines; Select All: every block's own text, laid out yet or not), and `open_find` the kit's find bar (`widgets::find_bar`, Viewer's PDFs' too): a text's matches by line, a document's over what's laid out (found again as more is, "…" until it all is), each marked, the one shown selected and centred. With nothing selected or found the views do nothing more a frame (TODO.md in the rich view scrolling at 60 frames a second: 484 to 535 µs a frame before, 499 to 522 after; the text view's listeners cost about 25 µs a frame). Used by Tracker's Quick Look (`PreviewView::new(item, generation, false, cx)`, images capped at 3200 px; a PDF shows its first page as a picture, in the same `ImageView`, the card until it comes, the rest the Viewer's, and its arrows step through the folder as a picture's do: it had shown only its card, and Up and Down did nothing on it) and the Viewer (zoomable: full resolution up to the GPU texture limit, zoom and pan through its `ImageView`). Video (`video.rs`, H.264 in mp4 or Matroska, AV1 and VP9 in Matroska/WebM or mp4, HEVC in mp4 (`hvc1` and `hev1`: `media::mp4_hevc` walks the boxes to its `hvcC` and `colr`, which the mp4 crate skips) or Matroska (`V_MPEGH/ISO/HEVC`, the record in its CodecPrivate, its `Colour`), with `media.playable` set; the mp4 crate doesn't know AV1's `av01` sample entry, so `media::mp4_av1` walks the boxes to it for the track and its `av1C` sequence header, sent before each key frame): a worker demuxes and decodes (OpenH264, rav1d through `olo_images::av1::Decoder`, filmcraft-vp9 through `olo_images::vp9::Decoder`, or rust_h265 through `olo_images::hevc::Decoder`, whose pictures are `av1::Frame`s too: HEVC's from its decoder configuration record's parameter sets, on four threads in display order, its matrix and range the container's, else BT.709 from 720 lines and BT.601 under) up to six frames ahead, giving each picture the earliest outstanding presentation time (VP9's carry their sample's own, and times left behind by samples that showed nothing are dropped) (OpenH264 returns display order; it must be made with `Flush::NoFlush`, as the crate's default flush after every packet breaks B-frame reordering and every B-frame then fails), mp4 times shifted by the track's edit list; `Video::tick` shows frames against a clock that follows the sound's reported position when an `audio::Player` is playing it and runs alone otherwise (no sound server in tests, silent files). Seeks go to the key frame before the target (Matroska: scans back for one, further each time) and drop pictures before it, all but the one still showing at the target (a still screen in a screen recording is one picture, seconds long: seeking into it showed the next change; `seeks_into_a_long_picture`): the last before it is held (made) unless its sample's duration (an MP4's, a Matroska block's own) says it ended first, and queued at the target's time when the next starts after it; past the last picture's end, that one is decoded again (`Lead`). Holding every picture cost a 4K H.264 seek a sixth more (`seek_cost`: 386 ms against 329; with durations, 317); a paused seek still shows its frame. `OLO_SAMPLES=dir cargo test --release -p olo-preview video -- --ignored` checks seeking on test.mp4/mkv (one key frame) and gop.mp4/mkv (one a second), made with ffmpeg's testsrc2, plus av1.webm (svt-av1, Opus sound), vp9.webm (libvpx with `-auto-alt-ref 1 -lag-in-frames 25`, so hidden frames in superframes), av1.mp4 (`av1_in_mp4`: 4 s of testsrc2 through libsvtav1, a key frame a second), vp9.mp4 and vp9-10bit.webm (`vp9_plays`: profile 0 in mp4, profile 2 in WebM; every picture, posters, facts), hevc.mp4, hvc1.mp4, hevc.mkv and hevc-10bit.mp4 (`hevc_plays`: 1080p HEVC with B-frames as `hev1`, `hvc1` and Matroska, remuxed by `ffmpeg -c copy`, and JCT-VC's Main 10 WPP_D in an mp4; every picture, seeks, posters, facts) and bframes.mp4 (any x264-made H.264 High clip with B-frames; `b_frames` checks every picture comes out, in order); `keeps_up` needs av1-1080.mkv (1080p AV1), vp9-1080.webm (1080p VP9), gop.mp4 and av1.mp4 to decode at well over 30 frames a second (72 on the M2 Max, 195 now; VP9 120; av1.mp4 600; `OLO_ONLY=a,b` picks samples; the YUV to RGB fast path is fixed-point with tables, checked against the float path by `yuv_fast_path`). Drawn by the GPU from its planes (Ben, 2026-11-06: "the viewer app can't even play 4k video at 60fps smoothly"): a window's player asks for `Options::yuv`, and each SDR 4:2:0 picture comes as `Picture::Yuv`, a `gpui::YuvFrame` made on the worker (luma packed, Cb and Cr interleaved; 10-bit samples in the high bits of 16; H.264's limited-range BT.601 as OpenH264's, the others' matrix and range as `olo_images::av1::Frame::yuv420` says), which the window paints with `Window::paint_yuv`: GPUI's Linux renderer keeps two pairs of textures a stream (R8/RG8, or R16/RG16 unorm, added to blade), uploads each new picture into the pair the frame before isn't reading, and the surface shader makes RGB with the picture's own matrix (`YuvFrame::rgb_matrix`). A 4K picture is 12 MB rather than 33 of RGBA, and nothing converts it on the CPU; HDR, wide-gamut and 4:2:2/4:4:4 pictures keep the RGBA path. Measured on 4K60 clips (`make_4k60`: 10 s of 3840 × 2160 through NVENC) on a headless 4K screen: H.264 29.6 frames a second before, 60.0 after; HEVC 24.4 to 59.8; AV1 52.2 to 60.0; the window's own work 18 to 25 ms a frame before (making the picture BGRA and a texture of it), 0.5 ms after. Decoded on NVIDIA's GPU where there is one (`olo_video::nvdec`: NVDEC's API through vendor/nvdec-sys's declarations, `libnvcuvid.so.1` and `libcuda.so.1` opened at run time, nothing linked; its parser takes the stream, HEVC as Annex B with its parameter sets before each key frame; each picture NV12 or P016, copied from the GPU into a `YuvFrame`; its colour from the stream's own H.273 numbers): H.264, HEVC (8- and 10-bit), VP9 and AV1, each asked of the GPU first (`cuvidGetDecoderCaps`). What decodes is chosen by `video::Device` (`Options::device`): `Default` follows Preferences ▸ Power ▸ Graphics ▸ Video Playback (`settings.video.decoder`: `auto`, `nvidia`, `intel`, `cpu`), `Automatic` is the built-in GPU where it decodes the video, else NVIDIA's (on battery too, unless `settings.video.nvidia_on_battery` is off: Ben, 2026-11-06), else the processor, or one named; a decoder that fails mid-stream hands over to the processor at the last key frame, the video playing on. `Video::decoding` says what is decoding ("NVIDIA's GPU (NVDEC)", "the processor"), `PreviewEvent::Decoding` when it changes, and `PreviewView::set_decode_with` starts the video again on another at the same place, playing or not (the Viewer's View ▸ Decode With). Measured on the 4K60 clips: all at 60 frames a second either way; the process's CPU HEVC 246% of a core on the processor to 41.6% on NVDEC, H.264 100% to 29%, AV1 368% to 26%. Every codec decodes on Intel's (or AMD's) GPU too (`olo_vaapi::decode`: VA-API through vendor/va-sys, libva opened at run time). Fedora's iHD (and Mesa) leave out H.264 and HEVC for their patents, and its Mesa compiles them out of Vulkan Video too (ANV shows AV1 and VP9 decoding only with `ANV_DEBUG=video-decode`); RPM Fusion's `intel-media-driver` (nonfree) has them all, in `/usr/lib64/dri-nonfree`, which libva reads before Fedora's folder, and Olo Doctor installs it (`intel_video`: an Intel GPU on Fedora without it; the fix adds RPM Fusion's free and nonfree repositories by their release packages, as rpmfusion.org says, `Step::InstallRepository`, then the driver through PackageKit). H.264 and HEVC go through cros-codecs' stateless decoders (vendor/cros-codecs: its parsers and what a decoder keeps between pictures, the decoded picture buffer, picture order, reference lists and marking, bumping; its own backends and encoders, which link libva and libgbm, gated off) driving a backend of ours (`decode/stateless.rs`: a picture in one of the session's surfaces, back in the free list when nothing holds its handle; `h264.rs` and `h265.rs` fill VA-API's picture, scaling list and slice parameters as ChromeOS's backend does, HEVC's slices a slice behind so the last says so). AV1 and VP9: cros-codecs' parsers read the OBUs and frames, and each picture's parameters are filled as FFmpeg's and ChromeOS's decoders fill them; references are eight slots of surfaces; AV1's film grain is applied by the driver into a display surface of its own; VP9's superframes and shown-again frames are decoded as libvpx does. A picture comes back by the driver's copy engine (`vaCopy`) into a linear surface in memory of ours (`USER_PTR`, the chroma right after the luma rows, as iHD lays it whatever offset it's given), then into planes: mapping the decoder's own (tiled) surface had the processor untile it, 7.5 ms a 4K picture, and `vaGetImage` 7 ms, so 4K60 dropped to 58; the video processor isn't a copy (it changed pictures). A GPU decoder's pictures are held, not copied out (`Decoder::hold`, `Nvdec::hold`; `OLO_VIDEO_HELD=0` copies, to compare): each decoder keeps up to 16 pieces of page-aligned memory (VA-API's linear surfaces, NVDEC's buffers), copies a picture into one nothing holds, and hands it on as it is (`Picture::held`: its planes' offsets and row pitch), as a `gpui::YuvMemory` on the `YuvFrame`; GPUI's renderer imports that memory as a Vulkan buffer (blade's `import_host_buffer`, VK_EXT_external_memory_host) and copies it into the stream's textures on the GPU, letting both go once the GPU is past that frame (a picture it can't import is staged as before, at its pitch). NVDEC's memory is registered with its CUDA context (`cuMemHostRegister`: its copy goes by DMA, not through the processor as into pageable memory), the context shared with that memory and destroyed when the last of it goes (`Cuda`), and made with blocking sync (waiting for a copy, the thread sleeps rather than spins). 4K60 AV1, the Viewer's share of a core, copied → held: Intel's GPU 21.9% → 7.1%, NVIDIA's 30.3% → 21.9%, pinned 13.8%, blocking 7.0% (its video thread 19.9% → 1.1%; 4K60 VP9 7.0%; nothing dropped). `crates/video/tests/reference.rs` decodes reference streams on every device here, each picture against the reference decoder's MD5 (libvpx's VP9 profile 2 and 1080p in tiles, libaom's AV1 10-bit, the HEVC conformance suite's Main 10 in wavefronts; NVDEC takes VP9 only from 128 × 128, said before trying); cros-codecs' per-picture HEVC reference-set warnings are debug notes (ordinary streams do it). `crates/vaapi/tests/decode.rs` checks every picture's MD5 against the reference decoder's (cros-codecs' AV1, VP9, H.264 and HEVC streams: B-frames, H.264 High, HEVC films, VP9's shown-again frames, a reset; a codec no GPU here decodes is said and passed: `LIBVA_DRIVERS_PATH=DIR` points the test alone at RPM Fusion's driver unpacked there). `Automatic` takes the built-in GPU where it decodes the video, else NVIDIA's (on battery too); `Video::decoders` says which GPUs could (the Viewer's menu enables those). 4K60 on the ThinkPad's Intel GPU (Panther Lake, RPM Fusion's iHD 26.3.5), the process's share of a core: H.264 25% (NVDEC 29%, the processor 100%), HEVC 21% (41.6%, 246%), AV1 22% (26%, 368%); a minute of each, with six ahead and the clock waiting for the first picture, played every picture but one (H.264 3600 of 3600, HEVC 3599, AV1 3600, none late; NVDEC's H.264 5 dropped, all at the switch to it), where at two ahead NVDEC had dropped 155, 68 and 176. On the processor, rav1d's and OpenH264's x86 assembly (SSE4 and AVX2, chosen at run time) is built in: nasm assembles it (tools/setup.sh installs it; OpenH264 leaves its assembly out without saying so when there's no nasm, and rav1d's `asm` feature fails the build). `keeps_up` on the 4K60 clips (`OLO_SAMPLES=/var/tmp/olo-4k OLO_ONLY=…`): AV1 32 → 85 pictures a second, H.264 45 → 53–98 (OpenH264 decodes on one thread, as fast as the core the scheduler gives it; its threads crash it), HEVC 108 → 140 (rust_h265, no assembly; the machine was busier for the first); the Viewer playing 4K60 AV1 on the processor 368% → 175% of a core. A frame keeps 8-bit video's samples as bytes (`av1::Planes`, words only deeper; every conversion runs over either through one macro): it had widened them to 16 bits and the queue counted each 4K picture 50 MB, one ahead, so 4K60 AV1 on the processor dropped 1,510 of 3,600 pictures in a minute, now 3 (its video thread 57% of a core → 17.5%). The worker keeps up to six pictures ahead within 80 MB (`QUEUE_BYTES`: six 4K pictures as planes; at 24 MB a 4K picture had two, 33 ms at 60 frames a second, and every hiccup of a decoder's dropped pictures, NVDEC's H.264 150 a minute), and with no sound to follow the clock waits for a late decoder up to 200 ms (`HOLD`: starting, a stall), so a picture shows late rather than the ones after it being passed over; one that can't keep up at all is caught up with by passing pictures over. How smoothly a video played is counted (`Video::playback`: pictures shown, dropped, already late when their turn came, and shown late, more than 25 ms after their time) and logged when the player goes ("video: 3600 pictures shown, 0 dropped, 0 late; decoded on Intel's GPU (VA-API)"); `make_4k60` makes longer clips with `OLO_SECONDS`. Audio decodes with symphonia plus `opus.rs` (opus-decoder, OpusHead parsing and pre-skip trim) for Ogg Opus. `audio::Player` speaks the PulseAudio protocol itself, and its client says who is playing as libpulse does (`application.process.id`, `.binary`, `.user`, `.host`, beside the app's name and icon): Fedora's uresourced follows the programs playing sound by their process, and crashed at every Olo login on the start-up sound's stream (a null process id). Picture editing (`edit.rs`): an `Editor` keeps a list of `Op`s (rotate, flip, crop, resize) with undo/redo and a saved mark, and a worker that loads the full picture once, applies new steps to its last result, sends `EditEvent::Shown` (downscaled for the screen) for `PreviewView::show_edited`, and writes PNG, JPEG (quality 92), WebP, BMP, TIFF or GIF atomically (`write`, through a hidden `.name.saving` file); `edit::editable` says which files it can write back. The Viewer's crop overlay (`crop.rs`: drag a frame, move it or its edges) sits where `ImageView::picture_bounds` says the picture is, `set_still` stopping pan and zoom while it is up. The Viewer's Image menu and File ▸ Save / Save As / Revert use it; Quick Look's footer has Rotate Left / Right (⌘L / ⌘R), which save at once. |
+| `crates/preview` | `olo-preview`: native previews of every file kind (text, images, PDF, audio, video, archives, office documents, fonts). Its decoding needs no toolkit (pictures are `Bitmap`s, premultiplied RGBA; token classes are `olo_theme::Syntax`, coloured by `Palette::syntax`)); its views (`PreviewView`, `rich::RichView`, `table::TableView`) are `kit`, on olo-kit, behind its `kit` feature (what the loader finds comes as messages, `kit::Msg`; a document is laid out as its `body` runs, for the width layout says, and draws only what `Painter::visible_bounds` shows; pictures let go leave the GPU's atlas by themselves). Either turns on `gpu`: pictures as planes for a window's GPU (`olo_yuv::YuvFrame`, one type both frameworks draw) and video decoded on GPUs. Source code is coloured by syntect's bundled Sublime grammars plus Olo's own in `src/syntaxes` (TOML, with Cargo.lock and other lock files; INI, with systemd units, .desktop entries and git and editor configs; just, `justfile`, `Justfile`, `.justfile` and `*.just`, its recipe bodies bash with `{{ }}` found in them, in the shell's strings too, through `with_prototype`), its scopes mapped onto the theme's token classes (`text::classify`). Spreadsheets and CSV (`table.rs`, sheets shared as `Arc`s): every column, scrolled sideways; the first row as the columns' names when it looks like a header (all text, with numbers or blanks below); number columns lined up on the right; a bar with Search (every word, in all columns or the one chosen beside it; Escape clears, then lets go) and how many rows show ("14 of 120 rows"); a header click sorts (again to reverse): numbers as numbers (a thousands comma, a currency sign or a percent allowed) before text, text naturally and without case ("file2" before "file10"), empty cells last, ties in the file's order. A sheet of more than 40,000 cells is searched and sorted on a worker (cancelled when asked again), the rows shown until then staying put and the bar saying "Searching…". Quick Look's own keys (Space, the arrows, F) stand aside while a field has the keyboard. Formatted documents (Markdown, and Word, OpenDocument, RTF and PowerPoint text) are blocks (`doc::Block`) set as a page by `rich.rs`: Word, OpenDocument text and RTF are read by `olo-richtext` (`doc::rich`: headings, lists numbered as they count, quotations, neighbouring code lines as one block, tables as tables; empty paragraphs are spacing, left out), slides by `doc.rs`'s own zip and XML; Markdown is CommonMark with GitHub's tables (their alignment, and styled cells), task lists, strikethrough and alerts (`> [!NOTE]` and the rest, a bar and title in the alert's hue), typographer's quotes and dashes; raw HTML keeps its text (`<br>` breaks, `<img>` is an image, comments go); code blocks are coloured by their fence's language (`text::highlight`, the text preview's grammars); pictures beside the document are shown (local files only, never fetched; a remote one's alt text shows instead), resampled exactly to their device size. The page is at most 680 points wide, centred, body text 13 points on a 20-point line, headings 26 to 13 points with room above them (rules under the first two), lists with hanging indents (bullets drawn, numbers lined up on the right, tasks as `check_box_look`s), inline code on a tint with a small no-break space either side (a line doesn't break between "(" and code), and links in the link hue, underlined under the pointer; they open with `olo_xdg::open` (a relative one beside the document) and a `#heading` scrolls to it (GitHub's anchors). Blocks are laid out once for a width, scale, look and font generation: those in view first (at most 5 ms), the rest 3 ms a frame after, and a spinner shows over a part not laid out yet; only blocks in view are drawn. Agents read each block (`Heading`, `Paragraph`, `ListItem`, `Code`, `Table`, `Image`) and click its links (`Link`). Text and formatted documents' text is selected as anywhere in Olo (a drag; a word with a double-click, a line with a triple; ⇧ extends; an I-beam over it), drawn behind the text in the kit's selection (`style::selection_behind`, the text fields' too): the text preview's places are a line and a byte, hit by each line shaped as drawn (any characters, not only monospaced ASCII), a whole line's selection taking its line break; a document's are a block, one of its texts, a line and a byte (`WrappedLine::closest_index_for_position`, painted row by row from `position_for_index`, just behind each text so a code block's ground stays under it). `PreviewView::copy` gives what's selected (a document's partial selection: paragraphs apart, a list's items a line apart, a table's cells by tabs and its rows by lines; Select All: every block's own text, laid out yet or not), and `open_find` the kit's find bar (`widgets::find_bar`, Viewer's PDFs' too): a text's matches by line, a document's over what's laid out (found again as more is, "…" until it all is), each marked, the one shown selected and centred. With nothing selected or found the views do nothing more a frame (TODO.md in the rich view scrolling at 60 frames a second: 484 to 535 µs a frame before, 499 to 522 after; the text view's listeners cost about 25 µs a frame). Used by Tracker's Quick Look (`PreviewView::new(item, generation, false, cx)`, images capped at 3200 px; a PDF shows its first page as a picture, in the same `ImageView`, the card until it comes, the rest the Viewer's, and its arrows step through the folder as a picture's do: it had shown only its card, and Up and Down did nothing on it) and the Viewer (zoomable: full resolution up to the GPU texture limit, zoom and pan through its `ImageView`). Video (`video.rs`, H.264 in mp4 or Matroska, AV1 and VP9 in Matroska/WebM or mp4, HEVC in mp4 (`hvc1` and `hev1`: `media::mp4_hevc` walks the boxes to its `hvcC` and `colr`, which the mp4 crate skips) or Matroska (`V_MPEGH/ISO/HEVC`, the record in its CodecPrivate, its `Colour`), with `media.playable` set; the mp4 crate doesn't know AV1's `av01` sample entry, so `media::mp4_av1` walks the boxes to it for the track and its `av1C` sequence header, sent before each key frame): a worker demuxes and decodes (OpenH264, rav1d through `olo_images::av1::Decoder`, filmcraft-vp9 through `olo_images::vp9::Decoder`, or rust_h265 through `olo_images::hevc::Decoder`, whose pictures are `av1::Frame`s too: HEVC's from its decoder configuration record's parameter sets, on four threads in display order, its matrix and range the container's, else BT.709 from 720 lines and BT.601 under) up to six frames ahead, giving each picture the earliest outstanding presentation time (VP9's carry their sample's own, and times left behind by samples that showed nothing are dropped) (OpenH264 returns display order; it must be made with `Flush::NoFlush`, as the crate's default flush after every packet breaks B-frame reordering and every B-frame then fails), mp4 times shifted by the track's edit list; `Video::tick` shows frames against a clock that follows the sound's reported position when an `audio::Player` is playing it and runs alone otherwise (no sound server in tests, silent files). Seeks go to the key frame before the target (Matroska: scans back for one, further each time) and drop pictures before it, all but the one still showing at the target (a still screen in a screen recording is one picture, seconds long: seeking into it showed the next change; `seeks_into_a_long_picture`): the last before it is held (made) unless its sample's duration (an MP4's, a Matroska block's own) says it ended first, and queued at the target's time when the next starts after it; past the last picture's end, that one is decoded again (`Lead`). Holding every picture cost a 4K H.264 seek a sixth more (`seek_cost`: 386 ms against 329; with durations, 317); a paused seek still shows its frame. `OLO_SAMPLES=dir cargo test --release -p olo-preview video -- --ignored` checks seeking on test.mp4/mkv (one key frame) and gop.mp4/mkv (one a second), made with ffmpeg's testsrc2, plus av1.webm (svt-av1, Opus sound), vp9.webm (libvpx with `-auto-alt-ref 1 -lag-in-frames 25`, so hidden frames in superframes), av1.mp4 (`av1_in_mp4`: 4 s of testsrc2 through libsvtav1, a key frame a second), vp9.mp4 and vp9-10bit.webm (`vp9_plays`: profile 0 in mp4, profile 2 in WebM; every picture, posters, facts), hevc.mp4, hvc1.mp4, hevc.mkv and hevc-10bit.mp4 (`hevc_plays`: 1080p HEVC with B-frames as `hev1`, `hvc1` and Matroska, remuxed by `ffmpeg -c copy`, and JCT-VC's Main 10 WPP_D in an mp4; every picture, seeks, posters, facts) and bframes.mp4 (any x264-made H.264 High clip with B-frames; `b_frames` checks every picture comes out, in order); `keeps_up` needs av1-1080.mkv (1080p AV1), vp9-1080.webm (1080p VP9), gop.mp4 and av1.mp4 to decode at well over 30 frames a second (72 on the M2 Max, 195 now; VP9 120; av1.mp4 600; `OLO_ONLY=a,b` picks samples; the YUV to RGB fast path is fixed-point with tables, checked against the float path by `yuv_fast_path`). Drawn by the GPU from its planes (Ben, 2026-11-06: "the viewer app can't even play 4k video at 60fps smoothly"): a window's player asks for `Options::yuv`, and each SDR 4:2:0 picture comes as `Picture::Yuv`, a `gpui::YuvFrame` made on the worker (luma packed, Cb and Cr interleaved; 10-bit samples in the high bits of 16; H.264's limited-range BT.601 as OpenH264's, the others' matrix and range as `olo_images::av1::Frame::yuv420` says), which the window paints with `Window::paint_yuv`: GPUI's Linux renderer keeps two pairs of textures a stream (R8/RG8, or R16/RG16 unorm, added to blade), uploads each new picture into the pair the frame before isn't reading, and the surface shader makes RGB with the picture's own matrix (`YuvFrame::rgb_matrix`). A 4K picture is 12 MB rather than 33 of RGBA, and nothing converts it on the CPU; HDR, wide-gamut and 4:2:2/4:4:4 pictures keep the RGBA path. Measured on 4K60 clips (`make_4k60`: 10 s of 3840 × 2160 through NVENC) on a headless 4K screen: H.264 29.6 frames a second before, 60.0 after; HEVC 24.4 to 59.8; AV1 52.2 to 60.0; the window's own work 18 to 25 ms a frame before (making the picture BGRA and a texture of it), 0.5 ms after. Decoded on NVIDIA's GPU where there is one (`olo_video::nvdec`: NVDEC's API through vendor/nvdec-sys's declarations, `libnvcuvid.so.1` and `libcuda.so.1` opened at run time, nothing linked; its parser takes the stream, HEVC as Annex B with its parameter sets before each key frame; each picture NV12 or P016, copied from the GPU into a `YuvFrame`; its colour from the stream's own H.273 numbers): H.264, HEVC (8- and 10-bit), VP9 and AV1, each asked of the GPU first (`cuvidGetDecoderCaps`). What decodes is chosen by `video::Device` (`Options::device`): `Default` follows Preferences ▸ Power ▸ Graphics ▸ Video Playback (`settings.video.decoder`: `auto`, `nvidia`, `intel`, `cpu`), `Automatic` is the built-in GPU where it decodes the video, else NVIDIA's (on battery too, unless `settings.video.nvidia_on_battery` is off: Ben, 2026-11-06), else the processor, or one named; a decoder that fails mid-stream hands over to the processor at the last key frame, the video playing on. `Video::decoding` says what is decoding ("NVIDIA's GPU (NVDEC)", "the processor"), `PreviewEvent::Decoding` when it changes, and `PreviewView::set_decode_with` starts the video again on another at the same place, playing or not (the Viewer's View ▸ Decode With). Measured on the 4K60 clips: all at 60 frames a second either way; the process's CPU HEVC 246% of a core on the processor to 41.6% on NVDEC, H.264 100% to 29%, AV1 368% to 26%. Every codec decodes on Intel's (or AMD's) GPU too (`olo_vaapi::decode`: VA-API through vendor/va-sys, libva opened at run time). Fedora's iHD (and Mesa) leave out H.264 and HEVC for their patents, and its Mesa compiles them out of Vulkan Video too (ANV shows AV1 and VP9 decoding only with `ANV_DEBUG=video-decode`); RPM Fusion's `intel-media-driver` (nonfree) has them all, in `/usr/lib64/dri-nonfree`, which libva reads before Fedora's folder, and Olo Doctor installs it (`intel_video`: an Intel GPU on Fedora without it; the fix adds RPM Fusion's free and nonfree repositories by their release packages, as rpmfusion.org says, `Step::InstallRepository`, then the driver through PackageKit). H.264 and HEVC go through cros-codecs' stateless decoders (vendor/cros-codecs: its parsers and what a decoder keeps between pictures, the decoded picture buffer, picture order, reference lists and marking, bumping; its own backends and encoders, which link libva and libgbm, gated off) driving a backend of ours (`decode/stateless.rs`: a picture in one of the session's surfaces, back in the free list when nothing holds its handle; `h264.rs` and `h265.rs` fill VA-API's picture, scaling list and slice parameters as ChromeOS's backend does, HEVC's slices a slice behind so the last says so). AV1 and VP9: cros-codecs' parsers read the OBUs and frames, and each picture's parameters are filled as FFmpeg's and ChromeOS's decoders fill them; references are eight slots of surfaces; AV1's film grain is applied by the driver into a display surface of its own; VP9's superframes and shown-again frames are decoded as libvpx does. A picture comes back by the driver's copy engine (`vaCopy`) into a linear surface in memory of ours (`USER_PTR`, the chroma right after the luma rows, as iHD lays it whatever offset it's given), then into planes: mapping the decoder's own (tiled) surface had the processor untile it, 7.5 ms a 4K picture, and `vaGetImage` 7 ms, so 4K60 dropped to 58; the video processor isn't a copy (it changed pictures). A GPU decoder's pictures are held, not copied out (`Decoder::hold`, `Nvdec::hold`; `OLO_VIDEO_HELD=0` copies, to compare): each decoder keeps up to 16 pieces of page-aligned memory (VA-API's linear surfaces, NVDEC's buffers), copies a picture into one nothing holds, and hands it on as it is (`Picture::held`: its planes' offsets and row pitch), as a `gpui::YuvMemory` on the `YuvFrame`; GPUI's renderer imports that memory as a Vulkan buffer (blade's `import_host_buffer`, VK_EXT_external_memory_host) and copies it into the stream's textures on the GPU, letting both go once the GPU is past that frame (a picture it can't import is staged as before, at its pitch). NVDEC's memory is registered with its CUDA context (`cuMemHostRegister`: its copy goes by DMA, not through the processor as into pageable memory), the context shared with that memory and destroyed when the last of it goes (`Cuda`), and made with blocking sync (waiting for a copy, the thread sleeps rather than spins). 4K60 AV1, the Viewer's share of a core, copied → held: Intel's GPU 21.9% → 7.1%, NVIDIA's 30.3% → 21.9%, pinned 13.8%, blocking 7.0% (its video thread 19.9% → 1.1%; 4K60 VP9 7.0%; nothing dropped). `crates/video/tests/reference.rs` decodes reference streams on every device here, each picture against the reference decoder's MD5 (libvpx's VP9 profile 2 and 1080p in tiles, libaom's AV1 10-bit, the HEVC conformance suite's Main 10 in wavefronts; NVDEC takes VP9 only from 128 × 128, said before trying); cros-codecs' per-picture HEVC reference-set warnings are debug notes (ordinary streams do it). `crates/vaapi/tests/decode.rs` checks every picture's MD5 against the reference decoder's (cros-codecs' AV1, VP9, H.264 and HEVC streams: B-frames, H.264 High, HEVC films, VP9's shown-again frames, a reset; a codec no GPU here decodes is said and passed: `LIBVA_DRIVERS_PATH=DIR` points the test alone at RPM Fusion's driver unpacked there). `Automatic` takes the built-in GPU where it decodes the video, else NVIDIA's (on battery too); `Video::decoders` says which GPUs could (the Viewer's menu enables those). 4K60 on the ThinkPad's Intel GPU (Panther Lake, RPM Fusion's iHD 26.3.5), the process's share of a core: H.264 25% (NVDEC 29%, the processor 100%), HEVC 21% (41.6%, 246%), AV1 22% (26%, 368%); a minute of each, with six ahead and the clock waiting for the first picture, played every picture but one (H.264 3600 of 3600, HEVC 3599, AV1 3600, none late; NVDEC's H.264 5 dropped, all at the switch to it), where at two ahead NVDEC had dropped 155, 68 and 176. On the processor, rav1d's and OpenH264's x86 assembly (SSE4 and AVX2, chosen at run time) is built in: nasm assembles it (tools/setup.sh installs it; OpenH264 leaves its assembly out without saying so when there's no nasm, and rav1d's `asm` feature fails the build). `keeps_up` on the 4K60 clips (`OLO_SAMPLES=/var/tmp/olo-4k OLO_ONLY=…`): AV1 32 → 85 pictures a second, H.264 45 → 53–98 (OpenH264 decodes on one thread, as fast as the core the scheduler gives it; its threads crash it), HEVC 108 → 140 (rust_h265, no assembly; the machine was busier for the first); the Viewer playing 4K60 AV1 on the processor 368% → 175% of a core. A frame keeps 8-bit video's samples as bytes (`av1::Planes`, words only deeper; every conversion runs over either through one macro): it had widened them to 16 bits and the queue counted each 4K picture 50 MB, one ahead, so 4K60 AV1 on the processor dropped 1,510 of 3,600 pictures in a minute, now 3 (its video thread 57% of a core → 17.5%). The worker keeps up to six pictures ahead within 80 MB (`QUEUE_BYTES`: six 4K pictures as planes; at 24 MB a 4K picture had two, 33 ms at 60 frames a second, and every hiccup of a decoder's dropped pictures, NVDEC's H.264 150 a minute), and with no sound to follow the clock waits for a late decoder up to 200 ms (`HOLD`: starting, a stall), so a picture shows late rather than the ones after it being passed over; one that can't keep up at all is caught up with by passing pictures over. How smoothly a video played is counted (`Video::playback`: pictures shown, dropped, already late when their turn came, and shown late, more than 25 ms after their time) and logged when the player goes ("video: 3600 pictures shown, 0 dropped, 0 late; decoded on Intel's GPU (VA-API)"); `make_4k60` makes longer clips with `OLO_SECONDS`. Audio decodes with symphonia plus `opus.rs` (opus-decoder, OpusHead parsing and pre-skip trim) for Ogg Opus. `audio::Player` speaks the PulseAudio protocol itself, and its client says who is playing as libpulse does (`application.process.id`, `.binary`, `.user`, `.host`, beside the app's name and icon): Fedora's uresourced follows the programs playing sound by their process, and crashed at every Olo login on the start-up sound's stream (a null process id). Picture editing (`edit.rs`): an `Editor` keeps a list of `Op`s (rotate, flip, crop, resize) with undo/redo and a saved mark, and a worker that loads the full picture once, applies new steps to its last result, sends `EditEvent::Shown` (downscaled for the screen) for `PreviewView::show_edited`, and writes PNG, JPEG (quality 92), WebP, BMP, TIFF or GIF atomically (`write`, through a hidden `.name.saving` file); `edit::editable` says which files it can write back. The Viewer's crop overlay (`crop.rs`: drag a frame, move it or its edges) sits where `ImageView::picture_bounds` says the picture is, `set_still` stopping pan and zoom while it is up. The Viewer's Image menu and File ▸ Save / Save As / Revert use it; Quick Look's footer has Rotate Left / Right (⌘L / ⌘R), which save at once. |
 | `crates/richtext` | `olo-richtext`: formatted text documents in and out, natively (zip and quick-xml): Word (`.docx`: styles, numbering, hyperlinks' relationships), OpenDocument text (`.odt`: automatic and named styles, nested lists, `text:s` for runs of spaces) and RTF (`rtf.rs`: a reader of groups and control words — font and colour tables, the style sheet's names for kinds or else `\outlinelevel`, lists from the list table or Word 95's `\pn`, links from `HYPERLINK` fields, tables from `\intbl` paragraphs, `\cell` and `\row` (`\trhdr` a header), any Windows code page by `\ansicpg` or a font's `\fcharset`, `\u` with its fallbacks skipped, surrogate pairs; pictures, headers, footers, notes, hidden text and unknown `\*` destinations left out — and a writer of plain ASCII with a style sheet, a list table per numbered list and every paragraph's look spelled out, as RTF readers take a paragraph's look from its own words, not its style; the reader takes each kind's look off again). A `Document` of `Paragraph`s (kind: body, title, heading 1–3, quote, code; a list, bulleted or numbered, and its level; an indent; alignment; or a `Table` in the flow: rows of cells of paragraphs, the first row maybe a header, and the columns' widths if they have their own (`widths`, shares of the table after `tidy`: Word's `w:gridCol`s, OpenDocument's column styles, RTF's first row's `\cellx` edges), written ruled across the page in each format) of `Span`s (bold, italic, underline, struck out, size, colour, font, monospace, link), indents beyond the levels in points (`left`, `first`, `right`; read as whole levels and the rest) and tab stops (`Tab`: left, centre, right, decimal), and the document's font. `read`/`write` go by the file's extension; `Document::tidy` runs same-styled spans together and makes a line break a new paragraph (in cells too), and gives every row a cell for each column and every cell a paragraph. Light on purpose (StyledEdit links it; `preview` is far heavier), and round-trip tested; its files open in LibreOffice as they look in StyledEdit (`OLO_RICHTEXT_OUT=dir cargo test -p olo-richtext writes_samples` writes a sample of each; `OLO_RICHTEXT_READ=file cargo test -p olo-richtext reads_named_file -- --nocapture` prints how another program's file reads). |
 | `crates/syntax` | `olo-syntax`: source code coloured by syntax, in process: tree-sitter's grammars for 43 languages (Rust, C, C++, Go, Python, JavaScript, TypeScript and TSX, shell and fish, Ruby, Java, Kotlin, Swift, C#, PHP, Lua, SQL, HTML, CSS, JSON, YAML, TOML, XML, Makefiles, Dockerfiles, CMake, Scala, Haskell, Zig, Elixir, Erlang, Nix, R, Julia, OCaml, Dart, Objective-C, Protocol Buffers, PowerShell, INI, diffs), each compiled in, with its highlight query (its crate's, or `queries/`: Kotlin's is Olo's own) whose captures map to the palette's token classes (`class_of`: `function.method.call` a function, `variable` plain inside a string). `LANGUAGES`; `detect(path, first_line)` (a whole name like `Makefile`, the extension, a `#!` line's interpreter, `env -S` and versions too); `by_name` (an id, alias or extension: what a Markdown fence says). A `Highlighter` keeps one text's tree: `edit(&Edit)` per change (`Edit::new` with the lines it's on, or `Edit::in_text` counting them), `job(text)` the parse to run on a worker (one out at a time; a language's query compiles in its first, up to half a second for Swift's), `done(parsed)` takes the tree (edits made meanwhile applied to it; what changed: `Changed`), `classes(text, range)` the query over just those bytes (inner captures and a node's first pattern win). 100,000 lines of Rust: parsed in a second, a keystroke's reparse 16 ms (both on the worker), a screenful coloured in 0.35 ms. The kit's `code` module puts it in the editor. |
 | `crates/print` | `olo-print`: printing, natively. `Page`s of `Item`s (text at a baseline with its font, size, colour, width and lines; rectangles; lines; pictures, a PNG, JPEG, GIF or WebP file's bytes in a box), in points from the top left, made into a PDF by `pdf` (krilla: fonts found by fontdb, Olo's own for text naming none, embedded and subset, text stays text; a character the font lacks drawn from a face that has it, `ttf-parser` telling; bold from a variable font's default instance stroked as well as filled, as browsers print it). `ipp`: CUPS spoken to over IPP on `/run/cups/cups.sock` (else `localhost:631`; `OLO_CUPS_SOCKET` for a test's stand-in, as `talks_to_cups` has): `printers()` (name, description, state, paper), `default_printer()`, `print(printer, pdf, &Job)` (copies, paper, pages, sides). `panel::PrintPanel`: the Print window (printer or PDF File, paper, copies, pages; the printers asked for on a worker); `Paper`, `PAPERS` and `local_paper()` (US Letter where it is used, else A4). |
 | `apps/<name>` | One crate per application, binary named `olo-<name>`. Picked up by the workspace glob. |
-| `vendor/` | Patched copies of dependencies (`[patch.crates-io]`), each explained in `vendor/README.md`; drop them when upstream has the fix. |
+| `vendor/` | Patched copies of dependencies (`[patch.crates-io]`), libraries owned outright, and what the Interface Kit still uses of GPUI's helper crates and Blade, each explained in `vendor/README.md`. |
 | `data/icons` | Icon set, pre-scaled to device sizes (`data/icons/<px>/<name>.png`). |
 | `data/themes` | The other looks of the icons and wordmark (`data/themes/<id>/icons/<px>/<name>.png`, `brand/`), chosen in Preferences ▸ Themes; see "Themes" in [ICONS.md](ICONS.md). |
 | `data/session` | `olo.desktop` for the login screen (installed by `tools/install-session.sh`). |
@@ -519,7 +530,7 @@ long after a way out comes back.
 Build: `cargo build -p olo-<app>` (plus `cargo build --bin olo-app-server` once, for headless testing; as root set `CARGO_HOME=/home/ben/.cargo` to share the registry) (repo is owned by `ben`; when running as
 root use `sudo -u ben bash -lc 'cd … && cargo build …'` in the main checkout).
 How long a release build takes after a change (ThinkPad, 16 threads,
-2026-11-05, the whole workspace): the kit (olo-ui) 92 s, app_server 47
+2026-11-05, the whole workspace): the kit (then olo-ui, on GPUI) 92 s, app_server 47
 s, a leaf app 2.8 s. A kit change is bound by CPU, not by any one step:
 olo-ui 21 s, then some 35 apps compiled and linked at once, about 1,000
 CPU-seconds in all (olo-portal alone, with the machine to itself, is 15
@@ -547,11 +558,11 @@ daemon install`, done by `tools/setup.sh`), so the cache stays under its
 cap without anyone running it by hand. Blaze (indexable-inc/blaze, a
 build daemon with its own compiler) was tried the same day and dropped:
 it needs more memory than this laptop can spare (OOM at a 10 GB cap
-loading the workspace) and could not compile GPUI's styles
+loading the workspace) and could not compile the kit's styles
 (`<f64 as Into<f32>>::into` in `ToTaffy`); cargo's loop is 1–3 s for an
-edit to an app, the kit or GPUI in a debug build, and ~90 s for a
-release build of every app after a GPUI edit, which is linking 26
-binaries of 200 MB.
+edit to an app or the kits in a debug build, and ~90 s for a
+release build of every app after an edit to the kits, which is linking
+dozens of binaries of 200 MB.
 Builds are kept lean on memory and disk. Dev builds keep only line tables (file and
 line in panics and backtraces), and dependencies keep no debuginfo, so debug binaries
 stay small and cheap to link. Full debuginfo made each one 600–850 MB, and twelve
@@ -574,57 +585,82 @@ elsewhere (`/var/tmp/...`) are the person who made them's to remove.
 
 ## Writing an app
 
-Apps are written on the GPUI kit (crates/ui, `olo-ui`, on Olo's GPUI:
-"The GPUI kit" below has its widgets and what each does):
+Apps are written on the kit (`crates/kit`, `olo-kit`: the Interface
+Kit, `crates/interface`, with Olo's look and controls). **The Olo Book
+([OLO-BOOK.md](OLO-BOOK.md)) is how the kits work and how to work with
+them: read it first.** "The kit" below has every widget and what each
+does. The shape of an app:
 
 ```rust
-use olo_ui::{Menu, MenuBar, WindowOptions, instance, widgets::Button,
-    gpui::{AppContext as _, Context, IntoElement, ParentElement as _, Render, Styled as _, Window, div}};
+use olo_kit::{Cx, Element, Menu, MenuBar, ParentElement as _, Styled as _, View, WindowOptions, div, instance, widgets::Button};
 
 struct MyApp { /* state */ }
 
-impl Render for MyApp {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let me = cx.entity();
+#[derive(Clone)]
+enum Msg { Ok }
+
+impl View for MyApp {
+    type Message = Msg;
+
+    fn message(&mut self, message: Msg, cx: &mut Cx<Self>) {
+        match message { Msg::Ok => { /* change the state */ } }
+        cx.invalidate();
+    }
+
+    fn command(&mut self, command: &str, _: &mut Cx<Self>) -> bool {
+        match command { "quit" => olo_kit::quit(), _ => return false }
+        true
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         div().size_full().flex().flex_col()
-            .child(MenuBar::new(vec![Menu::new("File").item("Quit", "quit").key("q")], move |cmd, _, cx| {
-                if cmd == "quit" { cx.quit() }
-            }))
-            .child(Button::new("OK").default(true).on_click(move |_, cx| me.update(cx, |_, _| { /* … */ })))
+            .child(MenuBar::new(cx, vec![Menu::new("File").item("Quit", "quit").key("q")]))
+            .child(Button::new("OK").default(true).on_click(cx.msg(Msg::Ok)))
     }
 }
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if instance::forward("olo.myapp", &args) { return }     // app id: olo.<name>
-    olo_ui::run("olo.myapp", |cx| {
-        olo_ui::open_window(cx, WindowOptions::new("My App", 480.0, 320.0).min_size(320.0, 200.0), |_, cx| cx.new(|_| MyApp { /* … */ }));
-        instance::listen("olo.myapp", olo_ui::proxy(cx));
+    olo_kit::run("olo.myapp", |_| {
+        olo_kit::open_window(WindowOptions::new("My App", 480.0, 320.0).min_size(320.0, 200.0), |_| MyApp { /* … */ });
+        instance::listen("olo.myapp", olo_kit::proxy());
     });
 }
 ```
 
-* **`olo_ui::run(id, build)`** starts the app on GPUI (its look,
-  keyboard profile and fonts, the agent socket); `open_window(cx,
-  WindowOptions, |window, cx| view)` opens a window around a view
-  (`WindowOptions`: `min_size`, `max_size`, `floating`, `dialog`,
-  `alert`, `child`, `layer`, `under_pointer`…); `proxy(cx)` gives a
-  thread a `Proxy` whose messages `message_handler(cx, f)` takes on the
-  UI thread; `stay_resident(cx)` keeps it running with no windows;
-  `on_upgrade(cx, f)` keeps its state across an in-place upgrade
+(`crates/kit/examples/book.rs` is a whole small one, walked through in
+the Book: a worker with progress, a child view, a drawing, a menu.)
+
+* **`olo_kit::run(id, build)`** starts the app (its look, keyboard
+  profile and fonts, the agent socket, the crash report) and runs
+  `build` on the app's looper; `open_window(WindowOptions, |cx| view)`
+  opens a window on a looper of its own around the view `build` makes
+  there, and gives a `WindowHandle` any thread can reach it through
+  (`WindowOptions`: `min_size`, `max_size`, `fits_content`, `floating`,
+  `dialog`, `alert`, `child`, `layer`, `keep_size`…);
+  `open_window_here(cx, ..)` opens one on the looper of the window `cx`
+  is in (an alert, a panel, a window that belongs to another);
+  `proxy()` gives a thread a `Proxy` whose messages
+  `message_handler(app, f)` takes on the app's looper;
+  `stay_resident()` keeps it running with no windows;
+  `on_upgrade(f)` and each window's `View::save_state` keep its state
+  across an in-place upgrade
   (`restored_state` gives it back; see "In-place reload"), which is also
   how the app moves to another display (an agent screen's, or back:
-  "Moving windows to and from screens"); `on_move_window(cx, f)` says how
+  "Moving windows to and from screens"); `on_move_window(f)` says how
   one window of several goes (a `WindowMove`: the arguments and state a
   copy of the app there opens it with, and `gone`, letting it go here,
-  or why it can't), and `refuse_moves_while(cx, f)` keeps the app where
+  or why it can't), and `refuse_moves_while(f)` keeps the app where
   it is while `f` says why. A view
-  draws itself in `Render`; what changes it calls `cx.notify()` (its
-  window draws again); work that can take longer than a frame runs on a
-  thread (see "The responsiveness rule"). There is no clipboard manager,
+  says what it shows in `body`; what changes it (its `message`) calls
+  `cx.invalidate()` (its `body` runs again, and only what differs is
+  laid out or drawn); work that can take longer than a frame runs on a
+  worker (`cx.work`; see "The responsiveness rule"). There is no
+  clipboard manager,
   so an app that quits (or closes its last window) while it holds the
   clipboard stays running, windowless, until something else is copied.
-* **`olo_ui::clipboard`** (`olo_kit_base::clipboard`): the clipboard for
+* **`olo_kit::held_clipboard`** (`olo_kit_base::clipboard`): the clipboard for
   a program with no window and no kit loop (a shortcut's screenshot, an
   app that has closed its window). `hold(clip)` puts it on the
   clipboard and serves it until something else is copied, then returns
@@ -635,7 +671,7 @@ fn main() {
   files, as file managers copy them (and Chrome, Electron, GTK and Qt
   paste them): `files(paths, cut)` is a `Clip` of
   `x-special/gnome-copied-files` ("copy" or "cut", then the URIs), KDE's
-  cut mark, `text/uri-list` and the paths as text (GPUI's clipboard
+  cut mark, `text/uri-list` and the paths as text (the kit's clipboard
   offers each form under its own MIME type);
   `copied_files(mime, data)` reads one of `FILES` back (paths, and
   whether they were cut). `offers(types)` says whether the clipboard has
@@ -662,12 +698,12 @@ fn main() {
   `olo-pbcopy` and `olo-pbpaste`, installed with Olo's programs; the
   session (`graphical::command_names`) and the installer link `pbcopy`
   and `pbpaste` to them beside them, never over the person's own.
-* **Single instance** (`olo_ui::instance`): call `instance::forward(app_id,
+* **Single instance** (`olo_kit::instance`): call `instance::forward(app_id,
   &args)` first in `main` (returns true if a running copy took the
-  arguments; exit then), and `instance::listen(app_id, olo_ui::proxy(cx))`
+  arguments; exit then), and `instance::listen(app_id, olo_kit::proxy())`
   in `run`'s closure; forwarded launches arrive in `message_handler` as an
   `instance::Launch { args, cwd, .. }`. A launch is answered once the
-  running copy's UI thread takes it (olo-ui does that as it hands it to
+  running copy's looper takes it (olo-kit does that as it hands it to
   the handler; 0.2 ms); a copy ending (its last window closed), or one
   with no handler, drops it unanswered and `forward` returns false, so
   the new process opens it itself rather than it being lost. The
@@ -694,7 +730,7 @@ fn main() {
   windows on one file would disagree.) The kit knows where its windows
   are from app_server's events: `WindowInfo::surface` names each window's
   `wl_surface` as its program knows it.
-* **Open in Tracker** (`olo_ui::tracker`): wherever something has a
+* **Open in Tracker** (`olo_kit::tracker`): wherever something has a
   folder or file behind it, offer `tracker::LABEL` ("Open in Tracker",
   command `tracker::COMMAND`) in its context menu, and its File menu where
   it has one, and call `tracker::open(path)`: a folder shows in its
@@ -736,36 +772,36 @@ fn main() {
   again (gone at once, it was started again and again, then left
   stopped).
   A window's yellow tab offers it too, for a window that says what it
-  shows (`agent::set_path(window, cx, path)`: StyledEdit's document, the Viewer's file,
+  shows (`agent::set_path(cx, path)`: StyledEdit's document, the Viewer's file,
   Terminal's working folder; Tracker's own windows don't need it).
   Tracker's Find results have it as Open Parent (⌘↑, also in their
   context menu, with Open and Quick Look). Don't write another; the
   label and the command are the same everywhere, so agents find it by
   either.
-* **Following a setting** (`olo_ui::settings`): `current()` reads
+* **Following a setting** (`olo_kit::settings`): `current()` reads
   app_server's `Settings` once (a quick local round trip; fine at
   startup), `watch(f)` calls `f` on a thread now, after every
   `SettingsChanged` and after app_server restarts; send what you need
-  through `olo_ui::proxy(cx)`. Tracker follows `tracker.default_view` (the view
+  through `olo_kit::proxy()` (or a view's `cx.messenger()`). Tracker follows `tracker.default_view` (the view
   new folder windows open in, column view by default) this way.
   `update(edit)` changes them from an app (read, `edit`, `SetSettings`, on
   a thread), and `watch_power(f)` follows `PowerStatus` the same way
   (the screen locking, the displays sleeping).
-* **Menus for the command palette** (`olo_ui::commands`, automatic):
+* **Menus for the command palette** (`olo_kit::commands`, automatic):
   every kit app answers on `$XDG_RUNTIME_DIR/olo-menus-<pid>.sock`
   with the menu bar of its last active window, flattened
   (`commands::menus(pid)`: path, label, command, keys as shown, enabled,
   checked), and chooses an enabled one as if from the menu
   (`commands::invoke(pid, command)`), logging the command and who asked
   (`asked to choose a menu command`, the sender's name and pid). Both
-  block for at most a second; call them off the UI thread. (`MenuBar`
+  block for at most a second; call them off a looper. (`MenuBar`
   keeps them up to date as it draws: `agent::set_menus`.)
 * **What a window shows, for agents** (`commands::tree(pid)`, automatic):
   `{"tree":true}` on the same socket answers with a `WindowTree` per
   window (title, content size, active, nodes in tree order: role, name,
   value, bounds in the content's logical pixels, enabled, clickable,
   focused, checked, selected), from what each window's next frame
-  records (`agent::record(window, cx, Node {…})`: the kit's widgets do it
+  records (`agent::record(g, Node {…})`: the kit's widgets do it
   for themselves; nothing is recorded otherwise). A program that isn't a
   kit app can answer for another process with `commands::serve_trees(pid,
   app_id, trees)` (the Olo extension's host does it for Chrome). Layer
@@ -797,10 +833,10 @@ fn main() {
   socket answers, per window, the frames drawn since the last ask and
   the slowest and total time drawing them (`FrameTimes`, microseconds
   from taking input to handing the frame to the GPU), each frame's mark
-  (when, how long, where its scroll views were: on olo-kit, each
-  scroller's place as the display thread drew it, kept by its `Stage`;
-  on GPUI `Window::note_scroll`, which a ScrollView and a
-  ColumnListView each called as they painted)
+  (when, how long, where its scroll views were: each scroller's place
+  as the display thread drew it, kept by its `Stage`, and what a view
+  that scrolls itself said as it drew, `Painter::note_scroll`: the
+  editor, Terminal)
   and the GPU drawing them. The UI thread answers it, so how long the
   answer takes is how long the app would keep a person waiting
   (`tools/dev/perf-fuzz`).
@@ -809,8 +845,7 @@ fn main() {
   menu's Select All, Copy, Cut and Paste.
 * **Full screen**: `WindowOptions::new(..).fullscreen()` opens it full
   screen on the display the person is at, asked before its first frame
-  (GPUI's `WindowBounds::Fullscreen`; app_server folds it into the first
-  configure), for something that takes the whole of the person's
+  (app_server folds it into the first configure), for something that takes the whole of the person's
   attention and is done from the keyboard (the palm trainer).
 * **Fixed-size windows**: `WindowOptions::new(..).min_size(w, h)` with
   `fixed` (preference panels, alerts); `max_size(w, h)` fixes a side
@@ -829,7 +864,7 @@ fn main() {
   exported (xdg-foreign; a portal is given it as the parent window): the
   kit imports it and sets it as the window's parent, and app_server opens
   it over that window as it does over one of the app's own. The other
-  way, `window.export_handle(done)` (Olo's GPUI) exports a window of
+  way, `cx.export_handle(done)` exports a window of
   ours and gives its handle (None without xdg-foreign), for a program we
   start to open over it: the file panel's look (`olo-viewer --look
   --over=HANDLE`). A window opened over its parent that then sizes
@@ -843,12 +878,15 @@ fn main() {
   into Ctrl (⌘, or BeOS's Alt: the keyboard profile's, followed live by
   `olo_kit_base::keys::command_key`), app_server sends it to a terminal as
   its *right* Ctrl plus Shift and every physical Ctrl as the left one;
-  `gpui::right_control_held()` says which, so ⌘ and Ctrl are told apart.
+  `olo_kit::right_control_held()` says which, so ⌘ and Ctrl are told apart.
   Outside Olo, or with ⌘ off, ⌘ is any Ctrl.
-* Background work goes on threads; post results with `Proxy::send` and
-  take them in `message_handler` (then `cx.notify()` the view).
-* Periodic refresh (clocks, graphs): a GPUI timer (`cx.spawn` with
-  `timer(..)`), or `window.request_animation_frame()` for an animation;
+* Background work goes on workers (`cx.work(work, then)`: what comes of
+  it is the view's message; `cx.messenger()` for news on the way), or,
+  for the app as a whole, a thread that posts with `Proxy::send`, taken
+  in `message_handler`.
+* Periodic refresh (clocks, graphs): a timer (`cx.every(interval, ..)`,
+  `cx.after(delay, msg)`, the kit's `Due`), or, for a drawing that
+  moves with time, `Painter::paint_again_within(seconds)` as it draws;
   never to look for changes on disk: watch them (rule 7 above).
 * Layer-shell surfaces (Deskbar, desktop): `WindowOptions::layer(namespace,
   layer, anchor)` and `layer_options(|o| …)` (its output, keyboard,
@@ -861,16 +899,17 @@ fn main() {
   (Deskbar) leaves the keyboard where it was, never going through to
   what is under it; a menu of its closing hands the keyboard back to
   what had it as the menu opened.
-* The pointer's shape: `window.set_cursor_style(style, &hitbox)` over a
-  hitbox (`CursorStyle::None` hides it, as the screen saver does); shapes
+* The pointer's shape: an element's `.cursor(style)`, or in a drawing
+  `g.set_cursor_style(style, bounds)` over part of it
+  (`CursorStyle::None` hides it, as the screen saver does); shapes
   go to app_server by name over cursor-shape-v1, and app_server draws
   its own cursor for them; apps never ship cursor images.
-* Staying awake: `window.set_keep_awake(true)` holds a zwp_idle_inhibit
+* Staying awake: `cx.set_keep_awake(true)` holds a zwp_idle_inhibit
   inhibitor on the window (no dimming, screen saver, lock or sleep while
   it is visible) until `false` or the window closes; app_server counts
   these in `PowerStatus::app_inhibitors`. The Viewer and Quick Look hold
   one while a video plays.
-* Activation: `window.activation_token(done)` asks for an xdg-activation
+* Activation: `cx.activation_token(done)` asks for an xdg-activation
   token from the latest input in the window, to hand to another program
   so its window may come forward; app_server honours a request only with
   fresh input from the asking app (or from the token's maker, when it has
@@ -881,21 +920,22 @@ fn main() {
   one is in the environment; `issue_activation_token` asks whatever is
   there, as olo-chrome does: the opener's token in its environment may
   be long spent, and a Chrome running already is handed the new one).
-* Scrolling: GPUI's `ScrollWheelEvent::kind` says whether a wheel's
+* Scrolling: `ScrollWheelEvent::kind` says whether a wheel's
   notches (eased in by the Wayland client, 48 points a notch), fingers
   on a touchpad or their glide (app_server's `continuous` scrolls) moved
   it, and `touch_phase` where in a scroll it is; fingers and the glide
-  stretch past an end and spring back (`gpui::Elastic`, which every
-  scroll view keeps, and a view that scrolls itself keeps its own:
+  stretch past an end and spring back (`Elastic`, which the display
+  thread keeps for every scroller, and a view that scrolls itself keeps
+  its own:
   Terminal's scrollback, the editor). Keep any rounding to lines as a
   running remainder.
 * The menu bar opens a menu on press, as on BeOS; pressing the open
   menu's title again closes it, but a menu that slid open as the pointer
   crossed the bar stays open for that press.
-* Session lock (the lock screen only): `olo_ui::lock_session` and
+* Session lock (the lock screen only): `olo_kit::lock_session` and
   `unlock_session`. See "The lock screen".
 
-### Drag and drop (`olo_ui::dnd`, GPUI's drops)
+### Drag and drop (`olo_kit::dnd`)
 
 **Spring-loaded tabs** (app_server shell/spring.rs): anything dragged
 and held 0.6 s (`SPRING`) over a window's yellow tab brings that window
@@ -917,18 +957,18 @@ had no target, and was let go onto nothing.) Escape ends any drag,
 nothing dropped: app_server's for a drag-and-drop (its source told it
 was cancelled, the window under it that it left: `escape_drag`) and
 for a window being moved (back where it was, zoomed again if it was,
-an auto-tiled one in its tile), the kit's Frame for GPUI's drags in a
-window (`stop_active_drag`); the Escape reaches nobody. As in BeOS (the Be
+an auto-tiled one in its tile), the kit's Frame for a drag inside a
+window; the Escape reaches nobody. As in BeOS (the Be
 Book's `DragAndDrop.md`), a drag carries the same data in several types
 and offers actions; where it is dropped picks the type and the action.
 
 * **Dragging out:** as a press drags (the button still down),
-  `dnd::start(window, cx, drag, done)` with an `OutgoingDrag`:
+  `dnd::start(cx, drag, done)` with an `OutgoingDrag`:
   `dnd::files(&paths, copy, move)` carries `text/uri-list` (file://
   URIs: file managers, browsers, editors) and the paths as plain text
   (terminals); add types only Olo knows first; `dnd::as_link(drag)` asks
   a folder for links instead of copies (`dnd::LINK_TYPE`);
-  `dnd::picture(window, cx, icon, size, label, hotspot)` makes the
+  `dnd::picture(cx, icon, size, label, hotspot)` makes the
   picture under the pointer (the icon, its name below in the
   selection's colours). `done` gets the action it was dropped as (None:
   nothing took it). On olo-kit the same is `olo_kit::dnd`:
@@ -949,15 +989,19 @@ and offers actions; where it is dropped picks the type and the action.
   as the application, and draws links to our programs with their icons
   (`Entry::app_icon`). Hit-test a drag where the button went down: by
   the time it's a drag the pointer has moved on.
-* **Taking drops:** what's dragged over a window
-  (`Window::drop_offer`: its types, what its source allows, whether one
-  of this program's windows dragged it out, its files) is offered to its
-  parts as they paint; one that would take it says so each frame
-  (`window.accept_drop(target, mime, action)`; no call refuses) and
-  shows it: an item highlights itself, a view or window outlines itself
-  (2 px, keyboard-navigation colour). What's dropped comes to the
-  window's `on_dropped` handler (`Dropped`: target, type, data, action,
-  position; `paths()`, `text()`), its data read off the UI thread.
+* **Taking drops:** a window that takes what's dragged over it part
+  by part says so (`View::takes_drops`), and is asked where as it
+  comes, as it moves and as a modifier changes (`View::drop_over(offer,
+  at)`: the `DropOffer` is its types, what its source allows, whether
+  one of this program's windows dragged it out, its files): it answers
+  with the part that would take it, as which type and how
+  (`DropAccept`; None refuses), and shows it by invalidating itself: an
+  item highlights itself, a view or window outlines itself (2 px,
+  keyboard-navigation colour). What's dropped comes to
+  `View::dropped` (`Dropped`: target, type, data, action, position;
+  `paths()`, `text()`), its data read off the looper. A window that
+  only takes files, copied, wherever an element takes them, needs none
+  of that: `.on_drop(..)` on the element.
   What other programs drag: Chrome (156, on Wayland) drags a picture out
   of a page as `text/x-moz-url`, `text/html`, text and the picture itself
   as `application/octet-stream;name="sun.png"`, with no `text/uri-list`;
@@ -1044,8 +1088,8 @@ groups' menus.
 
 ### Ad-hoc popup menus (`menu::context_menu`, `menu::popup`)
 
-A context menu is `menu::context_menu(window, cx, menu, position,
-on_choose)`; a menu under a button `menu::popup(window, cx, menu,
+A context menu is `menu::context_menu(cx, menu, position,
+on_choose)`; a menu under a button `menu::popup(cx, menu,
 anchor, corner, on_choose)` (`MenuField`'s is one). `on_choose` gets the
 chosen item's command: an app's own context menus use its menu bar's
 command names and send them where the bar's go.
@@ -1085,26 +1129,26 @@ one: a hollow diamond where the check mark goes and a lighter label
 (`style::diamond`), still enabled (choosing it brings the window back);
 agents read `minimized` on its `MenuItem` node.
 
-### Tips past the window's edge (`olo_ui::tip`)
+### Tips (`olo_kit::tip`)
 
-GPUI's tooltip (`widgets::tooltip(text)` on an element's `.tooltip(..)`)
-is drawn inside the window, so in a window smaller than what it says it
-is cut at the edge. `tip::hover(window, cx, key, text, anchor, hovered)`
-shows it in a popup of its own instead (`WindowKind::Tip`: an xdg_popup
+A tip is a popup of its own, never drawn inside the window (in a
+window smaller than what it says, it would be cut at the edge).
+`tip::on(element, key, text)` gives an element one;
+`tip::hover(cx, key, text, anchor, hovered)` is the same for a drawing
+that follows the pointer itself (`WindowKind::Tip`: an xdg_popup
 with no grab and an empty input region, so it takes no clicks), below
 the thing or else above it, slid to stay on the screen; it comes after
 a rest, at once if another showed a moment ago, and not after a click
-(`tip::pressed`). `tip::retext(window, cx, key, text)` changes what a
+(`tip::pressed`). `tip::retext(cx, key, text)` changes what a
 tip showing says (a live value: Deskbar's widgets' tips), resized and
-placed again for it: GPUI places a popup that changes size again
+placed again for it: a popup that changes size is placed again
 (`xdg_popup.reposition`, version 3; one resized before its first
 configure, as a tip opened at once and given its words straight after,
 once that comes), so a tip that grows at the screen's edge stays on it.
-Use it where the tip can be wider or taller than the window: Deskbar's
-tray, Terminal's sudo window's command. Elsewhere `widgets::tooltip` is
-fine.
+So a tip can be wider or taller than its window: Deskbar's tray,
+Terminal's sudo window's command.
 
-### Text cut short (`olo_ui::cut`)
+### Text cut short (`olo_kit::cut`)
 
 Text that doesn't show in full shows whole in the kit's tip (`tip`)
 when the pointer rests on it, at once while ⌘ (Super) is held (⌘ as
@@ -1116,12 +1160,12 @@ pointer leaves the text. What the kit cuts is noted as it's painted:
 cells, tab and strip titles, pop-up menu fields, sidebars, dashboards,
 thumbnails), and a label running past the side of what it's painted in
 (`label`, `label_runs`; a row half scrolled out of view, top or bottom,
-isn't). GPUI's own text elements (a `div().child(text)`, `StyledText`)
-note themselves the same way (`gpui::CutText`, the record `cut::note`
+isn't). The Interface Kit's own text (a `div().child(text)`,
+`styled_text`) notes itself the same way (the record `cut::note`
 makes too): truncated (`truncate()`, `text_ellipsis()`), clamped short
 of its rows (`line_clamp`: the sudo sheet's command), or one line
 running past a side of its clip (a paragraph's long word isn't). An app
-that cuts text itself says so with `cut::note(window, full, bounds)`
+that cuts text itself says so with `cut::note(g, full, bounds)`
 (Tracker's icon names, Telegram's attachment chips and bubble lines). The notes are paint records, so
 a cached view's replay keeps them; the pointer's moves look through
 them once after each frame drawn, then through the few rectangles cut
@@ -1130,7 +1174,7 @@ text whole: in a window's tree a node named by what shows of it
 ("Quarterly rep…") has its whole name, and a cut text no node names is
 a `Label` of its own (`agent::whole_name`, when the tree is asked for).
 
-### Showing a control (`olo_ui::spotlight`)
+### Showing a control (`olo_kit::spotlight`)
 
 `spotlight::show(handle, tab, group, name, cx)` says "here" about one
 control, as macOS's System Settings lights what its search found: the
@@ -1157,10 +1201,10 @@ still waits for what it shows).
 
 ### What every app does the same way
 
-The widgets are listed under "The GPUI kit" below; this is how they
+The widgets are listed under "The kit" below; this is how they
 behave, so that something an app draws itself behaves the same.
 
-The pointer leaving a window un-hovers everything in it. Olo's GPUI
+The pointer leaving a window un-hovers everything in it. The kit
 takes the pointer out of the window (its hit test empty, the window
 drawn again) and, no button held, gives the window a move to nowhere,
 so state kept from the pointer's moves goes too (a graph's readout, a
@@ -1172,7 +1216,7 @@ and a canvas's hover drawn only while its hitbox `is_hovered`.
 
 An app's own files (its settings in the config folder, what it
 remembers in the state folder) go through `store` (`olo_kit_base::store`,
-olo-ui's `store`): `load(path)` is the JSON there as a `T`, or None (no
+`olo_kit::store`): `load(path)` is the JSON there as a `T`, or None (no
 file, or not a `T`: the app's defaults); `save(path, &value)` writes it,
 laid out to read, off the caller's thread, one file after another in
 the order saved, so of quick saves to a file only the last is written;
@@ -1209,8 +1253,8 @@ A window that should open at the size it was last left at says so:
 live resize writes nothing), and the app's sizes written when one of its
 windows closes or it quits (`kept.rs`, `store`, one file an app in
 `~/.local/state/olo/windows/`); the next opens at it, held to its min
-and max. A size the compositor chose (a tile, zoomed, full screen,
-GPUI's `Window::tiling`) isn't the person's and isn't kept. The layout
+and max. A size the compositor chose (a tile, zoomed, full screen:
+`WindowCx::window_state`) isn't the person's and isn't kept. The layout
 lint ignores kept sizes. Kept: Activity Monitor (and its inspectors),
 Logs, Disk Usage, Notifications' History, Passwords, Telegram,
 StyledEdit's documents, Token Pool, DriveSetup, Doctor, Agent Screens.
@@ -1224,7 +1268,7 @@ Cancel, Don't Save and Save (the default), as BeOS's StyledEdit asked;
 it; Passwords' item editor asks to discard instead (its Save is the
 item's own, in the editor).
 
-What a view has to do at some time goes through `due` (olo-ui), so
+What a view has to do at some time goes through `due` (`olo_kit::due`), so
 nothing runs while nothing is due: `Due` is one timer for the next
 thing, set to when that is (`at(when, cx, then)`: the timer there is
 kept if it's for the same time; None, no timer) or kept to the soonest
@@ -1280,9 +1324,9 @@ and stays over all its app's windows until it's answered
 size = max size) is always the size it asks for: app_server doesn't
 give it a size remembered from before a restart.
 
-File panels (`olo_ui::file_panel`) are BFilePanel: a path pop-up that
+File panels (`olo_kit::file_panel`) are BFilePanel: a path pop-up that
 also goes to the standard folders, Favorites (the folder shown added or
-taken away) and Recent Folders, all from `olo_ui::places`
+taken away) and Recent Folders, all from `olo_kit::places`
 (`~/.config/olo/places.json`, which Tracker's Go menu shares, both
 adding the folders they go to); Home; a Name/Kind/Size/Modified list as
 Tracker's, folders first and names in reading order, following the
@@ -1298,7 +1342,7 @@ thread and handed to the panel on a channel), the panel moves its
 selection there (past folders) and tells it the path to show (a line on
 its stdin), as it does when its selection moves by itself. An
 item's menu (a secondary click) has Quick Look, Open With ▸
-(`olo_ui::open_with`, the folder's kinds warmed as it's listed) and
+(`olo_kit::open_with`, the folder's kinds warmed as it's listed) and
 Show in Tracker (`olo_kit_base::tracker::open`). A
 filter is a glob, ignoring case, or a MIME type, a kind of one counting
 (`olo_xdg::mime::is_a`); which filters each file fits is worked out
@@ -1348,7 +1392,7 @@ block's BlockAdditional, `Frame::additional`) and decoded in order by a
 to 255 (`Frame::luma_into_alpha`, a table; libvpx's decoders copy it
 so, and read as video's limited range Chromium's test file's 68 came
 out 61). `OLO_SAMPLES=dir cargo test -p olo-images webm -- --ignored`
-plays `bear-vp9a.webm` from `dir`. Colour emoji are GPUI's text
+plays `bear-vp9a.webm` from `dir`. Colour emoji are the Interface Kit's text
 system's, drawn with the text; `olo-emoji` (`crates/emoji`) finds and
 paints clusters itself where that's wanted (Telegram's messages of
 emoji alone, shown big): it shapes with harfrust and paints COLRv0/v1
@@ -1356,10 +1400,10 @@ with tiny-skia (Noto Color Emoji is COLRv1); render test images with
 `EMOJI_OUT=/var/tmp/dir cargo test -p olo-emoji`. Which characters
 start an emoji (`starts_emoji`: pictographs, the symbols shown as emoji
 by default such as ✋ ⚡ ✨, and any asked to be one with U+FE0F, a
-keycap or, for ☝ ⛹ ✌ ✍, a skin tone) is the same everywhere: GPUI's
+keycap or, for ☝ ⛹ ✌ ✍, a skin tone) is the same everywhere: the
 text system takes it from `olo-emoji` without its drawing (`default-
 features = false`; the `render` feature is skrifa, harfrust and
-tiny-skia). GPUI keeps the colour glyphs it draws for every window of
+tiny-skia). The text system keeps the colour glyphs it draws for every window of
 the app (they cost ~60 µs each to draw; up to 32 MB of them, those for
 other scales let go first; `TextSystem::forget_kept_glyphs` lets go),
 where an outline glyph goes to the atlas that asked.
@@ -1368,7 +1412,7 @@ Toolbars are `metrics::TOOLBAR_HEIGHT` tall (a row of controls, `TIGHT`
 above and below), with their line under them (`style::hline_above` at
 the bottom); what follows starts a line lower (`style::hairline`), so at
 1.5× it is a pixel down, not a point and a half, and the controls stay
-centred. App settings live in `olo_ui::config_dir()`
+centred. App settings live in `olo_kit::config_dir()`
 (`$XDG_CONFIG_HOME/olo/NAME.json`); user folders come from
 `olo_xdg::user_dir("PICTURES")` (user-dirs.dirs, None if unset or
 missing). Bytes too many to keep in memory (a download being gathered)
@@ -1396,7 +1440,7 @@ card is a lift above the paper, not a darker hole in it. Don't head a
 card with a coloured band or a little yellow tab: a card is not a
 window, and a tab on every one repeats the window's own.
 
-### Searching and filtering (`olo_ui::search`)
+### Searching and filtering (`olo_kit::search`)
 
 Every app's search is the same language, field and filter bar. The
 language, its `Facet`s and `suggest` are `olo_kit_base::search`: words
@@ -1425,18 +1469,18 @@ a shortcut would be; choosing one rewrites the query's text
 always agree. Facets are built from the data (values and counts) and
 kept until it changes, not made every frame.
 
-In olo-ui: `search_field(cx, hint)` makes an `Entity<SearchField>`
+In the kit: `search_field(cx, hint)` makes a `Child<SearchField>`
 (coloured filters through `TextField::set_colors`, suggestions drawn
-over what's below with `deferred`); it says `SearchEvent::Changed` and
-`Entered`; `set_facets(Rc<Vec<Facet>>)` (drawn again only when the
+over what's below); it emits `SearchEvent::Changed` and
+`Entered` (`cx.subscribe`); `set_facets(Rc<Vec<Facet>>)` (drawn again only when the
 filters or their values change, not their counts, which change with
 every new list), `set_text` (no event), `choose` (set, and said as
 `Changed`, as typing it would be: a bar's choice), `focus` (⌘F,
 its text selected). Tab and Return take suggestions by capturing the
 field's own actions (`FocusNext`, the field's `Enter`): bindings run
 before key listeners. `FilterBar::new(id, text, facets).max_width(w)
-.on_change(|text, window, cx| …)` is the bar as an element
-(`FilterBar::width(cx, text, facets)`, about: each menu is sized from
+.on_change(|text, cx| …)` is the bar as an element
+(`FilterBar::width(text, facets)`, about: each menu is sized from
 its text as shaped in the window, and a pixel more, so rounding to
 device pixels never cuts it short); its menus are kit popups.
 `.drives(&field)` has its choices go into the field (`choose`), so an
@@ -1453,12 +1497,12 @@ from colour spans and marks (marks are runs' backgrounds), and
 `search::highlight(text, &query, font, color, mark)` marks what a query
 found (not on a selected row's colours).
 
-### The text editor (`olo_ui::editor`)
+### The text editor (`olo_kit::editor`)
 
 For documents (StyledEdit's window; anything a person writes at length)
 use the editor, BTextView, not a multi-line `TextField`: it lays out
 each paragraph on its own, only while it shows, so a long document
-keeps to 120 frames a second (the API is under "The GPUI kit").
+keeps to 120 frames a second (the API is under "The kit").
 
 A paragraph is set by `Document::paragraph` (`editor::Paragraph`:
 `left`, `first` and `right` indents, space `above` and `below`, its own
@@ -1531,7 +1575,7 @@ indent.
 Spelling (`olo_kit_base::spell`): the system's Hunspell dictionaries
 (`/usr/share/hunspell`, `~/.local/share/hunspell`) in the language of
 `LANG` (else another of that language, else `en_US`), read by spellbook
-on a worker the first time `olo_ui::spell::checker(cx)` is asked (None
+on a worker the first time `olo_kit::spell::checker(&cx.invalidator())` is asked (None
 until then; the windows draw again when it's ready). `Checker::check`,
 `misspelled(text)`, `suggest(word)` (eight at most), `learn(word)`
 (every app's, in `~/.config/olo/words`) and `ignore(word)` (until the
@@ -1541,11 +1585,10 @@ numbers or identifiers and words in capitals; `spell::word_at(text,
 at)` the one at the caret. Misspelled words get a red wave under them
 (the palette's `failure`), all but the word at the caret while typing.
 The editor checks a paragraph that changed on a worker and, when the
-words come, draws its host's view again (`App::notify`), not the window:
-a window refresh draws every cached view afresh too (StyledEdit's tool
-bars, on every key's second frame).
+words come, has its host's view say what it shows again (an
+`Invalidator`), not the whole window drawn (`cx.refresh()`).
 
-### Source code (`olo_ui::code`) and Markdown (StyledEdit)
+### Source code (`olo_kit::code`) and Markdown (StyledEdit)
 
 Code is shown and edited in the same editor: `code::Code` keeps a
 text's `olo_syntax::Highlighter` (crates/syntax) and makes each line's
@@ -1582,7 +1625,7 @@ paragraph is set as its block is: headings larger and bold with room
 above, a list item's bullet (•, ◦, ▪ by depth), number or task box
 (☐ ☑) hanging in its indent, a quotation's bar and grey text, a code
 block's shaded ground with its fence's language as a small label (code
-coloured by that language: `olo_ui::code`, parsed on the spot as it's
+coloured by that language: `olo_kit::code`, parsed on the spot as it's
 small, kept while unchanged), a rule for `---`; inline emphasis,
 strong, struck, `code` on its ground, links in the link colour; and
 the marks that make them hidden, except on the lines the selection is
@@ -1628,7 +1671,7 @@ a quotation or a bulleted, numbered or task list, by their marks.
    mode). Never hard-code a grey: it will be wrong in the other theme.
    Semantic accent colours (graph lines, file-type tints) must be checked in
    both themes.
-2. **Spacing only from `olo_ui::metrics`** (`SPACING` 12, `TIGHT` 6,
+2. **Spacing only from `olo_kit::metrics`** (`SPACING` 12, `TIGHT` 6,
    `STACK` 10, `WINDOW_INSET` 16, `BOX_INSET` 14, `LABEL_GAP` 10,
    `MARK_SIZE` 12 and `MARK_GAP` 6, `CONTROL_HEIGHT` 24, `LIST_ROW` 20,
    …). If you need a new kind of gap, add a named constant there rather
@@ -1638,7 +1681,7 @@ a quotation or a bulleted, numbered or task list, by their marks.
    a check box or radio button with what's around it by its mark, its
    label where the mark puts it (BeOS's 20 px in; Olo's 18), so a check
    box under a box lines up with the box's frame, not its text.
-3. **Text**: draw single lines with `style::label(window, cx, x,
+3. **Text**: draw single lines with `style::label(g, x,
    center_y, align, text, size, font, color)`; it centres capitals
    optically and puts the baseline on a device pixel. Any line that can
    be longer than its room (a title, a path, a name the person typed)
@@ -1656,14 +1699,14 @@ a quotation or a bulleted, numbered or task list, by their marks.
    Sans and Noto Sans Mono, variable, with Symbols, Symbols 2 and Math
    for what they lack; OFL) and installed to `share/olo/fonts`
    (`install-session.sh`, and an upgrade's `sync_fonts`);
-   `olo_xdg::fonts_dir()` finds them, and GPUI's text system and
+   `olo_xdg::fonts_dir()` finds them, and the kit's text system and
    app_server (`text.rs`) both use them ahead of the system's, so Olo
    looks the same on any system. `olo_theme::fonts` lists the faces in
    the order they are tried (`UI`, `MONO`, `SYMBOLS`; the system's DejaVu
    Sans, CJK and emoji after). `style::CAP_HEIGHT` is Noto Sans's;
    app_server centres its own text (tab titles, Twitcher, hint badges)
    with `text::top_for_centre`, from the face's own metrics. Keys as on a
-   Mac menu ("⇧⌘←"): `style::key_combo(window, cx, right_center, keys,
+   Mac menu ("⇧⌘←"): `style::key_combo(g, right_center, keys,
    color)`, each symbol on the text's baseline though they come from a
    fallback font. A failure beside text (an error's title, a failed row)
    leads with `style::stop_mark(window, r, palette)`, a crisp vector stop
@@ -1765,52 +1808,57 @@ a quotation or a bulleted, numbered or task list, by their marks.
    under Testing) and by looking, with the longest names the view may
    be given.
 
-## The GPUI kit (crates/ui, `olo-ui`)
+## The kit (crates/kit, `olo-kit`)
 
-Every Olo app is built on olo-ui, on Olo's GPUI (gpui/README.md); the
-egui kit it replaced left the workspace on 2026-11-02. An app calls
-`olo_ui::run(id, build)` and opens windows with `open_window(cx,
-WindowOptions, |window, cx| view)`: its GPUI view inside a `Frame`,
-which paints the panel behind it, sets Olo's font (Noto Sans, 12 points)
-and the palette's text colour, and starts each frame for agents. It ends
-when its last window closes. `proxy(cx)` gives any thread a `Proxy` to
-send messages the app takes in `message_handler` (a forwarded
-`instance::Launch`).
+Every Olo app is built on olo-kit: the Interface Kit
+(`crates/interface`, re-exported whole) with Olo's look, its controls
+and what every app does the same way. **How the kits work, how a
+program is put together with them, and the practices to keep are in
+the Olo Book ([OLO-BOOK.md](OLO-BOOK.md)); this section is the
+catalogue: every widget and what it does.** (The kits replaced a kit on
+GPUI, `crates/ui`, on 2026-11-11, which had replaced one on egui on
+2026-11-02. A note below that says how "the GPUI kit" did something
+is history, kept where it explains why a thing is as it is.)
 
-**An entity isn't read while it's updated.** `Entity<T>::update` takes T
-out of the app while its closure runs, so reading or updating that
-entity again from inside, however many calls deep (a helper that reads
-the settings, a view built for a new window), panics: "cannot read T
-while it is already being updated". The compiler can't see it (entities
-are shared handles, like `Rc<RefCell<T>>`), so: read what you need
-before the update, or `cx.defer` what must read it after. Debug builds
-name where the conflicting update began ("its update began at
-apps/x/src/main.rs:88:9"), and `tools/dev/lockcheck reentry` finds it
-without running anything: a rustc driver (tools/reentry) that follows
-every update's closure through what it calls and lists each read or
-update of an entity of the same type (`// reentry: ok` on the line when
-it's another entity of that type). Run it after changing how entities
-are used. A window opened inside an update draws its first frame once
-the update is over (GPUI defers it; before, it drew there and then and
-its views' renders read what was being updated), still before any
-event reaches it.
+An app calls `olo_kit::run(id, build)` and opens windows with
+`open_window(WindowOptions, |cx| view)`: each on a looper of its own,
+its view inside a `Frame`, which paints the panel behind it, sets
+Olo's font (Noto Sans, 12 points) and the palette's text colour, and
+holds what a window has whatever it shows (its tips, a lit control,
+its menus for agents). It ends when its last window closes. `proxy()`
+gives any thread a `Proxy` to send messages the app takes in
+`message_handler` (a forwarded `instance::Launch`).
 
-- `theme`: the palette as a GPUI global (`theme::palette(cx)`),
+**Nothing reaches a view that's busy.** A view has one owner
+(`Child<V>` can't be copied), who alone reaches into it
+(`child.update(cx, ..)`, now) and can't be inside it when it does;
+everyone else sends it a message, or asks for something to be done to
+it later (`ViewRef::update`), taken once what's running is done. So
+there is no re-entry to guard against, and nothing to lock. (On GPUI,
+an entity read while it was being updated panicked at run time, and a
+rustc driver, `tools/reentry`, hunted for it; both are gone.) A window
+opened from a handler draws its first frame before any event reaches
+it.
+
+- `theme`: the palette in force (`theme::palette()`),
   following app_server's settings from a thread that sleeps until an
-  event comes; also the person's choice of how text is drawn on each
-  display (Preferences ▸ Display), handed to GPUI.
+  event comes (every window is then drawn again); also the person's
+  choice of how text is drawn on each display (Preferences ▸ Display),
+  handed to the text system.
 - `style`: BeOS's drawing primitives on whole device pixels at any
   scale, painted from an element's paint (`canvas`): `fill_rect`,
   `hline`/`vline` (and `_above`/`_left_of`), `frame_rect`, `bevel`,
   `sunken`, `raised`, `vgradient`, `inset`, `snap`, `hairline`, and
   `label` (one line, capitals centred on a y, baseline on a pixel).
   Colours: `c(rgba)`, `tint`, `shade`.
-- `agent`: widgets say what they are as they paint (`agent::record(
-  window, cx, Node::button(name, bounds))`), so each frame leaves a
-  tree the socket (`olo_kit_base::commands`) answers `{"tree":true}`
-  from at once; `{"frames":true}` from GPUI's `Window::take_frame_stats`;
+- `agent`: widgets say what they are as they paint (`agent::record(g,
+  Node::button(name, bounds))`; an element with `.agent(role, name)`),
+  kept with each drawing, so a window always has a tree the socket
+  (`olo_kit_base::commands`) answers `{"tree":true}` from, asked of
+  its looper; `{"frames":true}` from each window's stage
+  (`olo_interface::take_frame_stats`);
   `set_menus` gives the palette and agents the app's commands;
-  `set_path(window, cx, path)` says which file or folder a window shows
+  `set_path(cx, path)` says which file or folder a window shows
   (app_server's `{"path":ID}` for its tab's Open in Tracker).
 - `widgets::TextField`: one line, input methods, selection by keyboard
   and pointer, words, clipboard, undo; the caret a line wide on device
@@ -1833,7 +1881,7 @@ event reaches it.
   when it emits `Entered`), scrolled to keep the caret in view, each
   line's baseline on a device pixel; its owner sizes it from
   `rows_at(window, width)` and `TextField::line_height_for` (Telegram's
-  composer). Its hint is drawn as its first row of text is (GPUI's line
+  composer). Its hint is drawn as its first row of text is (a shaped line
   in the row's height), so the first letter typed lands where the hint
   was (drawn as a label it sat a device pixel higher at 1.5×, and the
   review found its line cut by the field's top). ⌘↑ and ⌘↓ are left to
@@ -1854,16 +1902,17 @@ event reaches it.
   its owner gives with the text (`set_text(text, Some(runs))`, made for
   `font()`), the note in the middle while empty; selected with the
   pointer (double click a word, triple all), ⌘A, ⌘C and a context menu
-  copy. Agents read it as a `Document` with its text. Built on GPUI's
-  `StyledText` (wrapping, measuring, run backgrounds); the selection is a
+  copy. Agents read it as a `Document` with its text. Built on the Interface
+  Kit's `styled_text` (wrapping, measuring, run backgrounds); the selection is a
   run background too, as the marks are.
 - `style::label_runs`/`label_runs_fit` (one line in runs, cut short to
   fit), `Cell::text_runs` (a list cell's), `ListModel::at_end` (its last
   row shows: a list following what's added keeps following only then),
   `Control::agent_value` (a role, name and value: a filter's menu) and
   `Control::pointing` (the pointing hand: a link).
-- The BeOS controls (see them all in `cargo run -p olo-ui --example
-  gallery`): `Button` (`default`, `pushed`, `small`, `on_click`),
+- The BeOS controls (see them all in the kit's `gallery`, `controls`
+  and `widgets` examples, `crates/kit/examples`, run in a test
+  session): `Button` (`default`, `pushed`, `small`, `on_click`),
   `CheckBox` (`mixed`, `on_toggle`), `RadioButton` (`on_select`),
   `MenuField` (label, divider, `quiet_label`: a field set among facts,
   its label theirs and its choice on their values' line; `name`: its
@@ -1888,8 +1937,8 @@ event reaches it.
   move the keyboard through the window's tab stops in drawing order:
   text fields, lists and sliders (their focus handles are tab stops; a
   disabled field drops out), and every button, check box, radio button
-  and menu field (`Control::focusable`: a focus handle kept by the
-  control's id, `Window::insert_tab_stop`, the label underlined in the
+  and menu field (`Control::focusable`: a tab stop,
+  `InteractiveElement::tab_stop`, the label underlined in the
   navigation colour while it has the keyboard, Space clicks it). A
   default button (`Button::default`, `Control::default_key`) answers
   Return from anywhere in its window when what has the keyboard
@@ -1920,39 +1969,35 @@ event reaches it.
   grid, as a tray's icons). Too narrow, it wraps at separators up to
   `rows(n)` and puts what still doesn't fit in a » menu at its end (as
   the menus have them, a picker as a submenu, groups apart): nothing is
-  cut off. `extent(window, length)` is its height (width down a side) on
-  whole device pixels, for laying out beside it. `cached(&view, window,
-  cx)` draws it in a `ToolBarView` of its own (`AnyView::cached`),
-  drawn again only when what it shows changes (a hash of its tools'
-  states, picker values and length), its last frame replayed otherwise:
-  typing in StyledEdit doesn't lay its forty tools out again (they cost
-  ~280 µs a key drawn each frame, ~55 µs cached). It's told in its
-  parent's render, so it's marked with `Window::redraw_view` (Olo's
-  GPUI: a cached view drawn again in the frame being drawn, which a
-  `notify` then would leave for the next). `Menu::swatch(color)` gives a
+  cut off. `extent(length)` is its height (width down a side) on
+  whole device pixels, for laying out beside it. Its drawing has a key
+  (what it shows: its tools' states, picker values and length), so it
+  is drawn again only when that changes: typing in StyledEdit doesn't
+  lay its forty tools out again (on the GPUI kit they cost ~280 µs a
+  key until the bar was a cached view of its own). `Menu::swatch(color)` gives a
   menu item a colour swatch in the icons' column (`color::paint_swatch`,
   `ColorWell`'s look).
-- Custom drawing in a `canvas` paints with GPUI: `window.paint_quad`
+- Custom drawing in a `canvas` paints with its `Painter` (`g`): `g.paint_quad`
   (rectangles, rounded, bordered; circles as fully rounded quads),
   `style::label` (text), `icons::paint`, `PathBuilder` (filled or stroked
-  shapes, small ones with exact coverage), `window.paint_segment`
+  shapes, small ones with exact coverage), `g.paint_segment`
   (lines of any angle on the GPU, for graphs and strokes:
-  `examples/lines.rs`; `window.paint_segments(pieces, width, round,
+  the kit's `examples/lines.rs`; `g.paint_segments(pieces, width, round,
   color)` for many of one colour at once, a polyline's pieces: one
-  operation for the lot), `window.paint_area(from, to, bottom, color)`
+  operation for the lot), `g.paint_area(from, to, bottom, color)`
   (what's under a segment down to `bottom`, on the GPU in one instance:
   its slanted top antialiased by distance, its sides taking the pixels
   whose middles they hold, so a run of them side by side fills under a
   line with no seam: a graph's fill, where a path would be tessellated
   each frame and filled multisampled through textures as big as the
-  window, 45 MB of them for Activity Monitor's) and `window.paint_sector` (a ring's slice, a
+  window, 45 MB of them for Activity Monitor's) and `g.paint_sector` (a ring's slice, a
   pie's, a disc or a circle's outline on the GPU, analytically
   antialiased: charts, dials, round marks). A picture bent, folded or
-  magnified is `window.paint_image_triangles(image, triangles, tint)`:
+  magnified is `g.paint_image_triangles(image, triangles, tint)`:
   triangles of the picture, each corner with where it is on screen and
   where it is in the picture (0–1), on the GPU from the sprite atlas
   (the screen saver's Flip and Lens). Many lines or slices go in
-  a `window.paint_layer(bounds, ..)`: one place in the scene's order for
+  a `g.paint_layer(bounds, ..)`: one place in the scene's order for
   them all rather than a bounds-tree insert each (a layer draws its
   kinds in a fixed order, fills before lines before sprites, so a mask
   that must go under lines needs a layer of its own before them).
@@ -1985,7 +2030,7 @@ event reaches it.
   view's state): what it holds scrolled in a sunken frame with BeOS
   scroll bars (`horizontal`, `vertical`, `border`, `focused`,
   `background`); `ScrollBar::vertical(id, handle)` drives any
-  `ScrollHandle` (a `uniform_list`'s too): arrows that scroll on while
+  `ScrollHandle` (a list's too): arrows that scroll on while
   held, a track click pages, the knob drags; agents read it as a
   `ScrollBar` with its position, 0 to 1. In a frame it places itself
   inside the frame's two lines on device pixels (`in_frame`).
@@ -1995,7 +2040,7 @@ event reaches it.
   it overflows (not scrolling, a hidden bar's content ran past the view
   over what's below and never showed the bar).
 - `widgets::SlimScrollBar::new(id, top, shown, total).on_scroll(|to,
-  window, cx|)`: the slim one, there when wanted, for content a BeOS
+  cx|)`: the slim one, there when wanted, for content a BeOS
   bar's column would cost (Terminal's scrollback; use the BeOS bar
   elsewhere). Laid over the box it's given: a thin rounded thumb at its
   right edge (`THUMB` 6, `THUMB_WIDE` 8 under the pointer, with a faint
@@ -2014,17 +2059,16 @@ event reaches it.
   one baseline), `card_ink`/`card_paper` (cards on a gutter).
 - `widgets::StatusBar::new(fraction).label(..).trailing(..)` and
   `level_bar` (the bar alone).
-- `copy::secret(cx, text, clear_after)`: a password or one-time code on
+- `copy::secret(text, clear_after)`: a password or one-time code on
   the clipboard, marked for clipboard managers to leave alone
   (`x-kde-passwordManagerHint`), and taken off after `clear_after` if
-  it's still ours (`App::withdraw_from_clipboard(&item)`, Olo's GPUI:
-  nothing if something else was copied since). An app that quits
+  it's still ours (nothing if something else was copied since). An app that quits
   while what's on the clipboard is its own runs on with its windows
-  gone (`App::quit` closes them) until something else is copied or it
+  gone (`quit` closes them) until something else is copied or it
   takes its own off, so what it copied can still be pasted; launched
   meanwhile, it opens a window again and
   carries on.
-- Pinches: GPUI's `PinchEvent` (Olo's: the Wayland client binds
+- Pinches: `PinchEvent` (the Wayland client binds
   `zwp_pointer_gestures_v1` and turns its pinches into it: where, the
   scale since it began, `step` since the last event, the phase), and
   `on_pinch` on any element as `on_scroll_wheel`. A touchpad's pinch
@@ -2037,7 +2081,7 @@ event reaches it.
   (`ListModel::new(cx, multiple)`; `state` is the shared
   `olo_kit_base::list::ListState`: its selection,
   anchor, cursor and sort). Only the rows in view are built
-  (`uniform_list`); `cell(&mut Cell, window, cx)` draws each
+  (`uniform_rows`); `cell(&view, &mut Cell, g)` draws each
   (`cell.text(..)`/`text_with(..)`, cut short with "…"). A header
   click sorts (`on_sort`), the dividers drag; a title dragged sideways
   moves its column (past a neighbour once the pointer passes its
@@ -2067,21 +2111,21 @@ event reaches it.
   `typing()` says a name is being typed (a space is part of
   it). Agents read `Row`s (named by their cells' text, selected or
   not) and `ColumnHeader`s (one scrolled out of view sideways is none
-  wide at the view's edge, not clickable). `row_key(|row, cx| u64)`:
+  wide at the view's edge, not clickable). `row_key(|view, row| u64)`:
   a number that changes when what a row shows does (its line's id and
   what a search marks in it): such a row whose key and look are as last
-  frame's is replayed, moved if scrolled, rather than painted again
-  (`Window::paint_memo`; Log Viewer's screen of 22,000 glyphs). Give it
+  frame's is kept, moved if scrolled, rather than painted again
+  (Log Viewer's screen of 22,000 glyphs). Give it
   for any list of many rows. `no_header()` shows the rows
   alone (a list of things, not of columns: Passwords' items), its
   frame's line along their top; a cell drawn by hand (an icon and two
   lines) says its text to agents with `cell.say(text)`.
-  `examples/list_gpui.rs` shows one (olo-kit's: `crates/kit/examples/list.rs`).
+  `crates/kit/examples/list.rs` shows one.
 - `style::label_fit` (a label cut short with "…" to a width, measured
   as shaped), `style::selection_band`, `style::selection_wash` (a thing
   selected in place: the selection colour see-through, its edge
   inside) and `style::snap_centred`.
-- `style::key_combo(window, cx, right_center, keys, color)` and
+- `style::key_combo(g, right_center, keys, color)` and
   `key_combo_width`: keys as menus write them ("⇧⌘P"), each symbol
   laid out on its own a point closer to what follows; one about as tall
   as the capitals (⇧ ⌘ ↵ ⌫ ⏏) is set on their line by its outline
@@ -2205,18 +2249,17 @@ event reaches it.
   What the person did comes to `.on_action(|&StripAction, cx|)`.
   Agents read each tab as a `Tab` (its title, status and group in its
   name, `selected`), its close box, the chips and New Tab as buttons.
-- `WindowOptions::max_size(w, h)` (GPUI's `window_max_size`, xdg
-  `set_max_size`): a window no larger along a side than its smallest is
+- `WindowOptions::max_size(w, h)` (xdg `set_max_size`): a window no larger along a side than its smallest is
   fixed along it, and app_server neither tiles nor groups it (Terminal's
   Find panel, fixed in height). `WindowOptions::under_pointer` and
-  `olo_ui::begin_move(window)`: a window torn off a strip opens with its
+  `olo_kit::begin_move(cx)`: a window torn off a strip opens with its
   tab under the pointer and moves with it.
-- `MenuBar::new(..).raw()`: the bar's shortcuts as the app presses them
+- `MenuBar::raw(cx, menus)`: the bar's shortcuts as the app presses them
   (a terminal's ⌘ keys), not the profile's; `menu::resolve(&mut menus,
   raw)` gives a context menu the same keys (`Menu::keys_from(&bar)`
-  after resolving the bar). `keys::unshifted(key)` maps the symbol GPUI
+  after resolving the bar). `keys::unshifted(key)` maps the symbol a keystroke
   names for a shifted key ("_") to the key and Shift ("-", true);
-  `gpui::right_control_held()` says whether the right Ctrl (the Mac
+  `olo_kit::right_control_held()` says whether the right Ctrl (the Mac
   profile's ⌘) is down, for a raw-keys window telling ⌘ from Ctrl.
 - `widgets::Slider::new(id, value, range)`: BSlider (label and value
   above, the bar filled to a raised thumb, `limits` under the ends;
@@ -2248,41 +2291,39 @@ event reaches it.
   name; ↑↓ and Return; "Always open files like … with it"), a dialog
   over the window in front that closes itself
   (`open_with::window_options()` to open it yourself).
-  `examples/panel_gpui.rs` opens each. On olo-kit (`olo_kit::file_panel`,
-  `olo_kit::open_with`) they are the same to the pixel, and a panel is
+  A panel is
   a window on a looper of its own: `file_panel::show(title, panel,
   on_done)` takes no context, and `on_done` (`FnOnce(Answer) + Send`) is
   called once on the panel's looper, so it sends the asking view a
   message (`cx.messenger()`) rather than touching it, as a BFilePanel
   messages its target; `open_with::run(cmd, kind, paths)` likewise.
   The kit's `examples/panel.rs` opens each; `tools/dev/kit-compare
-  panel_gpui panel --do "click 50 30" --then Open` compares a panel
-  the steps open (`--then TITLE`).
+  OLD NEW --do "click 50 30" --then Open` compares, in two builds, a
+  panel the steps open (`--then TITLE`).
 - Menu items take icons (`Menu::icon(name)`, an item's or a submenu's):
   a column of them between the check marks and the labels, faded when
   the item can't be chosen.
-- `Button::on_click_at(|bounds, window, cx| ..)`: told where the button
-  is, to open a menu under it (`menu::popup(.., bounds,
-  Corner::BottomLeft, ..)`).
-- `olo_ui::on_upgrade_due(cx, f)` and `olo_ui::upgrade_waits_while(cx,
+- A button that opens a menu under itself: in its `on_click`,
+  `cx.listener_bounds()` is where the button is (`menu::popup(cx, menu,
+  bounds, Corner::BottomLeft, ..)`).
+- `olo_kit::on_upgrade_due(f)` and `olo_kit::upgrade_waits_while(
   busy)`: a server finishes what is under way before it becomes its new
   version (Token Pool's drain); `busy` is asked four times a second
   while an upgrade is due.
-- `widgets::tooltip(text)` for an element's `.tooltip(..)` (the
-  palette's tooltip colours, BeOS's pale yellow in light mode).
-- `olo_ui::stay_resident(cx)`: the app keeps running with no windows
-  (an agent); otherwise it quits when its last window closes (GPUI's
-  own quit-on-last-window is gone: olo-ui decides).
-- `icons::paint(window, bounds, name)`: Olo's icon set (or a theme's,
+- Tips are `olo_kit::tip` (the palette's tooltip colours, BeOS's pale
+  yellow in light mode): see "Tips" above.
+- `olo_kit::stay_resident()`: the app keeps running with no windows
+  (an agent); otherwise it quits when its last window closes.
+- `icons::paint(g, bounds, name)`: Olo's icon set (or a theme's,
   or a file's), from the bitmap made for the device size it's shown at,
   a texture pixel to a device pixel; decoded once, on a worker, the
   windows drawn again as each arrives.
 - `menu`: BeOS menus (`Menu::new(title).item(label, command).checked(
-  on).separator().submenu(m)`), shown as Wayland popups (GPUI's
-  `WindowKind::Popup`, an xdg_popup over the window at a corner of an
+  on).separator().submenu(m)`), shown as Wayland popups
+  (`WindowKind::Popup`, an xdg_popup over the window at a corner of an
   anchor rectangle, flipped or slid by app_server to stay on screen):
-  `menu::context_menu(window, cx, menu, position, on_choose)` and
-  `menu::popup(window, cx, menu, anchor, corner, on_choose)`. Drawn as
+  `menu::context_menu(cx, menu, position, on_choose)` and
+  `menu::popup(cx, menu, anchor, corner, on_choose)`. Drawn as
   BeOS drew them; ↑ ↓ → ← Enter Space Escape; a submenu opens
   beside its item; items are `MenuItem`s to agents. `Menu::entries`
   flattens one for the palette (`agent::set_menus`). `Menu::sorted()`
@@ -2314,7 +2355,7 @@ event reaches it.
   opens, and taken by place the bar forgot the new menu and opened
   another over it, which xdg-shell forbids (a menu may open only on the
   topmost), so app_server ended the app's connection (Olo Doctor,
-  2026-11-01). GPUI guards against any app doing that: before a menu
+  2026-11-01). The Wayland client guards against any app doing that: before a menu
   opens, our menus showing outside its parent's chain are taken down
   (`withdraw_stray_menus`, with a warning). Items take keys with
   `Menu::key("w")` / `shift_key("z")` / `shortcut(..)` (a Mac's: the
@@ -2329,19 +2370,15 @@ event reaches it.
   the commands socket (an agent's `invoke`, the palette) rather than a
   hand on the display (a click, a key): for the few a program mustn't
   give itself (Terminal's Auto Approve asks the person first then).
-- `MenuBar::of(&app, |a, cx| a.menus(cx), on_command)`: the same bar,
-  its menus built from `app` (the window's view) when it changes
-  (`cx.notify()`), not each time the window draws. GPUI draws again
-  every view above one that changed, so a window whose picture moves (a
-  video, a live agent screen, a scan's progress) drew its whole menu
-  bar again each frame: building, resolving and copying the Viewer's
-  menus was 32 µs of its 261 µs a 4K60 frame (210 after). Opening a
-  menu, a key the bar takes and an agent's or the palette's look build
-  them afresh, so what they say is never stale; only the titles wait
-  for the app to change. The Viewer, Agent Screens, Notifications'
-  history, Disk Usage, Drive Setup, Telegram and Doctor use it; a window
-  that notifies itself for everything (Terminal's `Shell`, which
-  redraws for output) gains nothing from it.
+- A menu bar's menus are built when the view that holds it says what
+  it shows (its `body`), not each time the window draws: a window
+  whose picture moves (a video, a live agent screen, a scan's progress)
+  draws that picture alone. (On the GPUI kit every view above one that
+  changed drew again, the menu bar with it: building, resolving and
+  copying the Viewer's menus was 32 µs of its 261 µs a 4K60 frame.)
+  Opening a menu, a key the bar takes and an agent's or the palette's
+  look read the menus the view last gave, so a view whose menus depend
+  on its state invalidates itself when that changes.
   `Menu::keys_from(bar)` gives a context menu the bar's keys.
 - `undo::History<C>`: Undo and Redo, one way for every app. A step is
   named for what it did ("Rename", "“Volume”") and holds what the app
@@ -2353,11 +2390,10 @@ event reaches it.
   lists hold what was done and a step goes back and forth; something new
   forgets Redo's. `edit_items(menu)` adds Edit ▸ Undo *name* and Redo
   *name* (commands `undo`, `redo`, the profile's keys). A window with no
-  menu bar takes the profile's Undo and Redo keys with `undo::keys(window,
-  cx, |redo, window, cx| …)`: its Frame gives them when nothing in it
-  took them (a text field's ⌘Z is its own). Agents and the command
-  palette find Undo and Redo among the app's menus (the bar's, or
-  `agent::set_menus`). Tracker (files: undo.rs) and Preferences
+  menu bar says its menus all the same (`menu::set_menus(cx, menus)`,
+  as its view says what it shows): their keys work when nothing in the
+  window took them (a text field's ⌘Z is its own), and agents and the
+  command palette find Undo and Redo among them. Tracker (files: undo.rs) and Preferences
   (settings: undo.rs) use it. An app that keeps its steps its own way
   names them alike with `undo::edit_items_named(menu, undo, redo)` (each
   the next step's name, None for none; `edit_items_as` with commands of
@@ -2385,41 +2421,32 @@ event reaches it.
   tile are this window's and no other's of its title. A key the same
   for the same window each time, unique among the app's (a document's
   path, a number kept in the app's saved state: Terminal's).
-- Cached views (`AnyView::from(entity).cached(style)`): GPUI replays a
-  view's last paint when nothing it drew changed (it wasn't notified,
-  its bounds are the same). What agents read is kept with the frame
-  (`Window::push_paint_record`), so a replayed view still says what it
-  shows. A cached view's root is laid out as a root (its offsets
-  ignored): put what places its content inside it (Telegram's panes).
-  Its size comes from the style it's given, not its content. It's
-  drawn again when it's notified, not when a model it reads (a
-  `ListModel`) is: observe those (`cx.observe(&model, |_, _, cx|
-  cx.notify())`). And GPUI draws again every view above one that
-  changed (their renders run; their cached children are replayed): so
-  keep what changes often (a caret, a graph moving a pixel) in a small
-  view, and what's costly beside it in cached views, not around it.
-  `part::Part::new(&app, draw, cx)` is such a view drawn from the app's
-  entity (`draw(&mut App, window, cx)`, drawn again as the app changes;
-  `.observe(&model, cx)` for a list's model it shows too), placed with
-  `part::cached(&part, style)` (its size in the style). Passwords' panes are
-  parts, and a one-time code counting down notifies the item pane's
-  part alone, once a second.
-- `Window::warm_glyphs(font, size)` (Olo's GPUI) has a face and size's
-  printable characters drawn ahead, off the UI thread, so the frame that
-  first shows them only copies them (a glyph drawn the first time costs
-  a frame ~12 µs; a chat of new text, 3 ms). GPUI does it itself for
-  running text once it has drawn a few dozen of a face's glyphs; ask
-  for what a window will show soon that it hasn't yet (Telegram: the
-  conversation's faces, at start). It follows the window to another
-  scale or text rendering.
-- `Window::warm_text(font, size, texts)` (Olo's GPUI) has the colour
+- What's kept between frames (the Olo Book, "Views", "Drawing",
+  "Frames"): a view says what it shows only after `cx.invalidate()`;
+  what comes of it is compared with what the window has, and an
+  element that's the same keeps its layout and its drawing; a `canvas`
+  with a key (`paint_key`, `key_by`) is drawn again only when the key
+  changes. What agents read is kept with each drawing, so one that
+  wasn't drawn again still says what it shows. A view's `body` runs
+  whole when it's invalidated, so keep what changes often (a caret, a
+  code counting down, a graph moving a pixel) in a small view of its
+  own (a `Child`, invalidated alone) or in a drawing that asks to be
+  drawn again in time (`Painter::paint_again_within`), beside what's
+  costly, not around it: Passwords' item pane is a view of its own, so
+  a one-time code counting down draws that pane alone, once a second.
+- Glyphs a window will show are drawn ahead, off its looper: the text
+  system does it for running text once it has drawn a few dozen of a
+  face's glyphs (a glyph drawn the first time costs a frame ~12 µs; a
+  chat of new text, 3 ms), and follows the window to another scale or
+  text rendering.
+- `WindowCx::warm_text(font, size, texts)` has the colour
   glyphs (emoji) of `texts` drawn ahead the same way, in the order
   given (shaped, then drawn on the warming thread without holding the
   text system, 16 texts at a time), kept for every window of the app
   after, and drawn again for a display of another scale the window goes
   to: the emoji picker's ~1,900 at open, so a search's first frame
   copies them (its slowest typing frame at 2×: 8.1 → 1.0–1.5 ms).
-- `Window::activate_window_with_token(token)` (Olo's GPUI) raises a
+- `WindowCx::activate_window_with_token(token)` raises a
   window with an activation token another program gave (a notification
   clicked: `NoteEvent::Action`'s), which lets it take the focus.
 - `WindowOptions::layer(namespace, layer, (top, bottom, left, right))`
@@ -2434,31 +2461,30 @@ event reaches it.
   cx, menu, at, on_choose, on_close)` is `context_menu` with word when
   it has gone (to take such a layer away; `MenuPopup::close` puts it
   away, for a click on the layer, which the grab lets through as the
-  same program's). Open a window from a paint after the frame
-  (`window.defer`): opened during it, the new window's first draw
-  clears the frame's element arena under the one painting.
-- `tip::hover(window, cx, key, text, anchor, hovered)` (from an
-  element's `on_hover`) and `tip::pressed(window, cx, key)`: tips in a
-  popup of their own (GPUI's `WindowKind::Tip`, an xdg_popup that takes
+  same program's). A drawing can't open a window (it only looks): it sends its
+  view a message, which does.
+- `tip::hover(cx, key, text, anchor, hovered)` (from an
+  element's `on_hover`) and `tip::pressed(cx, key)`: tips in a
+  popup of their own (`WindowKind::Tip`, an xdg_popup that takes
   no input and grabs nothing), for a window too small to hold them
   (Deskbar's tray): after the pointer rests half a second, at once if
   one showed a moment ago, not after a press; below the anchor, else
   above, slid to stay on screen; in the tooltip colours, wrapping past
-  360 points. `widgets::tooltip` is GPUI's own, inside the window, for
-  the rest.
-- `dnd`: dragging out to another app or a folder (GPUI's
-  `Window::start_drag`, Wayland's data source with a
+  360 points. `tip::on(element, key, text)` gives any element one.
+- `dnd`: dragging out to another app or a folder
+  (`WindowCx::start_drag`, Wayland's data source with a
   picture surface): `dnd::files(paths, copy, move)` (text/uri-list and
   the paths as text), `dnd::as_link` (Olo's make-a-link type, for an
-  application dragged out of Deskbar), `dnd::picture(window, cx, icon,
+  application dragged out of Deskbar), `dnd::picture(cx, icon,
   size, label, hotspot)` (the icon faded a little, its name below in
   the selection's colours, on whole device pixels; the name drawn on
-  the CPU by `TextSystem::line_mask`), and `dnd::start(window, cx, drag,
+  the CPU by `TextSystem::line_mask`), and `dnd::start(cx, drag,
   done)` while the press is down (`done` gets what it was dropped as).
   Ask for the icon's bitmap ahead (`icons::bitmap`) as the press comes,
-  so it's decoded when the drag starts. Drops come as GPUI's
-  `on_drop::<ExternalPaths>` (an app's own drag isn't dropped back on
-  it).
+  so it's decoded when the drag starts. Files dropped come to an element's
+  `on_drop` (`ExternalPaths`; an app's own drag isn't dropped back on
+  it); a window that takes what's dragged over it part by part says so
+  (`View::takes_drops`, `drop_over`, `dropped`).
 - `widgets::ImageView` (`image_view(cx, zoomable)`, `set_picture`): a
   picture (anything `Rgba`: its size and premultiplied pixels, as
   olo-preview's `Bitmap`) fitted to its view at a point a pixel at
@@ -2476,7 +2502,7 @@ event reaches it.
   9, `resample_timing`).
 - A view that fills its box (`size_full`: a `ColumnListView`, a
   `ScrollView`) put in a plain `div` its flex parent stretches comes
-  out none wide in GPUI's layout: make that `div` a flex column
+  out none wide: make that `div` a flex column
   (`flex().flex_col()`, the view's place `flex_1`), as Agent Screens'
   History list sits.
 - `style::spinner(window, centre, radius, colour)` (a busy spinner, a
@@ -2484,35 +2510,34 @@ event reaches it.
   shows),
   `widgets::check_box_look` (a check box's look alone, for one drawn in
   a canvas: a task list's), `TextField::font(font)` and `max_len(n)`.
-- Olo's GPUI: `TextRun::size` (a run at a size of its own in one line:
-  code in a paragraph); `Window::paint_image_nearest` (a picture drawn
-  with nearest sampling); `Window::set_keep_awake(on)` (idle-inhibit
-  while the window shows); `Window::display` is the display a window
-  will open on before it has, when there is only one it may (to size a
-  window for its content); displays' sizes are xdg-output's, in points,
+- `TextRun::size` (a run at a size of its own in one line:
+  code in a paragraph); `Painter::paint_image_nearest` (a picture drawn
+  with nearest sampling); `WindowCx::set_keep_awake(on)` (idle-inhibit
+  while the window shows); `WindowCx::display_bounds` is the display a
+  window is on (`olo_kit::displays()` lists them all, to size a
+  window for its content before it opens); displays' sizes are xdg-output's, in points,
   so right at fractional scales (wl_output's whole-number scale made a
   1.5× display 1280 points wide, not 1707), and an output's size and
-  refresh are its current mode's (wl_output lists every mode; GPUI took
-  the last).
+  refresh are its current mode's (wl_output lists every mode).
 - An overlay over something in the flow (a frame over a picture) is
   `.absolute().inset_0()`: an absolute element without insets sits
   where the flow would put it, after what it was meant to cover.
-- `brand::wordmark_centred(window, bounds, dark)`: the wordmark (the
+- `brand::wordmark_centred(g, bounds, dark)`: the wordmark (the
   theme's, light or dark), decoded and trimmed once on a thread,
   averaged down to each height once, a texel to a device pixel;
   `Drawn::Loading` keeps its place, `Missing` asks for the name instead.
 - `style::lit_ground`/`lit_edges`: a group current as a whole
   (Deskbar's workspace showing).
-- `cx.close_window(handle)` (GPUI): closes a window even from inside an
-  update of it (its own button, key or menu command), where
-  `handle.update(.., remove_window)` silently does nothing.
+- `cx.close_window()` closes the window `cx` is in, from any of its
+  handlers (its own button, key or menu command); `WindowHandle::close`
+  from anywhere else.
 - Keyboard hints: app_server asks by surface (`{"hints":[ids]}`); each
-  window answers with its `Window::surface_id()` and what can be picked
+  window answers with its `WindowCx::surface_id()` and what can be picked
   in it. A layer surface's tree carries its namespace (`layer`).
 - Upgrades: when olo-session signals an upgrade (SIGURG) and the app's
   binary was replaced, or app_server restarts in place, `on_upgrade`'s
   state is saved and the app re-executes (as the new version), finding
-  it in `restored_state()`. Olo's GPUI destroys
+  it in `restored_state()`. The Wayland client destroys
   every object it makes for a window with it (its fractional scale, its
   xdg-dialog, its idle inhibitor): one left alive names a surface that's
   gone, whose id goes to something else, and olo-wlproxy making it again
@@ -2529,32 +2554,32 @@ event reaches it.
   registry answers. (Telegram panicked on both, 2026-11-02, so an
   upgrade closed it; tried by replacing a copy of its binary, SIGURG
   and `tsession reload` together, twelve times running.)
-- `Window::activation_token(done)` (Olo's GPUI): an xdg-activation token
+- `WindowCx::activation_token(done)`: an xdg-activation token
   from the last click in the window, for another program to raise its
   window with (Notifications hands it to the app whose card was
   clicked); `done(None)` when the compositor has none to give.
-  `Window::export_handle(done)` (xdg-foreign): the handle another
+  `WindowCx::export_handle(done)` (xdg-foreign): the handle another
   program's window can name as its parent (`foreign_parent`) to open
   over this one, exported on first asking and kept until the window
   closes; `done(None)` without xdg-foreign.
-  `Window::set_layer_keyboard(LayerKeyboard)` changes a layer surface's
+  `WindowCx::set_layer_keyboard(LayerKeyboard)` changes a layer surface's
   keyboard as it shows (`OnDemand` while a banner has a reply field,
   `None` otherwise).
-- External pictures (Olo's GPUI): another program's dmabuf shown in a
+- External pictures: another program's dmabuf shown in a
   window by the compositor itself, never copied (Agent Screens' Live).
-  - `Window::set_external_buffer(key, Some(ExternalBuffer))` sets the
+  - `WindowCx::set_external_buffer(key, Some(ExternalBuffer))` sets the
     picture `key` shows: an id, size, DRM format and modifier, its
     planes' descriptors, and `released`, told the id once the compositor
     is done with it. It's made into a `wl_buffer` once per id (a few
     kept) and shows at once, with no frame drawn.
-  - `Window::place_external(key, bounds)` is called as the frame paints.
-    It's kept as a paint record, so a cached view's replay brings it
-    along. A key not placed in a frame is hidden, and None lets it go
+  - `Painter::place_external(key, bounds)` is called as its drawing
+    paints, and kept with it, so a drawing that isn't made again still
+    places it. A key not placed is hidden, and None lets it go
     with its buffers.
-  - `Window::external_bounds(bounds)` is where it shows, to the device
+  - `Painter::external_bounds(bounds)` is where it shows, to the device
     pixel: corners at whole points, then the device pixels the compositor
     rounds them to. Draw round that.
-  - `App::external_modifiers(fourcc)` lists the modifiers the compositor
+  - `olo_kit::external_modifiers(fourcc)` lists the modifiers the compositor
     takes (linux-dmabuf v3's events). It's empty without a subcompositor,
     viewporter or linux-dmabuf.
   - On Wayland it's a desynchronized `wl_subsurface` with an empty input
@@ -2564,7 +2589,7 @@ event reaches it.
 - Ordinary hitboxes don't block what is under them: a `Button` or
   `TextControl` placed over something clickable (a card) needs
   `.occlude()` on its wrapper, or the click reaches both.
-- `style::monogram(window, cx, r, letter, fill)` (an app without an
+- `style::monogram(g, r, letter, fill)` (an app without an
   icon: its initial on its colour, `ink_on(fill)` black or white by
   contrast; a grid of its own for the review), `style::stop_mark`
   (BAlert's stop sign, small: an error's title), `style::latch` (a
@@ -2578,7 +2603,7 @@ event reaches it.
   layout rounds its children to; measured unrounded, anything flush
   with the inset (a full-width note, a button at the right) read as a
   point past it at 1.25× and 1.75×.
-- Wrapping (Olo's GPUI): a space after a word hangs past the edge rather
+- Wrapping: a space after a word hangs past the edge rather
   than pushing that word down a row, as typesetters and CSS wrap
   ("…with Ann at" fits when "at" does); leading spaces still count. The
   multi-line field keeps its caret at the edge among hanging spaces.
@@ -2605,9 +2630,9 @@ event reaches it.
   one on a `style::selection_plate`; a click chooses, a double click
   opens, the arrows move it; `RadioButton`s to agents; `height_for`
   sizes it) with `Thumbnail { picture, color, label }` (a picture made at
-  the well's device size). `Cell::icon_text(window, cx, icon, fallback,
+  the well's device size). `Cell::icon_text(g, icon, fallback,
   text)`: a list cell's 16-point icon and name, which names its row.
-  `image_view::from_bgra` makes a picture of pixels in GPUI's own order
+  `image_view::from_bgra` makes a picture of pixels in the kit's own order
   (a captured frame). A `TextControl` whose field is disabled
   (`TextField::set_enabled(false)`) is drawn faded, label and well, and
   takes no click. `paragraph` says its text to agents.
@@ -2621,7 +2646,7 @@ event reaches it.
 - What agents read of a window that isn't showing (on another
   workspace, minimized, covered) is as it is now, not as last drawn: it
   draws only when it shows, so the agent socket has each window draw
-  what changed (`Window::draw_if_dirty`, which doesn't show it; the next
+  what changed (`WindowCx::flush_now`, which doesn't show it; the next
   frame does) before it answers `tree`, `menus`, `invoke` or `review`.
 - `widgets::Sidebar::new(id, rows, chosen).on_choose(f)` (a source
   list filling its box: `sidebar::Row::new(icon,
@@ -2637,12 +2662,13 @@ event reaches it.
   `.on_menu(f)` a secondary click (the row and where), and
   `.on_select_all(f)` ⌘A while it has the keyboard; a plain click with
   others chosen chooses that one alone (Agent Screens).
-- `widgets::SidePane` and `side_divider(&pane, x, top, height, name)`
-  (a pane beside the rest the person sizes and puts away: a chat list,
-  a source list, an inspector): the app keeps an `Entity<SidePane>`
-  (`SidePane::new(width, min).restored(width, collapsed)`, observed),
-  lays its pane out `pane.read(cx).shown(total, rest)` wide (0 put
-  away), and puts the divider at that edge; the divider sizes it
+- `widgets::SidePane` and `side_divider(&pane, x, top, height, name,
+  on_change)` (a pane beside the rest the person sizes and puts away:
+  a chat list, a source list, an inspector): the view keeps a
+  `SidePane` (`SidePane::new(width, min).restored(width, collapsed)`),
+  lays its pane out `pane.shown(total, rest)` wide (0 put away), puts
+  the divider at that edge, and says what it shows again when the
+  divider says it changed (`on_change`); the divider sizes it
   (down to `min`), puts it away dragged on past half that, brings it
   back dragged out from the window's edge (a grip stays there), and a
   double click does either. View ▸ Hide/Show Sidebar is `toggle()`,
@@ -2664,7 +2690,7 @@ event reaches it.
   hand, `GAP`, `FACT_ROW`, `gutter(p)`. Cards in a flex row are as tall
   as the tallest. `style::card(window, r, p, hover, selected)` paints a
   card's paper and shadow; `style::thousands(n)` writes "12,345".
-- `menu::shortcut_command(window, cx, keystroke)`: the menu bar command
+- `menu::shortcut_command(cx, keystroke)`: the menu bar command
   a keystroke chooses, for a view that takes the keys itself and lets
   one through (Agent Screens' ⌘K while controlling).
 - `code` (source code in the editor; see "Source code" above): `Code`
@@ -2672,7 +2698,7 @@ event reaches it.
   `olo_syntax`'s `detect`, `by_name`, `Language`, `Edit`, `Class`.
 - `editor` (StyledEdit's text; see "The text editor" above): styled
   text in paragraphs, laid out by `editor::layout` (shaped once by
-  GPUI's text system, placed in rows: wrapping at spaces and hyphens,
+  the text system, placed in rows: wrapping at spaces and hyphens,
   tab stops left, centre, right and decimal, alignment and
   justification, pictures as characters, emoji). The app keeps an
   `Editor` and its text behind the `Document` trait (`text`, `spans`
@@ -2689,13 +2715,13 @@ event reaches it.
   as the key goes down or up in the focused editor, which is the only
   place a modifier's change reaches, and as the pointer moves with it
   held). `editor::view(host, key,
-  &editor, options, window)` is the element: a `ScrollView` that
+  options, cx)` is the element: a `ScrollView` that
   scrolls itself, the caret, selection, input methods, the pointer
   (words and paragraphs on double and triple clicks, a selection
   dragged to move it or out to another app, a table's column rule
-  dragged), keys (`bind_keys`, in its key context `OloEditor`, bound
-  after the window's own so its Tab is its own) and `edit(host, key,
-  Edit, ..)` for the Edit menu. `Options`: editable, wrap, alignment,
+  dragged), keys (its own `on_key_down`, taken before the window's, so
+  its Tab is its own) and `edit(host, key, Edit, cx)` for the Edit
+  menu. `Options`: editable, wrap, alignment,
   justification, margins, background, `spelling` (misspelled words
   underlined, checked on a worker paragraph by paragraph, once until
   they change; `respell` after a word is learnt) and `pages` (set on
@@ -2705,7 +2731,7 @@ event reaches it.
   a frame; laid-out paragraphs are kept by their text, styles and
   width, and shaped ones by their text and styles alone, so a new
   width (a window being resized) places them again without shaping;
-  each row's glyphs are painted from a `GlyphRun` (gpui/README.md). The
+  each row's glyphs are painted from a `GlyphRun`. The
   view is kept on the paragraph at its top through edits above it and
   relayouts; at the very top it stays there (on pages, the first
   sheet's top). On a dark document the text's own colours are made
@@ -2725,8 +2751,8 @@ event reaches it.
 - `spell::checker(cx)`: kit-base's checker (`olo_kit_base::spell`, the
   dictionary of the person's language and the words they taught it),
   read on a worker the first time one is wanted; `loaded(cx)` once in.
-- Every scroll view's ends are elastic, as on a Mac (GPUI's `Elastic`,
-  gpui/README.md): fingers pull past an end and it springs back, a glide
+- Every scroll view's ends are elastic, as on a Mac (`Elastic`): fingers
+  pull past an end and it springs back, a glide
   bounces off it, a wheel stops there. A view that scrolls itself keeps
   an `Elastic` too (`scroll` from its wheel handler with the event's
   `kind` and `touch_phase`, `offset` where it draws, a frame asked for
@@ -2738,17 +2764,17 @@ event reaches it.
   `here_surface(id)` (a window's surface as its view last saw it, from
   outside its update) says whether it's on the workspace the active
   display shows.
-- `icons::paint_tinted(window, b, name, tint)`: an icon with its
+- `icons::paint_tinted(g, b, name, tint)`: an icon with its
   colours multiplied (a selected one darkened, as Tracker's), still a
-  texture pixel to a device pixel (two of GPUI's image triangles).
+  texture pixel to a device pixel (two image triangles).
 - A window is never opened smaller than 1×1: a layer anchored to every
   edge (the desktop) is given 1×1 and app_server sizes it; asked for
-  0×0, GPUI made a buffer of nothing, and app_server ended the
+  0×0, a buffer of nothing was made, and app_server ended the
   connection.
 - `olo_kit_base::clipboard::files`/`copied_files`/`FILES` (files as file
   managers copy and paste them) and `olo_kit_base::files::named_file`/
   `moz_url` (a picture dragged out of a web page, a browser's link)
-  are kit-base's, for both kits.
+  are kit-base's.
 - A single-line `TextField`'s Return is the window's default button's,
   as BeOS's (the field doesn't see it); `keeps_enter()` keeps it for a
   field whose Return means something else (a first password field going
@@ -2824,15 +2850,15 @@ session, the boot shows the same picture (Plymouth's theme) and Olo's
 own login screen asks who: "The login screen and boot splash" below.
 Their connections do end when app_server restarts in place, and each
 kind of client has its way back: an Olo app re-executes itself with
-its state saved, as for an upgrade, and reconnects (olo-ui
-`upgrade::lost_compositor`, from GPUI's `ON_COMPOSITOR_LOST`: after each
-turn of its loop GPUI asks the connection's socket whether it hung up
+its state saved, as for an upgrade, and reconnects (olo-kit's
+`upgrade::lost_compositor`, from the Interface Kit's `on_compositor_lost`: after each
+turn of its loop the display thread asks the connection's socket whether it hung up
 and the connection whether it holds a protocol error, since calloop
 drops a failing source and the loop would sleep on with its windows
 gone, as Deskbar did, or spin on a stored protocol error, as
 Notifications did, 2026-11-01; once told, the loop stops, so a program
 nobody re-executes, outside a session, ends rather than waking for ever
-on the dead socket); GPUI's connect waits up to 15 s for
+on the dead socket); the Wayland client's connect waits up to 15 s for
 the compositor to be back. A program app_server started on a
 connection it handed over (`WAYLAND_SOCKET`: the lock screen, the
 screen saver) can't make that connection again, so it ends instead,
@@ -2845,7 +2871,7 @@ screens of an ended agent screen, one per upgrade, 2026-11-07). A
 socket (`olo-<display>-direct`), not to
 `WAYLAND_DISPLAY`, which in a session is olo-wlproxy's: the proxy keeps
 outside programs' windows across a restart by replaying their objects
-on the new app_server, and a GPUI app replayed that way kept its old
+on the new app_server, and an app replayed that way kept its old
 configures, outputs and frame state and was left with dead windows.
 Test it as the real thing happens, displays coming up late and
 nameless after the restart:
@@ -2855,9 +2881,9 @@ NAME 2560x1600,1920x1080 --session --shell`, start apps in it,
 display with its own Deskbar (`tsession shot NAME out.png --output
 HEADLESS-2` for the second), no "exited" or protocol error in
 `/var/tmp/olo-dev/NAME/app_server.log`. A bar for a display this app's
-connection doesn't know yet is refused by GPUI (not stood in for by the
+connection doesn't know yet is refused by the Wayland client (not stood in for by the
 compositor's choice, which put the Dell's bar on the Studio Display)
-and asked for again from `olo_ui::on_displays_changed`.
+and asked for again from `olo_kit::on_displays_changed`.
 
 What an upgrade leaves behind is looked at (`Session::check_stale`,
 Ben, 2026-11-01): 20 s after the programs were asked to re-execute,
@@ -3045,7 +3071,7 @@ for a 3-second `sleep`.
   new one goes to the new proxy (its descriptors); upgrade the proxy
   again and close the programs to see the retired one exit.
 * **Olo's own apps** connect straight to app_server on
-  `$XDG_RUNTIME_DIR/olo-wayland-N-direct` (GPUI's `connect`). They
+  `$XDG_RUNTIME_DIR/olo-wayland-N-direct` (the Wayland client's `connect`). They
   re-execute and reconnect by themselves, as below.
 * Test with `tsession start NAME --session`. Run an outside program in
   it with a fixture `HOME` and a private bus (`tools/dev/busd-lenient`),
@@ -3101,10 +3127,10 @@ for a 3-second `sleep`.
   focused window, else on the active display, the one apps are told is
   in use: under the pointer if it's there, else in the middle), including
   a running app opening a window again.
-* Olo's apps notice the lost connection (olo-ui's
-  `upgrade::lost_compositor`), save their state (`olo_ui::on_upgrade`),
+* Olo's apps notice the lost connection (olo-kit's
+  `upgrade::lost_compositor`), save their state (`olo_kit::on_upgrade`),
   re-execute themselves (same pid and arguments) and read it back with
-  `olo_ui::restored_state()` at start-up; GPUI's connect waits up to
+  `olo_kit::restored_state()` at start-up; the Wayland client's connect waits up to
   15 s for app_server to be back. An upgrade of an app's own binary
   does the same when olo-session signals it (SIGURG), unless
   `upgrade_waits_while` says it is doing something re-executing would
@@ -3119,7 +3145,7 @@ for a 3-second `sleep`.
   Asahi's Mesa gives at a failed syncobj transfer): everything the
   device made is gone (pictures, pages, glyphs), and only the app makes
   them again. Blade marks the device lost where a submit, present, wait
-  or acquire finds it (gpui/README.md), and the app starts anew as for
+  or acquire finds it, and the app starts anew as for
   the compositor gone (`upgrade::lost_compositor`: its state saved,
   re-executed, same pid; an app that hands its work over,
   `on_upgrade_due`, does that first and waits while
@@ -3133,7 +3159,7 @@ for a 3-second `sleep`.
   started are its own still, but nothing in it waits for them: Activity
   Monitor's helper, its input pipe closed with the exec, ended and
   stayed a zombie, one an upgrade. `restore::claim` (the first thing
-  `olo_ui::run` does) has a thread wait for whatever children the
+  `olo_kit::run` does) has a thread wait for whatever children the
   process has as it starts.
 * app_server puts a window back on its own as it was in every way: a
   window remembered by this app_server whose own process came back
@@ -3196,7 +3222,7 @@ own. It skips this while cargo holds one of its locks in the tree
 (`.cargo-lock`, or `.cargo-build-lock`/`.cargo-artifact-lock` in newer
 cargo) or a program is under 3 s old. It lists newer ones in
 `$XDG_RUNTIME_DIR/olo-upgrade-<display>.json`; Deskbar follows that file
-(`olo_ui::watch`) and shows a green arrow in its tray. Clicking it asks first. Accepting,
+(`olo_kit::watch`) and shows a green arrow in its tray. Clicking it asks first. Accepting,
 or `olo-session upgrade` (SIGUSR2), installs them beside the session:
 a btrfs/XFS clone (`FICLONE`) or a copy, under a temporary name and then
 renamed. Only a new `olo-app-server` needs a reload. Other programs
@@ -3495,8 +3521,7 @@ module's comment.
 
 Every crate's tests at once: `cargo test --release --workspace
 --no-fail-fast` (1,546 pass, none fail, 2026-11-08). Nothing is left
-out: gpui-macros' `derive_inspector_reflection` is built only where its
-macro is (debug builds, or the inspector), and Smithay is its own
+out: Smithay is its own
 dev-dependency with `renderer_test`, so its doc examples build in a
 workspace run (`-p smithay` alone still builds it without the features
 the workspace gives it). The tests marked `#[ignore]` (live, timing,
@@ -3782,7 +3807,7 @@ Chrome case with the opener's token.
 `tools/dev/upgrade-check NAME [--times N] [--reload-only] [--no-touch] [--auto-tiled]`
 checks that windows come back from an upgrade exactly (display,
 workspace, frame, minimized); `--auto-tiled` arranges three windows in
-Auto-Tiling first, the case that broke when Olo's GPUI first committed a
+Auto-Tiling first, the case that broke when the kit first committed a
 window before naming it (it sets the app id and title before the first
 commit now: app_server claims a returning window's place, its tile, at
 that commit). Arrange a `--session --shell` tsession
@@ -3927,7 +3952,7 @@ shows (`PreviewEvent::Gamut` from its first picture), as for a wide
 photo: on a P3 panel its colours aren't clipped to sRGB's. Viewer's
 facts say it ("Colour: HDR (PQ), BT.2020, mastered to 1,000 cd/m²").
 On a display whose HDR is on, Viewer draws an HDR video's window in
-HDR10 (GPUI's, below) and the player makes its pictures HDR10's
+HDR10 (the kit's, below) and the player makes its pictures HDR10's
 (`Video::draw_hdr`: `Frame::to_pq_half`, half floats of PQ in BT.2020,
 the stream's own PQ as it is, HLG and SDR converted): its highlights
 shine as mastered, its paper white at SDR's; where the window can't, P3
@@ -3963,7 +3988,8 @@ HDR as the panel itself has it (in the person's session, with their
 agreement; sudo for the AUX channel): its HDR registers (DPCD
 0x340–0x35F, each bit named) in SDR, with HDR on through app_server and
 off again, and whether the panel showed a picture each time.
-`cargo run --release -p olo-ui --example hdr_card` opens a test card
+The kit's `hdr_card` example (`cargo build --release -p olo-kit --example hdr_card`,
+run on a display of the person's only when they ask) opens a test card
 drawn in HDR10 for looking at a panel by eye: SDR's white beside 400,
 1,000 and 1,600 cd/m², and 0.1 to 10 cd/m² below (decoded, the top
 ones far brighter than the white and the first two below next to
@@ -3989,7 +4015,7 @@ the ICC profile its file embeds into sRGB (`to_srgb`, moxcms, perceptual),
 so an iPhone's Display P3 photo shows its colours, not P3's numbers taken
 for sRGB's (washed out); 34 ms for 12 megapixels, on the thread that
 decodes it. Olo's apps draw in sRGB, but a window can draw in Display
-P3 (GPUI's `Window::set_gamut`): its swapchain made again in Vulkan's
+P3 (`WindowCx::set_gamut`): its swapchain made again in Vulkan's
 `DISPLAY_P3_NONLINEAR_EXT` (ten bits a channel where offered; Mesa's WSI
 tells app_server, which converts the window into the display's colours),
 its sRGB colours converted into P3's numbers by the shaders (gamma 2.2
@@ -4005,15 +4031,16 @@ BT.2020 by the shaders (sRGB's white at SDR's 203 cd/m²), a P3 image
 converted, and an HDR10 picture drawn as it is: `RenderImage::deep`,
 half floats a channel in an atlas of their own (`AtlasTextureKind::
 Deep`, `Rgba16Float`: eight bits of PQ would band). In another window an
-HDR10 picture is shown to SDR's white. The kit tells GPUI which
-displays' HDR is on (`gpui::set_display_hdr`, from app_server's
-`OutputInfo::hdr`), and `Window::on_hdr_display` says whether a window
-is on one (once it has entered its display, after its first frame).
-`tools/dev/hdr-check` reads a GPUI window in HDR10 back from a pretend
+HDR10 picture is shown to SDR's white. The kit tells the text system which
+displays' HDR is on (`olo_kit::set_display_hdr`, from app_server's
+`OutputInfo::hdr`), and `WindowCx::set_gamut(gamut, only_on_hdr)` asks
+only when the window is on one (once it has entered its display,
+after its first frame).
+`tools/dev/hdr-check` reads a kit window in HDR10 back from a pretend
 HDR screen (the kit's `hdr_probe` example): its sRGB white at 203
 cd/m², its HDR10 pictures at their own 1,000 and 100. A window not
 asking costs nothing (one uniform: bench's frames the same before and
-after, StyledEdit and Viewer at 1×). GPUI never makes colour management
+after, StyledEdit and Viewer at 1×). The kit never makes colour management
 objects itself: Mesa's WSI makes the one a surface may have. Night light in HDR scales each channel's light
 and encodes PQ again (`night::ramps_pq`), the gamma ramp's input being
 PQ's code (evenly spaced to the eye: the LUT holds it well).
@@ -4118,7 +4145,7 @@ all three; none is done at 2× alone.
 Compare against BeOS R5 / Haiku screenshots from memory. Fix anything that
 looks even slightly off before calling something done.
 
-### Layout review (`olo_ui::review`)
+### Layout review (`olo_kit::review`)
 
 The review reads one frame's painted
 shapes (text with its baseline, filled bands, lines, icons) at the scale
@@ -4127,7 +4154,7 @@ at closely before calling a view done.
 
 The checks are `olo_kit_base::layout_review`'s, on what the kit drew
 (`Parts`): asked for a review, an app draws each window once more
-(`Window::draw_now`, even one out of sight) while its `style`
+(`WindowCx::flush_now`, even one out of sight) while its `style`
 primitives, labels, text fields and icons record what they drew, and
 the `Frame`'s last element hands that to the checks. Nothing is
 recorded otherwise.
@@ -4187,7 +4214,7 @@ recorded otherwise.
     two spacings: the row ends its group, so what follows is a new
     section; as close as the rows above, the row reads as the start of
     what follows, as Preferences ▸ Power ▸ Graphics' Screen Recordings did),
-    `same-id` (two controls with one element id: they share GPUI's state,
+    `same-id` (two controls with one element id: they share the element's state,
     a press among it, so a click on either is lost; a kit Button's id is
     its label unless given one, and Preferences ▸ Security's two Remove
     buttons, in no element with an id, did nothing; the controls record
@@ -4238,7 +4265,7 @@ growing and shrinking with it (a tab with more rows, a display's
 brightness, a longer message); one the person or the app sizes (a file
 panel, Quick Look sized to its picture) never shorter than its content
 needs. Never taller than the shortest display less 64 points
-(`screen_room`, from the displays GPUI knows, in points, as turned; a
+(`screen_room`, from the displays the kit knows, in points, as turned; a
 display coming or going looks again): past that the Frame lays the
 content out at its own height and scrolls it, the window widened by the
 scroll bar. Layer surfaces, lock screens and full screen windows are
@@ -4251,7 +4278,7 @@ scrolled where it needs more (`held`); once let go, it follows its
 content again. And no resize it asks for holds its frames back past
 `RESIZE_WAIT` (300 ms: a compositor that keeps it at its size never
 makes the resize, and sends no frame), after which it's drawn as it is;
-GPUI's Wayland window draws a frame skipped for a resize it can't make
+the Wayland window draws a frame skipped for a resize it can't make
 (every side held) at once. Without these, DiskBackup opened in Focus
 showed nothing at all, its Deskbar entry the only sign of it (Ben,
 2026-11-08: "an entry in the deskbar but no windows"): the frame asked
@@ -4261,13 +4288,13 @@ skipped while it waited.
 It opens at that size: nobody sees it at its designed size first and
 then grow. The Frame measures the content as each frame is painted; a
 frame drawn at a size about to change isn't shown
-(`Window::skip_present`, GPUI: nothing is committed, and the resize
-draws the next frame, at its size), and no frame is shown until the
-size asked for is made (GPUI's Wayland window sets its geometry, and a
+(nothing is committed for it: the stage waits for the commit laid
+out at the new size, `Stage::draw_frame`, `SIZE_WAIT`), and no frame is shown until the
+size asked for is made (the Wayland window sets its geometry, and a
 fixed window's least and most sizes, as its size changes). What the
 window asks for as it opens, from a worker, would still grow it a
 moment later: hold its first showing until that's in with
-`olo_ui::hold_first_show(window)`, a hold that's `Send` (give it to the
+`olo_kit::hold_first_show(cx)`, a hold that's `Send` (give it to the
 worker) and let go by dropping it, after the answer is where the view
 reads it. The window is shown when every hold is let go, or after
 `FIRST_SHOW_WAIT` (150 ms) whatever comes, so a slow answer never keeps
@@ -4290,29 +4317,26 @@ again: side by side (Display's settings beside its panel's facts,
 Performance's thresholds two by two), in tabs (Performance: Supervisor,
 Watchdog), not scrolled.
 
-### The layout lint (`olo_ui::lint`, `cargo ui-lint`)
+### The layout lint (`olo_kit::lint`, `cargo ui-lint`)
 
-On olo-kit the lint is `olo_kit::lint` (the `lint` feature; the same
-`Lint::window`, `Lint::trees`, `keeps_room` and `assert_clean`): the
-window is opened in a program started once in the test binary with no
-compositor (`OLO_HEADLESS`: olo-interface's window with no display,
-which has a size and a scale, gives a resize asked for at once, and
-rasterises nothing), set to each scale and reviewed on its own looper
-(`review_window`), its tabs clicked as agents find them. The look is
-the program's, so one `Lint` works at a time. `build` is `Fn(&mut
-Cx<V>) -> V + Clone + Send`. `crates/kit/tests/lint.rs` lints the kit's
-own form (and checks that every look and scale was drawn).
-
-A window's view drawn as it will be shown, without a session: GPUI's
-test platform with Olo's text system and fonts
-(`TestAppContext::with_olo_text`), the window opened as an app opens it
-(`open_window`, the kit's `Frame` around the view), at its size, on a
-1280 × 800-point display (GPUI's test display: the smallest screen Olo
-lays out for, so a window that follows what it shows is checked against
-it), a window that resized itself given that size and drawn again
-(`settle`, as a compositor would) and judged at the size it ends at, in
-light and dark, at 1×, 1.5× and 2× (`VisualTestContext::set_scale_factor`,
-the scale changed on the open window, as a display's change does). Each
+A window's view drawn as it will be shown, without a session
+(`olo_kit::lint`, the `lint` feature): the window is opened as an app
+opens it (`open_window`, the kit's `Frame` around the view) in a
+program started once in the test binary with no compositor
+(`OLO_HEADLESS`: olo-interface's window with no display, which has a
+size and a scale, gives a resize asked for at once, and rasterises
+nothing), with Olo's text system and fonts, at its size, on a
+1280 × 800-point display (the smallest screen Olo lays out for, so a
+window that follows what it shows is checked against it), a window
+that resized itself given that size and drawn again (`settle`, as a
+compositor would) and judged at the size it ends at, in
+light and dark, at 1×, 1.5× and 2× (the scale changed on the open
+window, as a display's change does), reviewed on its own looper
+(`review_window`). The look is the program's, so one `Lint` works at a
+time. `build` is `Fn(&mut Cx<V>) -> V + Clone + Send`.
+`crates/kit/tests/lint.rs` lints the kit's own form (and checks that
+every look and scale was drawn), Terminal's tab strip, and that `Due`
+wakes its view once. Each
 time it is reviewed (the errors above), every tab of its tab views too,
 and the lint's `fit` check runs over all of them: the window fits what
 it shows, nothing running out of its boxes or pane (it says how much
@@ -4353,8 +4377,8 @@ review findings too. Release builds (`cargo build --release
 **Formatting**: the whole workspace is rustfmt's, each file by the
 `rustfmt.toml` nearest it: Olo's own at the root (lines up to 200 wide,
 `use_small_heuristics = "Max"`: a builder chain or a match arm on one
-line), upstream's in gpui/ (rustfmt's defaults; Blade's crates edition
-2021) and smithay/ (110 wide), so merges from them stay small.
+line), upstream's in smithay/ (110 wide), so merges from it stay small
+(vendor/ isn't formatted at all).
 `cargo fmt` (not `--all`: that formats path dependencies too, vendor/'s,
 which stay as their authors wrote them) formats everything;
 `cargo fmt --check` says whether it is.
@@ -4367,15 +4391,14 @@ again, and, when something the lint builds is staged (the packages
 cargo says: `tools/hooks/lint-covers`; an app it doesn't draw, a daemon
 or the docs waits for nothing), runs `cargo ui-lint`;
 the pre-push hook runs `tools/dev/ui-lint` on the apps the push changed
-(all of them when a kit or GPUI did), after a release build of the
+(all of them when the kits, or what they're built on, did), after a release build of the
 workspace, and neither when none of them has a window the lint opens.
 A finding stops it
 (`OLO_SKIP_UI_LINT=1` to push regardless, saying why). Each says how
 long its parts took. With everything built, the commit's lint takes
 8 s and a push 4 s: what's waited for beyond that is compiling. The
 lint's tests are built on the dev profile (incremental, sharing what
-everyday builds make; they have GPUI's test support, and so their own
-GPUI, olo-ui and Preferences): under a minute after a change to
+everyday builds make): under a minute after a change to
 olo-kit-base, which everything is built on, where the release build
 they used to be took seven. Preferences, 32 s alone in a release
 build, is the longest of each. A layout problem
@@ -4411,10 +4434,9 @@ Memory: measure release builds (`cargo build --release -p APP`, then
 buffers on Asahi). Baselines (October 2026, 2× headless): DeskCalc 54 MB
 RSS (15 MB heap, 13 MB GPU); Terminal 79 MB idle, +29 MB for a full
 10,000-line scrollback at 120 columns (alacritty's cells), +28 MB per
-extra window (swapchain). GPUI's rules keep it there: fonts are mapped,
+extra window (swapchain). The Interface Kit's rules keep it there: fonts are mapped,
 not copied (the CJK face is 31 MB), the GPU's allocator works in small
-chunks, and windows share one device, its pipelines and its atlas
-(gpui/README.md).
+chunks, and windows share one device, its pipelines and its atlas.
 
 ## Screenshot journal
 
@@ -4476,7 +4498,7 @@ lint at a time).
   `SetSettings` (collapsed to the newest) and `ConfigureOutput`. A control's
   change goes to `Prefs::edit`, which sends the settings and draws every
   panel again; nothing blocks.
-* **Undo and Redo** (undo.rs, `olo_ui::undo`): every change made with a
+* **Undo and Redo** (undo.rs, `olo_kit::undo`): every change made with a
   panel's control is a step, kept as the settings it changed (each by its
   JSON path, what it was and what it became), named for the control
   (`form.rs`: a check box's or a slider's label, a menu's, else its box's
@@ -4501,9 +4523,8 @@ lint at a time).
   window is widened (Sound 800, AI 760, AirPods 960) rather than made a
   scroll. Rows of choices in a column wrap (`flex_wrap`, `STACK` apart).
   Workers (Bluetooth, the clock, sound, the battery) keep what they read
-  behind a lock and send `Msg::Redraw`. Windows open after the update
-  that asks for them (`cx.defer`), as their panels read the settings
-  while they're built. Panels that change settings get Defaults and
+  behind a lock and send `Msg::Redraw`. A panel's window is opened by `Prefs::open`, never from
+  inside `prefs()`'s lock: its view takes the lock as it's built. Panels that change settings get Defaults and
   Revert (to the values when the window opened) along the bottom, each
   enabled only when it would change something: implement `Panel::reset`.
   In those panels a box whose settings aren't their defaults has Reset
@@ -5675,7 +5696,7 @@ landed.
 Without rounds each window was paced on its own and moved when it drew:
 neighbours trailed the edge by up to 600 px or ran over the dragged
 window, and some apps answer a configure with a frame of the size
-before (the kit's GPUI may: its window geometry is the new size at
+before (the kit may: its window geometry is the new size at
 once, but the frame drawn came from the old one), so a member counts as
 drawn only by a buffer of the size asked (the viewport's source at the
 window's scale, for the kit's apps, which draw into part of a bigger
@@ -5684,7 +5705,7 @@ buffer). Each window is moved only when it commits
 it drew), and keeps catching up after the drag (`Follower`). A neighbour
 is resized as much as the window dragged, and told so (xdg's
 `Resizing`, set in `ask_to_follow` while the drag lasts, cleared in its
-last round): the kit's apps then keep room to grow (GPUI's
+last round): the kit's apps then keep room to grow (the renderer's
 `update_drawable_size_within`), where before each made a new swapchain
 at every step, four new buffers of GPU memory each checked and freed by
 app_server, and its round waited for the checks (a 150-step auto-fuzz
@@ -6146,7 +6167,7 @@ window leaving a group gets its own tab back and steps out by `CASCADE`
 so it isn't hidden. Grouping is on for every app; the ones a person
 turns off are `TilingSettings::ungrouped_apps` (app ids), toggled by
 Group Windows in Tracker's menu for an app
-(`olo_ui::settings::groups_windows` / `set_groups_windows`). Deskbar's
+(`olo_kit::settings::groups_windows` / `set_groups_windows`). Deskbar's
 team menu says what its windows are, not the setting (Ben, 2026-11-08:
 "it should not be checked unless they are all grouped … no checks/ticks
 just the option changes based on the state"): Ungroup All Windows when,
@@ -6207,9 +6228,9 @@ where it is let go (`window_drop.rs`: `{"window_over":…}` and
 `{"window_dropped":…}` lines on the app's kit socket, from a worker
 thread that keeps only the latest place, so the compositor never waits
 on an app): a kit app's tab strip marks the place, and a window let go
-on it becomes tabs there (`App::window_dropped`). A move a client asks
+on it becomes tabs there (`widgets::strip::on_window_dropped`). A move a client asks
 for with the press of another of its windows (a tab torn off a strip,
-`olo_ui::begin_move`) starts from the pointer, not from that press; one
+`olo_kit::begin_move`) starts from the pointer, not from that press; one
 asked for before the window has shown (Vulkan's present commits its
 first buffer on its own, after the request) waits till it is placed
 (`WindowMeta::pending_move`). A window tagged `under-pointer` opens
@@ -6435,7 +6456,7 @@ from period screenshots of R5's ScreenSaver preferences). Each is a
 icons and the desktop picture, whole or as textured triangles; points
 and colours are the crate's own `geom` types), so the same code runs
 full screen and in the preview monitor of Preferences ▸ Screen Saver.
-Both draw on GPUI (`gpui_canvas::GpuiCanvas`, feature `gpui`): it keeps
+Both draw on the kit (`kit_canvas`, feature `kit`): it keeps
 what a module draws and paints it at the end of the frame, a run of the
 same kind of thing to a `paint_layer`, since hundreds of crossing lines
 each inserted in the scene's bounds tree made Lissart and SuperString
@@ -6460,7 +6481,7 @@ surface, which takes a move, and a move ends it.
 Test headless: `tsession ipc NAME '{"type":"start_screen_saver"}'`, or set
 `screen_saver.module` with get/set_settings first.
 
-## Fractional scaling (app_server render.rs, shell/deco.rs; the kit and GPUI)
+## Fractional scaling (app_server render.rs, shell/deco.rs; the kits)
 
 A screen can be at 1, 1.25, 1.5, 1.75, 2, 2.5 or 3 (Preferences ▸
 Displays; each is a whole number of 120ths, as wp-fractional-scale
@@ -6488,11 +6509,11 @@ Chrome, GTK 4.16 text), and how Olo does it:
   - The review measures a text field by its frame.
   `tools/dev/ui-lint --review --scales 1,1.25,1.5,1.75,2` checks every
   app at all five.
-- **Clients draw at the device size.** Olo's GPUI asks app_server for
+- **Clients draw at the device size.** The Interface Kit asks app_server for
   wp-fractional-scale-v1 and wp-viewporter on every surface, draws into
   a buffer of `round(size × scale)` pixels and sets the viewport's
   destination to the logical size (a window's scale is the fractional
-  one, never an integer scale set over it: gpui/README.md). app_server
+  one, never an integer scale set over it). app_server
   places each window on a whole device pixel
   (`to_physical_precise_round`), so a buffer lands one to one. Programs
   without fractional scale get the next whole scale and are scaled down.
@@ -6509,7 +6530,7 @@ Chrome, GTK 4.16 text), and how Olo does it:
   from where the content lands: a border's width (`px(BORDER)`, the
   content's own offset) on every side, the same on all four.
   - *Its lines* are `deco::lines(scale)`. The outline is a hairline,
-    `floor(scale)` (as olo-ui's `style::line_pixels`). The bevel's light
+    `floor(scale)` (as olo-kit's `style::line_pixels`). The bevel's light
     and shadow are each `round(scale)`. The flat middle takes the rest.
   - *At 1.5×* that gives 1, 2, 3 and 2 pixels. Rounding each logical line
     from the window's corner gave 2, 1, 2, 1 and 2 on one side, and
@@ -6574,9 +6595,9 @@ Chrome, GTK 4.16 text), and how Olo does it:
   - *At 1.25× and 1.75×* two points are 2.5 and 3.5 pixels. Edges are
     still crisp there (each is rounded), but spacing may differ by a
     pixel.
-- **Text** is drawn by Olo's GPUI at the device size, each line's
+- **Text** is drawn by the Interface Kit at the device size, each line's
   baseline on a whole pixel, as each display's text rendering says
-  (Preferences ▸ Display: gpui/README.md): at most hinted vertically
+  (Preferences ▸ Display): at most hinted vertically
   ("light", as FreeType, GTK 4.16 and Chrome do it) and positioned
   across in subpixel steps, so stems and baselines sit on pixels while
   shapes and spacing stay as designed. Tab titles (cosmic-text and swash)
@@ -6623,9 +6644,9 @@ nothing changed); not while a grab has the pointer (a button held, a
 drag, a menu). A window or layer that comes on screen, a window
 brought forward, minimized, restored or closed asks for it once that
 turn of the loop is done (`repoint_soon`), so the window under the
-pointer has it, its cursor and its hover, without a move. GPUI takes
+pointer has it, its cursor and its hover, without a move. The kit takes
 the place it is entered at as a move (`wl_pointer.enter` dispatches a
-`MouseMove`): otherwise a GPUI window entered without a move kept the
+`MouseMove`): otherwise a window entered without a move kept the
 last cursor and hover until the pointer moved.
 
 The pointer's reports themselves are watched (`Track::health`,
@@ -7024,7 +7045,7 @@ simulate one, so the switch can be tried and reviewed.
 
 NVIDIA's GPU on a hybrid laptop sleeps (D3cold) while nothing uses it,
 and whatever loads NVIDIA's drivers wakes it and waits for it, ~2.3 s:
-every GPUI app's start took 2.5 s instead of 77 ms (DeskCalc, its
+every Olo app's start took 2.5 s instead of 77 ms (DeskCalc, its
 first window), Chrome's GPU process the same, and each app_server start
 (a reload's too) opened it. Nothing routine may wake it:
 
@@ -7032,7 +7053,7 @@ first window), Chrome's GPU process the same, and each app_server start
   into it (`left_asleep`: its connectors' status, as sysfs keeps it,
   read without asking the GPU), and opens it when a udev change says a
   display is.
-- GPUI's apps make their Vulkan context without NVIDIA's driver
+- Olo's apps make their Vulkan context without NVIDIA's driver
   (`blade_context::asleep_aside`: `VK_LOADER_DRIVERS_DISABLE=*nvidia*`
   for the moment the loader looks, put back at once so nothing the app
   starts inherits it); they draw on the GPU the displays use, and a
@@ -7180,7 +7201,7 @@ low-power.
 A touch screen (a laptop's, as the ThinkPad P1 Gen 9's Wacom panel) is
 mapped to the built-in display (eDP, else the first). Where a finger
 comes down on a client that has `wl_touch` (Chrome, GTK), it gets
-touch; anywhere else (every GPUI app, so every Olo app, and app_server's
+touch; anywhere else (every Olo app, and app_server's
 own frames, tabs and menus) the finger is the pointer (`takes_touch`,
 `touch_pointer`, `TouchPointer`): a tap clicks where it lands, a finger
 that moves past 6 points drags (its button pressed where it came down),
@@ -7359,7 +7380,7 @@ gets exactly one scroll of one frame's worth and the hand-over into the
 glide is seamless. The lift's stop goes once the fingers' scroll is all
 out. Olo's apps (`scroll::Toolkit::Olo`: a process with an
 `olo-menus-PID.sock`) get the glide as a scroll of its own, source
-`continuous` (`Pacer::sending_glide`, focus.rs), which GPUI takes as
+`continuous` (`Pacer::sending_glide`, focus.rs), which the kit takes as
 a glide (`ScrollKind::Glide`), so it bounces off an edge as on a Mac; everything else sees
 one finger scroll whose stop is held back until the glide ends (GTK adds
 no kinetic scroll of its own). Test with `tsession flick NAME DY` (ten
@@ -7504,7 +7525,7 @@ screenshot, `capture::step_aside`), the recorder starts on its own
 when it's saved) and Screenshot quits; with a recording going on this
 display the menu is Pause (or Resume) and Stop Recording instead.
 Settings are in `screenshot.json`.
-On the GPUI kit (olo-ui): the preview is made on a worker at exactly
+The preview is made on a worker at exactly
 the frame's size in device pixels for the window's scale (again when
 the scale changes) and drawn one pixel to a pixel; the form sits at
 fixed rows so the caption under the picture can line up with one (a
@@ -7515,7 +7536,7 @@ form's last row and the window as tall as that (`Layout::height`,
 New screenshot and Save once the kit's rows grew. After
 Save the window closes and the app holds the path on the clipboard
 (`olo_kit_base::clipboard::hold`) until something else is copied, then
-ends; GPUI's clipboard now offers images and data in their own MIME
+ends; the kit's clipboard offers images and data in their own MIME
 types (`ClipboardItem::from_entries`, `new_data`). The picture
 app_server writes for it (`olo-screenshot-PID.png` in the runtime
 directory, memory) goes when it quits, and one left by a Screenshot
@@ -7525,12 +7546,12 @@ and Print Screen (the screen) and Alt+Print Screen (the shortcut's target
 window by id: the active one, or the one the palette was opened over,
 since the palette is active by the time it runs).
 `--region` (⌘⇧4, region.rs) captures every output, covers each with an
-exclusive overlay (a GPUI layer surface) showing its picture dimmed, one
+exclusive overlay (a kit layer surface) showing its picture dimmed, one
 pixel to a device pixel, and saves the rectangle you drag (its size in
 pixels follows the corner); Escape or a click cancels. `--pick-color`
 does the same undimmed, with a loupe by the pointer.
 Saved with no window (`--silent`, `--region`), it prints the file's path
-and puts it on the clipboard (`olo_ui::clipboard::hold`), staying until
+and puts it on the clipboard (`olo_kit::held_clipboard::hold`), staying until
 something else is copied. ⌘⇧5 opens the app.
 
 ## Screen recording (apps/screenshot recording.rs, crates/video)
@@ -7853,7 +7874,7 @@ Screens' Export Video uses too).
   what it covers outside the window is kept from when the background
   was made and put back each frame, so its soft edge never piles up. A
   window alone has none (`camera_note` says so). Dragged, it moves: its layer
-  surface's margins (GPUI's new `Window::set_layer_margin`), kept on the
+  surface's margins (`WindowCx::set_layer_margin`), kept on the
   screen. Frames on a worker: the camera's middle square mirrored (as a
   mirror shows you), only the latest waiting for the window (a
   `RenderImage` each, the last dropped). Agents read it as an Image named
@@ -8038,8 +8059,8 @@ Screens' Export Video uses too).
   Viewer), Edit (the Viewer's editor), Show in Tracker, Rename… (a
   dialog; the extension kept, a name taken refused) and Delete (to the
   Trash), each taken back by ⌘Z (put back from the Trash, named as it
-  was) and done again by ⇧⌘Z (`olo_ui::undo::keys`: the window has no
-  menu bar). What each is and its picture are read on a worker, 64 at a
+  was) and done again by ⇧⌘Z (the window has no menu bar: its menus
+  are said with `menu::set_menus`). What each is and its picture are read on a worker, 64 at a
   time, as they're needed, and kept; the folder is followed (inotify),
   so a recording made, renamed or deleted anywhere shows at once. A
   recording is known by Olo's mark, not its name: the recorder, the trim
@@ -8111,7 +8132,7 @@ runs out of app_server on purpose: a share outlives an app_server reload
 (the stream's capture reconnects, `stream::reconnect`; the app sees a
 pause of a fraction of a second), libpipewire stays out of the
 compositor, and an upgrade waits while it shares or asks
-(`olo_ui::upgrade_waits_while`).
+(`olo_kit::upgrade_waits_while`).
 
 No interface falls to another desktop's backends. `olo-portals.conf`
 names every one the portal has: Olo's for what olo-portal serves, the
@@ -8161,7 +8182,7 @@ then shows only Olo's, `none` and the keyring's.
   its button, and invoking the button gives the program `app.open` and
   its target.
 
-Its dialogs are on the GPUI kit, each over the window of the app that
+Its dialogs are on the kit, each over the window of the app that
 asked (`WindowOptions::foreign_parent`, xdg-foreign: the handle the app
 exported), each its own view answering its request once (`ui::Answer`):
 a dialog that goes without an answer (closed from its tab, cancelled by
@@ -8313,7 +8334,7 @@ its request, for the app's Cancel and for holding an upgrade off.
   body, its choices (a checkbox for a yes/no, a pop-up menu for several)
   and its deny and grant buttons (Escape denies).
 - **Open and Save** (`files.rs`): the FileChooser portal's OpenFile,
-  SaveFile and SaveFiles as the GPUI kit's file panel
+  SaveFile and SaveFiles as the kit's file panel
   (`file_panel::show_in`, in `file_panel::window_options` over the
   asking window), titled as the app asks, starting where that app's
   panel was last (`places::last_for`, opening and saving apart, kept in
@@ -8379,7 +8400,7 @@ its request, for the app's Cancel and for holding an upgrade off.
   `olo_xdg::open`; a link can't carry files, so attachments are shown in
   Tracker, to drag in.
 - **Print** (`print.rs`): PreparePrint shows Olo's Print panel
-  (`olo_print::panel::view`, the `gpui` feature's, over the asking
+  (`olo_print::panel::kit`, the `kit` feature's, over the asking
   window) and answers with GTK's
   print settings (printer, `n-copies`, `page-ranges` counted from 0, or
   `output-file-format` pdf) and page setup (the paper in millimetres,
@@ -8567,7 +8588,7 @@ offer).
   timer, re-armed as it fires, hides it; a click on the picture plays
   and pauses then). Leaving full screen, app_server gives a window its
   place and its own size back (`WindowMeta::before_fullscreen`; asked
-  for none, GPUI took nearly the whole display). Tried headless with a
+  for none, the window took nearly the whole display). Tried headless with a
   640 × 360 clip in a 700 × 700 window and a 12 s one full screen at 2×:
   the three ways, the transport gone 3 s after the pointer stopped while
   playing, and 700 × 600 at (100, 80) back after Escape; the layout
@@ -8682,7 +8703,7 @@ offer).
   panel's, exported: xdg-foreign).
 - The picture dragged where it doesn't pan carries its file out; files
   dropped on a window open.
-- A playing video keeps the screen awake (`Window::set_keep_awake`); it
+- A playing video keeps the screen awake (`WindowCx::set_keep_awake`); it
   lets go when paused or played to its end (the preview asks for another
   frame when its clock stops as it draws, since the window read it
   before).
@@ -8699,14 +8720,14 @@ calculator (lexer, recursive descent, `format` for 15 significant digits)
 and is unit-tested; keep new functions in `FUNCTIONS` and on the keypad
 together. After =, a digit starts afresh and an operator carries on.
 Settings, the last expression and history are in `deskcalc.json`.
-The first app on the GPUI kit (`olo-ui`): the keypad is drawn in one
-`canvas` (each key's bounds kept for the pointer, each said to agents
-as a `Button` named by its key), the display is a `style::sunken` well
-holding a right-aligned `TextField` that keeps the keyboard (Enter, ↑,
-↓ and Escape are actions bound in the `DeskCalc` key context, which
-the field's keys pass through); typed characters flash their keys.
-Measured against the egui version (release, 2×): 57 MB against 83 MB,
-42 frames for 20 clicks against 210, each 0.85 ms against 0.6 ms.
+On olo-kit: each key of the keypad is an element of its own (said to
+agents as a `Button` named by its key), so the pointer coming over one
+draws that key again and nothing else; the display is a
+`style::sunken` well holding a right-aligned `TextField` that keeps
+the keyboard (Enter, ↑, ↓ and Escape are the window's, which the
+field's keys pass through); typed characters flash their keys. (It
+was the first app on the GPUI kit, 2026-10: against the egui version,
+57 MB against 83, 42 frames for 20 clicks against 210.)
 
 ## StyledEdit (apps/styled-edit)
 
@@ -10198,7 +10219,7 @@ back what was typed (`Msg::Submit`), drawn as alerts with fields
 field, and Escape cancels, the keyboard kept in the form), each window
 as tall as what it shows as fields come and go (`fits_content`: an
 `AlertFrame` lays what it holds out in flow, so its window knows how
-tall that is; on olo-ui it didn't, and Format's form was cut off at
+tall that is; on the GPUI kit it didn't, and Format's form was cut off at
 its Encrypt box); a resize's form asks what the file system allows on
 a worker of its own; the benchmark is a window on a looper of its own,
 told its samples by its own thread; the map is one canvas keyed by a
@@ -10275,7 +10296,7 @@ back (`ops::put_back`); one cut short is finished by the next.
 
 ## Terminal (apps/terminal)
 
-**Undo** (undo.rs, `olo_ui::undo`): Edit ▸ Undo and Redo for a window's
+**Undo** (undo.rs, `olo_kit::undo`): Edit ▸ Undo and Redo for a window's
 tabs moved along the strip (Move Tab, Move Group) or into and out of
 groups (Group: their order and groups put back, by each tab's shell), a
 tab moved into a window of its own (torn off, or Move Tab to New Window;
@@ -10411,14 +10432,14 @@ wears the kit's `SlimScrollBar` over its screen's right edge (its top
 the history less the display offset, in lines; dragged or paged, the
 offset is set and the smooth position follows, `Smooth::sync`), in place
 of the thumb it drew while scrolled back. It says where
-it is each frame (`Window::note_scroll`), so the bench measures it
+it is as it draws (`Painter::note_scroll`), so the bench measures it
 (scroll-check: steps as far as the fingers, an even glide). A program
 that takes the mouse gets it as wheel reports, and one on the alternate
 screen (that asks) as arrow keys, a line at a time. The
 shell's output asks for a frame (`Wakeup`), as do typing, the mouse
 and the bell; nothing is drawn on a timer except an agent's spinner
 while one spins. Keys come raw: ⌘ is Ctrl with the right Ctrl held in
-the Mac profile (`gpui::right_control_held`), menu shortcuts go to the
+the Mac profile (`olo_kit::right_control_held`), menu shortcuts go to the
 menus first (`menu::shortcut_command`), typed text and input methods
 through the view's `EntityInputHandler`. The window's titles are
 retitled 400 ms after typing or output settles (`retitle_soon`), and
@@ -10477,9 +10498,9 @@ window its size and gives the grid the difference.
 
 **Links** (`src/links.rs`). ⌘ held over a URL or a file's path
 underlines it and ⌘-click opens it (the profile's command key: the
-right Ctrl with the Mac's keys, `gpui::right_control_held()`, else
+right Ctrl with the Mac's keys, `olo_kit::right_control_held()`, else
 Ctrl): a URL in the
-default browser, a file or folder in Tracker (`olo_ui::tracker::open`, a
+default browser, a file or folder in Tracker (`olo_kit::tracker::open`, a
 file selected in its folder's window). Links are an OSC 8 hyperlink the
 program wrote, else found in the text: URLs by pattern, paths (also
 `path:line[:col]`, in backticks, brackets or Markdown) that exist
@@ -11093,7 +11114,7 @@ logind, NetworkManager, …). `olo-session` starts it only in a real
 and headless sessions); without that it refuses to run, because it
 registers with polkitd for the whole **login session** and must never take
 over the prompts of the session it was started from. It stays resident
-(`olo_ui::stay_resident`) and opens a BAlert-style window per request
+(`olo_kit::stay_resident`) and opens a BAlert-style window per request
 (`widgets::AlertFrame`). Proving identity runs polkit's setuid
 `polkit-agent-helper-1` (the only thing polkitd accepts an answer from):
 the cookie goes on its stdin, and its PAM conversation (`PAM_TEXT_INFO`
@@ -11315,15 +11336,15 @@ without GNOME Keyring or a prompt. `OLO_SECRETS_SERVE=1|stdin`,
 
 ## Notifications (apps/notifications)
 
-Olo's own apps notify through the kit: `olo_ui::notify::Notifier::
-new(olo_ui::proxy(cx), "Tracker", "olo-tracker")`, then `show(None,
+Olo's own apps notify through the kit: `olo_kit::notify::Notifier::
+new(olo_kit::proxy(), "Tracker", "olo-tracker")`, then `show(None,
 Note::new("Copied").body(…).action("default", "Show"))` → a `NoteId`;
 `show(Some(id), …)` updates it in place (`Note::progress(title, 0.4)`
 for a job's bar: transient and silent), `close(id)`. Kinds are
 `NoteKind::{Information, Important, Error, Progress}`. The bus is used
 on the notifier's own thread; what the user does comes back to
 the app's `message_handler` as `NoteEvent::Action { id, key, token }`
-(bring a window forward with `Window::activate_window_with_token`) or
+(bring a window forward with `WindowCx::activate_window_with_token`) or
 `NoteEvent::Closed`.
 A program without windows (a helper app_server starts) uses
 `Notifier::with_events(app, entry, |e: NoteEvent| …)` instead; the
@@ -11353,10 +11374,11 @@ anything else using libnotify reach the user. The real session starts it
 too); a nested or headless one never does, since it would take the user's
 notifications.
 
-It is a GPUI program (`olo-ui`): `Notifications`, an entity, keeps the
-service's state (the cards on screen, the history, the settings) and
-the views draw from it: banners.rs the layer surface's, history.rs the
-History window's. Nothing polls: a card's expiry is one timer for the
+It is on olo-kit: what the service keeps (the cards on screen, the
+history, the settings) is one model the app's looper and its two
+windows share behind a lock, and whoever changes it tells the
+windows, each a view on a looper of its own: banners.rs the layer
+surface's, history.rs the History window's. Nothing polls: a card's expiry is one timer for the
 next to go, the clock's minute a timer to the next minute (fading, Do
 Not Disturb's schedule, snoozes due during a suspend), and the settings
 and the screen-sharing state files are watched (`olo_kit_base::watch`).
@@ -11442,8 +11464,8 @@ or fitted whole), kept, and the windows drawn again as each comes.
   (`warm_app_icons`: the history's apps at start, a note's as it comes),
   and keeps the answer. Action buttons share the width when they must.
   Banner `seconds` 0 ("Never" in Preferences) shows only errors.
-  A click on a card runs its `default` action: the card asks GPUI
-  for an activation token from that click (`Window::activation_token`) and
+  A click on a card runs its `default` action: the card asks the kit
+  for an activation token from that click (`WindowCx::activation_token`) and
   sends `ActivationToken`, `ActionInvoked`, then `NotificationClosed`, so
   the app may bring its window forward (app_server lets a token one of
   our programs asked for, with an input serial, raise another app's
@@ -11451,7 +11473,7 @@ or fitted whole), kept, and the windows drawn again as each comes.
   forward itself, over IPC, by desktop entry or name. Action buttons
   along the bottom; a reply field and Send when it can be answered (the
   layer takes the keyboard on demand only while one shows,
-  `Window::set_layer_keyboard`); the close box dismisses. Buttons and the
+  `WindowCx::set_layer_keyboard`); the close box dismisses. Buttons and the
   reply field sit over the card's own click area `.occlude()`d, so a
   click on them isn't the card's too. While the pointer is over
   a card it does not expire. Sounds (sound.rs): the note's `sound-file`
@@ -11620,10 +11642,12 @@ its bell's click reaches your own notification service. Unit tests:
 
 ## The command palette (apps/palette)
 
-On the GPUI kit (olo-ui). Released, it opens in 28 ms from the forward
-to the first frame (egui's 47), typing's frames take at most 2 ms once
-its glyphs are drawn (5.3 the first time; egui's 5–6.6 each time), and
-shown it holds 113.6 MB (egui's 154.1); hidden, nothing wakes it.
+On olo-kit: what lasts between its showings (the applications, what
+was chosen, the model, the workers) is a `Hub` on the program's
+looper; each showing is a window with a `Palette` view of its own,
+told what's found. Hidden, nothing wakes it. (On the GPUI kit it
+opened in 28 ms from the forward to the first frame, egui's 47, and
+held 113.6 MB shown, egui's 154.1.)
 
 ⌘Space (`Shortcut::Palette`, the profile's: ⊞S on Windows, Alt+Space
 on BeOS; Find moved to ⌥⌘Space) or a tap of the Super key (if chosen in
@@ -11632,7 +11656,7 @@ the keyboard profile; Windows' does) has app_server start
 through `instance`) takes the toggle, so it opens at once from the second
 time on. Re-executed by an upgrade, it starts again with the arguments it
 first had (`--toggle`, or a window menu's), so it saves a state
-(`olo_ui::on_upgrade`) only to know it was: restored, it doesn't open
+(`olo_kit::on_upgrade`) only to know it was: restored, it doesn't open
 itself (it did, on the first display, while app_server brought the
 others back). It opens a full-screen transparent overlay layer that takes the
 keyboard, on the display in use (the focused window's, else the
@@ -11710,12 +11734,12 @@ put it away.
   opens on it, lit), light/dark appearance, app_server's shortcuts with
   their current keys (`keys_for`, shown as on a Mac, so "tile" lists every
   tiling shortcut and its keys), open windows, the front app's menu
-  commands with their keys (`olo_ui::commands`, asked of the process
+  commands with their keys (`olo_kit::commands`, asked of the process
   that owns the front window; disabled items are shown dimmed), Passwords'
   items (`olo_keychain::Request::Search` while unlocked; choosing one
   is `Request::Show`), files under home by name (`sources::Index`: an
   `ignore` walk on start, at most 400,000, then each folder followed,
-  `olo_ui::watch`, and only one that changed listed again, so a new file
+  `olo_kit::watch`, and only one that changed listed again, so a new file
   is found at once; past an eighth of the kernel's inotify watches it is
   walked again when asked and five minutes old instead; matched on their
   own thread for the newest query only, which sleeps until a query or a
@@ -11836,7 +11860,7 @@ The emoji are `emojis`' (Unicode 18: name, group, shortcodes, skin
 tones), with CLDR's English keywords from `emoji` (Unicode 13.1, so
 newer ones have their names only), less those the colour font doesn't
 draw as one glyph (`data::font_check`: Noto Color Emoji found with
-fontdb as GPUI finds it, each base emoji shaped with
+fontdb as the kit finds it, each base emoji shaped with
 `olo_emoji::ColorFont::glyph`), loaded on a thread at start. Search
 (`data::search`, as you type, 0.1–0.3 ms a key): every word typed must
 match one of the emoji's words: the same (100, its name's own words 10
@@ -11861,7 +11885,7 @@ olo-emoji-picker`, the fake answering `POST /v1/responses` with
 `{"status":"completed","output":[{"type":"message","content":[{"type":
 "output_text","text":"{\"emoji\":[{\"emoji\":\"👏\",\"why\":…}]}"}]}]}`.
 
-Its emoji are drawn ahead when it opens (`Window::warm_text`: what was
+Its emoji are drawn ahead when it opens (`WindowCx::warm_text`: what was
 picked lately first, then the groups), kept for the next opening, and
 let go ten minutes after it's put away (`FORGET`, with
 `forget_kept_glyphs`): at 2× they're 17 MB of its private memory
@@ -11874,7 +11898,7 @@ opened again (bench's `emoji`).
 **Putting text in** (`Request::InsertText { text }`, app_server
 insert.rs): any text, not only what a keyboard types, into the focused
 field, as an input method would. A field that speaks text-input-v3
-(GPUI, GTK, Chrome, Qt) takes it whole (`commit_string`, then `done`):
+(Olo's kit, GTK, Chrome, Qt) takes it whole (`commit_string`, then `done`):
 app_server offers to be the input method (smithay's
 `set_compositor_input_method`, which sends `enter`), the field turns on
 (`TextInputActivation::activated`, then `text_input_on`), the text goes
@@ -12121,13 +12145,14 @@ deferred so the Tracker can update the window back):
   Return or a click elsewhere renames, Escape doesn't.
 - `Desktop` (desktop.rs): a background layer anchored to every edge;
   icons placed by hand kept in `desktop.json`, the rest on the grid.
-- Drops come through GPUI's drop API: each view takes what's dragged
-  over it as it paints (`items::take_drop`, BeOS's rules: move within a
+- Drops come through the kit's (`View::takes_drops`, `drop_over`,
+  `dropped`): each part says whether it takes what's dragged
+  over it (`items::take_drop`, BeOS's rules: move within a
   file system, copy across, ⌥ copies, the secondary button asks;
   `items::Spring` opens a folder a drag rests on), and the window's
   drop handler gives the Tracker the drop. Drags out carry Olo's own
   types (the folder and file system they're from, whether to ask).
-- Paste reads the clipboard off the UI thread (`App::paste_as`).
+- Paste reads the clipboard off the looper (`olo_kit::clipboard::paste_as`).
 - **Edit ▸ Undo and Redo** (undo.rs; ⌘Z and ⇧⌘Z, `app.undo`/`app.redo`,
   named for the step: "Undo Rename", "Undo Move to Trash"), one history
   for every window and the desktop, as Finder's. A step is what was
@@ -12153,7 +12178,7 @@ deferred so the Tracker can update the window back):
   its window opens when the preview comes (or after 120 ms with a
   spinner) and has the keyboard.
 - **Open With ▸** on a file's or folder's menu: the kit's
-  (`olo_ui::open_with`, see "The GPUI kit"), for what's selected when it's
+  (`olo_kit::open_with`, see "The kit"), for what's selected when it's
   all one kind (`folder::open_with_menu`, the kinds warmed as the
   folder is listed); on the desktop's items too, and on Quick Look's
   Open button (its secondary click). Its commands go through
@@ -12268,7 +12293,7 @@ heads, `frame_at` builds the screen as it was at a time from its
 keyframe; `history NAME --look N [OUT.png]` writes it as it was when
 action N ended. In the window, History (a tab beside Live and Stats;
 `replay.rs`) lists its actions as they come: a worker follows the
-history's folder (`olo_ui::watch`) and reads only what was added
+history's folder (`olo_kit::watch`) and reads only what was added
 (`history::Reader`, from where it last read to the end of its last
 whole line; all again when the file was cut down or replaced) and the
 frames' segments that changed (`record::index_known`; records still
@@ -12384,7 +12409,7 @@ requests; `resize` and `place` are `Request::Place` (a frame, as
 file, and `--crop` cuts an RGBA picture down in process (png crate).
 
 The person's side is the window (`olo-screen`, or `olo-screen
-watch NAME`; on the GPUI kit): the screens in a sidebar and the chosen
+watch NAME`; on the kit): the screens in a sidebar and the chosen
 one's Live tab, the screen with the agent's pointer drawn in and its
 latest action under it. Live shows the screen's own frames as it draws
 them, never copied (`viewer::stream_live`, `olo_capture::live`):
@@ -12423,7 +12448,7 @@ watch. A live view that ends (the screen's app_server restarting) starts
 again every half second. Take Control (⌘K) steps in: the person's pointer,
 wheel and keys over the picture go to that screen through another worker
 over a connection kept to it, moves run together to the last (keys by
-their evdev codes on a US keyboard, the agent's, from the keys GPUI
+their evdev codes on a US keyboard, the agent's, from the keys the kit
 names; Ctrl, Shift and Alt pressed and let go as each key event says, a
 held key repeated by the screen, Tab and ⌃Tab to the screen too, ⌘K
 still stopping), with a ring in the keyboard-navigation colour round
@@ -12432,7 +12457,7 @@ Screen… ends one after asking. A viewer running on an agent screen
 leaves that screen out of its list. While any screen runs (other than
 the one a Deskbar is on), Deskbar's tray shows a monitor with a pointer,
 and their count when there are several (`status::agent_screens` reads
-the same listing as a screen's file comes or goes, `olo_ui::watch`, and
+the same listing as a screen's file comes or goes, `olo_kit::watch`, and
 every 30 s while there are any for one killed without a word, judging
 entries as `Screen::alive` does; a viewer's frames go in `views/` beside
 them, so they don't wake whoever follows the listing);
@@ -12664,7 +12689,7 @@ screen's profile showed Google's terms, which agents couldn't get
 past), `session.restore_on_startup` set to the New Tab page (no
 "Continue where you left off" bar) and `--no-default-browser-check`;
 the person's own first Chrome still shows them Google's terms. Without it, it offers to
-download it in a window on the GPUI kit (an `AlertFrame` with the
+download it in a window on the kit (an `AlertFrame` with the
 installer icon: the offer, the download's `StatusBar` with Cancel, or
 why it failed with Try Again; Return and Escape as an alert's; 54 MB
 against egui's 77) (`install.rs`, on a worker thread, cancellable): Google's rpm
@@ -12858,7 +12883,7 @@ Deskbar a `com.canonical.Unity.LauncherEntry` update for
 `application://google-chrome.desktop` (the count, and the progress of
 them all once each knows its size: Chrome itself would only through
 libunity), marks the file being written (`NAME.crdownload`) with the
-size it will be (`olo_ui::files::set_expected_size`, the
+size it will be (`olo_kit::files::set_expected_size`, the
 `user.olo.expected_size` attribute), and shows an Olo notification for
 a finished one (the picture, if it is one; a click or Open opens it,
 Open in Tracker shows it; one that failed for a reason other than being
@@ -13031,7 +13056,7 @@ on /dev/null, its own: "Crash reports"), and Log Viewer reads that
 journal natively. `olo-logs --query TEXT` opens it on that search (and
 a running one takes it: Olo Doctor's "Viewer crashed" does). Kit apps
 log `warn,usvg=error,olo=info` unless `RUST_LOG` says otherwise
-(`olo_ui::run`; tsession starts clients with `RUST_LOG=warn`): Olo's
+(`olo_kit::run`; tsession starts clients with `RUST_LOG=warn`): Olo's
 own crates keep their info for what is rare and worth knowing after
 the fact (a reconnect, an upgrade, why a close was asked about: the
 Terminal's `asking before closing` names the program and where the
@@ -13064,7 +13089,7 @@ the list's kept cells (keyed by line) are keyed by the generation too.
   one opened). `user_files(uid)` finds `user-UID.journal` and its
   archives in /var/log/journal (or /run/log/journal), oldest first.
 - reader.rs: on a worker thread, every file in batches, then the active
-  one read on as it changes (`olo_ui::watch`: journald truncates the
+  one read on as it changes (`olo_kit::watch`: journald truncates the
   file to its own length after each write so that readers hear of it;
   every 30 s anyway, every ½ s without inotify); `Update::Lines` carries
   new lines and more text for lines sent before.
@@ -13078,7 +13103,7 @@ the list's kept cells (keyed by line) are keyed by the generation too.
   of stderr as warnings). Continuation lines (a pretty debug print, a
   backtrace) join the line before from the same process. `Query`, made
   from the search's text (`Query::from_text`, the kit's language,
-  `olo_ui::search`): `since:` (10m, 2h, 1d, today, boot, all; since
+  `olo_kit::search`): `since:` (10m, 2h, 1d, today, boot, all; since
   startup if not said), `level:` (the least: debug, info, warning, error;
   info if not said), `program:` (several, any of them, matched by their
   start while one is typed; `all` for every program; none: Olo's),
@@ -13159,7 +13184,7 @@ activation) last, or is activated if it has none. The volume's wheel
 still sets the volume; Mute is in its menu. The tray's glyphs (status.rs) are exact-coverage
 paths and the GPU's discs, rings and arcs (`paint_sector`), straight
 lines on device pixels. An application dragged out is a link to its
-program (`olo_ui::dnd`, its icon and name under the pointer); files
+program (`olo_kit::dnd`, its icon and name under the pointer); files
 dropped on one open with it, its row lit as they come over it. A
 click on a running application's row with ⌘ held (Super on a Mac's
 keys; Control too), or ⌘ held as an application is chosen in the Olo
@@ -13245,7 +13270,7 @@ kept in `~/.cache/olo/appimages` (the icon, PNG or SVG as given, named
 by its bytes so copies share one, and `apps.json`, by path, size and
 time, changed under an `flock` as Deskbar and Tracker both write it), so
 each version of an AppImage is read once, by whichever app comes to it
-first. The folder is followed (inotify, `olo_ui::watch`: made later,
+first. The folder is followed (inotify, `olo_kit::watch`: made later,
 removed, renamed back too), and a change lists it again on a worker, one
 scan at a time with one more after it if it changed meanwhile (an
 AppImage still downloading). Chosen, it runs; one not executable yet
@@ -14062,7 +14087,7 @@ versions and checks nothing in the store is readable.
 
 ## Passwords (apps/passwords, crates/onepassword)
 
-**Undo** (undo.rs, `olo_ui::undo`): Edit ▸ Undo and Redo for items
+**Undo** (undo.rs, `olo_kit::undo`): Edit ▸ Undo and Redo for items
 changed (put back as they were), made (deleted) and deleted (made again:
 a new item, every field as it was; `Vault::delete` gives back what it
 deleted). Each is a save, a creation or a deletion like any other, so a
@@ -14074,7 +14099,7 @@ the Archive isn't undone (nothing takes an item out of it yet). Steps
 hold secrets: they go when Passwords locks (and when the store changes).
 
 **Searching**: the toolbar's `SearchField` and a `FilterBar` over the
-list (Tag, Has) share one query (`olo_ui::search`). Words find an item
+list (Tag, Has) share one query (`olo_kit::search`). Words find an item
 by its title, username, websites, tags, kind, its sections' titles, its
 fields' labels (a secret's too), the values of those that aren't secret,
 and its notes; with words, the best come first (title 4, username and
@@ -14461,9 +14486,13 @@ then by title; an item that can't be read is logged, not hidden silently.
 
 ## Token Pool (apps/pool, crates/pool)
 
-(Its windows are on the GPUI kit, olo-ui: `ui.rs` holds the app's state,
-a `PoolApp` entity that lives while the gateway does, and its window;
-`clients_window.rs` the Clients window. Both carry the app's menu bar.)
+(Its windows are on olo-kit. What outlives them is a `Hub` on the
+app's looper, `ui.rs` (the gateway serves with no window open): which
+clients use the pool, a sign-in being waited for, the last thing
+said. Each window is a view on a looper of its own, reading the pool
+itself and told the rest by the hub: `ui.rs` the main one,
+`clients_window.rs` the Clients window. Both carry the app's menu
+bar.)
 
 Several Claude and ChatGPT subscriptions shared by Claude Code and Codex
 on this computer, the way Token Pooler's Local mode does it on macOS
@@ -14624,8 +14653,8 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
 - **Upgrades of the pool itself, without a gap** (`ui::hand_over`,
   `drain.rs`; Ben, 2026-11-06: "it should serve new requests in the new
   process but allow old requests to finish in their existing process so
-  that nothing errors"). olo-ui tells the app a new olo-pool is installed
-  (`olo_ui::on_upgrade_due`), and the same when app_server restarts (an
+  that nothing errors"). olo-kit tells the app a new olo-pool is installed
+  (`olo_kit::on_upgrade_due`), and the same when app_server restarts (an
   upgrade's reload, a crash: the compositor gone, `lost_compositor`,
   which hands over first and waits while it's busy, rather than
   re-executing at once: it had cut every agent's stream at each reload,
@@ -14823,11 +14852,11 @@ A Telegram client of Olo's own: MTProto in process through grammers
   Telegram Desktop's), then signing in by phone or QR, the password if
   asked; Sign Out. The app is told (`--reconnect`) and picks the
   account up.
-* **The app** is on the GPUI kit (`olo-ui`). `store` is what is known,
+* **The app** (on olo-kit: see "On olo-kit" below). `store` is what is known,
   kept up to date from the events (the list's order, each thread's
   loaded messages with a version bumped on change, our messages still
   sending, who's typing); `pics` asks for pictures the first time they
-  are drawn and decodes them on two workers into GPUI images (BGRA).
+  are drawn and decodes them on two workers into the kit's pictures (BGRA).
   `list` is the chat list (the search field, asking Telegram after a
   pause in typing; folders as chips with the rest under More, pinned
   chats, the archive's row and Unknown Senders', unread and mention
@@ -14931,7 +14960,7 @@ A Telegram client of Olo's own: MTProto in process through grammers
   replies, forwards, photos and video frames, voice notes' waveforms,
   files, stickers, polls, link previews, reactions, read ticks, and
   the text's entities (code on its ground, spoilers hidden, links),
-  colour emoji drawn by Olo's GPUI text in line. Both panes scroll, so
+  colour emoji drawn by the kit's text in line. Both panes scroll, so
   each is a grid of its own for the layout review (`review::own_grid`),
   as are avatars and the time in a balloon's corner. A chat's Info is
   a window over its chat (`WindowOptions::child`; Escape or ⌘W puts it

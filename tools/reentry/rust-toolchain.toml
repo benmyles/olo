@@ -1,4 +1,0 @@
-[toolchain]
-# The nightly tools/dev/lockcheck uses for lockbud (its NIGHTLY).
-channel = "nightly-2026-02-07"
-components = ["rustc-dev", "rust-src", "llvm-tools"]

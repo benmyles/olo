@@ -1,7 +1,7 @@
 //! Pictures in documents (`doc::Picture`, a style of their character):
 //! each file decoded on a worker (`olo_images`: what the image crate
 //! reads, and JPEG XL, AVIF and HEIC), made no bigger than 2048 pixels a
-//! side and kept as a GPUI image; one still loading shows as a frame. The
+//! side and kept as a `RenderImage`; one still loading shows as a frame. The
 //! bytes a picture goes into other formats as (its file's own when PNG or
 //! JPEG, else made a PNG); its natural size; and where pictures with no
 //! file of their own (pasted, or from an imported document) are kept
@@ -150,7 +150,7 @@ fn fetch(url: &str, to: &Path) -> Result<(), String> {
 fn decode(path: &Path) -> Result<Arc<RenderImage>, String> {
     let (img, _) = olo_images::open(path)?;
     let img = if img.width().max(img.height()) > MOST { img.thumbnail(MOST, MOST) } else { img };
-    // (GPUI's images are BGRA, alpha straight.)
+    // (The kit's pictures are BGRA, alpha straight.)
     let mut bgra = img.to_rgba8();
     for p in bgra.pixels_mut() {
         p.0.swap(0, 2);

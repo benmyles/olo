@@ -1,7 +1,6 @@
 //! A window's tool bars (along the top, wrapped at its separators, and
-//! down a side) and text views (coloured, and empty), the same as
-//! olo-ui's `tools_gpui` example draws them on GPUI: the two are
-//! compared pixel for pixel (`tools/dev/kit-compare`).
+//! down a side) and text views (coloured, and empty) (to compare with a
+//! build from before a change: `tools/dev/kit-compare`).
 
 use olo_kit::{
     Child, Cx, Element, Menu, ParentElement as _, Styled as _, TextRun, View, WindowOptions, div, hsla, metrics as m, px, style,

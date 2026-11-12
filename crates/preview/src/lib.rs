@@ -3,8 +3,8 @@
 //! syntax), Markdown and office documents, spreadsheets and CSV, archives
 //! and folders, audio (with playback) and video posters, fonts; anything
 //! else gets a card. Tracker's Quick Look and the Viewer app are built on
-//! them: the decoding here; `ui` (feature `gpui`) draws it with Olo's
-//! GPUI.
+//! them: the decoding here; `kit` (feature `kit`) draws it with
+//! olo-kit.
 
 pub mod archive;
 pub mod audio;
@@ -21,8 +21,6 @@ pub mod pdf;
 pub mod stretch;
 pub mod table;
 pub mod text;
-#[cfg(feature = "gpui")]
-pub mod ui;
 pub mod video;
 
 use std::{

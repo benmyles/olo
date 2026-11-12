@@ -1,7 +1,7 @@
 //! More of the kit's widgets in one window (a find bar, a sidebar, tabs,
 //! a status bar, sliders, key hints, a banner, a colour control,
-//! thumbnails), the same as olo-ui's `widgets_gpui` example draws them
-//! on GPUI: the two are compared pixel for pixel (`tools/dev/kit-compare`).
+//! thumbnails) (to compare with a build from before a change:
+//! `tools/dev/kit-compare`).
 
 use olo_kit::{
     Child, Cx, Element, ParentElement as _, Styled as _, View, WindowOptions, div, hsla, metrics as m, px,

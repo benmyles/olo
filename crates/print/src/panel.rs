@@ -5,10 +5,6 @@
 
 use crate::Paper;
 
-/// The panel on Olo's GPUI (the `gpui` feature).
-#[cfg(feature = "gpui")]
-pub mod view;
-
 /// The panel on olo-kit (the `kit` feature): a window on a looper of
 /// its own.
 #[cfg(feature = "kit")]

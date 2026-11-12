@@ -1,0 +1,15 @@
+[package]
+name = "gpui_util"
+version = "0.2.2"
+edition = "2024"
+license = "Apache-2.0"
+description = "The few helpers Olo's Interface Kit uses from Zed's util crate (through GPUI)"
+publish = false
+
+[lib]
+name = "util"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"
+log = "0.4"

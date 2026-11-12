@@ -1,6 +1,6 @@
 //! The layout review's checks: what a frame looks like it got wrong,
 //! from what it painted, which the kit collects into [`Parts`] from what
-//! its style drew (`olo_ui::review`) at the scale it was drawn at. See
+//! its style drew (`olo_kit::review`) at the scale it was drawn at. See
 //! "Layout review" in docs/HACKING.md for what each check finds and why.
 
 pub use crate::review::{Finding, Level};
@@ -256,8 +256,8 @@ pub struct Control {
     pub role: String,
     pub name: String,
     pub clickable: bool,
-    /// Its element id, whole (GPUI's: the ids of what it's in, then its
-    /// own), as recorded while reviewing.
+    /// Its element id, whole (the ids of what it's in, then its own), as
+    /// recorded while reviewing.
     pub element: Option<String>,
 }
 

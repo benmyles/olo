@@ -472,7 +472,7 @@ pub(crate) enum PendingActivation {
 }
 
 /// This struct is required to conform to Rust's orphan rules, so we can dispatch on the state but hand the
-/// window to GPUI.
+/// window to the kit.
 #[derive(Clone)]
 pub struct WaylandClientStatePtr(Weak<RefCell<WaylandClientState>>);
 
@@ -697,7 +697,7 @@ impl WaylandClientStatePtr {
             state.repeat.current_keycode = None;
         }
         // (Olo: an app with no windows left decides itself whether it
-        // ends: olo-ui quits unless it stays resident, as an agent does.)
+        // ends: olo-kit quits unless it stays resident, as an agent does.)
     }
 }
 
@@ -833,7 +833,7 @@ impl WaylandClient {
         let mut cursor = Cursor::new(&conn, &globals, 24);
 
         // (Olo: no desktop portal watched for the colour scheme and the
-        // cursor's theme and size. olo-ui takes the look from app_server,
+        // cursor's theme and size. olo-kit takes the look from app_server,
         // which draws the pointer; the portal's settings over D-Bus kept a
         // thread of the `blocking` pool waking in every app.)
 
@@ -1128,7 +1128,7 @@ impl LinuxClient for WaylandClient {
                 // (Deskbar, 2026-11-01), or spins on a stored
                 // protocol error (Notifications). Seen here, after
                 // each turn, the program hands over to whoever asked
-                // (olo-ui: re-execute with the state saved, and
+                // (olo-kit: re-execute with the state saved, and
                 // reconnect), or stops its loop.
                 let Some(state) = ptr.0.upgrade() else { return };
                 compositor_lost_check(&state);
@@ -1962,7 +1962,7 @@ impl Dispatch<zwp_text_input_v3::ZwpTextInputV3, ()> for WaylandClientStatePtr {
     }
 }
 
-fn linux_button_to_gpui(button: u32) -> Option<MouseButton> {
+fn linux_button(button: u32) -> Option<MouseButton> {
     // These values are coming from <linux/input-event-codes.h>.
     const BTN_LEFT: u32 = 0x110;
     const BTN_RIGHT: u32 = 0x111;
@@ -2049,7 +2049,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientStatePtr {
             }
             wl_pointer::Event::Button { serial, button, state: WEnum::Value(button_state), .. } => {
                 state.serial_tracker.update(SerialKind::MousePress, serial);
-                let button = linux_button_to_gpui(button);
+                let button = linux_button(button);
                 let Some(button) = button else { return };
                 if state.mouse_focused_window.is_none() {
                     return;
@@ -2756,7 +2756,7 @@ fn connect() -> Result<Connection, wayland_client::ConnectError> {
 
 /// (Olo) The compositor's connection gone (hung up, or in protocol
 /// error), or the GPU device lost (`gpu_device_lost`): told once to whoever asked (`Platform::on_compositor_lost`:
-/// olo-ui re-executes the program with its state saved, and doesn't
+/// olo-kit re-executes the program with its state saved, and doesn't
 /// come back), with no borrow held; then the loop stops. Nothing can
 /// come of the connection again, and its socket, readable for ever,
 /// would wake the loop at once each turn (a program outside a session,

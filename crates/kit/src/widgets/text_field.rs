@@ -1237,7 +1237,7 @@ impl TextField {
                 let _ = p.paint(point(origin.x, origin.y + tops[k].1), lh, olo_interface::TextAlign::Left, None, g);
             }
             if text.is_empty() && !hint.is_empty() && marked.is_none() {
-                // Drawn as the first row's text is (GPUI's line, in its
+                // Drawn as the first row's text is (a shaped line, in its
                 // height), so the first letter typed lands where the hint
                 // was: drawn as a label (its capitals centred) it sat a device
                 // pixel higher at 1.5×, and its line stood out of the field.

@@ -1,6 +1,5 @@
-//! The kit's slim scroll bar over a view of numbered lines, the same as
-//! olo-ui's `slim_gpui` example draws it on GPUI: the two are compared
-//! pixel for pixel (`tools/dev/kit-compare`).
+//! The kit's slim scroll bar over a view of numbered lines (to compare
+//! with a build from before a change: `tools/dev/kit-compare`).
 
 use olo_kit::{
     Cx, Element, FontWeight, InteractiveElement as _, ParentElement as _, ScrollWheelEvent, Styled as _, View, WindowOptions, canvas, div, metrics as m, px, style,

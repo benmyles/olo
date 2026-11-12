@@ -2,7 +2,7 @@
 //! tint of the keyboard's blue, theirs on the left on the card colour),
 //! with who sent it in a group, what it forwards or answers, its picture
 //! or file, its text (bold, italic, code, links, spoilers; emoji in
-//! colour, as Olo's GPUI draws them), its time (edited, read ticks,
+//! colour, as the kit draws them), its time (edited, read ticks,
 //! views) and reactions under it. Stickers and a few emoji alone stand on
 //! the background with no balloon; service messages are a pill in the
 //! middle. Laying out is done once per message and width (`Laid`, cached

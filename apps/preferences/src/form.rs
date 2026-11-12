@@ -496,8 +496,8 @@ pub fn divider_for(labels: &[&str]) -> f32 {
 /// How long a slider's dragged value is shown in place of what its
 /// server says (the server's echoes are a little older: the knob would
 /// jump), and after which the panel says what it shows again, so what
-/// the server made of it shows (GPUI drew a window again whenever the
-/// pointer left a control; a kit view draws again when told).
+/// the server made of it shows (the GPUI kit drew a window again whenever
+/// the pointer left a control; a view draws again when told).
 pub const HELD: Duration = Duration::from_millis(600);
 
 /// The panel says what it shows again once a value held for [`HELD`] is
@@ -509,8 +509,8 @@ pub fn again_once_let_go(cx: &mut Cx<PanelView>) {
 /// A text field of a panel's own (not bound to a setting: a password, a
 /// name to save under): the panel says what it shows again as it's
 /// typed in, for what it enables by the text (a Save that wants a name).
-/// (GPUI drew a view again when something it had read changed; the kit's
-/// views are told.)
+/// (A view is told: nothing draws it again because something it read
+/// changed, as GPUI did.)
 pub fn text_field(cx: &mut Cx<PanelView>, build: impl FnOnce(TextField) -> TextField) -> Child<TextField> {
     let f = olo_kit::widgets::text_field(cx, build);
     cx.subscribe(&f, |_: &mut PanelView, e: &TextFieldEvent, cx| {

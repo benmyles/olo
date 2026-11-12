@@ -140,3 +140,34 @@ Owned here outright (path dependencies), not tracking a release.
   VUI is read; `src/lib.rs`: `stream_colour`, for an SPS NAL unit) keeps
   it, for Olo's HDR video (`olo_images::hevc`). Its tests, benches and
   examples are left out. Drop it if upstream reads the VUI.
+
+# From GPUI
+
+Olo's apps were once drawn with GPUI (Zed Industries' UI framework,
+GPUI 0.2.2 from crates.io, Apache-2.0), as Olo had changed it. They are
+on Olo's own kits now (`crates/interface`, `crates/kit`: docs/HACKING.md
+and the Olo Book), and GPUI and the kit built on it (`gpui/`,
+`crates/ui`) are gone. The lower half of the Interface Kit (its Wayland
+client, text system, scene and renderer) began as that code and carries
+its licence (`crates/interface/LICENSE-APACHE`). What it still uses of
+the crates GPUI was published with is here, each under the licence in
+its own folder, changed as Olo needs and never synced with upstream:
+
+- **gpui_collections 0.2.2** (Apache-2.0): the hash maps and sets'
+  aliases.
+- **gpui-macros 0.2.2** (Apache-2.0): the `Styled` helpers (`.flex()`,
+  `.p_2()`, `.border_1()`…), generated as GPUI's are. Its other macros
+  (actions, `Render`, test contexts) are GPUI's and unused; its tests
+  needed GPUI and went with it.
+- **gpui_refineable 0.2.2** and **gpui_derive_refineable 0.2.2**
+  (Apache-2.0): a style laid over another (`Refineable`).
+- **gpui_util 0.2.2** (Apache-2.0): the few helpers GPUI used from
+  Zed's `util`.
+- **blade-graphics 0.7.1** (MIT; Dzmitry Malyshau and the Blade
+  contributors, https://github.com/kvark/blade): the GPU layer the
+  Interface Kit draws with (Vulkan here). It replaces the crates.io
+  release for the whole workspace (`[patch.crates-io]`).
+- **blade-util 0.3.0** (MIT, same authors): its buffer belt (per-frame
+  GPU buffers): chunks are made a power of two in size, so a frame that
+  grows reuses them rather than making a new one every frame (none is
+  ever freed).

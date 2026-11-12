@@ -482,6 +482,35 @@ something nobody here has is in "Blocked", with what it waits for.
      restart, a display mode kept (the headless output has one mode).
      *Next:* the tools (bench, ui-lint, lockcheck), then HACKING and
      the Olo Book.
+  8. **AirPlay: send a window, a workspace, an agent screen or a video
+     file to an AirPlay display** (Ben, 2026-11-12: "after this work
+     please add airplay support to olo so that i can broadcast/stream
+     either a specific window, a specific workspace, an agent screen or
+     a video file to an airplay compatible display/receiver. it must
+     support high quality video and audio"). After the kits' work
+     (items 5 to 7). Native, as everything is (no wrapped tools): find
+     receivers (mDNS, `_airplay._tcp` and `_raop._tcp`), pair and set
+     up (AirPlay 2's HomeKit pairing where a receiver wants it, the
+     older FairPlay-less paths where it doesn't), then two ways to
+     send. *Mirroring* for a window, a workspace or an agent screen:
+     what app_server's capture already hands the portal and Screenshot
+     (`capture.rs`: a window, a display, a headless screen's frames as
+     dmabufs), encoded H.264 or HEVC on the GPU (olo-video's NVENC,
+     olo-vaapi) at the receiver's size and rate, with the sound that
+     goes with it (the session's output, or the window's own stream)
+     as AAC or ALAC, kept in step with the picture. *A video file* is
+     better sent as itself where the receiver plays its format (the
+     receiver fetches it from a server Olo runs for the length of the
+     play: its own picture and sound, never re-encoded), mirrored
+     through the Viewer's player otherwise. Where it's asked for: a
+     window's tab menu and the Viewer (Send to ▸ the receivers found),
+     Deskbar for a workspace, Agent Screens for a screen; a tray item
+     while something is being sent, with Stop. Agents the same
+     (`olo-airplay list|send|stop`). To find out first: what today's
+     receivers (Apple TV, AirPlay 2 televisions, HomePods for sound)
+     accept from a sender that isn't Apple's, since "high quality"
+     depends on which path they allow; tests against a receiver of
+     the test's own on a private network, never the person's.
   7. **The installer, as BeOS's Installer** (Ben, 2026-11-11: "also can
      you redo the installer to be reminiscent of the beos installer
      instead of windows 95"). `apps/installer` (Olo Setup, on olo-kit)
@@ -504,30 +533,45 @@ something nobody here has is in "Blocked", with what it waits for.
      prefix of its own, with its own session entry beside Olo's
      (`tools/install-session.sh` shows what an entry needs), named so
      it can't be taken for the current one; say how to remove it.
-  5. **Tools, HACKING and the Olo Book**; GPUI and olo-ui leave the
-     workspace as soon as the last app and the tools are off them (Ben,
+  5. **Tools, HACKING and the Olo Book; GPUI and olo-ui gone** (Ben,
      2026-11-11: "you can also remove GPUI and olo-ui as soon as you're
      done we don't need to wait for the coder and browser branches":
-     those branches build on them, and move when they're merged up).
-     Done (2026-11-11): the kit's own `gallery`, `hdr_probe`,
-     `hdr_card`, `lines` and `layer` examples (bench and hdr-check use
-     them), olo-ui's two tests the kit lacked, and the frame marks
-     bench and scroll-check read made right on olo-kit (scroll places
-     in them, marked when drawn, nothing left by a commit that drew
-     nothing). *Left:* a view that scrolls itself (the kit's editor,
-     Terminal's scrollback) says where it is in its frames' marks, as
-     GPUI's `Window::note_scroll` let it (bench's "didn't scroll" for
-     StyledEdit: its scroll can't be judged); the whole benchmark run
-     on a quiet machine, and what it fails fixed (StyledEdit's 20,000
-     lines: a menu's frame 8.8 ms, typing 8.3, with the machine busy);
-     `cargo ui-lint` and the hooks' lists
-     (`tools/hooks/lint-covers`, pre-push) without olo-ui;
-     `lockcheck reentry` and `tools/reentry` go with GPUI (a `Child`
-     has one owner, so nothing reaches a view that's busy);
-     `crates/preview`, `print` and `screensavers` lose their `gpui`
-     features; the crates olo-interface uses from `gpui/`
-     (collections, macros, refineable, util, blade-graphics,
-     blade-util) move beside it; then `crates/ui` and `gpui/gpui` go.
+     those branches built on them, and move to the kits as they're
+     merged up). Done 2026-11-12: `crates/ui` and `gpui/gpui` (with
+     `sum_tree` and `semantic_version`) are deleted; what olo-interface
+     still uses of GPUI's helper crates and Blade is in `vendor/`
+     (`vendor/README.md`, "From GPUI"); `crates/preview`, `print` and
+     `screensavers` have only their `kit` views; `cargo ui-lint`, the
+     hooks, bench, hdr-check, ui-lint, lockcheck and kit-compare know
+     only the kits (`tools/reentry` and `lockcheck reentry` went with
+     GPUI: a `Child` has one owner, so nothing reaches a view that's
+     busy); the kit has its own `gallery`, `hdr_probe`, `hdr_card`,
+     `lines`, `layer` and `book` examples and the two tests of olo-ui's
+     it lacked; a frame's marks are right on olo-kit (where its
+     scrollers were, marked when drawn, nothing left by a commit that
+     drew nothing) and a view that scrolls itself says where it is
+     (`Painter::note_scroll`: the editor, Terminal); HACKING.md speaks
+     of the kits throughout (its GPUI mentions are history), and the
+     Olo Book is `docs/OLO-BOOK.md`, its example
+     `crates/kit/examples/book.rs`.
+     *Left:* what the whole benchmark still fails, on a quiet machine
+     at 2× (4 of 155 steps, 2026-11-12; three scales to run again):
+     Deskbar's menu's first frame (14 ms of the looper's work),
+     one frame of 12.8 ms scrolling Telegram's conversation (rows
+     made as they come near), and a frame that draws without moving
+     in the middle of a drag in StyledEdit's code and Markdown (a
+     commit of colours drawn at a frame's start takes the place of the
+     scroll's, which comes a millisecond later and is shown a frame
+     late from then on: the stage should wait for a commit it knows is
+     on its way); each to be compared with the pre-refactor build's
+     (`cc785d65`, built under /var/tmp/olo-pre for item 6) and fixed;
+     Smithay's `winit` dev-dependency
+     pulls winit-x11 into test builds (no X11 code runs, but the rule
+     is no X11 dependencies: drop the winit backend from the vendored
+     Smithay); `vendor/gpui-macros` still holds GPUI's macros for
+     actions, `Render` and tests, unused (cut it down to `styles.rs`);
+     olo-interface's `extern crate self as gpui` (the style macros name
+     their types by it) goes with that.
      *For the Book, learned porting (each cost a bug):* a drawing only
      looks (`Cx::canvas(|v: &V, g, b|)`): what it lacks it asks of its
      view by a message, and what it finds (where something went) goes
@@ -639,6 +683,19 @@ something nobody here has is in "Blocked", with what it waits for.
   the card moves them, and that the Intel GPU's video engines are
   counted the same way.
 
+- **The lowest brightness is off** (Ben, 2026-11-12: "putting the
+  screen on min brightness should turn the screen off: right now it
+  just gets dim but not off"). The brightness-down key (and the level
+  indicator's slider, Preferences ▸ Display's) at the bottom step
+  turns the panel's backlight off, as a MacBook's does; the next
+  brightness-up, a key or the pointer brings it back to the first step
+  (it isn't the display asleep: nothing locks, windows stay where they
+  are, an external display is untouched). app_server's `power.rs`
+  holds the panel's steps and the least it goes to: find why the least
+  is above nothing (a floor kept so a dark room's screen can't be lost,
+  or the backlight's own minimum) and make the last step off by the
+  backlight's `bl_power` (or 0 where the driver takes it), with the
+  level indicator saying "Off".
 - **A fan profile, in Preferences ▸ Power, and the fans in Activity
   Monitor** (Ben, 2026-11-10: "on auto settings the thinkpad is too slow
   to ramp up the fans, it gets behind the thermal curve and then starts

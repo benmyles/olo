@@ -1,8 +1,7 @@
 //! The column list view: processes in columns, under a menu bar, with
-//! a context menu and a note of what was opened or chosen. The same as
-//! olo-ui's `list_gpui` example draws it on GPUI: the two are compared
-//! pixel for pixel (`tools/dev/kit-compare`). `LIST_ROWS=N` makes it N
-//! rows long (to scroll, and to measure).
+//! a context menu and a note of what was opened or chosen (to compare
+//! with a build from before a change: `tools/dev/kit-compare`).
+//! `LIST_ROWS=N` makes it N rows long (to scroll, and to measure).
 
 use olo_kit::{
     Cx, Element, MenuBar, ParentElement as _, Pixels, Point, SharedString, Styled as _, View, WindowOptions, div,

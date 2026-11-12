@@ -350,7 +350,7 @@ def main():
     screen = a[a.index("--screen") + 1] if "--screen" in a else "3024x1964"
     jobs = int(a[a.index("--jobs") + 1]) if "--jobs" in a else max(2, (os.cpu_count() or 4) * 3 // 4)
     picked = [x for i, x in enumerate(a) if not x.startswith("--") and (i == 0 or a[i - 1] not in ("--scales", "--screen", "--jobs"))]
-    work = f"/var/tmp/olo-ui-lint-{os.getpid()}"
+    work = f"/var/tmp/olo-live-lint-{os.getpid()}"
     master = os.path.join(work, "home")
     specs = apps(master)
     if "--list" in a:

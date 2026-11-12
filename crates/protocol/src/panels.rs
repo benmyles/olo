@@ -1,7 +1,7 @@
 //! What kind of panel each display is, and how Olo draws for it: its
 //! density, the order of its colour stripes, its technology, and the
 //! text rendering that follows from them, each with why. app_server
-//! works them out (`OutputInfo::panel`), apps draw by them (the GPUI
+//! works them out (`OutputInfo::panel`), apps draw by them (the
 //! kit) and Preferences ▸ Display shows them, with the person's
 //! corrections (`OutputConfig::subpixel`, `technology`, `text`).
 

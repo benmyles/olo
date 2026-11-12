@@ -21,11 +21,12 @@ pub struct FrameStats {
     /// long laying out and painting took, and the whole frame.
     pub marks: VecDeque<(u64, u32, u32)>,
     /// Each mark's scrollers, as the display thread drew them in it, in
-    /// the order they're drawn: where each showed its content (x and y
-    /// at its top left: zero at its start, down to minus how far it
-    /// goes; past either end, its content pulled past its edge) and the
-    /// furthest it goes (x, y). What `tools/dev/scroll-check` and the
-    /// benchmark judge a scroll by.
+    /// the order they're drawn, then what scrolls itself
+    /// (`Painter::note_scroll`): how far each was scrolled (across and
+    /// down: zero at its start, up to how far it goes; past either end,
+    /// its content pulled past its edge) and the furthest it goes (x,
+    /// y). What `tools/dev/scroll-check` and the benchmark judge a
+    /// scroll by.
     pub scrolls: VecDeque<Vec<[f32; 4]>>,
 }
 

@@ -1130,8 +1130,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     /// Whether what a finger came down on takes touch: a client's
     /// surface whose client has `wl_touch` (Chrome, GTK). Not app_server's
-    /// own frames and tabs, nor an app without it (every GPUI app, so
-    /// every Olo app): there the finger is the pointer.
+    /// own frames and tabs, nor an app without it (every Olo
+    /// app): there the finger is the pointer.
     fn takes_touch(&self, under: &Option<(PointerFocusTarget, Point<f64, Logical>)>) -> bool {
         use smithay::reexports::wayland_server::Resource as _;
         let (Some(touch), Some((PointerFocusTarget::WlSurface(surface), _))) = (self.seat.get_touch(), under) else { return false };

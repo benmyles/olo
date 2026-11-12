@@ -57,7 +57,7 @@ pub fn toolkit(pid: i32) -> Toolkit {
             // Chrome's pid too (its page trees).
             Some(dir) if is_chromium(dir) => Toolkit::Chromium,
             // Every kit app answers on a socket named after its pid
-            // (olo_ui::commands).
+            // (olo_kit::commands).
             _ if runtime_dir().join(format!("olo-menus-{pid}.sock")).exists() => Toolkit::Olo,
             _ if maps(pid, "/libgtk-4.so") => Toolkit::Gtk4,
             _ if maps(pid, "/libgtk-3.so") => Toolkit::Gtk3,

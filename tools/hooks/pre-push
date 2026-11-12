@@ -15,10 +15,11 @@ fi
 [ "${OLO_SKIP_UI_LINT:-}" = 1 ] && exit 0
 remote_ref=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || echo origin/main)
 changed=$(git diff --name-only "$remote_ref"...HEAD 2>/dev/null || true)
-echo "$changed" | grep -qE '^(apps/|crates/(ui|kit|interface|kit-base|theme|preview)/|gpui/)' || exit 0
-# Which apps: all of them when the kit or GPUI changed, else those touched.
+echo "$changed" | grep -qE '^(apps/|crates/(kit|interface|kit-base|theme|preview)/|vendor/)' || exit 0
+# Which apps: all of them when the kits (or what they're built on) changed,
+# else those touched.
 picked=()
-if ! echo "$changed" | grep -qE '^(crates/(ui|kit|interface|kit-base|theme|preview)/|gpui/)'; then
+if ! echo "$changed" | grep -qE '^(crates/(kit|interface|kit-base|theme|preview)/|vendor/)'; then
     for app in $(echo "$changed" | sed -nE 's#^apps/([^/]+)/.*#\1#p' | sort -u); do
         # (ui-lint takes apps/' directory names: "disk-usage" is Disk Usage.)
         case $app in

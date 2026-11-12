@@ -79,7 +79,7 @@ struct State {
     /// The face found for a character none of a chain has, if any.
     last_resort: HashMap<char, Option<usize>>,
     hinting: HashMap<(usize, u32), HintingInstance>,
-    /// Glyphs drawn for their bounds, until GPUI asks for their pixels;
+    /// Glyphs drawn for their bounds, until their pixels are asked for;
     /// colour ones (emoji: slow to draw, ~60 µs) kept for every window
     /// after, up to `KEEP` bytes of them (`kept`).
     drawn: HashMap<RenderGlyphParams, (Bounds<DevicePixels>, Vec<u8>)>,
@@ -111,7 +111,7 @@ struct WordGlyph {
 /// How many shaped words `State::words` keeps before starting afresh.
 const WORDS: usize = 40_000;
 
-/// Olo's families, for GPUI's own names and the generic ones.
+/// Olo's families, for the names GPUI had of its own and the generic ones.
 fn families(name: &str) -> Vec<&str> {
     match name {
         ".SystemUIFont" | "Zed Plex Sans" | "IBM Plex Sans" | "system-ui" | "sans-serif" => olo_theme::fonts::UI.to_vec(),
@@ -877,7 +877,7 @@ fn draw_color_data(data: Data, index: u32, location: &Location, glyph: GlyphId, 
         for x in x0..x1 {
             let i = 4 * (y * n + x);
             let (r, g, b, a) = (px[i], px[i + 1], px[i + 2], px[i + 3]);
-            // Premultiplied to straight, as GPUI's pictures are.
+            // Premultiplied to straight, as the kit's pictures are.
             let un = |c: u8| {
                 if a == 0 { 0 } else { ((u16::from(c) * 255 + u16::from(a) / 2) / u16::from(a)).min(255) as u8 }
             };
@@ -1070,7 +1070,7 @@ mod tests {
     use super::*;
 
     /// How long a line never laid out before takes, as a table's cells
-    /// are (`cargo test --release -p gpui shaping_cost -- --ignored --nocapture`).
+    /// are (`cargo test --release -p olo-interface shaping_cost -- --ignored --nocapture`).
     #[test]
     #[ignore]
     fn shaping_cost() {

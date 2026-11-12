@@ -29,7 +29,7 @@
 //! tab's menu (Open in Tracker);
 //! `{"lose_gpu":true}` → `{"ok":bool}`: debug builds only, mark the
 //! GPU device lost, as a driver reset loses it, to test that the app
-//! comes back (olo-ui's `upgrade::lost_compositor`);
+//! comes back (olo-kit's `upgrade::lost_compositor`);
 //! `{"window_over":{"window":ID,"onto":ID|null,"x":X,"y":Y}}` and
 //! `{"window_dropped":{…}}` → `{"ok":true}`: from app_server, a window of
 //! ours moved over another of ours (surface ids, `onto`'s coordinates),
@@ -200,7 +200,7 @@ pub struct FrameMark {
     /// for a new size).
     #[serde(default)]
     pub setup_us: u32,
-    /// Turning shapes into triangles (none on GPUI, which draws its
+    /// Turning shapes into triangles (none: the Interface Kit draws its
     /// primitives as they are).
     #[serde(default)]
     pub tessellate_us: u32,

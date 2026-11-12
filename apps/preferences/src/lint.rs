@@ -282,7 +282,8 @@ fn ui_lint_settings_index() {
                 // shown as a button, a problem's fix (there only while it
                 // is), the made-up displays' buttons.
                 // (And the screen saver's Test, which the index never had:
-                // on GPUI it lay under a module's row scrolled out of sight.)
+                // on the GPUI kit it lay under a module's row scrolled out of
+                // sight.)
                 if (n.role == "Button" && (name.starts_with("Scroll ") || matches!(name.as_str(), "Defaults" | "Revert" | "Use Default" | "Searching…" | "Fix in Olo Doctor…" | "Test")))
                     || this_machines(&name)
                 {

@@ -1,5 +1,5 @@
 //! Terminal: a shell in a window, BeOS style (one process, any number of
-//! windows), on alacritty's terminal emulator. Drawn by GPUI (ui.rs, view.rs),
+//! windows), on alacritty's terminal emulator. Drawn with olo-kit (ui.rs, view.rs),
 //! with Olo's own light and dark colour schemes and Catppuccin's
 //! (colors.rs), one for each appearance. A window can hold
 //! several shells as tabs, and be a named, coloured group of them that

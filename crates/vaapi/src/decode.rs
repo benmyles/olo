@@ -9,7 +9,7 @@
 //! here as FFmpeg's and ChromeOS's VA-API decoders fill them. Each
 //! decoded picture is copied from the GPU into planes, luma and chroma
 //! interleaved (NV12, or P010 for 10-bit video), which the window draws
-//! as they are (`gpui::YuvFrame`).
+//! as they are (`olo_yuv::YuvFrame`).
 //!
 //! A picture with film grain is decoded twice over by the driver: the
 //! picture it keeps for reference, and the one shown (grain applied),
@@ -83,7 +83,7 @@ pub struct Picture {
 
 /// A picture left in the memory the GPU copied it into (`Decoder::hold`):
 /// page-aligned, a whole number of pages, which a window's GPU can copy
-/// from as it is (`gpui::YuvMemory`), nothing copied by the processor.
+/// from as it is (`olo_yuv::YuvMemory`), nothing copied by the processor.
 /// Its luma at `y`, its chroma (Cb and Cr interleaved) at `uv`: each an
 /// offset and a row pitch, in bytes. The memory is the decoder's again
 /// when this is dropped (freed, if the decoder has gone).

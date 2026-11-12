@@ -498,7 +498,7 @@ def run(name, cmd):
 def review(name, layers=False):
     """Ask each kit app with a window in the session for its windows'
     layout review (`{"review":true}` on its socket; see
-    crates/kit-base/src/layout_review.rs and olo_ui::review) and print the
+    crates/kit-base/src/layout_review.rs and olo_kit::review) and print the
     findings."""
     windows = ipc(name, {"type": "list_windows"}).get("windows", [])
     pids = {w["pid"] for w in windows if w.get("pid")}

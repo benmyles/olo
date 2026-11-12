@@ -350,7 +350,7 @@ impl AvailableSpace {
     /// # Examples
     ///
     /// ```
-    /// use gpui::AvailableSpace;
+    /// use olo_interface::AvailableSpace;
     /// let min_content_size = AvailableSpace::min_size();
     /// assert_eq!(min_content_size.width, AvailableSpace::MinContent);
     /// assert_eq!(min_content_size.height, AvailableSpace::MinContent);

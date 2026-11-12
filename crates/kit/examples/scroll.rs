@@ -1,7 +1,6 @@
-//! Scroll views in one window, the same as olo-ui's `scroll_gpui`
-//! example draws them on GPUI: the two are compared pixel for pixel
-//! (`tools/dev/kit-compare`), and this one is what scrolling is measured
-//! with.
+//! Scroll views in one window: what scrolling is measured with
+//! (`tools/dev/scroll-check`), and compared with a build from before a
+//! change (`tools/dev/kit-compare`).
 
 use olo_kit::{
     Cx, Element, ParentElement as _, ScrollHandle, Styled as _, View, WindowOptions, div, metrics as m, px,

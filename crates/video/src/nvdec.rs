@@ -10,7 +10,7 @@
 //! each to show (in display order, with the time it was sent with) is
 //! mapped and copied into memory as NV12 (8-bit) or P016 (16-bit, a
 //! 10-bit sample in the high bits), the planes a window's GPU draws from
-//! (`gpui::YuvFrame`). The callbacks run inside `cuvidParseVideoData`, on
+//! (`olo_yuv::YuvFrame`). The callbacks run inside `cuvidParseVideoData`, on
 //! the caller's thread, with the CUDA context current.
 
 use std::{
@@ -64,7 +64,7 @@ pub struct Picture {
 
 /// A picture left in the memory it was copied into from the GPU
 /// (`Nvdec::hold`): page-aligned, a whole number of pages, which a
-/// window's GPU can copy from as it is (`gpui::YuvMemory`), the
+/// window's GPU can copy from as it is (`olo_yuv::YuvMemory`), the
 /// processor copying nothing. Its luma at `y`, its chroma (Cb and Cr
 /// interleaved) at `uv`: each an offset and a row pitch, in bytes. The
 /// memory is the decoder's again when this is dropped.

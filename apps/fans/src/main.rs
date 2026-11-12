@@ -431,6 +431,7 @@ fn status() {
 }
 
 fn main() -> std::process::ExitCode {
+    olo_crash::install();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|a| a == "--status") {
         status();

@@ -7,7 +7,7 @@
 //! COLRv0 fonts take the same path.
 //!
 //! Which characters start an emoji (`starts_emoji`, `clusters`) needs
-//! nothing else: GPUI's text system takes just that (no default
+//! nothing else: the Interface Kit's text system takes just that (no default
 //! features), so every app shows the same characters in colour.
 
 #[cfg(feature = "render")]

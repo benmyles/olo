@@ -1,7 +1,6 @@
 //! The file panels (Open, Save, a folder), each a button away: each
-//! answer is said under the buttons. The same as olo-ui's `panel`
-//! example shows them on GPUI: the two are compared pixel for pixel
-//! (`tools/dev/kit-compare`).
+//! answer is said under the buttons (to compare with a build from
+//! before a change: `tools/dev/kit-compare`).
 
 use olo_kit::{
     ClickEvent, Cx, Element, ParentElement as _, SharedString, Styled as _, View, WindowOptions, div,

@@ -23,7 +23,7 @@ pub struct BladeContext {
 /// palette at each ⌘Space).
 #[derive(Default)]
 pub(super) struct PipelineCache {
-    /// GPUI's shader, compiled (WGSL through naga: ~3 ms), once.
+    /// The kit's shader, compiled (WGSL through naga: ~3 ms), once.
     shader: Option<Arc<gpu::Shader>>,
     pub(super) sets: Vec<((gpu::SurfaceInfo, u32), Arc<super::blade_renderer::BladePipelines>)>,
     /// LCD subpixel glyphs' (the second-source blend), by format.
@@ -31,7 +31,7 @@ pub(super) struct PipelineCache {
 }
 
 impl PipelineCache {
-    /// GPUI's shader, compiled the first time.
+    /// The kit's shader, compiled the first time.
     pub(super) fn shader(&mut self, gpu: &gpu::Context) -> Arc<gpu::Shader> {
         self.shader.get_or_insert_with(|| Arc::new(gpu.create_shader(gpu::ShaderDesc { source: include_str!("shaders.wgsl") }))).clone()
     }

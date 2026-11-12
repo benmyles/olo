@@ -130,6 +130,9 @@ pub(crate) struct Commit {
     pub(crate) animating: bool,
     /// Where other programs' pictures show (`Painter::place_external`).
     pub(crate) externals: Vec<(u64, Bounds<Pixels>)>,
+    /// Where what scrolls itself was as it drew
+    /// (`Painter::note_scroll`), for the frames' marks.
+    pub(crate) noted: Vec<[f32; 4]>,
 }
 
 /// What the display thread tells a window's looper.
@@ -857,12 +860,16 @@ impl Stage {
         showing.dirty = false;
         showing.damage.clear();
         let whole = work + started.elapsed();
-        // Where each scroller showed its content in this frame (none: no
-        // allocation).
+        // Where each scroller showed its content in this frame, and where
+        // what scrolls itself said it was (none: no allocation). How far
+        // it's scrolled, across and down, and the furthest it goes.
         let scrolls = match &showing.commit {
-            Some(commit) if !showing.scrollers.is_empty() => {
-                commit.layers.iter().filter_map(|layer| showing.scrollers.get(&layer.id).map(|s| [s.shown.x.0, s.shown.y.0, -layer.max.width.0, -layer.max.height.0])).collect()
-            }
+            Some(commit) if !showing.scrollers.is_empty() || !commit.noted.is_empty() => commit
+                .layers
+                .iter()
+                .filter_map(|layer| showing.scrollers.get(&layer.id).map(|s| [-s.shown.x.0, -s.shown.y.0, layer.max.width.0, layer.max.height.0]))
+                .chain(commit.noted.iter().copied())
+                .collect(),
             _ => Vec::new(),
         };
         // (Marked when it was drawn, not when what led to it began: how

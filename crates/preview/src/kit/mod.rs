@@ -314,7 +314,7 @@ impl PreviewView {
                     self.player = Some(player);
                 }
                 self.video = match &b {
-                    // (Frames as GPUI takes them: BGRA.)
+                    // (Frames as the kit takes them: BGRA.)
                     Body::Media(md) if md.playable && md.video => Some(video::Video::start_with(
                         &input::Input::file(&self.item.path),
                         md.duration.unwrap_or(0.0),

@@ -49,7 +49,7 @@ fn entries() -> Vec<(SharedString, u64, SharedString)> {
         "Cargo.toml",
         "crates",
         "docs",
-        "gpui",
+        "smithay",
         "README.md",
         "screenshot.png",
         "olo-terminal",

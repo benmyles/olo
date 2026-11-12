@@ -1,6 +1,6 @@
 //! Pictures (people's and chats', messages' photos, videos' first frames,
 //! stickers): asked of the backend the first time they're drawn, decoded
-//! on two workers once downloaded, then kept as GPUI images (BGRA,
+//! on two workers once downloaded, then kept as the kit's pictures (BGRA,
 //! straight alpha). Files fetched whole (to open or play) are remembered
 //! by path.
 

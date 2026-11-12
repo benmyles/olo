@@ -281,7 +281,7 @@ impl Menu {
         self
     }
 
-    /// The last item pressed with the command key and `key` (as GPUI
+    /// The last item pressed with the command key and `key` (as the kit
     /// names it: "w", "f3", "="): ⌘W on a Mac's keys, Ctrl+W on
     /// Windows'; the profile's keys for its command win ([`resolve`]).
     pub fn key(self, key: &str) -> Menu {

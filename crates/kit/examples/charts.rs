@@ -1,6 +1,6 @@
 //! The kit's graphs, spectra, cell grids, cards and meters in one
-//! window, the same as olo-ui's `charts_gpui` example draws them on
-//! GPUI: the two are compared pixel for pixel (`tools/dev/kit-compare`).
+//! window (to compare with a build from before a change:
+//! `tools/dev/kit-compare`).
 //! Still, at time 60, unless CHARTS_LIVE is set: then time runs and the
 //! graphs scroll (for `tools/dev/cost`).
 

@@ -8,7 +8,7 @@ license.workspace = true
 [features]
 default = ["render"]
 # Drawing colour glyphs; without it, only which characters are emoji
-# (GPUI's text system).
+# (the Interface Kit's text system).
 render = ["dep:skrifa", "dep:harfrust", "dep:tiny-skia"]
 
 [dependencies]

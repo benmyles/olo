@@ -1,12 +1,13 @@
-//! Menu shortcuts on GPUI keystrokes: the keyboard profile's keys
-//! ([`olo_kit_base::keys`], evdev codes) named as GPUI names them, and
+//! Menu shortcuts on the kit's keystrokes: the keyboard profile's keys
+//! ([`olo_kit_base::keys`], evdev codes) named as a `Keystroke` names
+//! them, and
 //! whether a keystroke presses one.
 
 use olo_interface::Keystroke;
 pub use olo_kit_base::keys::{Shortcut, profile, shortcut};
 
-/// GPUI's name for an evdev key (the keys a shortcut can have).
-pub fn gpui_key(code: u32) -> Option<&'static str> {
+/// A keystroke's name for an evdev key (the keys a shortcut can have).
+pub fn key_name(code: u32) -> Option<&'static str> {
     const KEYS: &[(u32, &str)] = &[
         (30, "a"),
         (48, "b"),
@@ -86,10 +87,10 @@ pub fn gpui_key(code: u32) -> Option<&'static str> {
     KEYS.iter().find(|(c, _)| *c == code).map(|(_, k)| *k)
 }
 
-/// The evdev key GPUI names `key` ("w", "f3", "delete"); 0 if none.
+/// The evdev key a keystroke names `key` ("w", "f3", "delete"); 0 if none.
 pub fn evdev(key: &str) -> u32 {
     let key = key.to_ascii_lowercase();
-    (1..=111).find(|&c| gpui_key(c) == Some(key.as_str())).unwrap_or(0)
+    (1..=111).find(|&c| key_name(c) == Some(key.as_str())).unwrap_or(0)
 }
 
 /// Whether `k` presses `s` (the command key is Ctrl to an app). ⇧= types
@@ -104,10 +105,10 @@ pub fn mac_command() -> bool {
 }
 
 pub fn pressed(s: &Shortcut, k: &Keystroke) -> bool {
-    let Some(name) = gpui_key(s.key) else { return false };
+    let Some(name) = key_name(s.key) else { return false };
     let key = k.key.to_ascii_lowercase();
     let plus = name == "=" && key == "+";
-    // (GPUI names a shifted symbol as itself, without Shift: ⇧- is "_".)
+    // (A keystroke names a shifted symbol as itself, without Shift: ⇧- is "_".)
     let (key, shifted) = unshifted(&key);
     let m = &k.modifiers;
     (key == name || plus) && (s.shift == (m.shift || shifted) || plus) && s.command == m.control && s.alt == m.alt && !m.platform
@@ -138,7 +139,7 @@ const SHIFTED: &[(char, char)] = &[
     ('~', '`'),
 ];
 
-/// The key GPUI's name `key` is on, and whether it took Shift: GPUI names
+/// The key a keystroke's name `key` is on, and whether it took Shift: it names
 /// a shifted symbol as itself and drops Shift from it ("_" for ⇧-), so
 /// ("-", true); anything else as it is, (key, false).
 pub fn unshifted(key: &str) -> (&str, bool) {
