@@ -90,6 +90,8 @@ use smithay_drm_extras::{
 };
 use tracing::{debug, error, info, trace, warn};
 
+mod shared_probe;
+
 // we cannot simply pick the first supported format of the intersection of *all* formats, because:
 // - we do not want something like Abgr4444, which looses color information, if something better is available
 // - some formats might perform terribly
@@ -1092,6 +1094,76 @@ pub fn probe_gpus() {
     }
 }
 
+/// `--probe-shared [FOLDER]`: a window's picture drawn by one GPU and
+/// composed by another, as the session does for a window shown on a
+/// display wired to a GPU its app doesn't draw with (a hybrid laptop:
+/// apps draw with Intel's, the HDMI port is NVIDIA's). For each pair of
+/// GPUs and a few sizes, a pattern is drawn into a buffer as an app's
+/// would be, imported by the other GPU's renderer (`single_renderer`,
+/// what `render_surface` composes with), drawn there, read back and
+/// compared with what was drawn, pixel by pixel. It says what differs
+/// and, given a folder, keeps both pictures there. It opens the devices
+/// unprivileged and touches no display: safe beside a running desktop
+/// (a sleeping GPU is awake for as long as it runs).
+pub fn probe_shared(folder: Option<&str>, sizes: Option<&str>) {
+    // (The sizes tried: a display's, two windows' and a small one's, of
+    // which only the first two have rows a multiple of 64 bytes long; or
+    // those given, "964x507,333x217".)
+    let sizes: Vec<(u32, u32)> = match sizes {
+        Some(given) => given.split(',').filter_map(|s| s.split_once('x')).filter_map(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?))).filter(|(w, h)| *w >= 8 && *h >= 8).collect(),
+        None => vec![(1920, 1080), (1408, 984), (964, 507), (333, 217)],
+    };
+    let seat = std::env::var("XDG_SEAT").unwrap_or_else(|_| "seat0".into());
+    let mut gpus = GpuManager::new(GbmGlesBackend::with_factory(|display| {
+        let context = EGLContext::new_with_priority(display, ContextPriority::High)?;
+        let capabilities = unsafe { GlesRenderer::supported_capabilities(&context)? };
+        Ok(unsafe { GlesRenderer::with_capabilities(context, capabilities)? })
+    }))
+    .unwrap();
+    let mut cards: Vec<(DrmNode, GbmDevice<DrmDeviceFd>, String)> = Vec::new();
+    for path in all_gpus(&seat).unwrap_or_default() {
+        let name = path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned());
+        let Ok(node) = DrmNode::from_path(&path) else { continue };
+        let Ok(file) = std::fs::OpenOptions::new().read(true).write(true).open(&path) else {
+            println!("{name}: can't be opened");
+            continue;
+        };
+        let Ok(gbm) = GbmDevice::new(DrmDeviceFd::new(DeviceFd::from(std::os::fd::OwnedFd::from(file)))) else { continue };
+        let render = unsafe { EGLDisplay::new(gbm.clone()) }.ok().and_then(|display| {
+            let device = EGLDevice::device_for_display(&display).ok()?;
+            (!device.is_software()).then(|| device.try_get_render_node().ok().flatten().unwrap_or(node))
+        });
+        match render {
+            Some(render) if gpus.as_mut().add_node(render, gbm.clone()).is_ok() => cards.push((render, gbm, name)),
+            _ => println!("{name}: can't render"),
+        }
+    }
+    let keep = folder.map(std::path::PathBuf::from);
+    if let Some(keep) = &keep {
+        let _ = std::fs::create_dir_all(keep);
+    }
+    for (from, from_gbm, from_name) in &cards {
+        for (to, to_gbm, to_name) in &cards {
+            println!("drawn by {from_name}, composed by {to_name}:");
+            use shared_probe::Buffer;
+            for (how, said_how) in [(Buffer::Its, "its own layout"), (Buffer::Linear, "linear"), (Buffer::LinearForComposer, "linear, for the composing GPU")] {
+                // (A buffer for the composing GPU means something only
+                // between two GPUs.)
+                if how == Buffer::LinearForComposer && from == to {
+                    continue;
+                }
+                for &(w, h) in &sizes {
+                    let kept = keep.as_ref().map(|k| k.join(format!("{from_name}-to-{to_name}-{how:?}-{w}x{h}")));
+                    match shared_probe::once(&mut gpus, (*from, from_gbm), (*to, to_gbm), w, h, how, kept.as_deref()) {
+                        Ok(said) => println!("  {w} × {h}, {said_how}: {said}"),
+                        Err(why) => println!("  {w} × {h}, {said_how}: couldn't be tried ({why})"),
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// The GPU to render with: the boot GPU's render node, or else the first
 /// device that has a render node. (On Apple silicon there is no boot GPU,
 /// and the display controller, apple-drm, is a DRM device that can't
@@ -1654,7 +1726,26 @@ fn get_surface_dmabuf_feedback(
     surface: &DrmSurface,
 ) -> Option<SurfaceDmabufFeedback> {
     let primary_formats = gpus.single_renderer(&primary_gpu).ok()?.dmabuf_formats();
-    let render_formats = if let Some(render_node) = render_node { gpus.single_renderer(&render_node).ok()?.dmabuf_formats() } else { FormatSet::default() };
+    let render_formats = if let Some(render_node) = render_node {
+        let mut renderer = gpus.single_renderer(&render_node).ok()?;
+        let formats = renderer.dmabuf_formats();
+        // A display on a GPU apps don't draw with, whose driver reads a
+        // linear buffer only where its rows are a length it takes
+        // (NVIDIA's: `GlesRenderer::linear_rows`): apps aren't offered
+        // linear buffers for it. An app drawing with the primary GPU
+        // would take the offer (linear is the one layout both know), draw
+        // slower for it, and its window come out sheared at most widths;
+        // without it the app keeps its own layout and the frame is copied
+        // into a buffer that GPU reads. An app drawing with that GPU
+        // itself never chose linear (it can't draw into it).
+        if render_node != primary_gpu && AsMut::<GlesRenderer>::as_mut(&mut renderer).linear_rows() > 1 {
+            formats.iter().filter(|f| f.modifier != Modifier::Linear).copied().collect()
+        } else {
+            formats
+        }
+    } else {
+        FormatSet::default()
+    };
 
     let all_render_formats = primary_formats.iter().chain(render_formats.iter()).copied().collect::<FormatSet>();
 
@@ -1753,16 +1844,19 @@ impl AnvilState<UdevData> {
 
         let framebuffer_exporter = GbmFramebufferExporter::new(gbm.clone(), render_node.into());
 
-        // A display this GPU drives but another composes for (a hybrid
-        // laptop's panel, wired to Intel's, with NVIDIA's chosen): 8-bit,
-        // which both can share as a plain linear buffer (NVIDIA renders the
-        // frame into it, Intel imports it), where 10-bit had no layout in
-        // common and every frame went through the CPU (11 ms: 30 Hz).
-        let composed_elsewhere = render_node.is_some_and(|n| n != self.backend_data.primary_gpu);
-        if composed_elsewhere {
-            info!(device = ?node, "composed on another GPU: 8-bit frames, shared linear");
+        // A GPU that isn't the one apps draw with (a hybrid laptop's
+        // NVIDIA, wired to the HDMI port) composes its own displays, at
+        // 8-bit: 10-bit had no layout two GPUs share when one composed for
+        // the other, and on a second GPU's own displays it hasn't been
+        // tried. (A device that can't render, a USB display adapter, has
+        // the primary GPU compose for it, in the primary's formats.)
+        let second = render_node.is_some_and(|n| n != self.backend_data.primary_gpu);
+        if second {
+            info!(device = ?node, "a second GPU: it composes its own displays (8-bit frames); windows drawn by the primary are copied to it");
+        } else if render_node.is_none() {
+            info!(device = ?node, "can't render: the primary GPU composes its displays");
         }
-        let color_formats = if std::env::var("ANVIL_DISABLE_10BIT").is_ok() || composed_elsewhere { SUPPORTED_FORMATS_8BIT_ONLY } else { SUPPORTED_FORMATS };
+        let color_formats = if std::env::var("ANVIL_DISABLE_10BIT").is_ok() || second { SUPPORTED_FORMATS_8BIT_ONLY } else { SUPPORTED_FORMATS };
         let mut renderer = self.backend_data.gpus.single_renderer(&render_node.unwrap_or(self.backend_data.primary_gpu)).unwrap();
         let render_formats =
             renderer.as_mut().egl_context().dmabuf_render_formats().iter().filter(|format| render_node.is_some() || format.modifier == Modifier::Linear).copied().collect::<FormatSet>();
@@ -2612,10 +2706,12 @@ impl AnvilState<UdevData> {
 
         // Each display is composed by the GPU wired to it (a hybrid laptop:
         // the built-in panel and USB-C ports by Intel's, the HDMI port by
-        // NVIDIA's): no frame crosses between GPUs. Only a device that
-        // can't render (a USB display adapter) has its frames composed on
-        // the primary GPU and copied over. Windows' buffers from another
-        // GPU are imported as they come (`single_renderer` has the others).
+        // NVIDIA's): no display's frame crosses between GPUs. Only a device
+        // that can't render (a USB display adapter) has its frames composed
+        // on the primary GPU and copied over. A window's buffer from
+        // another GPU is copied to this one as it's imported
+        // (`single_renderer` has the others; HACKING, "A window drawn by
+        // one GPU, shown by another").
         let primary_gpu = self.backend_data.primary_gpu;
         let mut renderer = match surface.render_node {
             Some(own) => self.backend_data.gpus.single_renderer(&own),

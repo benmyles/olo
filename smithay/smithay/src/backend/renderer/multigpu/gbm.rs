@@ -270,6 +270,9 @@ impl<R: Renderer + Borrow<GlesRenderer>> ApiDevice for GbmGlesDevice<R> {
     fn can_do_cross_device_imports(&self) -> bool {
         !self.renderer.borrow().is_software()
     }
+    fn reads_as_it_is(&self, dmabuf: &Dmabuf) -> bool {
+        self.renderer.borrow().reads_rows_of(dmabuf)
+    }
 }
 
 #[cfg(all(feature = "wayland_frontend", feature = "use_system_lib"))]

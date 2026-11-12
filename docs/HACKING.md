@@ -7342,7 +7342,8 @@ probe says "disconnected" before the kernel gives up on the link).
 ## Each display on its own GPU (app_server udev.rs; Preferences ▸ Display ▸ Graphics)
 
 Each display is composed by the GPU it is wired to (`render_surface`:
-the surface's own render node), so no frame crosses between GPUs: on a
+the surface's own render node), so no display's frame crosses between
+GPUs (a window's picture may: below): on a
 hybrid laptop the built-in panel and the USB-C ports are Intel's and
 the HDMI port NVIDIA's, which wakes only while a display is plugged in
 there. Composing the panel on NVIDIA's had every frame copied to
@@ -7351,10 +7352,64 @@ Intel can import: `--probe-gpus` says which formats each GPU can render
 and import linear), 11 ms a frame: 30 Hz (Ben: "we should just use
 whatever the native one is they need to use"). Only a display device
 that can't render (a USB adapter) has its frames composed on the
-primary GPU (the one the computer started on) and copied, at 8-bit
-(`composed_elsewhere`). Windows' buffers from another GPU are imported as
-they come. Display's Graphics box (two or more GPUs, `Request::Gpus`:
-`olo_system::gpus`) says what each drives.
+primary GPU (the one the computer started on) and copied. A second
+GPU's own displays are composed at 8-bit (10-bit there is untried).
+Windows' buffers from another GPU are copied to the one that shows
+them (below). Display's Graphics box (two or more GPUs,
+`Request::Gpus`: `olo_system::gpus`) says what each drives.
+
+### A window drawn by one GPU, shown by another
+
+Apps draw with the primary GPU (Intel's), so a window on the HDMI
+display has its picture made by one GPU and composed by another, and
+the two share no layout of a buffer but the plain one, linear (NVIDIA
+can't draw into linear and can read it; Intel does both:
+`--probe-gpus`). So at each commit the GPU that drew the window copies
+its picture into a linear buffer of its own (Smithay's
+`dma_shadow_copy`, kept for the window and drawn into again where the
+commit's damage says), and the composing GPU reads that as a texture.
+
+**NVIDIA's driver reads a linear buffer from another GPU as if each
+row were the picture's width rounded down to 8 pixels** (32 bytes),
+whatever row length the import names: a window 964 pixels wide came
+out sheared four pixels a row, and so did every window whose width
+wasn't a multiple of 8 (Ben, 2026-11-12, a television on HDMI: "all
+messed up / scrambled"; driver 615.71). So:
+
+- **The copy has rows of a whole multiple of 16 pixels**
+  (`SHARED_ROW`): it's made that much wider than the picture, the
+  picture drawn at its left, and its last column repeated into the
+  spare ones so that a window shown scaled blends at its right edge
+  with itself. The composing GPU's texture is wider than the window,
+  and is sampled over the window's part (texture coordinates are by
+  the texture's own size).
+- **A linear buffer NVIDIA would misread is never read by it directly**
+  (`GlesRenderer::reads_rows_of`, `linear_rows`: 32 bytes for NVIDIA's
+  driver, by its vendor string; any length for others): the import
+  refuses it, and a buffer a client said was for that GPU
+  (`set_sampling_device`) is then read on the GPU that can and copied
+  as any other (`import_on_src_node`).
+- **Apps aren't offered linear buffers for such a GPU's displays**
+  (`get_surface_dmabuf_feedback`): an app drawing with Intel's would
+  take the offer (linear is the one layout both know), draw slower for
+  it, and gain nothing.
+
+**`olo-app-server --probe-shared [FOLDER [SIZES]]`** is how it was
+found and is how to check it, with no display plugged in: for each pair
+of GPUs, a pattern is drawn into a buffer as an app's would be (in the
+drawing GPU's own layout; linear; linear and said to be for the
+composing GPU), imported by the other GPU's renderer as a window's
+buffer is, drawn there, read back and compared pixel by pixel; then
+another picture drawn into the same buffer, and then a part of it,
+imported again into the texture the frame before made with only that
+part said to have changed. It says "the same, all three pictures" or
+what differs, and keeps the pictures in FOLDER. It opens the devices
+unprivileged and touches no display (safe beside a running desktop; a
+sleeping GPU is awake while it runs). On the ThinkPad: before the fix,
+right at 1920 and 1408 wide, wrong at 964 and 333, and over 91 widths
+right exactly at the multiples of 8; after, 175 tries the same. **What
+it can't see** is the frame NVIDIA sends to the display (a display
+needs to be plugged in for that): the fix wasn't seen on a television.
 
 ### Variable refresh rate (VRR)
 

@@ -438,6 +438,9 @@ pub struct GlesRenderer {
     gl_version: GlVersion,
     pub(crate) extensions: Vec<String>,
     is_software: bool,
+    /// What a linear buffer's rows must be a multiple of, in bytes, for
+    /// this driver to read the buffer as it is (`linear_rows_of`).
+    linear_rows: u32,
     capabilities: Vec<Capability>,
 
     // shaders
@@ -553,6 +556,54 @@ extern "system" fn gl_debug_log(
             _ => debug!("[GL] {}", message_utf8),
         };
     });
+}
+
+/// What a linear buffer's rows must be a multiple of, in bytes, for the
+/// driver to read the buffer as it is (1: any length).
+///
+/// NVIDIA's driver reads a linear dmabuf from another GPU as if each row
+/// were the picture's width rounded down to 8 pixels (32 bytes), whatever
+/// pitch the import names: a window 964 pixels wide, drawn by Intel's GPU
+/// and shown on a display wired to NVIDIA's, came out sheared 4 pixels a
+/// row (Ben's ThinkPad P1, an HDMI television, 2026-11-12; driver 615.71).
+/// Widths that are multiples of 8 are read right. Olo's
+/// `app_server --probe-shared` draws on one GPU and composes on another
+/// and says which widths come out wrong: the way to see whether a driver
+/// still does it.
+fn linear_rows_of(gl: &ffi::Gles2) -> u32 {
+    linear_rows_for(&unsafe {
+        let vendor = gl.GetString(ffi::VENDOR);
+        if vendor.is_null() {
+            return 1;
+        }
+        CStr::from_ptr(vendor as *const c_char)
+            .to_string_lossy()
+            .into_owned()
+    })
+}
+
+/// [`linear_rows_of`], by the driver's vendor as GL names it.
+fn linear_rows_for(vendor: &str) -> u32 {
+    if vendor.contains("NVIDIA") { 32 } else { 1 }
+}
+
+/// Whether a driver that wants a linear buffer's rows a multiple of
+/// `linear_rows` bytes reads a buffer of this format, these rows
+/// (`strides`, as its planes say) and this width as it is laid out.
+fn reads_rows(
+    linear_rows: u32,
+    format: crate::backend::allocator::Format,
+    mut strides: impl Iterator<Item = u32>,
+    width: u32,
+) -> bool {
+    use crate::backend::allocator::{Modifier, format::get_bpp};
+    if linear_rows <= 1 || format.modifier != Modifier::Linear {
+        return true;
+    }
+    let whole = |bytes: u32| bytes.is_multiple_of(linear_rows);
+    // (Its rows as they are told, and as its width makes them: the driver
+    // has been seen to go by the second.)
+    strides.all(whole) && get_bpp(format.code).is_none_or(|bits| whole(width * bits as u32 / 8))
 }
 
 impl GlesRenderer {
@@ -824,6 +875,7 @@ impl GlesRenderer {
 
         let profiler = profiler::GpuProfiler::new(&gl, &exts);
 
+        let linear_rows = linear_rows_of(&gl);
         let renderer = GlesRenderer {
             gl,
             egl: context,
@@ -832,6 +884,7 @@ impl GlesRenderer {
 
             extensions: exts,
             is_software,
+            linear_rows,
             gl_version,
             capabilities,
 
@@ -951,6 +1004,28 @@ impl GlesRenderer {
     /// Returns whether the underlying EGLContext is known to be a software renderer.
     pub fn is_software(&self) -> bool {
         self.is_software
+    }
+
+    /// What a linear buffer's rows must be a multiple of, in bytes, for
+    /// this driver to read the buffer as it is (1: any length). See
+    /// [`GlesRenderer::reads_rows_of`].
+    pub fn linear_rows(&self) -> u32 {
+        self.linear_rows
+    }
+
+    /// Whether this driver reads `buffer` as it is laid out: false for a
+    /// linear buffer whose rows aren't a length the driver takes
+    /// (`linear_rows`), which it would show sheared. Such a buffer comes
+    /// from another GPU (this one's own aren't linear), and is to be
+    /// copied there into one whose rows are.
+    pub fn reads_rows_of(&self, buffer: &Dmabuf) -> bool {
+        use crate::backend::allocator::Buffer;
+        reads_rows(
+            self.linear_rows,
+            buffer.format(),
+            buffer.strides(),
+            buffer.width(),
+        )
     }
 
     fn export_sync_point(&self) -> Option<SyncPoint> {
@@ -1389,6 +1464,11 @@ impl ImportDma for GlesRenderer {
         }
 
         self.existing_dmabuf_texture(buffer)?.map(Ok).unwrap_or_else(|| {
+            // (Not read as it is laid out: said, so it's copied where it
+            // was made, never shown sheared.)
+            if !self.reads_rows_of(buffer) {
+                return Err(GlesError::UnsupportedPixelLayout);
+            }
             let is_external = !self.egl.dmabuf_render_formats().contains(&buffer.format());
             let image = self
                 .egl
@@ -3559,6 +3639,58 @@ mod tests {
     use super::build_texture_mat;
     use crate::utils::{Buffer, Physical, Rectangle, Size, Transform};
     use glam::Vec3;
+
+    /// A linear buffer from another GPU is read as it is only where its
+    /// rows are a length the driver takes: NVIDIA's goes by the width
+    /// rounded down to 8 pixels, as `app_server --probe-shared` showed on
+    /// a ThinkPad P1 (right at 96, 104, 960, 968, 1408, 1920 pixels wide;
+    /// sheared at every width between).
+    #[test]
+    fn linear_rows_a_driver_reads() {
+        use super::{linear_rows_for, reads_rows};
+        use crate::backend::allocator::{Format, Fourcc, Modifier};
+        assert_eq!(linear_rows_for("NVIDIA Corporation"), 32);
+        assert_eq!(
+            (
+                linear_rows_for("Intel"),
+                linear_rows_for("AMD"),
+                linear_rows_for("")
+            ),
+            (1, 1, 1)
+        );
+
+        let linear = Format {
+            code: Fourcc::Argb8888,
+            modifier: Modifier::Linear,
+        };
+        let reads = |width: u32| reads_rows(32, linear, [width * 4].into_iter(), width);
+        for right in [96, 104, 336, 960, 968, 1408, 1920] {
+            assert!(reads(right), "{right}");
+        }
+        for sheared in [97, 100, 103, 333, 964, 972, 1919] {
+            assert!(!reads(sheared), "{sheared}");
+        }
+        // Rows a whole length as told, of a width that isn't: not trusted.
+        assert!(!reads_rows(32, linear, [3904].into_iter(), 964));
+        // A second plane's rows count too; a format whose pixels aren't
+        // known is judged by its rows as told.
+        let nv12 = Format {
+            code: Fourcc::Nv12,
+            modifier: Modifier::Linear,
+        };
+        assert!(
+            reads_rows(32, nv12, [1920, 1920].into_iter(), 1920)
+                && !reads_rows(32, nv12, [1920, 1900].into_iter(), 1920)
+        );
+        // A buffer that isn't linear is the driver's own layout or isn't
+        // imported at all; a driver with no such rule reads any.
+        let own = Format {
+            code: Fourcc::Argb8888,
+            modifier: Modifier::Unrecognized(216172782128496660),
+        };
+        assert!(reads_rows(32, own, [3856].into_iter(), 964));
+        assert!(reads_rows(1, linear, [3856].into_iter(), 964));
+    }
 
     #[test]
     fn texture_normal_double_size() {

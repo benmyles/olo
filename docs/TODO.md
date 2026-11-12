@@ -589,12 +589,24 @@ something nobody here has is in "Blocked", with what it waits for.
        how it goes (`olo_protocol::airplay`), `olo-airplay playing`,
        `stop`, `pause` and `resume` act on plays from anywhere, and
        Deskbar's tray has a screen with a play mark while a film
-       plays, its menu Pause (Resume) and Stop. *Next:* pairing for
-       people (Preferences ▸ AirPlay: the receivers found, Pair… with
-       the code, Forget), "Play On" in the Viewer and Tracker (the
-       receivers paired with), then live windows, workspaces and
-       agent screens as HLS (which also carries the kinds of film a
-       receiver doesn't play by itself).
+       plays, its menu Pause (Resume) and Stop.
+     - *Ben, 2026-11-12:* "for the airplay stuff please add the
+       proper gui integration with a preferences panel, integrated
+       airplay from relevant app menus and by right clicking the
+       window title / deskbar row / workspace etc. cli alone is not
+       enough". So, **next, in this order:** (1) Preferences ▸
+       AirPlay: the receivers found, Pair… with the code a receiver
+       shows, Forget, and what plays now; (2) "Play On" where a film
+       is at hand: the Viewer's and Tracker's menus (a file's
+       context menu too), the receivers paired with as its items;
+       (3) sending what's live, which needs the live path first (what
+       capture hands over, encoded on the GPU, as HLS the receiver
+       fetches, with the sound that goes with it): a window from its
+       title's menu and its Deskbar row, a workspace from its heading
+       in Deskbar, an agent screen from Agent Screens, each "Send to
+       ▸ a receiver", with Stop where it was started and in the
+       tray. The command stays the way under all of it (and for
+       agents).
      - *Ben's to say:* (1) which receiver it's for (an Apple TV and
        its tvOS, a television with AirPlay built in, something else):
        it has to be tried against the real one, paired by him at the
@@ -1014,6 +1026,36 @@ AirPods' config, f8e63000: 82.6 dB SNR, 50 wanted) and the
 accessibility tree test on an agent screen (GTK's Text Editor, 30
 nodes). What's left needs Ben: in Blocked, "The ignored tests that
 need Ben".)
+
+- **A window on the HDMI display was scrambled** (Ben, 2026-11-12:
+  "when i plugged in an hdmi cable earlier to try show a video on the
+  tv the graphics/image was all messed up / scrambled. fix."). What it
+  was is in HACKING ("Each display on its own GPU", "A window drawn by
+  one GPU, shown by another"): the HDMI port is NVIDIA's, apps draw
+  with Intel's, each window's picture is copied into a buffer both
+  read, and NVIDIA's driver reads such a buffer as if its rows were the
+  window's width rounded down to 8 pixels: sheared, a few pixels a row,
+  at every width that isn't a multiple of 8. *Done 2026-11-12:* the
+  copy is made with rows of a whole multiple of 16 pixels; a buffer
+  NVIDIA would misread is never read by it directly; apps aren't
+  offered linear buffers for NVIDIA's displays. Found and checked
+  without a television, by `olo-app-server --probe-shared`, which
+  draws on one GPU and composes on the other as the session does and
+  compares, pixel by pixel: before, right at 1920 and 1408 wide and
+  wrong at 964 and 333 (and at every width between multiples of 8, of
+  91 tried); after, the same at all of them, for each kind of buffer,
+  a picture replaced and a part redrawn (175 tries, none wrong).
+  *Ben's to try:* after upgrading, plug the television in again and
+  move a window to it (a film in the Viewer, a browser): it should
+  look as it does on the panel. **Not seen on a television**: none
+  was plugged in while this was fixed, so what the probe can't see is
+  untried: the frames NVIDIA sends to the display itself (they were
+  NVIDIA's own all along, and the wallpaper and the windows' frames
+  there were its too), and anything else that was wrong with the
+  picture that day. If it still looks wrong: which part (the whole
+  screen, the wallpaper, or only windows), and
+  `olo-app-server --probe-shared /var/tmp/shared` says whether the
+  copies are still right.
 
 - **A display that left with its dock is still "plugged in"** (Ben,
   2026-11-10: "there are no externals just my builtin display now why
