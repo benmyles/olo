@@ -1406,7 +1406,11 @@ impl<'a> WindowCx<'a> {
                 let Some(mut boxed) = self.core.views[view].view.take() else { continue };
                 SIZE_READ.with(|r| r.set(false));
                 ACTIVE_READ.with(|r| r.set(false));
+                let began = Instant::now();
                 let mut element = boxed.body(view, self);
+                // (Which view's, when one takes a while: `OLO_FRAME_PHASES`.)
+                let said = began.elapsed();
+                let slow = (crate::stats::frame_phases() && said >= Duration::from_millis(1)).then(|| boxed.type_name());
                 if let Some(slot) = self.core.views.get_mut(view) {
                     slot.view = Some(boxed);
                     slot.reads_size = SIZE_READ.with(|r| r.get());
@@ -1420,6 +1424,9 @@ impl<'a> WindowCx<'a> {
                 }
                 if self.core.nodes.contains_key(root) {
                     self.core.reconcile(root, element, view);
+                }
+                if let Some(name) = slow {
+                    eprintln!("body of {name}: {:.3} ms, and {:.3} putting it in the tree", said.as_secs_f64() * 1000.0, (began.elapsed() - said).as_secs_f64() * 1000.0);
                 }
             }
             // The keyboard to a view that asked for it before it was

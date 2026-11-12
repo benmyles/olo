@@ -304,6 +304,10 @@ message):
   looper with `eu-stack -1 -i -p PID` a few hundred times while the bench's
   pointer sweeps it and count the functions on the stacks (perf isn't
   installed).
+  A view whose `body` takes a millisecond or more is named with it
+  ("body of olo_styled_edit::DocView: 8.297 ms, and 0.121 putting it
+  in the tree"): which view is the slow one, when "bodies" is most of
+  a flush.
 * GPU time: a kit app run with `OLO_GPU_TIMINGS=1` prints each frame's
   passes as the GPU timed them, its quads (in screens filled: more than
   one is overdraw) and its sprites. A frame shows on time only if its

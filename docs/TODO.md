@@ -607,10 +607,20 @@ something nobody here has is in "Blocked", with what it waits for.
        by the process's own time). Recordings' buffers are reused
        already (`tree.rs`: `recycled`). No one part is the
        difference; the row recordings are the largest.
-     - What's first shown as a program starts: StyledEdit's code
-       395 → 525 ms (100,000 lines coloured), the emoji picker
-       258 → 353; a few milliseconds more in most (Tracker 2 → 13,
-       Screenshot 5.5 → 17). Logs' 622 → 929 is its window coming up
+     - What's first shown as a program starts, by the processor
+       time of launching and loading (not by how soon the window
+       comes, which is as soon or sooner on the kits: Tracker 43 →
+       35 ms, StyledEdit 124 → 85, the Viewer 126 → 78, Logs 102 →
+       76, Screenshot 258 → 206, StyledEdit's code 75 → 82):
+       StyledEdit's code 395 → 525 ms (100,000 lines coloured: its
+       typing 700 → 486 and live resize 106 → 96 are the kits' gain),
+       the emoji picker 258 → 353; a few milliseconds more in most
+       (Tracker 2 → 13, Screenshot 5.5 → 17). In the code's load
+       (`OLO_FRAME_PHASES=1`, 2026-11-12) the document's first frames
+       are `DocView`'s body, 8.3 ms and then 2.4, with 15 ms more of
+       the looper's before them that no flush counts (the opened
+       file taken in): to be followed into the editor's first layout
+       of 100,000 paragraphs. Logs' 622 → 929 is its window coming up
        sooner, with more of the journal still being read (from its
        start: 1,110 → 921).
      - The pointer moved over a window wakes two threads where it
