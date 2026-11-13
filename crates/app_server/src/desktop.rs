@@ -550,6 +550,39 @@ impl<B: Backend + 'static> AnvilState<B> {
         ids
     }
 
+    /// What pictures of `output`'s workspaces need (`capture::Desk`).
+    pub(crate) fn capture_desk(&self, output: &Output) -> crate::capture::Desk {
+        let count = self.settings.workspace_count.max(1);
+        let color = |i| {
+            let [r, g, b] = self.settings.workspace_color(i);
+            Color32F::new(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0)
+        };
+        let parked =
+            self.parked.0.borrow().iter().filter(|w| !w.meta().minimized.get() && self.display_of(w).as_ref() == Some(output)).filter_map(|w| Some((w.clone(), w.meta().workspace.get()?))).collect();
+        let everywhere =
+            self.space.elements().rev().filter(|w| w.meta().pip.get() && self.window_output(w).as_ref() == Some(output)).filter_map(|w| Some((w.clone(), self.space.element_location(w)?))).collect();
+        crate::capture::Desk { showing: self.showing(output), last: count - 1, rescue: self.rescue.is_some(), colors: (0..count).map(color).collect(), parked, everywhere }
+    }
+
+    /// The windows parked on `output` that a share open shows live: on a
+    /// workspace of its shown while it shows another, or shown alone.
+    pub(crate) fn followed_parked(&self, output: &Output) -> Vec<WindowElement> {
+        let (workspaces, windows) = self.captures.followed(output);
+        if workspaces.is_empty() && windows.is_empty() {
+            return Vec::new();
+        }
+        let last = self.settings.workspace_count.max(1) - 1;
+        let workspaces: Vec<u32> = workspaces.into_iter().map(|i| i.min(last)).collect();
+        self.parked
+            .0
+            .borrow()
+            .iter()
+            .filter(|w| windows.contains(&w.id()) || !w.meta().minimized.get() && w.meta().workspace.get().is_some_and(|ws| workspaces.contains(&ws)))
+            .filter(|w| self.display_of(w).as_ref() == Some(output))
+            .cloned()
+            .collect()
+    }
+
     /// Window `id` for a share of it, shown or parked, and the scale of
     /// the display it's on (or was on, parked: where it's drawn).
     pub(crate) fn capture_window(&self, id: u64) -> Option<(WindowElement, f64)> {

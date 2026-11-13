@@ -766,6 +766,14 @@ pub trait ApiDevice: fmt::Debug {
     fn should_do_cross_device_exports(&self) -> bool {
         true
     }
+
+    /// Whether this device reads `dmabuf` as it is laid out. False: it
+    /// would show it wrongly (a driver that misreads a linear buffer's
+    /// rows of some lengths), so the buffer is another device's to read,
+    /// and to copy from. By default, any buffer.
+    fn reads_as_it_is(&self, _dmabuf: &Dmabuf) -> bool {
+        true
+    }
 }
 
 /// Renderer, that transparently copies rendering results to another gpu,
@@ -2286,6 +2294,42 @@ where
     }
 }
 
+impl<R: GraphicsApi, T: GraphicsApi> MultiRenderer<'_, '_, R, T>
+where
+    <R::Device as ApiDevice>::Renderer: ImportDma + ImportMem,
+    <T::Device as ApiDevice>::Renderer: Bind<Dmabuf> + ExportMem,
+    <<R::Device as ApiDevice>::Renderer as ExportMem>::TextureMapping: 'static,
+    <<T::Device as ApiDevice>::Renderer as ExportMem>::TextureMapping: 'static,
+    T: 'static,
+    R: 'static,
+    <R::Device as ApiDevice>::Renderer: Bind<Dmabuf> + ExportMem + ImportDma + ImportMem,
+    <T::Device as ApiDevice>::Renderer: ImportDma + ImportMem,
+    <<R::Device as ApiDevice>::Renderer as RendererSuper>::TextureId: Clone + Send,
+    <<R::Device as ApiDevice>::Renderer as RendererSuper>::Error: 'static,
+    <<T::Device as ApiDevice>::Renderer as RendererSuper>::Error: 'static,
+{
+    /// A buffer imported into the texture an earlier import of it (or of
+    /// another of the same size) made: what a surface's commits do, each
+    /// one after the first (the copy made for another GPU is kept and
+    /// drawn into again, where `damage` says, or all over for none). For
+    /// trying that path without a client (Olo's `--probe-shared`).
+    pub fn import_dmabuf_again(
+        &mut self,
+        dmabuf: &Dmabuf,
+        texture: &MultiTexture,
+        damage: Option<&[Rectangle<i32, BufferCoords>]>,
+    ) -> Result<MultiTexture, Error<R, T>> {
+        import_dmabuf_internal(
+            self.render,
+            self.target.as_mut().map(|target| &mut *target.device),
+            &mut self.other_renderers,
+            dmabuf,
+            texture.clone(),
+            damage,
+        )
+    }
+}
+
 impl<R: GraphicsApi, T: GraphicsApi> ImportDma for MultiRenderer<'_, '_, R, T>
 where
     <R::Device as ApiDevice>::Renderer: ImportDma + ImportMem,
@@ -2334,7 +2378,7 @@ fn import_on_src_node<'a, R, T>(
     texture: &mut MultiTexture,
     render: &mut R::Device,
     mut target: Option<&mut &mut T::Device>,
-    mut others: impl Iterator<Item = &'a mut R::Device>,
+    others: impl Iterator<Item = &'a mut R::Device>,
 ) -> Result<DrmNode, Error<R, T>>
 where
     R: GraphicsApi + 'static,
@@ -2345,7 +2389,26 @@ where
     <<T as GraphicsApi>::Device as ApiDevice>::Renderer: Renderer + ImportDma,
     <<<T as GraphicsApi>::Device as ApiDevice>::Renderer as RendererSuper>::TextureId: 'static,
 {
-    match dmabuf.node() {
+    // A buffer said to be of a GPU that doesn't read it as it's laid out
+    // (a client made it on its own GPU for that one to sample, with rows
+    // of a length that one misreads: `ApiDevice::reads_as_it_is`) is
+    // taken as said of none: it's the GPU's that does read it, and is
+    // copied from there.
+    let mut others: Vec<&'a mut R::Device> = others.collect();
+    let said = dmabuf.node().filter(|node| {
+        if node == render.node() {
+            render.reads_as_it_is(dmabuf)
+        } else if let Some(target) = target.as_ref().filter(|target| node == target.node()) {
+            target.reads_as_it_is(dmabuf)
+        } else {
+            others
+                .iter()
+                .find(|other| node == other.node())
+                .is_none_or(|other| other.reads_as_it_is(dmabuf))
+        }
+    });
+    let mut others = others.iter_mut().map(|other| &mut **other);
+    match said {
         Some(node) => {
             if node == *render.node() {
                 let renderer = render.renderer_mut();
@@ -2426,6 +2489,14 @@ where
     }
 }
 
+/// A buffer one GPU draws for another to read has rows of a whole
+/// multiple of this many pixels (64 bytes of four to the pixel, which is
+/// also what display engines want of a linear row): NVIDIA's driver reads
+/// a linear buffer's rows as their length rounded down to 32 bytes
+/// (`GlesRenderer::linear_rows`), so a copy as wide as the window showed
+/// it sheared.
+const SHARED_ROW: u32 = 16;
+
 fn dma_shadow_copy<S, T>(
     src_texture: &<<S::Device as ApiDevice>::Renderer as RendererSuper>::TextureId,
     damage: Option<&[Rectangle<i32, BufferCoords>]>,
@@ -2504,14 +2575,16 @@ where
             return Err(Error::ImportFailed);
         }
 
+        // A copy another GPU reads has rows of a whole multiple of
+        // `SHARED_ROW` pixels (wider than the picture, then).
+        let shadow_width = if target.is_some() {
+            src_texture.width().next_multiple_of(SHARED_ROW)
+        } else {
+            src_texture.width()
+        };
         let shadow_buffer = src
             .allocator()
-            .create_buffer(
-                src_texture.width(),
-                src_texture.height(),
-                transfer_format,
-                &modifiers,
-            )
+            .create_buffer(shadow_width, src_texture.height(), transfer_format, &modifiers)
             .map_err(Error::AllocatorError)?;
 
         let target_texture = if let Some(target) = target.as_mut() {
@@ -2538,10 +2611,17 @@ where
             let _ = sync.wait();
         }
     }
-    let mut framebuffer = src_renderer.bind(shadow_buffer).map_err(Error::Render)?;
+    // (The picture's size, and the buffer's: wider by the spare columns
+    // that make its rows a length every GPU reads.)
     let shadow_size = Size::from((src_texture.width() as i32, src_texture.height() as i32));
+    let spare = (shadow_buffer.width() as i32 - shadow_size.w).max(0);
+    let mut framebuffer = src_renderer.bind(shadow_buffer).map_err(Error::Render)?;
     let mut frame = src_renderer
-        .render(&mut framebuffer, shadow_size, Transform::Normal)
+        .render(
+            &mut framebuffer,
+            Size::from((shadow_size.w + spare, shadow_size.h)),
+            Transform::Normal,
+        )
         .map_err(Error::Render)?;
 
     let damage_slice = [Rectangle::from_size(shadow_size)];
@@ -2567,6 +2647,30 @@ where
             1.0,
         )
         .map_err(Error::Render)?;
+    if spare > 0 && shadow_size.w > 0 {
+        // The spare columns hold the picture's last column, so a draw
+        // that samples between pixels at its right edge (a window shown
+        // scaled) blends the picture with itself, not with nothing.
+        let strip = Rectangle::new((shadow_size.w, 0).into(), (spare, shadow_size.h).into());
+        let all_of_it = [Rectangle::from_size(strip.size)];
+        frame
+            .clear(Color32F::TRANSPARENT, &[strip])
+            .map_err(Error::Render)?;
+        frame
+            .render_texture_from_to(
+                src_texture,
+                Rectangle::new(
+                    (f64::from(shadow_size.w - 1), 0.0).into(),
+                    (1.0, f64::from(shadow_size.h)).into(),
+                ),
+                strip,
+                &all_of_it,
+                &[],
+                Transform::Normal,
+                1.0,
+            )
+            .map_err(Error::Render)?;
+    }
     *existing_sync_point = Some(frame.finish().map_err(Error::Render)?);
 
     // shadow buffer contains our copy and is readable by target and the original buffer was never migrated

@@ -30,9 +30,11 @@
 //!
 //! `--codec` codes it as H.264 (plays everywhere: the default), HEVC
 //! (about half the size) or AV1 (for players that want it: no smaller on
-//! screens), the last two on NVIDIA's encoder only (`--encoder auto` on the processor makes H.264 then;
-//! `codec` in what's printed says which), as asked, else as Preferences ▸
-//! GPUs has it.
+//! screens), HEVC on NVIDIA's encoder only, AV1 on it or the Intel or
+//! AMD GPU's through VA-API (`--encoder auto` on the processor makes
+//! H.264 then; `codec` in what's printed says which), as asked, else as
+//! Preferences ▸ GPUs has it. `--encoder vaapi` makes H.264 where the
+//! GPU's driver does (RPM Fusion's), else AV1.
 //!
 //! `--sound` records what the computer plays, the microphone, both or
 //! neither (`sound.rs`: AAC beside the video), as asked, else as the
@@ -111,9 +113,9 @@
 //! in `$XDG_RUNTIME_DIR/olo-recording-<display>.json` (so an Agent
 //! Screen's and the person's don't meet).
 //!
-//! The whole display recorded on the GPU that draws it (VA-API's AV1 on
-//! the Intel GPU app_server draws with, as on battery or `--encoder
-//! vaapi`), its frames go from app_server to the encoder in the GPU's
+//! The whole display recorded on the GPU that draws it (VA-API's H.264 or
+//! AV1 on the Intel GPU app_server draws with, as on battery or
+//! `--encoder vaapi`), its frames go from app_server to the encoder in the GPU's
 //! memory, never through the processor: captured into a few dmabufs in
 //! turn (`Capture::lend_frames`), each made NV12 by VA-API's video
 //! processor and encoded (`frames_on_gpu` in what it prints). Otherwise,
@@ -625,10 +627,14 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
     };
     // H.264, HEVC or AV1: as asked, else as Preferences ▸ Power ▸ Graphics has it (on
     // the processor, H.264 whatever it says: the processor makes only that;
-    // through VA-API, AV1, the only one Fedora's drivers make).
+    // through VA-API, H.264 where the driver makes it, else AV1, the only
+    // one Fedora's own drivers make).
     let codec = match option(args, "--codec") {
         Some(c) => olo_video::Codec::parse(c).ok_or("--codec is h264, hevc or av1")?,
-        None if choice == olo_video::Choice::Vaapi => olo_video::Codec::Av1,
+        None if choice == olo_video::Choice::Vaapi => match settings.as_ref().and_then(|s| olo_video::Codec::parse(&s.codec)) {
+            Some(olo_video::Codec::H264) if olo_video::vaapi::h264::node().is_some() => olo_video::Codec::H264,
+            _ => olo_video::Codec::Av1,
+        },
         None => match settings.as_ref().and_then(|s| olo_video::Codec::parse(&s.codec)) {
             Some(_) if choice == olo_video::Choice::Cpu => olo_video::Codec::H264,
             Some(c) => c,
@@ -666,6 +672,7 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
         Source::Window { id, .. } => format!("window {id}"),
         Source::Output(_) if crop.is_some() => "region".into(),
         Source::Output(_) | Source::Display(_) => "display".into(),
+        Source::Workspace { index, .. } => format!("workspace {}", index + 1),
     };
     let now_secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
     let g = Going {
@@ -1228,7 +1235,8 @@ struct Coded {
 /// its first picture a key frame, its stream going on in the same file
 /// (in a sample entry of its own if its parameter sets differ). Failing
 /// again, the next encoder that makes the same codec takes over (NVIDIA's
-/// for the Intel GPU's AV1, the processor for NVIDIA's H.264: `others`),
+/// for the Intel GPU's AV1, the Intel GPU's or the processor for
+/// NVIDIA's H.264: `others`),
 /// and the recording says so. With none, what was recorded is kept: the
 /// recording stops there, the file finished. (`OLO_RECORDING_FAIL_AT=N`,
 /// for tests: picture N fails; `N!`, the encoder opened again fails too;

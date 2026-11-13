@@ -52,6 +52,15 @@ pub struct Tv {
     pub answered: usize,
     /// What the sender called itself.
     pub sender: String,
+    /// A screen was shown on it (the session said it was mirroring), and
+    /// what came of it.
+    pub mirrored: bool,
+    pub shown: Arc<Mutex<crate::mirror::fake::Shown>>,
+    /// It takes a mirrored screen's session only with its sound stream
+    /// (the older form), refusing it alone.
+    pub older_mirroring: bool,
+    /// What it was told with SET_PARAMETER.
+    pub parameters: Vec<String>,
 }
 
 impl Tv {
@@ -74,6 +83,10 @@ impl Tv {
             timed: false,
             answered: 0,
             sender: String::new(),
+            mirrored: false,
+            shown: Arc::default(),
+            older_mirroring: false,
+            parameters: Vec::new(),
         }
     }
 }
@@ -146,7 +159,31 @@ pub fn serve(tv: Arc<Mutex<Tv>>) -> SocketAddr {
     let listener = TcpListener::bind("127.0.0.1:0").expect("a port on the loopback");
     let at = listener.local_addr().expect("its address");
     std::thread::spawn(move || {
-        let Ok((mut stream, _)) = listener.accept() else { return };
+        if let Ok((stream, _)) = listener.accept() {
+            connection(stream, tv);
+        }
+    });
+    at
+}
+
+/// The receiver on the loopback at one address for as long as the
+/// program runs, as a real one is: pairing, proving and playing all
+/// there, one connection after another (and several at once).
+pub fn serve_many(tv: Arc<Mutex<Tv>>) -> SocketAddr {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a port on the loopback");
+    let at = listener.local_addr().expect("its address");
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            let tv = tv.clone();
+            std::thread::spawn(move || connection(stream, tv));
+        }
+    });
+    at
+}
+
+/// One connection to it, to its end.
+fn connection(mut stream: TcpStream, tv: Arc<Mutex<Tv>>) {
+    {
         let pairing = tv.lock().unwrap().pairing.clone();
         pairing.lock().unwrap().proved = None;
         let channel: Channel = Arc::default();
@@ -184,18 +221,63 @@ pub fn serve(tv: Arc<Mutex<Tv>>) -> SocketAddr {
             let list = |v: Value| pl::write(&v);
             let mut then = Then::Nothing;
             let (status, answer): (u16, Vec<u8>) = match (method, uri) {
-                ("POST", "/pair-verify") => match pairing.lock().unwrap().post(uri, &body) {
+                // (Pairing and proving, before the connection is enciphered.)
+                ("POST", "/pair-pin-start" | "/pair-setup" | "/pair-verify") if cipher.is_none() => match pairing.lock().unwrap().post(uri, &body) {
                     Ok(answer) => (200, answer),
                     Err(_) => (400, Vec::new()),
                 },
                 _ if cipher.is_none() => (470, Vec::new()),
+                // A mirrored screen's streams: its sound (96) or its pictures (110).
+                ("SETUP", _)
+                    if said
+                        .as_ref()
+                        .and_then(|s| pl::at(s, &["streams"]).and_then(Value::as_array)?.first().and_then(|t| pl::at(t, &["type"])).and_then(pl::number))
+                        .is_some_and(|t| t == 96.0 || t == 110.0) =>
+                {
+                    let said = said.as_ref().expect("a SETUP said something");
+                    let stream = &pl::at(said, &["streams"]).and_then(Value::as_array).expect("streams")[0];
+                    let kind = pl::at(stream, &["type"]).and_then(pl::number).unwrap_or(0.0) as i64;
+                    let shown = tv.lock().unwrap().shown.clone();
+                    let mut answer = vec![("type".to_owned(), Value::from(kind))];
+                    if kind == 96 {
+                        ask("SETUP sound".into());
+                        let key: [u8; 32] = pl::at(stream, &["shk"]).and_then(Value::as_data).and_then(|k| k.try_into().ok()).unwrap_or([0; 32]);
+                        let (data, control) = crate::mirror::fake::sound(key, shown);
+                        answer.extend([("dataPort".to_owned(), Value::from(i64::from(data))), ("controlPort".to_owned(), Value::from(i64::from(control)))]);
+                    } else {
+                        ask("SETUP pictures".into());
+                        let id = pl::at(stream, &["streamConnectionID"]).and_then(|v| v.as_signed_integer()).unwrap_or(0) as u64;
+                        let secret = pairing.lock().unwrap().proved.unwrap_or([0; 32]);
+                        let port = crate::mirror::fake::pictures(secret, id, shown);
+                        answer.push(("dataPort".to_owned(), Value::from(i64::from(port))));
+                    }
+                    let mut reply = vec![("streams".to_owned(), Value::Array(vec![Value::Dictionary(answer.into_iter().collect())]))];
+                    // (The older form: the session set up with its sound.)
+                    if pl::at(said, &["isScreenMirroringSession"]).is_some() {
+                        tv.lock().unwrap().mirrored = true;
+                        let port = pl::at(said, &["timingPort"]).and_then(pl::number).unwrap_or(0.0) as u16;
+                        let timed = ask_the_time(port);
+                        tv.lock().unwrap().timed = timed;
+                        let events = TcpListener::bind("127.0.0.1:0").expect("a port for events");
+                        reply.push(("eventPort".to_owned(), Value::from(i64::from(events.local_addr().expect("its address").port()))));
+                        then = Then::Events(events);
+                    }
+                    (200, list(Value::Dictionary(reply.into_iter().collect())))
+                }
                 ("SETUP", _) if said.as_ref().is_some_and(|s| pl::at(s, &["streams"]).is_some()) => {
                     ask("SETUP streams".into());
                     let streams = if tv.lock().unwrap().commands { vec![pl::dict([("streamID", Value::from(7i64))])] } else { Vec::new() };
                     (200, list(pl::dict([("streams", Value::Array(streams))])))
                 }
+                ("SETUP", _) if said.as_ref().is_some_and(|s| pl::at(s, &["isScreenMirroringSession"]).is_some()) && tv.lock().unwrap().older_mirroring => {
+                    ask("SETUP refused".into());
+                    (455, Vec::new())
+                }
                 ("SETUP", _) => {
                     ask("SETUP".into());
+                    if said.as_ref().is_some_and(|s| pl::at(s, &["isScreenMirroringSession"]).is_some()) {
+                        tv.lock().unwrap().mirrored = true;
+                    }
                     let port = said.as_ref().and_then(|s| pl::at(s, &["timingPort"])).and_then(pl::number).unwrap_or(0.0) as u16;
                     let timed = ask_the_time(port);
                     {
@@ -210,7 +292,23 @@ pub fn serve(tv: Arc<Mutex<Tv>>) -> SocketAddr {
                 }
                 ("GET", "/info") => {
                     ask("GET /info".into());
-                    (200, list(pl::dict([("name", Value::from("A receiver of the test's own"))])))
+                    // (An Apple TV's screen; no PTP, so NTP keeps the time.)
+                    let display = pl::dict([("widthPixels", Value::from(1920i64)), ("heightPixels", Value::from(1080i64)), ("maxFPS", Value::from(60i64))]);
+                    (
+                        200,
+                        list(pl::dict([
+                            ("name", Value::from("A receiver of the test's own")),
+                            ("features", Value::from(1i64 << 7 | 1 << 9 | 1 << 28)),
+                            ("sourceVersion", Value::from("870.14.1")),
+                            ("supportedFormats", pl::dict([("screenStream", Value::from(0x40000i64))])),
+                            ("displays", Value::Array(vec![display])),
+                        ])),
+                    )
+                }
+                ("SET_PARAMETER", _) => {
+                    let said = String::from_utf8_lossy(&body).trim().to_owned();
+                    tv.lock().unwrap().parameters.push(said);
+                    (200, Vec::new())
                 }
                 ("RECORD", _) => {
                     ask("RECORD".into());
@@ -376,6 +474,5 @@ pub fn serve(tv: Arc<Mutex<Tv>>) -> SocketAddr {
                 Then::Info => tell(&channel, &pl::dict([("type", Value::from("updateInfo")), ("value", pl::dict([("name", Value::from("A receiver of the test's own"))]))]), false),
             }
         }
-    });
-    at
+    }
 }

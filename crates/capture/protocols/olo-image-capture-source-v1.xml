@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="olo_image_capture_source_v1">
+  <copyright>
+    Copyright © 2026 the Olo authors.
+
+    Permission is hereby granted, free of charge, to any person obtaining a
+    copy of this software and associated documentation files (the
+    "Software"), to deal in the Software without restriction, including
+    without limitation the rights to use, copy, modify, merge, publish,
+    distribute, sublicense, and/or sell copies of the Software, and to
+    permit persons to whom the Software is furnished to do so, subject to
+    the following conditions:
+
+    The above copyright notice and this permission notice (including the
+    next paragraph) shall be included in all copies or substantial portions
+    of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+    OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+    MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+    IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+    CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+    TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+    SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+  </copyright>
+
+  <description summary="Olo's own image capture sources">
+    Capture sources ext_image_capture_source_v1 doesn't make, captured with
+    ext-image-copy-capture as an output is. Offered on app_server's direct
+    socket only (Olo's own programs: Show on AirPlay).
+  </description>
+
+  <interface name="olo_image_capture_source_manager_v1" version="1">
+    <description summary="makes Olo's capture sources"/>
+
+    <request name="create_workspace_source">
+      <description summary="a source for one workspace of a display">
+        Workspace number `workspace` (from 0) of the display `output`; one
+        past the last there is is captured as the last. While the display
+        shows that workspace, its frames are what the display shows; while
+        it shows another, they are that workspace's windows as they are
+        now, over its desktop, at the display's size and scale.
+      </description>
+      <arg name="source" type="new_id" interface="ext_image_capture_source_v1"/>
+      <arg name="output" type="object" interface="wl_output"/>
+      <arg name="workspace" type="uint"/>
+    </request>
+
+    <request name="create_fitted_source">
+      <description summary="another source, drawn to fit a size">
+        What `of` shows, drawn smaller where it is larger than `width` x
+        `height` (in buffer pixels), its shape kept, by the compositor as
+        it draws the frame; never larger. A picture made smaller is an
+        even number of pixels each way (what video encoders take). What a
+        video sender would otherwise shrink itself, frame by frame.
+      </description>
+      <arg name="source" type="new_id" interface="ext_image_capture_source_v1"/>
+      <arg name="of" type="object" interface="ext_image_capture_source_v1"/>
+      <arg name="width" type="uint"/>
+      <arg name="height" type="uint"/>
+    </request>
+
+    <request name="destroy" type="destructor">
+      <description summary="done with the manager">
+        Sources made with it are kept.
+      </description>
+    </request>
+  </interface>
+</protocol>

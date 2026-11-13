@@ -515,11 +515,6 @@ fn fill_buffer(sh: &mut Shared, b: *mut pw::sys::pw_buffer) -> Result<(), String
 fn stream(source: Source, cursor: Cursor, stop: Arc<AtomicBool>, tx: &mpsc::Sender<Result<(u32, (u32, u32)), String>>) -> Result<(), String> {
     let mut capture = open(&source, cursor)?;
     let cursor_meta = capture.cursor().is_some();
-    // A screen by its name from now on (the first, if none was named).
-    let source = match source {
-        Source::Output(_) => Source::Output(Some(capture.name().to_owned())),
-        window => window,
-    };
     let size = capture.size().ok_or("app_server gave no size")?;
     let fd = capture.fd()?;
     let modifiers = capture.dma_modifiers();
@@ -880,7 +875,10 @@ fn stream(source: Source, cursor: Cursor, stop: Arc<AtomicBool>, tx: &mpsc::Send
         }
         // Back as it was once app_server is (a reload takes a second or
         // two), at its new size if that changed; the app sees a pause.
-        let Some(capture) = reconnect(&source, cursor, &stop) else { break };
+        // (What it was: a window by its app and title now, as it comes
+        // back with another id, its old one maybe another window's.)
+        let again = shared.borrow().capture.again();
+        let Some(capture) = reconnect(&again, cursor, &stop) else { break };
         let new = capture.size();
         fd = capture.fd().ok();
         let mut sh = shared.borrow_mut();

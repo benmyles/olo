@@ -228,7 +228,8 @@ impl Video {
 
 /// A video's decoder, of its codec.
 enum Decoder {
-    H264(Box<openh264::decoder::Decoder>, Vec<u8>),
+    /// (With its parameter sets, and the colour they say.)
+    H264(Box<openh264::decoder::Decoder>, Vec<u8>, (u8, bool)),
     Hevc(Box<olo_images::hevc::Decoder>),
     Av1(olo_images::av1::Decoder, Vec<u8>),
 }
@@ -236,7 +237,7 @@ enum Decoder {
 impl Decoder {
     fn new(start: &Start) -> Result<Decoder, String> {
         Ok(match start {
-            Start::H264(params) => Decoder::H264(Box::new(openh264::decoder::Decoder::new().map_err(|e| e.to_string())?), params.clone()),
+            Start::H264(params) => Decoder::H264(Box::new(openh264::decoder::Decoder::new().map_err(|e| e.to_string())?), params.clone(), colour_of(params)),
             Start::Hevc(record) => {
                 let config = olo_images::hevc::config(record).ok_or("an HEVC configuration Olo can't read")?;
                 // (One thread: each sample's picture out at once, none held.)
@@ -252,7 +253,7 @@ impl Decoder {
     /// that size.
     fn decode(&mut self, sample: &[u8], first: bool, size: (u32, u32), rgb: &mut [u8]) -> Result<bool, String> {
         let pictures = match self {
-            Decoder::H264(dec, params) => {
+            Decoder::H264(dec, params, colour) => {
                 let mut annex_b = if first { params.clone() } else { Vec::new() };
                 let mut b = sample;
                 while b.len() >= 4 {
@@ -269,7 +270,11 @@ impl Decoder {
                         use openh264::formats::YUVSource as _;
                         let ok = yuv.dimensions() == (size.0 as usize, size.1 as usize);
                         if ok {
-                            yuv.write_rgb8(rgb);
+                            match *colour {
+                                // (BT.601 in limited range: OpenH264's own, fast.)
+                                (5 | 6, false) => yuv.write_rgb8(rgb),
+                                (matrix, full) => yuv_to_rgb(&yuv, matrix, full, rgb),
+                            }
                         }
                         ok
                     }
@@ -294,7 +299,10 @@ impl Decoder {
     /// Another stream's parameter sets from the next sample (`fresh`).
     fn restart(&mut self, sets: &[u8]) {
         match self {
-            Decoder::H264(_, params) => *params = sets.to_vec(),
+            Decoder::H264(_, params, colour) => {
+                *params = sets.to_vec();
+                *colour = colour_of(sets);
+            }
             Decoder::Av1(_, config) => *config = sets.to_vec(),
             Decoder::Hevc(_) => {}
         }
@@ -309,6 +317,43 @@ impl Decoder {
             Decoder::Av1(dec, _) => dec.flush(&mut out),
         }
         into_rgb(out, size, rgb)
+    }
+}
+
+/// The colour H.264's parameter sets say: H.273's matrix and whether
+/// it's full range. One not said is BT.601's (6), as Olo's H.264 from
+/// OpenH264 and NVENC is, where the VA-API encoder's says BT.709.
+fn colour_of(params: &[u8]) -> (u8, bool) {
+    match olo_vaapi::h264::colour(params) {
+        Some((2, full)) => (6, full),
+        Some(c) => c,
+        None => (6, false),
+    }
+}
+
+/// An 8-bit 4:2:0 picture into `rgb` (RGB) by H.273's `matrix`
+/// (BT.709's for 1, else BT.601's), limited range or `full`.
+fn yuv_to_rgb(yuv: &impl openh264::formats::YUVSource, matrix: u8, full: bool, rgb: &mut [u8]) {
+    let (w, h) = yuv.dimensions();
+    let (ys, us, vs) = yuv.strides();
+    let (y, u, v) = (yuv.y(), yuv.u(), yuv.v());
+    let (kr, kb) = if matrix == 1 { (0.2126f32, 0.0722f32) } else { (0.299, 0.114) };
+    let kg = 1.0 - kr - kb;
+    let (luma, chroma) = if full { (1.0f32, 1.0f32) } else { (255.0 / 219.0, 255.0 / 224.0) };
+    let base = if full { 0.0f32 } else { 16.0 };
+    for row in 0..h {
+        for col in 0..w {
+            let yy = (f32::from(y[row * ys + col]) - base) * luma;
+            let cb = (f32::from(u[(row / 2) * us + col / 2]) - 128.0) * chroma;
+            let cr = (f32::from(v[(row / 2) * vs + col / 2]) - 128.0) * chroma;
+            let r = yy + 2.0 * (1.0 - kr) * cr;
+            let b = yy + 2.0 * (1.0 - kb) * cb;
+            let g = (yy - kr * r - kb * b) / kg;
+            let o = (row * w + col) * 3;
+            rgb[o] = r.round().clamp(0.0, 255.0) as u8;
+            rgb[o + 1] = g.round().clamp(0.0, 255.0) as u8;
+            rgb[o + 2] = b.round().clamp(0.0, 255.0) as u8;
+        }
     }
 }
 

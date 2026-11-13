@@ -428,6 +428,9 @@ impl FolderWin {
         if let Some(open_with) = open_with_menu(&self.selected_entries()) {
             menu = menu.submenu(open_with);
         }
+        if let Some(play) = play_on_menu(&self.selected_entries()) {
+            menu = menu.submenu(play);
+        }
         menu = menu.separator().item("Cut", "cut").key("x").item("Copy", "copy").key("c").separator();
         if !in_trash {
             menu = menu.item("Move to Trash", "trash").key("t");
@@ -1423,6 +1426,7 @@ impl FolderWin {
             }
             // Open With ▸ an app (Always: and make it the kind's).
             c if olo_kit::open_with::is_command(c) => crate::open_with(c, &entries),
+            c if play_on(c, &entries) => {}
             c if c.starts_with("go-place:") => {
                 let dir = PathBuf::from(&c["go-place:".len()..]);
                 if dir.is_dir() {
@@ -1707,6 +1711,21 @@ impl View for FolderWin {
             .child(div().flex_1().min_h_0().relative().flex().flex_col().child(body))
             .child(self.count_bar(cx))
             .into_any_element()
+    }
+}
+
+/// Play On ▸ for a film (one, not a folder): the AirPlay receivers paired
+/// with, each fetching and playing the file itself (`olo-airplay play`).
+pub fn play_on_menu(entries: &[Entry]) -> Option<Menu> {
+    let [e] = entries else { return None };
+    (!e.is_dir && olo_xdg::open::kind_of(&e.name, false).starts_with("video/")).then(|| Menu::airplay("Play On", &olo_kit::airplay::paired(), ""))
+}
+
+/// Play On ▸'s command, for the film chosen; false if it isn't one.
+pub fn play_on(cmd: &str, entries: &[Entry]) -> bool {
+    match entries {
+        [e] if olo_protocol::airplay::menu_command(cmd).is_some() => olo_kit::airplay::play_from_menu(cmd, &e.path.to_string_lossy()),
+        _ => false,
     }
 }
 

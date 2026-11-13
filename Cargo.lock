@@ -311,6 +311,7 @@ dependencies = [
  "tracing-subscriber",
  "wayland-client",
  "wayland-protocols 0.32.13",
+ "wayland-scanner",
  "xkbcommon 0.8.0",
  "zeroize",
 ]
@@ -8285,13 +8286,19 @@ dependencies = [
  "chacha20poly1305",
  "curve25519-dalek",
  "ed25519-dalek",
+ "fast_image_resize",
  "getrandom 0.3.4",
  "hkdf",
  "libc",
  "num-bigint 0.4.8",
+ "olo-capture",
  "olo-crash",
+ "olo-kit-base",
  "olo-protocol",
+ "olo-system",
+ "olo-video",
  "olo-xdg",
+ "pipewire",
  "plist",
  "serde",
  "serde_json",
@@ -8391,6 +8398,7 @@ dependencies = [
  "tracing",
  "wayland-client",
  "wayland-protocols 0.32.13",
+ "wayland-scanner",
 ]
 
 [[package]]
@@ -9237,6 +9245,7 @@ dependencies = [
  "getrandom 0.3.4",
  "jiff",
  "libc",
+ "olo-airplay",
  "olo-color",
  "olo-complete",
  "olo-crash",

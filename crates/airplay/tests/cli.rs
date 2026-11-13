@@ -174,3 +174,54 @@ fn a_film_played_and_one_stopped() {
     assert_eq!(run(&state, &["playing"]).1, "Nothing is playing.\n");
     let _ = std::fs::remove_dir_all(&state);
 }
+
+/// As an app asks for it: the receivers a test's own in place of the
+/// network's (one address for pairing, proving and playing, as a real
+/// one has), the receiver named by its id with `--on`, a film whose name
+/// has spaces.
+#[test]
+fn asked_as_an_apps_menu_asks() {
+    let state = std::path::PathBuf::from(format!("/var/tmp/olo-airplay-cli-menu-test-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&state);
+    std::fs::create_dir_all(&state).unwrap();
+    let mut bytes = b"\0\0\0\x20ftypisom\0\0\x02\0isomiso2avc1mp41".to_vec();
+    bytes.extend((0..20_000u32).map(|i| (i % 241) as u8));
+    let film = state.join("A film of ours.mp4");
+    std::fs::write(&film, &bytes).unwrap();
+    let tv = Arc::new(Mutex::new(play::fake::Tv::new(Arc::new(Mutex::new(fake::Receiver::new("4321"))))));
+    let receivers = format!("Front Room={};Den=127.0.0.1:9", play::fake::serve_many(tv.clone()));
+    let run = |args: &[&str]| {
+        let out = Command::new(env!("CARGO_BIN_EXE_olo-airplay"))
+            .args(args)
+            .env("XDG_STATE_HOME", &state)
+            .env("XDG_RUNTIME_DIR", state.join("run"))
+            .env("OLO_AIRPLAY_RECEIVERS", &receivers)
+            .env_remove("WAYLAND_DISPLAY")
+            .env_remove("OLO_SOCKET")
+            .output()
+            .expect("olo-airplay runs");
+        (out.status.success(), format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr)))
+    };
+
+    // Found without the network; paired, checked and listed as paired.
+    let (ok, said) = run(&["list"]);
+    assert!(ok && said.contains("Front Room  Apple TV") && said.contains("pairs first") && said.lines().count() == 2, "{said}");
+    assert_eq!(run(&["pair", "front", "--code", "4321"]), (true, "Paired with Front Room.\n".into()));
+    assert_eq!(run(&["check", "Front Room"]), (true, "Front Room knows this computer.\n".into()));
+    assert!(run(&["list"]).1.contains("; paired"));
+    let listed: serde_json::Value = serde_json::from_str(&run(&["list", "--json"]).1).unwrap();
+    let id = listed.as_array().unwrap().iter().find(|r| r["name"] == "Front Room").unwrap()["device_id"].as_str().unwrap().to_owned();
+    assert_eq!(run(&["paired"]).1, format!("Front Room  ({id})\n"));
+
+    // Played as a menu asks: by its id, apart from the film.
+    let (ok, said) = run(&["play", "--on", &id, film.to_str().unwrap()]);
+    assert!(ok && said.ends_with("Playing on Front Room (it is 10:00 long).\nIt played to its end.\n"), "{said}");
+    assert!(tv.lock().unwrap().fetched == bytes);
+    // One that isn't there, and one not paired with: said by its name.
+    let (ok, said) = run(&["play", "--on", "Den", film.to_str().unwrap()]);
+    assert!(!ok && said.contains("Den isn't paired with"), "{said}");
+    let (ok, said) = run(&["play", "--on", "02:00:00:00:00:99", film.to_str().unwrap()]);
+    assert!(!ok && said.contains("didn't answer"), "{said}");
+    assert!(!run(&["play", "--on", &id]).0);
+    let _ = std::fs::remove_dir_all(&state);
+}

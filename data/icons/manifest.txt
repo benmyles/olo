@@ -107,6 +107,7 @@ telegram|a chunky round sky-blue badge, seen in three-quarter view like a thick 
 doctor|a doctor's medical bag: a chunky dark red leather physician's bag with brass clasps and a white cross on its side, a silver stethoscope draped over its handle
 airpods|a pair of glossy white wireless earbuds with short straight stems and dark grey speaker mesh tips, standing in front of their open glossy white rounded charging case, its lid tilted back
 airpods-case|a closed glossy white rounded charging case for wireless earbuds, a softly rounded rectangle with a thin seam under its lid and a small green status light on its front
+airplay|a glossy dark grey television screen on a short silver stand, turned slightly to the right in three-quarter view, its screen glowing Be blue with a solid white triangle rising from its bottom edge into the middle of the screen
 airpod-left|a single glossy white wireless earbud with a short straight stem pointing down and a soft grey silicone tip facing left, seen in three-quarter view standing on the desk
 airpod-right|a single glossy white wireless earbud with a short straight stem pointing down and a soft grey silicone tip facing right, seen in three-quarter view standing on the desk
 default-apps|a white paper document with a folded corner and grey text lines, with a small Be-blue application cube standing in front of it at the lower right

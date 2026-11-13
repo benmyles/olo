@@ -136,21 +136,28 @@ pub struct Capture {
 impl Capture {
     /// Record `source` (a source's name, [`COMPUTER`], or None for the
     /// default microphone).
-    pub fn start(source: Option<&str>, channels: u8, name: &str, mut got: impl FnMut(&[f32]) + Send + 'static) -> Result<Capture, String> {
+    pub fn start(source: Option<&str>, channels: u8, name: &str, got: impl FnMut(&[f32]) + Send + 'static) -> Result<Capture, String> {
+        // A fragment every 40 ms: few wakeups, little lag.
+        Capture::start_as(source, channels, RATE, 40, name, got)
+    }
+
+    /// The same at `rate` samples a second (the server resamples), a
+    /// fragment every `ms` (fewer wakeups the longer; a live stream's
+    /// lag the shorter).
+    pub fn start_as(source: Option<&str>, channels: u8, rate: u32, ms: u32, name: &str, mut got: impl FnMut(&[f32]) + Send + 'static) -> Result<Capture, String> {
         let client = connect()?;
         let sink = move |data: &[u8]| {
             let samples: Vec<f32> = data.chunks_exact(4).map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])).collect();
             got(&samples);
         };
         let params = RecordStreamParams {
-            sample_spec: SampleSpec { format: SampleFormat::Float32Le, channels, sample_rate: RATE },
+            sample_spec: SampleSpec { format: SampleFormat::Float32Le, channels, sample_rate: rate },
             channel_map: if channels == 2 { ChannelMap::stereo() } else { ChannelMap::mono() },
             source_name: Some(match source {
                 Some(s) => CString::new(s).map_err(|e| e.to_string())?,
                 None => protocol::DEFAULT_SOURCE.to_owned(),
             }),
-            // A fragment every 40 ms: few wakeups, little lag.
-            buffer_attr: BufferAttr { fragment_size: bytes(40) * u32::from(channels), ..Default::default() },
+            buffer_attr: BufferAttr { fragment_size: (rate / 1000 * ms * 4).max(4) * u32::from(channels), ..Default::default() },
             flags: StreamFlags { adjust_latency: true, ..Default::default() },
             props: props(name),
             ..Default::default()

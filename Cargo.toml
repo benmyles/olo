@@ -42,7 +42,7 @@ olo-palm = { path = "crates/palm" }
 olo-complete = { path = "crates/complete" }
 olo-images = { path = "crates/images" }
 olo-token-pool = { path = "crates/pool" }
-olo-airplay = { path = "crates/airplay" }
+olo-airplay = { path = "crates/airplay", default-features = false }
 olo-ai = { path = "crates/ai" }
 olo-eld = { path = "crates/eld" }
 olo-voice = { path = "crates/voice" }

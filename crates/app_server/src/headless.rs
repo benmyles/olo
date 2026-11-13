@@ -506,6 +506,7 @@ pub fn run_headless(size_arg: Option<&str>) {
             // Frames programs asked for (screen sharing).
             state.captures.finish();
             let here = if state.captures.pending() { state.capture_windows_on(output, state.lock.locked()) } else { Vec::new() };
+            let desk = if state.captures.workspace_pending() { state.capture_desk(output) } else { Default::default() };
             let on_output = |id| here.contains(&id);
             if state.captures.pending() && state.captures.wanted(output, &on_output) {
                 let color = state.desktop_color(output);
@@ -516,7 +517,7 @@ pub fn run_headless(size_arg: Option<&str>) {
                 let (space, overview) = (&state.space, state.overview.as_ref());
                 let parked = state.parked.0.borrow();
                 state.captures.take(&mut state.backend_data.renderer, output, now, on_output, |renderer, what, cursor| {
-                    crate::capture::picture(renderer, output, space, &parked, what, locked, || {
+                    crate::capture::picture(renderer, output, space, &parked, &desk, what, locked, || {
                         let overlays = overlays[cursor as usize].take().unwrap_or_default();
                         (overlays, overview, color, cursor.then_some((pointer.0, &pointer.1)))
                     })

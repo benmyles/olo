@@ -589,21 +589,80 @@ something nobody here has is in "Blocked", with what it waits for.
        how it goes (`olo_protocol::airplay`), `olo-airplay playing`,
        `stop`, `pause` and `resume` act on plays from anywhere, and
        Deskbar's tray has a screen with a play mark while a film
-       plays, its menu Pause (Resume) and Stop. *Next:* pairing for
-       people (Preferences ▸ AirPlay: the receivers found, Pair… with
-       the code, Forget), "Play On" in the Viewer and Tracker (the
-       receivers paired with), then live windows, workspaces and
-       agent screens as HLS (which also carries the kinds of film a
-       receiver doesn't play by itself).
+       plays, its menu Pause (Resume) and Stop.
+     - *Ben, 2026-11-12:* "for the airplay stuff please add the
+       proper gui integration with a preferences panel, integrated
+       airplay from relevant app menus and by right clicking the
+       window title / deskbar row / workspace etc. cli alone is not
+       enough". So, **next, in this order:** (1) Preferences ▸
+       AirPlay: the receivers found, Pair… with the code a receiver
+       shows, Forget, and what plays now; (2) "Play On" where a film
+       is at hand: the Viewer's and Tracker's menus (a file's
+       context menu too), the receivers paired with as its items;
+       (3) sending what's live, which needs the live path first (what
+       capture hands over, encoded on the GPU, as HLS the receiver
+       fetches, with the sound that goes with it): a window from its
+       title's menu and its Deskbar row, a workspace from its heading
+       in Deskbar, an agent screen from Agent Screens, each "Send to
+       ▸ a receiver", with Stop where it was started and in the
+       tray. The command stays the way under all of it (and for
+       agents).
+     - *Low latency, 2026-11-12* (Ben: "see if there's a way to get
+       low latency airplay working … i want video and audio";
+       HACKING, "AirPlay"): not HLS but AirPlay's own mirroring, as
+       doubletake (LGPL, Go) has found it works with today's Apple
+       TVs: over a HomeKit pair-verified connection the picture and
+       sound are keyed from the pairing, so **no FairPlay** is
+       needed (the objevovat FairPlay-SAP code Ben pointed at is
+       Apple-derived tables under the LGPL, and its README says both
+       Apple TVs it was tried on refused it; Olo is MIT, so bringing
+       any of it in is Ben's to decide, and nothing needs it now).
+       `olo-airplay show` sends a window, a display or an agent
+       screen with its sound, 8 ms from capture to sent,
+       a lead of 40 ms wired (75 on Wi-Fi) at the receiver.
+     - *The desktop's way to it, 2026-11-12* (HACKING, "AirPlay" and
+       "Show on AirPlay and Play On"): Preferences ▸ AirPlay (the
+       receivers, Pair… with the code typed, Check, Forget, Show
+       Display, Stop); Play On ▸ in Viewer and Tracker for a film;
+       Show on AirPlay ▸ in a window's tab menu, Deskbar's app rows,
+       Agent Screens' Screen menu and Deskbar's agent screens item;
+       the tray says a showing, with Pause and Stop. All tried on a
+       headless session against the test receivers.
+     - *A workspace, 2026-11-12* (HACKING, "Screen sharing" ▸
+       Workspaces): Olo's own Wayland protocol makes a capture source
+       of one of a display's workspaces, live though the display
+       shows another (its windows where they were left, drawing on);
+       `olo-airplay show --workspace N`, and Show on AirPlay ▸ on
+       Deskbar's workspace headings.
+     - *Frames fitted by app_server, 2026-11-12* (HACKING, "Screen
+       sharing" ▸ Fitted): a busy screen shown costs olo-airplay 13.7%
+       of a core, not 32.4%, and 4.7 ms from capture to sent, not 8.1.
+     - *Frames kept on the GPU, 2026-11-12* (HACKING, "AV1 and H.264
+       on Intel's and AMD's GPUs" and the showing): H.264 through
+       VA-API (`olo_vaapi::H264`, its parameter sets written by us,
+       quality 18 with a cap: 46.7 dB in 199 KB where NVENC kept 46.4
+       in 322), frames lent to it by app_server as dmabufs: a busy
+       screen shown costs olo-airplay 5.0% of a core rather than
+       NVENC's 11.9%, the NVIDIA GPU asleep, for 7.3 ms from capture to
+       sent rather than 4.7. Recordings take it too (`--encoder
+       vaapi`, Preferences ▸ Graphics' Format).
+     - *The sound on the television only, 2026-11-12* (HACKING,
+       "AirPlay", the showing): an output of the showing's own,
+       made in process, and the sound that goes with what's shown
+       moved to it: a window's app's, an agent screen's programs', a
+       display's the computer's; back where it was when paused or
+       ended, by WirePlumber when killed; the default output's volume
+       keys still set how loud. Half the cost of the monitor recording
+       it replaces (2.3% of a core against 4.4% with sound playing).
+     - *Next:* the receiver's own volume (AirPlay's `volume`
+       parameter) from the volume keys, rather than the samples made
+       quieter here, once a real receiver is there to try it on.
      - *Ben's to say:* (1) which receiver it's for (an Apple TV and
        its tvOS, a television with AirPlay built in, something else):
        it has to be tried against the real one, paired by him at the
        television, since no test can stand in for Apple's end; (2)
-       whether seconds behind is acceptable for windows and screens,
-       or whether only files are wanted that way and live screens
-       should go another road (Miracast, or a receiver of Olo's own
-       on a small computer by the television, which could be as
-       quick as the network).
+       only if a real receiver refuses the mirroring without it,
+       whether FairPlay is wanted (LGPL, Apple-derived).
   7. **The installer, as BeOS's Installer** (Ben, 2026-11-11: "also can
      you redo the installer to be reminiscent of the beos installer
      instead of windows 95"). Done 2026-11-12 (HACKING, "The
@@ -1014,6 +1073,36 @@ AirPods' config, f8e63000: 82.6 dB SNR, 50 wanted) and the
 accessibility tree test on an agent screen (GTK's Text Editor, 30
 nodes). What's left needs Ben: in Blocked, "The ignored tests that
 need Ben".)
+
+- **A window on the HDMI display was scrambled** (Ben, 2026-11-12:
+  "when i plugged in an hdmi cable earlier to try show a video on the
+  tv the graphics/image was all messed up / scrambled. fix."). What it
+  was is in HACKING ("Each display on its own GPU", "A window drawn by
+  one GPU, shown by another"): the HDMI port is NVIDIA's, apps draw
+  with Intel's, each window's picture is copied into a buffer both
+  read, and NVIDIA's driver reads such a buffer as if its rows were the
+  window's width rounded down to 8 pixels: sheared, a few pixels a row,
+  at every width that isn't a multiple of 8. *Done 2026-11-12:* the
+  copy is made with rows of a whole multiple of 16 pixels; a buffer
+  NVIDIA would misread is never read by it directly; apps aren't
+  offered linear buffers for NVIDIA's displays. Found and checked
+  without a television, by `olo-app-server --probe-shared`, which
+  draws on one GPU and composes on the other as the session does and
+  compares, pixel by pixel: before, right at 1920 and 1408 wide and
+  wrong at 964 and 333 (and at every width between multiples of 8, of
+  91 tried); after, the same at all of them, for each kind of buffer,
+  a picture replaced and a part redrawn (175 tries, none wrong).
+  *Ben's to try:* after upgrading, plug the television in again and
+  move a window to it (a film in the Viewer, a browser): it should
+  look as it does on the panel. **Not seen on a television**: none
+  was plugged in while this was fixed, so what the probe can't see is
+  untried: the frames NVIDIA sends to the display itself (they were
+  NVIDIA's own all along, and the wallpaper and the windows' frames
+  there were its too), and anything else that was wrong with the
+  picture that day. If it still looks wrong: which part (the whole
+  screen, the wallpaper, or only windows), and
+  `olo-app-server --probe-shared /var/tmp/shared` says whether the
+  copies are still right.
 
 - **A display that left with its dock is still "plugged in"** (Ben,
   2026-11-10: "there are no externals just my builtin display now why
@@ -3049,7 +3138,11 @@ need Ben".)
     15 ms: no cache needed). Then: the frames as dmabufs to VA-API
     (DRM PRIME import, its video processor making NV12: 0676a351, 2.2%
     of a core recording 4K), and auto preferring the Intel GPU for AV1 on
-    battery, both done. NVENC (2026-11-08): CUDA imports only its own
+    battery, both done. *H.264 too* (2026-11-12, with RPM Fusion's iHD
+    on this computer since): `olo_vaapi::H264`, its sequence and picture
+    parameter sets written by us, the driver writing the slices; auto
+    prefers it on battery as AV1, and AirPlay's showing takes it first
+    with frames lent from the GPU. NVENC (2026-11-08): CUDA imports only its own
     GPU's memory and app_server draws on the Intel GPU, so frames cross
     to the NVIDIA GPU through the processor either way. The crossing was
     made half as dear: a 4K recording on NVENC went from 40.1% of a core

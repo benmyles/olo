@@ -8,13 +8,15 @@ use olo_kit::{
 use olo_protocol::Settings;
 
 use crate::{
-    PanelView, about, ai, airpods, appearance, backup, bluetooth, datetime, default_apps, deskbar, display, form::Ui, integrations, keyboard, network, notifications, performance, power, prefs,
-    screensaver, security, sound, terminal, themes, touchpad, tracker, windows, workspaces,
+    PanelView, about, ai, airplay, airpods, appearance, backup, bluetooth, datetime, default_apps, deskbar, display, form::Ui, integrations, keyboard, network, notifications, performance, power,
+    prefs, screensaver, security, sound, terminal, themes, touchpad, tracker, windows, workspaces,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Panel {
     Ai,
+    /// The receivers: pairing, checking, forgetting, showing the display.
+    AirPlay,
     /// Opened from Bluetooth, Sound and Deskbar (not in the launcher's
     /// grid: it's about one device).
     AirPods,
@@ -49,6 +51,7 @@ pub enum Panel {
 impl Panel {
     pub const ALL: &[Panel] = &[
         Panel::Ai,
+        Panel::AirPlay,
         Panel::Appearance,
         Panel::Backgrounds,
         Panel::Backup,
@@ -89,6 +92,7 @@ impl Panel {
             "touchid" | "fingerprint" | "touch-id" | "fingerprints" | "face" | "face-unlock" | "security-keys" | "yubikey" | "sign-in" => Some(Panel::Security),
             "bt" => Some(Panel::Bluetooth),
             "airpods" | "airpod" | "headphones" => Some(Panel::AirPods),
+            "air-play" | "mirroring" | "screen-mirroring" | "apple-tv" | "tv" => Some(Panel::AirPlay),
             "wifi" | "wi-fi" | "networks" => Some(Panel::Network),
             "notification" | "dnd" | "do-not-disturb" => Some(Panel::Notifications),
             "supervisor" | "responsiveness" | "watchdog" => Some(Panel::Performance),
@@ -106,6 +110,7 @@ impl Panel {
     pub fn arg(self) -> &'static str {
         match self {
             Panel::Ai => "ai",
+            Panel::AirPlay => "airplay",
             Panel::AirPods => "airpods",
             Panel::Appearance => "appearance",
             Panel::Backgrounds => "backgrounds",
@@ -137,6 +142,7 @@ impl Panel {
     pub fn title(self) -> &'static str {
         match self {
             Panel::Ai => "AI",
+            Panel::AirPlay => "AirPlay",
             Panel::AirPods => "AirPods",
             Panel::Appearance => "Appearance",
             Panel::Backgrounds => "Backgrounds",
@@ -168,6 +174,7 @@ impl Panel {
     pub fn icon(self) -> &'static str {
         match self {
             Panel::Ai => "ai",
+            Panel::AirPlay => "airplay",
             Panel::AirPods => "airpods",
             Panel::Appearance => "appearance",
             Panel::Backgrounds => "backgrounds",
@@ -203,6 +210,9 @@ impl Panel {
     pub fn size(self) -> (u32, u32) {
         match self {
             Panel::Ai => (760, 408),
+            // The receivers (their names, kinds and how each is), pairing's
+            // code beneath while a receiver shows one.
+            Panel::AirPlay => (500, 360),
             Panel::AirPods => (960, 622),
             Panel::Appearance => (420, 482),
             Panel::Backgrounds => (640, 604),
@@ -249,7 +259,17 @@ impl Panel {
     pub fn needs_server(self) -> bool {
         !matches!(
             self,
-            Panel::About | Panel::AirPods | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::Notifications | Panel::Performance | Panel::Backup | Panel::Integrations | Panel::DefaultApps
+            Panel::About
+                | Panel::AirPlay
+                | Panel::AirPods
+                | Panel::Sound
+                | Panel::Network
+                | Panel::Bluetooth
+                | Panel::Notifications
+                | Panel::Performance
+                | Panel::Backup
+                | Panel::Integrations
+                | Panel::DefaultApps
         )
     }
 
@@ -258,6 +278,7 @@ impl Panel {
         !matches!(
             self,
             Panel::About
+                | Panel::AirPlay
                 | Panel::AirPods
                 | Panel::Display
                 | Panel::Sound
@@ -319,6 +340,7 @@ impl Panel {
             Panel::Display
             | Panel::Backup
             | Panel::About
+            | Panel::AirPlay
             | Panel::AirPods
             | Panel::Sound
             | Panel::Network
@@ -347,6 +369,7 @@ pub enum State {
     Backup(Box<backup::State>),
     Bluetooth(Box<bluetooth::State>),
     AirPods(Box<airpods::State>),
+    AirPlay(Box<airplay::State>),
     Touchpad(touchpad::State),
     Power(power::State),
     ScreenSaver(screensaver::State),
@@ -371,6 +394,7 @@ impl State {
             Panel::Backup => State::Backup(Box::new(backup::State::new(cx))),
             Panel::Bluetooth => State::Bluetooth(Box::new(bluetooth::State::new(cx))),
             Panel::AirPods => State::AirPods(Box::new(airpods::State::new(cx))),
+            Panel::AirPlay => State::AirPlay(Box::new(airplay::State::new(cx))),
             Panel::Touchpad => State::Touchpad(touchpad::State::new(cx)),
             Panel::Power => State::Power(power::State::new(cx)),
             Panel::ScreenSaver => State::ScreenSaver(screensaver::State::new(cx)),
@@ -437,6 +461,7 @@ pub fn render(v: &mut PanelView, cx: &mut Cx<PanelView>) -> Element {
             (Panel::Backup, State::Backup(st)) => backup::ui(&mut ui, st),
             (Panel::Bluetooth, State::Bluetooth(st)) => bluetooth::ui(&mut ui, st),
             (Panel::AirPods, State::AirPods(st)) => airpods::ui(&mut ui, st),
+            (Panel::AirPlay, State::AirPlay(st)) => airplay::ui(&mut ui, st),
             (Panel::Touchpad, State::Touchpad(st)) => touchpad::ui(&mut ui, st),
             (Panel::Tracker, _) => tracker::ui(&mut ui),
             (Panel::Terminal, _) => terminal::ui(&mut ui),

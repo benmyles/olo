@@ -86,6 +86,8 @@ pub struct Facts {
     /// program can move (`WindowInfo::kept`) and this is the person's
     /// display; None, no Move to Agent Screen.
     pub screens: Option<Vec<olo_kit::moving::RunningScreen>>,
+    /// The AirPlay receivers paired with, to show it on (Show on AirPlay).
+    pub airplay: Vec<olo_protocol::airplay::Paired>,
 }
 
 /// Whose window it is, and the app's own Close and Quit if it's on the
@@ -174,6 +176,7 @@ pub fn learn(ask: Ask, proxy: Proxy) {
         let (name, _) = olo_xdg::apps::app_name(&w.app_id, entry.as_ref());
         let app = Owner { pid, surface: w.surface, app_id: w.app_id.clone(), name, close: find("close"), quit: find("quit") };
         let screens = (w.kept && olo_kit::moving::menus_offer()).then(olo_kit::moving::screens);
+        let airplay = olo_protocol::airplay::paired();
         proxy.send(Facts {
             ask,
             title: w.title,
@@ -195,6 +198,7 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             path,
             app,
             screens,
+            airplay,
         });
     });
 }
@@ -323,6 +327,9 @@ pub fn build(f: &Facts) -> Menu {
     if let Some(screens) = &f.screens {
         m = m.submenu(Menu::agent_screens("Move to Agent Screen", screens, ""));
     }
+    // Live on a television (Ben, 2026-11-12: "integrated airplay … by
+    // right clicking the window title"): `olo-airplay show --window`.
+    m = m.submenu(Menu::airplay("Show on AirPlay", &f.airplay, ""));
     m = m.separator();
     if f.path.is_some() {
         m = m.item(tracker::LABEL, tracker::COMMAND).separator();
@@ -455,6 +462,8 @@ pub fn perform(window: u64, app: &Owner, command: &str) {
 /// the layer: elsewhere on the screen).
 pub struct Layer {
     window: u64,
+    /// The window's title, naming it where it's shown (Deskbar's tray).
+    title: String,
     app: Owner,
     path: Option<PathBuf>,
     at: Point<Pixels>,
@@ -477,17 +486,25 @@ impl View for Layer {
         match message {
             LayerMsg::Pop => {
                 let Some(menu) = self.menu.take() else { return };
-                let (target, app, path) = (self.window, self.app.clone(), self.path.clone());
+                let (target, app, path, title) = (self.window, self.app.clone(), self.path.clone(), self.title.clone());
                 let gone = cx.messenger();
                 self.popup = menu::context_menu_then(
                     cx,
                     menu,
                     self.at,
-                    move |cmd, _| match &path {
-                        Some(path) if cmd == tracker::COMMAND => {
+                    move |cmd, _| match (&path, olo_protocol::airplay::menu_command(cmd)) {
+                        (Some(path), _) if cmd == tracker::COMMAND => {
                             if let Err(e) = tracker::open(path) {
                                 tracing::warn!("couldn't show {} in Tracker: {e}", path.display());
                             }
+                        }
+                        (_, Some(Some(receiver))) => {
+                            if let Err(e) = olo_protocol::airplay::show_on(receiver, &olo_protocol::airplay::Shown::Window { id: target, title: title.clone() }) {
+                                tracing::warn!("couldn't show the window on AirPlay: {e}");
+                            }
+                        }
+                        (_, Some(None)) => {
+                            let _ = olo_protocol::airplay::open_settings();
                         }
                         _ => perform(target, &app, cmd),
                     },
@@ -524,7 +541,15 @@ pub fn open(facts: Facts) -> WindowHandle<Layer> {
     let options = crate::overlay("Window Menu", "window-menu", output).layer_options(|l| l.keyboard = LayerKeyboard::OnDemand);
     olo_kit::open_window(options, move |cx| {
         cx.send(LayerMsg::Pop);
-        Layer { window: facts.ask.window, app: facts.app.clone(), path: facts.path.clone(), at: point(px(facts.ask.at.0), px(facts.ask.at.1)), menu: Some(build(&facts)), popup: None }
+        Layer {
+            window: facts.ask.window,
+            title: facts.title.clone(),
+            app: facts.app.clone(),
+            path: facts.path.clone(),
+            at: point(px(facts.ask.at.0), px(facts.ask.at.1)),
+            menu: Some(build(&facts)),
+            popup: None,
+        }
     })
 }
 
@@ -573,6 +598,7 @@ mod tests {
                 a11y: None,
                 size: (1440, 900),
             }]),
+            airplay: vec![olo_protocol::airplay::Paired { device_id: "AA:BB:CC:DD:EE:FF".into(), name: "Front Room".into() }],
         };
         fn commands(m: &Menu, out: &mut Vec<String>) {
             for item in &m.items {
@@ -589,6 +615,7 @@ mod tests {
             let known = c.strip_prefix("shortcut:").is_some_and(|id| shortcuts::SHORTCUTS.iter().any(|s| s.id == id))
                 || c.starts_with("workspace:")
                 || olo_kit::moving::screen_command(c).is_some()
+                || olo_protocol::airplay::menu_command(c).is_some()
                 || c.strip_prefix("tile-with:").is_some_and(|id| id.parse::<u64>().is_ok())
                 || c.strip_prefix("window-to:").is_some_and(|id| id.parse::<u64>().is_ok())
                 || c.strip_prefix("group-to:").is_some_and(|id| id.parse::<u64>().is_ok())
@@ -601,6 +628,8 @@ mod tests {
         let mut stuck = Vec::new();
         commands(&build(&Facts { screens: None, ..facts.clone() }), &mut stuck);
         assert!(!stuck.iter().any(|c| c.starts_with("agent-screen")));
+        // Each receiver paired with, and the way to pair another.
+        assert!(all.contains(&"airplay-on:AA:BB:CC:DD:EE:FF".to_owned()) && all.contains(&"airplay-settings".to_owned()));
         // Remove from Group only for a window in one.
         assert!(all.contains(&"ungroup".to_owned()));
         let mut alone = Vec::new();

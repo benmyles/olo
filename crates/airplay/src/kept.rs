@@ -31,7 +31,7 @@ impl Kept {
 }
 
 pub fn path() -> PathBuf {
-    olo_xdg::state_dir().join("airplay/pairings.json")
+    olo_protocol::airplay::pairings_path()
 }
 
 pub fn all() -> Vec<Kept> {

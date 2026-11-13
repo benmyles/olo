@@ -35,6 +35,23 @@ use wayland_protocols::{
     wp::linux_dmabuf::zv1::client::{zwp_linux_buffer_params_v1, zwp_linux_dmabuf_v1},
 };
 
+/// Olo's own Wayland protocol (protocols/): a workspace as a capture
+/// source, and a source fitted to a size.
+#[allow(non_upper_case_globals, non_camel_case_types, unused_imports, dead_code, missing_docs, clippy::all)]
+pub mod protocol {
+    use wayland_client::{self, protocol::*};
+    use wayland_protocols::ext::image_capture_source::v1::client::*;
+    pub mod __interfaces {
+        use wayland_client::{backend as wayland_backend, protocol::__interfaces::*};
+        use wayland_protocols::ext::image_capture_source::v1::client::__interfaces::*;
+        wayland_scanner::generate_interfaces!("protocols/olo-image-capture-source-v1.xml");
+    }
+    use self::__interfaces::*;
+    wayland_scanner::generate_client_code!("protocols/olo-image-capture-source-v1.xml");
+}
+
+use protocol::olo_image_capture_source_manager_v1::OloImageCaptureSourceManagerV1;
+
 /// One frame: its size and its rows (BGRx or BGRA, as app_server gave).
 pub struct Picture {
     pub width: u32,
@@ -66,6 +83,9 @@ struct State {
     stopped: bool,
     frame: Option<Result<(), String>>,
     cursor: CursorState,
+    /// The session whose events count (another's, one just replaced by
+    /// `Capture::fit`, are let go).
+    session: Option<wayland_client::backend::ObjectId>,
 }
 
 /// The cursor session's (`Capture::follow_cursor`): where the pointer is
@@ -206,6 +226,14 @@ pub struct Capture {
     /// What it captures, kept for a cursor session on it.
     source: ext_image_capture_source_v1::ExtImageCaptureSourceV1,
     copier: ext_image_copy_capture_manager_v1::ExtImageCopyCaptureManagerV1,
+    /// Whether the pointer is drawn in.
+    paint_cursors: bool,
+    /// Olo's own sources (None: an app_server without them), and the
+    /// fitted source frames come from (`fit`).
+    olo_sources: Option<OloImageCaptureSourceManagerV1>,
+    fitted: Option<ext_image_capture_source_v1::ExtImageCaptureSourceV1>,
+    /// What it was asked to capture (`again`).
+    asked: Source,
     seat: Option<wl_seat::WlSeat>,
     /// The pointer followed apart (`follow_cursor`).
     following: Option<Following>,
@@ -225,6 +253,10 @@ pub enum Source {
     /// display (an agent screen's `wayland-9`): shared into a call from
     /// the person's display.
     Display(String),
+    /// Workspace `index` (from 0) of the output with this name (the
+    /// first if None): what it shows while it shows there, and that
+    /// workspace's windows as they are while it shows another.
+    Workspace { output: Option<String>, index: u32 },
 }
 
 impl Capture {
@@ -239,7 +271,9 @@ impl Capture {
     /// Screen's `wayland-9`; None: `WAYLAND_DISPLAY`'s).
     pub fn on(display: Option<&str>, source: &Source, cursor: bool) -> Result<Capture, String> {
         if let Source::Display(other) = source {
-            return Self::on(Some(other), &Source::Output(None), cursor);
+            let mut c = Self::on(Some(other), &Source::Output(None), cursor)?;
+            c.asked = source.clone();
+            return Ok(c);
         }
         let conn = connect(display).map_err(|e| format!("can't reach app_server: {e}"))?;
         let (globals, mut queue) = registry_queue_init::<State>(&conn).map_err(|e| e.to_string())?;
@@ -249,21 +283,31 @@ impl Capture {
         let dmabuf: Option<zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1> = globals.bind(&qh, 3..=3, ()).ok();
         let seat: Option<wl_seat::WlSeat> = globals.bind(&qh, 1..=7, ()).ok();
         let copier: ext_image_copy_capture_manager_v1::ExtImageCopyCaptureManagerV1 = globals.bind(&qh, 1..=1, ()).map_err(|_| "app_server offers no ext-image-copy-capture".to_owned())?;
+        let olo_sources: Option<OloImageCaptureSourceManagerV1> = globals.bind(&qh, 1..=1, ()).ok();
+        // The output named (the first if None), its names come with its
+        // first events.
+        let output_named = |state: &mut State, queue: &mut EventQueue<State>, name: &Option<String>| -> Result<(wl_output::WlOutput, String), String> {
+            for g in globals.contents().clone_list().iter().filter(|g| g.interface == "wl_output") {
+                let o: wl_output::WlOutput = globals.registry().bind(g.name, g.version.min(4), &qh, ());
+                state.outputs.push((o, String::new()));
+            }
+            queue.roundtrip(state).map_err(|e| e.to_string())?;
+            match name {
+                Some(n) => state.outputs.iter().find(|(_, o)| o == n).cloned().ok_or_else(|| format!("no output {n}")),
+                None => state.outputs.first().cloned().ok_or_else(|| "no outputs".to_owned()),
+            }
+        };
         let (image_source, name) = match source {
             Source::Output(name) => {
                 let sources: ext_output_image_capture_source_manager_v1::ExtOutputImageCaptureSourceManagerV1 =
                     globals.bind(&qh, 1..=1, ()).map_err(|_| "app_server offers no output capture (ext-image-capture-source)".to_owned())?;
-                for g in globals.contents().clone_list().iter().filter(|g| g.interface == "wl_output") {
-                    let o: wl_output::WlOutput = globals.registry().bind(g.name, g.version.min(4), &qh, ());
-                    state.outputs.push((o, String::new()));
-                }
-                // The outputs' names come with their first events.
-                queue.roundtrip(&mut state).map_err(|e| e.to_string())?;
-                let (output, name) = match name {
-                    Some(n) => state.outputs.iter().find(|(_, o)| o == n).cloned().ok_or_else(|| format!("no output {n}"))?,
-                    None => state.outputs.first().cloned().ok_or("no outputs")?,
-                };
+                let (output, name) = output_named(&mut state, &mut queue, name)?;
                 (sources.create_source(&output, &qh, ()), name)
+            }
+            Source::Workspace { output, index } => {
+                let sources = olo_sources.as_ref().ok_or("app_server offers no workspace capture (olo-image-capture-source)")?;
+                let (output, name) = output_named(&mut state, &mut queue, output)?;
+                (sources.create_workspace_source(&output, *index, &qh, ()), name)
             }
             Source::Display(_) => unreachable!("taken above"),
             Source::Window { id, app_id, title } => {
@@ -281,13 +325,19 @@ impl Capture {
                     .or_else(|| state.toplevels.iter().find(|t| t.app_id == *app_id && t.title == *title))
                     .ok_or_else(|| format!("no window {id}"))?;
                 let made = sources.create_source(&found.handle, &qh, ());
-                let name = found.identifier.clone();
+                let (name, chosen) = (found.identifier.clone(), found.handle.clone());
                 list.stop();
+                // Its handle kept, to follow its title (`again`); the
+                // others' let go, their changes nothing to this.
+                for t in state.toplevels.iter().filter(|t| t.handle != chosen) {
+                    t.handle.destroy();
+                }
+                state.toplevels.retain(|t| t.handle == chosen);
                 (made, name)
             }
         };
-        let session =
-            copier.create_session(&image_source, if cursor { ext_image_copy_capture_manager_v1::Options::PaintCursors } else { ext_image_copy_capture_manager_v1::Options::empty() }, &qh, ());
+        let session = copier.create_session(&image_source, options(cursor), &qh, ());
+        state.session = Some(wayland_client::Proxy::id(&session));
         while !state.constraints_done && !state.stopped {
             queue.blocking_dispatch(&mut state).map_err(|e| e.to_string())?;
         }
@@ -325,9 +375,62 @@ impl Capture {
             lend_last: None,
             source: image_source,
             copier,
+            paint_cursors: cursor,
+            olo_sources,
+            fitted: None,
+            asked: source.clone(),
             seat,
             following: None,
         })
+    }
+
+    /// What to capture again once app_server is back (it went: a reload,
+    /// an upgrade): the display or workspace by its display's name; a
+    /// window by its app and its title as it is now (it comes back with
+    /// another id, and its old one may be another window's then).
+    pub fn again(&self) -> Source {
+        match &self.asked {
+            Source::Output(_) => Source::Output(Some(self.name.clone())),
+            Source::Workspace { index, .. } => Source::Workspace { output: Some(self.name.clone()), index: *index },
+            Source::Window { app_id, title, .. } => {
+                let (app_id, title) = self.state.toplevels.first().map_or((app_id.clone(), title.clone()), |t| (t.app_id.clone(), t.title.clone()));
+                // (No window is numbered 0: found by its app and title.)
+                Source::Window { id: 0, app_id, title }
+            }
+            display => display.clone(),
+        }
+    }
+
+    /// Frames made smaller by app_server as it draws them, to fit at most
+    /// `width` × `height` (its shape kept, each side even; never larger:
+    /// Olo's fitted source), in place of the source's as they are: what a
+    /// video sender would otherwise shrink itself, frame by frame. False,
+    /// nothing changed, from an app_server that can't. Before frames are
+    /// asked for or lent.
+    pub fn fit(&mut self, width: u32, height: u32) -> Result<bool, String> {
+        let Some(sources) = self.olo_sources.as_ref() else { return Ok(false) };
+        if self.frame.is_some() || self.lending.is_some() {
+            return Err("fit before frames are asked for".into());
+        }
+        let qh = self.queue.handle();
+        let fitted = sources.create_fitted_source(&self.source, width, height, &qh, ());
+        let session = self.copier.create_session(&fitted, options(self.paint_cursors), &qh, ());
+        self.session.destroy();
+        self.session = session;
+        self.state.session = Some(wayland_client::Proxy::id(&self.session));
+        self.state.constraints_done = false;
+        while !self.state.constraints_done && !self.state.stopped {
+            self.queue.blocking_dispatch(&mut self.state).map_err(|e| e.to_string())?;
+        }
+        if let Some(old) = self.fitted.replace(fitted) {
+            old.destroy();
+        }
+        // (A buffer of the new size for the first frame.)
+        if let Some((old, _, _)) = self.buffer.take() {
+            old.destroy();
+        }
+        (self.fresh, self.filled) = (true, false);
+        Ok(!self.state.stopped)
     }
 
     /// Follow the pointer apart from the picture (a cursor session: the
@@ -783,6 +886,11 @@ impl Capture {
     }
 }
 
+/// A session's options: the pointer drawn in, or not.
+fn options(cursor: bool) -> ext_image_copy_capture_manager_v1::Options {
+    if cursor { ext_image_copy_capture_manager_v1::Options::PaintCursors } else { ext_image_copy_capture_manager_v1::Options::empty() }
+}
+
 /// A shared-memory buffer of `w`×`h` in `format`, and its memory.
 fn shm(shm: &wl_shm::WlShm, qh: &QueueHandle<State>, w: u32, h: u32, format: wl_shm::Format) -> Result<(wl_buffer::WlBuffer, memmap2::MmapMut), String> {
     let stride = w * 4;
@@ -881,7 +989,10 @@ impl Dispatch<ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1, ()> fo
 }
 
 impl Dispatch<session_v1::ExtImageCopyCaptureSessionV1, ()> for State {
-    fn event(state: &mut Self, _: &session_v1::ExtImageCopyCaptureSessionV1, event: session_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(state: &mut Self, session: &session_v1::ExtImageCopyCaptureSessionV1, event: session_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        if state.session.as_ref().is_some_and(|s| *s != wayland_client::Proxy::id(session)) {
+            return;
+        }
         match event {
             // (A new set of constraints starts with the size.)
             session_v1::Event::BufferSize { width, height } => {
@@ -976,6 +1087,7 @@ ignore!(
     zwp_linux_buffer_params_v1::ZwpLinuxBufferParamsV1,
     ext_output_image_capture_source_manager_v1::ExtOutputImageCaptureSourceManagerV1,
     ext_foreign_toplevel_image_capture_source_manager_v1::ExtForeignToplevelImageCaptureSourceManagerV1,
+    OloImageCaptureSourceManagerV1,
     ext_image_capture_source_v1::ExtImageCaptureSourceV1,
     ext_image_copy_capture_manager_v1::ExtImageCopyCaptureManagerV1,
     wl_seat::WlSeat,

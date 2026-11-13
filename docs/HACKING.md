@@ -1219,6 +1219,35 @@ group where it shows, `GroupWindow`; a grouped window's whole group
 too) use it. An app with tabs of its own uses it on its tabs' and
 groups' menus.
 
+### Show on AirPlay and Play On (`Menu::airplay`, `olo_kit::airplay`)
+
+Wherever something can go to a television, its menu has it (Ben,
+2026-11-12: "integrated airplay from relevant app menus and by right
+clicking the window title / deskbar row / workspace etc."): Play On ▸
+where a film is at hand, Show on AirPlay ▸ where a window or a screen
+is. `Menu::airplay(title, paired, prefix)` builds it: each AirPlay
+receiver paired with, by name, then AirPlay Settings… (Preferences ▸
+AirPlay, to pair with another), with a greyed "No Receivers Paired"
+above it when there are none. `olo_kit::airplay::paired()` is the list
+to give it, read once and then followed (inotify), so a menu built
+each time a window draws costs nothing more and a pairing made in
+Preferences shows at the next draw; it never asks the network. The
+items' commands are `prefix` and `airplay-on:KEY` (the receiver's id,
+or its name if it announced none) or `airplay-settings`
+(`olo_protocol::airplay::menu_command` reads them), and
+`olo_kit::airplay::play_from_menu(command, file)` or
+`show_from_menu(command, &Shown::…)` does what one says: a process of
+its own (`olo-airplay play` or `show`, with `--notify`, so a receiver
+that won't is said in a notification), shown in Deskbar's tray while
+it goes, outliving the window that asked. Where it is now: Viewer's
+File menu for a film, Tracker's menu for a film (its windows and the
+desktop), a window's tab menu, Deskbar's app rows (one window: the
+receivers; several: each window's own), Deskbar's workspace headings
+(right button: that workspace, live though its display shows
+another), the Agent Screens app's Screen menu (one running screen
+chosen) and Deskbar's agent screens item (right button). An app with
+something to send uses the same.
+
 ### Ad-hoc popup menus (`menu::context_menu`, `menu::popup`)
 
 A context menu is `menu::context_menu(cx, menu, position,
@@ -7345,7 +7374,8 @@ probe says "disconnected" before the kernel gives up on the link).
 ## Each display on its own GPU (app_server udev.rs; Preferences ▸ Display ▸ Graphics)
 
 Each display is composed by the GPU it is wired to (`render_surface`:
-the surface's own render node), so no frame crosses between GPUs: on a
+the surface's own render node), so no display's frame crosses between
+GPUs (a window's picture may: below): on a
 hybrid laptop the built-in panel and the USB-C ports are Intel's and
 the HDMI port NVIDIA's, which wakes only while a display is plugged in
 there. Composing the panel on NVIDIA's had every frame copied to
@@ -7354,10 +7384,64 @@ Intel can import: `--probe-gpus` says which formats each GPU can render
 and import linear), 11 ms a frame: 30 Hz (Ben: "we should just use
 whatever the native one is they need to use"). Only a display device
 that can't render (a USB adapter) has its frames composed on the
-primary GPU (the one the computer started on) and copied, at 8-bit
-(`composed_elsewhere`). Windows' buffers from another GPU are imported as
-they come. Display's Graphics box (two or more GPUs, `Request::Gpus`:
-`olo_system::gpus`) says what each drives.
+primary GPU (the one the computer started on) and copied. A second
+GPU's own displays are composed at 8-bit (10-bit there is untried).
+Windows' buffers from another GPU are copied to the one that shows
+them (below). Display's Graphics box (two or more GPUs,
+`Request::Gpus`: `olo_system::gpus`) says what each drives.
+
+### A window drawn by one GPU, shown by another
+
+Apps draw with the primary GPU (Intel's), so a window on the HDMI
+display has its picture made by one GPU and composed by another, and
+the two share no layout of a buffer but the plain one, linear (NVIDIA
+can't draw into linear and can read it; Intel does both:
+`--probe-gpus`). So at each commit the GPU that drew the window copies
+its picture into a linear buffer of its own (Smithay's
+`dma_shadow_copy`, kept for the window and drawn into again where the
+commit's damage says), and the composing GPU reads that as a texture.
+
+**NVIDIA's driver reads a linear buffer from another GPU as if each
+row were the picture's width rounded down to 8 pixels** (32 bytes),
+whatever row length the import names: a window 964 pixels wide came
+out sheared four pixels a row, and so did every window whose width
+wasn't a multiple of 8 (Ben, 2026-11-12, a television on HDMI: "all
+messed up / scrambled"; driver 615.71). So:
+
+- **The copy has rows of a whole multiple of 16 pixels**
+  (`SHARED_ROW`): it's made that much wider than the picture, the
+  picture drawn at its left, and its last column repeated into the
+  spare ones so that a window shown scaled blends at its right edge
+  with itself. The composing GPU's texture is wider than the window,
+  and is sampled over the window's part (texture coordinates are by
+  the texture's own size).
+- **A linear buffer NVIDIA would misread is never read by it directly**
+  (`GlesRenderer::reads_rows_of`, `linear_rows`: 32 bytes for NVIDIA's
+  driver, by its vendor string; any length for others): the import
+  refuses it, and a buffer a client said was for that GPU
+  (`set_sampling_device`) is then read on the GPU that can and copied
+  as any other (`import_on_src_node`).
+- **Apps aren't offered linear buffers for such a GPU's displays**
+  (`get_surface_dmabuf_feedback`): an app drawing with Intel's would
+  take the offer (linear is the one layout both know), draw slower for
+  it, and gain nothing.
+
+**`olo-app-server --probe-shared [FOLDER [SIZES]]`** is how it was
+found and is how to check it, with no display plugged in: for each pair
+of GPUs, a pattern is drawn into a buffer as an app's would be (in the
+drawing GPU's own layout; linear; linear and said to be for the
+composing GPU), imported by the other GPU's renderer as a window's
+buffer is, drawn there, read back and compared pixel by pixel; then
+another picture drawn into the same buffer, and then a part of it,
+imported again into the texture the frame before made with only that
+part said to have changed. It says "the same, all three pictures" or
+what differs, and keeps the pictures in FOLDER. It opens the devices
+unprivileged and touches no display (safe beside a running desktop; a
+sleeping GPU is awake while it runs). On the ThinkPad: before the fix,
+right at 1920 and 1408 wide, wrong at 964 and 333, and over 91 widths
+right exactly at the multiples of 8; after, 175 tries the same. **What
+it can't see** is the frame NVIDIA sends to the display (a display
+needs to be plugged in for that): the fix wasn't seen on a television.
 
 ### Variable refresh rate (VRR)
 
@@ -7942,16 +8026,21 @@ Screens' Export Video uses too).
   isn't one of its values set first, or filled by the driver). The JSON
   says which encoded it (`encoder`). A window that changes size is cut
   or shown on black at the size it began.
-- **AV1 on Intel's and AMD's GPUs** (`--encoder vaapi`, Preferences ▸
-  GPUs offering "Intel Graphics (AV1 only, VA-API)" where its driver
-  encodes AV1; `olo_vaapi`, crates/vaapi): Fedora's own VA-API drivers
-  (iHD, Mesa) leave out the patented codecs, so on the ThinkPad's Intel
-  GPU (xe) they encode AV1 profile 0 and VP9 but no H.264 or HEVC: a
-  recording through VA-API is AV1 (asked for anything else, an error;
-  `--encoder auto` takes it for AV1 when there's no NVIDIA encoder, and
-  first while the computer is on its battery, so the NVIDIA GPU isn't
-  woken for it: `olo_video::on_battery`, a battery and no mains or USB-C
-  supply online, a mouse's battery not counting).
+- **AV1 and H.264 on Intel's and AMD's GPUs** (`--encoder vaapi`,
+  Preferences ▸ GPUs offering "Intel Graphics (VA-API)" where its
+  driver encodes both, "(AV1 only, VA-API)" or "(H.264 only, VA-API)"
+  where one, with a Format of H.264 or AV1 when it's chosen;
+  `olo_vaapi`, crates/vaapi): Fedora's own VA-API drivers (iHD, Mesa)
+  leave out the patented codecs, so with them the ThinkPad's Intel GPU
+  (xe) encodes AV1 profile 0 and VP9 but no H.264 or HEVC; RPM Fusion's
+  iHD (`intel-media-driver`, in `/usr/lib64/dri-nonfree`, which libva
+  reads first; Olo Doctor installs it for decoding) encodes H.264 too.
+  A recording through VA-API is H.264 where the driver makes it and the
+  Format says H.264, else AV1 (HEVC asked for, an error; `--encoder
+  auto` takes it when there's no NVIDIA encoder, and first while the
+  computer is on its battery, so the NVIDIA GPU isn't woken for it:
+  `olo_video::on_battery`, a battery and no mains or USB-C supply
+  online, a mouse's battery not counting).
   libva is opened at run time (`libva.so.2`, `libva-drm.so.2`; vendor/
   va-sys holds bindgen's declarations from libva 2.24's headers), the
   render node is the first whose driver offers `VAProfileAV1Profile0`
@@ -7975,6 +8064,37 @@ Screens' Export Video uses too).
   260 KB at 45.5; a frame in about 8.5 ms, conversion and upload
   included, a key frame up to 25. `vaapi_frames_come_back` encodes eight
   frames and decodes them back (each within 38 dB of what was sent).
+  **H.264** (`olo_vaapi::H264`, `h264.rs`), as FFmpeg's `h264_vaapi`
+  and Chrome's encoder: High profile (Main or Constrained Baseline where
+  that's all the driver has) through the low-power entrypoint first
+  (Intel's from Gen12 on have only that: VDEnc), a key (IDR) frame
+  every two seconds then P frames each from the one before, picture
+  order from frame_num (type 2) so nothing is reordered and each frame
+  is shown as it's decoded. The sequence and picture parameter sets are
+  written here (`sps`, `pps`: exp-Golomb, emulation prevention bytes
+  put in, handed over as packed headers with `has_emulation_bytes`):
+  BT.709 in limited range and a VUI whose bitstream restriction says no
+  reordering and one frame buffered (a receiver shows each at once);
+  the driver writes the slices. The rate is a quality with a cap where
+  the driver has one (QVBR: `Rate::Quality`, `olo_vaapi::h264::QUALITY`
+  18, at most twice `olo_video::bitrate`, never a frame skipped), as
+  NVENC's `targetQuality` with `maxBitRate`, else that quality's
+  quantizer throughout (CQP). Measured (`vaapi_h264_sizes`, three
+  seconds typed into at 30, decoded back by OpenH264, luma PSNR): a
+  1280 × 800 screen (a Terminal on a photograph) 199 KB at 46.7 dB, where
+  NVENC's H.264 at its quality 20 kept 46.4 dB in 322 KB and a constant
+  quantizer of 18 here 46.5 in 238 KB; the driver's fastest setting
+  (TU7) 1.2 ms a frame quicker but 45.9 dB in 220 KB, so its default is
+  kept; a 2560 × 1600 screen 403 KB at 48.2 dB in 8.1 ms a frame, where
+  AV1 here took 458 KB at 48.6 in 9.0. A stream's colour is read from its
+  SPS where a reader converts it (`olo_vaapi::h264::colour`; the GIF
+  maker's `read.rs` converts BT.709 as BT.709, and keeps OpenH264's
+  BT.601 for a stream that says nothing, as OpenH264's and NVENC's
+  don't). `vaapi_h264_frames_come_back` encodes eight frames from
+  memory and from linear and tiled dmabufs and decodes them back with
+  OpenH264 (51.6 dB); `frames_come_out_as_said` checks a key frame is
+  our SPS, our PPS and an IDR slice and the rest a P slice each;
+  `parameter_sets_read_back` reads ours with cros-codecs' parser.
 - **Frames that never leave the GPU** (VA-API on the GPU app_server
   draws with: the Intel GPU on the ThinkPad, as on battery or `--encoder
   vaapi`): a display, or a window not on a background, is captured into
@@ -7984,7 +8104,8 @@ Screens' Export Video uses too).
   copied), each imported once as a VA surface (DRM PRIME 2, kept by its
   key) and made NV12 straight into the input surface by VA-API's video
   processor (BT.709, full range in, limited out; `Av1::encode_prime`,
-  `olo_video::Encoder::encode_prime`), the buffer given back as soon as
+  `H264::encode_prime`, both through `Input`; `olo_video::Encoder::
+  encode_prime`), the buffer given back as soon as
   that's done. Only in layouts VA-API reads (`olo_vaapi::imports`:
   linear, and Intel's X, Y and 4 tiles without compression; libva can't
   be asked, and Xe2's compressed 4, 0x0100000000000010, imports without
@@ -8121,7 +8242,8 @@ Screens' Export Video uses too).
   averages, the crop's shape kept, never larger, even), at most so many
   pictures a second, as finely as asked (`Quality`: the recording's own,
   or about 60% and 35% of its bits: NVENC's quality level up 4 and 8,
-  OpenH264's bitrate, VA-API's AV1 quantizer up 30 and 60), its sound
+  OpenH264's bitrate, VA-API's AV1 quantizer up 30 and 60 and its H.264
+  quality up 4 and 8), its sound
   kept or left out, its marks kept where their moments are (`marks_of`
   reads `chpl`). The pictures come in order from `read::Video` (the
   reader `gif.rs` had, now shared: `each_picture` gives each with when
@@ -8611,9 +8733,11 @@ its request, for the app's Cancel and for holding an upgrade off.
   whole even behind another tab of its group, at that screen's scale;
   its size is the client's, and the stream is offered again when it
   resizes. One on another workspace, or hidden, is drawn with the frame
-  of the display it's parked on, from what it showed last (it draws
-  nothing new while unseen), so the share picker's thumbnail shows it
-  and a share of it starts (`capture_windows_on`, `capture_window`).
+  of the display it's parked on, from what it last drew, so the share
+  picker's thumbnail shows it and a share of it starts
+  (`capture_windows_on`, `capture_window`); while a session on it is
+  open it's sent its frame callbacks with that display's frames, as if
+  shown (`followed_parked`, `send_frames`), so it goes on drawing.
   Nothing about shares is looked at in a frame unless one waits for a
   frame (`Captures::pending`). Closing it stops its sessions, and the share ends two
   seconds later (`Capture::stopped`): app_server stops every session as
@@ -8622,8 +8746,59 @@ its request, for the app's Cancel and for holding an upgrade off.
   carries on, its dmabufs made known to the new connection. While
   the screen is locked a window's share pauses on its last frame. Both
   protocols are kept from outside programs (wlproxy's list doesn't have
-  them). A window share reconnects after a reload by its id, or one with
-  the same app id and title (windows come back with new ids).
+  them). A share reconnects after a reload as `Capture::again` says: a
+  screen or workspace by its display's name, a window by its app id and
+  its title as it last was (windows come back with new ids, numbered
+  from 1 again, so its old id may be another window's).
+- **Olo's own sources**: Olo's own protocol, its first
+  (`crates/capture/protocols/olo-image-capture-source-v1.xml`, bound
+  with `wayland-scanner` on both sides: `capture::protocol`,
+  `olo_capture::protocol`), whose `olo_image_capture_source_manager_v1`
+  makes two kinds of `ext_image_capture_source_v1` that the standard
+  managers don't (`capture::OloSources`).
+- **Workspaces** (`capture::Target::Workspace`; Show on AirPlay's
+  workspace): `create_workspace_source(source, wl_output, workspace)`
+  is one of a display's workspaces (from 0; one past the last is the
+  last),
+  captured as an output is (`olo_capture::Source::Workspace`), at the
+  display's size. While the display shows that workspace (or in Rescue,
+  or locked) its picture is the display's, as a capture of the display
+  is; while it shows another, it's that workspace's windows, front
+  first, each where it was left, drawn from what it last drew
+  (`render::workspace_picture`): under the display's upper layer
+  surfaces (Deskbar, banners; never a recording's controls, no menus),
+  over its lower ones (the desktop), over the wallpaper and the
+  workspace's colour, with the picture-in-picture windows (on every
+  workspace) in front; no pointer (it isn't there). The desk is gathered
+  only when a frame waits (`AnvilState::capture_desk`), and the parked
+  windows are sent their frames with the display's while the session
+  is open, so a film playing on a workspace not shown plays on as it
+  shows. Only Olo's own programs see the global (on the direct socket,
+  where wlproxy, passing on only the globals it knows, never shows it).
+  To look at what a source gives, `tsession run NAME …/examples/grab
+  [--display NAME] [--window ID | --workspace N] [--fit WxH] [--frames
+  K] OUT` (`cargo build --release -p olo-capture --example grab`)
+  writes its frames (fitted, with --fit) as OUT-1.ppm, OUT-2.ppm, …
+  (each after the first once what's captured changed). Measured
+  (release, a headless 1920 × 1200 session
+  at 2×, a Terminal printing ten lines a second on workspace 2 shown on
+  the test receiver): app_server 1.4% of a core, 72 wakeups a second
+  while the display shows workspace 1, 2.2% (93) with workspace 2 shown
+  there, as it then draws the display too; nothing shown, 0.0% and 4.
+- **Fitted** (`capture::FittedSource`; every AirPlay showing):
+  `create_fitted_source(source, of, width, height)` is what source `of`
+  shows, drawn smaller where it's larger than width × height, its shape
+  kept and each side even (`capture::fit_within`), never larger: the
+  picture's elements wrapped to be drawn scaled by the GPU as the
+  session's frame is (`capture::Fitting`, as a mirror's frame is,
+  `fit_picture`), so a video sender gets frames at the size it encodes
+  and shrinks nothing itself. The client asks with `Capture::fit(w, h)`
+  before its first frame (false from an app_server without it). Shown
+  on the test receiver, a Terminal printing nonstop on a 1920 × 1200 2×
+  display at 57 frames a second (release, `tools/dev/cost`): olo-airplay
+  32.4% of a core before (its encoder thread 23.8%, the resize 3.3 ms a
+  frame), 13.7% fitted (6.0%), app_server 6.3% then 6.8%; capture to
+  sent 8.1 ms then 4.7 ms (95th percentile 10.5 then 6.6).
 
 - **Zoom**: its own app offers Wayland sharing only when its
   `XDG_CURRENT_DESKTOP` is GNOME, so Olo starts it so
@@ -9467,8 +9642,13 @@ gauge menu use it; with a copy running, both are handed to it).
 Sending to an AirPlay receiver (Ben, 2026-11-12: a window, a
 workspace, an agent screen or a video file, "high quality video and
 audio"). docs/TODO.md has the plan and what a sender that isn't
-Apple's may and may not do. So far, the first three parts: **finding
-the receivers**, **pairing with one** and **playing a film on one**.
+Apple's may and may not do. So far: **finding the receivers**,
+**pairing with one**, **playing a film on one**, **showing a window, a
+display or an agent screen on one live**, with its sound, and **the
+way to all of it from the desktop** (Preferences ▸ AirPlay, Show on
+AirPlay and Play On in the menus, Deskbar's tray). A workspace that
+isn't the one showing is still to come (app_server can capture a
+display or a window, not yet a workspace).
 
 - `olo_airplay::receivers(wait)` asks the networks the computer is on
   who offers `_airplay._tcp`, by mDNS, itself (`dns`: a question
@@ -9580,6 +9760,149 @@ the receivers**, **pairing with one** and **playing a film on one**.
   session): Deskbar 0.0% of a core and no frames, as with none; the
   play itself 0.0% of a core, one wakeup a second (its keep-alive).
 
+**Showing a screen live** (`mirror`, `olo-airplay show`) is AirPlay's
+mirroring as Apple's senders do it today, as doubletake (an LGPL
+sender for Linux that works with today's Apple TVs) has found the
+wire; written from what it says, none of its code. On a connection
+proved by pair-verify everything is keyed from that connection's
+secret, so there is **no FairPlay** (whose code is Apple's, or taken
+from Apple's, and LGPL where it's open).
+
+- `Mirror::begin(at, credentials, features, version, options)`: GET
+  /info (the receiver's screen: `Screen`, its size and rate), SETUP of
+  the session alone (the older form, the session with its sound, where
+  that's refused), the event channel at once, a sound stream (type 96:
+  ALAC, a key of ours in `shk`), a picture stream (110: H.264), RECORD,
+  the volume. Time is told one of two ways (`clock`): NTP answers on
+  our timing port, or, on receivers that keep a PTP clock of their own
+  (feature 41, AirPlay 354.54.6 and later), stamps on that clock's
+  timeline, laid against ours from each answer's
+  `X-Apple-RequestReceivedTimestamp` (never moving back).
+- Pictures (`video`) go on the data connection: a 128-byte header each,
+  the decoder's configuration (avcC) plain when the parameter sets
+  change, each access unit's slices length-prefixed and sealed with
+  ChaCha20-Poly1305 (a key from the pairing's secret,
+  `DataStream-Salt<id>`), stamped with its capture's moment plus a
+  lead (`lead()`: 40 ms wired, 75 on Wi-Fi; `--lead MS`); a heartbeat
+  a second. `show(annex_b, size, captured)` sends one.
+- Sound (`sound`): 352-sample ALAC frames stored as they are (nothing
+  to compress, nothing lost), RTP over UDP sealed with our key, its RTP
+  time following the samples as they come (a slow average of how far
+  the captured sound runs from the clock), a sync with the first
+  packet and every second, packets the receiver missed sent again when
+  asked (the last 512 kept). `sound(samples, captured)` sends them.
+- `/feedback` every two seconds keeps it; it ends when the receiver
+  closes the data connection or the event channel (`ended()`).
+- `olo-airplay show RECEIVER [--window ID | --display NAME |
+  --workspace N [--display NAME] | --screen AGENT-SCREEN] [--title
+  TITLE] [--no-sound] [--fps N] [--encoder auto|vaapi|nvidia|cpu] [--lead MS]
+  [--json] [--trace] [--notify]`: frames come from app_server's capture
+  (`olo_capture`, as the recorder's do; a workspace, from 1, through
+  Olo's workspace source, "Screen sharing" ▸ Workspaces, so it shows
+  live though its display shows another), asked for at most at the rate the receiver takes and given only
+  when something changed, so a still screen sends nothing but
+  heartbeats. The newest waits for the encoder's worker (one that
+  comes while the last is encoded takes its place, its buffer used
+  again). Frames come the receiver's size (`Screen::fit`, its shape
+  kept: a 2× display made smaller), drawn so by app_server on the GPU
+  (a fitted source, `Capture::fit`, "Screen sharing" ▸ Fitted; from an
+  older app_server, shrunk by the worker on the processor,
+  `fast_image_resize`, the fourth byte not weighed as alpha); the
+  worker encodes each (H.264, a picture out for each in, no B-frames:
+  `encoder_for`, VA-API's on the GPU app_server draws on where its
+  driver makes H.264, the Intel GPU's here, else NVENC at up to 60 a
+  second where it opens, else OpenH264 at 30) and sends it. Frames for
+  an encoder on the GPU that draws them are lent to it as they come
+  (`Capture::lend_frames`, as the recorder's, "Frames that never leave
+  the GPU": made NV12 by its video processor, never copied through the
+  processor), when they are the receiver's size (fitted); the encoder
+  tells the capture's thread which GPU it's on (`prime`), and one that
+  refuses a lent frame sets that back to none, so the rest are copied.
+  After a reload the new capture lends again. The sound plays on the
+  receiver and not here, as macOS does it (`olo-airplay/sound.rs`): the
+  showing makes an output of its own in process ("Den (AirPlay)", a
+  PipeWire stream of class `Audio/Sink`, `olo-airplay.PID`, 44.1 kHz
+  stereo, a cycle every 21 ms at most, `node.always-process` so the
+  receiver's sound has no gaps, the lowest priority so nothing goes to
+  it by itself) and moves to it the sound that goes with what's shown
+  (`olo_system::audio::Streams`: the sound server's streams listed,
+  followed as they come, moved by name): a window's, its app's streams
+  (its process's and its children's, by `/proc`: a browser plays from
+  a helper; app_server says the window's process); an agent screen's,
+  its programs' (`OLO_SCREEN` in their environment); a display's or a
+  workspace's, every stream on the default output (one the person sent
+  elsewhere, a call on headphones, stays). The default output isn't
+  changed (it's the person's, kept across logins). The samples are
+  multiplied by the default output's volume (its cubic level; none
+  muted), so the volume keys still set how loud it is. Paused, or
+  ended, each stream goes back where it was: its output, or the
+  default again for one that followed it (PipeWire then follows the
+  default again). Killed, its output goes with the process and
+  WirePlumber sends what was on it to the default: nothing is left
+  playing nowhere. After a reload the window's process is asked again
+  (`TvSound::follow`); when PipeWire goes, the output is made again.
+  Where it can't be made (no PipeWire; a window whose process isn't
+  known), the computer's sound as it plays here
+  (`recording::Capture::start_as`, the default output's monitor),
+  heard here and on the receiver. While paused, the receiver hears
+  silence and keeps the last picture.
+  SIGUSR1 pauses, SIGUSR2 goes on, SIGTERM stops, as for a play; it is
+  said in the same folder (`Playing { live: true }`, "showing" or
+  "paused"), so Deskbar's tray, `olo-airplay playing|pause|resume|stop`
+  and agents see it as they see a play. It outlives app_server's
+  reload or upgrade: a capture app_server ends is the showing's end
+  only if the connection outlives it two seconds (what was shown went,
+  a window closed); else it waits for app_server, trying every quarter
+  second for half a minute, and captures again what `Capture::again`
+  says (fitted again), the receiver keeping the last picture meanwhile.
+  `--trace` also says each
+  120 frames how long the resize, the encoding and capture-to-sent took.
+- Measured (release, a headless 1920 × 1200 session at 2× shown on the
+  test receiver, `tools/dev/cost`): a still screen 1.2% of a core
+  (2.0% with the sound's 10 ms chunks), paused 1.2%; a Terminal
+  printing nonstop, 57 frames a second of 1728 × 1080, 13.7% with
+  frames fitted by app_server (32.4% shrinking them here: 3.3 ms a
+  frame), NVENC 3.3 ms mostly waiting on the GPU, the capture's copy
+  about 6%; 4.7 ms from capture to sent (6.6 at the 95th percentile).
+  Frames lent to the Intel GPU's H.264 (RPM Fusion's iHD 26.3.5),
+  measured against NVENC in the same session: olo-airplay 5.0% of a
+  core (its encoder thread 4.4%, the capture's 0.6%) against 11.9%
+  (6.6% and 5.3%: the copy out of the GPU), app_server 5.7% against
+  5.6%, the NVIDIA GPU left asleep; 7.3 ms from capture to sent (7.5–9.0
+  at the 95th percentile) against 4.7 (5.4–5.8): the video processor's
+  conversion 1.7 ms and the encoding 5.6, well inside the 40 ms the
+  receiver shows behind. 15.2 Mbit/s for the Terminal printing
+  nonstop at 60 a second; a still screen 0.1% of a core, 7 wakeups a
+  second (app_server 0.1%, 4). `--encoder nvidia` takes NVENC.
+  The sound on its own output against the old monitor recording, a
+  window of Viewer shown with a tone playing (a private PipeWire,
+  `tools/dev/cost` on olo-airplay, pipewire and pipewire-pulse
+  together): 2.3% of a core and 361 wakeups a second against 4.4% and
+  1062; nothing playing, 0.7% and 97 against 3.0% and 853. (Asking
+  for 10 ms cycles, as the monitor recording did, makes the whole
+  graph run every 5.3 ms: 188 wakeups a second here alone.)
+
+**From the desktop.** Preferences ▸ AirPlay (`apps/preferences/src/
+airplay.rs`) lists the receivers that answer (asked when the panel
+shows and by Search, on a thread, never on a timer) and those paired
+with that didn't ("Not found"), each with its kind and how it is
+(Paired, Not paired, Showing its code, Showing, Playing, Paused). Pair…
+asks the receiver to show its code and opens a Pairing box whose field
+has the keyboard: the code typed, Return (or Pair) pairs. A paired one
+has Show Display (this computer's display on it, `Shown::Display`),
+Check (pair-verify: "Den knows this computer.") and Forget; one
+showing or playing has Stop. The pairings file and the plays' folder
+are followed, so a pairing made by `olo-airplay pair` or a showing
+started from a menu shows at once. Show on AirPlay and Play On are in
+the menus (the kit's `Menu::airplay`, above), each running
+`olo_protocol::airplay::show_on` or `play_on`
+(`show_command`: `olo-airplay show --notify --on KEY --window ID
+--title TITLE`, and the others; a workspace heading's menu in Deskbar
+has Show on AirPlay ▸ for that workspace, `Shown::Workspace`, run as
+`--workspace N --display NAME`); Deskbar's tray says a showing as it
+says a play (its title, "on" the receiver, Pause, Stop) with AirPlay
+Preferences… under them.
+
 **Tests answer their own questions**: a responder of the test's own on
 the loopback (`Via { to, from }` says where a question goes; `Via::lan`
 is mDNS's group from every network), and a receiver of the test's own
@@ -9592,20 +9915,30 @@ session, asks the time, speaks on the event channel, fetches the film
 from the address it's given, a part and then the whole, and "plays"
 it for as long as the test says, in the newer way or only the older;
 it can refuse, never come for the film, or leave; it keeps what it
-was asked and what it fetched). To look at what shows while a film
-plays, `cargo run --release -p olo-airplay --example fake-receiver`
-is that receiver run by hand (the loopback only; it prints where to
-pair with it and where to play to it), with `OLO_AIRPLAY_DIR` (where
-plays are said, in place of the runtime folder's, which is the
-person's too) and `XDG_STATE_HOME` (the pairings) set to folders of
-the test's own for the commands and for the Deskbar looked at. No
+was asked and what it fetched; a screen mirrored on it is opened with
+the pairing's key and the sound with ours, and kept: `mirror::fake`).
+To look at what shows while a film plays, `cargo run --release -p
+olo-airplay --example fake-receiver [SECONDS [NAME…]]` is that
+receiver run by hand (the loopback only; it prints where to pair with
+it and where to play to it; `OLO_AIRPLAY_KEEP=DIR` writes each showing
+it was sent as an MP4 and a WAV, with how many pictures and how far
+apart), with `OLO_AIRPLAY_DIR` (where plays are said, in place of the
+runtime folder's, which is the person's too), `XDG_STATE_HOME` (the
+pairings) and `PULSE_SERVER` (`olo-fakesound`'s, whose monitor is a
+660 Hz tone) set to the test's own. `tsession start` hands its
+environment to the whole session, so a session started with them has
+its Deskbar, its window menus and what they start keep to the test's
+receivers and folders; `tsession run` gives a program only what's
+said on its line. No
 test asks the network it happens to be on, and nothing is ever sent to a real receiver by a test:
 pairing with one and playing to one are the person's to do, at the
-receiver. **So neither the pairing nor the play has yet met a real
-receiver**: the pairing follows HomeKit's published protocol and the
-paths and headers pyatv uses with Apple TVs, the play follows pyatv's
-two ways, and the first `olo-airplay pair` and `olo-airplay play
---trace` at a real screen are their real test (a receiver that
+receiver. **So neither the pairing, the play nor the showing has yet
+met a real receiver**: the pairing follows HomeKit's published
+protocol and the paths and headers pyatv uses with Apple TVs, the play
+follows pyatv's two ways, the showing doubletake's account of the
+wire, and the first `olo-airplay pair` (or Preferences ▸ AirPlay's
+Pair…), `olo-airplay play --trace` and `olo-airplay show --trace` at a
+real screen are their real test (a receiver that
 doesn't sign its key as HomeKit says is paired with all the same, and
 said: `Paired::signed`).
 

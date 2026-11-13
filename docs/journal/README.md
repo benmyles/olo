@@ -5,6 +5,54 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-12
 
+### AirPlay's sound on the television only
+
+*21:56* — A showing makes an output of its own (Den (AirPlay)), listed with the others while it's shown, and moves to it the sound that goes with what's shown: a window's app's, an agent screen's programs', a display's the computer's. It plays on the television and not on the speakers; back where it was when paused or stopped.
+
+![AirPlay's sound on the television only](2026-11-12/215603-airplay-s-sound-on-the-television-only.png)
+
+### Recordings and AirPlay in H.264 on the Intel GPU
+
+*21:06* — Preferences ▸ Power ▸ Graphics: where the Intel GPU's driver encodes H.264 (RPM Fusion's iHD, as here), Encode on says Intel Graphics (VA-API), not "AV1 only", and offers H.264 or AV1, measured: a 2560 × 1600 screen in about 8 ms a frame as H.264, 9 as AV1, about the same size. The same encoder shows a screen on AirPlay from frames lent by app_server, never copied: 5.0% of a core for a busy 1728 × 1080 Terminal at 60 a second, where NVENC with copies took 11.9%.
+
+![Recordings and AirPlay in H.264 on the Intel GPU](2026-11-12/210626-recordings-and-airplay-in-h-264-on-the-intel-gpu.png)
+
+### A workspace not shown, as AirPlay gets it
+
+*18:48* — What a share of workspace 2 is while the display shows workspace 1 (the desktop alone): its Terminal where it was left, under Deskbar, over the desktop and the wallpaper, drawing on (a clock printing ten lines a second kept going in the frames that followed).
+
+![A workspace not shown, as AirPlay gets it](2026-11-12/184825-a-workspace-not-shown-as-airplay-gets-it.png)
+
+### Show a workspace on AirPlay from its Deskbar heading
+
+*18:48* — A workspace heading's menu in Deskbar has Show on AirPlay ▸ (the receivers paired with, then AirPlay Settings…): that workspace is shown live on the television though its display shows another, its windows where they were left, drawing on (Olo's own workspace capture source).
+
+![Show a workspace on AirPlay from its Deskbar heading](2026-11-12/184823-show-a-workspace-on-airplay-from-its-deskbar-hea.png)
+
+### Deskbar's tray says a screen shown on AirPlay
+
+*18:03* — A window shown live on a receiver: its title, the receiver, Pause and Stop, and AirPlay Preferences…
+
+![Deskbar's tray says a screen shown on AirPlay](2026-11-12/180343-deskbar-s-tray-says-a-screen-shown-on-airplay.png)
+
+### Play On in Viewer's File menu
+
+*18:03* — A film in Viewer (and in Tracker's menu) has Play On ▸: the receiver fetches and plays the file itself.
+
+![Play On in Viewer's File menu](2026-11-12/180343-play-on-in-viewer-s-file-menu.png)
+
+### Show on AirPlay in a window's tab menu
+
+*18:03* — Right-click a window's tab: Show on AirPlay ▸ lists the receivers paired with (the kit's Menu::airplay); the same is in Deskbar's app rows, Agent Screens and Deskbar's agent screens item.
+
+![Show on AirPlay in a window's tab menu](2026-11-12/180343-show-on-airplay-in-a-window-s-tab-menu.png)
+
+### Preferences ▸ AirPlay: pairing with a receiver
+
+*18:03* — A new panel: the AirPlay receivers on the network and those paired with, each with its kind and how it is; Pair… asks one to show its code and the field takes the keyboard. Check, Forget, Show Display and Stop for one paired with. Test receivers on the loopback.
+
+![Preferences ▸ AirPlay: pairing with a receiver](2026-11-12/180342-preferences-airplay-pairing-with-a-receiver.png)
+
 ### Olo Coder: forms survive an upgrade
 
 *17:35* — After app_server restarts in place, Settings comes back at its section and a dialog with what was typed in it; the chosen task shows in full under the outline, and an in-progress task's mark is half filled on the right.

@@ -7,6 +7,7 @@ static POSSIBLE_BACKENDS: &[&str] = &[
     "--headless [WxH] : Render offscreen with no display (automated UI tests).",
     #[cfg(feature = "udev")]
     "--probe-gpus : List the DRM devices and what each can do (safe beside a running desktop).",
+    "--probe-shared [FOLDER [SIZES]] : Draw a window's picture on each GPU and compose it on each other, as for a display on another GPU; say what differs, keeping the pictures in FOLDER; SIZES as 964x507,333x217 (safe beside a running desktop).",
     "--plymouth-theme DIR [--scale S] : Make Olo's boot splash (a Plymouth theme, plymouth.rs) in DIR.",
 ];
 
@@ -77,6 +78,8 @@ fn main() {
         }
         #[cfg(feature = "udev")]
         Some("--probe-gpus") => app_server::udev::probe_gpus(),
+        #[cfg(feature = "udev")]
+        Some("--probe-shared") => app_server::udev::probe_shared(::std::env::args().nth(2).as_deref(), ::std::env::args().nth(3).as_deref()),
         #[cfg(feature = "udev")]
         Some("--headless") => {
             let size = ::std::env::args().nth(2);

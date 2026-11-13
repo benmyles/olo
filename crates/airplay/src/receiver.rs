@@ -51,6 +51,37 @@ pub struct Receiver {
 }
 
 impl Receiver {
+    /// Where it's reached: its IPv4 address where it has one (a film's
+    /// address is given to it with ours in it, and a link-local IPv6 one
+    /// means nothing over there).
+    pub fn at(&self) -> Option<std::net::SocketAddr> {
+        let addr = self.addrs.iter().find(|a| a.is_ipv4()).or(self.addrs.first())?;
+        Some(std::net::SocketAddr::new(*addr, self.port))
+    }
+
+    /// A receiver of a test's own, at an address: an Apple TV by what it
+    /// says, taking a film and wanting to be paired with first.
+    pub fn of_a_test(name: &str, at: std::net::SocketAddr) -> Receiver {
+        // (An id from its name, so two of them are two.)
+        let n = name.bytes().fold(0u32, |n, b| n.wrapping_mul(31).wrapping_add(u32::from(b)));
+        Receiver {
+            name: name.to_owned(),
+            kind: Kind::AppleTv,
+            model: "AppleTV14,1".into(),
+            host: "localhost".into(),
+            port: at.port(),
+            addrs: vec![at.ip()],
+            device_id: format!("02:00:{:02X}:{:02X}:{:02X}:{:02X}", n >> 24, n >> 16 & 0xff, n >> 8 & 0xff, n & 0xff),
+            features: 1 | 1 << 7 | 1 << 9,
+            flags: 1 << 9,
+            version: "870.14.1".into(),
+            plays_video: true,
+            shows_screens: true,
+            plays_sound: true,
+            asks_to_pair: true,
+        }
+    }
+
     pub fn of(s: &Service) -> Receiver {
         let get = |k: &str| s.txt.get(k).cloned().unwrap_or_default();
         let (features, flags) = (features(&get("features")), hex(&get("flags")) as u32);

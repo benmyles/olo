@@ -194,6 +194,26 @@ impl Menu {
         m.item("New Agent Screen", format!("{prefix}{}", olo_kit_base::moving::NEW_SCREEN_COMMAND))
     }
 
+    /// Show on AirPlay ▸ or Play On ▸ (titled `title`): each AirPlay
+    /// receiver paired with, by name (`olo_protocol::airplay::paired`: a
+    /// small file, no network asked), then AirPlay Settings… to pair with
+    /// another (greyed "No Receivers Paired" above it when there are
+    /// none). Commands are `prefix` and `airplay::MENU_COMMAND` with the
+    /// receiver's key, or `airplay::SETTINGS_COMMAND`, as
+    /// `airplay::menu_command` reads them; the app runs `show_on` or
+    /// `play_on` with the key, or `open_settings`.
+    pub fn airplay(title: &str, paired: &[olo_protocol::airplay::Paired], prefix: &str) -> Menu {
+        use olo_protocol::airplay::{MENU_COMMAND, SETTINGS_COMMAND};
+        let mut m = Menu::new(title);
+        if paired.is_empty() {
+            m = m.item("No Receivers Paired", "none").enabled(false);
+        }
+        for p in paired {
+            m = m.item(p.name.clone(), format!("{prefix}{MENU_COMMAND}{}", p.key()));
+        }
+        m.separator().item("AirPlay Settings…", format!("{prefix}{SETTINGS_COMMAND}"))
+    }
+
     /// Move to Window ▸ (titled `title`): every tabbed app's tab, and tab
     /// group, offers its app's other windows by their titles, in
     /// alphabetical order, each item's command what `others` gives with
@@ -1363,6 +1383,32 @@ mod tests {
         assert_eq!(items, [("Build".into(), "to:b".into(), true), ("notes 2".into(), "to:2".into(), true), ("Notes 10".into(), "to:10".into(), true)]);
         let none = Menu::move_to_window("Move Group to Window", std::iter::empty());
         assert!(matches!(&none.items[..], [MenuItem::Action(a)] if a.label.to_string() == "No Other Windows" && !a.enabled));
+    }
+
+    /// Show on AirPlay ▸: each receiver paired with, its command the
+    /// receiver's key (its id, or its name without one), then the way to
+    /// pair another; none, a greyed line above it.
+    #[test]
+    fn airplay_lists_the_receivers_paired_with() {
+        use olo_protocol::airplay::{Paired, menu_command};
+        let said = |m: &Menu| -> Vec<(String, String, bool)> {
+            m.items
+                .iter()
+                .filter_map(|i| match i {
+                    MenuItem::Action(a) => Some((a.label.to_string(), a.command.clone(), a.enabled)),
+                    _ => None,
+                })
+                .collect()
+        };
+        let paired = [Paired { device_id: "AA:BB:CC:DD:EE:FF".into(), name: "Front Room".into() }, Paired { device_id: String::new(), name: "Den".into() }];
+        let m = Menu::airplay("Show on AirPlay", &paired, "w:");
+        assert_eq!(
+            said(&m),
+            [("Front Room".into(), "w:airplay-on:AA:BB:CC:DD:EE:FF".into(), true), ("Den".into(), "w:airplay-on:Den".into(), true), ("AirPlay Settings…".into(), "w:airplay-settings".into(), true)]
+        );
+        assert_eq!(menu_command(&said(&m)[0].1["w:".len()..]), Some(Some("AA:BB:CC:DD:EE:FF")));
+        let none = said(&Menu::airplay("Play On", &[], ""));
+        assert_eq!(none, [("No Receivers Paired".into(), "none".into(), false), ("AirPlay Settings…".into(), "airplay-settings".into(), true)]);
     }
 
     #[test]

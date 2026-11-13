@@ -1099,6 +1099,11 @@ impl Viewer {
     }
 
     fn run(&mut self, command: &str, cx: &mut Cx<Self>) {
+        if let [one] = self.chosen().as_slice()
+            && olo_kit::airplay::show_from_menu(command, &olo_protocol::airplay::Shown::Screen { name: one.clone() })
+        {
+            return;
+        }
         match command {
             "new" => self.new_screen(cx),
             "shares-everywhere" => crate::shares::open_everywhere(&mut self.shares_everywhere),
@@ -1239,6 +1244,13 @@ impl Viewer {
         let count = |f: &dyn Fn(&String) -> bool| chosen.iter().filter(|n| f(n)).count();
         let (stop, archive, unarchive, delete) = (count(&running), count(&|n| !running(n) && !archived(n)), count(&archived), count(&|n| !running(n)));
         let say = |verb: &str, k: usize, dots: &str| if k > 1 { format!("{verb} {k} Screens{dots}") } else { format!("{verb} Screen{dots}") };
+        // One running, shown live on a television (Ben, 2026-11-12:
+        // "broadcast/stream … an agent screen … to an airplay compatible
+        // display"): `olo-airplay show --screen`.
+        let menu = match chosen.as_slice() {
+            [one] if running(one) => menu.submenu(Menu::airplay("Show on AirPlay", &olo_kit::airplay::paired(), "")).separator(),
+            _ => menu,
+        };
         menu.item("Rename…", "rename")
             .enabled(chosen.len() == 1)
             .separator()
