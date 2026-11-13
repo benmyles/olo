@@ -4012,5 +4012,11 @@
   "title": "Preferences \u25b8 Sound: as tall as its devices",
   "caption": "The Sound panel's height was a 466-point minimum sized for the most devices a machine shows, so with fewer (or no sound server) the window kept empty space below. Now its height is what its devices need.",
   "image": "2026-11-13/015022-preferences-sound-as-tall-as-its-devices.png"
+ },
+ {
+  "time": "2026-11-13T02:43:19",
+  "title": "Tracker list view: Edit Name shows its field",
+  "caption": "Before (top): F2 in the list view blanked the name and showed no field, so typing went nowhere. After: the rename field sits over the Name cell, inside the column (a longer name scrolls in it); clicks in it place the caret. The kit's ColumnListView::over_cell.",
+  "image": "2026-11-13/024319-tracker-list-view-edit-name-shows-its-field.png"
  }
 ]

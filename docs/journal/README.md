@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-13
 
+### Tracker list view: Edit Name shows its field
+
+*02:43* — Before (top): F2 in the list view blanked the name and showed no field, so typing went nowhere. After: the rename field sits over the Name cell, inside the column (a longer name scrolls in it); clicks in it place the caret. The kit's ColumnListView::over_cell.
+
+![Tracker list view: Edit Name shows its field](2026-11-13/024319-tracker-list-view-edit-name-shows-its-field.png)
+
 ### Preferences ▸ Sound: as tall as its devices
 
 *01:50* — The Sound panel's height was a 466-point minimum sized for the most devices a machine shows, so with fewer (or no sound server) the window kept empty space below. Now its height is what its devices need.
