@@ -201,9 +201,21 @@ pub fn definitions() -> Vec<ToolDef> {
         ),
         def(
             "set_todos",
-            "Replace the tracked todo list. Each todo has id, text, status (pending, in_progress, done, blocked), and evidence.",
-            json!({"todos":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"},"status":{"type":"string"},"evidence":{"type":"string"}},"required":["id","text","status"]}}}),
+            "Replace the task list the person sees and edits beside the conversation. It is a tree: give a subtask the id of its parent (parent), up to 6 deep; order is kept. Each task has a short id, text (a few words a person can scan), status (pending, in_progress, done, blocked) and evidence (required when you mark one done: what shows it). Keep tasks the person added or changed unless they're truly obsolete.",
+            json!({"todos":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"},"status":{"type":"string","enum":["pending","in_progress","done","blocked"]},"evidence":{"type":"string"},"parent":{"type":"string","description":"The id of the task this is part of; omit at the top level."}},"required":["id","text","status"]}}}),
             &["todos"],
+        ),
+        def(
+            "update_todos",
+            "Update tasks already in the list: status (in_progress when you start one, done with evidence when it's finished, blocked when stuck), text or evidence. Cheaper than set_todos; use set_todos to add, remove or reorganise tasks.",
+            json!({"changes":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"status":{"type":"string","enum":["pending","in_progress","done","blocked"]},"text":{"type":"string"},"evidence":{"type":"string"}},"required":["id"]}}}),
+            &["changes"],
+        ),
+        def(
+            "report_status",
+            "Tell the person where things stand, shown prominently as you work: what you've recently done, what you're doing now and what's up next. A few plain words per item (no file dumps), most important first, at most 6 each. Send one whenever that changes: after each step, before a long action, and when you finish.",
+            json!({"done":{"type":"array","items":{"type":"string"}},"doing":{"type":"array","items":{"type":"string"}},"next":{"type":"array","items":{"type":"string"}}}),
+            &["done", "doing", "next"],
         ),
         def(
             "update_spec",
@@ -364,7 +376,22 @@ pub fn readonly(name: &str) -> bool {
     )
 }
 pub fn internal(name: &str) -> bool {
-    matches!(name, "set_terminal_title" | "pause_work" | "present" | "set_todos" | "update_spec" | "remember" | "complete_goal" | "update_criterion" | "spawn_agent" | "message_agent" | "stop_agent")
+    matches!(
+        name,
+        "set_terminal_title"
+            | "pause_work"
+            | "present"
+            | "set_todos"
+            | "update_todos"
+            | "report_status"
+            | "update_spec"
+            | "remember"
+            | "complete_goal"
+            | "update_criterion"
+            | "spawn_agent"
+            | "message_agent"
+            | "stop_agent"
+    )
 }
 pub fn file_tool(s: &Session, call: &ToolCall, store: &Arc<Mutex<Store>>, cancel: &CancellationToken) -> Result<Value> {
     let a = &call.arguments;

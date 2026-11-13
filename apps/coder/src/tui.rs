@@ -169,12 +169,22 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) -> Result<
         panel.resume();
     }
     let mut picker: Option<Picker> = None;
+    let mut tasks: Option<crate::tui_tasks::Panel> = None;
     let mut links: Option<Vec<(String, String)>> = None;
     let mut selected_link = 0;
     loop {
         terminal.draw(|f| {
             let rows = Layout::vertical([Constraint::Length(2), Constraint::Min(4), Constraint::Length(4), Constraint::Length(1)]).split(f.area());
-            f.render_widget(Paragraph::new(panes[active].view.status()).style(Style::default().fg(Color::Yellow)), rows[0]);
+            {
+                // What the session is doing, and where the work stands.
+                let view = &panes[active].view;
+                let running = view.session.as_ref().is_some_and(|s| matches!(s.status, olo_coder_core::Status::Running | olo_coder_core::Status::Approval));
+                let mut top = vec![Line::styled(view.status(), Style::default().fg(Color::Yellow))];
+                if let Some(report) = view.session.as_ref().and_then(|s| s.report.as_ref()) {
+                    top.push(crate::tui_tasks::now_line(report, running));
+                }
+                f.render_widget(Paragraph::new(top), rows[0]);
+            }
             let count = panes.len();
             let areas = if count < 3 {
                 Layout::horizontal(vec![Constraint::Ratio(1, count as u32); count]).split(rows[1]).to_vec()
@@ -207,12 +217,15 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) -> Result<
                 Paragraph::new(input.get(top..).unwrap_or_default().join("\n")).block(Block::bordered().title(format!("{} · {} pending · Alt+M delivery", mode_name(pane.delivery), pending))),
                 rows[2],
             );
-            f.render_widget(Paragraph::new("Enter send · Ctrl+O settings · Ctrl+P sessions · Ctrl+L links · Alt+O open actions · Ctrl+T tile · Esc stop · Ctrl+D detach"), rows[3]);
+            f.render_widget(Paragraph::new("Enter send · Alt+T tasks · Ctrl+O settings · Ctrl+P sessions · Ctrl+L links · Alt+O open actions · Ctrl+T tile · Esc stop · Ctrl+D detach"), rows[3]);
             if rows[2].width > 2 && rows[2].height > 2 {
                 f.set_cursor_position((rows[2].x + 1 + col as u16, rows[2].y + 1 + (row - top) as u16));
             }
             if let Some(settings) = &settings {
                 settings.draw(f, overlay(f.area()));
+            } else if let Some(t) = &tasks {
+                let s = pane.view.session.as_ref();
+                t.draw(f, overlay(f.area()), s.map_or(&[][..], |s| &s.todos), s.and_then(|s| s.report.as_ref()));
             } else if let Some(p) = &picker {
                 let area = overlay(f.area());
                 f.render_widget(Clear, area);
@@ -293,6 +306,18 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) -> Result<
                         } else if panel.key(k, &panes[active].view, &panes[active].client) {
                             settings = None;
                         }
+                        continue;
+                    }
+                    if let Some(panel) = &mut tasks {
+                        let p = &panes[active];
+                        let todos = p.view.session.as_ref().map(|s| s.todos.clone()).unwrap_or_default();
+                        if panel.key(k, &todos, &p.view.id, &p.client) {
+                            tasks = None;
+                        }
+                        continue;
+                    }
+                    if k.code == KeyCode::Char('t') && k.modifiers.contains(KeyModifiers::ALT) {
+                        tasks = Some(Default::default());
                         continue;
                     }
                     if let Some(p) = &mut picker {

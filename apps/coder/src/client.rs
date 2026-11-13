@@ -281,6 +281,8 @@ fn follow(dir: &std::path::Path, session: &str, filter: SessionFilter, callback:
                                     | "spec_accepted"
                                     | "goal"
                                     | "todos"
+                                    | "todos_edited"
+                                    | "status_report"
                                     | "goal_complete"
                                     | "compacted"
                                     | "compaction_applied"
@@ -838,6 +840,9 @@ pub fn read_link(link: &str) -> Option<String> {
 fn command_result(command: &Command, value: &Value) -> Result<String> {
     let mut links = String::new();
     match command {
+        // Shown where they're made (the task list), and noted in the
+        // conversation by their event.
+        Command::EditTodos { .. } | Command::Todos { .. } => return Ok(String::new()),
         Command::Integrations { .. } => {
             if let Some(url) = value["authorization_url"].as_str() {
                 links.push_str(&format!("Sign-in started. [Open authorization page]({url}).\n\n"));

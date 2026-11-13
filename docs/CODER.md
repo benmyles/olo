@@ -208,6 +208,31 @@ with a `filter` streams catalog snapshots after changes, without idle polling.
 An inbox accepts at most 128 messages and 4 MB of pending text; each message is
 limited to 1 MB. These bounds protect other sessions from an unattended sender.
 
+## Tasks and status
+
+The task list beside the conversation (the window's Tasks tab; Alt+T in the
+terminal) is a tree: tasks with subtasks, each `pending`, `in_progress`,
+`done` or `blocked`. The agent makes it with `set_todos` (a subtask names
+its `parent`) and keeps it current with `update_todos`; marking a task done
+needs evidence. Coder reminds it, with the session state of each request,
+when it has worked 8 actions without updating the list, or 3 without
+making one, and when 5 have gone by without a `report_status`: what it has
+recently done, what it is doing now and what is next, shown on the Now card
+(and the terminal's Now/Next line).
+
+The person edits the list as freely: click a task's mark to move it on
+(to do, in progress, done), or use its menu (any status, Add Subtask,
+Rename, Move Up/Down, Indent, Outdent, Delete); type in Add a task to add
+one beside the chosen task. In the terminal: Space, `b` (blocked), Enter
+(rename), `a`, `s` (subtask), Tab and Shift-Tab, Alt-Up/Down, Delete.
+Each edit is an `edit_todos` command applied to the list as it is then,
+so the agent's updates and the person's never undo each other; the agent
+is told what changed at its next step, and the conversation notes it.
+
+```text
+/api {"op":"edit_todos","session":"ID","edits":[{"edit":"add","text":"Write docs","parent":"t1"},{"edit":"change","id":"t2","status":"done"},{"edit":"move","id":"t3","parent":null,"before":"t1"},{"edit":"remove","id":"t4"}]}
+```
+
 ## Specs, goals and children
 
 Specifications carry a revision, text, acceptance criteria and an accepted

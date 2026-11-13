@@ -341,6 +341,64 @@ pub struct Todo {
     pub status: String,
     #[serde(default)]
     pub evidence: String,
+    /// The task this one is part of: the list is a tree, each task after
+    /// its parent with its subtasks right after it (`crate::todos`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<String>,
+}
+/// One of the person's edits to the task list, applied to it as it is
+/// when it arrives (`crate::todos::apply`).
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(tag = "edit", rename_all = "snake_case")]
+pub enum TodoEdit {
+    /// A new task: under `parent` (at the top if none), after the sibling
+    /// `after` or before the sibling `before` (at the end if neither).
+    Add {
+        text: String,
+        #[serde(default)]
+        parent: Option<String>,
+        #[serde(default)]
+        after: Option<String>,
+        #[serde(default)]
+        before: Option<String>,
+        #[serde(default)]
+        status: Option<String>,
+    },
+    /// The task and its subtasks.
+    Remove { id: String },
+    /// Its wording or status.
+    Change {
+        id: String,
+        #[serde(default)]
+        text: Option<String>,
+        #[serde(default)]
+        status: Option<String>,
+    },
+    /// The task and its subtasks, put under `parent`, after `after` or
+    /// before `before` (at the end if neither).
+    Move {
+        id: String,
+        #[serde(default)]
+        parent: Option<String>,
+        #[serde(default)]
+        after: Option<String>,
+        #[serde(default)]
+        before: Option<String>,
+    },
+}
+/// What the agent said it has done, is doing and will do next: a few
+/// words each, shown to the person as it works.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema, Default, PartialEq)]
+pub struct StatusReport {
+    #[serde(default)]
+    pub done: Vec<String>,
+    #[serde(default)]
+    pub doing: Vec<String>,
+    #[serde(default)]
+    pub next: Vec<String>,
+    /// When (seconds since the epoch), and after how many actions.
+    pub time: u64,
+    pub sequence: u64,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Goal {
@@ -484,6 +542,17 @@ pub struct Session {
     pub interrupt_requested: bool,
     #[serde(default)]
     pub continue_requested: bool,
+    /// The agent's latest report_status.
+    #[serde(default)]
+    pub report: Option<StatusReport>,
+    /// `tool_sequence` when the agent last updated the task list (so
+    /// Coder can remind it when that was long ago).
+    #[serde(default)]
+    pub todos_sequence: u64,
+    /// What the agent is to be told at its next step (the person's edits
+    /// to the task list), said once and then part of the conversation.
+    #[serde(default)]
+    pub notices: Vec<String>,
 }
 impl Session {
     pub fn new(workspace: PathBuf, config: Config) -> Self {
@@ -523,6 +592,9 @@ impl Session {
             tool_sequence: 0,
             interrupt_requested: false,
             continue_requested: false,
+            report: None,
+            todos_sequence: 0,
+            notices: vec![],
         }
     }
     pub fn flush_images(&mut self) {
@@ -735,6 +807,12 @@ pub enum Command {
     Todos {
         session: String,
         todos: Vec<Todo>,
+    },
+    /// The person's edits to the task list, applied in order to it as it
+    /// is; the agent is told what changed.
+    EditTodos {
+        session: String,
+        edits: Vec<TodoEdit>,
     },
     Spec {
         session: String,

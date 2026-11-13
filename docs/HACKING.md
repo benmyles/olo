@@ -2866,7 +2866,9 @@ it.
   `link_at` for a link under the pointer)
   and is its `EditorHost` (`editor(key, cx, f)` hands both over;
   `edited`, `context_menu`, `text_moved`, `open_link`: the command key
-  and a click on a link opens it, the caret left where it was, and with
+  and a click on a link opens it (in a read-only editor a plain click
+  does, and the pointer over a link is a hand, worked out as it moves
+  and drawn again only when that changes), the caret left where it was, and with
   the command key held the pointer over a link is a hand, drawn again
   as the key goes down or up in the focused editor, which is the only
   place a modifier's change reaches, and as the pointer moves with it
@@ -15985,14 +15987,29 @@ Checks: `cargo test -p olo-coder-core`; opt-in live tests in `tests/live.rs`
 
 ### Shared rich text and Olo Coder
 
-`olo_ui::rich_text::Renderer` converts Markdown into a semantic `Text` document
-on a worker thread, with cached `olo-syntax` code captures. `Text` contains no
-GPUI fonts or theme colours and can be shared with terminal clients. The
-`rich_text::Document` adapter implements the shared editor document using the
-current palette and typography; only visible paragraphs need layout. See
-`apps/coder/src/transcript.rs` for a selectable, read-only document host and
-`apps/coder/src/client.rs` for the worker presentation pipeline. Markdown links
-are explicit host actions; HTML and terminal escape controls are not executed.
+`apps/coder/src/rich.rs` turns Markdown into a semantic `Text` (runs, and
+paragraphs each with their `Kind` and conversation `Block`: what the person
+said, an action's row and its output, a note in its tone, quiet lines) on
+a worker, with cached `olo-syntax` captures and no fonts or colours, so the
+window and the terminal set the same document. `feed.rs` is the
+conversation as entries (each rendered once and kept); `gui/doc.rs` adapts
+it to the kit's read-only `editor::view`, `tui.rs` to Ratatui lines.
+Markdown links are explicit host actions (`olo-coder:toggle/ID` opens an
+action's output); HTML and terminal escapes are never executed.
+
+The task list is a tree kept as one pre-ordered list (`crates/coder/src/todos.rs`:
+each task after its parent, its subtasks right after it). The agent
+replaces it (`set_todos`) or updates statuses (`update_todos`), and reports
+where it stands (`report_status`: done, doing now, up next). The person's
+edits are `edit_todos` commands (add, change, move, remove), each applied
+to the list as it is when it arrives, so neither side's change is lost;
+what they did is told to the agent once, at its next step (`notices`).
+Each request's session state carries reminders when the list or the
+report is stale (`provider::reminders`, never stored in the
+conversation). The window shows the report on a card over the work pane
+(`gui/tasks.rs`) and the list as an outline in its Tasks tab (a click on a
+mark moves a task on, its menu does the rest); the terminal has the same
+in Alt+T (`tui_tasks.rs`) and a Now/Next line under its status.
 
 Olo Coder's Ratatui and native kit clients share `crates/coder` and one durable
 Unix-socket service. Its commands, provider-native reasoning and compaction,

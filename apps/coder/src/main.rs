@@ -7,6 +7,7 @@ mod options;
 mod rich;
 mod tui;
 mod tui_settings;
+mod tui_tasks;
 use anyhow::{Context, Result};
 use olo_coder_core::{Command, rpc};
 use std::{io::Write, path::PathBuf};

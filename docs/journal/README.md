@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-12
 
+### Olo Coder: tasks and where the work stands
+
+*17:24* — Coder's window on the Olo kits: the conversation with quiet action rows, the agent's Now card (done, doing now, up next) and the task list as an outline both the agent and the person edit (marks, folding, a menu per task).
+
+![Olo Coder: tasks and where the work stands](2026-11-12/172411-olo-coder-tasks-and-where-the-work-stands.png)
+
 ### Deskbar: a film playing on an AirPlay receiver
 
 *15:43* — While olo-airplay plays a film on a receiver, Deskbar's tray has a screen with a play mark on it (two bars while paused, a count when there are several). Its menu says what plays where, with Pause (or Resume) and Stop for each, and Stop All. The mark is placed in device pixels inside the screen's frame: centred at 1×, 1.25×, 1.5×, 1.75× and 2×. Tried against a receiver of the test's own, on the loopback.

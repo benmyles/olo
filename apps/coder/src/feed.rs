@@ -214,6 +214,23 @@ impl Feed {
             "user" => {
                 self.push(Item::User { text: text(&d["text"]), from: None });
             }
+            "todos_edited" => {
+                let said: Vec<&str> = d["said"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+                if !said.is_empty() {
+                    // Edits one after another make one note.
+                    let said = said.join("; ");
+                    if let Some(e) = self.entries.back_mut().filter(|e| matches!(&e.item, Item::Markdown { text, block: Block::Quiet } if text.starts_with(EDITED))) {
+                        if let Item::Markdown { text, .. } = &mut e.item {
+                            text.truncate(text.len() - 1);
+                            text.push_str(&format!("; {said}."));
+                        }
+                        e.rendered = None;
+                        self.generation += 1;
+                    } else {
+                        self.push(Item::Markdown { text: format!("{EDITED}{said}."), block: Block::Quiet });
+                    }
+                }
+            }
             "approval" => {
                 let call = &d["call"];
                 let id = text(&call["id"]);
@@ -344,20 +361,14 @@ impl Feed {
         if !failed {
             match name {
                 "set_todos" => {
+                    // The list itself is beside the conversation (and in the
+                    // terminal's Tasks); here, only that it was made.
                     let todos = output["todos"].as_array().cloned().unwrap_or_default();
                     let done = todos.iter().filter(|t| t["status"] == "done").count();
-                    let mut md = format!("**Plan** · {done} of {} done\n\n", todos.len());
-                    for t in &todos {
-                        let mark = match t["status"].as_str() {
-                            Some("done") => "x",
-                            _ => " ",
-                        };
-                        let active = if t["status"] == "in_progress" { " ← now" } else { "" };
-                        md.push_str(&format!("- [{mark}] {}{active}\n", one_line(t["text"].as_str().unwrap_or(""))));
-                    }
-                    self.push(Item::Markdown { text: md, block: Block::Body });
+                    self.push(Item::Markdown { text: format!("Task list · {done} of {} done", todos.len()), block: Block::Quiet });
                     return;
                 }
+                "update_todos" | "report_status" => return,
                 "complete_goal" => {
                     self.push_note(Tone::Success, "Goal reached", output["goal"]["evidence"].as_str().unwrap_or("Verified."));
                     return;
@@ -497,6 +508,9 @@ fn markdown(id: u64, item: &Item, flipped: &HashSet<u64>) -> (String, Block) {
         }
     }
 }
+
+/// How a note of the person's edits to the task list begins.
+const EDITED: &str = "You edited the task list: ";
 
 /// A new action's entry from its call.
 fn tool(call: &Value, time: u64) -> Tool {
@@ -829,9 +843,14 @@ mod tests {
         let mut r = rich::Renderer::default();
         f.event(&ev(1, "tool_started", json!({"call":{"id":"t","name":"set_todos","arguments":{}}})));
         f.event(&ev(2, "tool_result", json!({"call_id":"t","name":"set_todos","error":false,"output":{"todos":[{"text":"Write it","status":"done"},{"text":"Test it","status":"in_progress"}]}})));
+        f.event(&ev(3, "tool_started", json!({"call":{"id":"r","name":"report_status","arguments":{}}})));
+        f.event(&ev(4, "tool_result", json!({"call_id":"r","name":"report_status","error":false,"output":{"report":{"doing":["Testing"]}}})));
+        f.event(&ev(5, "todos_edited", json!({"said":["marked “Test it” done"]})));
+        f.event(&ev(6, "todos_edited", json!({"said":["added “Ship it”"]})));
         let doc = f.document(&mut r);
-        assert!(doc.text.contains("Plan · 1 of 2 done"), "{}", doc.text);
-        assert!(doc.text.contains("☑ Write it"));
+        assert!(doc.text.contains("You edited the task list: marked “Test it” done; added “Ship it”."), "edits in a row make one note: {}", doc.text);
+        assert!(doc.text.contains("Task list · 1 of 2 done"), "{}", doc.text);
+        assert!(!doc.text.contains("Testing"), "status reports are shown beside the conversation");
         assert!(!doc.paragraphs.iter().any(|p| matches!(p.block, Block::Tool(_))));
     }
     #[test]

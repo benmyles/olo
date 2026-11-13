@@ -14,6 +14,7 @@
 pub mod dialog;
 pub mod doc;
 pub mod settings;
+mod tasks;
 
 use crate::{
     client::{self, Action, Handle, Update, View as Shown},
@@ -59,6 +60,12 @@ pub enum Msg {
     OpenChange(usize),
     Run(String),
     Notice(String),
+    // The task list.
+    TaskAdd,
+    TaskEdit(Value),
+    TaskRename(usize),
+    TaskSubtask(usize),
+    TaskMenu(usize, Point<Pixels>),
 }
 
 pub struct Coder {
@@ -83,6 +90,15 @@ pub struct Coder {
     session_rows: Vec<Option<String>>,
     /// What the window last said in its status line, briefly.
     said: Option<String>,
+    // The task list: its rows as shown, which are chosen, which folded,
+    // where their marks were drawn, and the field that adds one.
+    tasks: ListModel,
+    task_rows: std::rc::Rc<Vec<tasks::Row>>,
+    folded: std::collections::HashSet<String>,
+    task_hits: tasks::SharedHits,
+    task_field: Child<TextField>,
+    /// Where the Context tab is scrolled to.
+    context_scroll: olo_kit::ScrollHandle,
 }
 
 impl Coder {
@@ -622,7 +638,7 @@ impl Coder {
         let activity = self.view.activity();
         // 1: waiting for the person; 2: stopped by an error.
         let tone: u8 = match s.map(|s| &s.status) {
-            Some(Status::Approval) => 1,
+            Some(Status::Approval | Status::Paused | Status::Interrupted) => 1,
             Some(Status::Failed) => 2,
             _ => 0,
         };
@@ -810,61 +826,21 @@ impl Coder {
 
     /// The work: the goal and plan, the repository's changes, the context.
     fn work(&mut self, cx: &mut Cx<Self>) -> Element {
-        let tabs: Vec<olo_kit::SharedString> =
-            vec!["Plan".into(), format!("Changes{}", if self.changes.is_empty() { String::new() } else { format!(" ({})", self.changes.len()) }).into(), "Context".into()];
+        let (open, total) = self.session().map_or((0, 0), |s| (s.todos.iter().filter(|t| t.status != "done").count(), s.todos.len()));
+        let tasks = if total == 0 { "Tasks".to_owned() } else { format!("Tasks ({open})") };
+        let changes = if self.changes.is_empty() { "Changes".to_owned() } else { format!("Changes ({})", self.changes.len()) };
+        let tabs: Vec<olo_kit::SharedString> = vec![tasks.into(), changes.into(), "Context".into()];
         let content = match self.tab {
             1 => self.changes_pane(cx),
             2 => self.context_pane(),
-            _ => self.plan_pane(),
+            _ => self.tasks_pane(cx),
         };
-        div().w(px(WORK_WIDTH)).h_full().flex_shrink_0().p(px(m::TIGHT)).child(TabView::new("work", tabs, self.tab).on_select(cx.msg_with(|i: &usize| Msg::Tab(*i))).child(content)).into_any_element()
-    }
-
-    fn plan_pane(&self) -> Element {
-        let Some(s) = self.session() else { return div().into_any_element() };
-        if s.goal.is_none() && s.todos.is_empty() && s.spec.text.is_empty() {
-            return div()
-                .flex()
-                .flex_col()
-                .gap(px(m::TIGHT))
-                .child(StringView::new("No plan yet").bold(true))
-                .child(StringView::new("The agent writes its plan here as it works. For work that spans days, set a goal: Agent ▸ Set Goal.").wrap(true).dim(true))
-                .into_any_element();
+        let mut pane = div().w(px(WORK_WIDTH)).h_full().flex_shrink_0().p(px(m::TIGHT)).flex().flex_col().gap(px(m::TIGHT));
+        // Where it stands, over everything else here.
+        if let Some(report) = self.session().and_then(|s| s.report.clone()) {
+            pane = pane.child(tasks::now_card(&report, self.running()));
         }
-        let mut col = div().flex().flex_col().gap(px(m::TIGHT));
-        if let Some(g) = &s.goal {
-            col = col.child(StringView::new("Goal").bold(true)).child(StringView::new(g.objective.clone()).wrap(true));
-            let status = match g.status.as_str() {
-                "complete" | "completed" | "done" => "Reached".to_owned(),
-                "active" | "" => "Working toward it".to_owned(),
-                other => other.to_owned(),
-            };
-            col = col.child(StringView::new(status).dim(true).small(true));
-        }
-        if !s.todos.is_empty() {
-            let done = s.todos.iter().filter(|t| t.status == "done").count();
-            col = col.child(div().h(px(m::TIGHT))).child(StatusBar::new(done as f32 / s.todos.len() as f32).label("Plan").trailing(format!("{done} of {}", s.todos.len())));
-            for t in &s.todos {
-                let mark = match t.status.as_str() {
-                    "done" => "☑",
-                    "in_progress" => "▸",
-                    _ => "☐",
-                };
-                col = col.child(StringView::new(format!("{mark}  {}", t.text)).wrap(true).dim(t.status == "done"));
-            }
-        }
-        if !s.spec.text.is_empty() {
-            let accepted = s.spec.accepted_revision == Some(s.spec.revision);
-            col = col
-                .child(div().h(px(m::TIGHT)))
-                .child(StringView::new(format!("Specification · revision {}", s.spec.revision)).bold(true))
-                .child(StringView::new(if accepted { "Accepted" } else { "Not accepted yet (Agent ▸ Accept Specification)" }).dim(true).small(true));
-            for c in &s.spec.criteria {
-                let met = matches!(c.status.as_str(), "done" | "met" | "passed");
-                col = col.child(StringView::new(format!("{}  {}", if met { "☑" } else { "☐" }, c.text)).wrap(true));
-            }
-        }
-        olo_kit::widgets::ScrollView::new(&olo_kit::ScrollHandle::new()).border(false).auto_hide(true).child(col.p(px(m::TIGHT))).into_any_element()
+        pane.child(div().flex_1().min_h_0().child(TabView::new("work", tabs, self.tab).on_select(cx.msg_with(|i: &usize| Msg::Tab(*i))).child(content))).into_any_element()
     }
 
     fn changes_pane(&mut self, cx: &mut Cx<Self>) -> Element {
@@ -933,11 +909,22 @@ impl Coder {
             let spent = s.usage.input + s.usage.output;
             col = col.child(div().h(px(m::TIGHT))).child(StatusBar::new((spent as f32 / budget as f32).min(1.0)).label("Budget").trailing(format!("{} of {}", n(spent), n(budget))));
         }
+        if !s.spec.text.is_empty() {
+            let accepted = s.spec.accepted_revision == Some(s.spec.revision);
+            col = col
+                .child(div().h(px(m::TIGHT)))
+                .child(StringView::new(format!("Specification · revision {}", s.spec.revision)).bold(true))
+                .child(StringView::new(if accepted { "Accepted" } else { "Not accepted yet (Agent ▸ Accept Specification)" }).dim(true).small(true));
+            for c in &s.spec.criteria {
+                let met = matches!(c.status.as_str(), "done" | "met" | "passed");
+                col = col.child(StringView::new(format!("{}  {}", if met { "☑" } else { "☐" }, c.text)).wrap(true));
+            }
+        }
         if !s.memory.trim().is_empty() {
             col = col.child(div().h(px(m::TIGHT))).child(StringView::new("Remembered").bold(true)).child(StringView::new(s.memory.trim().to_owned()).wrap(true).dim(true));
         }
         col = col.child(div().h(px(m::TIGHT))).child(StringView::new(format!("Session {}", s.id)).dim(true).small(true).cut(true));
-        olo_kit::widgets::ScrollView::new(&olo_kit::ScrollHandle::new()).border(false).auto_hide(true).child(col).into_any_element()
+        olo_kit::widgets::ScrollView::new(&self.context_scroll).border(false).auto_hide(true).child(col).into_any_element()
     }
 
     fn session_menu(&mut self, row: usize, at: Point<Pixels>, cx: &mut Cx<Self>) {
@@ -1044,6 +1031,11 @@ impl View for Coder {
                 return;
             }
             Msg::Notice(text) => self.said = Some(text),
+            Msg::TaskAdd => return self.add_task(cx),
+            Msg::TaskEdit(edit) => return self.edit_tasks(vec![edit]),
+            Msg::TaskRename(row) => return self.rename_task(row, cx),
+            Msg::TaskSubtask(row) => return self.add_subtask(row, cx),
+            Msg::TaskMenu(row, at) => return self.task_menu(row, at, cx),
         }
         cx.invalidate();
     }
@@ -1067,6 +1059,11 @@ impl View for Coder {
         }
         if let Some(queue) = self.queue(cx) {
             middle = middle.child(queue);
+        }
+        // Where it stands, when the work pane (and its card) doesn't show.
+        if let Some(line) = self.session().and_then(|s| s.report.as_ref()).filter(|_| !work && self.running()).and_then(tasks::now_line) {
+            let mark = canvas(|g, b| tasks::mark(g, b, "in_progress", &theme::palette())).paint_key(0).w(px(14.0)).h(px(style::line_row(style::PLAIN_SIZE))).flex_shrink_0();
+            middle = middle.child(div().flex().items_center().gap(px(m::TIGHT)).px(px(m::WINDOW_INSET)).pt(px(m::TIGHT)).child(mark).child(StringView::new(line).cut(true)));
         }
         middle = middle.child(self.composer(center, cx));
         let mut panes = div().flex_1().min_h_0().flex();
@@ -1104,6 +1101,7 @@ impl View for Coder {
                 "tab": self.tab,
                 "sessions": self.show_sessions,
                 "work": self.show_work,
+                "folded": self.folded,
             })
             .to_string(),
         )
@@ -1181,6 +1179,12 @@ pub fn open(dir: PathBuf, workspace: PathBuf, session: Option<String>, restore: 
                 cx.send(Msg::Searched);
             }
         });
+        let task_field = text_field(cx, |f| f.name("New Task").hint("Add a task"));
+        cx.subscribe(&task_field, |_: &mut Coder, e: &TextFieldEvent, cx| {
+            if matches!(e, TextFieldEvent::Entered) {
+                cx.send(Msg::TaskAdd);
+            }
+        });
         composer.focus(cx);
         let mut drafts = drafts;
         drafts.remove(&initial);
@@ -1203,6 +1207,12 @@ pub fn open(dir: PathBuf, workspace: PathBuf, session: Option<String>, restore: 
             changes: Arc::default(),
             session_rows: vec![],
             said: None,
+            tasks: ListModel::new(false),
+            task_rows: Default::default(),
+            folded: restore["folded"].as_array().into_iter().flatten().filter_map(Value::as_str).map(str::to_owned).collect(),
+            task_hits: Default::default(),
+            task_field,
+            context_scroll: olo_kit::ScrollHandle::new(),
         }
     });
 }

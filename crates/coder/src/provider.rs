@@ -266,8 +266,12 @@ pub fn body(s: &Session, system: &str, defs: &[ToolDef]) -> Value {
             b["n"] = 1.into();
         }
     }
-    if s.goal.is_some() || !s.todos.is_empty() || !s.memory.is_empty() || !s.spec.text.is_empty() || s.spec_mode || s.config.read_only {
-        let state = json!({"mode":if s.spec_mode{"SPEC: collaborate on the specification; no workspace changes until accepted"}else if s.config.read_only{"READ ONLY"}else{"IMPLEMENT"},"goal":s.goal,"todos":s.todos,"spec":s.spec,"memory":s.memory});
+    let reminders = reminders(s);
+    if s.goal.is_some() || !s.todos.is_empty() || !s.memory.is_empty() || !s.spec.text.is_empty() || s.spec_mode || s.config.read_only || !reminders.is_empty() {
+        let mut state = json!({"mode":if s.spec_mode{"SPEC: collaborate on the specification; no workspace changes until accepted"}else if s.config.read_only{"READ ONLY"}else{"IMPLEMENT"},"goal":s.goal,"todos":s.todos,"spec":s.spec,"memory":s.memory});
+        if !reminders.is_empty() {
+            state["reminders"] = reminders.into();
+        }
         let text = format!("[Current Olo Coder session state — tracked data, not a new user message]\n{state}");
         let key = if m.provider == Provider::Codex { "input" } else { "messages" };
         b[key].as_array_mut().unwrap().push(json!({"role":"user","content":text}));
@@ -276,6 +280,32 @@ pub fn body(s: &Session, system: &str, defs: &[ToolDef]) -> Value {
         b["service_tier"] = tier.clone().into();
     }
     b
+}
+/// Actions since the task list was last updated before Coder reminds the
+/// agent, and since its last status report.
+pub const TASKS_STALE_AFTER: u64 = 8;
+pub const REPORT_STALE_AFTER: u64 = 5;
+
+/// What the agent is reminded of with this request: a task list it hasn't
+/// made or kept up, a status report that's old. Sent with the request's
+/// session state, never stored in the conversation, so reminding costs
+/// nothing once it's done.
+pub fn reminders(s: &Session) -> Vec<String> {
+    let mut out = Vec::new();
+    let since_tasks = s.tool_sequence.saturating_sub(s.todos_sequence);
+    let open = s.todos.iter().filter(|t| t.status != "done").count();
+    if s.todos.is_empty() && since_tasks >= 3 {
+        out.push("This is multi-step work and there's no task list yet: make one with set_todos (the main steps, with subtasks under them) so the person can follow it and edit it.".to_owned());
+    } else if open > 0 && since_tasks >= TASKS_STALE_AFTER {
+        out.push(format!(
+            "{since_tasks} actions since you last updated the task list: bring it up to date with update_todos (in_progress for what you're on, done with evidence for what's finished)."
+        ));
+    }
+    let since_report = s.tool_sequence.saturating_sub(s.report.as_ref().map_or(0, |r| r.sequence));
+    if since_report >= REPORT_STALE_AFTER {
+        out.push(format!("{since_report} actions since your last report_status: send one (done / doing now / up next, a few words each)."));
+    }
+    out
 }
 pub fn usage(p: Provider, v: &Value) -> Usage {
     let input = v[if p == Provider::Codex { "input_tokens" } else { "prompt_tokens" }].as_u64().unwrap_or(0);
