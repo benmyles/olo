@@ -1190,6 +1190,18 @@ something nobody here has is in "Blocked", with what it waits for.
     its value and resets. Preferences lists what can be shown from the
     accounts the pool has (`sources`), with a ready-made row: Claude
     5-hour and Weekly beside Codex's.
+- **A rolled-up window ends at its tab** (Ben, 2026-11-13, with a
+  screenshot of "Network" rolled up: "when a window is rolled up it
+  looks weird b/c it doesn't have the bottom bar that it should have").
+  Rolled up, only the tab is drawn (app_server's decorator,
+  `shell/deco.rs`, "Rolled up: only the tab shows"), so it reads as a
+  tab cut loose rather than a window folded away: under the tab there
+  should be the window's frame closed off, a bar as wide as the window
+  with its border, bevel and shadow, as the window's top edge is
+  drawn. Measured at 1×, 1.25×, 1.5×, 1.75× and 2×, light, dark and
+  night, active and not, a lone window and one in a group of tabs, and
+  fanned out in a tile (`tiling.rs`, rolled-up windows sharing a cell);
+  what takes the pointer follows what's drawn.
 
 ## Done, waiting for Ben to try or confirm
 
