@@ -124,18 +124,39 @@ pub struct Options {
     pub trace: Option<Trace>,
     /// Keep time by NTP even where the receiver offers PTP.
     pub ntp: bool,
+    /// How loud the receiver plays the sound, as the computer's volume
+    /// has it: 0 to 1 (its slider's place; 0, or muted, silent). Changed
+    /// with [`Mirror::set_volume`].
+    pub volume: f32,
 }
 
 impl Default for Options {
     fn default() -> Options {
-        Options { name: "Olo".into(), wait: Duration::from_secs(8), sound: true, lead: None, ended: None, trace: None, ntp: false }
+        Options { name: "Olo".into(), wait: Duration::from_secs(8), sound: true, lead: None, ended: None, trace: None, ntp: false, volume: 1.0 }
     }
+}
+
+/// A volume (0 to 1, a slider's place) as AirPlay says it: decibels from
+/// -30 (the quietest) to 0 (the loudest), the slider's place spread
+/// evenly between them (the receiver puts its own curve on it); -144 is
+/// silence.
+fn decibels(level: f32) -> f32 {
+    if level.is_nan() || level <= 0.0 { -144.0 } else { -30.0 + 30.0 * level.min(1.0) }
+}
+
+/// The SET_PARAMETER body that sets the receiver's volume to `level`.
+fn volume_body(level: f32) -> Vec<u8> {
+    format!("volume: {:.6}\r\n", decibels(level)).into_bytes()
 }
 
 struct Shared {
     ended: Mutex<Option<String>>,
     changed: Condvar,
     stop: AtomicBool,
+    /// A volume to tell the receiver ([`Mirror::set_volume`]), told by
+    /// the keeping-alive thread (never the caller's: it may be slow).
+    volume: Mutex<f32>,
+    volume_due: AtomicBool,
     trace: Option<Trace>,
     on_end: Option<Arc<dyn Fn() + Send + Sync>>,
 }
@@ -342,7 +363,15 @@ impl Mirror {
     /// waits for pictures. Blocks for as long as it takes to answer each
     /// step: off a looper.
     pub fn begin(at: SocketAddr, credentials: &Credentials, features: u64, version: &str, options: &Options) -> Result<Mirror, Error> {
-        let shared = Arc::new(Shared { ended: Mutex::new(None), changed: Condvar::new(), stop: AtomicBool::new(false), trace: options.trace.clone(), on_end: options.ended.clone() });
+        let shared = Arc::new(Shared {
+            ended: Mutex::new(None),
+            changed: Condvar::new(),
+            stop: AtomicBool::new(false),
+            volume: Mutex::new(options.volume),
+            volume_due: AtomicBool::new(false),
+            trace: options.trace.clone(),
+            on_end: options.ended.clone(),
+        });
         let told = |step: &str, answer: &Answer| shared.say(|| format!("{step}: {}{}", answer.status, pl::read(&answer.body).map(|v| format!(" {}", pl::line(&v))).unwrap_or_default()));
         let refused = |step: &'static str, answer: &Answer| if answer.status < 300 { Ok(()) } else { Err(Error::Refused(step, answer.status)) };
         let io = |e: std::io::Error| Error::Receiver(pairing::Error::Io(e.to_string()));
@@ -543,7 +572,7 @@ impl Mirror {
         unsafe { libc::setsockopt(data.as_raw_fd(), libc::SOL_SOCKET, libc::SO_SNDBUF, (&size as *const libc::c_int).cast(), std::mem::size_of::<libc::c_int>() as u32) };
         let video_key = session.key(&format!("DataStream-Salt{}", video_id as u64), "DataStream-Output-Encryption-Key");
 
-        // 3. Started, and the volume (the sound's own, as played here).
+        // 3. Started, and the volume (the computer's).
         if !skip_record {
             let record = rtsp.send("RECORD", Some(&uri), "RTSP/1.0", AGENT, &[("Session", &session_id), ("Range", "npt=0-"), ("RTP-Info", "seq=0;rtptime=0")], None)?;
             told("RECORD", &record);
@@ -551,8 +580,8 @@ impl Mirror {
         }
         if with_sound {
             for _ in 0..2 {
-                let answer = rtsp.send_raw("SET_PARAMETER", Some(&uri), "RTSP/1.0", AGENT, &[], "text/parameters", b"volume: 0.000000\r\n")?;
-                told("SET_PARAMETER volume", &answer);
+                let answer = rtsp.send_raw("SET_PARAMETER", Some(&uri), "RTSP/1.0", AGENT, &[], "text/parameters", &volume_body(options.volume))?;
+                told(&format!("SET_PARAMETER volume {:.1} dB", decibels(options.volume)), &answer);
             }
         }
 
@@ -604,10 +633,11 @@ impl Mirror {
             None => None,
         };
         // Kept alive: a heartbeat on the data connection and sound's sync
-        // every second, a word on the control connection every two.
+        // every second, a word on the control connection every two; the
+        // volume told as it changes.
         let keep = {
-            let (shared, control, pictures, sound, times) = (shared.clone(), control.clone(), pictures.clone(), sound.clone(), times.clone());
-            std::thread::Builder::new().name("airplay-keep".into()).spawn(move || keep(&shared, &control, &pictures, sound.as_deref(), &times)).map_err(io)?
+            let (shared, control, pictures, sound, times, uri) = (shared.clone(), control.clone(), pictures.clone(), sound.clone(), times.clone(), uri.clone());
+            std::thread::Builder::new().name("airplay-keep".into()).spawn(move || keep(&shared, &control, &uri, &pictures, sound.as_deref(), &times)).map_err(io)?
         };
         Ok(Mirror {
             shared,
@@ -642,6 +672,16 @@ impl Mirror {
     /// Whether the computer's sound goes too.
     pub fn sounds(&self) -> bool {
         self.sound.is_some()
+    }
+
+    /// The receiver's volume set to `level` (as [`Options::volume`]):
+    /// told it at once by another thread, so this never waits on the
+    /// receiver.
+    pub fn set_volume(&self, level: f32) {
+        let _ended = self.shared.ended.lock().unwrap();
+        *self.shared.volume.lock().unwrap() = level;
+        self.shared.volume_due.store(true, Relaxed);
+        self.shared.changed.notify_all();
     }
 
     /// One encoded picture (H.264, Annex B, as an encoder writes it) of
@@ -715,7 +755,7 @@ impl Mirror {
 }
 
 /// The keeping-alive thread's work, until stopped or the receiver goes.
-fn keep(shared: &Shared, control: &Mutex<Rtsp>, pictures: &Mutex<Pictures>, sound: Option<&Mutex<Sound>>, times: &Mutex<Times>) {
+fn keep(shared: &Shared, control: &Mutex<Rtsp>, uri: &str, pictures: &Mutex<Pictures>, sound: Option<&Mutex<Sound>>, times: &Mutex<Times>) {
     let feedback = |times: &Mutex<Times>| -> bool {
         let answer = control.lock().unwrap().send("POST", Some("/feedback"), "RTSP/1.0", AGENT, &[], None);
         match answer {
@@ -733,14 +773,32 @@ fn keep(shared: &Shared, control: &Mutex<Rtsp>, pictures: &Mutex<Pictures>, soun
         return;
     }
     let mut beat = 0u64;
+    let mut next = Instant::now() + Duration::from_secs(1);
     loop {
         {
             let ended = shared.ended.lock().unwrap();
-            let (ended, _) = shared.changed.wait_timeout_while(ended, Duration::from_secs(1), |e| e.is_none() && !shared.stop.load(Relaxed)).unwrap();
+            let left = next.saturating_duration_since(Instant::now());
+            let (ended, _) = shared.changed.wait_timeout_while(ended, left, |e| e.is_none() && !shared.stop.load(Relaxed) && !shared.volume_due.load(Relaxed)).unwrap();
             if ended.is_some() || shared.stop.load(Relaxed) {
                 return;
             }
         }
+        // (A volume key held: only the newest is told.)
+        if shared.volume_due.swap(false, Relaxed) {
+            let level = *shared.volume.lock().unwrap();
+            let answer = control.lock().unwrap().send_raw("SET_PARAMETER", Some(uri), "RTSP/1.0", AGENT, &[], "text/parameters", &volume_body(level));
+            match answer {
+                Ok(answer) => shared.say(|| format!("SET_PARAMETER volume {:.1} dB: {}", decibels(level), answer.status)),
+                Err(e) => {
+                    shared.end(&format!("the receiver can't be reached: {e}"));
+                    return;
+                }
+            }
+        }
+        if Instant::now() < next {
+            continue;
+        }
+        next = Instant::now() + Duration::from_secs(1);
         beat += 1;
         {
             let mut p = pictures.lock().unwrap();
@@ -841,6 +899,38 @@ mod tests {
 
     fn key_frame() -> Vec<u8> {
         [&[0, 0, 0, 1][..], &SPS, &[0, 0, 0, 1], &PPS, &[0, 0, 0, 1, 0x65, 0x88, 0x84, 0x21]].concat()
+    }
+
+    /// The volume as AirPlay says it: the slider's place between -30 dB
+    /// and 0, silence -144.
+    #[test]
+    fn volumes_in_decibels() {
+        assert_eq!([decibels(1.0), decibels(1.5), decibels(0.5), decibels(0.0), decibels(-1.0)], [0.0, 0.0, -15.0, -144.0, -144.0]);
+        assert_eq!(volume_body(0.25), b"volume: -22.500000\r\n");
+    }
+
+    /// The receiver's volume, the computer's at the start and as it
+    /// changes, told without the caller waiting.
+    #[test]
+    fn the_volume_follows() {
+        let (tv, credentials) = paired();
+        let at = fake::serve(tv.clone());
+        let mirror = Mirror::begin(at, &credentials, 0, "", &Options { volume: 0.5, ..quick() }).unwrap();
+        mirror.set_volume(0.8);
+        mirror.set_volume(0.0);
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while tv_parameters(&tv).last().map(String::as_str) != Some("volume: -144.000000") {
+            assert!(Instant::now() < deadline, "not told: {:?}", tv_parameters(&tv));
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let said = tv_parameters(&tv);
+        assert_eq!(&said[..2], ["volume: -15.000000", "volume: -15.000000"]);
+        // (The newest at least; one in between if it was told in time.)
+        assert!(said[2..].iter().all(|p| p == "volume: -6.000000" || p == "volume: -144.000000"), "{said:?}");
+    }
+
+    fn tv_parameters(tv: &Arc<Mutex<Tv>>) -> Vec<String> {
+        tv.lock().unwrap().parameters.clone()
     }
 
     /// A screen shown, as Apple's senders set it up: the session alone,

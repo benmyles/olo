@@ -651,12 +651,18 @@ something nobody here has is in "Blocked", with what it waits for.
        made in process, and the sound that goes with what's shown
        moved to it: a window's app's, an agent screen's programs', a
        display's the computer's; back where it was when paused or
-       ended, by WirePlumber when killed; the default output's volume
-       keys still set how loud. Half the cost of the monitor recording
-       it replaces (2.3% of a core against 4.4% with sound playing).
-     - *Next:* the receiver's own volume (AirPlay's `volume`
-       parameter) from the volume keys, rather than the samples made
-       quieter here, once a real receiver is there to try it on.
+       ended, by WirePlumber when killed. Half the cost of the monitor
+       recording it replaces (2.3% of a core against 4.4% with sound
+       playing).
+     - *The television's own volume, 2026-11-12* (Ben: "yes use tv"):
+       the volume keys set the receiver's volume (AirPlay's `volume`
+       parameter, from the computer's at the start, as it changes),
+       the sound sent at full scale. Tried on the test receiver; a
+       real television is the test of how it takes it.
+     - *The encoder, 2026-11-12* (Ben: "stay with intel"): Auto keeps
+       Intel's VA-API H.264 on mains too (2.6 ms more from capture to
+       sent than NVENC, inside the 40 ms lead; less than half the
+       processor; the NVIDIA GPU asleep). `--encoder nvidia` stays.
      - *Ben's to say:* (1) which receiver it's for (an Apple TV and
        its tvOS, a television with AirPlay built in, something else):
        it has to be tried against the real one, paired by him at the

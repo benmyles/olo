@@ -9829,9 +9829,15 @@ from Apple's, and LGPL where it's open).
   its programs' (`OLO_SCREEN` in their environment); a display's or a
   workspace's, every stream on the default output (one the person sent
   elsewhere, a call on headphones, stays). The default output isn't
-  changed (it's the person's, kept across logins). The samples are
-  multiplied by the default output's volume (its cubic level; none
-  muted), so the volume keys still set how loud it is. Paused, or
+  changed (it's the person's, kept across logins). The volume keys set
+  the receiver's own volume, as macOS's do: it is told the default
+  output's volume when the showing starts and as it changes (AirPlay's
+  `volume` parameter, the slider's place spread from -30 dB to 0, -144
+  muted: `Mirror::set_volume`, told by the keeping-alive thread so the
+  caller never waits), and the samples go at full scale, never made
+  quieter here (which would lose their low bits). The TV's output made
+  the default by the person has its own volume, which PipeWire applies;
+  the receiver's then stays as it was. Paused, or
   ended, each stream goes back where it was: its output, or the
   default again for one that followed it (PipeWire then follows the
   default again). Killed, its output goes with the process and
