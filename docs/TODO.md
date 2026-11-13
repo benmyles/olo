@@ -1202,6 +1202,38 @@ something nobody here has is in "Blocked", with what it waits for.
   night, active and not, a lone window and one in a group of tabs, and
   fanned out in a tile (`tiling.rs`, rolled-up windows sharing a cell);
   what takes the pointer follows what's drawn.
+- **Captive portals: seen, said and opened** (Ben, 2026-11-13: "add
+  captive portal recognition in network settings so that when a
+  connection requires portal signin the link is available to click in
+  the network settings and also a tray icon + notification should
+  appear about it and clicking the tray icon or link in notification
+  should open the portal page"). Olo's network code
+  (`olo_system::network`, Preferences ▸ Network) says nothing of one
+  today.
+  - *Knowing:* NetworkManager's own connectivity check (its
+    `Connectivity` going to `portal`, per device and overall, as its
+    signals say: nothing polled), and the portal's address: where the
+    check's request was sent on to (its redirect, or the address the
+    network names in its DHCP option 114 / RFC 8910 Captive Portal
+    API, `user-portal-url`, which is better when given). Asked again
+    after the person signs in, so the warning goes as soon as the
+    network lets traffic through.
+  - *Preferences ▸ Network:* the connection's row says "Sign-in
+    needed" with a link to the portal page (and Open Sign-In Page).
+  - *The tray:* an icon while a portal waits (the Wi-Fi glyph with a
+    mark, or a small sign of its own), its tip naming the network; a
+    click opens the portal page.
+  - *A notification* as it's first seen on a network ("Sign in to
+    Airport Wi-Fi"), with Open Sign-In Page; clicking it opens the
+    page too. Not again for the same network until it's been signed
+    in to and needs it again.
+  - *Opening the page:* in the default browser, as a page of its own
+    (a portal page is often plain HTTP and expects no proxy): a
+    browser set to a proxy (the Token Pool's isn't one for web
+    pages, but a VPN's may be) or DNS over HTTPS can't reach it, so
+    the page opens past them where the browser allows.
+  - Agents read it too: the network's portal state and its address in
+    the tray's and Preferences' trees.
 
 ## Done, waiting for Ben to try or confirm
 
