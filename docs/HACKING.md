@@ -2695,7 +2695,14 @@ it.
   a window; `layer_options(|l| ...)` sets its exclusive zone, margins,
   keyboard (`LayerKeyboard::OnDemand` for the desktop, `Exclusive` for a
   modal overlay) and output; `no_panel()` leaves its background to it
-  (transparent: what's under it shows). Menus open over it as over a
+  (transparent: what's under it shows). One anchored at both ends of
+  an axis (across its output) is given its size there by app_server,
+  so it opens with any size (1 × 1 is usual) and is laid out and drawn
+  only once that comes (`PlatformWindow::awaits_size`, then
+  `WindowEvent::Sized` from its stage's first frame), as is a lock
+  surface: nothing is worked out at a size it never shows at, and its
+  first frame comes no later for it (palette, picker, desktop, Rescue,
+  greeter, screen saver measured). Menus open over it as over a
   window (`examples/layer.rs`); a layer that only carries a menu takes
   the keyboard `OnDemand`, as app_server gives every key to an
   exclusive one, past the menu's grab. `menu::context_menu_then(window,

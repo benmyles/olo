@@ -1790,6 +1790,15 @@ impl PlatformWindow for WaylandWindow {
         }
     }
 
+    fn awaits_size(&self) -> bool {
+        let state = self.borrow();
+        let stretched = state.layer_shell.as_ref().is_some_and(|o| {
+            let (top, bottom, left, right) = o.anchor;
+            (top && bottom) || (left && right)
+        });
+        !state.acknowledged_first_configure && (state.lock_surface.is_some() || (state.layer_surface.is_some() && stretched))
+    }
+
     fn content_size(&self) -> Size<Pixels> {
         // Olo: as big as its buffer. At a fractional scale the logical
         // size times the scale rounds to whole device pixels (453 at 1.5×

@@ -99,6 +99,12 @@ pub(crate) struct WindowCore {
     /// A surface of the desktop's own (a layer's, the lock screen's):
     /// it stays with its display.
     pub(crate) shell: bool,
+    /// Its size isn't the compositor's yet (a layer surface stretched
+    /// across its output, opened a point square; a lock surface): not
+    /// laid out or drawn until it is (`WindowEvent::Sized`). Laid out
+    /// at a point square, everything in it was worked out and drawn
+    /// once for nothing, and a terminal told its shell two columns.
+    pub(crate) awaits_size: bool,
     /// A menu (a popup that takes the keyboard): its owner is as active
     /// as it was while this is open ([`WindowCx::is_window_active`]).
     pub(crate) menu: bool,
@@ -545,6 +551,7 @@ impl WindowCore {
             commits: 0,
             owner: None,
             shell: false,
+            awaits_size: opened.awaits_size,
             menu: false,
             gfx,
             size: opened.size,
@@ -1152,6 +1159,8 @@ impl<'a> WindowCx<'a> {
             }
             WindowEvent::Ime(ime) => self.dispatch_ime(ime),
             WindowEvent::Resized { size, scale } => self.resized(size, scale),
+            // (Laid out and drawn as the looper goes idle, `flush_all`.)
+            WindowEvent::Sized => self.core.awaits_size = false,
             WindowEvent::Active(active) => {
                 self.core.active = active;
                 let by_it: Vec<ViewId> = self.core.views.iter().filter(|(_, slot)| slot.reads_active).map(|(id, _)| id).collect();
@@ -1391,7 +1400,7 @@ impl<'a> WindowCx<'a> {
     /// Shows what changed: views say what they show, the tree follows,
     /// layout and drawing catch up, and the stage is told.
     fn flush(&mut self) {
-        if self.core.closed {
+        if self.core.closed || self.core.awaits_size {
             return;
         }
         // What's kept for the next frame, if one can be drawn now.

@@ -232,6 +232,13 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn is_maximized(&self) -> bool;
     fn window_bounds(&self) -> WindowBounds;
     fn content_size(&self) -> Size<Pixels>;
+    /// Olo: whether the size it opened at stands in for one the
+    /// compositor hasn't given yet (a lock surface, a layer surface
+    /// stretched across its output: a point square until then), so
+    /// nothing is worked out or drawn for it before.
+    fn awaits_size(&self) -> bool {
+        false
+    }
     fn resize(&mut self, size: Size<Pixels>);
     fn scale_factor(&self) -> f32;
     fn appearance(&self) -> WindowAppearance;

@@ -181,6 +181,10 @@ pub(crate) enum WindowEvent {
     Scrolled(Vec<ScrollReport>),
     /// How app_server holds the window changed.
     State(WindowState),
+    /// The compositor gave it its first size (told by `Resized` just
+    /// before if it isn't the one it opened at): a window that waited
+    /// for it ([`Opened::awaits_size`]) is laid out and drawn now.
+    Sized,
 }
 
 /// How app_server holds a window: its size isn't the program's to set
@@ -226,6 +230,10 @@ pub(crate) struct Opened {
     pub(crate) surface_id: Option<u32>,
     pub(crate) gpu: Option<GpuSpecs>,
     pub(crate) display: Option<Bounds<Pixels>>,
+    /// Its `size` stands in for the compositor's, not yet given
+    /// (`PlatformWindow::awaits_size`): nothing is laid out or drawn
+    /// until the stage says it came (`WindowEvent::Sized`).
+    pub(crate) awaits_size: bool,
 }
 
 /// How a window's looper and its stage agree on drawing something once
@@ -348,6 +356,12 @@ pub(crate) struct Stage {
     sent: Cell<u64>,
     answered: Cell<u64>,
     input_at: Cell<Instant>,
+    /// The looper waits for the window's first size (`Opened::awaits_size`):
+    /// told with the first frame, which comes once it's given.
+    awaits_size: Cell<bool>,
+    /// When it was made, until its first frame is drawn
+    /// (`OLO_FRAME_PHASES` says how long that took).
+    made: Cell<Option<Instant>>,
 }
 
 /// How long a frame waits for the looper's answer to input that has
@@ -370,6 +384,7 @@ impl Stage {
         let size = window.content_size();
         let scale = window.scale_factor();
         let pace = Arc::new(FramePace { unpaced: window.frame_waker().is_none(), ..Default::default() });
+        let awaits_size = window.awaits_size();
         let opened = Opened {
             pace: pace.clone(),
             size,
@@ -379,6 +394,7 @@ impl Stage {
             surface_id: window.surface_id(),
             gpu: window.gpu_specs(),
             display: window.display().map(|d| d.bounds()),
+            awaits_size,
         };
         let waker = window.frame_waker();
         let stage = Rc::new(Stage {
@@ -409,6 +425,8 @@ impl Stage {
             sent: Cell::new(0),
             answered: Cell::new(0),
             input_at: Cell::new(Instant::now()),
+            awaits_size: Cell::new(awaits_size),
+            made: Cell::new(Some(Instant::now())),
         });
         let weak = Rc::downgrade(&stage);
         let on = |f: fn(&Stage)| {
@@ -807,6 +825,11 @@ impl Stage {
         if self.closed.get() {
             return false;
         }
+        // (The first frame comes with the first configure: its size, if
+        // another, went to the looper as it came, `resized`.)
+        if self.awaits_size.replace(false) {
+            self.link.send(WindowEvent::Sized);
+        }
         let asked = self.asked.take();
         let drew = self.draw_frame(options);
         // (What's drawn is shown when the compositor says so, and the
@@ -977,6 +1000,9 @@ impl Stage {
                     scene.quads.len(),
                     ms(work),
                 );
+                if let Some(made) = self.made.take() {
+                    eprintln!("first frame drawn {:.3} ms after its window was made", ms(made.elapsed()));
+                }
             }
         }
         showing.dirty = false;

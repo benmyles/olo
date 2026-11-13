@@ -57,10 +57,11 @@ something nobody here has is in "Blocked", with what it waits for.
      straight from the kept drawings (no copy into a scene: ~50 µs of
      a ~200 µs frame, and 5% of a Logs resize step's cycles); a
      scroll bar's knob moved by the stage; rows of differing heights
-     (GPUI's `list`); nothing worked out or drawn for a window before
-     app_server has given it its size (a layer or lock surface opens
-     1 × 1 and is laid out and drawn so once: wasted, and the terminal
-     in Rescue has to know not to tell its shell that size).
+     (GPUI's `list`). *Done 2026-11-13:* nothing worked out or drawn
+     for a layer surface stretched across its output, or a lock
+     surface, before app_server has given it its size (they opened
+     1 × 1 and were laid out and painted so once: the emoji picker
+     16 ms of a 20 ms start that way).
   3. **The kit's widgets** on it (everything in olo-ui today). *Done:*
      theme, style, review, icons, cut, tip, keys, menu (bars, popups,
      context menus), agent, app (Frame, fits_content, kept sizes,
