@@ -18,14 +18,14 @@
 //! as Apple's senders do; it ends when the film does, when the receiver
 //! goes on to something else, or when the [`Play`] is dropped.
 
-mod events;
+pub(crate) mod events;
 #[doc(hidden)]
 pub mod fake;
-mod lists;
+pub(crate) mod lists;
 mod media;
-mod rtsp;
+pub(crate) mod rtsp;
 mod serve;
-mod timing;
+pub(crate) mod timing;
 
 use std::{
     net::SocketAddr,

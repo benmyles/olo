@@ -1,7 +1,12 @@
 //! The time, for a receiver that asks it: AirPlay's SETUP names a port
 //! where the sender answers timing questions (NTP's times in RTP's
 //! dress), and a receiver may ask before it plays. A film played from
-//! its address keeps its own time, so the answers only have to be there.
+//! its address keeps its own time, so the answers only have to be there;
+//! a mirrored screen's pictures are stamped on the same clock (the
+//! computer's monotonic one, `mirror::clock`), so the receiver learns
+//! from them how this computer's clock stands to its own. A receiver
+//! that names a timing port of its own is asked the time too, from the
+//! same socket ([`Timing::probe`]): its answers aren't answered.
 
 use std::{
     net::{IpAddr, SocketAddr, UdpSocket},
@@ -10,12 +15,12 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
     thread::JoinHandle,
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 pub(crate) struct Timing {
     pub port: u16,
     at: SocketAddr,
+    socket: Option<UdpSocket>,
     stop: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
 }
@@ -26,6 +31,7 @@ impl Timing {
     pub fn start(ip: IpAddr) -> std::io::Result<Timing> {
         let socket = UdpSocket::bind((ip, 0))?;
         let at = socket.local_addr()?;
+        let asking = socket.try_clone().ok();
         let stop = Arc::new(AtomicBool::new(false));
         let stopped = stop.clone();
         let thread = std::thread::Builder::new().name("airplay-timing".into()).spawn(move || {
@@ -39,7 +45,27 @@ impl Timing {
                 }
             }
         })?;
-        Ok(Timing { port: at.port(), at, stop, thread: Some(thread) })
+        Ok(Timing { port: at.port(), at, socket: asking, stop, thread: Some(thread) })
+    }
+
+    /// Ask the receiver's timing port the time, three times a tenth of a
+    /// second apart (on a thread of its own: it's soon done).
+    pub fn probe(&self, to: SocketAddr) {
+        let Some(socket) = self.socket.as_ref().and_then(|s| s.try_clone().ok()) else { return };
+        let _ = std::thread::Builder::new().name("airplay-probe".into()).spawn(move || {
+            for seq in 1u16..=3 {
+                let mut question = [0u8; 32];
+                (question[0], question[1]) = (0x80, 0xd2);
+                question[2..4].copy_from_slice(&seq.to_be_bytes());
+                let (secs, frac) = now();
+                question[24..28].copy_from_slice(&secs.to_be_bytes());
+                question[28..32].copy_from_slice(&frac.to_be_bytes());
+                let _ = socket.send_to(&question, to);
+                if seq < 3 {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+            }
+        });
     }
 }
 
@@ -56,16 +82,21 @@ impl Drop for Timing {
     }
 }
 
-/// The time as NTP has it: seconds since 1900 and the fraction.
+/// The time as NTP has it: seconds and the fraction, on the computer's
+/// monotonic clock with NTP's epoch added (see `mirror::clock`).
 pub(crate) fn now() -> (u32, u32) {
-    let since = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
-    ((since.as_secs() + 0x83aa_7e80) as u32, ((u64::from(since.subsec_nanos()) << 32) / 1_000_000_000) as u32)
+    let t = crate::mirror::clock::ntp(crate::mirror::clock::Clock::new().now());
+    ((t >> 32) as u32, t as u32)
 }
 
 /// The answer to a timing question: its sending time given back as the
-/// reference, and `now` as when it came and when this left.
+/// reference, and `now` as when it came and when this left. None for
+/// what isn't a question (an answer to ours).
 pub(crate) fn answer(question: &[u8], now: (u32, u32)) -> Option<[u8; 32]> {
     let question: &[u8; 32] = question.try_into().ok()?;
+    if question[1] & 0x7f != 0x52 {
+        return None;
+    }
     let mut reply = [0u8; 32];
     (reply[0], reply[1]) = (question[0], 0x53 | 0x80);
     reply[2..4].copy_from_slice(&7u16.to_be_bytes());
@@ -100,8 +131,12 @@ mod tests {
         let asker = UdpSocket::bind("127.0.0.1:0").unwrap();
         asker.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
         let mut question = [0u8; 32];
-        question[28] = 9;
+        (question[0], question[1], question[28]) = (0x80, 0xd2, 9);
         asker.send_to(&question, ("127.0.0.1", timing.port)).unwrap();
+        // (An answer isn't answered.)
+        let mut answer = question;
+        answer[1] = 0xd3;
+        assert_eq!(super::answer(&answer, (0, 0)), None);
         // (Rubbish is passed over.)
         asker.send_to(b"what time is it", ("127.0.0.1", timing.port)).unwrap();
         let mut reply = [0u8; 64];

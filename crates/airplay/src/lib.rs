@@ -21,6 +21,7 @@
 pub mod browse;
 pub mod dns;
 pub mod kept;
+pub mod mirror;
 pub mod pairing;
 pub mod play;
 mod receiver;

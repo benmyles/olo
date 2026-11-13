@@ -34,15 +34,21 @@ impl Rtsp {
     /// A request and its answer. `uri` not given: the session's own.
     pub fn send(&mut self, method: &str, uri: Option<&str>, protocol: &str, agent: &str, more: &[(&str, &str)], body: Option<&Value>) -> Result<Answer, Error> {
         let body = body.map(pl::write).unwrap_or_default();
+        self.send_raw(method, uri, protocol, agent, more, BPLIST, &body)
+    }
+
+    /// The same with a body of another kind (`content_type`).
+    #[allow(clippy::too_many_arguments)]
+    pub fn send_raw(&mut self, method: &str, uri: Option<&str>, protocol: &str, agent: &str, more: &[(&str, &str)], content_type: &str, body: &[u8]) -> Result<Answer, Error> {
         let (cseq, length) = (self.cseq.to_string(), body.len().to_string());
         self.cseq += 1;
         let mut head: Vec<(&str, &str)> = vec![("User-Agent", agent)];
         if !body.is_empty() {
-            head.extend([("Content-Type", BPLIST), ("Content-Length", length.as_str())]);
+            head.extend([("Content-Type", content_type), ("Content-Length", length.as_str())]);
         }
         head.extend([("CSeq", cseq.as_str()), ("DACP-ID", self.dacp_id.as_str()), ("Active-Remote", self.active_remote.as_str()), ("Client-Instance", self.dacp_id.as_str())]);
         head.extend_from_slice(more);
         let first = format!("{method} {} {protocol}", uri.unwrap_or(&self.uri));
-        self.http.exchange(&first, &head, &body)
+        self.http.exchange(&first, &head, body)
     }
 }
