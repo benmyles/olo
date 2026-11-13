@@ -885,6 +885,21 @@ something nobody here has is in "Blocked", with what it waits for.
          allocation an element: about even, not done.
        - taffy makes a list a block container a layout (260 a step
          in Logs): the vendored taffy's, left.
+       - *Logs' live resize, measured again 2026-11-13*
+         (`tools/dev/resize-cost`, 3456 × 2234 at 2×, three runs each
+         in turn, medians): the build from before the kits 4.87 M
+         instructions and 6.15 M cycles a step, now 8.61 and 7.88.
+         Its body reads the window's width (the Message column's, and
+         the search header's choice of one row or two), so every step
+         makes the window again: the menus, the header and 75 rows'
+         elements (2,797 allocations and 2.4 MB copied a step,
+         memhist); the profile is flat after that (text recorded again
+         7%, the rows' glyphs copied into the frame 4%, taffy 8%,
+         allocating 14%). The way out: a list column that fills what
+         the others leave (`Column` sized at paint from its row's
+         bounds, the header's too), and a search header that lays out
+         its one row or two by itself, so a resize lays out and paints
+         without the body.
        - *The editor's heights, done 2026-11-13.* It walked every
          paragraph when the width it wraps to changed (`set_look`
          estimated each one's height again, `ensure_tops` added them
