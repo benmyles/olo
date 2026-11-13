@@ -1827,6 +1827,10 @@ struct SurfaceData {
     /// The display refused a frame's commit (planes it wouldn't take):
     /// from then on everything is drawn into the frame, the pointer too.
     planes_refused: bool,
+    /// The colours the pointer's pixels were last said to be copied into
+    /// on its cursor plane (`color::cursor_pixels`; None inside: as they
+    /// are). None: not said yet.
+    cursor_color: Option<Option<smithay::backend::renderer::gles::color::ColorTarget>>,
     /// Its cursor plane is the CRTC's own (not an overlay plane standing in
     /// for one): the kernel's legacy cursor move reaches it
     /// (`input_thread`).
@@ -2196,6 +2200,13 @@ impl AnvilState<UdevData> {
         // Its colours and light, and whether it takes HDR (`color`).
         let display_color = edid_blob(drm_device, connector.handle()).or_else(|| olo_system::edid::bytes_for_connector(&output_name)).map(|b| olo_system::edid::color(&b)).unwrap_or_default();
         let takes_hdr = connector_takes_hdr(drm_device, connector.handle());
+        // A test seat's display (vkms) may pretend to be wide or HDR, as a
+        // headless screen does (`OLO_HEADLESS_COLOR`): its connector takes
+        // no HDR signal, but it's drawn as one would be.
+        let (display_color, takes_hdr) = match test_seat().and(crate::color::simulated()) {
+            Some((display, hdr)) => (display, hdr),
+            None => (display_color, takes_hdr),
+        };
 
         // A monitor not telling yet who it is (Apple's DCP has its EDID a
         // second after a new app_server takes the displays over, as on an
@@ -2400,6 +2411,7 @@ impl AnvilState<UdevData> {
                 last_look: None,
                 pacing: Default::default(),
                 planes_refused: false,
+                cursor_color: None,
                 real_cursor_plane,
                 hdr: None,
                 color_pending: false,
@@ -3293,6 +3305,18 @@ fn render_surface<'a>(
     if !matches!(drawing, crate::color::Drawing::Hdr { .. }) {
         surface.hdr = None;
     }
+    // The pointer on the cursor plane is scanned out as its pixels are,
+    // never through the renderer: copied into the display's colours
+    // (its PQ signal in HDR, its gamut when converted).
+    let cursor_color = match drawing {
+        crate::color::Drawing::Plain => None,
+        crate::color::Drawing::Sdr(target) => Some(target),
+        crate::color::Drawing::Hdr { signal, .. } => Some(signal),
+    };
+    if surface.cursor_color != Some(cursor_color) {
+        surface.cursor_color = Some(cursor_color);
+        surface.drm_output.with_compositor(|c| c.set_cursor_pixels(cursor_color.map(crate::color::cursor_pixels)));
+    }
     let (rendered, states, cursor_on_plane) = match drawing {
         crate::color::Drawing::Plain | crate::color::Drawing::Sdr(_) => {
             let (target, mode) = match drawing {
@@ -3324,15 +3348,23 @@ fn render_surface<'a>(
                 surface.drm_output.reset_buffers();
             }
             let hdr = surface.hdr.as_mut().expect("made above");
+            // The pointer isn't composed: it goes to the display with the
+            // encoded frame, onto its cursor plane (its pixels encoded into
+            // the signal as they're copied there: `cursor_pixels`), so
+            // moving it draws nothing; where the plane can't hold it (a
+            // client's cursor), drawn over the frame, encoded as it's
+            // drawn. (It's in front already, but for the keep-warm pixel.
+            // A mirror's frame composes its source's pointer with the
+            // rest.)
+            let (pointer, rest): (Vec<_>, Vec<_>) =
+                elements.into_iter().partition(|e| matches!(e, crate::render::FrameElements::Normal(OutputRenderElements::Custom(CustomRenderElements::Pointer(_)))));
             // Composed into the blending buffer (what changed)...
             AsMut::<GlesRenderer>::as_mut(renderer).set_color_target(Some(blend));
             let composed = match smithay::backend::renderer::Bind::bind(renderer, &mut hdr.texture) {
-                Ok(mut fb) => {
-                    hdr.tracker.render_output(renderer, &mut fb, 1, &elements, clear_color).map(|r| (r.damage.cloned(), r.states)).map_err(|e| SwapBuffersError::TemporaryFailure(Box::new(e)))
-                }
+                Ok(mut fb) => hdr.tracker.render_output(renderer, &mut fb, 1, &rest, clear_color).map(|r| (r.damage.cloned(), r.states)).map_err(|e| SwapBuffersError::TemporaryFailure(Box::new(e))),
                 Err(e) => Err(SwapBuffersError::TemporaryFailure(Box::new(e))),
             };
-            let (damage, states) = match composed {
+            let (damage, mut states) = match composed {
                 Ok(c) => c,
                 Err(e) => {
                     AsMut::<GlesRenderer>::as_mut(renderer).set_color_target(None);
@@ -3340,15 +3372,19 @@ fn render_surface<'a>(
                 }
             };
             hdr.drawn(damage.as_ref());
-            // ...and that encoded into the display's signal.
+            // ...and that encoded into the display's signal, the pointer
+            // over it.
             AsMut::<GlesRenderer>::as_mut(renderer).set_color_target(Some(signal));
-            let element = [hdr.element()];
-            let r = surface.drm_output.render_frame(renderer, &element, smithay::backend::renderer::Color32F::BLACK, FrameFlags::empty());
+            let signal_elements: Vec<HdrSignalElements<'_>> = pointer.into_iter().map(HdrSignalElements::Pointer).chain([HdrSignalElements::Hdr(hdr.element())]).collect();
+            let r = surface.drm_output.render_frame(renderer, &signal_elements, smithay::backend::renderer::Color32F::BLACK, frame_mode & FrameFlags::ALLOW_CURSOR_PLANE_SCANOUT);
             AsMut::<GlesRenderer>::as_mut(renderer).set_color_target(None);
             let r = r.map_err(failed)?;
             crate::render::frame_done(!r.is_empty);
             crate::render::part("drm render_frame", t);
-            (!r.is_empty, states, false)
+            // (The pointer's state with the rest's: a client's cursor
+            // surface is told where it showed.)
+            states.states.extend(r.states.states);
+            (!r.is_empty, states, r.cursor_element.is_some())
         }
     };
 
@@ -3369,6 +3405,15 @@ fn render_surface<'a>(
     }
 
     Ok((rendered, states, cursor_on_plane))
+}
+
+smithay::backend::renderer::element::render_elements! {
+    /// An HDR display's frame as it goes to the display: the pointer
+    /// (onto its cursor plane, else drawn over), then HDR's blending
+    /// buffer encoded into the signal.
+    HdrSignalElements<='a, UdevRenderer<'a>>;
+    Pointer=crate::render::FrameElements<UdevRenderer<'a>, WindowRenderElement<UdevRenderer<'a>>>,
+    Hdr=crate::color::HdrElement,
 }
 
 // HDR's blending buffer drawn into a display's signal, by the GLES

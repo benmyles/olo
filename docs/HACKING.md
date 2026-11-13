@@ -4193,14 +4193,26 @@ Colour, kept per monitor in its `OutputConfig`):
   between primaries in light (white adapted by Bradford, so greys stay
   grey), clips and encodes; solid colours are converted on the CPU.
   Clients' buffers don't go straight to planes then (they'd show
-  unconverted); the pointer still may.
+  unconverted); the pointer still may, its pixels converted as they're
+  copied onto the cursor plane (below).
 - *HDR*, on a display that takes it (its EDID says PQ, or a built-in
   panel gives an HDR luminance and its connector takes the metadata:
   the ThinkPad P1 Gen 9's OLED, whose HDR is in DisplayID, not its
   EDID's HDR block): the frame is composed into a float buffer in
   BT.2020 at gamma 2.2 relative to SDR's white (so blending and text look exactly as in
   SDR, and highlights go above 1), then what changed is encoded into PQ
-  (`color::HdrFrame`, `HdrElement`); the connector gets HDR metadata
+  (`color::HdrFrame`, `HdrElement`). The pointer isn't composed: it goes
+  to the display with the encoded frame (`HdrSignalElements`), onto its
+  cursor plane, so moving it draws nothing. A plane is scanned out as
+  its pixels are, never through the renderer's conversion, so Olo's
+  Smithay puts the pointer's pixels through `color::cursor_pixels` as
+  it copies them there (`DrmCompositor::set_cursor_pixels`: once a
+  picture, not a move): into the PQ signal, where sRGB's white would
+  otherwise read as 10,000 cd/m², or a wide display's gamut. Until
+  2026-11-13 the pointer was composed with the rest, so on Ben's HDR
+  OLED every move was a compose and an encode on the GPU, and waited on
+  it under load. A pointer the plane can't hold (a client's cursor) is
+  drawn over the encoded frame, encoded as it's drawn. The connector gets HDR metadata
   (the display's own primaries and luminance) in a modeset commit of
   its own (`set_connector_color`, again at vblank if a flip was in
   flight), with the display off: the next frame enables it whole, as
@@ -7063,6 +7075,12 @@ pointer also ended up short of where the hand took it.
   other way as `Command`s. Devices are opened by the session, the loop's
   alone: the thread asks (`contacts::Request`) and waits; the loop never
   waits on the thread.
+- The pointer must be on the display's cursor plane for any of this:
+  on an HDR display it wasn't until 2026-11-13 (composed into the HDR
+  frame; HACKING, "HDR"), so on Ben's OLED the thread never had a plane
+  to move (the log's `the pointer is on a plane of the display's own`
+  never came for eDP-1; `{"type":"frames"}` says `cursor_plane` for
+  each display).
 - After each frame the loop says where the cursor plane is (smithay's
   `DrmCompositor::cursor_plane`) with the pointer where that frame drew
   it, on the CRTC's own cursor plane only (not an overlay standing in for
@@ -7112,7 +7130,15 @@ left each time. 2026-11-13: on the loop, the plane stood still 260 ms
 162 px of the 302 the mouse had moved it to; on the thread, it never
 stood still more than 20 ms (12 to take over, 4 between moves, 5
 between reads) and the loop put it exactly where the thread had; turned
-off again, the plane followed the mouse on the loop.
+off again, the plane followed the mouse on the loop. `--hdr` does it
+all with the display drawn as an HDR one (a test seat's app_server
+takes `OLO_HEADLESS_COLOR` as a headless one does; vkms takes no HDR
+signal, but it's drawn as one) and HDR switched on as Preferences does:
+the same, 129 px while held, 21 ms at most still. Moving the pointer
+there (three runs each, alternating, the machine busy) cost app_server
+12.4–15.3% of a core and 6,700 wakeups a second while the pointer was
+composed into the HDR frame, and 3.2–4.0% and 800 on the cursor plane;
+a frame's drawing 478–571 µs (median) against 117–138.
 Left: the first frame after a hold may have been drawn before it, so
 the pointer can step back to there for a frame (seen once, 1 px); and Ben's Intel panel
 (PSR2) may take the kernel's slow path for a legacy cursor move, a

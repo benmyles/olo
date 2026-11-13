@@ -1112,6 +1112,19 @@ need Ben".)
   stop drawing. **Not tried on his machine**: his Intel panel (PSR2)
   may take the kernel's slow path for a legacy cursor move, which only
   it shows; if the pointer is worse with it on, turn it off and say so.
+  *Found on his session, 2026-11-13* (read-only: its log and
+  `{"type":"frames"}`): with the switch on, the loop was held 106 to 170
+  ms three times while drawing, and the thread never took over, because
+  on his OLED in HDR the pointer was never on the cursor plane: it was
+  composed into the HDR frame, so every move was a compose and an
+  encode on the GPU. *Done:* in HDR the pointer goes on the cursor
+  plane, its pixels encoded into the PQ signal as they're copied there
+  (HACKING, "HDR"); on a simulated HDR display (`cursor-thread-check
+  --hdr`) the thread moved it 129 px through a 400 ms hold, and moving
+  the pointer cost app_server 3.2–4.0% of a core where it cost
+  12.4–15.3%. *Ben's to try after upgrading:* the pointer in HDR looks
+  as it did (white as bright as a window's white, its edges clean), and
+  `{"type":"frames"}` says `cursor_plane: true` for eDP-1.
   (LAVD is running again: an Authenticate dialog on his session, for
   `olo-doctor --helper`, started `olo-scheduler.service` on 2026-11-12
   at 22:44.)

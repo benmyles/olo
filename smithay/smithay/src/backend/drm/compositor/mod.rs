@@ -850,6 +850,27 @@ struct CursorState<G: AsFd + 'static> {
     previous_output_scale: Option<Scale<f64>>,
     #[cfg(feature = "renderer_pixman")]
     pixman_renderer: Option<PixmanRenderer>,
+    /// (Olo) What the pixels go through as they're copied into the
+    /// plane's buffer, and how many times that was set (a change copies
+    /// them again).
+    pixels: Option<CursorPixels>,
+    pixels_set: u64,
+    previous_pixels_set: Option<u64>,
+}
+
+/// (Olo) What a cursor plane's pixels go through as they're copied into
+/// its buffer: `(pixels, stride, width, height)`, ARGB8888 (B, G, R, A in
+/// memory), premultiplied. The display's colours, which the plane is
+/// scanned out in unconverted: an HDR display's PQ signal, where an
+/// sRGB pointer's white would otherwise be read as 10,000 cd/m². Run
+/// only when the pointer's picture changes, not as it moves.
+#[derive(Clone)]
+pub struct CursorPixels(pub Arc<dyn Fn(&mut [u8], usize, usize, usize) + Send + Sync>);
+
+impl std::fmt::Debug for CursorPixels {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("CursorPixels")
+    }
 }
 
 #[derive(Debug, thiserror::Error, Copy, Clone)]
@@ -1241,6 +1262,9 @@ where
                             previous_output_transform: None,
                             #[cfg(feature = "renderer_pixman")]
                             pixman_renderer,
+                            pixels: None,
+                            pixels_set: 0,
+                            previous_pixels_set: None,
                         }
                     });
 
@@ -1423,6 +1447,9 @@ where
                 previous_output_transform: None,
                 #[cfg(feature = "renderer_pixman")]
                 pixman_renderer,
+                pixels: None,
+                pixels_set: 0,
+                previous_pixels_set: None,
             }
         });
 
@@ -2685,6 +2712,16 @@ where
         self.surface.plane()
     }
 
+    /// (Olo) What the cursor plane's pixels go through as they're copied
+    /// into its buffer ([`CursorPixels`]; None: copied as they are). A
+    /// change copies the pointer's picture again at the next frame.
+    pub fn set_cursor_pixels(&mut self, pixels: Option<CursorPixels>) {
+        if let Some(c) = self.cursor_state.as_mut() {
+            c.pixels = pixels;
+            c.pixels_set += 1;
+        }
+    }
+
     /// (Olo) The cursor plane and where it is on the CRTC (its own
     /// coordinates, after the output's transform) in the newest frame:
     /// the one rendered and not yet queued, else the queued one, the one
@@ -3233,6 +3270,7 @@ where
                 .previous_output_scale
                 .map(|s| s != scale)
                 .unwrap_or(true)
+            || cursor_state.previous_pixels_set != Some(cursor_state.pixels_set)
             || previous_element_state
                 .map(|element_state| {
                     element_state.id != *element.id()
@@ -3336,6 +3374,8 @@ where
 
         let cursor_buffer_size = cursor_plane_size.to_logical(1).to_buffer(1, Transform::Normal);
 
+        let pixels = cursor_state.pixels.clone();
+
         #[cfg(not(feature = "renderer_pixman"))]
         if !copy_element_to_cursor_bo(
             renderer,
@@ -3344,6 +3384,7 @@ where
             cursor_plane_size,
             output_transform,
             &mut cursor_buffer,
+            pixels.as_ref(),
         ) {
             tracing::trace!("failed to copy element to cursor bo, skipping element on cursor plane");
             return None;
@@ -3357,6 +3398,7 @@ where
             cursor_plane_size,
             output_transform,
             &mut cursor_buffer,
+            pixels.as_ref(),
         ) {
             profiling::scope!("render cursor plane");
             tracing::trace!("cursor fast-path copy failed, falling back to rendering using offscreen buffer");
@@ -3437,6 +3479,11 @@ where
                             element.alpha(),
                         )?;
                         let _ = frame.finish()?.wait(); // what can we do?
+                        if let Some(pixels) = &pixels {
+                            let (stride, w, h) =
+                                (mbo.stride() as usize, mbo.width() as usize, mbo.height() as usize);
+                            (pixels.0)(mbo.buffer_mut(), stride, w, h);
+                        }
                         Ok(())
                     },
                 )
@@ -3521,6 +3568,7 @@ where
         if res {
             cursor_state.previous_output_scale = Some(scale);
             cursor_state.previous_output_transform = Some(output_transform);
+            cursor_state.previous_pixels_set = Some(cursor_state.pixels_set);
             Some(plane_info.into())
         } else {
             info!("failed to test cursor {:?} state", plane_info.handle);
@@ -4307,6 +4355,7 @@ fn copy_element_to_cursor_bo<R, E>(
     cursor_size: Size<i32, Physical>,
     output_transform: Transform,
     bo: &mut GbmBuffer,
+    pixels: Option<&CursorPixels>,
 ) -> bool
 where
     R: Renderer,
@@ -4332,7 +4381,23 @@ where
     let bo_format = bo.format().code;
     let bo_stride = bo.stride();
 
-    let mut copy_to_bo = |src, src_stride, src_height| {
+    let mut copy_to_bo = |src: &[u8], src_stride: i32, src_height: i32| {
+        // (Olo: through what the display's colours need, on a copy.)
+        let converted;
+        let src = match pixels {
+            Some(pixels) => {
+                let mut c = src[..(src_stride * src_height) as usize].to_vec();
+                (pixels.0)(
+                    &mut c,
+                    src_stride as usize,
+                    (src_stride / 4) as usize,
+                    src_height as usize,
+                );
+                converted = c;
+                &converted[..]
+            }
+            None => src,
+        };
         if src_stride == bo_stride as i32 {
             bo.write(src).is_ok()
         } else {

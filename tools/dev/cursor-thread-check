@@ -3,7 +3,7 @@
 input thread (`OLO_INPUT_THREAD=1`, crates/app_server/src/input_thread.rs)
 against libinput on the loop, on a real seat of the check's own.
 
-  cursor-thread-check [--keep] [--hold MS]
+  cursor-thread-check [--keep] [--hold MS] [--hdr]
 
 Asks sudo once (tools/dev/cursor-thread-seat, the root half): a virtual
 display with a cursor plane (vkms) and a virtual mouse (uinput) on a seat
@@ -22,6 +22,13 @@ it moves) and:
     every 5 ms: how far the plane moved while the loop was held, and how
     long the pointer stood still.
 
+--hdr: the display drawn as an HDR one (`OLO_HEADLESS_COLOR=p3-hdr`,
+which a test seat's app_server takes as a headless one does, and HDR
+switched on as Preferences does): composed in a float buffer and
+encoded into a PQ signal, the pointer on the cursor plane with its
+pixels encoded as they're copied there. app_server's own report
+(`{"type":"frames"}`) must say the pointer is on the plane.
+
 That with libinput on the loop, then again with Preferences' switch
 turned on (`input_thread`, over IPC as Preferences sets it: libinput
 moves to its thread live), then turned off again (back to the loop, the
@@ -36,6 +43,7 @@ DIR = "/var/tmp/olo-cursor-check"
 EXE = os.path.join(ROOT, "target", "release", "olo-app-server")
 KEEP = "--keep" in sys.argv
 HOLD = int(sys.argv[sys.argv.index("--hold") + 1]) if "--hold" in sys.argv else 400
+HDR = "--hdr" in sys.argv
 
 
 # --- DRM: a plane's properties, read as any client may (not the master).
@@ -148,6 +156,8 @@ def start_app_server(mouse):
         OLO_TEST_SEAT="seat-olotest",
         RUST_LOG="info",
     )
+    if HDR:
+        env["OLO_HEADLESS_COLOR"] = "p3-hdr"
     log_path = os.path.join(DIR, "app_server.log")
     p = subprocess.Popen([EXE, "--tty-udev"], env=env, stdout=open(log_path, "w"), stderr=subprocess.STDOUT, start_new_session=True)
     end = time.monotonic() + 30
@@ -347,15 +357,31 @@ def main():
                 sys.exit("vkms has no cursor plane")
             # (vkms tells no EDID: app_server waits 3 s for one before
             # setting the display up by its connector.)
-            end = time.monotonic() + 15
-            while True:
-                home(mouse)
-                if planes.cursor_at() is not None:
-                    break
-                if time.monotonic() > end or p.poll() is not None:
-                    print(log(log_path)[-3000:])
-                    sys.exit("the pointer never came onto vkms's cursor plane")
-                time.sleep(0.2)
+            def on_plane(why):
+                end = time.monotonic() + 15
+                while True:
+                    home(mouse)
+                    if planes.cursor_at() is not None:
+                        return
+                    if time.monotonic() > end or p.poll() is not None:
+                        print(log(log_path)[-3000:])
+                        sys.exit(f"the pointer never came onto vkms's cursor plane {why}")
+                    time.sleep(0.2)
+
+            on_plane("")
+            if HDR:
+                # (Its connector takes no HDR signal: app_server says so,
+                # and draws it as HDR all the same.)
+                said = ipc(sock, {"type": "configure_output", "name": "Virtual-1", "config": {"hdr": True}})
+                if (said or {}).get("type") != "ok" and "HDR" not in str((said or {}).get("message")):
+                    print("configure_output:", said)
+                time.sleep(0.5)
+                on_plane("in HDR")
+            shown = next((d for d in ipc(sock, {"type": "frames"}).get("displays", []) if d.get("output") == "Virtual-1"), {})
+            drawing = re.findall(r"app_server::desktop: colours output=\S+ drawing=(\w+)", log(log_path))
+            results["the display"] = {"drawn": drawing[-1] if drawing else "plain", "the pointer on its plane (app_server says)": shown.get("cursor_plane"), "scan-out": shown.get("scanout")}
+            if HDR and (not drawing or drawing[-1] != "Hdr"):
+                sys.exit(f"the display isn't drawn as HDR: {drawing}")
             results["libinput on the loop"] = measure(p, sock, log_path, 0, planes, mouse)
             since = switch(p, sock, log_path, True, mouse)
             results["input thread (turned on)"] = measure(p, sock, log_path, since, planes, mouse)
