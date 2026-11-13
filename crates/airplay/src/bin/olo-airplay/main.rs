@@ -22,8 +22,19 @@
 //!       --notify tells the person in a notification if it couldn't be
 //!       played (what an app's "Play On" asks for); --on names the
 //!       receiver apart from the film (a name of several words)
+//!   olo-airplay show NAME [--window ID | --display NAME | --screen NAME] [--title TEXT]
+//!                   [--no-sound] [--fps N] [--encoder auto|nvidia|cpu] [--lead MS]
+//!                   [--json] [--trace] [--notify] [--at HOST:PORT]
+//!   olo-airplay show --on NAME …
+//!       show a screen on a receiver paired with, live, a few dozen
+//!       milliseconds behind: a display (the first, or --display NAME),
+//!       a window (--window ID, as Olo numbers windows) or an agent
+//!       screen (--screen NAME), with the computer's sound (--no-sound:
+//!       without). --title names it where Deskbar and the person see it;
+//!       --lead how far behind the receiver shows it. Ctrl-C stops it
 //!   olo-airplay playing [--json]
-//!       the films playing: what, where, and how far along
+//!       the films playing and the screens shown: what, where, and how
+//!       far along
 //!   olo-airplay stop [NAME] | pause [NAME] | resume [NAME]
 //!       stop, pause or go on with what plays on a receiver (on every
 //!       one, with no name; --pid N: the one play of that process,
@@ -53,10 +64,13 @@ use olo_airplay::{
 };
 use olo_protocol::airplay::{self, Playing};
 
+mod show;
+
 const USAGE: &str = "usage: olo-airplay list [--json] [--wait SECONDS]
        olo-airplay pair NAME [--code CODE] [--at HOST:PORT]
        olo-airplay check NAME [--at HOST:PORT]
        olo-airplay play NAME FILE|ADDRESS [--from TIME] [--json] [--trace] [--notify] [--at HOST:PORT]
+       olo-airplay show NAME [--window ID | --display NAME | --screen NAME] [--title TEXT] [--no-sound] [--fps N] [--encoder auto|nvidia|cpu] [--lead MS] [--json] [--trace] [--notify] [--at HOST:PORT]
        olo-airplay playing [--json]
        olo-airplay stop [NAME] | pause [NAME] | resume [NAME]
        olo-airplay paired
@@ -65,7 +79,8 @@ const USAGE: &str = "usage: olo-airplay list [--json] [--wait SECONDS]
   pair     pair with one: the code it shows on its screen is typed here, once
   check    whether one paired with still knows this computer
   play     play a film on one: a file here or an address on the web; Ctrl-C stops it
-  playing  the films playing; stop, pause and resume act on them
+  show     show a display, a window or an agent screen on one, live, with sound; Ctrl-C stops it
+  playing  the films playing and screens shown; stop, pause and resume act on them
   paired   the receivers paired with
   unpair   forget a pairing here";
 
@@ -80,6 +95,7 @@ fn main() -> ExitCode {
         Some("pair") => pair(&args[1..]),
         Some("check") => check(&args[1..]),
         Some("play") => play(&args[1..]),
+        Some("show") => show::show(&args[1..]),
         Some("playing") => playing(&args[1..]),
         Some("stop") => tell_plays(&args[1..], libc::SIGTERM),
         Some("pause") => tell_plays(&args[1..], libc::SIGUSR1),
@@ -133,7 +149,7 @@ fn words_in(args: &[String]) -> Vec<&str> {
             continue;
         }
         if a.starts_with("--") {
-            skip = matches!(a.as_str(), "--code" | "--at" | "--wait" | "--from" | "--pid" | "--on");
+            skip = matches!(a.as_str(), "--code" | "--at" | "--wait" | "--from" | "--pid" | "--on" | "--window" | "--display" | "--screen" | "--title" | "--fps" | "--encoder" | "--lead");
         } else {
             words.push(a.as_str());
         }
@@ -189,14 +205,25 @@ fn takes(r: &Receiver) -> String {
     format!("{}{pairing}", what.join(", "))
 }
 
+/// The receiver a command is for.
+struct Found {
+    at: SocketAddr,
+    device_id: String,
+    name: String,
+    /// What it announced it takes, and the AirPlay it runs (none known
+    /// for one given by --at: it says in its answers).
+    features: u64,
+    version: String,
+}
+
 /// The receiver a command is for: where it is, its id and its name. By
 /// --at, as given (its name the one typed); else the one on the network
 /// whose name is `name` or alone begins with it.
-fn find(name: &str, args: &[String]) -> Result<(SocketAddr, String, String), String> {
+fn find(name: &str, args: &[String]) -> Result<Found, String> {
     if let Some(at) = option(args, "--at") {
         let addr = at.to_socket_addrs().ok().and_then(|mut a| a.next()).ok_or_else(|| format!("{at} isn't an address (HOST:PORT)"))?;
         let id = kept::all().into_iter().find(|k| k.name.eq_ignore_ascii_case(name)).map(|k| k.device_id).unwrap_or_default();
-        return Ok((addr, id, name.to_owned()));
+        return Ok(Found { at: addr, device_id: id, name: name.to_owned(), features: 0, version: String::new() });
     }
     let found = olo_airplay::receivers(Duration::from_secs(2)).map_err(|e| format!("the network couldn't be asked: {e}"))?;
     let wanted = name.to_lowercase();
@@ -212,7 +239,7 @@ fn find(name: &str, args: &[String]) -> Result<(SocketAddr, String, String), Str
         _ => return Err(format!("more than one receiver is called {name}: say more of its name")),
     };
     let at = r.at().ok_or_else(|| format!("{} didn't say where it is", r.name))?;
-    Ok((at, r.device_id.clone(), r.name.clone()))
+    Ok(Found { at, device_id: r.device_id.clone(), name: r.name.clone(), features: r.features, version: r.version.clone() })
 }
 
 fn said(e: Error) -> String {
@@ -221,7 +248,7 @@ fn said(e: Error) -> String {
 
 fn pair(args: &[String]) -> Result<(), String> {
     let name = name_in(args).ok_or(USAGE)?;
-    let (at, device_id, name) = find(&name, args)?;
+    let Found { at, device_id, name, .. } = find(&name, args)?;
     let pairing = Pairing::begin(at, &device_id, &name, WAIT).map_err(said)?;
     let code = match option(args, "--code") {
         Some(code) => code.to_owned(),
@@ -246,7 +273,7 @@ fn pair(args: &[String]) -> Result<(), String> {
 
 fn check(args: &[String]) -> Result<(), String> {
     let name = name_in(args).ok_or(USAGE)?;
-    let (at, device_id, name) = find(&name, args)?;
+    let Found { at, device_id, name, .. } = find(&name, args)?;
     let kept = kept::of(&device_id, &name).ok_or_else(|| format!("{name} isn't paired with (olo-airplay pair)"))?;
     olo_airplay::check(at, &kept, WAIT)?;
     println!("{name} knows this computer.");
@@ -328,7 +355,7 @@ fn play_asked(args: &[String]) -> Result<(), String> {
         _ => return Err(USAGE.into()),
     };
     let what = what.as_str();
-    let (at, device_id, name) = find(&receiver, args)?;
+    let Found { at, device_id, name, .. } = find(&receiver, args)?;
     let kept = kept::of(&device_id, &name).ok_or_else(|| format!("{name} isn't paired with (olo-airplay pair)"))?;
     let credentials = kept.credentials().ok_or("its pairing here can't be read: pair with it again")?;
     let (what, title) = if what.starts_with("http://") || what.starts_with("https://") {

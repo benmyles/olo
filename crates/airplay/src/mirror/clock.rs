@@ -62,7 +62,7 @@ impl Clock {
 /// NTP's fixed point: whole seconds in the high half, the fraction in the
 /// low.
 pub(crate) fn compact(d: Duration) -> u64 {
-    d.as_secs() << 32 | (u64::from(d.subsec_nanos()) << 32) / 1_000_000_000
+    (d.as_secs() << 32) | ((u64::from(d.subsec_nanos()) << 32) / 1_000_000_000)
 }
 
 /// The same, with NTP's epoch: what the timing port answers.
@@ -72,7 +72,7 @@ pub(crate) fn ntp(d: Duration) -> u64 {
 
 /// Nanoseconds of a fixed-point time (PTP's sync wants them).
 pub(crate) fn nanoseconds(t: u64) -> u64 {
-    (t >> 32) * 1_000_000_000 + ((t & 0xffff_ffff) * 1_000_000_000 >> 32)
+    (t >> 32) * 1_000_000_000 + (((t & 0xffff_ffff) * 1_000_000_000) >> 32)
 }
 
 /// A fixed-point time moved by `by` (back too), None past its ends.

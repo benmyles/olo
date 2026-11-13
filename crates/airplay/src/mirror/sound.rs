@@ -51,7 +51,7 @@ struct Bits {
 impl Bits {
     fn put(&mut self, value: u32, n: u32) {
         for i in (0..n).rev() {
-            if self.used % 8 == 0 {
+            if self.used.is_multiple_of(8) {
                 self.out.push(0);
             }
             let bit = (value >> i & 1) as u8;
@@ -169,8 +169,14 @@ pub(crate) struct Sound {
     seq: u16,
     /// The first sample's capture and RTP time (the stream's start).
     began: Option<(Instant, u32)>,
-    /// Samples sent so far.
+    /// How far behind the samples' count the capture runs, in seconds,
+    /// smoothed: the sound card's clock isn't quite the computer's, and
+    /// syncs follow the samples (else a long film's sound would wander
+    /// from its picture), not each callback's jitter.
+    skew: f64,
+    /// Samples sent so far, and pushed so far.
     sent: u64,
+    pushed: u64,
     /// Samples not yet a whole frame.
     waiting: Vec<i16>,
     kept: VecDeque<(u16, Vec<u8>)>,
@@ -190,7 +196,9 @@ impl Sound {
             sealed: 0,
             seq: u16::from_le_bytes(crate::pairing::hap::random::<2>()),
             began: None,
+            skew: 0.0,
             sent: 0,
+            pushed: 0,
             waiting: Vec::with_capacity(FRAME * 4),
             kept: VecDeque::with_capacity(KEPT),
             lead,
@@ -198,11 +206,17 @@ impl Sound {
         }
     }
 
-    /// The RTP time at `t` (where the stream has begun).
+    /// Seconds from the stream's start to `t`.
+    fn since(&self, t: Instant) -> Option<f64> {
+        let (t0, _) = self.began?;
+        Some(if t >= t0 { (t - t0).as_secs_f64() } else { -((t0 - t).as_secs_f64()) })
+    }
+
+    /// The RTP time of the sample captured at `t` (where the stream has
+    /// begun).
     fn rtp_at(&self, t: Instant) -> Option<u32> {
-        let (t0, r0) = self.began?;
-        let since = if t >= t0 { (t - t0).as_secs_f64() } else { -((t0 - t).as_secs_f64()) };
-        Some(r0.wrapping_add((since * f64::from(RATE)).round() as i64 as u32))
+        let (_, r0) = self.began?;
+        Some(r0.wrapping_add(((self.since(t)? - self.skew) * f64::from(RATE)).round() as i64 as u32))
     }
 
     /// `samples` (stereo, interleaved) captured at `at` (their first),
@@ -213,6 +227,12 @@ impl Sound {
             let r0 = u32::from_le_bytes(crate::pairing::hap::random::<4>());
             self.began = Some((at - Duration::from_secs_f64(self.waiting.len() as f64 / 2.0 / f64::from(RATE)), r0));
         }
+        // (Where these samples came, against where their count puts them.)
+        if let Some(since) = self.since(at) {
+            let off = since - self.pushed as f64 / f64::from(RATE);
+            self.skew += (off - self.skew) * 0.01;
+        }
+        self.pushed += (samples.len() / 2) as u64;
         self.waiting.extend_from_slice(samples);
         while self.waiting.len() >= FRAME * 2 {
             if !self.synced
@@ -316,7 +336,7 @@ mod tests {
         let samples: Vec<i16> = (0..1000i16).collect();
         let at = Instant::now();
         sound.push(&samples[..300], at, |_| Some(Now::Ntp(5 << 32))).unwrap();
-        sound.push(&samples[300..], at, |_| Some(Now::Ntp(5 << 32))).unwrap();
+        sound.push(&samples[300..], at + Duration::from_micros(150 * 1_000_000 / 44_100), |_| Some(Now::Ntp(5 << 32))).unwrap();
         let aead = ChaCha20Poly1305::new(&key.into());
         let mut buf = [0u8; 2048];
         let (n, _) = their_control.recv_from(&mut buf).unwrap();
@@ -326,10 +346,13 @@ mod tests {
         let (n, _) = theirs.recv_from(&mut buf).unwrap();
         let (seq, rtp, frame) = unpacket(&aead, &buf[..n]).unwrap();
         assert_eq!((rtp, unalac(&frame).unwrap()), (first_rtp, samples[..704].to_vec()));
-        sound.push(&[0; 500], at, |_| None).unwrap();
+        sound.push(&[0; 500], at + Duration::from_micros(500 * 1_000_000 / 44_100), |_| None).unwrap();
         let (n, _) = theirs.recv_from(&mut buf).unwrap();
         let (seq2, rtp2, _) = unpacket(&aead, &buf[..n]).unwrap();
         assert_eq!((seq2, rtp2), (seq.wrapping_add(1), first_rtp.wrapping_add(352)));
+        // Where it stands, by the samples captured: a second on, a second
+        // of samples on (the captures came when their count said).
+        assert_eq!(sound.rtp_at(at + Duration::from_secs(1)), Some(first_rtp.wrapping_add(44_100)));
         // Asked again for both and one it never sent.
         let mut ask = vec![0x80, 0xd5, 0, 1];
         ask.extend(seq.to_be_bytes());

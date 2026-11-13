@@ -759,7 +759,7 @@ fn keep(shared: &Shared, control: &Mutex<Rtsp>, pictures: &Mutex<Pictures>, soun
                 let _ = sound.lock().unwrap().resync(at, now);
             }
         }
-        if beat % 2 == 0 && !feedback(times) {
+        if beat.is_multiple_of(2) && !feedback(times) {
             return;
         }
     }

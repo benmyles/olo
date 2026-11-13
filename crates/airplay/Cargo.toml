@@ -1,6 +1,6 @@
 [package]
 name = "olo-airplay"
-description = "Sending to AirPlay receivers, natively: finding them on the network (mDNS, DNS-SD), pairing with them, and playing a film on one"
+description = "Sending to AirPlay receivers, natively: finding them on the network (mDNS, DNS-SD), pairing with them, playing a film on one, and showing a screen on one live"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,7 +10,15 @@ path = "src/lib.rs"
 
 [[bin]]
 name = "olo-airplay"
-path = "src/bin/olo-airplay.rs"
+path = "src/bin/olo-airplay/main.rs"
+required-features = ["show"]
+
+[features]
+default = ["show"]
+# The program's showing of a screen: capturing it (app_server's capture),
+# encoding it (olo-video) and the computer's sound (olo-system). An app
+# that only finds, pairs and plays leaves it out.
+show = ["dep:olo-capture", "dep:olo-video", "dep:olo-system", "dep:fast_image_resize"]
 
 [dependencies]
 olo-crash.workspace = true
@@ -32,3 +40,12 @@ getrandom = "0.3"
 zeroize = "1"
 # Playing: AirPlay's messages are binary property lists.
 plist = { version = "1", default-features = false }
+# Showing a screen (the program's, `show`).
+olo-capture = { workspace = true, optional = true }
+olo-video = { workspace = true, optional = true }
+olo-system = { workspace = true, optional = true }
+fast_image_resize = { version = "5", optional = true }
+
+[[example]]
+name = "fake-receiver"
+required-features = ["show"]
