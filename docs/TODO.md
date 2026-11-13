@@ -1234,6 +1234,49 @@ something nobody here has is in "Blocked", with what it waits for.
     the page opens past them where the browser allows.
   - Agents read it too: the network's portal state and its address in
     the tray's and Preferences' trees.
+- **A security key doesn't unlock a locked or logged-out computer**
+  (Ben, 2026-11-13: "the yubikey should not work at the login screen
+  (but face recognition and fingerprint should, as well as password).
+  once logged in then the yubikey should work for elevated permission
+  requests etc. it's just that if someone found the laptop and got the
+  login screen we can't have them just pressing the yubikey to get
+  access"). A YubiKey Nano stays in its port: a touch is no proof of
+  anything on a found laptop. The lock screen took a touch for the
+  password (HACKING, "Security keys", Unlocking); the login screen
+  (`olo-greeter`) never did. From now: neither does, both keep the
+  password, the fingerprint and the face; the key still approves what
+  asks once someone is in (Terminal's sudo, the polkit agent,
+  Passwords' unlock, Approve Without Asking). Preferences ▸ Security ▸
+  Sign In says where the key works and where it doesn't.
+- **The computer starts with Olo's start-up screen and chime, not
+  Lenovo's and Fedora's logos** (Ben, 2026-11-13: "when the os starts
+  it still shows the lenovo + fedora logos on bootup. i want that
+  changed to the beos-inspired olo startup screen with the olo sound
+  played like how a mac plays the apple sound"). Olo's boot splash is
+  built (HACKING, "The login screen and boot splash": the start-up
+  screen's picture as a Plymouth theme, checked in a VM at every scale)
+  but not installed on the ThinkPad: it boots Fedora's theme, which
+  draws the firmware's logo (the BGRT image, Lenovo's) with Fedora's
+  under it.
+  - *Installing it* takes root (`tools/install-login.sh --plymouth`:
+    the theme, and the initramfs made again so it's there from the
+    start): Ben's say and his sudo, with `--revert-plymouth` as the
+    way back. Checked after: the theme draws no BGRT image; a LUKS
+    passphrase (if any) is asked in Olo's field; the hand-over to the
+    login screen without a flash, on the panel and the external
+    displays.
+  - *The firmware's own logo* (Lenovo's, before the bootloader) isn't
+    the OS's to draw over: what's possible on this ThinkPad is to be
+    found out (its setup's "Boot Logo" and the custom logo Lenovo's
+    BIOS update tool can write), said to Ben, and done only if he
+    says so (it writes the firmware).
+  - *The chime at power-on, as a Mac's*: today it plays as the
+    session's start-up screen shows (Preferences ▸ Sound ▸ Starting
+    Up). Played as early as the sound card can (a small unit of Olo's
+    own early in boot, ALSA straight to the card before PipeWire, at
+    the volume last set, silent when muted or chosen off), once a boot,
+    so the session's start-up screen doesn't play it again; measured
+    from power-on to the chime on the ThinkPad.
 
 ## Done, waiting for Ben to try or confirm
 
