@@ -2318,7 +2318,11 @@ it.
   time (Tracker's list view, a step of the selection with 47 rows
   showing: 4.9 → 1.9 M instructions with a key). Keep a row's texts
   with what it shows (Tracker's `Entry::shown`, made the first time
-  it's drawn) rather than formatting them at every paint.
+  it's drawn) rather than formatting them at every paint, and hand a
+  cell text that's shared already as it is (`SharedString::new(arc)`
+  for an `Arc<str>`, `new_static` for a fixed word) rather than a
+  `String`, which is copied again to be shared (Logs: 3,850 → 2,964
+  allocations a step of a live resize, with the kit's own two below).
   `over_cell(row, column, element)` puts something over a cell, in the
   rows (it scrolls with them), in a box where the cell is and as big
   (`ListModel::cell_bounds(columns, row, column)`, as the person

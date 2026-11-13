@@ -854,8 +854,21 @@ something nobody here has is in "Blocked", with what it waits for.
          (the name went blank and typing went nowhere), in the build
          before this too; the field is now over the Name cell
          (`ColumnListView::over_cell`, the kit's).
-       - Logs makes a shared string of a `String` for 490 cells a
-         step.
+       - *Logs' cells, done 2026-11-13.* It made a `String` for each
+         cell and then a shared string of it (two allocations a cell),
+         the program's name copied from the shared one it had and the
+         level's from a fixed one. Now those two are shared as they
+         are and the message copied once. Found with it, in the kit,
+         for every app: every label drawn copied its text twice to note
+         it for cut text's tips (`note_if_clipped`: now the label's own
+         shared text), and a list's row joined its cells' texts in a
+         list, a `String` and a copy to name it for agents (now one
+         allocation, a lone cell's text shared as it is). A live resize
+         of Logs on 20,000 lines (memhist, exact): 3,850 → 2,964
+         allocations a step, 8,130 → 7,494 copies; release, perf stat,
+         five runs each in turn, medians: 10.43 → 8.28 M instructions,
+         7.83 → 5.80 M cycles a step. The same to the pixel at 1×,
+         1.5× and 2×, light and dark; the rows' names the same.
        - An element is 800 bytes (its style, 632 of them) and is
          moved six or seven times on its way into the tree: 0.6 MB a
          step in Logs. A boxed style would trade those for an

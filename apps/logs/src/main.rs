@@ -31,8 +31,8 @@ use std::{
 
 use model::{Level, Line, Now, Query, Since};
 use olo_kit::{
-    Child, ClickEvent, ClipboardItem, Cx, Element, Font, FontWeight, Hsla, IntoElement as _, Menu, MenuBar, ParentElement as _, Pixels, Point, Styled as _, TextRun, View, WindowHandle, WindowOptions,
-    agent, canvas, clipboard, div,
+    Child, ClickEvent, ClipboardItem, Cx, Element, Font, FontWeight, Hsla, IntoElement as _, Menu, MenuBar, ParentElement as _, Pixels, Point, SharedString, Styled as _, TextRun, View, WindowHandle,
+    WindowOptions, agent, canvas, clipboard, div,
     file_panel::{self, FilePanel, PanelResult},
     instance::{self, Launch},
     menu, metrics as m, px,
@@ -248,9 +248,12 @@ fn highlighted(text: &str, font: &Font, base: Hsla, p: &Palette, query: &search:
 
 /// A line's message as its row shows it: its first line, and an
 /// ellipsis if there is more.
-fn message_text(l: &Line) -> String {
+/// A line's Message cell: its first line, "…" after it when there's
+/// more. (Made shared at once: copied once, not into a `String` and then
+/// again.)
+fn message_text(l: &Line) -> SharedString {
     let first = l.first_line();
-    if l.message.len() > first.len() { format!("{first} …") } else { first.to_owned() }
+    if l.message.len() > first.len() { format!("{first} …").into() } else { SharedString::new(first) }
 }
 
 fn line_text(l: &Line, midnight: u64) -> String {
@@ -726,10 +729,12 @@ impl Logs {
         };
         ColumnListView::new(cx, "logs-lines", &self.list, columns, self.view.len(), |logs: &Logs, cell, g| {
             let Some(l) = logs.view.get(cell.row).and_then(|&i| logs.lines.get(i)) else { return };
-            let text = match cell.column {
-                0 => model::format_time(l.time, logs.now.midnight),
-                1 => l.program.to_string(),
-                2 => l.level.name().to_owned(),
+            // (The program's name is shared already and the level's is
+            // fixed: neither is copied for a cell.)
+            let text: SharedString = match cell.column {
+                0 => model::format_time(l.time, logs.now.midnight).into(),
+                1 => SharedString::new(l.program.clone()),
+                2 => SharedString::new_static(l.level.name()),
                 _ => message_text(l),
             };
             let p = theme::palette();

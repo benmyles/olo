@@ -269,7 +269,7 @@ pub struct Cell<'a> {
     pub selected: bool,
     pub text_color: Hsla,
     pub align: style::Align,
-    texts: &'a mut Vec<SharedString>,
+    texts: &'a mut RowTexts,
 }
 
 impl Cell<'_> {
@@ -862,7 +862,7 @@ fn paint_row<V>(
         style::fill_rect(g, r, style::c(sel));
     }
     let text_color = style::c(if selected { p.list_selected_item_text } else { p.list_item_text });
-    let mut texts = Vec::new();
+    let mut texts = RowTexts::new();
     for (at, (x0, x1)) in spans(widths, r.left(), r.right(), sideways).into_iter().enumerate() {
         let i = order[at];
         let b = Bounds::from_corners(point(x0, r.top()), point(x1, r.bottom()));
@@ -870,8 +870,34 @@ fn paint_row<V>(
             cell(view, &mut Cell { bounds: b, row, column: i, selected, text_color, align: columns[i].align, texts: &mut texts }, g);
         });
     }
-    let name = texts.iter().map(|t| t.as_ref()).collect::<Vec<_>>().join("  ");
+    let name = row_name(&texts);
     g.agent(agent::Node { role: "Row", name: Some(name.into()), bounds: r, enabled: true, clickable: true, selected: Some(selected), ..Default::default() });
+}
+
+/// A row's cells' texts, as it's drawn (on the stack: a row's few).
+type RowTexts = smallvec::SmallVec<[SharedString; 6]>;
+
+/// What agents read a row as: its cells' texts, two spaces between. (One
+/// cell's is that text itself, shared; more are joined in a buffer kept
+/// for it and copied out once: a row drawn costs one allocation for its
+/// name, not a list, a joined text and its copy.)
+fn row_name(texts: &[SharedString]) -> SharedString {
+    if let [one] = texts {
+        return one.clone();
+    }
+    thread_local! {
+        static JOINED: RefCell<String> = const { RefCell::new(String::new()) };
+    }
+    JOINED.with_borrow_mut(|joined| {
+        joined.clear();
+        for (i, t) in texts.iter().enumerate() {
+            if i > 0 {
+                joined.push_str("  ");
+            }
+            joined.push_str(t);
+        }
+        SharedString::new(joined.as_str())
+    })
 }
 
 /// A button went down over the rows.
