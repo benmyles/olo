@@ -241,7 +241,11 @@ impl Panel {
             Panel::ScreenSaver => (500, 400),
             // Passwords' settings, security keys beside them.
             Panel::Security => (880, 440),
-            Panel::Sound => (800, 466),
+            // As tall as its devices need, which is a machine's own (no
+            // list in it shrinks): the height is only its least. The
+            // lint's test devices, the most a machine shows, need 466; a
+            // machine with fewer kept that, empty below (Ben's).
+            Panel::Sound => (800, 160),
             // Coding Agents beside Git Worktrees and Command Suggestions.
             Panel::Terminal => (900, 600),
             // The themes, the chosen one's colour sets beside them.

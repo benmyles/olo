@@ -4006,5 +4006,11 @@
   "title": "Tracker Status: names cut, Stop always in place",
   "caption": "Fixed at 540 points and as tall as its jobs. Under the bar, the current item's name is cut short with '\u2026' and the counts and time left show whole at the right, so a long or changing name never pushes Stop out of the window (Ben: 'it doesn't fit in the space when the names etc are changing').",
   "image": "2026-11-13/010413-tracker-status-names-cut-stop-always-in-place.png"
+ },
+ {
+  "time": "2026-11-13T01:50:22",
+  "title": "Preferences \u25b8 Sound: as tall as its devices",
+  "caption": "The Sound panel's height was a 466-point minimum sized for the most devices a machine shows, so with fewer (or no sound server) the window kept empty space below. Now its height is what its devices need.",
+  "image": "2026-11-13/015022-preferences-sound-as-tall-as-its-devices.png"
  }
 ]

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-13
 
+### Preferences ▸ Sound: as tall as its devices
+
+*01:50* — The Sound panel's height was a 466-point minimum sized for the most devices a machine shows, so with fewer (or no sound server) the window kept empty space below. Now its height is what its devices need.
+
+![Preferences ▸ Sound: as tall as its devices](2026-11-13/015022-preferences-sound-as-tall-as-its-devices.png)
+
 ### Tracker Status: names cut, Stop always in place
 
 *01:04* — Fixed at 540 points and as tall as its jobs. Under the bar, the current item's name is cut short with '…' and the counts and time left show whole at the right, so a long or changing name never pushes Stop out of the window (Ben: 'it doesn't fit in the space when the names etc are changing').
