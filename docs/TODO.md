@@ -47,20 +47,20 @@ something nobody here has is in "Blocked", with what it waits for.
      ends; `ScrollHandle`), rows made as they come near (`uniform_rows`),
      element state, window keys, held commits, window state, upgrade
      hooks; several damage rectangles a frame, a drawing made again
-     damaged only where it differs (2026-11-13). *Still to do:* drag
-     and drop (within a window, between windows, files from outside);
-     pictures as elements (`img`) and animated ones; animations
-     stepped on the stage; a frame drawn straight from the kept
-     drawings (no copy into a scene: ~50 µs of a ~200 µs frame); a
-     scroll bar's knob moved
-     by the stage; rows of differing heights (GPUI's `list`); a headless
-     window for the layout lint; nothing worked out or drawn for a
-     window before app_server has given it its size (a layer or lock
-     surface opens 1 × 1 and is laid out and drawn so once: wasted, and
-     the terminal in Rescue has to know not to tell its shell that
-     size); moving a window to another display
-     (`moving`); agents' `Menus` of a window by surface is in, `Move`,
-     `WindowOver`, `WindowDropped`, `Focus` are not.
+     damaged only where it differs (2026-11-13); drag and drop (a
+     view's parts take drops, files dropped on an element), moving a
+     window to another display (`on_move_window`), the layout lint's
+     headless window, and agents' `Menus` by surface, `Move`,
+     `WindowOver`, `WindowDropped`, `Focus` and `FocusIn` (checked
+     2026-11-13). *Still to do:* pictures as elements (`img`) and
+     animated ones; animations stepped on the stage; a frame drawn
+     straight from the kept drawings (no copy into a scene: ~50 µs of
+     a ~200 µs frame, and 5% of a Logs resize step's cycles); a
+     scroll bar's knob moved by the stage; rows of differing heights
+     (GPUI's `list`); nothing worked out or drawn for a window before
+     app_server has given it its size (a layer or lock surface opens
+     1 × 1 and is laid out and drawn so once: wasted, and the terminal
+     in Rescue has to know not to tell its shell that size).
   3. **The kit's widgets** on it (everything in olo-ui today). *Done:*
      theme, style, review, icons, cut, tip, keys, menu (bars, popups,
      context menus), agent, app (Frame, fits_content, kept sizes,
