@@ -143,12 +143,11 @@ fn clipboard(ui: &mut Ui, p: &olo_protocol::PasswordsSecurity) {
 /// session's programs have Passwords' agent in `SSH_AUTH_SOCK` (olo-session
 /// sets it as a login starts), so ssh is never left with none.
 fn ssh_config_note(ui: &mut Ui) {
-    let path = olo_keychain::ssh_config::path();
-    let Some(other) = std::fs::read_to_string(&path).ok().and_then(|t| olo_keychain::ssh_config::other_agent(&t)) else {
+    let (path, other, ours) = ssh_setup();
+    let Some(other) = other else {
         ui.note("ssh, git and other programs sign in with the SSH keys in Passwords, each one allowed the first time it asks.");
         return;
     };
-    let ours = std::env::var_os("SSH_AUTH_SOCK").is_some_and(|s| std::path::Path::new(&s) == olo_xdg::ssh_agent_socket());
     ui.note(format!("Your ssh configuration (~/.ssh/config) sends ssh to another agent, {other}, so it doesn’t use the keys in Passwords."));
     if !ours {
         ui.note("From your next login, Passwords can be ssh’s agent here too.");
@@ -165,6 +164,24 @@ fn ssh_config_note(ui: &mut Ui) {
         cx.notify();
     });
     ui.button("Use Passwords for ssh", done);
+}
+
+/// `~/.ssh/config`, the other agent it sends ssh to (if any), and whether
+/// this session's programs have Passwords' agent.
+#[cfg(not(test))]
+fn ssh_setup() -> (std::path::PathBuf, Option<String>, bool) {
+    let path = olo_keychain::ssh_config::path();
+    let other = std::fs::read_to_string(&path).ok().and_then(|t| olo_keychain::ssh_config::other_agent(&t));
+    let ours = std::env::var_os("SSH_AUTH_SOCK").is_some_and(|s| std::path::Path::new(&s) == olo_xdg::ssh_agent_socket());
+    (path, other, ours)
+}
+
+/// (The lint's, whoever runs it: never the person's own ssh setup. The
+/// panel's tallest, with its button, as on a machine that used
+/// 1Password's agent; a config nowhere, should the button be pressed.)
+#[cfg(test)]
+fn ssh_setup() -> (std::path::PathBuf, Option<String>, bool) {
+    ("/nonexistent/.ssh/config".into(), Some("~/.1password/agent.sock".into()), true)
 }
 
 /// What olo-secrets says it's doing (`$XDG_RUNTIME_DIR/olo-secrets.json`).
