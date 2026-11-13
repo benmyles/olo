@@ -254,6 +254,7 @@ pub enum Ask {
     Tree(bool),
     Hints(Vec<u32>),
     Focus(u64),
+    FocusIn(FocusIn),
     Frames(bool),
     Review(bool),
     Path(u32),
@@ -261,6 +262,15 @@ pub enum Ask {
     WindowOver(WindowAt),
     WindowDropped(WindowAt),
     Move(crate::moving::MoveTo),
+}
+
+/// A widget of one window to give the keyboard to: `node` is its id in
+/// the tree of the window whose surface has protocol id `surface` (a
+/// tree's ids are its window's own).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct FocusIn {
+    pub surface: u32,
+    pub node: u64,
 }
 
 /// A command to choose in one window's menus.
@@ -291,7 +301,11 @@ pub enum Query {
     Tree(mpsc::Sender<Vec<WindowTree>>),
     /// The trees of the surfaces with these protocol ids, pickable only.
     Hints(Vec<u32>, mpsc::Sender<Vec<WindowTree>>),
+    /// Give the keyboard to the widget with this tree id (in the window
+    /// with the keyboard, else the first that has it).
     Focus(u64),
+    /// The same in the window with this surface; whether it took it.
+    FocusIn(FocusIn, mpsc::Sender<bool>),
     Frames(mpsc::Sender<Vec<FrameTimes>>),
     Review(mpsc::Sender<Vec<WindowReview>>),
     /// The path of the window with the surface with this protocol id.
@@ -405,6 +419,11 @@ pub fn listen(to: impl Fn(Query) + Send + 'static) -> Option<Listening> {
                         to(Query::Focus(id));
                         serde_json::to_string(&serde_json::json!({ "ok": true }))
                     }
+                    Ok(Ask::FocusIn(ask)) => {
+                        let (tx, rx) = mpsc::channel();
+                        to(Query::FocusIn(ask, tx));
+                        serde_json::to_string(&serde_json::json!({ "ok": rx.recv_timeout(WAIT).unwrap_or(false) }))
+                    }
                     Ok(Ask::Tree(_)) => {
                         let (tx, rx) = mpsc::channel();
                         to(Query::Tree(tx));
@@ -505,7 +524,7 @@ pub fn serve(pid: u32, served: Served) -> std::io::Result<()> {
                     tracing::info!(command = %cmd, by = %peer(&s), "asked to choose a command");
                     serde_json::to_string(&serde_json::json!({ "ok": (served.invoke)(&cmd) }))
                 }
-                Ok(Ask::Focus(_) | Ask::LoseGpu(_) | Ask::WindowOver(_) | Ask::WindowDropped(_)) => serde_json::to_string(&serde_json::json!({ "ok": false })),
+                Ok(Ask::Focus(_) | Ask::FocusIn(_) | Ask::LoseGpu(_) | Ask::WindowOver(_) | Ask::WindowDropped(_)) => serde_json::to_string(&serde_json::json!({ "ok": false })),
                 Ok(Ask::Frames(_)) => serde_json::to_string(&Vec::<FrameTimes>::new()),
                 Ok(Ask::Review(_)) => serde_json::to_string(&Vec::<WindowReview>::new()),
                 Ok(Ask::Move(_)) => serde_json::to_string(&crate::moving::Moved::failed(crate::moving::NOT_KIT)),
@@ -573,6 +592,14 @@ pub fn invoke_in(pid: u32, surface: u32, command: &str) -> bool {
 /// with process id `pid`. Blocks briefly: call it off the UI thread.
 pub fn focus(pid: u32, node: u64) -> bool {
     ask(pid, &Ask::Focus(node)).and_then(|a| serde_json::from_str::<serde_json::Value>(&a).ok()).is_some_and(|v| v["ok"] == true)
+}
+
+/// Give the keyboard to the widget with tree id `node` of the window
+/// whose surface has protocol id `surface`, in the kit app with process
+/// id `pid`; whether it took it. Blocks briefly: call it off the UI
+/// thread.
+pub fn focus_in(pid: u32, surface: u32, node: u64) -> bool {
+    ask(pid, &Ask::FocusIn(FocusIn { surface, node })).and_then(|a| serde_json::from_str::<serde_json::Value>(&a).ok()).is_some_and(|v| v["ok"] == true)
 }
 
 /// What the windows of the kit app with process id `pid` show (None if

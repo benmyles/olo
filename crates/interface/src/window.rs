@@ -1015,6 +1015,7 @@ impl WindowCore {
         if node.style.visibility == crate::Visibility::Hidden {
             return;
         }
+        // (`agent_sources` walks as this does: keep the two in step.)
         let shown = |b: Bounds<Pixels>| Bounds { origin: b.origin + shift, size: b.size };
         // What it is itself, if it says.
         if let Some(inter) = &node.inter
@@ -1054,6 +1055,25 @@ impl WindowCore {
         };
         for child in &node.children {
             self.agent_nodes(*child, inner, shift, out);
+        }
+    }
+
+    /// The element each of `agent_nodes`' nodes comes from, in the same
+    /// order: an element that says what it is, or the drawing that said
+    /// it holds the thing.
+    fn agent_sources(&self, id: NodeId, out: &mut Vec<NodeId>) {
+        let Some(node) = self.nodes.get(id) else { return };
+        if node.style.visibility == crate::Visibility::Hidden {
+            return;
+        }
+        if node.inter.as_ref().is_some_and(|i| i.agent.is_some()) {
+            out.push(id);
+        }
+        if let Some(notes) = &node.notes {
+            out.extend(std::iter::repeat_n(id, notes.agent.len()));
+        }
+        for child in &node.children {
+            self.agent_sources(*child, out);
         }
     }
 
@@ -2156,6 +2176,28 @@ impl<'a> WindowCx<'a> {
             self.core.agent_nodes(root, window, Point::default(), &mut out);
         }
         out
+    }
+
+    /// Gives the keyboard to what [`Self::agent_nodes`]' node `index`
+    /// is (app_server's keyboard hints, picking a text field, a slider or
+    /// a scroll bar, which a click would change): the element it comes
+    /// from, or the nearest that holds it and takes the keyboard (an
+    /// editor's text, said by its drawing, is its view's). Whether
+    /// anything took it.
+    pub fn focus_agent_node(&mut self, index: usize) -> bool {
+        let Some(root) = self.core.root else { return false };
+        let mut sources = Vec::new();
+        self.core.agent_sources(root, &mut sources);
+        let mut at = sources.get(index).copied();
+        while let Some(id) = at {
+            let Some(node) = self.core.nodes.get(id) else { return false };
+            if node.inter.as_ref().is_some_and(|i| i.focusable && !i.disabled) {
+                self.focus_node(Some(id));
+                return true;
+            }
+            at = node.parent;
+        }
+        false
     }
 
     /// How many times the window has shown something new (for what

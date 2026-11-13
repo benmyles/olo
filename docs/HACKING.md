@@ -2767,7 +2767,16 @@ it.
   from anywhere else.
 - Keyboard hints: app_server asks by surface (`{"hints":[ids]}`); each
   window answers with its `WindowCx::surface_id()` and what can be picked
-  in it. A layer surface's tree carries its namespace (`layer`).
+  in it. A layer surface's tree carries its namespace (`layer`). Picking
+  a text field, a slider or a scroll bar (which a click would change)
+  brings its window forward and asks the app to give it the keyboard,
+  by its window's surface and its id in that window's tree
+  (`{"focus_in":{"surface":S,"node":N}}`, `commands::focus_in`; an app
+  from before it is asked `{"focus":N}`, for its window with the
+  keyboard): `WindowCx::focus_agent_node` gives it to the element the
+  node comes from, or to the nearest that holds it and takes the
+  keyboard (an editor's text, said by its drawing). The kits had
+  answered `focus` with nothing, so picking a field did nothing.
 - Upgrades: when olo-session signals an upgrade (SIGURG) and the app's
   binary was replaced, or app_server restarts in place, `on_upgrade`'s
   state is saved and the app re-executes (as the new version), finding
