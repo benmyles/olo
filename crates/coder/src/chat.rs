@@ -8,15 +8,26 @@ pub(crate) struct Stream {
     calls: BTreeMap<u64, Value>,
     finish: Option<String>,
     usage: Value,
+    /// The known service answering, whose own error message may be shown
+    /// (a custom gateway's may echo credentials).
+    pub service: Option<&'static crate::providers::Known>,
 }
 impl Default for Stream {
     fn default() -> Self {
-        Self { message: json!({"role":"assistant","content":null}), calls: BTreeMap::new(), finish: None, usage: json!({}) }
+        Self { message: json!({"role":"assistant","content":null}), calls: BTreeMap::new(), finish: None, usage: json!({}), service: None }
     }
 }
 impl Stream {
     pub fn push(&mut self, value: Value, event: &mut impl FnMut(&str, Value)) -> Result<()> {
-        ensure!(value.get("error").is_none(), "custom endpoint returned an error event");
+        if let Some(error) = value.get("error") {
+            let said = self.service.and_then(|_| error["message"].as_str().or(error.as_str())).map(|m| crate::tools::clip(m.trim(), 300)).filter(|m| !m.is_empty());
+            let said = match said {
+                Some(m) if m.ends_with(['.', '!', '?']) => format!(": {m}"),
+                Some(m) => format!(": {m}."),
+                None => ".".into(),
+            };
+            anyhow::bail!("{} stopped partway through its answer with an error{said}", self.service.map_or("The endpoint", |k| k.name));
+        }
         if value["usage"].is_object() {
             self.usage = value["usage"].clone();
         }

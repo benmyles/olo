@@ -190,14 +190,16 @@ fn upgrade_stale(dir: &std::path::Path, stream: &std::os::unix::net::UnixStream)
     if !replaced || theirs != ours {
         return;
     }
+    // Already told, and finishing a run first (it says so from the signal
+    // until it re-executes): it becomes the new build when that ends, and
+    // meanwhile says so to whatever it can't do yet.
+    if olo_kit_base::restore::waiting_marker(pid as u32).exists() {
+        return;
+    }
     // SAFETY: a signal to our own service, which handles it.
     unsafe { libc::kill(pid, libc::SIGURG) };
-    let waiting = olo_kit_base::restore::waiting_marker(pid as u32);
     for _ in 0..100 {
         std::thread::sleep(std::time::Duration::from_millis(20));
-        if waiting.exists() {
-            return; // (Busy: it upgrades when its work is done.)
-        }
         let became = program_of(&pid.to_string()).is_none_or(|(_, replaced)| !replaced);
         if became && std::os::unix::net::UnixStream::connect(rpc::socket(dir)).is_ok() {
             return;

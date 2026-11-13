@@ -99,6 +99,12 @@ service has (`FIREWORKS_API_KEY` until changed):
 /set model.endpoint.api_key_password "op://Private/Fireworks/credential"
 ```
 
+When an endpoint refuses a request, the error says who refused, why and what to
+change: a refused key (401, 403) points to **Key** and the service's keys page,
+an unknown model (404) to **Model**, a limit or empty account (402, 429) says
+so. A known service's own message (its `error.message`) is included; a custom
+gateway's body never is, since some echo the credentials they were sent.
+
 ## Custom OpenAI-compatible endpoints
 
 Choose **Settings ▸ Model ▸ Runs on: An OpenAI-compatible endpoint**, or

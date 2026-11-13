@@ -119,10 +119,16 @@ impl Client {
         }
         let response = self.authorize(request, model).await?.send().await?;
         let status = response.status();
-        if matches!(status.as_u16(), 401 | 403) {
-            self.refused(model);
+        if !status.is_success() {
+            if matches!(status.as_u16(), 401 | 403) {
+                self.refused(model);
+            }
+            if model.provider == Provider::Openai {
+                let bytes = bounded_response(response, 64 * 1024).await.unwrap_or_default();
+                bail!("{}", refusal(model, status.as_u16(), &bytes));
+            }
+            bail!("models: {status}");
         }
-        ensure!(status.is_success(), "models: {status}");
         Ok(serde_json::from_slice(&bounded_response(response, 4 * 1024 * 1024).await?)?)
     }
     pub async fn turn(&self, s: &Session, system: &str, defs: &[ToolDef], cancel: &CancellationToken, mut event: impl FnMut(&str, Value)) -> Result<Reply> {
@@ -191,8 +197,8 @@ impl Client {
                         self.refused(&s.config.model);
                     }
                     if s.config.model.provider == Provider::Openai {
-                        // Custom gateways may echo authentication in error bodies.
-                        bail!("custom endpoint returned HTTP {status}; check endpoint, model, credentials and quota");
+                        let bytes = bounded_response(response, 64 * 1024).await.unwrap_or_default();
+                        bail!("{}", refusal(&s.config.model, status.as_u16(), &bytes));
                     }
                     let bytes = bounded_response(response, 64 * 1024).await.with_context(|| format!("provider {status}"))?;
                     bail!("provider {status}: {}", crate::tools::clip(&String::from_utf8_lossy(&bytes), 8000));
@@ -209,6 +215,7 @@ impl Client {
                 let mut stream = response.bytes_stream();
                 let mut decoder = Sse::default();
                 let mut chat = crate::chat::Stream::default();
+                chat.service = crate::providers::of(&s.config.model);
                 let mut complete = None;
                 let mut received = 0usize;
                 while let Some(chunk) = stream.next().await {
@@ -446,6 +453,27 @@ impl Sse {
     }
 }
 
+/// What an endpoint's refusal means, for the person: who refused, why,
+/// and what to change. A known service's own message is included (its
+/// `error.message`, short); a custom gateway's body isn't, since some
+/// echo the credentials they were sent.
+fn refusal(model: &ModelConfig, status: u16, body: &[u8]) -> String {
+    let known = crate::providers::of(model);
+    let name = known.map_or("The endpoint", |k| k.name);
+    let said = known.and_then(|_| serde_json::from_slice::<Value>(body).ok()).and_then(|v| v["error"]["message"].as_str().or(v["message"].as_str()).map(|m| crate::tools::clip(m.trim(), 300)));
+    let said = match said.filter(|m| !m.is_empty()) {
+        Some(m) if m.ends_with(['.', '!', '?']) => format!(": {m}"),
+        Some(m) => format!(": {m}."),
+        None => ".".into(),
+    };
+    let (what, then) = match status {
+        401 | 403 => ("refused the key".to_owned(), format!(" Check Settings ▸ Model ▸ Key.{}", known.map(|k| format!(" Make one at {}.", k.keys_page)).unwrap_or_default())),
+        404 => (format!("has no model “{}”", model.model), " Choose another in Settings ▸ Model.".into()),
+        402 | 429 => ("turned the request away".into(), " Too many requests, or the account's credit or quota is used up.".into()),
+        _ => ("couldn't answer".into(), " Check its address, model, key and quota in Settings ▸ Model.".into()),
+    };
+    format!("{name} {what} (HTTP {status}){said}{then}")
+}
 async fn bounded_response(mut response: reqwest::Response, limit: usize) -> Result<Vec<u8>> {
     let mut bytes = Vec::new();
     while let Some(chunk) = response.chunk().await? {
@@ -453,4 +481,26 @@ async fn bounded_response(mut response: reqwest::Response, limit: usize) -> Resu
         bytes.extend_from_slice(&chunk);
     }
     Ok(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn a_refusal_says_who_refused_and_what_to_change() {
+        let fireworks = crate::providers::FIREWORKS.config(None);
+        let said = refusal(&fireworks, 401, br#"{"error":{"message":"The API key you provided is invalid.","code":"UNAUTHORIZED"}}"#);
+        assert!(said.starts_with("Fireworks AI refused the key (HTTP 401): The API key you provided is invalid. Check"), "{said}");
+        assert!(said.contains("Settings ▸ Model ▸ Key") && said.contains("app.fireworks.ai"), "{said}");
+        assert!(refusal(&fireworks, 404, b"").contains("has no model “accounts/fireworks/routers/"));
+        assert_eq!(
+            refusal(&fireworks, 500, br#"{"error":{"message":"overloaded"}}"#),
+            "Fireworks AI couldn't answer (HTTP 500): overloaded. Check its address, model, key and quota in Settings ▸ Model."
+        );
+        // A custom gateway's body may echo the key: never shown.
+        let mut custom = ModelConfig::for_provider(Provider::Openai);
+        custom.endpoint = Some(EndpointConfig { base_url: "https://gateway.example/v1".into(), ..EndpointConfig::default() });
+        let said = refusal(&custom, 401, br#"{"error":{"message":"bad key sk-secret"}}"#);
+        assert!(said.starts_with("The endpoint refused the key") && !said.contains("sk-secret"), "{said}");
+    }
 }
