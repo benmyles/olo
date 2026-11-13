@@ -185,7 +185,10 @@ impl Store {
         Ok(serde_json::json!({"next_before":rows.last().map(|v|v["cursor"].clone()),"checkpoints":rows}))
     }
     pub fn list(&self) -> Result<Vec<Value>> {
-        let mut q = self.db.prepare("SELECT json_object('id',id,'title',json_extract(body,'$.title'),'workspace',json_extract(body,'$.workspace'),'status',json_extract(body,'$.status'),'updated',updated,'parent',json_extract(body,'$.parent'),'model',json_extract(body,'$.config.model.model'),'usage',json_extract(body,'$.usage')) FROM sessions ORDER BY updated DESC")?;
+        let mut q = self.db.prepare("SELECT json_object('id',id,'title',json_extract(body,'$.title'),'workspace',json_extract(body,'$.workspace'),'status',json_extract(body,'$.status'),'updated',updated,'parent',json_extract(body,'$.parent'),'model',json_extract(body,'$.config.model.model'),'usage',json_extract(body,'$.usage'),
+          'fresh',json(CASE WHEN coalesce(json_extract(body,'$.turns'),0)=0 AND coalesce(json_array_length(body,'$.context'),0)=0 AND json_type(body,'$.goal') IS NOT 'object'
+            AND coalesce(json_array_length(body,'$.inbox'),0)=0 AND coalesce(json_array_length(body,'$.queued'),0)=0 AND json_extract(body,'$.parent') IS NULL
+            AND NOT coalesce(json_extract(body,'$.archived'),0) THEN 'true' ELSE 'false' END)) FROM sessions ORDER BY updated DESC")?;
         let rows = q.query_map([], |r| r.get::<_, String>(0))?;
         rows.map(|r| Ok(serde_json::from_str(&r?)?)).collect()
     }

@@ -828,6 +828,11 @@ impl Engine {
             let sid = id.to_owned();
             let mut batch = String::new();
             let mut last = std::time::Instant::now() - std::time::Duration::from_secs(1);
+            // Reasoning summaries, as the model writes them: what the
+            // interfaces show while it thinks (never stored; the encrypted
+            // reasoning itself goes back to the provider untouched).
+            let mut thought = String::new();
+            let mut thought_last = last;
             let inference = client.turn(&s, &system, &defs, cancel, move |kind, data| {
                 if kind == "delta" {
                     batch.push_str(data["text"].as_str().unwrap_or(""));
@@ -835,7 +840,13 @@ impl Engine {
                         e.transient(&sid, kind, json!({"text":std::mem::take(&mut batch)}));
                         last = std::time::Instant::now();
                     }
-                } else if kind != "reasoning" {
+                } else if kind == "reasoning" {
+                    thought.push_str(data["text"].as_str().unwrap_or(""));
+                    if thought_last.elapsed() >= std::time::Duration::from_millis(250) || thought.len() >= 4000 {
+                        e.transient(&sid, kind, json!({"text":std::mem::take(&mut thought)}));
+                        thought_last = std::time::Instant::now();
+                    }
+                } else {
                     e.transient(&sid, kind, data);
                 }
             });

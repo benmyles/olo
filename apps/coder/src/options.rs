@@ -45,11 +45,11 @@ pub fn section(name: &str) -> Vec<OptionSpec> {
             toggle("supervisor.enabled", "Enable supervisor:"),
             OptionSpec { path: "supervisor.guidance", label: "Supervisor guidance:", choices: vec![], rows: 5 },
             toggle("supervisor.recover_errors", "Recover errors:"),
-            field("supervisor.every_turns", "Every turns:"),
-            field("supervisor.max_reviews", "Maximum reviews:"),
-            field("supervisor.max_interventions", "Interventions:"),
-            field("supervisor.token_budget", "Token budget:"),
-            field("supervisor.stall_seconds", "Stall timeout (s):"),
+            field("supervisor.every_turns", "Review every (turns):"),
+            field("supervisor.max_reviews", "Most reviews:"),
+            field("supervisor.max_interventions", "Most interventions:"),
+            field("supervisor.token_budget", "Supervisor tokens:"),
+            field("supervisor.stall_seconds", "Stalled after (s):"),
         ],
         "instructions" => vec![
             OptionSpec { path: "instructions", label: "Instructions:", choices: vec![], rows: 8 },
@@ -57,15 +57,6 @@ pub fn section(name: &str) -> Vec<OptionSpec> {
         ],
         _ => vec![],
     }
-}
-pub fn fields(specs: &[OptionSpec], config: &serde_json::Value) -> Vec<crate::form::Field> {
-    specs
-        .iter()
-        .map(|f| {
-            let field = crate::form::Field::new(f.label, value(config, f.path)).multiline(f.rows).optional();
-            if f.choices.is_empty() { field } else { field.choices(f.choices.clone()) }
-        })
-        .collect()
 }
 pub fn pointer(path: &str) -> String {
     format!("/{}", path.replace('.', "/"))
@@ -106,10 +97,6 @@ mod tests {
         let config = serde_json::json!(olo_coder_core::Config::default());
         for (id, _) in SECTIONS {
             let fields = section(id);
-            for (spec, input) in fields.iter().zip(super::fields(&fields, &config)) {
-                assert_eq!(input.select, !spec.choices.is_empty());
-                assert_eq!(input.value, value(&config, spec.path));
-            }
             let paths: Vec<_> = fields.iter().map(|f| f.path.to_owned()).collect();
             let values: Vec<_> = fields.iter().map(|f| value(&config, f.path)).collect();
             validated_changes(&config, &paths, &values).unwrap_or_else(|e| panic!("{id}: {e}"));

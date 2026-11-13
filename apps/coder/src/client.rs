@@ -8,7 +8,7 @@ use olo_coder_core::{
 use serde_json::{Value, json};
 use std::{
     io::{BufRead, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, mpsc},
 };
 
@@ -340,6 +340,19 @@ fn follow(dir: &std::path::Path, session: &str, filter: SessionFilter, callback:
     })?;
     Ok(held)
 }
+/// The newest session in `workspace` nobody has used yet (no turns, no
+/// context, no goal, nothing waiting): opening the app again opens that
+/// one rather than leaving another empty session behind.
+fn untouched(dir: &Path, workspace: &Path) -> Result<Option<String>> {
+    let want = std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_owned());
+    let list = rpc::call(dir, &Command::List)?;
+    Ok(list.as_array().into_iter().flatten().find_map(|s| {
+        let fresh = s["fresh"].as_bool() == Some(true);
+        let same = s["workspace"].as_str().is_some_and(|w| std::fs::canonicalize(w).unwrap_or_else(|_| w.into()) == want);
+        (fresh && same).then(|| s["id"].as_str().map(str::to_owned)).flatten()
+    }))
+}
+
 pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback: impl Fn(Update) + Send + Sync + 'static) -> Handle {
     let (tx, rx) = mpsc::channel();
     let current = Arc::new(olo_sync::Mutex::new(session.clone().unwrap_or_default()));
@@ -391,7 +404,10 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
                             &dir,
                             &match &wanted {
                                 Some(session) => Command::Get { session: session.clone() },
-                                None => Command::Create { workspace: workspace.clone(), config: None },
+                                None => match untouched(&dir, &workspace)? {
+                                    Some(session) => Command::Get { session },
+                                    None => Command::Create { workspace: workspace.clone(), config: None },
+                                },
                             },
                         )?)?)
                     })();
@@ -655,6 +671,12 @@ pub struct View {
     pub compaction_progress: Option<String>,
     pub connection: Option<String>,
     pub id: String,
+    /// The model is writing its reply, or thinking, now.
+    pub writing: bool,
+    pub thinking: bool,
+    /// Events go into the conversation (the presentation worker's view;
+    /// a frontend's copy keeps only what it shows around it).
+    pub feed_events: bool,
 }
 impl Default for View {
     fn default() -> Self {
@@ -672,6 +694,9 @@ impl Default for View {
             compaction_progress: None,
             connection: None,
             id: String::new(),
+            writing: false,
+            thinking: false,
+            feed_events: true,
         }
     }
 }
@@ -728,6 +753,15 @@ impl View {
                     self.compaction_progress = None;
                 }
                 match e.kind.as_str() {
+                    "delta" => self.writing = true,
+                    "reasoning" => self.thinking = true,
+                    "assistant" | "tool_started" | "approval" | "idle" | "error" | "paused" | "interrupted" | "stop" => {
+                        self.writing = false;
+                        self.thinking = false;
+                    }
+                    _ => {}
+                }
+                match e.kind.as_str() {
                     "compaction_progress" => self.compaction_progress = Some(format!("Summarising {}/{}", e.data["completed"], e.data["total"])),
                     "compaction_ready" => self.compaction_progress = Some("Checkpoint ready".into()),
                     "tool_result" => {
@@ -738,7 +772,9 @@ impl View {
                     }
                     _ => {}
                 }
-                self.feed.event(&e);
+                if self.feed_events {
+                    self.feed.event(&e);
+                }
             }
         }
     }
@@ -752,8 +788,8 @@ impl View {
             return p.clone();
         }
         match s.status {
-            Status::Running if !self.feed.live.is_empty() => "Writing…".into(),
-            Status::Running if !self.feed.reasoning.is_empty() => "Thinking…".into(),
+            Status::Running if self.writing => "Writing…".into(),
+            Status::Running if self.thinking => "Thinking…".into(),
             Status::Running => s.in_flight.as_ref().map(|c| format!("Running {}…", c.name.replace('_', " "))).unwrap_or_else(|| "Working…".into()),
             Status::Approval => "Waiting for your approval".into(),
             Status::Paused => "Paused".into(),
@@ -780,46 +816,6 @@ impl View {
                 )
             },
         )
-    }
-    pub fn work(&self) -> String {
-        let Some(s) = &self.session else { return "Connecting…".into() };
-        let mut t = format!("Workspace\n{}\n\n", s.workspace.display());
-        if let Some(repo) = &self.repository {
-            if let Some(branch) = repo["branch"].as_str() {
-                t += &format!("Branch {branch} · {} changed\n\n", repo["files"].as_array().map_or(0, Vec::len));
-            }
-        }
-        if let Some(g) = &s.goal {
-            t += &format!("Goal ({})\n{}\n", g.status, g.objective);
-            if !g.evidence.is_empty() {
-                t += &format!("{}\n", g.evidence);
-            }
-            t += "\n";
-        }
-        if !s.todos.is_empty() {
-            t += "Plan\n";
-            for todo in &s.todos {
-                let mark = match todo.status.as_str() {
-                    "done" => "☑",
-                    "in_progress" => "▸",
-                    _ => "☐",
-                };
-                t += &format!("{mark} {}\n", todo.text);
-            }
-            t += "\n";
-        }
-        if !s.spec.text.is_empty() {
-            t += &format!("Specification (revision {}{})\n", s.spec.revision, if s.spec.accepted_revision == Some(s.spec.revision) { ", accepted" } else { ", not yet accepted" });
-            for c in &s.spec.criteria {
-                t += &format!("{} {}\n", if c.status == "done" || c.status == "met" { "☑" } else { "☐" }, c.text);
-            }
-            t += "\n";
-        }
-        if !s.memory.trim().is_empty() {
-            t += &format!("Memory\n{}\n\n", s.memory.trim());
-        }
-        t += &format!("Tokens: {} in · {} out · {} cached\n", crate::feed::thousands(s.usage.input), crate::feed::thousands(s.usage.output), crate::feed::thousands(s.usage.cached));
-        t
     }
 }
 

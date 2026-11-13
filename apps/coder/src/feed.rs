@@ -57,7 +57,6 @@ pub enum Item {
 #[derive(Clone, Debug)]
 pub struct Tool {
     pub call: String,
-    pub name: String,
     /// One line of Markdown: what was done to what.
     pub title: String,
     pub state: ToolState,
@@ -97,6 +96,11 @@ impl Feed {
     }
 
     fn push(&mut self, item: Item) -> u64 {
+        // The welcome is for an empty conversation: it goes when the
+        // person first says something.
+        if matches!(item, Item::User { .. }) && matches!(self.entries.front().map(|e| &e.item), Some(Item::Welcome)) {
+            self.entries.pop_front();
+        }
         self.next += 1;
         self.entries.push_back(Entry { id: self.next, item, rendered: None });
         while self.entries.len() > KEEP {
@@ -156,11 +160,6 @@ impl Feed {
         e.rendered = None;
         self.generation += 1;
         true
-    }
-
-    /// Whether entry `id` shows its output.
-    fn is_open(&self, id: u64, default: bool) -> bool {
-        default != self.flipped.contains(&id)
     }
 
     pub fn event(&mut self, e: &Event) {
@@ -377,7 +376,7 @@ impl Feed {
             }
         }
         let call = d["call_id"].as_str().unwrap_or("").to_owned();
-        let (summary, body, open) = outcome(name, output, failed);
+        let (summary, body, open) = outcome(output, failed);
         let time = e.time;
         let state = if !failed {
             ToolState::Done
@@ -519,7 +518,10 @@ fn tool(call: &Value, time: u64) -> Tool {
         "edit_file" => format!("Edited {}", code(s("path"))),
         "delete_file" => format!("Deleted {}", code(s("path"))),
         "create_directory" => format!("Made folder {}", code(s("path"))),
-        "list_files" => format!("Listed {}", code(if s("path").is_empty() { "." } else { s("path") })),
+        "list_files" => match s("path") {
+            "" | "." | "./" => "Listed the project's files".into(),
+            path => format!("Listed {}", code(path)),
+        },
         "search" => format!("Searched for {}", code(s("pattern"))),
         "fetch_url" => format!("Fetched {}", code(s("url"))),
         "repository_read" | "repository_write" => format!("Git {}", code(s("operation"))),
@@ -547,12 +549,12 @@ fn tool(call: &Value, time: u64) -> Tool {
             words
         }
     };
-    Tool { call: call["id"].as_str().unwrap_or("").to_owned(), name, title, state: ToolState::Running, summary: String::new(), output: None, open: false, started: time }
+    Tool { call: call["id"].as_str().unwrap_or("").to_owned(), title, state: ToolState::Running, summary: String::new(), output: None, open: false, started: time }
 }
 
 /// What an action's result says, what it shows when opened, and whether
 /// that opens by itself.
-fn outcome(name: &str, o: &Value, failed: bool) -> (String, Option<(String, String)>, bool) {
+fn outcome(o: &Value, failed: bool) -> (String, Option<(String, String)>, bool) {
     if failed {
         let reason = o["error"].as_str().unwrap_or("failed");
         if reason.starts_with("cancelled") {
@@ -611,6 +613,43 @@ fn outcome(name: &str, o: &Value, failed: bool) -> (String, Option<(String, Stri
             None => format!("{} lines", source.lines().count()),
         };
         return (summary, Some((language.into(), source)), false);
+    }
+    // Git's answers, as git would print them.
+    if let (Some(files), true) = (o["files"].as_array(), o.get("branch").is_some()) {
+        let more = if o["truncated"] == true { "+" } else { "" };
+        let summary = match files.len() {
+            0 => "clean".to_owned(),
+            1 => format!("1{more} change"),
+            n => format!("{n}{more} changes"),
+        };
+        let width = files.iter().filter_map(|f| f["state"].as_str()).map(str::len).max().unwrap_or(0);
+        let text = files
+            .iter()
+            .map(|f| {
+                let staged = if f["staged"] == true { " (staged)" } else { "" };
+                format!("{:width$}  {}{staged}", f["state"].as_str().unwrap_or(""), f["path"].as_str().unwrap_or(""))
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        return (summary, (!text.is_empty()).then(|| (String::new(), text)), false);
+    }
+    if let Some(commits) = o["commits"].as_array() {
+        let s = if commits.len() == 1 { "" } else { "s" };
+        let text = commits
+            .iter()
+            .map(|c| {
+                let id = c["id"].as_str().unwrap_or("");
+                let line = c["message"].as_str().unwrap_or("").lines().next().unwrap_or("");
+                format!("{}  {line}  ({})", id.get(..8).unwrap_or(id), c["author"].as_str().unwrap_or(""))
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        return (format!("{} commit{s}", commits.len()), (!text.is_empty()).then(|| (String::new(), text)), false);
+    }
+    if let Some(branches) = o["branches"].as_array() {
+        let s = if branches.len() == 1 { "" } else { "es" };
+        let text = branches.iter().filter_map(|b| b["name"].as_str()).collect::<Vec<_>>().join("\n");
+        return (format!("{} branch{s}", branches.len()), (!text.is_empty()).then(|| (String::new(), text)), false);
     }
     if let Some(results) = o["results"].as_array() {
         let more = if o["possibly_truncated"] == true { "+" } else { "" };

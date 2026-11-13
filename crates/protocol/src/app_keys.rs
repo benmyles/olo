@@ -52,6 +52,7 @@ const NOTIFICATIONS: Option<&str> = Some("olo.notifications");
 const PALETTE: Option<&str> = Some("olo.palette");
 const TELEGRAM: Option<&str> = Some("olo.telegram");
 const DOCTOR: Option<&str> = Some("olo.doctor");
+const CODER: Option<&str> = Some("olo.coder");
 /// Chrome's keys (its own, not Olo's: what Chrome takes on Linux is
 /// [`CHROME_NATIVE`]), kept in a profile under its app id, and used for
 /// every Chromium browser ([`CHROMIUM_APPS`]).
@@ -74,6 +75,7 @@ pub const APPS: &[(&str, &str)] = &[
     ("olo.palette", "Command Palette"),
     ("olo.telegram", "Telegram"),
     ("olo.doctor", "Olo Doctor"),
+    ("olo.coder", "Olo Coder"),
     // (Slack is Chrome too, olo-slack: these are its keys as well.)
     ("google-chrome", "Chrome and Slack"),
 ];
@@ -285,6 +287,15 @@ pub const APP_KEYS: &[AppKey] = &[
     k("telegram.archive", TELEGRAM, "archive", "Archived Chats", &["Cmd+9"], &["Ctrl+9"], &["Alt+9"]),
     k("telegram.prev", TELEGRAM, "prev", "Previous Chat", &["Cmd+Up"], &["Alt+Up"], &["Alt+Up"]),
     k("telegram.next", TELEGRAM, "next", "Next Chat", &["Cmd+Down"], &["Alt+Down"], &["Alt+Down"]),
+    // Olo Coder: Send as a chat's ⌘↩, Stop as Disk Usage's ⌘., the
+    // approval's Allow and Deny on ⇧⌘Y and ⇧⌘D, Settings on ⌘, as a Mac's.
+    k("coder.new-window", CODER, "new_window", "New Window", &["Shift+Cmd+N"], &["Ctrl+Shift+N"], &["Alt+Shift+N"]),
+    k("coder.send", CODER, "send", "Send", &["Cmd+Return"], &["Ctrl+Return"], &["Alt+Return"]),
+    k("coder.stop", CODER, "stop", "Stop", &["Cmd+Period"], &["Ctrl+Period"], &["Alt+Period"]),
+    k("coder.approve", CODER, "approve", "Allow the action", &["Shift+Cmd+Y"], &["Ctrl+Shift+Y"], &["Alt+Shift+Y"]),
+    k("coder.deny", CODER, "deny", "Deny the action", &["Shift+Cmd+D"], &["Ctrl+Shift+D"], &["Alt+Shift+D"]),
+    k("coder.settings", CODER, "settings", "Settings", &["Cmd+Comma"], &["Ctrl+Comma"], &["Alt+Comma"]),
+    k("coder.work", CODER, "toggle_work", "Show or hide the work", &["Alt+Cmd+I"], &["Ctrl+Alt+I"], &["Alt+Shift+I"]),
     // Chrome's own, each platform's as Chrome has them there (BeOS's as a
     // Mac's, Alt its command key); sent as Linux Chrome's (CHROME_NATIVE).
     k("chrome.new-tab", CHROME, "new-tab", "New Tab", &["Cmd+T"], &["Ctrl+T"], &["Alt+T"]),

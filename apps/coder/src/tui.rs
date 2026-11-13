@@ -41,6 +41,8 @@ struct Pane {
     rendered: std::sync::Arc<crate::rich::Text>,
     width: usize,
     lines: Vec<Line<'static>>,
+    /// Every action's output open (Alt+O).
+    all_open: bool,
 }
 impl Drop for Pane {
     fn drop(&mut self) {
@@ -58,7 +60,7 @@ impl Pane {
             client: client::start(dir, workspace, session, move |update| {
                 let _ = updates.send(Input::Update { pane: key, update });
             }),
-            view: View { id: initial_id, ..Default::default() },
+            view: View { id: initial_id, feed_events: false, ..Default::default() },
             draft,
             cursor,
             drafts: serde_json::from_value(state["drafts"].clone()).unwrap_or_default(),
@@ -69,6 +71,7 @@ impl Pane {
             rendered: Default::default(),
             width: 0,
             lines: Vec::new(),
+            all_open: false,
         }
     }
     fn update(&mut self, u: Update) {
@@ -204,7 +207,7 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) -> Result<
                 Paragraph::new(input.get(top..).unwrap_or_default().join("\n")).block(Block::bordered().title(format!("{} · {} pending · Alt+M delivery", mode_name(pane.delivery), pending))),
                 rows[2],
             );
-            f.render_widget(Paragraph::new("Enter send · Ctrl+O settings · Ctrl+P sessions · Ctrl+T tile · Ctrl+N next · Esc stop · Ctrl+D detach"), rows[3]);
+            f.render_widget(Paragraph::new("Enter send · Ctrl+O settings · Ctrl+P sessions · Ctrl+L links · Alt+O open actions · Ctrl+T tile · Esc stop · Ctrl+D detach"), rows[3]);
             if rows[2].width > 2 && rows[2].height > 2 {
                 f.set_cursor_position((rows[2].x + 1 + col as u16, rows[2].y + 1 + (row - top) as u16));
             }
@@ -338,7 +341,9 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) -> Result<
                             KeyCode::Down => selected_link = (selected_link + 1).min(choices.len().saturating_sub(1)),
                             KeyCode::Enter => {
                                 if let Some((_, link)) = choices.get(selected_link) {
-                                    if let Some(command) = client::read_link(link) {
+                                    if let Some(id) = link.strip_prefix("olo-coder:toggle/").and_then(|v| v.parse().ok()) {
+                                        let _ = panes[active].client.tx.send(Action::Show(Update::Toggle(id)));
+                                    } else if let Some(command) = client::read_link(link) {
                                         panes[active].client.submit(command);
                                     } else if link.starts_with("https://") || link.starts_with("http://") {
                                         let link = link.clone();
@@ -391,6 +396,11 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) -> Result<
                         }
                         KeyCode::Char('k') if k.modifiers.contains(KeyModifiers::CONTROL) => {
                             p.draft.truncate(p.cursor);
+                        }
+                        KeyCode::Char('o') if k.modifiers.contains(KeyModifiers::ALT) => {
+                            // Every action's output, opened or closed.
+                            p.all_open = !p.all_open;
+                            let _ = p.client.tx.send(Action::Show(Update::OpenAll(p.all_open)));
                         }
                         KeyCode::Char('m') if k.modifiers.contains(KeyModifiers::ALT) => {
                             use olo_coder_core::Delivery::*;
@@ -641,16 +651,58 @@ fn wrap_spans(spans: Vec<Span<'static>>, width: usize) -> Vec<Line<'static>> {
     }
     lines
 }
+/// The colour a note's bar is, by its tone.
+fn tone_color(tone: crate::rich::Tone) -> Color {
+    use crate::rich::Tone;
+    match tone {
+        Tone::Info => Color::LightBlue,
+        Tone::Success => Color::Green,
+        Tone::Warning => Color::Yellow,
+        Tone::Failure => Color::LightRed,
+    }
+}
+
+/// The conversation as terminal lines, each part of it set as the window
+/// sets it: what the person said behind a bar, actions as quiet rows
+/// (red when they failed, yellow while one waits for approval), their
+/// output indented under them, notes behind a bar in their tone, and a
+/// blank line between entries.
 fn styled_lines(doc: &crate::rich::Text, width: usize) -> Vec<Line<'static>> {
-    use crate::rich::Kind;
+    use crate::rich::{Block, Kind, ToolState};
     let mut lines = Vec::new();
     let mut at = 0;
     for text in doc.text.split_inclusive('\n') {
         let end = at + text.trim_end_matches('\n').len();
         let kind = doc.kind(at);
+        let para = doc.paragraph(at);
+        let block = para.map_or(Block::Body, |p| p.block);
+        let starts = para.is_some_and(|p| p.start == at);
+        if starts && !lines.is_empty() && (para.is_some_and(|p| p.first) && !matches!(block, Block::Tool(_)) || matches!(kind, Kind::Heading(_))) {
+            lines.push(Line::default());
+        }
+        let prefix = match block {
+            Block::User => Some(Span::styled("▌ ", Style::default().fg(Color::LightBlue))),
+            Block::Note(tone) => Some(Span::styled("┃ ", Style::default().fg(tone_color(tone)))),
+            Block::Output => Some(Span::raw("    ")),
+            _ => None,
+        };
+        let row = match block {
+            Block::Tool(ToolState::Failed) => Some(Color::LightRed),
+            Block::Tool(ToolState::Waiting) => Some(Color::Yellow),
+            Block::Tool(_) | Block::Quiet => Some(Color::DarkGray),
+            _ => None,
+        };
+        let width = width.saturating_sub(prefix.as_ref().map_or(0, Span::width)).max(1);
         let mut cells = vec![Vec::new()];
         for run in doc.runs(at..end) {
             let mut style = terminal_style(run);
+            if let Some(color) = row {
+                // An action's row: quiet, what it acted on (code) plain.
+                style = if run.style.code && color == Color::DarkGray { style.fg(Color::Reset) } else { style.fg(color) };
+                if run.style.link.is_some() {
+                    style = style.remove_modifier(Modifier::UNDERLINED);
+                }
+            }
             if matches!(kind, Kind::Heading(_)) {
                 style = style.fg(Color::LightYellow).add_modifier(Modifier::BOLD);
             }
@@ -705,7 +757,15 @@ fn styled_lines(doc: &crate::rich::Text, width: usize) -> Vec<Line<'static>> {
                 }
             }
         } else {
-            lines.extend(wrap_spans(cells.remove(0), width));
+            let wrapped = wrap_spans(cells.remove(0), width);
+            match &prefix {
+                Some(prefix) => lines.extend(wrapped.into_iter().map(|l| {
+                    let mut spans = vec![prefix.clone()];
+                    spans.extend(l.spans);
+                    Line::from(spans)
+                })),
+                None => lines.extend(wrapped),
+            }
         }
         at += text.len();
     }
@@ -732,6 +792,7 @@ mod session_tests {
             rendered: Default::default(),
             width: 0,
             lines: vec![],
+            all_open: false,
         };
         pane.update(Update::Opened("first".into()));
         pane.draft = "unfinished λ".into();

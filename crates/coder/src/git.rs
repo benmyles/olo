@@ -74,9 +74,26 @@ pub fn run(root: &Path, call: &ToolCall, cancel: Arc<AtomicBool>) -> Result<Valu
             for item in repo.status(gix::progress::Discard)?.untracked_files(gix::status::UntrackedFiles::Files).should_interrupt_owned(cancel).into_iter([])? {
                 let item = item?;
                 let staged = matches!(item, gix::status::Item::TreeIndex(_));
+                // One plain word: added, untracked, modified, deleted,
+                // renamed, copied, conflict, type change.
                 let state = match &item {
-                    gix::status::Item::IndexWorktree(change) => format!("{:?}", change.summary()),
-                    gix::status::Item::TreeIndex(change) => format!("{:?}", change).split_whitespace().next().unwrap_or("changed").into(),
+                    gix::status::Item::IndexWorktree(gix::status::index_worktree::Item::DirectoryContents { .. }) => "untracked".to_owned(),
+                    gix::status::Item::IndexWorktree(change) => match change.summary() {
+                        Some(s) => match format!("{s:?}").as_str() {
+                            "Removed" => "deleted".to_owned(),
+                            "TypeChange" => "type change".to_owned(),
+                            "IntentToAdd" => "added".to_owned(),
+                            other => other.to_lowercase(),
+                        },
+                        None => "changed".to_owned(),
+                    },
+                    gix::status::Item::TreeIndex(change) => match format!("{change:?}").split(|c: char| !c.is_alphanumeric()).next().unwrap_or("") {
+                        "Addition" => "added",
+                        "Deletion" => "deleted",
+                        "Rewrite" => "renamed",
+                        _ => "modified",
+                    }
+                    .to_owned(),
                 };
                 files.push(json!({"path":item.location().to_str_lossy(),"staged":staged,"state":state}));
                 if files.len() >= 2000 {

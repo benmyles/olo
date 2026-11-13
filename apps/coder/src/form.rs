@@ -90,6 +90,9 @@ pub enum Submission {
         action: String,
         keys: Vec<String>,
     },
+    Goal {
+        session: String,
+    },
 }
 impl Submission {
     pub(crate) fn browsing(&self) -> bool {
@@ -209,6 +212,7 @@ impl Submission {
                 let arguments: serde_json::Map<String, serde_json::Value> = keys.iter().cloned().zip(v.into_iter().map(Into::into)).collect();
                 serde_json::json!({"op":"integrations","session":session,"action":action,"arguments":arguments})
             }
+            Self::Goal { session } => serde_json::json!({"op":"goal","session":session,"objective":v[0].trim()}),
             Self::Guidance { session, .. } => serde_json::json!({"op":"configure_fields","session":session,"values":{"approval_guidance":v[0]}}),
         };
         format!("/api {command}")

@@ -115,7 +115,9 @@ pub trait Document {
     }
     /// The link at byte `at`, if there is one (a Markdown document's): the
     /// command key and a click opens it ([`EditorHost::open_link`]), and
-    /// with the command key held the pointer over it is a hand.
+    /// with the command key held the pointer over it is a hand. In a text
+    /// that can't be edited, a click alone opens it and it's always a
+    /// hand, as on a page.
     fn link_at(&mut self, _at: usize) -> Option<String> {
         None
     }
@@ -646,8 +648,8 @@ pub trait EditorHost: View {
     fn context_menu(&mut self, key: usize, at: Point<Pixels>, cx: &mut Cx<Self>) {
         edit_menu(self, key, at, cx);
     }
-    /// The command key and a click on a link ([`Document::link_at`]):
-    /// opened (by default as the person's default app for it opens it,
+    /// The command key and a click on a link ([`Document::link_at`]; a
+    /// click alone if the text can't be edited): opened (by default as the person's default app for it opens it,
     /// on a worker; an app resolves a relative one first).
     fn open_link(&mut self, _key: usize, link: String, _cx: &mut Cx<Self>) {
         if link.starts_with('#') {
@@ -1639,9 +1641,10 @@ impl Editor {
             })
             .detach();
         }
-        // A hand on a link with the command key held (a click opens it).
+        // A hand on a link with the command key held, or on any in a text
+        // that can't be edited (a click opens it).
         let (at, mods) = (cx.mouse_position(), cx.modifiers());
-        self.shown.hand = (mods.control || mods.platform) && self.shown.view.contains(&at) && {
+        self.shown.hand = (mods.control || mods.platform || !o.editable) && self.shown.view.contains(&at) && {
             let (byte, _) = self.byte_at(doc, sh, &o, self.to_content(at));
             doc.link_at(byte).is_some()
         };
@@ -2463,10 +2466,19 @@ pub fn view<V: EditorHost>(host: &mut V, key: usize, options: Options, cx: &mut 
                 cx.stop_propagation();
             }),
         )
-        // With the command key held over it, links are hands: looked at
-        // again as the pointer moves with it held.
-        .on_mouse_move(cx.listener(|_: &mut V, e: &MouseMoveEvent, cx| {
-            if e.modifiers.control || e.modifiers.platform {
+        // With the command key held over it (or always, read-only), links
+        // are hands: looked at again as the pointer moves, and drawn
+        // again only when that changes whether it's on one.
+        .on_mouse_move(cx.listener(move |host: &mut V, e: &MouseMoveEvent, cx| {
+            let changed = with(host, key, cx, |ed, doc, sh, _| {
+                let o = ed.shown.o;
+                let hand = (e.modifiers.control || e.modifiers.platform || !o.editable) && ed.shown.view.contains(&e.position) && {
+                    let (byte, _) = ed.byte_at(doc, sh, &o, ed.to_content(e.position));
+                    doc.link_at(byte).is_some()
+                };
+                hand != ed.shown.hand
+            });
+            if changed {
                 cx.invalidate();
             }
         }))
@@ -2558,10 +2570,15 @@ fn wheel<V: EditorHost>(host: &mut V, key: usize, e: &ScrollWheelEvent, cx: &mut
 fn press<V: EditorHost>(host: &mut V, key: usize, e: &MouseDownEvent, cx: &mut Cx<V>) {
     let pos = e.position;
     let (clicks, shift, alt) = (e.click_count, e.modifiers.shift, e.modifiers.alt);
-    // The command key and a click on a link: it opens, the caret stays.
-    if (e.modifiers.control || e.modifiers.platform) && clicks == 1 && !shift && !alt {
+    // The command key and a click on a link (in a text that can't be
+    // edited, a click alone, as on a page): it opens, the caret stays.
+    if clicks == 1 && !shift && !alt {
+        let command = e.modifiers.control || e.modifiers.platform;
         let link = with(host, key, cx, |ed, doc, sh, _| {
             let o = ed.shown.o;
+            if !command && o.editable {
+                return None;
+            }
             let (at, _) = ed.byte_at(doc, sh, &o, ed.to_content(pos));
             doc.link_at(at)
         });

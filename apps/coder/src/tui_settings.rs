@@ -563,30 +563,47 @@ impl Panel {
                 &mut ListState::default().with_selected(Some(*selected)),
             ),
             Self::Fields { section, values, at, status, .. } => {
-                let specs = crate::options::section(section);
-                let mut lines = specs
-                    .iter()
-                    .zip(values)
-                    .enumerate()
-                    .map(|(i, (field, value))| {
-                        Line::from(Span::styled(
-                            format!(
-                                "{} {:23} {}{}{}",
-                                if i == *at { "›" } else { " " },
-                                field.label,
-                                if field.choices.is_empty() { "" } else { "‹ " },
-                                value,
-                                if field.choices.is_empty() { "" } else { " ›" }
-                            ),
-                            if i == *at { Style::default().fg(Color::Black).bg(Color::LightYellow) } else { Style::default() },
-                        ))
-                    })
-                    .collect::<Vec<_>>();
-                lines.push(Line::from(status.clone()));
-                frame.render_widget(
-                    Paragraph::new(lines).wrap(ratatui::widgets::Wrap { trim: false }).block(Block::bordered().title("Session Settings · ↑↓ field · ←→ choice · F2 save · Ctrl+U clear · Esc close")),
-                    area,
-                );
+                let block = Block::bordered().title("Session Settings · ↑↓ field · ←→ choice · F2 save · Ctrl+U clear · Esc close");
+                let inner = block.inner(area);
+                frame.render_widget(block, area);
+                let (list, foot) = (Rect { height: inner.height.saturating_sub(1), ..inner }, Rect { y: inner.y + inner.height.saturating_sub(1), height: inner.height.min(1), ..inner });
+                // Each field its label and its value, a value's own lines
+                // kept and wrapped under it; the chosen one's end always
+                // shows, and the status under them all.
+                let width = inner.width as usize;
+                let label_width = if width >= 50 { 26 } else { 0 };
+                let mut lines: Vec<(usize, Line<'static>)> = Vec::new();
+                for (i, (field, value)) in crate::options::section(section).iter().zip(values).enumerate() {
+                    let style = if i == *at { Style::default().fg(Color::Black).bg(Color::LightYellow) } else { Style::default() };
+                    let mark = if i == *at { "›" } else { " " };
+                    let shown = if field.choices.is_empty() { value.clone() } else { format!("‹ {value} ›") };
+                    let room = width.saturating_sub(label_width).max(8);
+                    let mut rows: Vec<String> = Vec::new();
+                    for line in shown.split('\n') {
+                        let chars: Vec<char> = line.chars().collect();
+                        if chars.is_empty() {
+                            rows.push(String::new());
+                        }
+                        for chunk in chars.chunks(room) {
+                            rows.push(chunk.iter().collect());
+                        }
+                    }
+                    let label = format!("{mark} {:24}", field.label);
+                    if label_width == 0 {
+                        lines.push((i, Line::styled(label.trim_end().to_owned(), style)));
+                        lines.extend(rows.into_iter().map(|r| (i, Line::styled(format!("    {r}"), style))));
+                    } else {
+                        for (n, r) in rows.into_iter().enumerate() {
+                            let lead = if n == 0 { label.clone() } else { " ".repeat(label_width) };
+                            lines.push((i, Line::styled(format!("{lead}{r}"), style)));
+                        }
+                    }
+                }
+                let height = list.height as usize;
+                let end = lines.iter().rposition(|(i, _)| i == at).map_or(0, |n| n + 1);
+                let skip = end.saturating_sub(height);
+                frame.render_widget(Paragraph::new(lines.into_iter().skip(skip).take(height).map(|(_, l)| l).collect::<Vec<_>>()), list);
+                frame.render_widget(Paragraph::new(status.clone()), foot);
             }
             Self::Profile(e) => {
                 if let Some((query, selected)) = &e.picker {
@@ -840,7 +857,7 @@ mod form_viewport {
         values[1] = "Long guidance wrapping across the terminal. ".repeat(80);
         for (width, height) in [(80, 16), (48, 12)] {
             let view = rendered(&panel, width, height);
-            assert!(view.contains("Stall timeout"), "{view}");
+            assert!(view.contains("Stalled after"), "{view}");
             assert!(view.contains("Save rejected"), "{view}");
         }
     }

@@ -9,6 +9,7 @@ license.workspace = true
 olo-coder-core = { path = "../../crates/coder" }
 olo-kit.workspace = true
 olo-syntax.workspace = true
+olo-theme.workspace = true
 pulldown-cmark = { version = "0.13", default-features = false }
 olo-protocol.workspace = true
 olo-kit-base.workspace = true
