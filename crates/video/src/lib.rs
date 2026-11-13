@@ -226,8 +226,9 @@ pub enum Choice {
     Cpu,
     /// NVIDIA's GPU (NVENC), or an error saying why not.
     Nvidia,
-    /// Intel's or AMD's GPU through VA-API: AV1 only (what Fedora's
-    /// drivers encode), or an error saying why not.
+    /// Intel's or AMD's GPU through VA-API: AV1 (what Fedora's drivers
+    /// encode), and H.264 where the driver encodes it (RPM Fusion's), or
+    /// an error saying why not.
     Vaapi,
 }
 
@@ -259,14 +260,16 @@ pub enum Encoder {
     Cpu(H264),
     Nvidia(nvenc::Nvenc, Vec<u8>),
     Vaapi(vaapi::Av1),
+    VaapiH264(vaapi::H264),
 }
 
 impl Encoder {
     /// One for `width` × `height` (even) pictures at up to `fps` a second,
-    /// coded as `codec`. Auto takes NVIDIA's where it opens, else, for
-    /// AV1, Intel's or AMD's through VA-API, else the processor, and so
-    /// H.264 ([`Encoder::codec`] says which); the processor asked for
-    /// another codec is an error, as VA-API asked for other than AV1.
+    /// coded as `codec`. Auto takes NVIDIA's where it opens, else Intel's
+    /// or AMD's through VA-API (for AV1, and H.264 where the driver
+    /// encodes it), else the processor, and so H.264 ([`Encoder::codec`]
+    /// says which); on battery the built-in GPU first. The processor
+    /// asked for another codec is an error, as VA-API asked for HEVC.
     pub fn new(width: u32, height: u32, fps: u32, choice: Choice, codec: Codec) -> Result<Encoder, String> {
         Encoder::with_quality(width, height, fps, choice, codec, Quality::High)
     }
@@ -286,24 +289,34 @@ impl Encoder {
             };
             H264::with_bitrate(width, height, fps, (f64::from(bps) * share) as u32).map(Encoder::Cpu)
         };
-        let vaapi = || {
-            if codec != Codec::Av1 {
-                return Err(format!("the GPU's driver encodes AV1 only here, not {}", codec.name()));
+        let vaapi = || match codec {
+            Codec::Av1 => {
+                let more = match q {
+                    Quality::High => 0,
+                    Quality::Medium => 30,
+                    Quality::Low => 60,
+                };
+                vaapi::Av1::new(None, width, height, fps, vaapi::QUALITY.saturating_add(more)).map(Encoder::Vaapi)
             }
-            let more = match q {
-                Quality::High => 0,
-                Quality::Medium => 30,
-                Quality::Low => 60,
-            };
-            vaapi::Av1::new(None, width, height, fps, vaapi::QUALITY.saturating_add(more)).map(Encoder::Vaapi)
+            // As NVENC's: a quality, at most twice the bitrate.
+            Codec::H264 => {
+                let (nvenc::Rate::Quality(_, cap) | nvenc::Rate::Bitrate(cap)) = quality(codec, bps, q);
+                let more = match q {
+                    Quality::High => 0,
+                    Quality::Medium => 4,
+                    Quality::Low => 8,
+                };
+                vaapi::H264::new(None, width, height, fps, vaapi::h264::Rate::Quality(vaapi::h264::QUALITY + more, cap)).map(Encoder::VaapiH264)
+            }
+            Codec::Hevc => Err("the GPU's driver encodes AV1 and H.264 here, not HEVC".into()),
         };
         match choice {
             Choice::Cpu => cpu(),
             Choice::Nvidia => nvidia(),
             Choice::Vaapi => vaapi(),
-            // On battery, AV1 on the built-in GPU first: NVIDIA's would be
-            // woken from its sleep for it.
-            Choice::Auto if codec == Codec::Av1 && on_battery() => vaapi().or_else(|_| nvidia()).or_else(|_| cpu()),
+            // On battery, the built-in GPU first: NVIDIA's would be woken
+            // from its sleep.
+            Choice::Auto if codec != Codec::Hevc && on_battery() => vaapi().or_else(|_| nvidia()).or_else(|_| cpu()),
             Choice::Auto => nvidia().or_else(|_| vaapi()).or_else(|_| cpu()),
         }
     }
@@ -313,7 +326,7 @@ impl Encoder {
         match self {
             Encoder::Cpu(_) => Choice::Cpu,
             Encoder::Nvidia(..) => Choice::Nvidia,
-            Encoder::Vaapi(_) => Choice::Vaapi,
+            Encoder::Vaapi(_) | Encoder::VaapiH264(_) => Choice::Vaapi,
         }
     }
 
@@ -321,7 +334,8 @@ impl Encoder {
     /// `Auto` takes them): where a recording goes on if this one fails.
     pub fn others(&self) -> Vec<Choice> {
         let all: &[Choice] = match self.codec() {
-            Codec::H264 => &[Choice::Nvidia, Choice::Cpu],
+            Codec::H264 if on_battery() => &[Choice::Vaapi, Choice::Nvidia, Choice::Cpu],
+            Codec::H264 => &[Choice::Nvidia, Choice::Vaapi, Choice::Cpu],
             Codec::Hevc => &[Choice::Nvidia],
             Codec::Av1 if on_battery() => &[Choice::Vaapi, Choice::Nvidia],
             Codec::Av1 => &[Choice::Nvidia, Choice::Vaapi],
@@ -335,6 +349,7 @@ impl Encoder {
             Encoder::Cpu(_) => Codec::H264,
             Encoder::Nvidia(e, _) => e.codec(),
             Encoder::Vaapi(_) => Codec::Av1,
+            Encoder::VaapiH264(_) => Codec::H264,
         }
     }
 
@@ -343,9 +358,20 @@ impl Encoder {
         match self {
             Encoder::Cpu(_) => "the processor (OpenH264)",
             Encoder::Nvidia(..) => "NVIDIA's GPU (NVENC)",
-            Encoder::Vaapi(e) if e.driver().contains("Intel") => "the Intel GPU (VA-API)",
-            Encoder::Vaapi(e) if e.driver().contains("AMD") || e.driver().contains("Radeon") => "the AMD GPU (VA-API)",
-            Encoder::Vaapi(_) => "the GPU (VA-API)",
+            Encoder::Vaapi(_) | Encoder::VaapiH264(_) => {
+                let driver = match self {
+                    Encoder::Vaapi(e) => e.driver(),
+                    Encoder::VaapiH264(e) => e.driver(),
+                    _ => "",
+                };
+                if driver.contains("Intel") {
+                    "the Intel GPU (VA-API)"
+                } else if driver.contains("AMD") || driver.contains("Radeon") {
+                    "the AMD GPU (VA-API)"
+                } else {
+                    "the GPU (VA-API)"
+                }
+            }
         }
     }
 
@@ -354,6 +380,7 @@ impl Encoder {
             Encoder::Cpu(e) => e.size(),
             Encoder::Nvidia(e, _) => e.size(),
             Encoder::Vaapi(e) => e.size(),
+            Encoder::VaapiH264(e) => e.size(),
         }
     }
 
@@ -375,6 +402,7 @@ impl Encoder {
                 }
             },
             Encoder::Vaapi(e) => e.encode(data, stride, order == Order::Rgba),
+            Encoder::VaapiH264(e) => e.encode(data, stride, order == Order::Rgba),
         }
     }
 
@@ -385,6 +413,7 @@ impl Encoder {
     pub fn prime_device(&self) -> Option<u64> {
         match self {
             Encoder::Vaapi(e) => e.device(),
+            Encoder::VaapiH264(e) => e.device(),
             _ => None,
         }
     }
@@ -394,6 +423,7 @@ impl Encoder {
     pub fn encode_prime(&mut self, picture: &vaapi::Prime) -> Result<(Vec<u8>, bool), String> {
         match self {
             Encoder::Vaapi(e) => e.encode_prime(picture),
+            Encoder::VaapiH264(e) => e.encode_prime(picture),
             _ => Err(format!("{} encodes pictures in memory only", self.name())),
         }
     }
@@ -1075,8 +1105,12 @@ mod tests {
         let frame = |i: u32| -> Vec<u8> { (0..w * h).flat_map(|p| if (p / w + 192 - i * 3 % 192) % 192 < 16 { [230u8, 230, 230, 255] } else { [40, 40, 40, 255] }).collect() };
         for i in 0..60u32 {
             if i == 30 {
-                // NVENC "fails": the next of the codec takes over.
-                assert_eq!(enc.others(), [Choice::Cpu]);
+                // NVENC "fails": the next of the codec takes over (the
+                // Intel or AMD GPU's where its driver makes H.264, then
+                // the processor; one that doesn't open is passed over).
+                let others = enc.others();
+                assert_eq!(others.last(), Some(&Choice::Cpu), "{others:?}");
+                assert!(!others.contains(&Choice::Nvidia));
                 enc = Encoder::new(w, h, 30, Choice::Cpu, Codec::H264).unwrap();
                 mp4.new_entry().unwrap();
             }
@@ -1563,6 +1597,113 @@ mod tests {
                 eprintln!("{} {:#x}: luma PSNR {psnr:.1} dB", if linear { "linear" } else { "tiled" }, u64::from(bos[0].modifier()));
                 assert!(psnr > 38.0, "luma PSNR {psnr:.1} dB");
             }
+        }
+    }
+
+    /// H.264 on this computer's GPU (where VA-API encodes it), decoded
+    /// back by OpenH264, not the GPU: the pictures come back, from memory
+    /// and from dmabufs (linear, and laid out as the GPU draws), each
+    /// buffer drawn in again and encoded again (its import kept).
+    #[test]
+    fn vaapi_h264_frames_come_back() {
+        use std::os::fd::{AsFd as _, AsRawFd as _};
+        let Some(node) = vaapi::h264::node() else {
+            eprintln!("no GPU encodes H.264 through VA-API here");
+            return;
+        };
+        let (w, h) = (640u32, 360u32);
+        let gpu = gbm::Device::new(std::fs::OpenOptions::new().read(true).write(true).open(&node).unwrap()).unwrap();
+        let tiled: Vec<gbm::Modifier> = [0x0100_0000_0000_0009u64, 0x0100_0000_0000_0002, 0x0100_0000_0000_0001].into_iter().map(gbm::Modifier::from).collect();
+        for from in ["memory", "linear", "tiled"] {
+            let make = || match from {
+                "linear" => gpu.create_buffer_object::<()>(w, h, gbm::Format::Xrgb8888, gbm::BufferObjectFlags::LINEAR | gbm::BufferObjectFlags::RENDERING),
+                _ => gpu.create_buffer_object_with_modifiers2::<()>(w, h, gbm::Format::Xrgb8888, tiled.iter().copied(), gbm::BufferObjectFlags::RENDERING),
+            };
+            let mut bos = Vec::new();
+            if from != "memory" {
+                let Ok(first) = make() else {
+                    eprintln!("this GPU draws no {from} buffers");
+                    continue;
+                };
+                bos = vec![first, make().unwrap()];
+            }
+            let mut e = vaapi::H264::new(Some(&node), w, h, 30, vaapi::h264::Rate::Quality(vaapi::h264::QUALITY, 20_000_000)).unwrap();
+            let file = std::path::PathBuf::from(format!("/var/tmp/olo-h264-back-{}.mp4", std::process::id()));
+            let mut mp4 = Mp4::create(&file, w, h, 1000).unwrap();
+            let mut sent = Vec::new();
+            for i in 0..8u32 {
+                let px: Vec<u8> = (0..h).flat_map(|y| (0..w).flat_map(move |x| [(x + i * 4) as u8, y as u8, 128, 255])).collect();
+                let (bits, key) = if bos.is_empty() {
+                    e.encode(&px, w as usize * 4, false).unwrap()
+                } else {
+                    let bo = &mut bos[i as usize % 2];
+                    bo.map_mut(0, 0, w, h, |m| {
+                        let stride = m.stride() as usize;
+                        for (row, from) in m.buffer_mut().chunks_mut(stride).zip(px.chunks(w as usize * 4)) {
+                            row[..from.len()].copy_from_slice(from);
+                        }
+                    })
+                    .unwrap();
+                    let fd = bo.fd_for_plane(0).unwrap();
+                    // SAFETY: lseek on our dmabuf: its size.
+                    let size = unsafe { libc::lseek(fd.as_raw_fd(), 0, libc::SEEK_END) } as u32;
+                    let picture =
+                        vaapi::Prime { key: u64::from(i % 2), fd: fd.as_fd(), modifier: u64::from(bo.modifier()), offset: bo.offset(0), pitch: bo.stride_for_plane(0), size, width: w, height: h };
+                    e.encode_prime(&picture).unwrap_or_else(|err| panic!("{from} (modifier {:#x}): {err}", picture.modifier))
+                };
+                assert_eq!(key, i == 0);
+                mp4.add(&bits, key, 33).unwrap();
+                sent.push(px);
+            }
+            mp4.finish().unwrap();
+            let (psnr, n) = mp4_psnr(&file, w, h, &sent);
+            let _ = std::fs::remove_file(&file);
+            eprintln!("{from}: {n} decoded, luma PSNR {psnr:.1} dB");
+            assert_eq!(n, 8, "every frame decoded");
+            assert!(psnr > 38.0, "{from}: luma PSNR {psnr:.1} dB");
+        }
+    }
+
+    /// H.264 through VA-API, as `codec_sizes` does NVENC's: each quality's
+    /// (and quantizer's) size, picture quality and time a frame
+    /// (`OLO_BENCH_Q`: the qualities, 1–51).
+    #[test]
+    #[ignore]
+    fn vaapi_h264_sizes() {
+        let Some(node) = vaapi::h264::node() else {
+            eprintln!("no GPU encodes H.264 through VA-API here");
+            return;
+        };
+        let Some((w, h, frames)) = bench_frames() else { return };
+        let bps = bitrate(w, h, 30);
+        let qs: Vec<u8> = match std::env::var("OLO_BENCH_Q") {
+            Ok(v) => v.split(',').filter_map(|q| q.parse().ok()).collect(),
+            Err(_) => vec![18, 20, 22, 24, 26],
+        };
+        let rates = qs.iter().map(|&q| vaapi::h264::Rate::Quality(q, bps * 2)).chain(qs.iter().map(|&q| vaapi::h264::Rate::Constant(q)));
+        for rate in rates {
+            let mut e = vaapi::H264::new(Some(&node), w, h, 30, rate).unwrap();
+            let file = std::path::PathBuf::from(format!("/var/tmp/olo-bench-{}.mp4", std::process::id()));
+            let mut mp4 = Mp4::create(&file, w, h, 1000).unwrap();
+            let (mut times, mut largest) = (Vec::new(), 0);
+            for f in &frames {
+                let t = std::time::Instant::now();
+                let (bits, key) = e.encode(f, w as usize * 4, false).unwrap();
+                times.push(t.elapsed());
+                largest = largest.max(bits.len());
+                mp4.add(&bits, key, 33).unwrap();
+            }
+            mp4.finish().unwrap();
+            times.sort();
+            let bytes = std::fs::metadata(&file).unwrap().len();
+            let (psnr, n) = mp4_psnr(&file, w, h, &frames);
+            eprintln!(
+                "H.264 (VA-API) {:24} {bytes:9} bytes (largest frame {largest})  PSNR {psnr:5.2} dB  ({n} decoded)  median {:?}, slowest {:?} a frame",
+                format!("{rate:?}"),
+                times[times.len() / 2],
+                times[times.len() - 1]
+            );
+            let _ = std::fs::remove_file(&file);
         }
     }
 

@@ -11,9 +11,13 @@
 //! receiver takes (`Screen::fit`: a 2× display made smaller, its shape
 //! kept), drawn so by app_server on the GPU (`Capture::fit`; an older
 //! app_server's are made smaller by the worker); the worker encodes
-//! each (`olo_video::Encoder`: NVIDIA's GPU where it opens, else the
-//! processor; a picture out for each in, no B-frames) and sends it
-//! stamped with its capture's moment. The sound is the computer's
+//! each (`olo_video::Encoder`: the Intel or AMD GPU through VA-API where
+//! frames are drawn on it and its driver encodes H.264, else NVIDIA's,
+//! else the processor; a picture out for each in, no B-frames) and sends
+//! it stamped with its capture's moment. Frames for an encoder on the GPU
+//! that draws them are lent to it as they are (`Capture::lend_frames`:
+//! dmabufs made NV12 by its video processor), never copied through the
+//! processor; the rest are copied out. The sound is the computer's
 //! (`olo_system::recording`, the default output's monitor at 44.1 kHz,
 //! 10 ms at a time), sent as it comes; while paused, silence, and the
 //! last picture stays.
@@ -30,7 +34,7 @@ use std::{
     os::fd::{AsRawFd as _, FromRawFd as _, OwnedFd, RawFd},
     sync::{
         Arc, Condvar, Mutex,
-        atomic::{AtomicBool, AtomicU32, Ordering::SeqCst},
+        atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering::SeqCst},
     },
     time::{Duration, Instant},
 };
@@ -162,9 +166,11 @@ fn reconnect(old: &Capture, display: Option<&str>, screen: Screen, wake: &Wake) 
     Err(why)
 }
 
-/// A frame waiting for the encoder: its rows, and when it was captured.
+/// A frame waiting for the encoder: its rows (or, lent, its buffer on
+/// the GPU), and when it was captured.
 struct Waiting {
     data: Vec<u8>,
+    lent: Option<olo_capture::Lent>,
     width: u32,
     height: u32,
     at: Instant,
@@ -196,7 +202,7 @@ fn shown(args: &[String]) -> Result<(), String> {
     let with_sound = what.sound && !args.iter().any(|a| a == "--no-sound");
     let fps_asked = option(args, "--fps").map(|f| f.parse::<u32>().map_err(|_| format!("{f} isn't a number of frames a second"))).transpose()?.map(|f| f.clamp(1, 120));
     let choice = match option(args, "--encoder") {
-        Some(e) => olo_video::Choice::parse(e).filter(|c| *c != olo_video::Choice::Vaapi).ok_or("--encoder is auto, nvidia or cpu")?,
+        Some(e) => olo_video::Choice::parse(e).ok_or("--encoder is auto, vaapi, nvidia or cpu")?,
         None => olo_video::Choice::Auto,
     };
     let lead = option(args, "--lead").map(|ms| ms.parse::<u64>().map(Duration::from_millis).map_err(|_| format!("{ms} isn't milliseconds"))).transpose()?;
@@ -290,15 +296,18 @@ fn shown(args: &[String]) -> Result<(), String> {
     };
     publish(false);
 
-    // The encoder's worker.
+    // The encoder's worker, on the GPU that draws the frames if it can
+    // (they're lent to it then, never copied).
     let slot: Slot = Arc::default();
     let fps = Arc::new(AtomicU32::new(fps_asked.unwrap_or(30).min(screen.fps)));
+    let drawn_on = capture.render_device();
+    let prime = Arc::new(AtomicU64::new(0));
     let worker = {
-        let (slot, mirror, fps, poke) = (slot.clone(), mirror.clone(), fps.clone(), poke.clone());
+        let (slot, mirror, fps, poke, prime) = (slot.clone(), mirror.clone(), fps.clone(), poke.clone(), prime.clone());
         std::thread::Builder::new()
             .name("airplay encoder".into())
             .spawn(move || {
-                let why = encode(&slot, &mirror, screen, choice, fps_asked, &fps, trace);
+                let why = encode(&slot, &mirror, screen, (choice, drawn_on), fps_asked, &fps, &prime, trace);
                 if let Err(why) = &why {
                     eprintln!("olo-airplay: {why}");
                 }
@@ -338,6 +347,8 @@ fn shown(args: &[String]) -> Result<(), String> {
     // which the connection soon says).
     let mut lost = false;
     let mut stopped_at: Option<Instant> = None;
+    // Frames lent to the encoder (its GPU's, at the receiver's size).
+    let mut lending = false;
     let result: Result<Option<String>, String> = (|| {
         loop {
             wake.drain();
@@ -357,7 +368,7 @@ fn shown(args: &[String]) -> Result<(), String> {
                 };
                 capture = again;
                 conn = capture.fd()?;
-                (lost, stopped_at, asked_at) = (false, None, None);
+                (lost, stopped_at, asked_at, lending) = (false, None, None, false);
                 if trace {
                     eprintln!("  capturing {} again", capture.name());
                 }
@@ -386,6 +397,16 @@ fn shown(args: &[String]) -> Result<(), String> {
                 lost = capture.poll().is_err();
                 continue;
             }
+            // Frames lent from the next asked for, if the encoder is on the
+            // GPU they're drawn on; copied again if it can't take them.
+            let lend = prime.load(SeqCst);
+            if lend != 0 && Some(lend) == capture.render_device() && !lending {
+                capture.lend_frames(Some(olo_video::vaapi::imports));
+                lending = true;
+            } else if lend == 0 && lending {
+                capture.lend_frames(None);
+                lending = false;
+            }
             // Ask for the next once its time has come, then wait for it.
             if !capture.waiting() {
                 let every = Duration::from_secs_f64(1.0 / f64::from(fps.load(SeqCst).max(1)));
@@ -406,14 +427,21 @@ fn shown(args: &[String]) -> Result<(), String> {
                 Ok(Some(Ok(()))) => {
                     let at = Instant::now();
                     let Some((w, h)) = capture.frame_size() else { continue };
+                    // Lent as it is when it's the receiver's size (app_server
+                    // fitted it), else copied.
+                    let lent = if lending && screen.fit(w, h) == (w, h) { capture.lend() } else { None };
                     let (m, cv) = &*slot;
                     let mut held = m.lock().unwrap_or_else(|e| e.into_inner());
                     // (A buffer used again: one the encoder didn't get to,
                     // or one it's done with.)
-                    let mut data = held.waiting.take().map(|w| w.data).or_else(|| held.spare.take()).unwrap_or_default();
-                    data.resize(w as usize * h as usize * 4, 0);
-                    capture.copy_into(&mut data, w as usize * 4)?;
-                    held.waiting = Some(Waiting { data, width: w, height: h, at });
+                    let mut data = held.waiting.take().map(|w| w.data).filter(|d| d.capacity() > 0).or_else(|| held.spare.take()).unwrap_or_default();
+                    if lent.is_none() {
+                        data.resize(w as usize * h as usize * 4, 0);
+                        capture.copy_into(&mut data, w as usize * 4)?;
+                    } else if held.spare.is_none() {
+                        held.spare = Some(std::mem::take(&mut data));
+                    }
+                    held.waiting = Some(Waiting { data, lent, width: w, height: h, at });
                     cv.notify_one();
                 }
                 Ok(_) => {}
@@ -443,9 +471,40 @@ fn shown(args: &[String]) -> Result<(), String> {
     }
 }
 
+/// The encoder: as asked (`choice`); asked for none, VA-API's where it
+/// encodes on the GPU frames are drawn on (`drawn_on`, a render node's
+/// device number), else `Auto`'s.
+fn encoder_for(vw: u32, vh: u32, fps: u32, (choice, drawn_on): (olo_video::Choice, Option<u64>)) -> Result<olo_video::Encoder, String> {
+    use olo_video::{Choice, Codec, Encoder};
+    if choice == Choice::Auto
+        && let Some(gpu) = drawn_on
+        && let Ok(e) = Encoder::new(vw, vh, fps, Choice::Vaapi, Codec::H264)
+        && e.prime_device() == Some(gpu)
+    {
+        return Ok(e);
+    }
+    Encoder::new(vw, vh, fps, choice, Codec::H264)
+}
+
+/// With --trace: 120 frames' times (resize, encode, captured to sent),
+/// said as medians and 95th percentiles, then forgotten.
+fn say_timings(t: &mut Vec<[f64; 3]>) {
+    let median = |i: usize| {
+        let mut v: Vec<f64> = t.iter().map(|s| s[i] * 1000.0).collect();
+        v.sort_by(f64::total_cmp);
+        (v[v.len() / 2], v[v.len() * 95 / 100])
+    };
+    let (r, c, l) = (median(0), median(1), median(2));
+    eprintln!("  frames: resize {:.1} ms (95%: {:.1}), encode {:.1} ms ({:.1}), captured to sent {:.1} ms ({:.1})", r.0, r.1, c.0, c.1, l.0, l.1);
+    t.clear();
+}
+
 /// The encoder's worker: each frame made the receiver's size, encoded
-/// and sent, until stopped. An error: no encoder, or the receiver gone.
-fn encode(slot: &Slot, mirror: &Mirror, screen: Screen, choice: olo_video::Choice, fps_asked: Option<u32>, fps: &AtomicU32, trace: bool) -> Result<(), String> {
+/// and sent, until stopped; `prime` set to the GPU it encodes frames in
+/// that GPU's memory on (0: none, or it took none). An error: no
+/// encoder, or the receiver gone.
+#[allow(clippy::too_many_arguments)]
+fn encode(slot: &Slot, mirror: &Mirror, screen: Screen, choice: (olo_video::Choice, Option<u64>), fps_asked: Option<u32>, fps: &AtomicU32, prime: &AtomicU64, trace: bool) -> Result<(), String> {
     use fast_image_resize::{
         PixelType, ResizeAlg, ResizeOptions, Resizer,
         images::{Image, ImageRef},
@@ -456,7 +515,7 @@ fn encode(slot: &Slot, mirror: &Mirror, screen: Screen, choice: olo_video::Choic
     // (With --trace: how long each frame takes, every 120.)
     let mut timings: Option<Vec<[f64; 3]>> = trace.then(Vec::new);
     loop {
-        let frame = {
+        let mut frame = {
             let (m, cv) = &**slot;
             let mut held = m.lock().unwrap_or_else(|e| e.into_inner());
             loop {
@@ -475,14 +534,47 @@ fn encode(slot: &Slot, mirror: &Mirror, screen: Screen, choice: olo_video::Choic
             // (A window that changed size: an encoder for its new size, its
             // first picture a key frame, the receiver told the new sets.)
             let wanted = fps_asked.unwrap_or(60).min(screen.fps);
-            let e = olo_video::Encoder::new(vw, vh, wanted, choice, olo_video::Codec::H264)?;
+            // (The one before let go first: a GPU's encoder is one at a time.)
+            drop(encoder.take());
+            let e = encoder_for(vw, vh, wanted, choice)?;
             // (The processor keeps up with fewer.)
             let rate = if e.choice() == olo_video::Choice::Cpu { fps_asked.unwrap_or(30).min(wanted) } else { wanted };
             fps.store(rate, SeqCst);
-            eprintln!("olo-airplay: {vw}×{vh} at up to {rate} a second, encoded on {}", e.name());
+            prime.store(e.prime_device().unwrap_or(0), SeqCst);
+            let lent = if e.prime_device().is_some_and(|d| Some(d) == choice.1) { ", frames lent from the GPU" } else { "" };
+            eprintln!("olo-airplay: {vw}×{vh} at up to {rate} a second, encoded on {}{lent}", e.name());
             encoder = Some(e);
         }
         let e = encoder.as_mut().expect("made above");
+        // A frame lent: encoded where it is (made NV12 by the GPU), given
+        // back at once. One the encoder can't take: dropped, and the next
+        // ones copied.
+        if let Some(lent) = frame.lent.take() {
+            let picture =
+                olo_video::vaapi::Prime { key: lent.key, fd: lent.fd(), modifier: lent.modifier, offset: lent.offset, pitch: lent.pitch, size: lent.size, width: lent.width, height: lent.height };
+            let coded = e.encode_prime(&picture);
+            drop(lent);
+            let encoded = Instant::now();
+            match coded {
+                Ok((annex_b, _)) => {
+                    mirror.show(&annex_b, (vw, vh), frame.at)?;
+                    if let Some(t) = timings.as_mut() {
+                        t.push([0.0, (encoded - started).as_secs_f64(), (encoded - frame.at).as_secs_f64()]);
+                    }
+                }
+                Err(why) => {
+                    eprintln!("olo-airplay: the encoder took no frame from the GPU ({why}): copying them");
+                    prime.store(0, SeqCst);
+                }
+            }
+            if let Some(t) = timings.as_mut().filter(|t| t.len() == 120) {
+                say_timings(t);
+            }
+            if frame.data.capacity() > 0 {
+                slot.0.lock().unwrap_or_else(|e| e.into_inner()).spare.get_or_insert(frame.data);
+            }
+            continue;
+        }
         let (data, stride): (&[u8], usize) = if (vw, vh) == (frame.width, frame.height) {
             (&frame.data, frame.width as usize * 4)
         } else {
@@ -504,14 +596,7 @@ fn encode(slot: &Slot, mirror: &Mirror, screen: Screen, choice: olo_video::Choic
         if let Some(t) = timings.as_mut() {
             t.push([(resized - started).as_secs_f64(), (encoded - resized).as_secs_f64(), (encoded - frame.at).as_secs_f64()]);
             if t.len() == 120 {
-                let median = |i: usize| {
-                    let mut v: Vec<f64> = t.iter().map(|s| s[i] * 1000.0).collect();
-                    v.sort_by(f64::total_cmp);
-                    (v[v.len() / 2], v[v.len() * 95 / 100])
-                };
-                let (r, c, l) = (median(0), median(1), median(2));
-                eprintln!("  frames: resize {:.1} ms (95%: {:.1}), encode {:.1} ms ({:.1}), captured to sent {:.1} ms ({:.1})", r.0, r.1, c.0, c.1, l.0, l.1);
-                t.clear();
+                say_timings(t);
             }
         }
         // (Its buffer back, for the next frame.)

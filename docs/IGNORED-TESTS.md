@@ -72,7 +72,7 @@ Ways in that keep the person's session out of it:
 | olo-preview `video::tests::plays_across_another_encoders_entry` | `OLO_FALLBACK_MP4`: olo-video's `a_recording_goes_on_with_another_encoder` kept (`OLO_KEEP_TEST_VIDEO=1`) | pass |
 | olo-video `export::tests::make_4k60`, `make_fixture`, `make_4k60_y4m` | `OLO_FIXTURE_DIR`, `OLO_FIXTURE`; `OLO_Y4M` a FIFO ffmpeg's libvpx reads | pass; the 4K60 clips played by the Viewer headless to their end on Intel's GPU, nothing dropped (H.264, HEVC, AV1, VP9) |
 | olo-video `tests::encode_cost`, `encoder_opening`, `nvenc_cost_by_codec`, `nvenc_makes_h264_that_decodes`, `nvenc_makes_hevc_and_av1_mp4s` | as is (wakes NVIDIA's GPU) | pass: NVENC 4K 12–15 ms a frame, every picture decoded back |
-| olo-video `tests::codec_sizes`, `tests::vaapi_sizes` | `OLO_BENCH_SCREEN` a screen-like PNG | pass |
+| olo-video `tests::codec_sizes`, `tests::vaapi_sizes`, `tests::vaapi_h264_sizes` | `OLO_BENCH_SCREEN` a screen-like PNG | pass |
 | olo-eld `decodes_a_capture_as_libfdk_does` | a speech stream libfdk's encoder made with AirPods' config (f8e63000, ctypes on libfdk-aac.so.2) and libfdk's decode of it | pass: 709 frames, SNR 82.6 dB (50 wanted) |
 | olo-face `model::tests::recognises_a_face_in_grey` | `OLO_FACE_SAMPLES`: the installed models and four NASA portraits (Commons, public domain) | pass: 0.592 alike, 0.09–0.26 apart |
 | olo-face `emitter::tests::this_machines_units` | opens every /dev/video node | **not run: the person's cameras** (Blocked) |

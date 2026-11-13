@@ -1797,13 +1797,15 @@ impl StartupChime {
 #[serde(default)]
 pub struct ScreenRecordingSettings {
     /// "auto" (the most powerful there is: an NVIDIA GPU's encoder
-    /// where it opens, else, for AV1, an Intel or AMD GPU's through
-    /// VA-API, else the processor), "nvidia", "vaapi" (AV1 only) or
-    /// "cpu".
+    /// where it opens, else an Intel or AMD GPU's through VA-API, for AV1
+    /// and, where its driver makes it, H.264, else the processor; on
+    /// battery the built-in GPU first), "nvidia", "vaapi" (AV1, and H.264
+    /// where the driver makes it) or "cpu".
     pub encoder: String,
     /// What recordings are coded as: "h264" (plays everywhere), "hevc"
-    /// or "av1" (smaller, on NVIDIA's encoder; the processor makes
-    /// H.264 whatever this says).
+    /// (smaller, on NVIDIA's encoder) or "av1" (on NVIDIA's encoder or
+    /// an Intel or AMD GPU's); the processor makes H.264 whatever this
+    /// says.
     pub codec: String,
     /// The sound recorded with the screen: "computer" (what it plays),
     /// "microphone", "both" or "none".

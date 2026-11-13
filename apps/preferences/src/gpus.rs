@@ -93,9 +93,11 @@ struct Shared {
     /// The power mode now (None: no daemon), and whether on battery.
     mode: Option<olo_system::power_profile::Mode>,
     on_battery: bool,
-    /// The GPUs whose VA-API driver encodes AV1 (Intel's, AMD's), by
-    /// name: screen recordings can be made on them.
+    /// The GPUs whose VA-API driver encodes AV1 (Intel's, AMD's), and
+    /// those whose driver encodes H.264 (RPM Fusion's), by name: screen
+    /// recordings can be made on them.
     av1: Vec<String>,
+    h264: Vec<String>,
     /// The GPU that decodes video through VA-API (its name), and whether
     /// its driver has H.264 and HEVC (Fedora's has only AV1 and VP9).
     decodes: Option<(String, bool)>,
@@ -138,6 +140,7 @@ fn read(shared: Arc<Mutex<Shared>>, proxy: olo_kit::Proxy, wake: Option<String>,
         s.follower = Follower::Current;
         s.mode = Some(olo_system::power_profile::Mode::Balanced);
         s.av1 = vec!["Intel Graphics".into()];
+        s.h264 = vec!["Intel Graphics".into()];
         s.decodes = Some(("Intel Graphics".into(), false));
         s.gpus = Some(vec![
             Entry { gpu: gpu("0000:00:02.0", "Intel Graphics", "xe", true, &["eDP-1", "DP-1", "HDMI-A-1"]), caps: Some(xe), asleep: false, unanswered: None, power_failed: false },
@@ -167,12 +170,10 @@ fn read(shared: Arc<Mutex<Shared>>, proxy: olo_kit::Proxy, wake: Option<String>,
             let mode = olo_system::power_profile::modes().ok().flatten().map(|m| m.active);
             let on_battery = !olo_system::battery::on_ac();
             // (Each driver asked, NVIDIA's left asleep: about 15 ms.)
-            let av1: Vec<String> = olo_vaapi::abilities()
-                .into_iter()
-                .filter(|a| a.av1.is_some())
-                .map(|a| gpus.iter().find(|e| e.gpu.render.as_deref() == Some(a.node.as_path())).map_or_else(|| "The GPU".to_owned(), |e| e.gpu.name.clone()))
-                .collect();
             let name_of = |node: &std::path::Path| gpus.iter().find(|e| e.gpu.render.as_deref() == Some(node)).map_or_else(|| "The GPU".to_owned(), |e| e.gpu.name.clone());
+            let abilities = olo_vaapi::abilities();
+            let av1: Vec<String> = abilities.iter().filter(|a| a.av1.is_some()).map(|a| name_of(&a.node)).collect();
+            let h264: Vec<String> = abilities.iter().filter(|a| a.h264.is_some()).map(|a| name_of(&a.node)).collect();
             use olo_vaapi::decode::{Codec, decoder_for};
             let all = decoder_for(Codec::H264).is_some() && decoder_for(Codec::Hevc).is_some();
             let decodes = decoder_for(Codec::Av1).or_else(|| decoder_for(Codec::Vp9)).or_else(|| decoder_for(Codec::H264)).map(|(node, _)| (name_of(&node), all));
@@ -182,6 +183,7 @@ fn read(shared: Arc<Mutex<Shared>>, proxy: olo_kit::Proxy, wake: Option<String>,
                 s.mode = mode;
                 s.on_battery = on_battery;
                 s.av1 = av1;
+                s.h264 = h264;
                 s.decodes = decodes;
                 // (What's being edited stays; a first read starts it.)
                 if s.gpus.is_none() || s.edited == s.kept {
@@ -248,21 +250,27 @@ pub(crate) fn run_tune(tuning: &Tuning) -> Result<String, String> {
 
 /// What screen recordings encode on: the most powerful there is (an
 /// NVIDIA GPU's encoder where there's one), that GPU, an Intel or AMD
-/// GPU through VA-API (AV1 only: what Fedora's drivers encode), or the
-/// processor (`Settings::screen_recording`, read by olo-screenshot's
-/// recorder).
-fn recordings(ui: &mut Ui, gpus: &[Entry], av1: &[String]) {
+/// GPU through VA-API (AV1, and H.264 where its driver makes it: RPM
+/// Fusion's), or the processor (`Settings::screen_recording`, read by
+/// olo-screenshot's recorder).
+fn recordings(ui: &mut Ui, gpus: &[Entry], av1: &[String], h264: &[String]) {
     let nvidia = gpus.iter().find(|e| e.gpu.vendor == 0x10de).map(|e| e.gpu.name.clone());
-    let vaapi = av1.first().cloned();
+    // (The GPU that makes the most of the two.)
+    let vaapi = h264.iter().find(|g| av1.contains(g)).or(h264.first()).or(av1.first()).cloned();
+    let (v_h264, v_av1) = vaapi.as_ref().map_or((false, false), |v| (h264.contains(v), av1.contains(v)));
     let current = ui.s.screen_recording.encoder.clone();
     let codec = ui.s.screen_recording.codec.clone();
     let most = match (&nvidia, &vaapi) {
         (Some(n), _) => format!("The most powerful ({n})"),
-        (None, Some(v)) if codec == "av1" => format!("The most powerful ({v})"),
+        (None, Some(v)) if (codec == "av1" && v_av1) || (codec == "h264" && v_h264) => format!("The most powerful ({v})"),
         _ => "The most powerful (the processor)".to_owned(),
     };
     let on_nvidia = nvidia.as_ref().map(|n| format!("{n} (NVENC)"));
-    let on_vaapi = vaapi.as_ref().map(|v| format!("{v} (AV1 only, VA-API)"));
+    let on_vaapi = vaapi.as_ref().map(|v| match (v_h264, v_av1) {
+        (true, true) => format!("{v} (VA-API)"),
+        (true, false) => format!("{v} (H.264 only, VA-API)"),
+        _ => format!("{v} (AV1 only, VA-API)"),
+    });
     let mut choices: Vec<(String, &str)> = vec![("auto".into(), most.as_str())];
     if let Some(n) = &on_nvidia {
         choices.push(("nvidia".into(), n.as_str()));
@@ -274,18 +282,27 @@ fn recordings(ui: &mut Ui, gpus: &[Entry], av1: &[String]) {
     ui.bbox("Screen Recordings", |ui| {
         ui.choose("recording-encoder", &choices, &current, |f| f.label("Encode on:").divider(100.0), |s, v| s.screen_recording.encoder = v);
         // NVIDIA's encoder: H.264 or HEVC (AV1, no smaller on screens
-        // there, is olo-screenshot's `--codec av1`). Without one, H.264 on
-        // the processor or AV1 on the Intel or AMD GPU.
-        let av1_label = vaapi.as_ref().map(|v| format!("AV1 (on {v})"));
-        let formats: Vec<(String, &str)> = match (&nvidia, &av1_label) {
-            (Some(_), _) if current != "cpu" && current != "vaapi" => vec![("h264".into(), "H.264 (plays everywhere)"), ("hevc".into(), "HEVC (about half the size)")],
-            (None, Some(a)) if current == "auto" => vec![("h264".into(), "H.264 (plays everywhere, on the processor)"), ("av1".into(), a.as_str())],
+        // there, is olo-screenshot's `--codec av1`). The Intel or AMD GPU
+        // chosen: H.264 or AV1, where its driver makes both. Neither
+        // chosen, without NVIDIA's: H.264 (on that GPU where it makes it,
+        // else the processor) or AV1 on that GPU.
+        let v = vaapi.as_deref().unwrap_or("the GPU");
+        let auto_h264 = if v_h264 { format!("H.264 (plays everywhere, on {v})") } else { "H.264 (plays everywhere, on the processor)".to_owned() };
+        let auto_av1 = format!("AV1 (on {v})");
+        let formats: Vec<(String, &str)> = match &nvidia {
+            Some(_) if current != "cpu" && current != "vaapi" => vec![("h264".into(), "H.264 (plays everywhere)"), ("hevc".into(), "HEVC (about half the size)")],
+            _ if current == "vaapi" && v_h264 && v_av1 => vec![("h264".into(), "H.264 (plays everywhere)"), ("av1".into(), "AV1 (for players that want it)")],
+            None if current == "auto" && v_av1 => vec![("h264".into(), auto_h264.as_str()), ("av1".into(), auto_av1.as_str())],
             _ => Vec::new(),
         };
         if !formats.is_empty() {
             ui.choose("recording-codec", &formats, &codec, |f| f.label("Format:").divider(100.0), |s, v| s.screen_recording.codec = v);
         }
-        ui.note(if current == "vaapi" {
+        ui.note(if current == "vaapi" && v_h264 && v_av1 {
+            "A 2560 × 1600 screen takes this GPU about 8 ms a frame as H.264 and 9 as AV1, which comes out about the same size on a screen; H.264 plays everywhere."
+        } else if current == "vaapi" && v_h264 {
+            "Recordings are H.264, which plays everywhere: a 2560 × 1600 screen takes this GPU about 8 ms a frame."
+        } else if current == "vaapi" {
             "Recordings are AV1, the only format Fedora's driver for this GPU encodes: a 2560 × 1600 screen takes it about 9 ms a frame, and most players and browsers play it."
         } else if nvidia.is_some() || vaapi.is_some() {
             "A GPU's encoder takes a 4K screen in about 15 ms a frame, the processor about 110: recordings of a lot of motion keep every frame on the GPU, about nine a second on the processor."
@@ -506,13 +523,13 @@ pub fn graphics(ui: &mut Ui, st: &mut State) {
         // applied with the tuning.)
         ui.space(m::SECTION - 2.0 * m::STACK);
     }
-    let (av1, decodes) = {
+    let (av1, h264, decodes) = {
         let s = st.shared.lock().unwrap();
-        (s.av1.clone(), s.decodes.clone())
+        (s.av1.clone(), s.h264.clone(), s.decodes.clone())
     };
     // (Side by side: under each other, the pane is taller than the
     // smallest screen.)
-    ui.columns(|ui| recordings(ui, &gpus, &av1), |ui| playback(ui, &gpus, decodes.as_ref().map(|(n, all)| (n.as_str(), *all))));
+    ui.columns(|ui| recordings(ui, &gpus, &av1, &h264), |ui| playback(ui, &gpus, decodes.as_ref().map(|(n, all)| (n.as_str(), *all))));
 }
 
 /// Apply and Revert, for the plan and the GPUs' Custom settings (root's:

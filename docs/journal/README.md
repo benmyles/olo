@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-12
 
+### Recordings and AirPlay in H.264 on the Intel GPU
+
+*21:06* — Preferences ▸ Power ▸ Graphics: where the Intel GPU's driver encodes H.264 (RPM Fusion's iHD, as here), Encode on says Intel Graphics (VA-API), not "AV1 only", and offers H.264 or AV1, measured: a 2560 × 1600 screen in about 8 ms a frame as H.264, 9 as AV1, about the same size. The same encoder shows a screen on AirPlay from frames lent by app_server, never copied: 5.0% of a core for a busy 1728 × 1080 Terminal at 60 a second, where NVENC with copies took 11.9%.
+
+![Recordings and AirPlay in H.264 on the Intel GPU](2026-11-12/210626-recordings-and-airplay-in-h-264-on-the-intel-gpu.png)
+
 ### A workspace not shown, as AirPlay gets it
 
 *18:48* — What a share of workspace 2 is while the display shows workspace 1 (the desktop alone): its Terminal where it was left, under Deskbar, over the desktop and the wallpaper, drawing on (a clock printing ten lines a second kept going in the frames that followed).

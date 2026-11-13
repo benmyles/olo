@@ -8023,16 +8023,21 @@ Screens' Export Video uses too).
   isn't one of its values set first, or filled by the driver). The JSON
   says which encoded it (`encoder`). A window that changes size is cut
   or shown on black at the size it began.
-- **AV1 on Intel's and AMD's GPUs** (`--encoder vaapi`, Preferences ▸
-  GPUs offering "Intel Graphics (AV1 only, VA-API)" where its driver
-  encodes AV1; `olo_vaapi`, crates/vaapi): Fedora's own VA-API drivers
-  (iHD, Mesa) leave out the patented codecs, so on the ThinkPad's Intel
-  GPU (xe) they encode AV1 profile 0 and VP9 but no H.264 or HEVC: a
-  recording through VA-API is AV1 (asked for anything else, an error;
-  `--encoder auto` takes it for AV1 when there's no NVIDIA encoder, and
-  first while the computer is on its battery, so the NVIDIA GPU isn't
-  woken for it: `olo_video::on_battery`, a battery and no mains or USB-C
-  supply online, a mouse's battery not counting).
+- **AV1 and H.264 on Intel's and AMD's GPUs** (`--encoder vaapi`,
+  Preferences ▸ GPUs offering "Intel Graphics (VA-API)" where its
+  driver encodes both, "(AV1 only, VA-API)" or "(H.264 only, VA-API)"
+  where one, with a Format of H.264 or AV1 when it's chosen;
+  `olo_vaapi`, crates/vaapi): Fedora's own VA-API drivers (iHD, Mesa)
+  leave out the patented codecs, so with them the ThinkPad's Intel GPU
+  (xe) encodes AV1 profile 0 and VP9 but no H.264 or HEVC; RPM Fusion's
+  iHD (`intel-media-driver`, in `/usr/lib64/dri-nonfree`, which libva
+  reads first; Olo Doctor installs it for decoding) encodes H.264 too.
+  A recording through VA-API is H.264 where the driver makes it and the
+  Format says H.264, else AV1 (HEVC asked for, an error; `--encoder
+  auto` takes it when there's no NVIDIA encoder, and first while the
+  computer is on its battery, so the NVIDIA GPU isn't woken for it:
+  `olo_video::on_battery`, a battery and no mains or USB-C supply
+  online, a mouse's battery not counting).
   libva is opened at run time (`libva.so.2`, `libva-drm.so.2`; vendor/
   va-sys holds bindgen's declarations from libva 2.24's headers), the
   render node is the first whose driver offers `VAProfileAV1Profile0`
@@ -8056,6 +8061,37 @@ Screens' Export Video uses too).
   260 KB at 45.5; a frame in about 8.5 ms, conversion and upload
   included, a key frame up to 25. `vaapi_frames_come_back` encodes eight
   frames and decodes them back (each within 38 dB of what was sent).
+  **H.264** (`olo_vaapi::H264`, `h264.rs`), as FFmpeg's `h264_vaapi`
+  and Chrome's encoder: High profile (Main or Constrained Baseline where
+  that's all the driver has) through the low-power entrypoint first
+  (Intel's from Gen12 on have only that: VDEnc), a key (IDR) frame
+  every two seconds then P frames each from the one before, picture
+  order from frame_num (type 2) so nothing is reordered and each frame
+  is shown as it's decoded. The sequence and picture parameter sets are
+  written here (`sps`, `pps`: exp-Golomb, emulation prevention bytes
+  put in, handed over as packed headers with `has_emulation_bytes`):
+  BT.709 in limited range and a VUI whose bitstream restriction says no
+  reordering and one frame buffered (a receiver shows each at once);
+  the driver writes the slices. The rate is a quality with a cap where
+  the driver has one (QVBR: `Rate::Quality`, `olo_vaapi::h264::QUALITY`
+  18, at most twice `olo_video::bitrate`, never a frame skipped), as
+  NVENC's `targetQuality` with `maxBitRate`, else that quality's
+  quantizer throughout (CQP). Measured (`vaapi_h264_sizes`, three
+  seconds typed into at 30, decoded back by OpenH264, luma PSNR): a
+  1280 × 800 screen (a Terminal on a photograph) 199 KB at 46.7 dB, where
+  NVENC's H.264 at its quality 20 kept 46.4 dB in 322 KB and a constant
+  quantizer of 18 here 46.5 in 238 KB; the driver's fastest setting
+  (TU7) 1.2 ms a frame quicker but 45.9 dB in 220 KB, so its default is
+  kept; a 2560 × 1600 screen 403 KB at 48.2 dB in 8.1 ms a frame, where
+  AV1 here took 458 KB at 48.6 in 9.0. A stream's colour is read from its
+  SPS where a reader converts it (`olo_vaapi::h264::colour`; the GIF
+  maker's `read.rs` converts BT.709 as BT.709, and keeps OpenH264's
+  BT.601 for a stream that says nothing, as OpenH264's and NVENC's
+  don't). `vaapi_h264_frames_come_back` encodes eight frames from
+  memory and from linear and tiled dmabufs and decodes them back with
+  OpenH264 (51.6 dB); `frames_come_out_as_said` checks a key frame is
+  our SPS, our PPS and an IDR slice and the rest a P slice each;
+  `parameter_sets_read_back` reads ours with cros-codecs' parser.
 - **Frames that never leave the GPU** (VA-API on the GPU app_server
   draws with: the Intel GPU on the ThinkPad, as on battery or `--encoder
   vaapi`): a display, or a window not on a background, is captured into
@@ -8065,7 +8101,8 @@ Screens' Export Video uses too).
   copied), each imported once as a VA surface (DRM PRIME 2, kept by its
   key) and made NV12 straight into the input surface by VA-API's video
   processor (BT.709, full range in, limited out; `Av1::encode_prime`,
-  `olo_video::Encoder::encode_prime`), the buffer given back as soon as
+  `H264::encode_prime`, both through `Input`; `olo_video::Encoder::
+  encode_prime`), the buffer given back as soon as
   that's done. Only in layouts VA-API reads (`olo_vaapi::imports`:
   linear, and Intel's X, Y and 4 tiles without compression; libva can't
   be asked, and Xe2's compressed 4, 0x0100000000000010, imports without
@@ -8202,7 +8239,8 @@ Screens' Export Video uses too).
   averages, the crop's shape kept, never larger, even), at most so many
   pictures a second, as finely as asked (`Quality`: the recording's own,
   or about 60% and 35% of its bits: NVENC's quality level up 4 and 8,
-  OpenH264's bitrate, VA-API's AV1 quantizer up 30 and 60), its sound
+  OpenH264's bitrate, VA-API's AV1 quantizer up 30 and 60 and its H.264
+  quality up 4 and 8), its sound
   kept or left out, its marks kept where their moments are (`marks_of`
   reads `chpl`). The pictures come in order from `read::Video` (the
   reader `gif.rs` had, now shared: `each_picture` gives each with when
@@ -9754,7 +9792,7 @@ from Apple's, and LGPL where it's open).
   closes the data connection or the event channel (`ended()`).
 - `olo-airplay show RECEIVER [--window ID | --display NAME |
   --workspace N [--display NAME] | --screen AGENT-SCREEN] [--title
-  TITLE] [--no-sound] [--fps N] [--encoder auto|nvidia|cpu] [--lead MS]
+  TITLE] [--no-sound] [--fps N] [--encoder auto|vaapi|nvidia|cpu] [--lead MS]
   [--json] [--trace] [--notify]`: frames come from app_server's capture
   (`olo_capture`, as the recorder's do; a workspace, from 1, through
   Olo's workspace source, "Screen sharing" ▸ Workspaces, so it shows
@@ -9767,9 +9805,17 @@ from Apple's, and LGPL where it's open).
   (a fitted source, `Capture::fit`, "Screen sharing" ▸ Fitted; from an
   older app_server, shrunk by the worker on the processor,
   `fast_image_resize`, the fourth byte not weighed as alpha); the
-  worker encodes each (NVENC at up to
-  60 a second where it opens, else OpenH264 at 30; a picture out for
-  each in, no B-frames) and sends it. The sound is the computer's
+  worker encodes each (H.264, a picture out for each in, no B-frames:
+  `encoder_for`, VA-API's on the GPU app_server draws on where its
+  driver makes H.264, the Intel GPU's here, else NVENC at up to 60 a
+  second where it opens, else OpenH264 at 30) and sends it. Frames for
+  an encoder on the GPU that draws them are lent to it as they come
+  (`Capture::lend_frames`, as the recorder's, "Frames that never leave
+  the GPU": made NV12 by its video processor, never copied through the
+  processor), when they are the receiver's size (fitted); the encoder
+  tells the capture's thread which GPU it's on (`prime`), and one that
+  refuses a lent frame sets that back to none, so the rest are copied.
+  After a reload the new capture lends again. The sound is the computer's
   (`recording::Capture::start_as`, the default output's monitor, 10 ms
   at a time); while paused, silence, and the last picture stays.
   SIGUSR1 pauses, SIGUSR2 goes on, SIGTERM stops, as for a play; it is
@@ -9790,9 +9836,16 @@ from Apple's, and LGPL where it's open).
   frames fitted by app_server (32.4% shrinking them here: 3.3 ms a
   frame), NVENC 3.3 ms mostly waiting on the GPU, the capture's copy
   about 6%; 4.7 ms from capture to sent (6.6 at the 95th percentile).
-  What's left is the copy out of the GPU and into NVENC: frames kept
-  on the GPU (lent dmabufs encoded by VA-API, as the recorder does for
-  AV1, where the driver encodes H.264) would take that too.
+  Frames lent to the Intel GPU's H.264 (RPM Fusion's iHD 26.3.5),
+  measured against NVENC in the same session: olo-airplay 5.0% of a
+  core (its encoder thread 4.4%, the capture's 0.6%) against 11.9%
+  (6.6% and 5.3%: the copy out of the GPU), app_server 5.7% against
+  5.6%, the NVIDIA GPU left asleep; 7.3 ms from capture to sent (7.5–9.0
+  at the 95th percentile) against 4.7 (5.4–5.8): the video processor's
+  conversion 1.7 ms and the encoding 5.6, well inside the 40 ms the
+  receiver shows behind. 15.2 Mbit/s for the Terminal printing
+  nonstop at 60 a second; a still screen 0.1% of a core, 7 wakeups a
+  second (app_server 0.1%, 4). `--encoder nvidia` takes NVENC.
 
 **From the desktop.** Preferences ▸ AirPlay (`apps/preferences/src/
 airplay.rs`) lists the receivers that answer (asked when the panel

@@ -637,14 +637,18 @@ something nobody here has is in "Blocked", with what it waits for.
      - *Frames fitted by app_server, 2026-11-12* (HACKING, "Screen
        sharing" ▸ Fitted): a busy screen shown costs olo-airplay 13.7%
        of a core, not 32.4%, and 4.7 ms from capture to sent, not 8.1.
-     - *Next:* (1) the frames kept on the GPU (lent dmabufs encoded
-       H.264 by VA-API on the Intel GPU, as the recorder does for AV1,
-       where the driver encodes H.264: RPM Fusion's iHD, which this
-       computer has; Fedora's own doesn't): what's left of a busy
-       screen's cost is the copy out of the GPU and into NVENC; (2) a
-       window's own sound rather than the computer's (moving its
-       stream to a sink of its own), and keeping the sound off this
-       computer's speakers while it plays on the television.
+     - *Frames kept on the GPU, 2026-11-12* (HACKING, "AV1 and H.264
+       on Intel's and AMD's GPUs" and the showing): H.264 through
+       VA-API (`olo_vaapi::H264`, its parameter sets written by us,
+       quality 18 with a cap: 46.7 dB in 199 KB where NVENC kept 46.4
+       in 322), frames lent to it by app_server as dmabufs: a busy
+       screen shown costs olo-airplay 5.0% of a core rather than
+       NVENC's 11.9%, the NVIDIA GPU asleep, for 7.3 ms from capture to
+       sent rather than 4.7. Recordings take it too (`--encoder
+       vaapi`, Preferences ▸ Graphics' Format).
+     - *Next:* a window's own sound rather than the computer's
+       (moving its stream to a sink of its own), and keeping the sound
+       off this computer's speakers while it plays on the television.
      - *Ben's to say:* (1) which receiver it's for (an Apple TV and
        its tvOS, a television with AirPlay built in, something else):
        it has to be tried against the real one, paired by him at the
@@ -3126,7 +3130,11 @@ need Ben".)
     15 ms: no cache needed). Then: the frames as dmabufs to VA-API
     (DRM PRIME import, its video processor making NV12: 0676a351, 2.2%
     of a core recording 4K), and auto preferring the Intel GPU for AV1 on
-    battery, both done. NVENC (2026-11-08): CUDA imports only its own
+    battery, both done. *H.264 too* (2026-11-12, with RPM Fusion's iHD
+    on this computer since): `olo_vaapi::H264`, its sequence and picture
+    parameter sets written by us, the driver writing the slices; auto
+    prefers it on battery as AV1, and AirPlay's showing takes it first
+    with frames lent from the GPU. NVENC (2026-11-08): CUDA imports only its own
     GPU's memory and app_server draws on the Intel GPU, so frames cross
     to the NVIDIA GPU through the processor either way. The crossing was
     made half as dear: a 4K recording on NVENC went from 40.1% of a core
