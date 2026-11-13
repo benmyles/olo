@@ -217,9 +217,32 @@ fn answer(query: Query) {
                 None => crate::widgets::strip::window_over(None, point),
             }
         }
-        Query::Focus(_) => {}
+        // app_server's keyboard hints picked a text field, a slider or a
+        // scroll bar (a click would change it): it gets the keyboard. A
+        // tree's ids are its window's: by surface, else the window with
+        // the keyboard.
+        Query::Focus(node) => {
+            let mut windows = olo_interface::ask_windows(WAIT, |cx| Some((cx.is_window_active(), cx.window_id())));
+            windows.sort_by_key(|(active, _)| !*active);
+            if let Some((_, id)) = windows.first().copied() {
+                olo_interface::ask_windows(WAIT, move |cx| (cx.window_id() == id).then(|| focus_node(cx, node)));
+            }
+        }
+        Query::FocusIn(ask, reply) => {
+            let taken = olo_interface::ask_windows(WAIT, move |cx| (cx.surface_id() == Some(ask.surface)).then(|| focus_node(cx, ask.node)));
+            let _ = reply.send(taken.into_iter().any(|t| t));
+        }
         Query::Move(to, reply) => crate::upgrade::move_to(to, reply),
     }
+}
+
+/// Gives the keyboard to the widget with tree id `node` ([`tree`]: 1 is
+/// the window, its agent nodes follow from 2; labels after those take
+/// no keyboard). Whether anything took it.
+fn focus_node(cx: &mut WindowCx, node: u64) -> bool {
+    // (Its nodes as the tree said them: what changed shown first.)
+    cx.flush_now();
+    node >= 2 && cx.focus_agent_node((node - 2) as usize)
 }
 
 /// A window's menus, flattened for the command palette: the window

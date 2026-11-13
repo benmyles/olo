@@ -46,20 +46,22 @@ something nobody here has is in "Blocked", with what it waits for.
      the display thread (the wheel and touchpad scroll there, elastic
      ends; `ScrollHandle`), rows made as they come near (`uniform_rows`),
      element state, window keys, held commits, window state, upgrade
-     hooks. *Still to do:* drag and drop (within a window, between
-     windows, files from outside); pictures as elements (`img`) and
-     animated ones; animations stepped on the stage; several damage
-     rectangles a frame (typing in DeskCalc draws the union of its field
-     and a key); a frame drawn straight from the kept drawings (no copy
-     into a scene: ~50 µs of a ~200 µs frame); a scroll bar's knob moved
-     by the stage; rows of differing heights (GPUI's `list`); a headless
-     window for the layout lint; nothing worked out or drawn for a
-     window before app_server has given it its size (a layer or lock
-     surface opens 1 × 1 and is laid out and drawn so once: wasted, and
-     the terminal in Rescue has to know not to tell its shell that
-     size); moving a window to another display
-     (`moving`); agents' `Menus` of a window by surface is in, `Move`,
-     `WindowOver`, `WindowDropped`, `Focus` are not.
+     hooks; several damage rectangles a frame, a drawing made again
+     damaged only where it differs (2026-11-13); drag and drop (a
+     view's parts take drops, files dropped on an element), moving a
+     window to another display (`on_move_window`), the layout lint's
+     headless window, and agents' `Menus` by surface, `Move`,
+     `WindowOver`, `WindowDropped`, `Focus` and `FocusIn` (checked
+     2026-11-13). *Still to do:* pictures as elements (`img`) and
+     animated ones; animations stepped on the stage; a frame drawn
+     straight from the kept drawings (no copy into a scene: ~50 µs of
+     a ~200 µs frame, and 5% of a Logs resize step's cycles); a
+     scroll bar's knob moved by the stage; rows of differing heights
+     (GPUI's `list`). *Done 2026-11-13:* nothing worked out or drawn
+     for a layer surface stretched across its output, or a lock
+     surface, before app_server has given it its size (they opened
+     1 × 1 and were laid out and painted so once: the emoji picker
+     16 ms of a 20 ms start that way).
   3. **The kit's widgets** on it (everything in olo-ui today). *Done:*
      theme, style, review, icons, cut, tip, keys, menu (bars, popups,
      context menus), agent, app (Frame, fits_content, kept sizes,
@@ -651,12 +653,18 @@ something nobody here has is in "Blocked", with what it waits for.
        made in process, and the sound that goes with what's shown
        moved to it: a window's app's, an agent screen's programs', a
        display's the computer's; back where it was when paused or
-       ended, by WirePlumber when killed; the default output's volume
-       keys still set how loud. Half the cost of the monitor recording
-       it replaces (2.3% of a core against 4.4% with sound playing).
-     - *Next:* the receiver's own volume (AirPlay's `volume`
-       parameter) from the volume keys, rather than the samples made
-       quieter here, once a real receiver is there to try it on.
+       ended, by WirePlumber when killed. Half the cost of the monitor
+       recording it replaces (2.3% of a core against 4.4% with sound
+       playing).
+     - *The television's own volume, 2026-11-12* (Ben: "yes use tv"):
+       the volume keys set the receiver's volume (AirPlay's `volume`
+       parameter, from the computer's at the start, as it changes),
+       the sound sent at full scale. Tried on the test receiver; a
+       real television is the test of how it takes it.
+     - *The encoder, 2026-11-12* (Ben: "stay with intel"): Auto keeps
+       Intel's VA-API H.264 on mains too (2.6 ms more from capture to
+       sent than NVENC, inside the 40 ms lead; less than half the
+       processor; the NVIDIA GPU asleep). `--encoder nvidia` stays.
      - *Ben's to say:* (1) which receiver it's for (an Apple TV and
        its tvOS, a television with AirPlay built in, something else):
        it has to be tried against the real one, paired by him at the
@@ -822,33 +830,138 @@ something nobody here has is in "Blocked", with what it waits for.
          uncovers; the menus made again at every body (33 strings).
        - Disk Usage is still 35 draws for 520 things (its chart's
          sectors and labels, over one another).
-       - Notifications' cards are laid out anew for every width with
-         everything made again: 9,200 allocations a step (ten
-         strings copied a card, six made shared, its spans cloned)
-         and 3.6 MB copied, a megabyte of it `CardLaid` (400 to 800
-         bytes) moved by value eleven times a card
-         (`history.rs`: `card`, `lay_out`). To do: a card's face made
-         once an entry and kept, shared strings in `look::Face`,
-         `CardLaid` behind an `Rc`.
-       - Tracker's list view (the above is its column view) formats
-         each cell's string at every paint (sizes, dates): kept with
-         the entry they're of. Not measured since the change above.
-       - Logs makes a shared string of a `String` for 490 cells a
-         step.
+       - *Notifications' cards, done 2026-11-13.* They were laid out
+         anew for every width with everything made again: every note
+         copied out of the model at each step (`lay_out`), again for
+         each card's key, the laid card (824 bytes) moved and copied
+         by value, each text copied five times on its way to be
+         shaped. Now the notes are shared (`History::entries` an
+         `Arc`, copied on write), keys compared in place, laid rows
+         and cards behind an `Rc`, look.rs's text shared as given. A
+         live resize of 200 cards (memhist, exact, a step): 9,128 →
+         5,476 allocations, 3,586 → 2,348 KB copied; the list view
+         10,344 → 6,660. Release, perf stat, three runs each in turn,
+         medians: cards 19.52 → 17.73 M instructions, 16.19 → 13.24 M
+         cycles a step; the list view no change above its spread (six
+         runs each, 18 to 24 M for both builds). The same to the pixel
+         in both views at 1×, 1.5× and 2×, light and dark. Left: what
+         a resize must do, each text wrapped again for the new width
+         (450 shapings a step).
+       - *Tracker's list view, done 2026-11-13.* (The above is its
+         column view.) Its rows had no key, so every row showing was
+         painted again whenever the window said anything (a step of
+         the selection, a file changing in the folder, Find's results
+         coming in, a key typed in Go To), each cell's text formatted
+         again (sizes, dates, a name copied). Now the list, Find and Go
+         To key their rows by what each shows (`folder::row_key`) and
+         an entry keeps its texts once drawn (`Entry::shown`). A step
+         of the selection in a folder of 3,050 items, 47 rows showing
+         (release, perf stat of the app, three runs each in turn,
+         medians): 4.91 → 1.91 M instructions, 5.70 → 3.41 M cycles;
+         a live resize paints every row either way, and what the
+         texts save it (some 0.1 M a step) is under the runs' spread
+         (3.1 to 6.0 M for the same build at a load of 8). Found on
+         the way: renaming in the list view showed no field at all
+         (the name went blank and typing went nowhere), in the build
+         before this too; the field is now over the Name cell
+         (`ColumnListView::over_cell`, the kit's).
+       - *Logs' cells, done 2026-11-13.* It made a `String` for each
+         cell and then a shared string of it (two allocations a cell),
+         the program's name copied from the shared one it had and the
+         level's from a fixed one. Now those two are shared as they
+         are and the message copied once. Found with it, in the kit,
+         for every app: every label drawn copied its text twice to note
+         it for cut text's tips (`note_if_clipped`: now the label's own
+         shared text), and a list's row joined its cells' texts in a
+         list, a `String` and a copy to name it for agents (now one
+         allocation, a lone cell's text shared as it is). A live resize
+         of Logs on 20,000 lines (memhist, exact): 3,850 → 2,964
+         allocations a step, 8,130 → 7,494 copies; release, perf stat,
+         five runs each in turn, medians: 10.43 → 8.28 M instructions,
+         7.83 → 5.80 M cycles a step. The same to the pixel at 1×,
+         1.5× and 2×, light and dark; the rows' names the same.
        - An element is 800 bytes (its style, 632 of them) and is
          moved six or seven times on its way into the tree: 0.6 MB a
          step in Logs. A boxed style would trade those for an
          allocation an element: about even, not done.
        - taffy makes a list a block container a layout (260 a step
          in Logs): the vendored taffy's, left.
-       - **The editor walks every paragraph of the document when the
-         width it wraps to changes** (`set_look`, in `prepare`,
-         estimates each one's height again and `ensure_tops` adds
-         them up: those two functions are 43% of the cycles of a
-         resize on 100,000 lines of code, which wraps by default),
-         and `ensure_tops` again whenever one paragraph's height
-         changes (typing). Both builds alike. To do: heights in a tree that sums
-         (a change costs log n), estimates made lazily.
+       - *Logs' live resize, measured again 2026-11-13*
+         (`tools/dev/resize-cost`, 3456 × 2234 at 2×, three runs each
+         in turn, medians): the build from before the kits 4.87 M
+         instructions and 6.15 M cycles a step, now 8.61 and 7.88.
+         Its body reads the window's width (the Message column's, and
+         the search header's choice of one row or two), so every step
+         makes the window again: the menus, the header and 75 rows'
+         elements (2,797 allocations and 2.4 MB copied a step,
+         memhist); the profile is flat after that (text recorded again
+         7%, the rows' glyphs copied into the frame 4%, taffy 8%,
+         allocating 14%). *Done 2026-11-13:* the Message column is
+         the list's last, which fills what the others leave, and the
+         search header lays its row out by itself (the field takes
+         what the row leaves; the view says it again only when the
+         header's own width changes it from one row to two,
+         `search::header_width`), so a step runs no body of Logs'
+         (bodies 0.17–0.30 → 0.014 ms a step: the Frame's alone). On
+         `sample.log` (20,000 lines), three runs each in turn,
+         medians: 10.09 → 8.74 M instructions and 8.44 → 6.86 M
+         cycles a step. What's left is painting: every row is wider,
+         so drawn again (sprites into the scene 8%, copying them 5%,
+         a glyph's tile looked up 3%, Logs' highlight spans 2%).
+         Drawing a row's text as glyph runs (`paint_glyph_run`, found
+         once, then moved) would take most of that; a row whose width
+         alone changed could keep its cells but the last.
+       - *The editor's heights, done 2026-11-13.* It walked every
+         paragraph when the width it wraps to changed (`set_look`
+         estimated each one's height again, `ensure_tops` added them
+         up: 41% of a resize's samples on 100,000 lines of code) and
+         added them all up again whenever one changed (every key
+         typed). Now they're in a tree that sums (`editor/heights.rs`:
+         a change, a top, the paragraph at a place, each log n), and a
+         new wrap width guesses again only the paragraphs wider than
+         the narrower width. A live resize of long.rs (release, perf
+         stat, in turn): 10.8–12.3 → 4.9 M instructions, 8.0–12.5 →
+         4.8–6.6 M cycles a step; typing in 100,000 lines of plain
+         text, medians of three: 23.1 → 18.4 M instructions, 31.1 →
+         26.6 M cycles a key. The same to the pixel (code at 2×,
+         prose at 1.5×, Markdown at 1×, page view; the top, the end,
+         pages up, after a resize, after typing). On pages the tops
+         are still added up in order.
+       - *Typing in a long document, done 2026-11-13.* Each key went
+         over all of it several times: StyledEdit's Language menu asked
+         `Doc::is_plain` at every body (every paragraph's settings
+         compared), its undo copied every paragraph's settings and
+         every run at each step (two a word: typing 24 words into
+         100,000 lines grew the app by 348 MB, 3.6 GB at the 500 steps
+         it keeps), the editor moved every later paragraph's start
+         along through 8 MB of paragraphs, copied the whole text twice
+         for the agents' value, and menus made a `String` for every
+         item's keys looked up (`keys::known`, 566 a key). Now a step
+         keeps only the runs and paragraphs it changed (`doc::Window`),
+         `is_plain` remembers, the starts are a vector of their own,
+         the agents' text is copied once, and keys are looked up as
+         given. Words typed into 100,000 lines (release, perf stat,
+         three runs each in turn, medians): on line 30, 21.7 → 12.3 M
+         instructions and 25.1 → 12.4 M cycles a key; at the end, 18.1
+         → 8.7 M and 22.4 → 12.9 M; the app grew by 4 to 10 MB where
+         it grew 348. memhist, a key at the end: 11,202 → 7,020 KB
+         copied, 4,367 → 3,882 allocations (12,478 → 5,871 KB). The
+         same to the pixel (code at 2×, prose at 1.5×, Markdown at 1×:
+         the top, the end, pages up, resized, typed, undone, home);
+         undone and done again to the byte, styles and paragraphs too
+         (`undo_keeps_just_the_styles_and_paragraphs_a_step_changed`).
+         *Left of it*, each still a pass over the text at a key: the
+         text is one `String`, so a key moves what follows it (4 MB on
+         line 30; a rope or gap would mean the editor reading text in
+         pieces); the agents' value is the whole text copied once a
+         change (to make it when an agent asks: the tree's question
+         flushes each window first, `agent::trees`, but what holds the
+         text, the app's document, isn't reachable from there: the
+         editor would need a source the app gives it, or the view to
+         draw again for the question); menus are made again at every
+         body (`Menu::item`, some 600 small allocations a key);
+         code's tree-sitter reparse, on a worker, is most of a key in
+         code.
        (app_server sending each size of a live resize twice wasn't
        seen again: 38 configures for 36 steps, DeskCalc, 2026-11-12.
        The app commits twice a step, once to acknowledge the size
@@ -879,7 +992,25 @@ something nobody here has is in "Blocked", with what it waits for.
        from the looper where nothing under the pointer hears it (as
        it does the wheel), which needs the commit to say where
        something does (hover, a cursor, a tip, a window's own
-       listeners while a button is down).
+       listeners while a button is down). *Looked at 2026-11-13:* the
+       stage has what it needs from the wheel's pattern (a commit's
+       regions in its layers' coordinates, `WheelRegion`), and a press
+       finds what's under it at its own place, so skipped motion can't
+       send a click astray; but every kit window's `Frame` hears
+       motion window-wide (`on_window_mouse_move`, for cut text's tips),
+       as do 22 more listeners in 20 files (scroll bars, sliders, list
+       dividers, the ruler, slim scroll bars, text fields), most of them
+       for drags only. So first: a window-wide listener that hears only
+       what the window gets (while a button is held, over what notes
+       motion matters, leaving it) for the drags and the tips (their
+       regions from the painter's `cuts`), each listener sorted into
+       that or "everywhere"; then the commit's motion regions (hover and
+       active styles, hover and motion listeners, `paints_by_state`, a
+       cursor of its own or noted), the stage forwarding motion in
+       them, the motion that leaves one, all of it while a button is
+       held and the first after the pointer comes in; and the latest
+       place kept where the looper reads it when it looks again under
+       a still pointer (`hover_stale`: something moved or scrolled).
      - Scrolling fails the benchmark's evenness now and then in both
        builds (a frame skipped in a drag or a glide), and the
        Viewer's live resize its budget in both. Looked into
@@ -915,7 +1046,12 @@ something nobody here has is in "Blocked", with what it waits for.
      scroll among them.
      - A window's making blocks its opener's looper while the display
        thread makes the surface and renderer (2 to 3 ms of a menu's
-       4): the looper could build the view meanwhile.
+       4): the looper could build the view meanwhile. Measured
+       2026-11-13 on Tracker's menus (`window made in`, median 1.88
+       ms, 1.5 to 3.1): the Vulkan surface and its swapchain are 1.4 to
+       2.3 ms of it, everything else 0.1 ms, and the opener's own work
+       on the popup 0.3 ms; making the swapchain later would save only
+       that 0.3 ms, so it wasn't done.
      Also left:
      *Done 2026-11-12:* the vendored Smithay asked winit for its
      "x11" feature, which built winit-x11, x11rb and x11-dl into
@@ -1012,9 +1148,48 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-(Nothing: what was here on 2026-11-12 is done, or done and waiting
-for Ben below; the leftovers the 2026-11-08 audit found in
-finished entries are all done, and are in Done, newest first.)
+- **Deskbar widgets for the Token Pool: what's left of each quota**
+  (Ben, 2026-11-13: "deskbar widget support for showing token pool
+  usage / quotas etc. i want to be able to have it show the aggregate
+  availability for each provider x quota type and any other
+  options/views you think might be useful and make sense"). A kind of
+  live widget (HACKING, "Live widgets"), set up in Preferences ▸
+  Deskbar like the others, placed and drawn with the looks they have.
+  - *What it reads:* the pool's accounts' meters (`model::Window`:
+    provider, label, percent used, reset, the models it's for), each
+    account's cooldowns (whole, or a model family's), whether it's
+    on, signed out or paused, its reset credits, and what it served
+    (`Usage`, recent requests). From the running pool, without
+    sign-ins (`/pool/status`'s state, or the same over the pool's own
+    socket), told when it changes rather than asked on a timer:
+    meters move with each answer's headers and each account's report
+    (every 5 minutes), so a widget is drawn again only then and as a
+    reset comes due. Nothing read with the displays asleep or locked
+    (`Live::pause`); a dimmed "Token Pool off" when it isn't running.
+  - *Provider × quota, together* (the main one): for each provider and
+    each kind of meter its accounts have (Claude 5-hour, Weekly,
+    Weekly Fable and other models' weeks; Codex 5-hour, Weekly, a
+    model's own, code review), what's left across every account that
+    can serve: "2.4 of 3 accounts' worth", or as a percent of the
+    whole, as a meter, bars or a number; the soonest reset, and when
+    the next account out comes back. A quota for one model counts
+    only toward requests for that model, as the pool's order does.
+  - *Other views worth having:* each account as a cell (a heatmap or
+    bars of what each has left, one out or signed out marked); which
+    account is serving now and its meters; how fast it's going
+    (tokens or requests a minute, a graph) and so how long what's left
+    lasts against the next reset ("runs out in 1 h 40, resets in
+    3 h"); left or used, as the person likes; paused and turned-off
+    accounts counted or not.
+  - *Warnings, if asked for:* the widget's colour as what's left falls
+    past a level, and a notification when a provider's quota is out on
+    every account (and when it comes back).
+  - *Around it:* a tip with every account's meters in full and when
+    each resets; a click opens Token Pool; the other button, Token
+    Pool and Deskbar Preferences…. Agents read each as a `Meter` with
+    its value and resets. Preferences lists what can be shown from the
+    accounts the pool has (`sources`), with a ready-made row: Claude
+    5-hour and Weekly beside Codex's.
 
 ## Done, waiting for Ben to try or confirm
 
@@ -1073,6 +1248,55 @@ AirPods' config, f8e63000: 82.6 dB SNR, 50 wanted) and the
 accessibility tree test on an agent screen (GTK's Text Editor, 30
 nodes). What's left needs Ben: in Blocked, "The ignored tests that
 need Ben".)
+
+- **The pointer never stops under load** (Ben, 2026-11-12: "under
+  load the mouse still gets unresponsive for a few seconds every now
+  and then. i've got LAVD off b/c that made it even worse, as did the
+  supervisor. how else can we improve desktop responsiveness even
+  under load?", then "wouldn't it be better to give the cursor its own
+  thread anyway?"). Looked at first, read-only, on his session: during
+  a build (load 15–23) app_server's main thread waited at most 33 ms
+  to run, but twice sat 78 and 142 ms inside an ioctl in the xe GPU
+  driver's buffer lock (`drm_exec_lock_contended`), with the pointer
+  stopped meanwhile; the freezes of seconds weren't caught. *Done
+  2026-11-12:* app_server says in its log when input reaches it late
+  and what held its loop (HACKING, "{"type":"timings"}"), so the next
+  freeze names its cause; agent screens and test sessions no longer
+  raise their app_server above everything. *Done 2026-11-13:* the
+  pointer on a thread of its own (HACKING, "The pointer on a thread of
+  its own"): Preferences ▸ Performance ▸ Scheduler ▸ Pointer, "Move the
+  pointer on a thread of its own", off until Ben has tried it. libinput
+  is read on a thread at nice −15, which moves the hardware cursor
+  itself when the loop hasn't taken a motion for 12 ms; the loop
+  catches up from the same events. Tried on a real seat of the check's
+  own (`tools/dev/cursor-thread-check`: vkms and a virtual mouse on
+  "seat-olotest", his session never sees them): with the loop held
+  400 ms, on the loop the pointer stood still 260 ms and ended at 162
+  of 302 px (the kernel drops a device's unread events past 64); on the
+  thread it never stood still more than 20 ms and ended where it
+  should; switched on and off live, both ways. Costs nothing idle, and
+  about 3% of a core more while a 1000 Hz mouse moves. *Ben's to try:*
+  after upgrading, turn the switch on and use the machine under load
+  as when it froze: the pointer should keep moving even when windows
+  stop drawing. **Not tried on his machine**: his Intel panel (PSR2)
+  may take the kernel's slow path for a legacy cursor move, which only
+  it shows; if the pointer is worse with it on, turn it off and say so.
+  *Found on his session, 2026-11-13* (read-only: its log and
+  `{"type":"frames"}`): with the switch on, the loop was held 106 to 170
+  ms three times while drawing, and the thread never took over, because
+  on his OLED in HDR the pointer was never on the cursor plane: it was
+  composed into the HDR frame, so every move was a compose and an
+  encode on the GPU. *Done:* in HDR the pointer goes on the cursor
+  plane, its pixels encoded into the PQ signal as they're copied there
+  (HACKING, "HDR"); on a simulated HDR display (`cursor-thread-check
+  --hdr`) the thread moved it 129 px through a 400 ms hold, and moving
+  the pointer cost app_server 3.2–4.0% of a core where it cost
+  12.4–15.3%. *Ben's to try after upgrading:* the pointer in HDR looks
+  as it did (white as bright as a window's white, its edges clean), and
+  `{"type":"frames"}` says `cursor_plane: true` for eDP-1.
+  (LAVD is running again: an Authenticate dialog on his session, for
+  `olo-doctor --helper`, started `olo-scheduler.service` on 2026-11-12
+  at 22:44.)
 
 - **A window on the HDMI display was scrambled** (Ben, 2026-11-12:
   "when i plugged in an hdmi cable earlier to try show a video on the

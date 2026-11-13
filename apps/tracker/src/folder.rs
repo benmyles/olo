@@ -1083,16 +1083,33 @@ impl FolderWin {
             self.names = (self.stamp, self.entries.iter().map(|e| SharedString::from(e.name.clone())).collect());
         }
         let names = self.names.1.clone();
-        ColumnListView::new(cx, "list", &self.list_model, cols, self.entries.len(), |f: &FolderWin, cell, g| {
+        if self.editing.as_ref().is_some_and(|r| !self.entries.iter().any(|e| e.path == r.path)) {
+            self.editing = None; // the item went away
+        }
+        // Editing a name: the field over its name, inside the cell (a
+        // longer name scrolls in it), as the name cell lays it out.
+        let field = self.editing.as_ref().and_then(|r| {
+            let row = self.entries.iter().position(|e| e.path == r.path)?;
+            let e = &self.entries[row];
+            let cell = self.list_model.cell_bounds(&cols, row, 0);
+            let inset = px(m::CELL_INSET - m::TIGHT);
+            let name = Bounds { origin: point(inset, px(0.0)), size: size(cell.size.width - inset, cell.size.height) };
+            let l = items::layout_item(name, e.label(), items::Look::Mini, true, e.is_link);
+            Some((row, r.element_within(cx, &l, Point::default(), Some(cell.size.width - px(1.0)))))
+        });
+        let list = ColumnListView::new(cx, "list", &self.list_model, cols, self.entries.len(), |f: &FolderWin, cell, g| {
             let Some(e) = f.entries.get(cell.row) else { return };
             let editing = f.editing.as_ref().is_some_and(|r| r.path == e.path);
             match cell.column {
                 0 => name_cell(cell, g, e, !editing),
-                1 => cell.text(g, e.size_text()),
-                2 => cell.text(g, fs::format_time(e.modified)),
-                _ => cell.text(g, e.kind_text()),
+                1 => cell.text(g, e.shown().size.clone()),
+                2 => cell.text(g, e.shown().modified.clone()),
+                _ => cell.text(g, e.shown().kind.clone()),
             }
         })
+        // (A row is drawn again only when what it shows changes: a step
+        // of the selection draws two rows, not every one showing.)
+        .row_key(|f: &FolderWin, row| f.entries.get(row).map_or(0, |e| style::key((row_key(e), f.editing.as_ref().is_some_and(|r| r.path == e.path)))))
         .type_select(move |_, i| names.get(i).cloned().unwrap_or_default())
         .on_select(cx.listener(|f: &mut FolderWin, _: &(), cx| {
             let s = f.list_model.state().clone();
@@ -1128,8 +1145,11 @@ impl FolderWin {
             let Some(e) = f.entries.get(*row).cloned() else { return };
             let d = items::Drag { paths, icon: items::icon_of(&e), size: items::MINI, hotspot: point(px(items::MINI / 2.0), px(items::MINI / 2.0)), ask: false, name: e.name.clone() };
             items::start(cx, f.id, d, || FolderMsg::DragOver);
-        }))
-        .into_any_element()
+        }));
+        match field {
+            Some((row, field)) => list.over_cell(row, 0, field).into_any_element(),
+            None => list.into_any_element(),
+        }
     }
 
     // ---- the window --------------------------------------------------------
@@ -1530,11 +1550,18 @@ pub fn name_cell(cell: &mut Cell, g: &mut Painter, e: &Entry, text: bool) {
     cell.bounds = rest;
     if text {
         let color = cell.text_color;
-        cell.text_with(g, e.label().to_owned(), items::name_font(e.is_link), color);
+        cell.text_with(g, e.shown().name.clone(), items::name_font(e.is_link), color);
     } else {
-        cell.say(e.label().to_owned());
+        cell.say(e.shown().name.clone());
     }
     cell.bounds = saved;
+}
+
+/// What a row of a list of entries shows of `e`, as a number that changes
+/// when it does (`ColumnListView::row_key`): its name, icon, mark and
+/// columns.
+pub fn row_key(e: &Entry) -> u64 {
+    style::key((&e.path, e.is_link, e.size, e.modified, e.kind.name(), e.downloading, items::icon_of(e), crate::backups::backed_up(&e.path)))
 }
 
 /// Delete and F2 trash and rename in a view as well as the menus' keys,

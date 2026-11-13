@@ -366,15 +366,15 @@ struct ListLaid {
     generation: u64,
     /// How notes fade (`NotificationSettings::strength`).
     settings: NotificationSettings,
-    entries: Rc<Vec<store::Entry>>,
+    entries: std::sync::Arc<Vec<store::Entry>>,
     view: HistoryView,
     cards_view: bool,
     searching: bool,
     /// The notes in the order they're listed (as `entries` indices).
     order: Rc<Vec<usize>>,
     lines: Rc<Vec<(Item, f32, f32)>>,
-    rows: Rc<HashMap<usize, RowLaid>>,
-    cards: Rc<Vec<(usize, CardLaid, masonry::Place)>>,
+    rows: Rc<HashMap<usize, Rc<RowLaid>>>,
+    cards: Rc<Vec<(usize, Rc<CardLaid>, masonry::Place)>>,
     total: f32,
     sel_id: Option<u32>,
     /// The selected row's index, top and the rest of its conversation.
@@ -410,8 +410,8 @@ pub struct HistoryWindow {
     /// The list's keys (the arrows, Return, Delete), when the search
     /// field hasn't the keyboard.
     focus: FocusHandle,
-    rows: HashMap<u32, (RowKey, RowLaid)>,
-    cards: HashMap<u32, (CardKey, CardLaid)>,
+    rows: HashMap<u32, (RowKey, Rc<RowLaid>)>,
+    cards: HashMap<u32, (CardKey, Rc<CardLaid>)>,
     /// The palette painted with, and a number that changes with it (in
     /// the drawings' keys).
     palette: Option<(std::sync::Arc<olo_theme::Palette>, u64)>,
@@ -591,28 +591,26 @@ impl HistoryWindow {
 
     /// A row laid out for `width` (kept while what it shows is the same).
     #[allow(clippy::too_many_arguments)]
-    fn row(&mut self, cx: &WindowCx, p: &olo_theme::Palette, entries: &[store::Entry], i: usize, older: &[usize], meta: String, selected: bool, indent: bool, width: f32) -> RowLaid {
+    fn row(&mut self, cx: &WindowCx, p: &olo_theme::Palette, entries: &[store::Entry], i: usize, older: &[usize], meta: String, selected: bool, indent: bool, width: f32) -> Rc<RowLaid> {
         let e = &entries[i];
-        let key = RowKey {
-            entry: e.clone(),
-            older: older.iter().map(|&o| entries[o].id).collect(),
-            meta: meta.clone(),
-            selected,
-            indent,
-            width: width as u32,
-            scale: (cx.scale_factor() * 1000.0) as u32,
-            dark: p.mode == olo_theme::ThemeMode::Dark,
+        // (Compared with the note as it is, not a copy; laid out again for
+        // another width or look, the note kept in the key stays.)
+        let (width_key, scale, dark) = (width as u32, (cx.scale_factor() * 1000.0) as u32, p.mode == olo_theme::ThemeMode::Dark);
+        let older_ids = || older.iter().map(|&o| entries[o].id);
+        let same_note = match self.rows.get(&e.id) {
+            Some((k, laid)) if k.entry == *e && k.meta == meta && k.older.iter().copied().eq(older_ids()) => {
+                if (k.selected, k.indent, k.width, k.scale, k.dark) == (selected, indent, width_key, scale, dark) {
+                    return laid.clone();
+                }
+                true
+            }
+            _ => false,
         };
-        if let Some((k, laid)) = self.rows.get(&e.id)
-            && *k == key
-        {
-            return laid.clone();
-        }
         let (fg, bg) = if selected { (p.list_selected_item_text, p.list_selected_background) } else { (p.document_text, p.document_background) };
         let soft = style::c(olo_theme::mix(fg, bg, 0.2));
         let x0 = if indent { 8.0 } else { 0.0 };
         let text_x = x0 + TEXT_X;
-        let meta_w = f32::from(style::text_width(meta, style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL))).ceil();
+        let meta_w = f32::from(style::text_width(meta.clone(), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL))).ceil();
         let title_w = (width - text_x - CLOSE_W - meta_w - 8.0).max(40.0);
         let body_w = width - text_x - CLOSE_W;
         let title_text = if e.summary.is_empty() { app_name(e) } else { &e.summary };
@@ -662,19 +660,34 @@ impl HistoryWindow {
         // On the 2-point grid (whole device pixels at 1.5×), so the rows
         // under it start on one too.
         let height = ((h + ROW_PAD).max(ROW_PAD * 2.0 + SMALL_ICON + 4.0) / 2.0).ceil() * 2.0;
-        let laid = RowLaid { title, body, older, buttons, height };
-        self.rows.insert(e.id, (key, laid.clone()));
+        let laid = Rc::new(RowLaid { title, body, older, buttons, height });
+        match self.rows.get_mut(&e.id) {
+            Some((k, kept)) if same_note => {
+                (k.selected, k.indent, k.width, k.scale, k.dark) = (selected, indent, width_key, scale, dark);
+                *kept = laid.clone();
+            }
+            _ => {
+                let key = RowKey { entry: e.clone(), older: older_ids().collect(), meta, selected, indent, width: width_key, scale, dark };
+                self.rows.insert(e.id, (key, laid.clone()));
+            }
+        }
         laid
     }
 
-    /// A card measured `width` wide.
-    fn card(&mut self, cx: &WindowCx, p: &olo_theme::Palette, e: &store::Entry, span: usize, width: f32) -> CardLaid {
-        let key = CardKey { entry: e.clone(), span, width: width as u32, scale: (cx.scale_factor() * 1000.0) as u32, dark: p.mode == olo_theme::ThemeMode::Dark };
-        if let Some((k, laid)) = self.cards.get(&e.id)
-            && *k == key
-        {
-            return laid.clone();
-        }
+    /// A card measured `width` wide. (Its key is compared with the note as
+    /// it is, not a copy of it; laid out again for another width, the
+    /// note kept in the key stays; the card is shared, not copied.)
+    fn card(&mut self, cx: &WindowCx, p: &olo_theme::Palette, e: &store::Entry, span: usize, width: f32) -> Rc<CardLaid> {
+        let (width_key, scale, dark) = (width as u32, (cx.scale_factor() * 1000.0) as u32, p.mode == olo_theme::ThemeMode::Dark);
+        let same_note = match self.cards.get(&e.id) {
+            Some((k, laid)) if k.entry == *e => {
+                if (k.span, k.width, k.scale, k.dark) == (span, width_key, scale, dark) {
+                    return laid.clone();
+                }
+                true
+            }
+            _ => false,
+        };
         let ink = card_ink(p, e);
         let small = e.look.size == CardSize::Small;
         let room = look::Room {
@@ -708,8 +721,16 @@ impl HistoryWindow {
         }
         static MADE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let generation = MADE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let laid = CardLaid { generation, height: height.ceil(), face, ink, buttons };
-        self.cards.insert(e.id, (key, laid.clone()));
+        let laid = Rc::new(CardLaid { generation, height: height.ceil(), face, ink, buttons });
+        match self.cards.get_mut(&e.id) {
+            Some((k, kept)) if same_note => {
+                (k.span, k.width, k.scale, k.dark) = (span, width_key, scale, dark);
+                *kept = laid.clone();
+            }
+            _ => {
+                self.cards.insert(e.id, (CardKey { entry: e.clone(), span, width: width_key, scale, dark }, laid.clone()));
+            }
+        }
         laid
     }
 
@@ -978,10 +999,10 @@ impl HistoryWindow {
         // The list, laid out for its width.
         let cards_view = view == HistoryView::Cards;
         let mut placed: Vec<Line> = Vec::new();
-        let mut row_laid: HashMap<usize, RowLaid> = HashMap::new();
+        let mut row_laid: HashMap<usize, Rc<RowLaid>> = HashMap::new();
         // The selected row's top, and the rest of its conversation.
         let mut sel_row: Option<(usize, f32, Vec<usize>)> = None;
-        let mut card_laid: Vec<(usize, CardLaid, masonry::Place)> = Vec::new();
+        let mut card_laid: Vec<(usize, Rc<CardLaid>, masonry::Place)> = Vec::new();
         let total;
         if cards_view {
             let (cols, col_w) = masonry::columns(w, CARD_W, m::SPACING);
@@ -1059,7 +1080,7 @@ impl HistoryWindow {
             snoozed,
             shown: shown.len(),
             unread: unread_now,
-            entries: Rc::new(entries),
+            entries,
             view,
             cards_view,
             searching,

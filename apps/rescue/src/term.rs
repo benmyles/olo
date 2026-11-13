@@ -461,9 +461,10 @@ impl View for Terminal {
             t_view.drawn.set(Some((b, m)));
             // The well's size in cells: the shell told when it changes.
             let (cols, rows) = m.grid(f32::from(b.size.width), f32::from(b.size.height));
-            // (Not a window still waiting for its size, a point across:
-            // two columns told to the shell wrap its prompt, and it
-            // doesn't come back as it was.)
+            // (Not a well too small for a prompt: two columns told to the
+            // shell wrap its prompt, and it doesn't come back as it was.
+            // Its window, a point square until app_server sizes it, isn't
+            // laid out or drawn before: `awaits_size`.)
             if t_view.grid.get() != (cols, rows) && cols >= 20 && rows >= 4 {
                 t_view.grid.set((cols, rows));
                 term.lock().resize(TermSize::new(cols, rows));

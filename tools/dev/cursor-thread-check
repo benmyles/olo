@@ -1,0 +1,431 @@
+#!/usr/bin/python3 -I
+"""Whether the pointer keeps moving while app_server's loop is held: the
+input thread (`OLO_INPUT_THREAD=1`, crates/app_server/src/input_thread.rs)
+against libinput on the loop, on a real seat of the check's own.
+
+  cursor-thread-check [--keep] [--hold MS] [--hdr]
+
+Asks sudo once (tools/dev/cursor-thread-seat, the root half): a virtual
+display with a cursor plane (vkms) and a virtual mouse (uinput) on a seat
+of their own, "seat-olotest", which the person's session never sees. Then,
+as you, it starts a test app_server there (`OLO_TEST_SEAT`, libseat's noop session, a
+sandbox home and runtime folder under /var/tmp/olo-cursor-check; drawing
+in software, as vkms has no GPU: the cursor on its plane draws nothing as
+it moves) and:
+
+  - moves the mouse for 3 s at 1000 reports a second, the input path's
+    cost measured meanwhile (each thread's time on a CPU, from the
+    scheduler: /proc/PID/task/TID/schedstat);
+  - moves it again, holds app_server's loop (`{"type":"hold_loop"}`, a
+    test app_server's only) for --hold ms (400) in the middle, and reads
+    the kernel's cursor plane (its CRTC_X, a property any client may read)
+    every 5 ms: how far the plane moved while the loop was held, and how
+    long the pointer stood still.
+
+--hdr: the display drawn as an HDR one (`OLO_HEADLESS_COLOR=p3-hdr`,
+which a test seat's app_server takes as a headless one does, and HDR
+switched on as Preferences does): composed in a float buffer and
+encoded into a PQ signal, the pointer on the cursor plane with its
+pixels encoded as they're copied there. app_server's own report
+(`{"type":"frames"}`) must say the pointer is on the plane.
+
+That with libinput on the loop, then again with Preferences' switch
+turned on (`input_thread`, over IPC as Preferences sets it: libinput
+moves to its thread live), then turned off again (back to the loop, the
+mouse still followed). Then everything is undone (the app_server, the
+mouse, vkms, the rule) and the folder removed (--keep keeps it, its
+logs).
+"""
+import array, fcntl, json, os, re, signal, socket, struct, subprocess, sys, threading, time
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+DIR = "/var/tmp/olo-cursor-check"
+EXE = os.path.join(ROOT, "target", "release", "olo-app-server")
+KEEP = "--keep" in sys.argv
+HOLD = int(sys.argv[sys.argv.index("--hold") + 1]) if "--hold" in sys.argv else 400
+HDR = "--hdr" in sys.argv
+
+
+# --- DRM: a plane's properties, read as any client may (not the master).
+
+def iowr(nr, size):
+    return (3 << 30) | (size << 16) | (0x64 << 8) | nr
+
+
+def iow(nr, size):
+    return (1 << 30) | (size << 16) | (0x64 << 8) | nr
+
+
+SET_CLIENT_CAP = iow(0x0D, 16)
+GETPLANERESOURCES = iowr(0xB5, 16)
+OBJ_GETPROPERTIES = iowr(0xB9, 32)
+GETPROPERTY = iowr(0xAA, 64)
+OBJECT_PLANE = 0xEEEEEEEE
+
+
+class Planes:
+    def __init__(self, card):
+        # (Opened after app_server is the card's master: the first to open
+        # a card with none becomes it.)
+        self.fd = os.open(card, os.O_RDWR | os.O_CLOEXEC)
+        fcntl.ioctl(self.fd, SET_CLIENT_CAP, struct.pack("QQ", 2, 1))  # universal planes
+        fcntl.ioctl(self.fd, SET_CLIENT_CAP, struct.pack("QQ", 3, 1))  # atomic (CRTC_X and such)
+        buf = bytearray(struct.pack("QI4x", 0, 0))
+        fcntl.ioctl(self.fd, GETPLANERESOURCES, buf)
+        n = struct.unpack_from("QI", buf)[1]
+        ids = array.array("I", [0] * n)
+        buf = bytearray(struct.pack("QI4x", ids.buffer_info()[0], n))
+        fcntl.ioctl(self.fd, GETPLANERESOURCES, buf)
+        self.names = {}
+        self.cursor = next((p for p in ids if self.props(p).get("type") == 2), None)
+
+    def props(self, obj):
+        buf = bytearray(struct.pack("QQIII4x", 0, 0, 0, obj, OBJECT_PLANE))
+        fcntl.ioctl(self.fd, OBJ_GETPROPERTIES, buf)
+        n = struct.unpack_from("QQI", buf)[2]
+        pids, vals = array.array("I", [0] * n), array.array("Q", [0] * n)
+        buf = bytearray(struct.pack("QQIII4x", pids.buffer_info()[0], vals.buffer_info()[0], n, obj, OBJECT_PLANE))
+        fcntl.ioctl(self.fd, OBJ_GETPROPERTIES, buf)
+        out = {}
+        for pid, v in zip(pids, vals):
+            if pid not in self.names:
+                b = bytearray(struct.pack("QQII32sII", 0, 0, pid, 0, b"", 0, 0))
+                fcntl.ioctl(self.fd, GETPROPERTY, b)
+                self.names[pid] = b[24:56].split(b"\0")[0].decode()
+            out[self.names[pid]] = v - (1 << 64) if v >= 1 << 63 else v
+        return out
+
+    def cursor_at(self):
+        p = self.props(self.cursor)
+        return (p["CRTC_X"], p["CRTC_Y"]) if p.get("FB_ID") else None
+
+
+# --- The root half and the test app_server.
+
+def wait_for(path, seconds, alive=None):
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        if os.path.exists(path):
+            return open(path).read()
+        if alive is not None and alive.poll() is not None:
+            sys.exit(f"the root half ended ({alive.returncode}) before {os.path.basename(path)}")
+        time.sleep(0.05)
+    sys.exit(f"no {os.path.basename(path)} after {seconds} s")
+
+
+class Mouse:
+    def __init__(self):
+        self.sent = 0
+
+    def send(self, line, wait=True):
+        self.sent += 1
+        with open(os.path.join(DIR, "cmd"), "a") as f:
+            f.write(line + "\n")
+        if wait:
+            self.wait()
+
+    def wait(self):
+        while True:
+            try:
+                if int(open(os.path.join(DIR, "ack")).read().split()[0]) >= self.sent:
+                    return
+            except (OSError, ValueError, IndexError):
+                pass
+            time.sleep(0.01)
+
+
+def start_app_server(mouse):
+    run = os.path.join(DIR, "run")
+    home = os.path.join(DIR, "home")
+    for d in (run, os.path.join(home, ".config", "olo")):
+        os.makedirs(d, exist_ok=True)
+    os.chmod(run, 0o700)
+    cfg = {"power": {"display_off_minutes": 0, "sleep_minutes": 0, "lock_on_display_off": False}, "screen_saver": {"enabled": False, "lock": False}, "display": {"scale": 1.0}}
+    json.dump(cfg, open(os.path.join(home, ".config", "olo", "app_server.json"), "w"))
+    env = {k: v for k, v in os.environ.items() if k not in ("WAYLAND_DISPLAY", "OLO_SOCKET", "DISPLAY", "OLO_SESSION", "XDG_SESSION_ID", "OLO_INPUT_THREAD")}
+    env.update(
+        HOME=home,
+        XDG_RUNTIME_DIR=run,
+        XDG_CONFIG_HOME=os.path.join(home, ".config"),
+        XDG_STATE_HOME=os.path.join(home, ".local", "state"),
+        XDG_CACHE_HOME=os.path.join(home, ".cache"),
+        XDG_DATA_HOME=os.path.join(home, ".local", "share"),
+        DBUS_SESSION_BUS_ADDRESS=f"unix:path={DIR}/no-bus",
+        PULSE_SERVER=f"unix:{DIR}/no-sound",
+        LIBSEAT_BACKEND="noop",
+        OLO_TEST_SEAT="seat-olotest",
+        RUST_LOG="info",
+    )
+    if HDR:
+        env["OLO_HEADLESS_COLOR"] = "p3-hdr"
+    log_path = os.path.join(DIR, "app_server.log")
+    p = subprocess.Popen([EXE, "--tty-udev"], env=env, stdout=open(log_path, "w"), stderr=subprocess.STDOUT, start_new_session=True)
+    end = time.monotonic() + 30
+    while time.monotonic() < end:
+        m = re.search(r"IPC listening path=(\S+)", log(log_path))
+        if m:
+            return p, m.group(1), log_path
+        if p.poll() is not None:
+            break
+        time.sleep(0.1)
+    print(open(log_path).read()[-3000:])
+    p.kill()
+    sys.exit("the test app_server didn't start")
+
+
+def log(path, since=0):
+    return re.sub(r"\x1b\[[0-9;]*m", "", open(path).read())[since:]
+
+
+def mouse_added(p, log_path, since, mouse):
+    """Until libinput says the mouse is added (after `since` in the log).
+    (libinput says a device is added at its first dispatch, which comes
+    with the first report: a nudge each time.)"""
+    end = time.monotonic() + 20
+    while time.monotonic() < end:
+        if "New device" in log(log_path, since):
+            return
+        if p.poll() is not None:
+            break
+        mouse.send("move 1 0 1 1000")
+        time.sleep(0.25)
+    print(log(log_path, since)[-3000:])
+    sys.exit("libinput didn't add the mouse")
+
+
+def switch(p, sock, log_path, on, mouse):
+    """The switch flipped as Preferences flips it; until libinput has moved
+    and has the mouse again."""
+    since = len(log(log_path))
+    settings = ipc(sock, {"type": "get_settings"})["settings"]
+    settings["input_thread"] = on
+    ipc(sock, {"type": "set_settings", "settings": settings})
+    marker = "libinput started, on the input thread" if on else "libinput started touch_filter"
+    end = time.monotonic() + 10
+    while marker not in log(log_path, since):
+        if time.monotonic() > end or p.poll() is not None:
+            print(log(log_path, since)[-3000:])
+            sys.exit(f"libinput didn't move {'to its thread' if on else 'back to the loop'}")
+        time.sleep(0.05)
+    mouse_added(p, log_path, since, mouse)
+    return since
+
+
+def ipc(path, req):
+    s = socket.socket(socket.AF_UNIX)
+    s.connect(path)
+    s.sendall((json.dumps(req) + "\n").encode())
+    line = s.makefile().readline()
+    s.close()
+    return json.loads(line) if line else None
+
+
+def threads(pid):
+    """Each thread's name, time on a CPU (ns, the scheduler's own count:
+    tools/dev/cost's clock ticks are too coarse for a thread that wakes a
+    thousand times a second for microseconds) and wakeups so far."""
+    out = {}
+    for tid in os.listdir(f"/proc/{pid}/task"):
+        try:
+            name = open(f"/proc/{pid}/task/{tid}/comm").read().strip()
+            ran = int(open(f"/proc/{pid}/task/{tid}/schedstat").read().split()[0])
+            status = dict(l.split(":", 1) for l in open(f"/proc/{pid}/task/{tid}/status") if ":" in l)
+            out[tid] = (name, ran, int(status["voluntary_ctxt_switches"]))
+        except (OSError, KeyError, ValueError):
+            pass
+    return out
+
+
+def cost(pid, seconds):
+    """The input path's cost over `seconds`: the loop's thread and the
+    input thread's, and the rest of app_server's."""
+    a, t0 = threads(pid), time.monotonic()
+    time.sleep(seconds)
+    b, dt = threads(pid), time.monotonic() - t0
+    by = {}
+    for tid, (name, ran, woke) in b.items():
+        _, ran0, woke0 = a.get(tid, (name, 0, 0))
+        key = {"olo-app-server": "the loop", "olo-input": "olo-input"}.get(name, "the rest")
+        r = by.setdefault(key, [0.0, 0.0])
+        r[0] += (ran - ran0) / dt / 1e7
+        r[1] += (woke - woke0) / dt
+    return "; ".join(f"{k} {by[k][0]:.1f}%, {by[k][1]:.0f}/s" for k in ("the loop", "olo-input", "the rest") if k in by)
+
+
+def home(mouse):
+    """The pointer near the display's top left, where vkms shows its
+    cursor plane: it has one only while all of the plane (512 px square)
+    is on the display (1024 × 768), so from about 0 to 256 px down and 0
+    to 512 across. Into the corner, then 40 reports of a count each
+    slowly (about 50 px)."""
+    mouse.send("move -40 -40 60 1000")
+    time.sleep(0.05)
+    mouse.send("move 1 1 40 2000")
+    time.sleep(0.1)
+
+
+def measure(p, sock, log_path, log_from, planes, mouse):
+    if True:
+        time.sleep(0.5)
+        home(mouse)
+        # Its cost, idle and moving steadily.
+        result = {}
+        result["cost idle"] = cost(p.pid, 2.0)
+        moving = threading.Thread(target=lambda: (mouse.send("move 1 0 1500 1000"), mouse.send("move -1 0 1500 1000")))
+        moving.start()
+        time.sleep(0.2)
+        result["cost while moving"] = cost(p.pid, 2.5)
+        moving.join()
+        time.sleep(0.3)
+        # Held: the plane read every 5 ms while the mouse moves a report
+        # every 2 ms (slowly: about 280 px in all, from home, so the plane
+        # stays where vkms shows it), from 200 ms before the hold to 150
+        # ms before its end (so where the loop puts it after is where it
+        # stays).
+        home(mouse)
+        time.sleep(0.3)
+        before = planes.cursor_at()
+        if before is None:
+            sys.exit("the pointer isn't on vkms's cursor plane at home")
+        motion = (HOLD + 50) / 1000
+        mouse.send(f"move 1 0 {(HOLD + 50) // 2} 2000", wait=False)
+        samples = []
+        t0 = time.monotonic()
+        held = {}
+
+        def hold():
+            time.sleep(0.2)
+            held["from"] = time.monotonic() - t0
+            held["reply"] = ipc(sock, {"type": "hold_loop", "ms": HOLD})
+            held["to"] = time.monotonic() - t0
+
+        h = threading.Thread(target=hold)
+        h.start()
+        while time.monotonic() - t0 < (HOLD + 600) / 1000:
+            samples.append((time.monotonic() - t0, planes.cursor_at()))
+            time.sleep(0.005)
+        h.join()
+        mouse.wait()
+        if held.get("reply", {}).get("type") != "ok":
+            print("hold_loop:", held.get("reply"))
+        inside = [(t, at) for t, at in samples if held["from"] + 0.02 <= t <= held["to"] - 0.005 and at]
+        moved = inside[-1][1][0] - inside[0][1][0] if len(inside) > 1 else 0
+        # The longest the plane stood still while the mouse moved.
+        still, last_x, since = 0.0, None, samples[0][0]
+        for t, at in samples:
+            if at is None or t > motion:
+                continue
+            if at[0] != last_x:
+                last_x, since = at[0], t
+            still = max(still, t - since)
+        # Where it was as the hold ended, against where the loop put it
+        # once it caught up (the mouse still by then); and any step back
+        # on the way (a frame drawn before the hold, shown after it).
+        end_x = inside[-1][1][0] if inside else None
+        after = [at[0] for t, at in samples if at and t > held["to"]]
+        settled = after[-1] if after else None
+        back = max((end_x - x for x in after), default=0) if end_x is not None else 0
+        result["plane before"] = before
+        result["held"] = f"{(held['to'] - held['from']) * 1000:.0f} ms"
+        result["plane moved while held"] = f"{moved} px (the mouse: {int((held['to'] - held['from']) * 500)} reports of a count each)"
+        result["longest the plane stood still"] = f"{still * 1000:.0f} ms"
+        result["as the hold ended → where the loop put it"] = f"{end_x} → {settled} px" + (f" (a step back of {back} px on the way)" if back > 0 else "")
+        result["log"] = [l.split("  ", 1)[-1][:200] for l in log(log_path, log_from).splitlines() if re.search(r"input thread|caught up|came \d+ ms late|refused|Error during rendering|panicked|libinput", l)][-8:]
+        return result
+
+
+def main():
+    if not os.path.exists(EXE):
+        sys.exit(f"no {EXE}: cargo build --release -p app_server first")
+    if os.path.exists(DIR):
+        subprocess.run(["rm", "-rf", DIR])
+    os.makedirs(DIR)
+    print("asking sudo for the check's own seat (vkms, a virtual mouse)…", flush=True)
+    root = subprocess.Popen(["sudo", "/usr/bin/python3", "-I", os.path.join(ROOT, "tools", "dev", "cursor-thread-seat"), DIR, os.environ.get("USER", "")])
+    try:
+        card, _event = wait_for(os.path.join(DIR, "ready"), 180, root).split()
+        mouse = Mouse()
+        results = {}
+        p, sock, log_path = start_app_server(mouse)
+        planes = None
+        try:
+            # libinput on the loop (the switch as it comes, off), then on
+            # its thread and back, as Preferences turns it on and off.
+            mouse_added(p, log_path, 0, mouse)
+            planes = Planes(card)
+            if planes.cursor is None:
+                sys.exit("vkms has no cursor plane")
+            # (vkms tells no EDID: app_server waits 3 s for one before
+            # setting the display up by its connector.)
+            def on_plane(why):
+                end = time.monotonic() + 15
+                while True:
+                    home(mouse)
+                    if planes.cursor_at() is not None:
+                        return
+                    if time.monotonic() > end or p.poll() is not None:
+                        print(log(log_path)[-3000:])
+                        sys.exit(f"the pointer never came onto vkms's cursor plane {why}")
+                    time.sleep(0.2)
+
+            on_plane("")
+            if HDR:
+                # (Its connector takes no HDR signal: app_server says so,
+                # and draws it as HDR all the same.)
+                said = ipc(sock, {"type": "configure_output", "name": "Virtual-1", "config": {"hdr": True}})
+                if (said or {}).get("type") != "ok" and "HDR" not in str((said or {}).get("message")):
+                    print("configure_output:", said)
+                time.sleep(0.5)
+                on_plane("in HDR")
+            shown = next((d for d in ipc(sock, {"type": "frames"}).get("displays", []) if d.get("output") == "Virtual-1"), {})
+            drawing = re.findall(r"app_server::desktop: colours output=\S+ drawing=(\w+)", log(log_path))
+            results["the display"] = {"drawn": drawing[-1] if drawing else "plain", "the pointer on its plane (app_server says)": shown.get("cursor_plane"), "scan-out": shown.get("scanout")}
+            if HDR and (not drawing or drawing[-1] != "Hdr"):
+                sys.exit(f"the display isn't drawn as HDR: {drawing}")
+            results["libinput on the loop"] = measure(p, sock, log_path, 0, planes, mouse)
+            since = switch(p, sock, log_path, True, mouse)
+            results["input thread (turned on)"] = measure(p, sock, log_path, since, planes, mouse)
+            since = switch(p, sock, log_path, False, mouse)
+            home(mouse)
+            before = planes.cursor_at()
+            mouse.send("move 1 0 100 2000")
+            time.sleep(0.1)
+            after = planes.cursor_at()
+            results["back on the loop (turned off)"] = {
+                "the plane follows the mouse": f"{before} → {after}",
+                "log": [l.split("  ", 1)[-1][:200] for l in log(log_path, since).splitlines() if re.search(r"input thread|libinput|refused|panicked", l)][-6:],
+            }
+        finally:
+            # (Nothing of the check's may hold the card when it's unloaded.)
+            if planes is not None:
+                os.close(planes.fd)
+            os.killpg(p.pid, signal.SIGTERM)
+            try:
+                p.wait(5)
+            except subprocess.TimeoutExpired:
+                os.killpg(p.pid, signal.SIGKILL)
+                p.wait()
+        for way, r in results.items():
+            print(f"\n{way}:")
+            for k, v in r.items():
+                if k == "log":
+                    for l in v:
+                        print(f"    log: {l}")
+                else:
+                    print(f"  {k}: {v}")
+    finally:
+        try:
+            with open(os.path.join(DIR, "cmd"), "a") as f:
+                f.write("stop\n")
+        except OSError:
+            pass
+        try:
+            root.wait(30)
+        except subprocess.TimeoutExpired:
+            print("the root half didn't end: it undoes itself within 10 minutes")
+        if not KEEP:
+            subprocess.run(["rm", "-rf", DIR])
+
+
+if __name__ == "__main__":
+    main()

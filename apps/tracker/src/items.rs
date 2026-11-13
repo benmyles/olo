@@ -612,12 +612,19 @@ impl Rename {
     /// the document's ground framed in the keyboard's colour, growing as
     /// the name does. `origin`: where what it's a child of starts.
     pub fn element(&self, cx: &WindowCx, l: &ItemLayout, origin: Point<Pixels>) -> Element {
+        self.element_within(cx, l, origin, None)
+    }
+
+    /// The same, its right edge at `right` at most (a list's cell: a
+    /// longer name scrolls in it).
+    pub fn element_within(&self, cx: &WindowCx, l: &ItemLayout, origin: Point<Pixels>, right: Option<Pixels>) -> Element {
         use olo_kit::{IntoElement as _, ParentElement as _, Styled as _};
         let text = self.text(cx);
         let measure = if text.is_empty() { "M".to_owned() } else { text };
         let w = style::text_width(measure, style::PLAIN_SIZE, name_font(self.link));
         let f = l.field(w);
-        let r = Bounds::from_corners(point(snap(f.left()), snap(f.top())), point(snap(f.right()), snap(f.bottom())));
+        let f_right = right.map_or(f.right(), |r| f.right().min(r).max(f.left()));
+        let r = Bounds::from_corners(point(snap(f.left()), snap(f.top())), point(snap(f_right), snap(f.bottom())));
         let frame = olo_kit::canvas(move |g, b| {
             let p = olo_kit::theme::palette();
             style::fill_rect(g, b, style::c(p.document_background));

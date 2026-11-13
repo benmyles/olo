@@ -20,11 +20,17 @@
 //! process and WirePlumber sends each stream on it to the default:
 //! nothing is left playing nowhere.
 //!
+//! The volume keys set the receiver's own volume (AirPlay's, as macOS
+//! does): it is told the default output's volume as it changes, and the
+//! samples go as they are, never made quieter here (which would lose
+//! their low bits). The TV's output made the default by the person has a
+//! volume of its own, which PipeWire applies; the receiver's is left as
+//! it was then.
+//!
 //! The output's samples come to the process callback at 44.1 kHz stereo
-//! (PipeWire converts), a cycle at a time (asked for every 10 ms, as the
-//! monitor recording before it), on the loop's own thread, never the
-//! real-time one: they go to the receiver (`Mirror::sound`, which seals
-//! and sends them). It runs while showing even with nothing playing
+//! (PipeWire converts), a cycle at a time (21 ms at most), on the loop's
+//! own thread, never the real-time one: they go to the receiver
+//! (`Mirror::sound`, which seals and sends them). It runs while showing even with nothing playing
 //! (`node.always-process`), so the receiver's sound never has a gap.
 //! When PipeWire goes (an upgrade of it), the output is made again once
 //! it's back, and the streams found again.
@@ -35,7 +41,7 @@ use std::{
     rc::Rc,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicU32, Ordering::Relaxed, Ordering::SeqCst},
+        atomic::{AtomicBool, Ordering::SeqCst},
         mpsc,
     },
     thread::JoinHandle,
@@ -75,9 +81,10 @@ struct Shared {
     /// The output's node name ("olo-airplay.PID").
     sink: String,
     moved: Mutex<Moved>,
-    /// What the samples are multiplied by: the default output's volume
-    /// (an f32's bits), so the volume keys still set how loud it is.
-    gain: Arc<AtomicU32>,
+    /// The volume the receiver was last told (0 to 1, as the default
+    /// output's slider has it; 0 muted), and how to tell it another.
+    volume: Mutex<f32>,
+    tell_volume: Box<dyn Fn(f32) + Send + Sync>,
     stop: AtomicBool,
     trace: bool,
 }
@@ -102,14 +109,24 @@ pub(crate) struct TvSound {
 impl TvSound {
     /// The output made, named for the receiver, its samples handed to
     /// `got` (stereo, interleaved, and when the first was played); the
-    /// sound of `whose` moved to it. An error: no PipeWire.
-    pub(crate) fn start(receiver: &str, whose: Whose, trace: bool, got: impl FnMut(&[f32], Instant) + Send + 'static) -> Result<TvSound, String> {
+    /// sound of `whose` moved to it; the default output's volume, when
+    /// it isn't `volume` (what the receiver was told at the start), told
+    /// with `tell_volume`. An error: no PipeWire.
+    pub(crate) fn start(
+        receiver: &str,
+        whose: Whose,
+        trace: bool,
+        volume: f32,
+        tell_volume: impl Fn(f32) + Send + Sync + 'static,
+        got: impl FnMut(&[f32], Instant) + Send + 'static,
+    ) -> Result<TvSound, String> {
         let sink = format!("olo-airplay.{}", std::process::id());
         let shared = Arc::new(Shared {
             whose: Mutex::new(whose),
             sink,
             moved: Mutex::new(Moved { on: true, ..Moved::default() }),
-            gain: Arc::new(AtomicU32::new(1f32.to_bits())),
+            volume: Mutex::new(volume),
+            tell_volume: Box::new(tell_volume),
             stop: AtomicBool::new(false),
             trace,
         });
@@ -228,18 +245,22 @@ fn parent_of(pid: u32) -> Option<u32> {
 }
 
 /// Streams that go to the TV moved there; the rest left alone. The
-/// gain follows the default output's volume (as the TV's own output's
-/// is applied by PipeWire, when the person makes it the default: none).
+/// receiver told the default output's volume, if it changed (not the
+/// TV's own output's, made the default: PipeWire applies that one).
 fn pass(s: &mut Streams, shared: &Shared, moved: &mut Moved) -> olo_system::audio::Result<()> {
     let default = s.default_output()?;
-    let gain = if default == shared.sink {
-        1.0
-    } else {
+    if default != shared.sink {
         let v = s.default_volume()?;
-        // (The server's level is on a cubic scale.)
-        if v.muted { 0.0 } else { v.level.powi(3) }
-    };
-    shared.gain.store(gain.to_bits(), Relaxed);
+        let level = if v.muted { 0.0 } else { v.level };
+        let mut told = shared.volume.lock().unwrap_or_else(|e| e.into_inner());
+        if *told != level {
+            *told = level;
+            (shared.tell_volume)(level);
+            if shared.trace {
+                eprintln!("  the receiver's volume: {:.0}%", level * 100.0);
+            }
+        }
+    }
     if !moved.on {
         return Ok(());
     }
@@ -399,7 +420,6 @@ fn round(shared: &Shared, description: &str, quit: Quit, got: Rc<RefCell<Got>>, 
     let (tx, made) = (ready.take(), Rc::new(RefCell::new(None::<Result<(), String>>)));
     let weak = mainloop.downgrade();
     let said = made.clone();
-    let gain = shared.gain.clone();
     let listener = stream
         .add_local_listener_with_user_data(Vec::<f32>::with_capacity(4096))
         .state_changed(move |_, _, _, new| match new {
@@ -424,10 +444,6 @@ fn round(shared: &Shared, description: &str, quit: Quit, got: Rc<RefCell<Got>>, 
             samples.extend(bytes.as_chunks::<4>().0.iter().map(|b| f32::from_le_bytes(*b)));
             if samples.is_empty() {
                 return;
-            }
-            let gain = f32::from_bits(gain.load(Relaxed));
-            if gain != 1.0 {
-                samples.iter_mut().for_each(|s| *s *= gain);
             }
             let at = Instant::now() - Duration::from_secs_f64(samples.len() as f64 / 2.0 / f64::from(RATE));
             (got.borrow_mut())(samples, at);

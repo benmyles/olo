@@ -278,6 +278,26 @@ message):
   apart: each display's looks, their total and slowest. Asking starts a
   4 ms heartbeat for a minute, so measure its CPU before asking or a
   minute after.
+* The pointer standing still: app_server says, always, any key,
+  click, scroll or pointer motion it handles 100 ms or more after the
+  kernel stamped it (libinput's monotonic stamp; a stall's queued events
+  said once), with the longest single thing its loop did since the
+  event before (`Timings::input`: a request, clients' requests, a
+  frame's part, drawing a display, kept when 20 ms or more): "input
+  (pointer motion) came 1840 ms late: the loop was held by drawing
+  eDP-1 (1832 ms)", or that nothing in the loop was that long (app_server
+  wasn't given a processor, or the event came late to it). A touchpad's
+  clicks aren't judged: libinput sends a tap's click as the finger
+  lifts, stamped when it touched, so every tap longer than 100 ms read
+  as late (Ben's log, 2026-11-13: 18 of them, nothing else late). It
+  costs no more than the clock reading it already made. To see what a thread is
+  doing while it's held, sample `/proc/PID/task/TID/wchan` and `syscall`
+  (readable by the same user): 2026-11-12, under a build, app_server's
+  main thread waited up to 142 ms in the GPU driver
+  (`drm_exec_lock_contended`: waiting for a buffer's lock, held by
+  something else using the GPU). With libinput on its own thread
+  (Preferences ▸ Performance ▸ Scheduler ▸ Pointer) the pointer keeps moving meanwhile ("The pointer
+  on a thread of its own").
 * `tools/dev/bench` (every app's frames against the budget; `--env
   K=V` gives every app a switch, to compare without a rebuild, as
   `--env OLO_EXACT_PATHS=0`),
@@ -300,7 +320,9 @@ message):
   quads it has, how many draws it was ("batches": things of a kind at
   one order are one; ten is usual, a hundred means a drawing whose
   orders pile up), and how long the looper worked on what it shows;
-  and the lines it shaped and glyphs it drew afresh.
+  and the lines it shaped, glyphs it drew and lines whose glyphs it
+  looked up afresh (the rest painted from what each line found last
+  time, moved).
   A frame much slower than the same work warm may have run on a slow
   core (rule 9: compare `OLO_UTIL_MIN=0`). Where its time goes inside: sample its window's
   looper with `eu-stack -1 -i -p PID` a few hundred times while the bench's
@@ -409,7 +431,20 @@ How Olo keeps it (do the same):
   rather than hashing what you'd draw: finding out what changed must
   cost far less than drawing it.
 * **Only what shows, only what changed**: virtualised lists, per-row
-  and per-item caches, damage.
+  and per-item caches, damage. A kit window's frame draws only the
+  rectangles that changed, up to six apart (`MOST_APART`: each a
+  scissor every draw is made again under, and what app_server is
+  told), not their union: a key typed in StyledEdit draws its line and
+  the status line, not the window between them. Where a drawing was
+  made again in the same place (a text area painted again for a key),
+  the stage compares it with the one it replaces thing by thing
+  (`Scene::changed_since`, for drawings of a sixteenth of the window
+  or more) and damages only what differs; a frame then takes from each
+  drawing only what falls in a rectangle (`stage::assemble`). What a
+  thing can touch is its reach, not its bounds (`Shadow::reach`: a
+  blur three radii past them), so a shadow falling past what casts it
+  is drawn again with what it falls on. `OLO_DAMAGE=0` draws every
+  frame whole, the reference to compare shots against.
 * **Once a frame, at the last moment** (olo-kit), for a view fed faster
   than frames are shown: a shell printing, a meter on a stream. A
   window's looper lays out and paints what changed as soon as its queue
@@ -1652,7 +1687,12 @@ as Log Viewer and Replay have it: the field and the bar in one row when
 the field keeps `min_field` points (240 unless said), else the bar
 under it, `indent(search::list_indent(window))` putting its first
 menu's text over the list's first column's; `count("12 of 340")` at
-the end of the field's row; `no_clear()`. Passwords' bar, over its list
+the end of the field's row; `no_clear()`. The field takes whatever
+width the row leaves, so `width` only decides which of the two it is:
+hand it `search::header_width(window, id)` (the width the header was
+last laid out at; the window's less its insets before that) and the
+view that shows it isn't made again as the window is resized, only
+when the header's own width changes its shape (it asks then). Passwords' bar, over its list
 apart from its toolbar's field, `drives` it too.
 `search::runs(text, font, color, spans, marks, mark)` makes text runs
 from colour spans and marks (marks are runs' backgrounds), and
@@ -1819,8 +1859,16 @@ each change (about 9 ms a megabyte); a bigger one on a worker
 following each edit meanwhile (`Look::shift`: a typed byte styled as
 the one before it), and only the lines the parse sets otherwise are
 laid out again. Source code over `code::BIG` is parsed once typing
-pauses too, and an undo step of text alone (code, Markdown) doesn't
-copy every paragraph's settings. Return on a list item types the next one's
+pauses too. A step to undo keeps only what it changed: the text it
+replaced, and the runs and paragraph settings over it (`doc::Window`:
+from a place to a count before the end, which finds the part again
+however long it became; a step joined by typing takes in what each
+key reaches). It had kept every paragraph's settings and every run, so
+typing 24 words into 100,000 lines grew the app by 348 MB (and up to
+3.6 GB at the 500 steps it keeps); now by 4 to 10. `Doc::is_plain`,
+which the Language menu asks at every body, remembers whether every
+paragraph is plain, kept through an edit where it can be told
+(paragraphs that came were plain, or none went). Return on a list item types the next one's
 marker (a number one more, a task unchecked), in an empty one ends the
 list; in a quotation, `> ` again. Font ▸ Bold, Italic, Strikeout, Code
 (⌘E) and Link (⌘K) put the marks around the selection (or take them
@@ -2235,7 +2283,10 @@ it.
   `baseline_at` and `label_on_baseline` (things of different sizes on
   one baseline), `card_ink`/`card_paper` (cards on a gutter).
 - `widgets::StatusBar::new(fraction).label(..).trailing(..)` and
-  `level_bar` (the bar alone).
+  `level_bar` (the bar alone). The trailing note is drawn whole and the
+  label cut short ("…", its whole in a tip) to the room it leaves, so a
+  label that changes as work goes on never runs into the note nor
+  widens the bar's box.
 - `copy::secret(text, clear_after)`: a password or one-time code on
   the clipboard, marked for clipboard managers to leave alone
   (`x-kde-passwordManagerHint`), and taken off after `clear_after` if
@@ -2293,7 +2344,24 @@ it.
   what a search marks in it): such a row whose key and look are as last
   frame's is kept, moved if scrolled, rather than painted again
   (Log Viewer's screen of 22,000 glyphs). Give it
-  for any list of many rows. `no_header()` shows the rows
+  for any list of many rows, and for any list whose view says what it
+  shows often (a selection moved, a folder changing, results coming
+  in): without it every row near what shows is painted again each
+  time (Tracker's list view, a step of the selection with 47 rows
+  showing: 4.9 → 1.9 M instructions with a key). Keep a row's texts
+  with what it shows (Tracker's `Entry::shown`, made the first time
+  it's drawn) rather than formatting them at every paint, and hand a
+  cell text that's shared already as it is (`SharedString::new(arc)`
+  for an `Arc<str>`, `new_static` for a fixed word) rather than a
+  `String`, which is copied again to be shared (Logs: 3,850 → 2,964
+  allocations a step of a live resize, with the kit's own two below).
+  `over_cell(row, column, element)` puts something over a cell, in the
+  rows (it scrolls with them), in a box where the cell is and as big
+  (`ListModel::cell_bounds(columns, row, column)`, as the person
+  arranged the columns: keep it inside, a longer name scrolling in its
+  field): a name edited in place. A press anywhere on that cell is its,
+  not the list's (a click in the field puts the caret there and the
+  keyboard stays in it). `no_header()` shows the rows
   alone (a list of things, not of columns: Passwords' items), its
   frame's line along their top; a cell drawn by hand (an icon and two
   lines) says its text to agents with `cell.say(text)`.
@@ -2631,7 +2699,14 @@ it.
   a window; `layer_options(|l| ...)` sets its exclusive zone, margins,
   keyboard (`LayerKeyboard::OnDemand` for the desktop, `Exclusive` for a
   modal overlay) and output; `no_panel()` leaves its background to it
-  (transparent: what's under it shows). Menus open over it as over a
+  (transparent: what's under it shows). One anchored at both ends of
+  an axis (across its output) is given its size there by app_server,
+  so it opens with any size (1 × 1 is usual) and is laid out and drawn
+  only once that comes (`PlatformWindow::awaits_size`, then
+  `WindowEvent::Sized` from its stage's first frame), as is a lock
+  surface: nothing is worked out at a size it never shows at, and its
+  first frame comes no later for it (palette, picker, desktop, Rescue,
+  greeter, screen saver measured). Menus open over it as over a
   window (`examples/layer.rs`); a layer that only carries a menu takes
   the keyboard `OnDemand`, as app_server gives every key to an
   exclusive one, past the menu's grab. `menu::context_menu_then(window,
@@ -2710,7 +2785,16 @@ it.
   from anywhere else.
 - Keyboard hints: app_server asks by surface (`{"hints":[ids]}`); each
   window answers with its `WindowCx::surface_id()` and what can be picked
-  in it. A layer surface's tree carries its namespace (`layer`).
+  in it. A layer surface's tree carries its namespace (`layer`). Picking
+  a text field, a slider or a scroll bar (which a click would change)
+  brings its window forward and asks the app to give it the keyboard,
+  by its window's surface and its id in that window's tree
+  (`{"focus_in":{"surface":S,"node":N}}`, `commands::focus_in`; an app
+  from before it is asked `{"focus":N}`, for its window with the
+  keyboard): `WindowCx::focus_agent_node` gives it to the element the
+  node comes from, or to the nearest that holds it and takes the
+  keyboard (an editor's text, said by its drawing). The kits had
+  answered `focus` with nothing, so picking a field did nothing.
 - Upgrades: when olo-session signals an upgrade (SIGURG) and the app's
   binary was replaced, or app_server restarts in place, `on_upgrade`'s
   state is saved and the app re-executes (as the new version), finding
@@ -2921,7 +3005,21 @@ it.
   a frame; laid-out paragraphs are kept by their text, styles and
   width, and shaped ones by their text and styles alone, so a new
   width (a window being resized) places them again without shaping;
-  each row's glyphs are painted from a `GlyphRun`. The
+  each row's glyphs are painted from a `GlyphRun`. The paragraphs'
+  heights are added up in a tree (`editor/heights.rs`: each node the sum
+  below it and the widest), so one changing costs log n and so do a
+  paragraph's top and the paragraph at a place; a new wrap width
+  guesses again only the paragraphs wider than the narrower of the two
+  widths (the rest are a row either way), found by going down the tree
+  where something is that wide. (Each was a pass over every paragraph:
+  on 100,000 lines of code a live resize spent two fifths of its time
+  there.) On pages the tops are still worked out in order, a paragraph
+  that doesn't fit at a page's foot moved to the next. Where each
+  paragraph starts is kept apart from the rest of what's known of it
+  (`starts`), so an edit moving every later one along is a pass over
+  those alone (it went through 8 MB on 100,000 lines, every key). The
+  text agents read (its node's value) is copied once at a change,
+  into what it's shared as. The
   view is kept on the paragraph at its top through edits above it and
   relayouts; at the very top it stays there (on pages, the first
   sheet's top). On a dark document the text's own colours are made
@@ -4176,14 +4274,26 @@ Colour, kept per monitor in its `OutputConfig`):
   between primaries in light (white adapted by Bradford, so greys stay
   grey), clips and encodes; solid colours are converted on the CPU.
   Clients' buffers don't go straight to planes then (they'd show
-  unconverted); the pointer still may.
+  unconverted); the pointer still may, its pixels converted as they're
+  copied onto the cursor plane (below).
 - *HDR*, on a display that takes it (its EDID says PQ, or a built-in
   panel gives an HDR luminance and its connector takes the metadata:
   the ThinkPad P1 Gen 9's OLED, whose HDR is in DisplayID, not its
   EDID's HDR block): the frame is composed into a float buffer in
   BT.2020 at gamma 2.2 relative to SDR's white (so blending and text look exactly as in
   SDR, and highlights go above 1), then what changed is encoded into PQ
-  (`color::HdrFrame`, `HdrElement`); the connector gets HDR metadata
+  (`color::HdrFrame`, `HdrElement`). The pointer isn't composed: it goes
+  to the display with the encoded frame (`HdrSignalElements`), onto its
+  cursor plane, so moving it draws nothing. A plane is scanned out as
+  its pixels are, never through the renderer's conversion, so Olo's
+  Smithay puts the pointer's pixels through `color::cursor_pixels` as
+  it copies them there (`DrmCompositor::set_cursor_pixels`: once a
+  picture, not a move): into the PQ signal, where sRGB's white would
+  otherwise read as 10,000 cd/m², or a wide display's gamut. Until
+  2026-11-13 the pointer was composed with the rest, so on Ben's HDR
+  OLED every move was a compose and an encode on the GPU, and waited on
+  it under load. A pointer the plane can't hold (a client's cursor) is
+  drawn over the encoded frame, encoded as it's drawn. The connector gets HDR metadata
   (the display's own primaries and luminance) in a modeset commit of
   its own (`set_connector_color`, again at vblank if a flip was in
   flight), with the display off: the next frame enables it whole, as
@@ -6928,7 +7038,12 @@ Chrome, GTK 4.16 text), and how Olo does it:
   (Preferences ▸ Display): at most hinted vertically
   ("light", as FreeType, GTK 4.16 and Chrome do it) and positioned
   across in subpixel steps, so stems and baselines sit on pixels while
-  shapes and spacing stay as designed. Tab titles (cosmic-text and swash)
+  shapes and spacing stay as designed. Which step and which pixel come
+  from where the glyph is to the nearest 64th of a device pixel
+  (`painter::glyph_at`), not the bare float: a place in points is added
+  up from everything that holds it, and at 1.25× a glyph a quarter into
+  its pixel came out 126.24999 one way and 126.25 another, a quarter
+  pixel apart drawn afresh and moved there kept. Tab titles (cosmic-text and swash)
   are hinted, on a whole-pixel baseline.
 - **The pointer** is a vector drawn at each screen's exact scale (see the
   next section).
@@ -7019,6 +7134,101 @@ When the displays sleep for idleness, `Backend::set_displays_on(false)`
 clears every CRTC on DRM (DPMS off) and rendering stops, since any frame
 would turn them back on; input, waking from sleep or a returning session
 calls it with `true` and renders again.
+
+### The pointer on a thread of its own (app_server input_thread.rs)
+
+Preferences ▸ Performance ▸ Scheduler ▸ Pointer, "Move the pointer on a
+thread of its own" (`Settings::input_thread`, off until tried on Ben's
+ThinkPad; `OLO_INPUT_THREAD=1` or `0` overrides it): libinput is read on
+a thread of its own, `olo-input`, at nice −15 (the most rtkit gives; not
+realtime, as rtkit's limit on a realtime thread that spins would end
+app_server and the whole desktop with it), and while app_server's loop
+is held, that thread moves the cursor itself. Why: the loop does
+everything (clients' requests, every display's frames), and under load
+it was seen held 78 and 142 ms in the GPU driver waiting for a buffer's
+lock (2026-11-12); with libinput on the loop the pointer stood still
+that long, and worse, the kernel keeps only 64 events of a device
+unread (about 30 ms of a 1000 Hz mouse) and drops the rest, so the
+pointer also ended up short of where the hand took it.
+
+- libinput's context and devices live on the thread (they aren't
+  `Send`). Its events are made owned (`input_thread::Threaded`, smithay's
+  `InputBackend`: every event kind, with its device's snapshot `Dev`)
+  and sent to the loop a batch a read, numbered; the loop handles them
+  exactly as libinput's own (the handling is generic), then says which
+  it handled and where the pointer is (`View`). Settings, the keyboards'
+  lights, a restart for the touch filter and the session pausing go the
+  other way as `Command`s. Devices are opened by the session, the loop's
+  alone: the thread asks (`contacts::Request`) and waits; the loop never
+  waits on the thread.
+- The pointer must be on the display's cursor plane for any of this:
+  on an HDR display it wasn't until 2026-11-13 (composed into the HDR
+  frame; HACKING, "HDR"), so on Ben's OLED the thread never had a plane
+  to move (the log's `the pointer is on a plane of the display's own`
+  never came for eDP-1; `{"type":"frames"}` says `cursor_plane` for
+  each display).
+- After each frame the loop says where the cursor plane is (smithay's
+  `DrmCompositor::cursor_plane`) with the pointer where that frame drew
+  it, on the CRTC's own cursor plane only (not an overlay standing in for
+  one), and not while a window locks or confines the pointer, a finger is
+  the pointer, a drag shows its icon, a mirror shows the display, the
+  displays are off or the session is another's.
+- A motion the loop hasn't handled after 12 ms (`TAKE_OVER`): the thread
+  moves the plane to where the loop will put the pointer (its last place
+  and the motion since, kept on the screens as the loop keeps it, on the
+  display it's on, turned as the display is) with the kernel's legacy
+  cursor move, which keeps the plane's buffer and takes the CRTC's locks
+  and none of the GPU's; at most every 4 ms (it shows at a vblank). The
+  loop catches up from the same events and draws it there; when it has,
+  it wakes the thread, which lets go ("the loop caught up: the input
+  thread had moved the pointer while it was held ms=388 moves=60").
+- The switch takes effect at once, both ways (`start_libinput`): on,
+  the loop's libinput is dropped (closing its devices) and the thread
+  started; off, the thread is told to quit and libinput starts on the
+  loop again only once the thread says it has closed every device
+  (`contacts::Request::Stopped`, on the same channel as its closes), so
+  no device is ever open twice. Either way the devices come back as
+  new, with their settings.
+- What it costs (vkms, a 1000 Hz mouse, each thread's time on a CPU from
+  its schedstat, six runs of each, 2026-11-13): idle, nothing (0 wakeups:
+  the thread sleeps in its poll, with no timer unless a motion is
+  waiting on the loop); moving, one more wakeup a report and about 3% of
+  a core more: the loop 4.6% and the thread 3.8%, against 5.4% on the
+  loop alone (about 30 µs a report, so 0.4% for a 125 Hz mouse or
+  touchpad). Most of it is the second wakeup itself; calloop's own
+  calls (5 of the thread's 9 a report: its timerfd and notifier, re-armed
+  each wait) are under 0.2% and were left.
+
+`tools/dev/cursor-thread-check` tries it on a real seat of its own:
+asks sudo once for a virtual display with a cursor plane (vkms) and a
+virtual mouse (uinput) on "seat-olotest", which the person's session
+never sees (`tools/dev/cursor-thread-seat`: a udev rule, checked before
+anything moves, all undone at the end), runs a test app_server there
+(`OLO_TEST_SEAT`, libseat's noop session, a sandbox home, drawing in
+software) with libinput on the loop, then turns the switch on as
+Preferences does (`set_settings`) and again off, and each way reads
+the kernel's cursor plane every 5 ms while the loop is held 400 ms
+(`{"type":"hold_loop","ms":400}`, which only a test app_server
+honours). vkms shows its 512 px cursor plane only while all of it is on
+its 1024 × 768 display, so the check starts the pointer near the top
+left each time. 2026-11-13: on the loop, the plane stood still 260 ms
+(all the motion there was) and the loop, catching up, put the pointer at
+162 px of the 302 the mouse had moved it to; on the thread, it never
+stood still more than 20 ms (12 to take over, 4 between moves, 5
+between reads) and the loop put it exactly where the thread had; turned
+off again, the plane followed the mouse on the loop. `--hdr` does it
+all with the display drawn as an HDR one (a test seat's app_server
+takes `OLO_HEADLESS_COLOR` as a headless one does; vkms takes no HDR
+signal, but it's drawn as one) and HDR switched on as Preferences does:
+the same, 129 px while held, 21 ms at most still. Moving the pointer
+there (three runs each, alternating, the machine busy) cost app_server
+12.4–15.3% of a core and 6,700 wakeups a second while the pointer was
+composed into the HDR frame, and 3.2–4.0% and 800 on the cursor plane;
+a frame's drawing 478–571 µs (median) against 117–138.
+Left: the first frame after a hold may have been drawn before it, so
+the pointer can step back to there for a frame (seen once, 1 px); and Ben's Intel panel
+(PSR2) may take the kernel's slow path for a legacy cursor move, a
+commit a move, which only his machine shows.
 
 ## Every frame on time (app_server frames.rs; Activity Monitor ▸ Displays)
 
@@ -9835,9 +10045,15 @@ from Apple's, and LGPL where it's open).
   its programs' (`OLO_SCREEN` in their environment); a display's or a
   workspace's, every stream on the default output (one the person sent
   elsewhere, a call on headphones, stays). The default output isn't
-  changed (it's the person's, kept across logins). The samples are
-  multiplied by the default output's volume (its cubic level; none
-  muted), so the volume keys still set how loud it is. Paused, or
+  changed (it's the person's, kept across logins). The volume keys set
+  the receiver's own volume, as macOS's do: it is told the default
+  output's volume when the showing starts and as it changes (AirPlay's
+  `volume` parameter, the slider's place spread from -30 dB to 0, -144
+  muted: `Mirror::set_volume`, told by the keeping-alive thread so the
+  caller never waits), and the samples go at full scale, never made
+  quieter here (which would lose their low bits). The TV's output made
+  the default by the person has its own volume, which PipeWire applies;
+  the receiver's then stays as it was. Paused, or
   ended, each stream goes back where it was: its output, or the
   default again for one that followed it (PipeWire then follows the
   default again). Killed, its output goes with the process and
@@ -11148,7 +11364,12 @@ it looks at the person's own processes in /proc (`sample.rs`) and:
   what keeps the desktop responsive runs above everything else, always,
   supervisor or not: app_server's main thread (every input event and
   frame) at nice −10, olo-session, Deskbar and olo-wlproxy at −5, each
-  asking rtkit for itself as it starts (`olo_system::priority::raise_self`:
+  asking rtkit for itself as it starts, in the person's own session only
+  (on an agent's screen, `OLO_SCREEN`, and in a headless app_server they
+  stay at their nice and leave cores to the scheduler: three agent
+  screens' compositors at app_server's own −10, on fast cores at full
+  clock, had competed with the person's desktop)
+  (`olo_system::priority::raise_self`:
   `org.freedesktop.RealtimeKit1`'s `MakeThreadHighPriorityWithPID`, the
   one way an unprivileged process gets a negative nice, down to its
   `MinNiceLevel`, −15 here), and each frame's thread on a fast core
@@ -12638,7 +12859,15 @@ or fitted whole), kept, and the windows drawn again as each comes.
   over it; a change to the notes, the view, the selection or the search
   (the app entity notifying), a command, a key or a click, another width,
   scale or palette lays it out again. Laid out every frame, 200 notes
-  cost a scroll frame 2–4 ms; kept, 1.3–1.8.
+  cost a scroll frame 2–4 ms; kept, 1.3–1.8. Laid out again, nothing is
+  copied that needn't be: the history's notes are shared
+  (`History::entries`, an `Arc`, copied only when changed while the
+  window holds them: `entries_mut`), a row's or card's key is compared
+  with the note as it is (another width keeps the note already in the
+  key), a laid row or card is shared (`Rc<RowLaid>`, `Rc<CardLaid>`), and
+  look.rs lays out text it's given shared (`lay_runs` takes a
+  `SharedString`): a step of a live resize of 200 cards allocates 5,476
+  times where it did 9,128.
 - Pin and Snooze (`note_menu`: Edit ▸ Pin/Unpin and Snooze ▸ for the
   selected note, and the menu of a right click on a banner, row or
   card). A pinned note (`Entry::pinned`) stays put: it never fades
@@ -13215,7 +13444,12 @@ kept as a step (`record_location`), Back and Forward opening the columns
 down to it again with nothing selected in its own, as Finder's columns
 do: Ben, 2026-11-07, "in column mode and go between columns/files the
 back/forward navigation doesn't seem to work", none were kept), Get Info, Find,
-the file operations (ops.rs, on workers; Tracker Status after 400 ms),
+the file operations (ops.rs, on workers; Tracker Status after 400 ms:
+fixed at 540 points wide, as BeOS's, and as tall as its jobs
+(`fits_content`); under each bar the current item's name, cut short,
+and the counts and time left whole at the right, so nothing that
+changes as a job runs moves Stop or the window; Ben, 2026-11-13: "it
+doesn't fit in the space when the names etc are changing"),
 drops, pastes, Quick Look, the watcher's changes and an upgrade's saved
 state (the egui Tracker's, unchanged). Each window's view does the
 rest itself and hands the Tracker what it can't (`folder::Action`,
@@ -13241,7 +13475,15 @@ deferred so the Tracker can update the window back):
   columns side by side, scrolled across, with a preview of a selected
   file (thumbs.rs: pictures made small on a thread of their own).
   Editing a name is a `TextField` over the label (items.rs `Rename`);
-  Return or a click elsewhere renames, Escape doesn't.
+  Return or a click elsewhere renames, Escape doesn't. In the list view
+  it's over the Name cell (`ColumnListView::over_cell`), no wider than
+  the column (`Rename::element_within`): a name longer than the column
+  scrolls in it. The list view, Find's results and Go To's names key
+  their rows by what each shows (`folder::row_key`: the path, size,
+  date, kind, icon and backup mark), and an entry's texts in a list
+  (`Entry::shown`: name, size, date, kind) are made the first time it's
+  drawn and kept with it (an item changed on disk comes as a new
+  entry).
 - `Desktop` (desktop.rs): a background layer anchored to every edge;
   icons placed by hand kept in `desktop.json`, the rest on the grid.
 - Drops come through the kit's (`View::takes_drops`, `drop_over`,

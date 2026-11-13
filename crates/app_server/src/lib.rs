@@ -19,6 +19,8 @@ pub mod hints;
 pub mod icon_theme;
 pub mod input_counts;
 pub mod input_handler;
+#[cfg(feature = "udev")]
+pub mod input_thread;
 pub mod remote;
 pub mod render;
 pub mod shell;

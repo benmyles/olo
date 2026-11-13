@@ -330,7 +330,7 @@ pub fn label(g: &mut Painter, x: Pixels, center_y: Pixels, align: Align, text: i
     let text = text.into();
     let run = TextRun { len: text.len(), font, color, background_color: None, underline: None, strikethrough: None, size: None };
     let line = g.text_system().shape_line(text.clone(), px(font_size), &[run], None);
-    paint_label(g, x, center_y, align, &text, font_size, line)
+    paint_label(g, x, center_y, align, text, font_size, line)
 }
 
 /// Where a label `width` wide, aligned to `x` so, begins: on a device
@@ -351,14 +351,14 @@ fn label_left(g: &Painter, x: Pixels, width: Pixels, align: Align) -> Pixels {
 
 /// A line shaped for [`label`], painted.
 #[allow(clippy::too_many_arguments)]
-fn paint_label(g: &mut Painter, x: Pixels, center_y: Pixels, align: Align, text: &str, font_size: f32, line: olo_interface::ShapedLine) -> Bounds<Pixels> {
+fn paint_label(g: &mut Painter, x: Pixels, center_y: Pixels, align: Align, text: SharedString, font_size: f32, line: olo_interface::ShapedLine) -> Bounds<Pixels> {
     let left = label_left(g, x, line.width, align);
     let baseline = snap_coord(g, center_y + px(font_size * CAP_HEIGHT / 2.0));
     let top = baseline - line.ascent;
     let height = line.ascent + line.descent;
     let _ = line.paint(point(left, top), height, g);
     let at = Bounds { origin: point(left, top), size: size(line.width, height) };
-    crate::review::text(g, at, baseline, text, font_size);
+    crate::review::text(g, at, baseline, &text, font_size);
     note_if_clipped(g, text, at);
     at
 }
@@ -497,7 +497,7 @@ pub fn label_fit(g: &mut Painter, x: Pixels, center_y: Pixels, align: Align, tex
     let run = TextRun { len: text.len(), font: font.clone(), color, background_color: None, underline: None, strikethrough: None, size: None };
     let line = g.text_system().shape_line(text.clone(), px(font_size), &[run], None);
     if line.width <= max_width.max(px(0.0)) {
-        return paint_label(g, x, center_y, align, &text, font_size, line);
+        return paint_label(g, x, center_y, align, text, font_size, line);
     }
     let shown = fit(g, text.clone(), font_size, &font, max_width.max(px(0.0)));
     let at = label(g, x, center_y, align, shown, font_size, font, color);
@@ -518,7 +518,7 @@ pub fn label_runs(g: &mut Painter, x: Pixels, center_y: Pixels, align: Align, te
     let _ = line.paint(point(left, top), height, g);
     let at = Bounds { origin: point(left, top), size: size(line.width, height) };
     crate::review::text(g, at, baseline, &text, font_size);
-    note_if_clipped(g, &text, at);
+    note_if_clipped(g, text, at);
     at
 }
 
@@ -954,8 +954,11 @@ pub fn pull_request_mark(g: &mut Painter, r: Bounds<Pixels>, shape: PullRequestS
 /// and read by agents) if what it's painted in cuts it at a side (a row
 /// scrolled half out of view, top or bottom, isn't): now, or as what
 /// holds it is laid out later.
-pub(crate) fn note_if_clipped(g: &mut Painter, text: &str, bounds: Bounds<Pixels>) {
-    g.note_if_cut(SharedString::from(text.to_owned()), bounds);
+/// (The text as the label has it: shared, not copied for the note. Every
+/// label drawn is noted: a copy a label was two allocations each, a
+/// table's screen of them a step.)
+pub(crate) fn note_if_clipped(g: &mut Painter, text: SharedString, bounds: Bounds<Pixels>) {
+    g.note_if_cut(text, bounds);
 }
 
 /// BeOS's check mark: a stroke down and up, 1.6 points wide.

@@ -107,7 +107,7 @@ pub fn run(len: usize, font: Font, color: Hsla) -> TextRun {
 
 /// Plain text: one run.
 pub fn text(cx: &WindowCx, s: &str, size: f32, font: Font, color: Hsla, width: f32, rows: usize) -> Text {
-    lay_runs(cx, s.to_owned(), vec![run(s.len(), font, color)], size, width, rows)
+    lay_runs(cx, SharedString::new(s), vec![run(s.len(), font, color)], size, width, rows)
 }
 
 /// The rows' height for text of `size`, on the device grid.
@@ -117,14 +117,16 @@ pub fn line_height(cx: &WindowCx, size: f32) -> Pixels {
 }
 
 /// `s` in `runs` (covering it), wrapped to `width` and at most `rows`
-/// rows, cut short with "…" in the last run's look.
-pub fn lay_runs(cx: &WindowCx, s: String, runs: Vec<TextRun>, size: f32, width: f32, rows: usize) -> Text {
+/// rows, cut short with "…" in the last run's look. (Shared as it's
+/// given: a text that fits is shaped and kept without a copy, a card laid
+/// out again for each width of a resize.)
+pub fn lay_runs(cx: &WindowCx, s: SharedString, runs: Vec<TextRun>, size: f32, width: f32, rows: usize) -> Text {
     let (lh, width, rows) = (line_height(cx, size), wrap_width(width), rows.max(1));
-    let shape = |cx: &WindowCx, s: &str, runs: &[TextRun]| -> Vec<WrappedLine> {
-        cx.text_system().shape_text(SharedString::from(s.to_owned()), px(size), runs, Some(px(width)), None).map(|l| l.into_iter().collect()).unwrap_or_default()
+    let shape = |cx: &WindowCx, s: SharedString, runs: &[TextRun]| -> Vec<WrappedLine> {
+        cx.text_system().shape_text(s, px(size), runs, Some(px(width)), None).map(|l| l.into_iter().collect()).unwrap_or_default()
     };
     let count = |lines: &[WrappedLine]| lines.iter().map(|l| l.wrap_boundaries.len() + 1).sum::<usize>();
-    let mut lines = shape(cx, &s, &runs);
+    let mut lines = shape(cx, s.clone(), &runs);
     let mut shown = s.clone();
     if count(&lines) > rows {
         // Where the last row that fits ends, then back a character at a
@@ -148,12 +150,12 @@ pub fn lay_runs(cx: &WindowCx, s: String, runs: Vec<TextRun>, size: f32, width: 
         }
         let mut cut = s[..end].trim_end().to_owned();
         loop {
-            let candidate = format!("{cut}…");
+            let candidate: SharedString = format!("{cut}…").into();
             let mut cut_runs = cut_runs(&runs, cut.len());
             if let Some(last) = cut_runs.last_mut() {
                 last.len += "…".len();
             }
-            let laid = shape(cx, &candidate, &cut_runs);
+            let laid = shape(cx, candidate.clone(), &cut_runs);
             if count(&laid) <= rows || cut.is_empty() {
                 lines = laid;
                 shown = candidate;
@@ -166,18 +168,18 @@ pub fn lay_runs(cx: &WindowCx, s: String, runs: Vec<TextRun>, size: f32, width: 
     }
     let rows_n = count(&lines);
     let widest = lines.iter().map(|l| f32::from(l.size(lh).width)).fold(0.0, f32::max);
-    Text { lines, line_height: lh, lead: px(0.0), width: widest.ceil(), height: f32::from(lh) * rows_n as f32, text: shown.into() }
+    Text { lines, line_height: lh, lead: px(0.0), width: widest.ceil(), height: f32::from(lh) * rows_n as f32, text: shown }
 }
 
 /// As [`lay_runs`], `lead` before the first row (which is that much
 /// narrower), as a typesetter indents a paragraph: that row is laid out
 /// to its own width, the rest beneath it to the whole width.
-fn lay_led(cx: &WindowCx, s: String, runs: Vec<TextRun>, size: f32, width: f32, rows: usize, lead: f32) -> Text {
+fn lay_led(cx: &WindowCx, s: SharedString, runs: Vec<TextRun>, size: f32, width: f32, rows: usize, lead: f32) -> Text {
     let narrow = (width - lead).max(10.0);
     // Where the first row ends at the narrower width.
     let end = cx
         .text_system()
-        .shape_text(SharedString::from(s.clone()), px(size), &runs, Some(px(wrap_width(narrow))), None)
+        .shape_text(s.clone(), px(size), &runs, Some(px(wrap_width(narrow))), None)
         .ok()
         .and_then(|lines| {
             let l = lines.into_iter().next()?;
@@ -188,10 +190,10 @@ fn lay_led(cx: &WindowCx, s: String, runs: Vec<TextRun>, size: f32, width: f32, 
     let mut first = if rows <= 1 || rest_at >= s.len() {
         lay_runs(cx, s, runs, size, narrow, 1)
     } else {
-        let head = s[..end].trim_end().to_owned();
+        let head = SharedString::new(s[..end].trim_end());
         let mut first = lay_runs(cx, head.clone(), cut_runs(&runs, head.len()), size, narrow, 1);
         let rest_runs = tail_runs(&runs, rest_at);
-        let rest = lay_runs(cx, s[rest_at..].to_owned(), rest_runs, size, width, rows - 1);
+        let rest = lay_runs(cx, SharedString::new(&s[rest_at..]), rest_runs, size, width, rows - 1);
         first.lines.extend(rest.lines);
         first.width = (first.width + lead).max(rest.width) - lead;
         first.height += rest.height;
@@ -282,7 +284,8 @@ impl Text {
 #[allow(clippy::too_many_arguments)]
 pub fn title(cx: &WindowCx, s: &str, failed: bool, size: f32, font: Font, color: Hsla, width: f32, rows: usize) -> Text {
     let runs = vec![run(s.len(), font, color)];
-    if failed { lay_led(cx, s.to_owned(), runs, size, width, rows, MARK_ROOM) } else { lay_runs(cx, s.to_owned(), runs, size, width, rows) }
+    let s = SharedString::new(s);
+    if failed { lay_led(cx, s, runs, size, width, rows, MARK_ROOM) } else { lay_runs(cx, s, runs, size, width, rows) }
 }
 
 /// The body with its markup (bold, italics, underlines, links).
@@ -306,7 +309,7 @@ pub fn body(cx: &WindowCx, spans: &[Span], ink: &Ink, width: f32, rows: usize) -
         s.push_str(&sp.text);
         runs.push(r);
     }
-    lay_runs(cx, s, runs, style::PLAIN_SIZE, width, rows)
+    lay_runs(cx, s.into(), runs, style::PLAIN_SIZE, width, rows)
 }
 
 /// The link at byte `at` of a body made of `spans`.

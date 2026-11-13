@@ -99,6 +99,12 @@ pub(crate) struct WindowCore {
     /// A surface of the desktop's own (a layer's, the lock screen's):
     /// it stays with its display.
     pub(crate) shell: bool,
+    /// Its size isn't the compositor's yet (a layer surface stretched
+    /// across its output, opened a point square; a lock surface): not
+    /// laid out or drawn until it is (`WindowEvent::Sized`). Laid out
+    /// at a point square, everything in it was worked out and drawn
+    /// once for nothing, and a terminal told its shell two columns.
+    pub(crate) awaits_size: bool,
     /// A menu (a popup that takes the keyboard): its owner is as active
     /// as it was while this is open ([`WindowCx::is_window_active`]).
     pub(crate) menu: bool,
@@ -545,6 +551,7 @@ impl WindowCore {
             commits: 0,
             owner: None,
             shell: false,
+            awaits_size: opened.awaits_size,
             menu: false,
             gfx,
             size: opened.size,
@@ -1015,6 +1022,7 @@ impl WindowCore {
         if node.style.visibility == crate::Visibility::Hidden {
             return;
         }
+        // (`agent_sources` walks as this does: keep the two in step.)
         let shown = |b: Bounds<Pixels>| Bounds { origin: b.origin + shift, size: b.size };
         // What it is itself, if it says.
         if let Some(inter) = &node.inter
@@ -1054,6 +1062,25 @@ impl WindowCore {
         };
         for child in &node.children {
             self.agent_nodes(*child, inner, shift, out);
+        }
+    }
+
+    /// The element each of `agent_nodes`' nodes comes from, in the same
+    /// order: an element that says what it is, or the drawing that said
+    /// it holds the thing.
+    fn agent_sources(&self, id: NodeId, out: &mut Vec<NodeId>) {
+        let Some(node) = self.nodes.get(id) else { return };
+        if node.style.visibility == crate::Visibility::Hidden {
+            return;
+        }
+        if node.inter.as_ref().is_some_and(|i| i.agent.is_some()) {
+            out.push(id);
+        }
+        if let Some(notes) = &node.notes {
+            out.extend(std::iter::repeat_n(id, notes.agent.len()));
+        }
+        for child in &node.children {
+            self.agent_sources(*child, out);
         }
     }
 
@@ -1132,6 +1159,8 @@ impl<'a> WindowCx<'a> {
             }
             WindowEvent::Ime(ime) => self.dispatch_ime(ime),
             WindowEvent::Resized { size, scale } => self.resized(size, scale),
+            // (Laid out and drawn as the looper goes idle, `flush_all`.)
+            WindowEvent::Sized => self.core.awaits_size = false,
             WindowEvent::Active(active) => {
                 self.core.active = active;
                 let by_it: Vec<ViewId> = self.core.views.iter().filter(|(_, slot)| slot.reads_active).map(|(id, _)| id).collect();
@@ -1371,7 +1400,7 @@ impl<'a> WindowCx<'a> {
     /// Shows what changed: views say what they show, the tree follows,
     /// layout and drawing catch up, and the stage is told.
     fn flush(&mut self) {
-        if self.core.closed {
+        if self.core.closed || self.core.awaits_size {
             return;
         }
         // What's kept for the next frame, if one can be drawn now.
@@ -1586,7 +1615,7 @@ impl<'a> WindowCx<'a> {
             let ms = |d: Duration| d.as_secs_f64() * 1000.0;
             let work = crate::stats::FRAME_WORK.take();
             eprintln!(
-                "flush {:.3} ms: bodies {:.3} ({turns}), layout {:.3}, paint {:.3} ({drew} of {} nodes), items {:.3} ({}); shaped {} lines in {:.2} ms, drew {} glyphs in {:.2} ms",
+                "flush {:.3} ms: bodies {:.3} ({turns}), layout {:.3}, paint {:.3} ({drew} of {} nodes), items {:.3} ({}); shaped {} lines in {:.2} ms, drew {} glyphs in {:.2} ms, found {} lines' glyphs in {:.2} ms",
                 ms(flushing.elapsed()),
                 ms(bodies_done),
                 ms(layout_done - bodies_done),
@@ -1598,6 +1627,8 @@ impl<'a> WindowCx<'a> {
                 work[0].1,
                 work[1].0,
                 work[1].1,
+                work[2].0,
+                work[2].1,
             );
         }
         let scale = core.gfx.scale_factor;
@@ -2156,6 +2187,28 @@ impl<'a> WindowCx<'a> {
             self.core.agent_nodes(root, window, Point::default(), &mut out);
         }
         out
+    }
+
+    /// Gives the keyboard to what [`Self::agent_nodes`]' node `index`
+    /// is (app_server's keyboard hints, picking a text field, a slider or
+    /// a scroll bar, which a click would change): the element it comes
+    /// from, or the nearest that holds it and takes the keyboard (an
+    /// editor's text, said by its drawing, is its view's). Whether
+    /// anything took it.
+    pub fn focus_agent_node(&mut self, index: usize) -> bool {
+        let Some(root) = self.core.root else { return false };
+        let mut sources = Vec::new();
+        self.core.agent_sources(root, &mut sources);
+        let mut at = sources.get(index).copied();
+        while let Some(id) = at {
+            let Some(node) = self.core.nodes.get(id) else { return false };
+            if node.inter.as_ref().is_some_and(|i| i.focusable && !i.disabled) {
+                self.focus_node(Some(id));
+                return true;
+            }
+            at = node.parent;
+        }
+        false
     }
 
     /// How many times the window has shown something new (for what

@@ -78,10 +78,22 @@ pub fn nice_of(tid: u32) -> Option<i32> {
     after.split_whitespace().nth(16)?.parse().ok()
 }
 
+/// Why this program isn't raised above others (`raise_self`,
+/// `util_min_self`), if it isn't: it runs on an agent's screen
+/// (`OLO_SCREEN`), background work as far as the person's desktop is
+/// concerned, which three agent screens' compositors at app_server's own
+/// nice (and on fast cores at full clock) competed with, under load.
+pub fn not_the_persons() -> Option<&'static str> {
+    std::env::var_os("OLO_SCREEN").is_some().then_some("on an agent's screen: left at its nice")
+}
+
 /// The calling thread to `nice` (clamped to what rtkit gives). What it
 /// is at now, if that could be read, and the error if it couldn't be
 /// raised.
 pub fn raise_self(nice: i32) -> std::result::Result<i32, String> {
+    if let Some(why) = not_the_persons() {
+        return Err(why.into());
+    }
     // SAFETY: gettid has no preconditions.
     let tid = unsafe { libc::gettid() } as u32;
     raise_thread(std::process::id(), tid, nice)
@@ -105,6 +117,9 @@ pub fn raise_thread(pid: u32, tid: u32, nice: i32) -> std::result::Result<i32, S
 /// (`olo_protocol::performance::CORE_UTIL_MIN`). The threads it starts
 /// afterwards inherit it, as they do its nice.
 pub fn util_min_self(min: u32) -> std::io::Result<()> {
+    if let Some(why) = not_the_persons() {
+        return Err(std::io::Error::other(why));
+    }
     const KEEP_POLICY: u64 = 0x08;
     const KEEP_PARAMS: u64 = 0x10;
     const UTIL_CLAMP_MIN: u64 = 0x20;

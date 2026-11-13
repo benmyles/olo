@@ -307,7 +307,10 @@ fn shown(args: &[String]) -> Result<(), String> {
         let poke = poke.clone();
         Arc::new(poke) as Arc<dyn Fn() + Send + Sync>
     };
-    let options = Options { name: our_name(), sound: with_sound, lead, ended: Some(ended), trace: tracer, ..Options::default() };
+    // The receiver's volume: the computer's (followed as it changes:
+    // `sound`).
+    let volume = if with_sound { olo_system::audio::volume().map_or(1.0, |v| if v.muted { 0.0 } else { v.level }) } else { 1.0 };
+    let options = Options { name: our_name(), sound: with_sound, lead, ended: Some(ended), trace: tracer, volume, ..Options::default() };
     let mirror = Arc::new(Mirror::begin(found.at, &credentials, found.features, &found.version, &options).map_err(|e| e.to_string())?);
     let (screen, lead_ms, sounds) = (mirror.screen(), mirror.lead().as_millis() as u64, mirror.sounds());
     // Frames the receiver's size, made so by app_server as it draws them
@@ -384,7 +387,12 @@ fn shown(args: &[String]) -> Result<(), String> {
     // plays (silence while paused).
     let sound = if mirror.sounds() {
         let tv = match whose(&what, &capture) {
-            Some(w) => sound::TvSound::start(&name, w, trace, feed(mirror.clone())).map_err(|e| eprintln!("olo-airplay: the computer's sound as it plays, here and on the TV: {e}")).ok(),
+            Some(w) => {
+                let told = mirror.clone();
+                sound::TvSound::start(&name, w, trace, volume, move |level| told.set_volume(level), feed(mirror.clone()))
+                    .map_err(|e| eprintln!("olo-airplay: the computer's sound as it plays, here and on the TV: {e}"))
+                    .ok()
+            }
             None => None,
         };
         match tv {

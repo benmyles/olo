@@ -341,6 +341,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 | Request::PowerStatus
                 | Request::ActivationToken
                 | Request::Timings { .. }
+                | Request::HoldLoop { .. }
                 | Request::Frames
                 | Request::PointerTrace { .. }
                 | Request::CaptureDrops { .. }
@@ -843,6 +844,14 @@ impl<B: Backend + 'static> AnvilState<B> {
                 Reply::Ok
             }
             Request::Timings { quiet } => Reply::Timings { timings: self.take_timings(quiet) },
+            Request::HoldLoop { ms } => {
+                if std::env::var_os("OLO_TEST_SEAT").is_none() {
+                    Reply::Error { message: "only a test app_server (OLO_TEST_SEAT) holds its loop".into() }
+                } else {
+                    std::thread::sleep(std::time::Duration::from_millis(ms.min(2000) as u64));
+                    Reply::Ok
+                }
+            }
             Request::Frames => {
                 let mut touch = self.backend_data.touch_health();
                 crate::touch_health::scheduling(&mut touch);

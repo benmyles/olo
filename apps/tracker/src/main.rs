@@ -992,8 +992,7 @@ impl Hub {
             ToHub::Thumb | ToHub::Refresh => self.refresh(),
             ToHub::JobSlow(id) => {
                 if self.jobs.iter().any(|(j, _)| j.id == id) && self.status.as_ref().is_none_or(|w| !w.is_open()) {
-                    let h = panels::status_height(self.jobs.len());
-                    self.status = Some(olo_kit::open_window(WindowOptions::new("Tracker Status", panels::STATUS_WIDTH, h).min_size(300.0, 60.0).floating(), StatusWin::new));
+                    self.status = Some(olo_kit::open_window(panels::status_options(), StatusWin::new));
                 }
             }
             ToHub::JobDone(id, outcome) => self.job_done(id, outcome),

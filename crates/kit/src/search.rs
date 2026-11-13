@@ -596,6 +596,19 @@ pub fn list_indent(cx: &WindowCx) -> f32 {
     frame + m::CELL_INSET - m::TEXT_INSET
 }
 
+/// The widths headers were last laid out at, by their ids.
+#[derive(Default)]
+struct HeaderWidths(std::collections::HashMap<SharedString, f32>);
+
+/// The width header `id` was last laid out at (None before it was):
+/// what to hand [`header`] rather than the window's width, so the view
+/// that shows it isn't made again at every step of a live resize. The
+/// header asks for that itself when a width changes what it is (the
+/// menus going under the field, or cut short).
+pub fn header_width(cx: &mut WindowCx, id: &str) -> Option<f32> {
+    cx.window_state::<HeaderWidths>().0.get(id).copied()
+}
+
 /// [`Header`] for `field`, its menus `facets`, in `width` points.
 pub fn header(cx: &WindowCx, field: &Child<SearchField>, id: impl Into<SharedString>, facets: Rc<Vec<Facet>>, width: f32) -> Header {
     Header { field: field.element(), drives: field.downgrade(), text: field.read(cx).text(cx).to_owned(), id: id.into(), facets, width, count: None, clear: true, min_field: 240.0, indent: 0.0 }
@@ -632,7 +645,18 @@ impl IntoElement for Header {
         let font = style::ui_font(FontWeight::NORMAL);
         let count_w = self.count.as_ref().map_or(0.0, |c| style::text_width_app(c, style::PLAIN_SIZE, &font).ceil() + m::SPACING);
         let bar_w = FilterBar::width(&self.text, &self.facets) + m::SPACING + 40.0;
-        let one_row = self.width - bar_w - count_w - m::SPACING >= self.min_field;
+        // What it is at a width: the menus beside the field or under it,
+        // and the room they have under it (all they need, mostly). The
+        // field takes what's left, so any width of the same shape lays
+        // out as it is; one of another has its view say it again.
+        let (min_field, indent) = (self.min_field, self.indent);
+        let shape = move |width: f32| {
+            let one_row = width - bar_w - count_w - m::SPACING >= min_field;
+            (one_row, if one_row { bar_w } else { (width - indent).min(bar_w) })
+        };
+        let (one_row, room) = shape(self.width);
+        let built = (one_row, room.to_bits());
+        let laid_id = self.id.clone();
         let drives = self.drives;
         let mut bar = FilterBar::new(self.id, self.text, self.facets).on_change(move |text, cx| {
             let text = text.clone();
@@ -653,13 +677,20 @@ impl IntoElement for Header {
             .h(px(m::CONTROL_HEIGHT))
             .flex_shrink_0()
         });
-        let field_w = if one_row { self.width - bar_w - count_w - m::SPACING } else { self.width - count_w };
-        let top = div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().w(px(field_w.max(1.0))).child(self.field));
-        if one_row {
-            top.child(div().flex_1().min_w_0().child(bar.max_width(bar_w))).children(count)
+        let top = div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().flex_1().min_w(px(1.0)).child(self.field));
+        let header = if one_row {
+            top.child(div().w(px(bar_w)).flex_shrink_0().child(bar.max_width(bar_w))).children(count)
         } else {
-            div().flex().flex_col().gap(px(m::SPACING)).child(top.children(count)).child(div().pl(px(self.indent)).child(bar.max_width(self.width - self.indent)))
-        }
+            div().flex().flex_col().gap(px(m::SPACING)).child(top.children(count)).child(div().pl(px(self.indent)).child(bar.max_width(room)))
+        };
+        header.on_bounds_changed(move |b, cx| {
+            let width = f32::from(b.size.width);
+            cx.window_state::<HeaderWidths>().0.insert(laid_id.clone(), width);
+            let (one_row, room) = shape(width);
+            if (one_row, room.to_bits()) != built {
+                cx.invalidate_owner();
+            }
+        })
     }
 }
 

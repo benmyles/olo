@@ -95,7 +95,7 @@ impl Panel {
             "air-play" | "mirroring" | "screen-mirroring" | "apple-tv" | "tv" => Some(Panel::AirPlay),
             "wifi" | "wi-fi" | "networks" => Some(Panel::Network),
             "notification" | "dnd" | "do-not-disturb" => Some(Panel::Notifications),
-            "supervisor" | "responsiveness" | "watchdog" => Some(Panel::Performance),
+            "supervisor" | "responsiveness" | "watchdog" | "pointer-thread" | "input-thread" => Some(Panel::Performance),
             "time" | "date" | "clock" | "date-time" => Some(Panel::DateTime),
             "open-with" | "file-types" | "filetypes" | "default-applications" => Some(Panel::DefaultApps),
             "passwords" | "privacy" => Some(Panel::Security),
@@ -241,7 +241,11 @@ impl Panel {
             Panel::ScreenSaver => (500, 400),
             // Passwords' settings, security keys beside them.
             Panel::Security => (880, 440),
-            Panel::Sound => (800, 466),
+            // As tall as its devices need, which is a machine's own (no
+            // list in it shrinks): the height is only its least. The
+            // lint's test devices, the most a machine shows, need 466; a
+            // machine with fewer kept that, empty below (Ben's).
+            Panel::Sound => (800, 160),
             // Coding Agents beside Git Worktrees and Command Suggestions.
             Panel::Terminal => (900, 600),
             // The themes, the chosen one's colour sets beside them.

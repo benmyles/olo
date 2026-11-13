@@ -520,6 +520,7 @@ mod tests {
             kind: if dir { fs::Kind::Folder } else { fs::Kind::Text },
             app_icon: None,
             downloading: None,
+            shown: Default::default(),
         }
     }
 

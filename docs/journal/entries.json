@@ -4084,5 +4084,29 @@
   "title": "Olo Coder: named sessions, quiet steps, every shortcut",
   "caption": "A session is named by the agent (Calculator power function) in the tab, header and list; each step is one line, a failed one only a red \u2715; small diffs open from their first hunk; the status sits on the title's line; context reads 6.7K of 872K; Changes fits its pane. Every menu item has its keys (\u2318N, \u2318W, \u2318Q, \u2318C, \u2318F, \u2318,, \u23181\u20133, \u2318\u2191 \u2318\u2193).",
   "image": "2026-11-12/231428-olo-coder-named-sessions-quiet-steps-every-short.png"
+ },
+ {
+  "time": "2026-11-13T00:12:56",
+  "title": "Preferences \u25b8 Performance: the pointer on a thread of its own",
+  "caption": "A Pointer box on the Scheduler tab: 'Move the pointer on a thread of its own' reads libinput on a thread of app_server's own that moves the hardware cursor while the desktop is busy, so the pointer never stops or loses motion. Off until tried; takes effect at once.",
+  "image": "2026-11-13/001256-preferences-performance-the-pointer-on-a-thread-.png"
+ },
+ {
+  "time": "2026-11-13T01:04:13",
+  "title": "Tracker Status: names cut, Stop always in place",
+  "caption": "Fixed at 540 points and as tall as its jobs. Under the bar, the current item's name is cut short with '\u2026' and the counts and time left show whole at the right, so a long or changing name never pushes Stop out of the window (Ben: 'it doesn't fit in the space when the names etc are changing').",
+  "image": "2026-11-13/010413-tracker-status-names-cut-stop-always-in-place.png"
+ },
+ {
+  "time": "2026-11-13T01:50:22",
+  "title": "Preferences \u25b8 Sound: as tall as its devices",
+  "caption": "The Sound panel's height was a 466-point minimum sized for the most devices a machine shows, so with fewer (or no sound server) the window kept empty space below. Now its height is what its devices need.",
+  "image": "2026-11-13/015022-preferences-sound-as-tall-as-its-devices.png"
+ },
+ {
+  "time": "2026-11-13T02:43:19",
+  "title": "Tracker list view: Edit Name shows its field",
+  "caption": "Before (top): F2 in the list view blanked the name and showed no field, so typing went nowhere. After: the rename field sits over the Name cell, inside the column (a longer name scrolls in it); clicks in it place the caret. The kit's ColumnListView::over_cell.",
+  "image": "2026-11-13/024319-tracker-list-view-edit-name-shows-its-field.png"
  }
 ]

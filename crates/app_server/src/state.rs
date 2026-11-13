@@ -150,6 +150,9 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// The pointer hidden: a finger has been the pointer since a mouse or
     /// touchpad last moved it.
     pub touch_hides_pointer: bool,
+    /// The pointer is locked or confined by a window (a game): only
+    /// app_server's loop moves it (`input_thread`).
+    pub pointer_constrained: bool,
     /// Touch screens plugged in (their touches go to `touch_output`).
     pub touch_screens: usize,
     /// Which way the fingers' scroll goes (natural or not), for clients.
@@ -1214,6 +1217,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             pinching: false,
             touch_pointer: None,
             touch_hides_pointer: false,
+            pointer_constrained: false,
             touch_screens: 0,
             scroll_direction: (smithay::backend::input::AxisRelativeDirection::Identical, smithay::backend::input::AxisRelativeDirection::Identical),
             held_stop: None,

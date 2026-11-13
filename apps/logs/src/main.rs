@@ -31,15 +31,15 @@ use std::{
 
 use model::{Level, Line, Now, Query, Since};
 use olo_kit::{
-    Child, ClickEvent, ClipboardItem, Cx, Element, Font, FontWeight, Hsla, IntoElement as _, Menu, MenuBar, ParentElement as _, Pixels, Point, Styled as _, TextRun, View, WindowHandle, WindowOptions,
-    agent, canvas, clipboard, div,
+    Child, ClickEvent, ClipboardItem, Cx, Element, Font, FontWeight, Hsla, IntoElement as _, Menu, MenuBar, ParentElement as _, Pixels, Point, SharedString, Styled as _, TextRun, View, WindowHandle,
+    WindowOptions, agent, canvas, clipboard, div,
     file_panel::{self, FilePanel, PanelResult},
     instance::{self, Launch},
     menu, metrics as m, px,
     search::{self, Facet, SearchEvent, SearchField, search_field},
     style::{self, c},
     theme,
-    widgets::{Button, CheckBox, Column, ColumnListView, ListModel, SCROLL_BAR, TextView, text_view},
+    widgets::{Button, CheckBox, Column, ColumnListView, ListModel, TextView, text_view},
 };
 use olo_kit_base::list::ListState;
 use olo_theme::Palette;
@@ -55,6 +55,8 @@ const TIMES: [(Since, &str); 5] = [(Since::Minutes(10), "Last 10 Minutes"), (Sin
 
 /// The height of the pane under the list with the selected line in full.
 const DETAIL: f32 = 112.0;
+/// The least the Message column is given (the last: it fills the rest).
+const MESSAGE_LEAST: f32 = 200.0;
 
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
@@ -248,9 +250,12 @@ fn highlighted(text: &str, font: &Font, base: Hsla, p: &Palette, query: &search:
 
 /// A line's message as its row shows it: its first line, and an
 /// ellipsis if there is more.
-fn message_text(l: &Line) -> String {
+/// A line's Message cell: its first line, "…" after it when there's
+/// more. (Made shared at once: copied once, not into a `String` and then
+/// again.)
+fn message_text(l: &Line) -> SharedString {
     let first = l.first_line();
-    if l.message.len() > first.len() { format!("{first} …") } else { first.to_owned() }
+    if l.message.len() > first.len() { format!("{first} …").into() } else { SharedString::new(first) }
 }
 
 fn line_text(l: &Line, midnight: u64) -> String {
@@ -712,13 +717,12 @@ impl Logs {
     }
 
     fn list_view(&mut self, cx: &mut Cx<Self>) -> Element {
-        // The message as wide as the rest of the list allows (inside its
-        // frame and beside its scroll bar), so it never scrolls sideways
-        // unless the window is too narrow.
-        let width = f32::from(cx.viewport_size().width) - 2.0 * m::WINDOW_INSET;
-        let scale = cx.scale_factor();
-        let frame = style::line_pixels(scale) / scale * 4.0;
-        let columns = vec![Column::new("Time", 150.0), Column::new("Program", 132.0), Column::new("Level", 70.0), Column::new("Message", (width - frame - SCROLL_BAR - 352.0).floor().max(200.0))];
+        // The message as wide as the rest of the list allows: the last
+        // column fills what the others leave, and the list scrolls
+        // sideways only when the window is too narrow for 200 points of
+        // it. (Not worked out from the window's width: a live resize then
+        // lays the window out again without making it again.)
+        let columns = vec![Column::new("Time", 150.0), Column::new("Program", 132.0), Column::new("Level", 70.0), Column::new("Message", MESSAGE_LEAST)];
         let empty = match (self.loaded, &self.source) {
             (true, _) => "No lines match.",
             (false, None) => "Reading the journal…",
@@ -726,10 +730,12 @@ impl Logs {
         };
         ColumnListView::new(cx, "logs-lines", &self.list, columns, self.view.len(), |logs: &Logs, cell, g| {
             let Some(l) = logs.view.get(cell.row).and_then(|&i| logs.lines.get(i)) else { return };
-            let text = match cell.column {
-                0 => model::format_time(l.time, logs.now.midnight),
-                1 => l.program.to_string(),
-                2 => l.level.name().to_owned(),
+            // (The program's name is shared already and the level's is
+            // fixed: neither is copied for a cell.)
+            let text: SharedString = match cell.column {
+                0 => model::format_time(l.time, logs.now.midnight).into(),
+                1 => SharedString::new(l.program.clone()),
+                2 => SharedString::new_static(l.level.name()),
                 _ => message_text(l),
             };
             let p = theme::palette();
@@ -893,7 +899,8 @@ impl View for Logs {
         // The search and the filters' menus: in one row when there's
         // room, else the menus under the search (the kit's search header).
         let facets = self.facets(cx);
-        let width = f32::from(cx.viewport_size().width) - 2.0 * m::WINDOW_INSET;
+        // (The width it was laid out at: the window's only until it was.)
+        let width = search::header_width(cx, "logs").unwrap_or_else(|| f32::from(cx.viewport_size().width) - 2.0 * m::WINDOW_INSET);
         let controls = search::header(cx, &self.search, "logs", facets, width).min_field(260.0).indent(search::list_indent(cx));
 
         let list = match &self.failed {

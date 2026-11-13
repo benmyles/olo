@@ -3,6 +3,32 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-11-13
+
+### Tracker list view: Edit Name shows its field
+
+*02:43* — Before (top): F2 in the list view blanked the name and showed no field, so typing went nowhere. After: the rename field sits over the Name cell, inside the column (a longer name scrolls in it); clicks in it place the caret. The kit's ColumnListView::over_cell.
+
+![Tracker list view: Edit Name shows its field](2026-11-13/024319-tracker-list-view-edit-name-shows-its-field.png)
+
+### Preferences ▸ Sound: as tall as its devices
+
+*01:50* — The Sound panel's height was a 466-point minimum sized for the most devices a machine shows, so with fewer (or no sound server) the window kept empty space below. Now its height is what its devices need.
+
+![Preferences ▸ Sound: as tall as its devices](2026-11-13/015022-preferences-sound-as-tall-as-its-devices.png)
+
+### Tracker Status: names cut, Stop always in place
+
+*01:04* — Fixed at 540 points and as tall as its jobs. Under the bar, the current item's name is cut short with '…' and the counts and time left show whole at the right, so a long or changing name never pushes Stop out of the window (Ben: 'it doesn't fit in the space when the names etc are changing').
+
+![Tracker Status: names cut, Stop always in place](2026-11-13/010413-tracker-status-names-cut-stop-always-in-place.png)
+
+### Preferences ▸ Performance: the pointer on a thread of its own
+
+*00:12* — A Pointer box on the Scheduler tab: 'Move the pointer on a thread of its own' reads libinput on a thread of app_server's own that moves the hardware cursor while the desktop is busy, so the pointer never stops or loses motion. Off until tried; takes effect at once.
+
+![Preferences ▸ Performance: the pointer on a thread of its own](2026-11-13/001256-preferences-performance-the-pointer-on-a-thread-.png)
+
 ## 2026-11-12
 
 ### Olo Coder: named sessions, quiet steps, every shortcut

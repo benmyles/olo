@@ -232,6 +232,13 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn is_maximized(&self) -> bool;
     fn window_bounds(&self) -> WindowBounds;
     fn content_size(&self) -> Size<Pixels>;
+    /// Olo: whether the size it opened at stands in for one the
+    /// compositor hasn't given yet (a lock surface, a layer surface
+    /// stretched across its output: a point square until then), so
+    /// nothing is worked out or drawn for it before.
+    fn awaits_size(&self) -> bool {
+        false
+    }
     fn resize(&mut self, size: Size<Pixels>);
     fn scale_factor(&self) -> f32;
     fn appearance(&self) -> WindowAppearance;
@@ -319,9 +326,9 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     /// What an input method does is handed to `callback`.
     fn on_ime(&self, _callback: Box<dyn FnMut(ImeInput)>) {}
     /// Begins a frame that shows `damage` (what changed since the last,
-    /// in device pixels; None: everything): how much of it is to be
-    /// drawn. The scene then drawn need hold no more.
-    fn begin_frame(&self, _damage: Option<Bounds<crate::ScaledPixels>>) -> FrameRegion {
+    /// as rectangles in device pixels; None: everything): how much of it
+    /// is to be drawn. The scene then drawn need hold no more.
+    fn begin_frame(&self, _damage: Option<&[Bounds<crate::ScaledPixels>]>) -> FrameRegion {
         FrameRegion::All
     }
     fn draw(&self, scene: &Scene);

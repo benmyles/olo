@@ -535,6 +535,13 @@ pub enum Request {
         #[serde(default)]
         quiet: bool,
     },
+    /// For tests only (a test app_server: `OLO_TEST_SEAT`): app_server's
+    /// loop held `ms` (at most 2000), as a slow frame or a lock in the GPU
+    /// driver holds it. The pointer should keep moving meanwhile (the
+    /// input thread: `tools/dev/cursor-thread-check`).
+    HoldLoop {
+        ms: u32,
+    },
     /// How each display keeps up ([`DisplayFrames`]: its frames a second,
     /// the ones presented late, what its frames cost), for Activity
     /// Monitor's Displays. Counted always, at no cost worth measuring.
@@ -1564,6 +1571,11 @@ pub struct Settings {
     pub startup_sound: bool,
     /// Which start-up sound.
     pub startup_chime: StartupChime,
+    /// libinput read, and the pointer moved while app_server's loop is
+    /// held, on a thread of its own (Preferences ▸ Performance ▸
+    /// Scheduler; `OLO_INPUT_THREAD` 1 or 0 overrides it). Off while it's
+    /// tried.
+    pub input_thread: bool,
     pub terminal: TerminalSettings,
     pub security: SecuritySettings,
     pub ai: AiSettings,
@@ -2512,6 +2524,7 @@ impl Default for Settings {
             video: VideoSettings::default(),
             startup_sound: true,
             startup_chime: StartupChime::default(),
+            input_thread: false,
             terminal: TerminalSettings::default(),
             security: SecuritySettings::default(),
             ai: AiSettings::default(),

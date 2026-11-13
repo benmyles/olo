@@ -1301,6 +1301,18 @@ impl IntoElement for MenuBar {
     fn into_element(self) -> Element {
         let (titles, shared) = (Rc::new(self.titles), self.shared);
         let (down, slide) = (titles.clone(), titles.clone());
+        // Kept while the titles and the open one are the same (a key
+        // typed in the window draws its line, not the bar too); a menu
+        // opening or put away paints it again itself (`repaint_bar`).
+        let look = {
+            use std::hash::{Hash as _, Hasher as _};
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            for (title, width) in titles.iter() {
+                (title, width.to_bits()).hash(&mut hasher);
+            }
+            shared.open.get().hash(&mut hasher);
+            hasher.finish()
+        };
         canvas(move |g, b| {
             let p = theme::palette();
             style::fill_rect(g, b, style::c(p.menu_background));
@@ -1323,6 +1335,7 @@ impl IntoElement for MenuBar {
                 g.agent(agent::Node { role: "MenuBarItem", name: Some(title.clone()), bounds: r, enabled: true, clickable: true, selected: Some(open == Some(i)), ..Default::default() });
             }
         })
+        .paint_key(look)
         // (A window's menus work on what has its keyboard: the bar
         // never takes it.)
         .keeps_focus()
