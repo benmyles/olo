@@ -1685,7 +1685,12 @@ as Log Viewer and Replay have it: the field and the bar in one row when
 the field keeps `min_field` points (240 unless said), else the bar
 under it, `indent(search::list_indent(window))` putting its first
 menu's text over the list's first column's; `count("12 of 340")` at
-the end of the field's row; `no_clear()`. Passwords' bar, over its list
+the end of the field's row; `no_clear()`. The field takes whatever
+width the row leaves, so `width` only decides which of the two it is:
+hand it `search::header_width(window, id)` (the width the header was
+last laid out at; the window's less its insets before that) and the
+view that shows it isn't made again as the window is resized, only
+when the header's own width changes its shape (it asks then). Passwords' bar, over its list
 apart from its toolbar's field, `drives` it too.
 `search::runs(text, font, color, spans, marks, mark)` makes text runs
 from colour spans and marks (marks are runs' backgrounds), and
@@ -7018,7 +7023,12 @@ Chrome, GTK 4.16 text), and how Olo does it:
   (Preferences ▸ Display): at most hinted vertically
   ("light", as FreeType, GTK 4.16 and Chrome do it) and positioned
   across in subpixel steps, so stems and baselines sit on pixels while
-  shapes and spacing stay as designed. Tab titles (cosmic-text and swash)
+  shapes and spacing stay as designed. Which step and which pixel come
+  from where the glyph is to the nearest 64th of a device pixel
+  (`painter::glyph_at`), not the bare float: a place in points is added
+  up from everything that holds it, and at 1.25× a glyph a quarter into
+  its pixel came out 126.24999 one way and 126.25 another, a quarter
+  pixel apart drawn afresh and moved there kept. Tab titles (cosmic-text and swash)
   are hinted, on a whole-pixel baseline.
 - **The pointer** is a vector drawn at each screen's exact scale (see the
   next section).

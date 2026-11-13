@@ -152,6 +152,18 @@ fn subpixel_variant(origin: Point<ScaledPixels>) -> Point<u8> {
     Point { x: within(origin.x.0, SUBPIXEL_VARIANTS_X), y: within(origin.y.0, SUBPIXEL_VARIANTS_Y) }
 }
 
+/// Where a glyph goes in device pixels, to the nearest 64th (the grain
+/// [`Painter::paint_glyph_run`] keys on). A place in points adds up a
+/// node's offsets from all that holds it, so at 1.25× a glyph meant to
+/// start a quarter into a pixel is as likely to come out 126.24999 as
+/// 126.25: a sub-pixel drawing and a whole pixel apart. Drawn afresh in
+/// one place and moved there in another (a kept drawing, a run painted
+/// from what it found), the same text came out a quarter pixel apart.
+fn glyph_at(origin: Point<Pixels>, scale_factor: f32) -> Point<ScaledPixels> {
+    let snap = |v: f32| ScaledPixels((v * scale_factor * 64.0).round() / 64.0);
+    Point { x: snap(origin.x.0), y: snap(origin.y.0) }
+}
+
 impl<'a> Painter<'a> {
     pub(crate) fn new(
         gfx: &'a mut Gfx,
@@ -682,7 +694,7 @@ impl<'a> Painter<'a> {
     pub fn paint_glyph(&mut self, origin: Point<Pixels>, font_id: FontId, glyph_id: GlyphId, font_size: Pixels, color: Hsla) -> Result<()> {
         let element_opacity = self.element_opacity();
         let scale_factor = self.scale_factor();
-        let glyph_origin = origin.scale(scale_factor);
+        let glyph_origin = glyph_at(origin, scale_factor);
 
         let subpixel_variant = subpixel_variant(glyph_origin);
         let key = (font_id.0 as u32, glyph_id.0, font_size.0.to_bits(), subpixel_variant.x, subpixel_variant.y);
@@ -750,18 +762,10 @@ impl<'a> Painter<'a> {
     /// was found, moved, without a lookup a glyph.
     pub fn paint_glyph_run(&mut self, run: &mut GlyphRun, origin: Point<Pixels>, stamp: u64, glyphs: impl FnOnce(&mut dyn FnMut(Point<Pixels>, FontId, GlyphId, Pixels, Hsla))) {
         let scale_factor = self.scale_factor();
-        let device = origin.scale(scale_factor);
+        let device = glyph_at(origin, scale_factor);
         // Its whole device pixel and where within it (in 64ths).
-        let mut base = Point { x: device.x.0.floor(), y: device.y.0.floor() };
-        let mut phase = (((device.x.0 - base.x) * 64.0).round() as i32, ((device.y.0 - base.y) * 64.0).round() as i32);
-        if phase.0 == 64 {
-            base.x += 1.0;
-            phase.0 = 0;
-        }
-        if phase.1 == 64 {
-            base.y += 1.0;
-            phase.1 = 0;
-        }
+        let base = Point { x: device.x.0.floor(), y: device.y.0.floor() };
+        let phase = (((device.x.0 - base.x) * 64.0).round() as i32, ((device.y.0 - base.y) * 64.0).round() as i32);
         let key = GlyphRunKey { scale: scale_factor.to_bits(), rendering: self.gfx.text_rendering, stamp, phase };
         if run.key != Some(key) {
             let cold = crate::stats::frame_phases().then(std::time::Instant::now);
@@ -797,7 +801,7 @@ impl<'a> Painter<'a> {
     /// device pixels, and its tile (looked up once a frame a glyph).
     fn glyph_sprite(&mut self, origin: Point<Pixels>, font_id: FontId, glyph_id: GlyphId, font_size: Pixels) -> Option<(Bounds<ScaledPixels>, AtlasTile)> {
         let scale_factor = self.scale_factor();
-        let glyph_origin = origin.scale(scale_factor);
+        let glyph_origin = glyph_at(origin, scale_factor);
         let subpixel_variant = subpixel_variant(glyph_origin);
         let key = (font_id.0 as u32, glyph_id.0, font_size.0.to_bits(), subpixel_variant.x, subpixel_variant.y);
         let found = match self.gfx.glyph_memo.get(&key) {
@@ -838,7 +842,7 @@ impl<'a> Painter<'a> {
     /// This method is only useful if you need to paint a single emoji that has already been shaped.
     pub fn paint_emoji(&mut self, origin: Point<Pixels>, font_id: FontId, glyph_id: GlyphId, font_size: Pixels) -> Result<()> {
         let scale_factor = self.scale_factor();
-        let glyph_origin = origin.scale(scale_factor);
+        let glyph_origin = glyph_at(origin, scale_factor);
         let params = RenderGlyphParams {
             font_id,
             glyph_id,
@@ -1095,5 +1099,17 @@ mod tests {
         // (-83.4 is 0.6 into the pixel from -84.)
         assert_eq!([at(-84.0), at(-83.7), at(-83.4), at(-83.01)], [0, 1, 2, 3]);
         assert_eq!(subpixel_variant(Point { x: ScaledPixels(-0.25), y: ScaledPixels(-0.5) }).y, 0);
+    }
+
+    /// A glyph a quarter into a pixel at 1.25× is drawn there however its
+    /// place in points was added up.
+    #[test]
+    fn a_glyph_is_drawn_where_it_is_whatever_the_float_noise() {
+        // (101 + 0.2 points, at 1.25×: 126.5, give or take.)
+        let summed = [Pixels(101.0) + Pixels(0.2), Pixels(100.2) + Pixels(1.0), Pixels(126.5 / 1.25), Pixels(80.96) + Pixels(20.24)];
+        let at = summed.map(|x| glyph_at(Point { x, y: Pixels(0.0) }, 1.25).x);
+        assert!(at.iter().all(|&x| x == ScaledPixels(126.5)), "{at:?}");
+        let variants = at.map(|x| subpixel_variant(Point { x, y: ScaledPixels(0.0) }).x);
+        assert_eq!(variants, [2; 4]);
     }
 }

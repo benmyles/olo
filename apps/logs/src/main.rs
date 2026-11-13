@@ -39,7 +39,7 @@ use olo_kit::{
     search::{self, Facet, SearchEvent, SearchField, search_field},
     style::{self, c},
     theme,
-    widgets::{Button, CheckBox, Column, ColumnListView, ListModel, SCROLL_BAR, TextView, text_view},
+    widgets::{Button, CheckBox, Column, ColumnListView, ListModel, TextView, text_view},
 };
 use olo_kit_base::list::ListState;
 use olo_theme::Palette;
@@ -55,6 +55,8 @@ const TIMES: [(Since, &str); 5] = [(Since::Minutes(10), "Last 10 Minutes"), (Sin
 
 /// The height of the pane under the list with the selected line in full.
 const DETAIL: f32 = 112.0;
+/// The least the Message column is given (the last: it fills the rest).
+const MESSAGE_LEAST: f32 = 200.0;
 
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
@@ -715,13 +717,12 @@ impl Logs {
     }
 
     fn list_view(&mut self, cx: &mut Cx<Self>) -> Element {
-        // The message as wide as the rest of the list allows (inside its
-        // frame and beside its scroll bar), so it never scrolls sideways
-        // unless the window is too narrow.
-        let width = f32::from(cx.viewport_size().width) - 2.0 * m::WINDOW_INSET;
-        let scale = cx.scale_factor();
-        let frame = style::line_pixels(scale) / scale * 4.0;
-        let columns = vec![Column::new("Time", 150.0), Column::new("Program", 132.0), Column::new("Level", 70.0), Column::new("Message", (width - frame - SCROLL_BAR - 352.0).floor().max(200.0))];
+        // The message as wide as the rest of the list allows: the last
+        // column fills what the others leave, and the list scrolls
+        // sideways only when the window is too narrow for 200 points of
+        // it. (Not worked out from the window's width: a live resize then
+        // lays the window out again without making it again.)
+        let columns = vec![Column::new("Time", 150.0), Column::new("Program", 132.0), Column::new("Level", 70.0), Column::new("Message", MESSAGE_LEAST)];
         let empty = match (self.loaded, &self.source) {
             (true, _) => "No lines match.",
             (false, None) => "Reading the journal…",
@@ -898,7 +899,8 @@ impl View for Logs {
         // The search and the filters' menus: in one row when there's
         // room, else the menus under the search (the kit's search header).
         let facets = self.facets(cx);
-        let width = f32::from(cx.viewport_size().width) - 2.0 * m::WINDOW_INSET;
+        // (The width it was laid out at: the window's only until it was.)
+        let width = search::header_width(cx, "logs").unwrap_or_else(|| f32::from(cx.viewport_size().width) - 2.0 * m::WINDOW_INSET);
         let controls = search::header(cx, &self.search, "logs", facets, width).min_field(260.0).indent(search::list_indent(cx));
 
         let list = match &self.failed {

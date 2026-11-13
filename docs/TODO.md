@@ -895,11 +895,21 @@ something nobody here has is in "Blocked", with what it waits for.
          elements (2,797 allocations and 2.4 MB copied a step,
          memhist); the profile is flat after that (text recorded again
          7%, the rows' glyphs copied into the frame 4%, taffy 8%,
-         allocating 14%). The way out: a list column that fills what
-         the others leave (`Column` sized at paint from its row's
-         bounds, the header's too), and a search header that lays out
-         its one row or two by itself, so a resize lays out and paints
-         without the body.
+         allocating 14%). *Done 2026-11-13:* the Message column is
+         the list's last, which fills what the others leave, and the
+         search header lays its row out by itself (the field takes
+         what the row leaves; the view says it again only when the
+         header's own width changes it from one row to two,
+         `search::header_width`), so a step runs no body of Logs'
+         (bodies 0.17–0.30 → 0.014 ms a step: the Frame's alone). On
+         `sample.log` (20,000 lines), three runs each in turn,
+         medians: 10.09 → 8.74 M instructions and 8.44 → 6.86 M
+         cycles a step. What's left is painting: every row is wider,
+         so drawn again (sprites into the scene 8%, copying them 5%,
+         a glyph's tile looked up 3%, Logs' highlight spans 2%).
+         Drawing a row's text as glyph runs (`paint_glyph_run`, found
+         once, then moved) would take most of that; a row whose width
+         alone changed could keep its cells but the last.
        - *The editor's heights, done 2026-11-13.* It walked every
          paragraph when the width it wraps to changed (`set_look`
          estimated each one's height again, `ensure_tops` added them
