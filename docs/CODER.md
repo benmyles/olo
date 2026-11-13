@@ -468,7 +468,10 @@ Idle clients and service workers sleep on sockets/channels, without polling.
 On Olo's upgrade signal, the service drains active turns and pending approvals,
 rejects new turns temporarily, then re-executes. It marks itself as waiting so
 the desktop does not kill an in-progress operation. Clients reconnect and replay
-from their cursors. Initial connection failures retry with bounded backoff while
+from their cursors. A service whose program file was replaced by a newer build
+that olo-session doesn't upgrade (a worktree's `target/release`) is sent that
+signal by the first client of the new build to connect: otherwise a new window
+would talk to an old service, which refuses settings it doesn't know. Initial connection failures retry with bounded backoff while
 retaining the requested session and composer draft. Reconnection appears as a
 temporary status rather than repeated transcript entries. The GUI and TUI preserve the attached session and draft;
 the GUI also restores its selected pane, follow setting, and unfinished forms

@@ -160,8 +160,53 @@ mod tests {
         }
     }
 }
+/// The program file a process runs, and whether that file has since been
+/// replaced (a newer build in its place).
+fn program_of(pid: &str) -> Option<(PathBuf, bool)> {
+    let exe = std::fs::read_link(format!("/proc/{pid}/exe")).ok()?;
+    let text = exe.to_string_lossy();
+    let replaced = text.ends_with(" (deleted)");
+    Some((PathBuf::from(text.trim_end_matches(" (deleted)")), replaced))
+}
+/// The process at the other end of a Unix socket, if it is ours.
+fn peer(stream: &std::os::unix::net::UnixStream) -> Option<libc::pid_t> {
+    use std::os::fd::AsRawFd;
+    let mut cred: libc::ucred = unsafe { std::mem::zeroed() };
+    let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+    // SAFETY: SO_PEERCRED fills a ucred of the given length.
+    let ok = unsafe { libc::getsockopt(stream.as_raw_fd(), libc::SOL_SOCKET, libc::SO_PEERCRED, (&raw mut cred).cast(), &mut len) } == 0;
+    (ok && cred.uid == unsafe { libc::geteuid() } && cred.pid > 0).then_some(cred.pid)
+}
+/// A service still running a build that has since been replaced by this
+/// one (built in place, as in a worktree's target/release, which
+/// olo-session doesn't upgrade) is told to upgrade, as olo-session would
+/// (SIGURG): it finishes what it has under way and becomes this build.
+/// Otherwise a newer window speaks to an older service (a setting it
+/// doesn't know, refused). Waits a moment for it, bounded; a service busy
+/// with a run becomes the new build when the run ends.
+fn upgrade_stale(dir: &std::path::Path, stream: &std::os::unix::net::UnixStream) {
+    let Some(pid) = peer(stream) else { return };
+    let (Some((theirs, replaced)), Some((ours, false))) = (program_of(&pid.to_string()), program_of("self")) else { return };
+    if !replaced || theirs != ours {
+        return;
+    }
+    // SAFETY: a signal to our own service, which handles it.
+    unsafe { libc::kill(pid, libc::SIGURG) };
+    let waiting = olo_kit_base::restore::waiting_marker(pid as u32);
+    for _ in 0..100 {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        if waiting.exists() {
+            return; // (Busy: it upgrades when its work is done.)
+        }
+        let became = program_of(&pid.to_string()).is_none_or(|(_, replaced)| !replaced);
+        if became && std::os::unix::net::UnixStream::connect(rpc::socket(dir)).is_ok() {
+            return;
+        }
+    }
+}
 fn ensure_service(dir: &std::path::Path) -> Result<()> {
-    if std::os::unix::net::UnixStream::connect(rpc::socket(dir)).is_ok() {
+    if let Ok(stream) = std::os::unix::net::UnixStream::connect(rpc::socket(dir)) {
+        upgrade_stale(dir, &stream);
         return Ok(());
     }
     use std::os::unix::{fs::OpenOptionsExt, process::CommandExt};
