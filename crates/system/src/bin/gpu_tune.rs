@@ -30,25 +30,9 @@ use olo_system::{
     gpus, power_profile, systemd,
 };
 
-const INSTALLED: &str = "/usr/local/libexec/olo-gpu-tune";
-const RULE_FILE: &str = "/etc/udev/rules.d/73-olo-gpu-tune.rules";
-const RULE: &str =
-    "# Olo: each GPU's tuning (Preferences ▸ Power), set again as it appears.\nACTION==\"add\", SUBSYSTEM==\"drm\", KERNEL==\"card[0-9]*\", RUN+=\"/usr/local/libexec/olo-gpu-tune apply %k\"\n";
-const SERVICE_NAME: &str = "olo-gpu-follow.service";
-const SERVICE_FILE: &str = "/etc/systemd/system/olo-gpu-follow.service";
-const SERVICE: &str = "# Olo: the processors and each GPU on their presets as the power mode or the power supply changes (Preferences ▸ Power).
-[Unit]
-Description=Olo: the processors and GPUs follow the power mode and the power supply
-After=dbus.service power-profiles-daemon.service tuned-ppd.service
-
-[Service]
-ExecStart=/usr/local/libexec/olo-gpu-tune follow
-Restart=on-failure
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-";
+use gpu_tuning::{
+    FOLLOWER_PROGRAM as INSTALLED, FOLLOWER_RULE as RULE, FOLLOWER_RULE_PATH as RULE_FILE, FOLLOWER_SERVICE as SERVICE_NAME, FOLLOWER_UNIT as SERVICE, FOLLOWER_UNIT_PATH as SERVICE_FILE,
+};
 
 fn main() {
     olo_crash::install();
@@ -153,8 +137,28 @@ fn set() -> i32 {
 
 /// The plan's presets for `mode` and the power supply: every GPU's (kept
 /// and applied as `set` does; NVIDIA's asked what it allows, waking it a
-/// moment, as applying its preset does anyway) and the processors'.
+/// moment, as applying its preset does anyway) and the processors'
+/// (and what was done said in `/run/olo-gpu-follow.json`, for Olo Doctor
+/// and Preferences).
 fn follow_now(mode: power_profile::Mode, on_battery: bool) -> Vec<(String, gpu_tuning::Applied)> {
+    let out = follow_plan(mode, on_battery);
+    let kept = Tuning::load();
+    let followed = gpu_tuning::Followed {
+        version: gpu_tuning::FOLLOWER_VERSION,
+        mode: mode.id().into(),
+        on_battery,
+        cpu: kept.plan.cpu_now(mode, on_battery).id().into(),
+        top: kept.plan.cpu_top_now(mode, on_battery),
+        failed: out.iter().flat_map(|(what, done)| done.iter().filter_map(move |d| d.as_ref().err().map(|e| format!("{what}: {e}")))).collect(),
+        cpu_after: cpu_tuning::caps(),
+    };
+    if let Err(e) = followed.save() {
+        eprintln!("olo-gpu-tune: couldn't say what was done: {e}");
+    }
+    out
+}
+
+fn follow_plan(mode: power_profile::Mode, on_battery: bool) -> Vec<(String, gpu_tuning::Applied)> {
     let kept = Tuning::load();
     let gpus: Vec<gpu_tuning::PlanGpu> = gpus::list().iter().filter_map(|g| Some(gpu_tuning::PlanGpu { pci: g.pci.clone(), caps: gpu_tuning::caps(g, true)?, nvidia: g.vendor == 0x10de })).collect();
     if let Some(new) = gpu_tuning::scenario(&kept, &gpus, mode, on_battery) {
@@ -164,8 +168,8 @@ fn follow_now(mode: power_profile::Mode, on_battery: bool) -> Vec<(String, gpu_t
         }
     }
     let mut out = gpu_tuning::apply_kept(None, true);
-    let cpu = kept.plan.cpu_now(mode, on_battery);
-    out.push((format!("processors ({})", cpu.name()), cpu_tuning::apply(cpu)));
+    let (cpu, top) = (kept.plan.cpu_now(mode, on_battery), kept.plan.cpu_top_now(mode, on_battery));
+    out.push((format!("processors ({})", cpu.name()), cpu_tuning::apply(cpu, top, on_battery)));
     out
 }
 

@@ -7711,8 +7711,19 @@ configurable with reasonable defaults"), in three tabs:
   profiles daemon sets for its modes, so each can be chosen anywhere:
   Saving Power (the powersave governor, the "power" energy preference,
   turbo off, the firmware's low-power profile), Balanced
-  (balance_performance, turbo, balanced) and Fastest (the performance
-  governor, turbo, performance). A GPU's are Cooler and Quieter,
+  (balance_performance, on battery balance_power as tuned's
+  balanced-battery has it, turbo, balanced) and Fastest (the performance
+  governor, turbo, performance). Below them, the processors' Top speed
+  (`Plan::cpu_top`: 100, 90, 80, 75, 60 or 50% of the fastest they go;
+  intel_pstate's `max_perf_pct`, else each processor's
+  `scaling_max_freq`), by default its preset's own: Balanced's 75%,
+  the others' 100% (Ben, 2026-11-13: "right now the cpu on it ends up
+  still being too high, but on power saving it's too low. can we make
+  it so that the cpu is limited to like 75% of what it gets now on
+  balanced instead?"). The last quarter of a processor's clock is where
+  it spends most (its voltage climbs with it), so the cap takes away the
+  hottest bursts and keeps most of the speed; Power Saver, without
+  turbo, holds the ThinkPad's P-cores at 1.9 GHz of their 4.7. A GPU's are Cooler and Quieter,
   Balanced, Fastest (`gpu_tuning::preset`) or Custom (its own knobs, on
   Graphics). The On Battery column is "As the Mode" or a preset that
   holds whatever the mode. The defaults: each mode's own, and on battery
@@ -7720,8 +7731,8 @@ configurable with reasonable defaults"), in three tabs:
   wakes it on battery too). Only choices that differ from the defaults
   are kept (`Plan::chosen`), so a GPU added later takes its defaults.
   Below: what's in force now ("Now Performance, on battery: the
-  processors Fastest, Intel Graphics Fastest, NVIDIA RTX PRO 2000 Cooler
-  and Quieter").
+  processors Fastest at up to 100%, Intel Graphics Fastest, NVIDIA RTX
+  PRO 2000 Cooler and Quieter").
 - Graphics: a box for each GPU (`olo_system::gpus`: what it drives,
   whether it's awake, the preset it's on now and what that has it on in
   numbers (`gpus::in_force`: xe's clocks as its driver says now,
@@ -7812,11 +7823,25 @@ the power mode in prefs -> power doesn't change the clock setting of
 the nvidia gpu?"). Held, the GPU still sleeps: on the ThinkPad (driver
 615, fine-grained runtime D3) it suspended 25 s after its last use with
 NVML open, video memory off; closing NVML is what woke it. `set` keeps the whole tuning (the plan, each GPU's Custom
-knobs) and applies what's in force now. One password, at the first
-Apply; Power Modes offers Apply while the service isn't there, or is
-from an older build (the installed program compared with the
-`olo-gpu-tune` beside Preferences, on its reading thread), and
-otherwise says what's in force now. The panel follows
+knobs) and applies what's in force now. After each change the
+follower says what it did in `/run/olo-gpu-follow.json`
+(`gpu_tuning::Followed`, readable by all): its version
+(`FOLLOWER_VERSION`, raised whenever what the follower does changes, not
+with every build: a new build of the same follower isn't worth an
+administrator's password), the mode and supply, the processors' preset
+and top speed, what was refused, and the processors as they were just
+after. One password, at the first Apply; Power Modes offers Apply while
+the service isn't there, or says an older version (or nothing), and
+otherwise says what's in force now. Olo Doctor checks the same
+(`power_modes`, with a power profiles daemon and processors that can be
+set; Ben, 2026-11-13: "olo doctor should make sure those profiles get
+set/customized properly"): the follower not installed (Install It: the
+program copied where only root can change it, the unit and rule,
+systemd told, started), stopped (Start It), out of date (Update It),
+refused something (Try Again), or the processors changed since it set
+them by something else, ten seconds after it wrote (Set Them Again:
+it's started again, which sets everything for the mode now); else
+fine, saying what's in force. The panel follows
 `/etc/olo/gpus.json` (inotify) so what's shown changes with the mode
 and the supply. On the ThinkPad
 (2026-11-04): Power Saver put the Intel GPU on 650–1600 MHz with its

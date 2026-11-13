@@ -26,6 +26,76 @@ use serde::{Deserialize, Serialize};
 /// Where the tuning is kept (root's: it's the computer's).
 pub const FILE: &str = "/etc/olo/gpus.json";
 
+/// The follower (`olo-gpu-tune follow`, the root service that puts the
+/// processors and GPUs on the plan as the power mode and the supply
+/// change): its program, where only root can change it, its service and
+/// the udev rule that tunes each GPU as it appears (`olo-gpu-tune set`
+/// installs them; Olo Doctor too, `power_modes`).
+pub const FOLLOWER_PROGRAM: &str = "/usr/local/libexec/olo-gpu-tune";
+pub const FOLLOWER_SERVICE: &str = "olo-gpu-follow.service";
+pub const FOLLOWER_UNIT_PATH: &str = "/etc/systemd/system/olo-gpu-follow.service";
+pub const FOLLOWER_UNIT: &str = "# Olo: the processors and each GPU on their presets as the power mode or the power supply changes (Preferences ▸ Power).
+[Unit]
+Description=Olo: the processors and GPUs follow the power mode and the power supply
+After=dbus.service power-profiles-daemon.service tuned-ppd.service
+
+[Service]
+ExecStart=/usr/local/libexec/olo-gpu-tune follow
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+";
+pub const FOLLOWER_RULE_PATH: &str = "/etc/udev/rules.d/73-olo-gpu-tune.rules";
+pub const FOLLOWER_RULE: &str =
+    "# Olo: each GPU's tuning (Preferences ▸ Power), set again as it appears.\nACTION==\"add\", SUBSYSTEM==\"drm\", KERNEL==\"card[0-9]*\", RUN+=\"/usr/local/libexec/olo-gpu-tune apply %k\"\n";
+
+/// What the follower does, as a number raised whenever that changes
+/// (not with every build): a follower that says an older one is out of
+/// date (Olo Doctor, Preferences ▸ Power). 2: the processors' top speed
+/// (Balanced's 75%) and Balanced leaning to saving on battery.
+pub const FOLLOWER_VERSION: u32 = 2;
+
+/// What the follower last did, written by it after each change to
+/// `/run/olo-gpu-follow.json` (readable by all): which version it is,
+/// the mode and supply it followed, the processors' preset and top speed
+/// it set, what failed, and the processors as they were just after
+/// (something changing them since shows against it).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Followed {
+    pub version: u32,
+    /// The mode's id ("balanced").
+    pub mode: String,
+    pub on_battery: bool,
+    /// The processors' preset's id, and their top speed in percent.
+    pub cpu: String,
+    pub top: u8,
+    /// What couldn't be set, as each write said.
+    pub failed: Vec<String>,
+    pub cpu_after: Option<crate::cpu_tuning::CpuCaps>,
+}
+
+impl Followed {
+    /// Where it's written, under the file system's root `root`.
+    pub fn path(root: &Path) -> PathBuf {
+        root.join("run/olo-gpu-follow.json")
+    }
+
+    pub fn load(root: &Path) -> Option<Followed> {
+        serde_json::from_slice(&std::fs::read(Followed::path(root)).ok()?).ok()
+    }
+
+    /// Written whole, then put in place (root).
+    pub fn save(&self) -> std::io::Result<()> {
+        let path = Followed::path(Path::new("/"));
+        let new = path.with_extension("json.new");
+        std::fs::write(&new, serde_json::to_vec_pretty(self).unwrap_or_default())?;
+        std::fs::rename(new, path)
+    }
+}
+
 /// A tuning chosen at once: each GPU's knobs set for it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum Preset {
@@ -181,6 +251,32 @@ impl Plan {
             When::Mode(m) => Some(for_mode(m)),
             When::Battery => nvidia.then_some(Preset::Cooler),
         }
+    }
+
+    /// The processors' top speed `when`, in percent of their fastest (on
+    /// battery, None: the mode's). Unless chosen, its preset's own
+    /// (Balanced's 75%).
+    pub fn cpu_top(&self, when: When) -> Option<u8> {
+        match self.chosen.get(&format!("{}/cpu-top", when.key())) {
+            Some(pct) => pct.parse().ok(),
+            None => self.cpu(when).map(|p| p.top()),
+        }
+    }
+
+    /// The processors' top speed chosen `when` (None on battery: the
+    /// mode's; its preset's own is kept as no choice).
+    pub fn set_cpu_top(&mut self, when: When, top: Option<u8>) {
+        let key = format!("{}/cpu-top", when.key());
+        let default = match when {
+            When::Battery if self.cpu(When::Battery).is_none() => None,
+            w => self.cpu(w).map(|p| p.top()),
+        };
+        self.choose(key, top == default, &top.map_or("mode".to_owned(), |t| t.to_string()));
+    }
+
+    /// The processors' top speed in force in `mode`, on battery or not.
+    pub fn cpu_top_now(&self, mode: crate::power_profile::Mode, on_battery: bool) -> u8 {
+        on_battery.then(|| self.cpu_top(When::Battery)).flatten().or_else(|| self.cpu_top(When::Mode(mode))).unwrap_or_else(|| cpu_for_mode(mode).top())
     }
 
     /// The processors' preset chosen `when` (None on battery: the mode's).
@@ -671,6 +767,31 @@ mod tests {
         plan.set_cpu(When::Mode(Mode::PowerSaver), Some(CpuPreset::Balanced));
         let back: Plan = serde_json::from_str(&serde_json::to_string(&plan).unwrap()).unwrap();
         assert_eq!(back, plan);
+    }
+
+    /// The processors' top speed: Balanced's 75% unless chosen, the
+    /// others' 100%; on battery the mode's; a choice back on its preset's
+    /// own leaves nothing kept.
+    #[test]
+    fn the_plan_s_top_speeds() {
+        use crate::{cpu_tuning::CpuPreset, power_profile::Mode};
+        let mut plan = Plan::default();
+        assert_eq!(plan.cpu_top(When::Mode(Mode::Balanced)), Some(75));
+        assert_eq!(plan.cpu_top(When::Mode(Mode::Performance)), Some(100));
+        assert_eq!(plan.cpu_top(When::Battery), None);
+        assert_eq!((plan.cpu_top_now(Mode::Balanced, false), plan.cpu_top_now(Mode::Balanced, true), plan.cpu_top_now(Mode::PowerSaver, true)), (75, 75, 100));
+        // Balanced at 90%; on battery 60%.
+        plan.set_cpu_top(When::Mode(Mode::Balanced), Some(90));
+        plan.set_cpu_top(When::Battery, Some(60));
+        assert_eq!((plan.cpu_top_now(Mode::Balanced, false), plan.cpu_top_now(Mode::Performance, true)), (90, 60));
+        // A preset chosen on battery takes its own top unless one's chosen.
+        plan.set_cpu_top(When::Battery, None);
+        plan.set_cpu(When::Battery, Some(CpuPreset::Balanced));
+        assert_eq!(plan.cpu_top_now(Mode::Performance, true), 75);
+        plan.set_cpu(When::Battery, None);
+        // Back on the defaults: nothing kept.
+        plan.set_cpu_top(When::Mode(Mode::Balanced), Some(75));
+        assert!(plan.chosen.is_empty(), "{plan:?}");
     }
 
     /// The plan applied: each GPU on what it says for the mode and the

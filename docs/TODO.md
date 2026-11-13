@@ -1363,6 +1363,22 @@ accessibility tree test on an agent screen (GTK's Text Editor, 30
 nodes). What's left needs Ben: in Blocked, "The ignored tests that
 need Ben".)
 
+- **Balanced keeps the processors out of their hottest top speed, and
+  Olo Doctor sees that the modes are set as planned** (Ben, 2026-11-13:
+  "right now the cpu on it ends up still being too high, but on power
+  saving it's too low. can we make it so that the cpu is limited to
+  like 75% of what it gets now on balanced instead?", then "olo doctor
+  should make sure those profiles get set/customized properly"). Done:
+  a Top speed per mode and on battery in Preferences ▸ Power ▸ Power
+  Modes (intel_pstate's `max_perf_pct`), Balanced's 75% by default;
+  Balanced on battery leans to saving (balance_power, as tuned's
+  balanced-battery; Olo's follower had set balance_performance over it).
+  The follower says what it did in `/run/olo-gpu-follow.json`, and Olo
+  Doctor checks it's installed, current, running, refused nothing and
+  that nothing changed the processors since, each with its fix. On the
+  ThinkPad, after Ben's upgrade at 12:36: Balanced set "top speed 75%",
+  and a loaded P-core held 3.6 GHz of its 4.7. For Ben: whether
+  Balanced now runs as cool as he wants (60% and 50% are there too).
 - **A security key doesn't unlock a locked or logged-out computer**
   (Ben, 2026-11-13: "the yubikey should not work at the login screen
   (but face recognition and fingerprint should, as well as password).

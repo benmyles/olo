@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-13
 
+### Power Modes: the processors' top speed
+
+*12:38* — Preferences ▸ Power ▸ Power Modes gets a Top speed row: how fast the processors may go in each mode and on battery, Balanced 75% by default (Ben: Balanced ran too hot, Power Saver too slow). On the ThinkPad a loaded P-core now tops out at 3.6 GHz of its 4.7 in Balanced.
+
+![Power Modes: the processors' top speed](2026-11-13/123845-power-modes-the-processors-top-speed.png)
+
 ### Tracker list view: Edit Name shows its field
 
 *02:43* — Before (top): F2 in the list view blanked the name and showed no field, so typing went nowhere. After: the rename field sits over the Name cell, inside the column (a longer name scrolls in it); clicks in it place the caret. The kit's ColumnListView::over_cell.

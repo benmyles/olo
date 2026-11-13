@@ -20,7 +20,7 @@ use olo_kit::{
 };
 use olo_sync::Mutex;
 use olo_system::{
-    cpu_tuning::CpuPreset,
+    cpu_tuning::{CpuPreset, TOPS},
     gpu_tuning::{self, Caps, GpuTune, Preset, Tuning, When},
     gpus::{self, Gpu},
 };
@@ -42,10 +42,8 @@ impl State {
 }
 
 /// The root service that puts the GPUs on the power mode's preset
-/// (`olo-gpu-tune follow`, installed by `olo-gpu-tune set`), and the
-/// program it runs.
-const FOLLOWER: &str = "/etc/systemd/system/olo-gpu-follow.service";
-const INSTALLED: &str = "/usr/local/libexec/olo-gpu-tune";
+/// (`olo-gpu-tune follow`, installed by `olo-gpu-tune set`).
+const FOLLOWER: &str = olo_system::gpu_tuning::FOLLOWER_UNIT_PATH;
 
 /// Whether the power mode's follower is installed, and from this build.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -57,20 +55,17 @@ enum Follower {
     Current,
 }
 
-/// The follower as installed, against the `olo-gpu-tune` beside this
-/// program (on the reading thread: the two compared byte for byte only
-/// when they're one size).
+/// The follower as installed: out of date when what it last did says an
+/// older version of what it does (`gpu_tuning::FOLLOWER_VERSION`, raised
+/// as that changes, not with every build: a new build of the same
+/// follower isn't worth an administrator's password), or says nothing.
 fn follower() -> Follower {
+    use olo_system::gpu_tuning::{FOLLOWER_VERSION, Followed};
     if !std::path::Path::new(FOLLOWER).exists() {
         return Follower::Missing;
     }
-    let Ok(exe) = std::env::current_exe() else { return Follower::Current };
-    let ours = std::path::PathBuf::from(exe.to_string_lossy().trim_end_matches(" (deleted)")).with_file_name("olo-gpu-tune");
-    let len = |p: &std::path::Path| std::fs::metadata(p).map(|m| m.len()).ok();
-    match (len(std::path::Path::new(INSTALLED)), len(&ours)) {
-        // (Ours not here to compare: as it is.)
-        (_, None) => Follower::Current,
-        (Some(a), Some(b)) if a == b && std::fs::read(INSTALLED).ok() == std::fs::read(&ours).ok() => Follower::Current,
+    match Followed::load(std::path::Path::new("/")) {
+        Some(f) if f.version >= FOLLOWER_VERSION => Follower::Current,
         _ => Follower::Old,
     }
 }
@@ -461,6 +456,21 @@ pub fn modes(ui: &mut Ui, st: &mut State) {
             })
             .collect();
         row(ui, "cpu", "Processors".into(), cells);
+        // Their top speed.
+        let top_names = |battery: bool| -> Vec<SharedString> { battery.then(|| SharedString::from("As the Mode")).into_iter().chain(TOPS.iter().map(|t| SharedString::from(format!("{t}%")))).collect() };
+        let cells = When::ALL
+            .into_iter()
+            .map(|w| {
+                let battery = w == When::Battery;
+                let chosen = edited.plan.cpu_top(w).and_then(|t| TOPS.iter().position(|q| *q == t)).map_or(0, |i| i + usize::from(battery));
+                let set: Box<dyn Fn(&mut Tuning, usize)> = Box::new(move |t: &mut Tuning, i: usize| {
+                    let top = if battery { i.checked_sub(1).map(|i| TOPS[i]) } else { Some(TOPS[i]) };
+                    t.plan.set_cpu_top(w, top);
+                });
+                (top_names(battery), chosen, set)
+            })
+            .collect();
+        row(ui, "cpu-top", "Top speed".into(), cells);
         // Each GPU that can be tuned.
         for e in gpus.iter().filter(|e| !matches!(e.caps, Some(Caps::None))) {
             let (pci, nvidia) = (e.gpu.pci.clone(), e.gpu.vendor == 0x10de);
@@ -480,14 +490,15 @@ pub fn modes(ui: &mut Ui, st: &mut State) {
                 .collect();
             row(ui, &e.gpu.pci, short_name(&e.gpu), cells);
         }
-        ui.note("Processors: Saving Power slows them and turns turbo off, Fastest keeps them quick; a GPU's Cooler and Quieter caps its clocks, Fastest lifts them, Custom is its own settings (Graphics). On battery, whatever the mode, a row set to something other than As the Mode is on that: NVIDIA's GPU saves power then, as video wakes it on battery too.");
+        ui.note("Processors: Saving Power slows them and turns turbo off, Balanced lets them speed up when there's work (leaning to saving on battery), Fastest keeps them quick. Top speed caps how fast they go: Balanced's 75% leaves out their hottest quarter and keeps most of their speed. A GPU's Cooler and Quieter caps its clocks, Fastest lifts them, Custom is its own settings (Graphics). On battery, whatever the mode, a row set to something other than As the Mode is on that: NVIDIA's GPU saves power then, as video wakes it on battery too.");
         match (mode, follower) {
             (_, Follower::Missing) => ui.note("Apply once to let Olo follow the mode and the power supply: an administrator's password is asked, this once."),
             (_, Follower::Old) => ui.note("What follows them is from an older Olo: Apply to bring it up to date (an administrator's password is asked)."),
             (Some(m), Follower::Current) => {
                 let gpus_now: Vec<String> = gpus.iter().filter(|e| !matches!(e.caps, Some(Caps::None))).map(|e| format!("{} {}", short_name(&e.gpu), kept.plan.gpu_now(m, on_battery, &e.gpu.pci, e.gpu.vendor == 0x10de).name())).collect();
                 let cpu = kept.plan.cpu_now(m, on_battery).name();
-                ui.note(format!("Now {}{}: the processors {cpu}, {}.", m.label(), if on_battery { ", on battery" } else { "" }, gpus_now.join(", ")));
+                let top = kept.plan.cpu_top_now(m, on_battery);
+                ui.note(format!("Now {}{}: the processors {cpu} at up to {top}%, {}.", m.label(), if on_battery { ", on battery" } else { "" }, gpus_now.join(", ")));
             }
             (None, Follower::Current) => ui.note("No power profiles daemon is running, so there's no power mode to follow."),
         }
