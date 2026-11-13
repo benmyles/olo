@@ -4,7 +4,7 @@ use crate::{
     models,
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use olo_coder_core::{ModelConfig, Provider, profiles::ModelProfile};
+use olo_coder_core::{ModelConfig, profiles::ModelProfile};
 use ratatui::{
     Frame,
     layout::Rect,
@@ -212,6 +212,8 @@ impl Panel {
                     KeyCode::Enter => {
                         if let Some(id) = ids.get(*selected) {
                             e.fields[4] = (*id).clone();
+                            e.picker = None;
+                            e.choose_model();
                         }
                         e.picker = None;
                     }
@@ -511,7 +513,7 @@ impl Panel {
                 KeyCode::Enter if e.at == 4 && e.source == e.source() => e.picker = Some((String::new(), 0)),
                 KeyCode::Left | KeyCode::Right | KeyCode::Enter if matches!(e.at, 1 | 4 | 5) => {
                     let choices = match e.at {
-                        1 => vec!["Codex · Token Pool".into(), "Custom endpoint".into()],
+                        1 => services(),
                         4 => {
                             if e.source == e.source() {
                                 e.ids.clone()
@@ -525,6 +527,11 @@ impl Panel {
                         let at = choices.iter().position(|v| v == &e.fields[e.at]).unwrap_or(0);
                         let next = if key.code == KeyCode::Left { (at + choices.len() - 1) % choices.len() } else { (at + 1) % choices.len() };
                         e.fields[e.at] = choices[next].clone();
+                        match e.at {
+                            1 => e.choose_service(),
+                            4 => e.choose_model(),
+                            _ => {}
+                        }
                     }
                 }
                 KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) && !matches!(e.at, 1 | 4 | 5) => e.fields[e.at].clear(),
@@ -617,7 +624,7 @@ impl Panel {
                     );
                     return;
                 }
-                let labels = ["Name", "Provider", "API root", "Key variable", "Model", "Reasoning", "Context tokens", "Output tokens"];
+                let labels = ["Name", "Provider", "API root", "Key", "Model", "Reasoning", "Context tokens", "Output tokens"];
                 let mut lines = vec![Line::from("Choose values with ← →. Enter on Model opens a searchable list."), Line::default()];
                 for (i, label) in labels.iter().enumerate() {
                     let choice = matches!(i, 1 | 4 | 5);
@@ -633,45 +640,100 @@ impl Panel {
         }
     }
 }
+/// How this editor says where a model runs.
+fn services() -> Vec<String> {
+    models::services("Codex · Token Pool", "Custom endpoint")
+}
 fn model_source(model: &ModelConfig) -> String {
-    format!("{:?}\n{}\n{}", model.provider, model.endpoint.as_ref().map(|e| e.base_url.as_str()).unwrap_or(""), model.endpoint.as_ref().and_then(|e| e.api_key_env.as_deref()).unwrap_or(""))
+    format!("{}\n{}\n{}", models::service(model), model.endpoint.as_ref().map(|e| e.base_url.as_str()).unwrap_or(""), models::key_text(model))
 }
 impl Editor {
     fn new(profile: ModelProfile, existing: bool) -> Self {
         let m = &profile.model;
         let fields = vec![
             profile.name.clone(),
-            if m.provider == Provider::Codex { "Codex · Token Pool" } else { "Custom endpoint" }.into(),
+            services()[models::service(m)].clone(),
             m.endpoint.as_ref().map(|e| e.base_url.clone()).unwrap_or_default(),
-            m.endpoint.as_ref().and_then(|e| e.api_key_env.clone()).unwrap_or_default(),
+            models::key_text(m),
             m.model.clone(),
             models::EFFORTS[models::effort(&m.effort)].into(),
             m.context_window.to_string(),
             m.max_output_tokens.to_string(),
         ];
         let source = model_source(m);
-        let ids = if existing { vec![m.model.clone()] } else { vec![] };
-        Self { profile, fields, at: 0, ids, status: "Fetch the catalog, choose a model and save.".into(), busy: false, source, picker: None, save_request: None, discovery_request: None }
+        let known = models::known_ids(m);
+        let is_known = !known.is_empty();
+        let ids = if is_known {
+            known
+        } else if existing {
+            vec![m.model.clone()]
+        } else {
+            vec![]
+        };
+        let mut editor =
+            Self { profile, fields, at: 0, ids, status: "Fetch the catalog, choose a model and save.".into(), busy: false, source, picker: None, save_request: None, discovery_request: None };
+        if is_known {
+            editor.source = editor.source();
+        }
+        editor
+    }
+    /// Which service the Provider field says.
+    fn service(&self) -> usize {
+        services().iter().position(|v| *v == self.fields[1]).unwrap_or(0)
     }
     fn source(&self) -> String {
-        let provider = if self.fields[1] == "Custom endpoint" { Provider::Openai } else { Provider::Codex };
-        format!("{provider:?}\n{}\n{}", if provider == Provider::Openai { self.fields[2].trim() } else { "" }, if provider == Provider::Openai { self.fields[3].trim() } else { "" })
+        let service = self.service();
+        let fresh = models::service_model(service);
+        let (root, key) = match service {
+            0 => (String::new(), String::new()),
+            _ if olo_coder_core::providers::of(&fresh).is_some() => (fresh.endpoint.as_ref().map(|e| e.base_url.clone()).unwrap_or_default(), self.fields[3].trim().to_owned()),
+            _ => (self.fields[2].trim().to_owned(), self.fields[3].trim().to_owned()),
+        };
+        format!("{service}\n{root}\n{key}")
+    }
+    /// Another service chosen: its address, usual key, models and limits.
+    fn choose_service(&mut self) {
+        let m = models::service_model(self.service());
+        self.fields[2] = m.endpoint.as_ref().map(|e| e.base_url.clone()).unwrap_or_default();
+        self.fields[3] = models::key_text(&m);
+        self.ids = models::known_ids(&m);
+        self.show_model(&m);
+        self.source = if self.ids.is_empty() { String::new() } else { self.source() };
+    }
+    /// Another model chosen: its known limits and effort.
+    fn choose_model(&mut self) {
+        let mut m = models::service_model(self.service());
+        m.effort = if self.fields[5] == "Provider default" { String::new() } else { self.fields[5].clone() };
+        let id = self.fields[4].clone();
+        if olo_coder_core::providers::of(&m).is_some() {
+            models::choose(&mut m, &id);
+            self.show_model(&m);
+        }
+    }
+    fn show_model(&mut self, m: &ModelConfig) {
+        self.fields[4] = m.model.clone();
+        self.fields[5] = models::EFFORTS[models::effort(&m.effort)].into();
+        self.fields[6] = m.context_window.to_string();
+        self.fields[7] = m.max_output_tokens.to_string();
     }
     fn draft(&self) -> anyhow::Result<ModelProfile> {
         let mut p = self.profile.clone();
         p.name = self.fields[0].trim().into();
-        let provider = if self.fields[1] == "Custom endpoint" { Provider::Openai } else { Provider::Codex };
-        if p.model.provider != provider {
-            p.model = ModelConfig::for_provider(provider);
+        let service = self.service();
+        if models::service(&p.model) != service {
+            p.model = models::service_model(service);
         }
         p.model.model = self.fields[4].clone();
         p.model.effort = if self.fields[5] == "Provider default" { String::new() } else { self.fields[5].clone() };
         p.model.context_window = self.fields[6].parse()?;
         p.model.max_output_tokens = self.fields[7].parse()?;
+        let known = olo_coder_core::providers::of(&p.model).is_some();
         if let Some(endpoint) = &mut p.model.endpoint {
-            endpoint.base_url = self.fields[2].trim().into();
-            endpoint.api_key_env = (!self.fields[3].trim().is_empty()).then(|| self.fields[3].trim().into());
+            if !known {
+                endpoint.base_url = self.fields[2].trim().into();
+            }
         }
+        models::set_key(&mut p.model, &self.fields[3]);
         p.validate()?;
         Ok(p)
     }
@@ -689,6 +751,7 @@ fn menu_matches<'a>(items: &'a [(String, String)], query: &str) -> Vec<&'a (Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+    use olo_coder_core::Provider;
     #[test]
     fn catalog_results_are_discarded_when_endpoint_changes() {
         let profile = ModelProfile { id: olo_coder_core::id(), name: "Endpoint".into(), model: ModelConfig::for_provider(Provider::Openai) };

@@ -259,7 +259,7 @@ pub fn definitions() -> Vec<ToolDef> {
         def(
             "spawn_agent",
             "Start an optional child agent. Parent configuration is inherited; model, effort and every model_config field can be selected. Children default to read-only and cannot loosen parent approval policy. An optional workspace selects an existing subfolder or Git worktree inside the parent workspace. Returns its session id and workspace.",
-            json!({"task":{"type":"string"},"workspace":{"type":"string","description":"Existing folder or worktree within the parent workspace; defaults to the parent workspace."},"model":{"type":"string"},"provider":{"type":"string","enum":["codex","openai"]},"effort":{"type":"string"},"model_config":{"type":"object","description":"Override model fields including thinking, service_tier, max_output_tokens, compaction and extra provider options; inherits defaults for the selected provider."},"read_only":{"type":"boolean"}}),
+            json!({"task":{"type":"string"},"workspace":{"type":"string","description":"Existing folder or worktree within the parent workspace; defaults to the parent workspace."},"model":{"type":"string"},"provider":{"type":"string","enum":["codex","fireworks","openai"],"description":"codex: the Olo token pool; fireworks: Fireworks AI (a known service); openai: a custom OpenAI-compatible endpoint."},"effort":{"type":"string"},"model_config":{"type":"object","description":"Override model fields including thinking, service_tier, max_output_tokens, compaction and extra provider options; inherits defaults for the selected provider."},"read_only":{"type":"boolean"}}),
             &["task"],
         ),
         def(

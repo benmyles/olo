@@ -74,24 +74,52 @@ Set effort to `""` to omit it for models that do not support effort.
 subscription endpoint controls its own per-response limit. Run budgets cover
 both providers, approval review and client compaction.
 
-## Custom OpenAI-compatible endpoints
+## Known services
 
-Choose **Settings ▸ Custom Endpoint…**, or configure an empty session:
+Coder knows how to set up some OpenAI-compatible services, so choosing one is a
+single step: **Settings ▸ Model ▸ Runs on**, `/provider ID`, or `"provider":"ID"`
+in `spawn_agent`. Each is an ordinary custom endpoint in the configuration,
+recognised by its address (`crates/coder/src/providers.rs`), with its models'
+windows, output limits and reasoning efforts filled in.
+
+| ID | Service | Models |
+|---|---|---|
+| `fireworks` | Fireworks AI (`https://api.fireworks.ai/inference/v1`) | DeepSeek V4.1 Flash on Ultrafast (`accounts/fireworks/routers/deepseek-v4p1-flash-1017-ultrafast`, the default) and on the standard path (`accounts/fireworks/models/deepseek-v4p1-flash-1017`): 1M context, 128K output here, effort `high`, `low` or `max` |
+
+Fireworks requests carry `x-session-affinity: SESSION_ID`, which keeps a
+session on one replica so its prompt prefix stays cached. The key is the
+service's **Key** field: an Olo Passwords field reference (`op://vault/item/field`,
+read by the service when it first needs it, kept in memory only, read again
+after the service refuses it) or the name of an environment variable the
+service has (`FIREWORKS_API_KEY` until changed):
 
 ```text
-/endpoint {"base_url":"https://api.fireworks.ai/inference/v1","api_key_env":"FIREWORKS_API_KEY"}
-/model YOUR_FIREWORKS_MODEL_ID
-/set model.context_window 128000
+/provider fireworks
+/set model.endpoint.api_key_env null
+/set model.endpoint.api_key_password "op://Private/Fireworks/credential"
 ```
 
-Use the model/deployment ID and window published for your account; Coder does not
-hardcode Fireworks or DeepSeek model names. `/models` queries the endpoint's
+## Custom OpenAI-compatible endpoints
+
+Choose **Settings ▸ Model ▸ Runs on: An OpenAI-compatible endpoint**, or
+configure an empty session:
+
+```text
+/endpoint {"base_url":"https://example.com/v1","api_key_env":"EXAMPLE_API_KEY"}
+/model YOUR_MODEL_ID
+/set model.context_window 262144
+```
+
+Use the model/deployment ID and window published for your account (a new
+custom endpoint assumes 1M, so set yours). `/models` queries the endpoint's
 `GET /models` catalog when supported. Requests use `POST /chat/completions` below
 the configured API root. The GUI saves endpoint and model together. The TUI's
 `/config` or JSON `configure` command can also update them atomically.
 
-The service must inherit `FIREWORKS_API_KEY` when it starts. Export it in the shell
-that starts the service, then launch Coder. Changing a client's environment does
+A key in an environment variable (`api_key_env`) must be in the service's
+environment when it starts; `api_key_password` (a Passwords field) needs no
+restart. For a variable, export it in the shell that starts the service, then
+launch Coder. Changing a client's environment does
 not alter an already-running service; after its work is stopped, its explicit
 `--rpc '{"op":"shutdown"}'` command allows restarting it from the new environment.
 Never paste a key into a session message or configuration. An unauthenticated local
@@ -284,7 +312,7 @@ workspace edits, developer processes and MCP tool calls. `auto` asks a separate
 configurable reviewer model to judge the exact action against
 `approval_guidance`. Only a parsed affirmative verdict approves it; a refusal,
 malformed verdict or reviewer failure goes to the person. Decisions are recorded.
-`allow` explicitly approves tool effects. `denied_tools` always wins over
+`allow`, the default, approves tool effects. `denied_tools` always wins over
 `allowed_tools`, and spec/read-only restrictions win over approval. An approval
 is tied to its session and tool call ID, not a blanket approval for future calls.
 If saving a decision fails, its pending approval remains available for retry;
@@ -294,8 +322,8 @@ is malformed. A review's context size never replaces the coding model's active
 context count.
 
 By default (`sandbox: "unrestricted"`) programs the agent runs may write
-anywhere, as builds with shared caches need; the approval policy is what guards
-them. `sandbox: "workspace"` (Settings → Safety → Files: Only the workspace
+anywhere, as builds with shared caches need; with the default `allow` nothing
+stops them, so choose `ask` or `auto` to be asked. `sandbox: "workspace"` (Settings → Safety → Files: Only the workspace
 folder) uses Linux Landlock ABI 3 to confine **process writes** to the
 workspace and Coder's artifact directory, plus `/dev/null`, and fails closed if
 the kernel cannot enforce it. Either way host reads and networking are
@@ -324,7 +352,7 @@ limits are rejected. Examples:
 
 ```text
 /set model.effort "high"
-/set model.compact_at 80000
+/set model.compact_at 300000
 /set max_turns 400
 /set token_budget 4000000
 /set command_timeout_secs 300
@@ -334,9 +362,14 @@ limits are rejected. Examples:
 /set model.thinking {"type":"adaptive"}
 ```
 
-Defaults: 200 model requests and 2 million input/output tokens per explicit run,
-90,000 active-context tokens before compaction, 24 KB tool results, 120-second
-commands, 600-second provider requests, five retries of transient failures.
+Defaults: no limit on model requests (`max_turns: 0`) or input/output tokens
+(`token_budget: 0`) per explicit run; 0 is no limit for either. Compaction at
+500,000 active-context tokens, keeping the latest 50,000 verbatim, in 100,000-token
+chunks with 16,000-token summaries; 128,000 output tokens per response; an
+872,000-token window for Codex models (the most the pool takes); 100 KB tool
+results, 10-minute commands, 30-minute provider requests, five retries of
+transient failures. Every action is allowed (`approval: "allow"`). The
+supervisor, when on, has 400,000 tokens of its own.
 Resume explicitly begins a new run budget; automatic keep-going does not.
 Cached input and cache writes are reported separately; model/context accounting follows provider
 usage, with a conservative serialized-size estimate for new tool output.

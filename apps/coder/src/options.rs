@@ -19,7 +19,12 @@ pub fn section(name: &str) -> Vec<OptionSpec> {
     let field = |path, label| OptionSpec { path, label, choices: vec![], rows: 1 };
     let toggle = |path, label| OptionSpec { path, label, choices: vec!["true", "false"], rows: 1 };
     match name {
-        "budgets" => vec![field("max_turns", "Maximum turns:"), field("token_budget", "Token budget:"), field("max_tool_bytes", "Tool output bytes:"), field("max_response_bytes", "Response bytes:")],
+        "budgets" => vec![
+            field("max_turns", "Most turns (0: no limit):"),
+            field("token_budget", "Most tokens (0: no limit):"),
+            field("max_tool_bytes", "Tool output bytes:"),
+            field("max_response_bytes", "Response bytes:"),
+        ],
         "timeouts" => vec![field("command_timeout_secs", "Tool timeout (s):"), field("request_timeout_secs", "Request timeout (s):"), field("retries", "Retries:")],
         "compaction" => vec![
             toggle("model.auto_compact", "Auto compact:"),
@@ -107,7 +112,8 @@ mod tests {
         let changes = validated_changes(&config, &["max_turns".into(), "token_budget".into()], &[value(&config, "max_turns"), "100000".into()]).unwrap();
         assert_eq!(changes.len(), 1, "unchanged fields must not overwrite concurrent edits");
         assert_eq!(changes["token_budget"], 100000);
-        assert!(validated_changes(&config, &["max_turns".into()], &["0".into()]).is_err());
+        assert!(validated_changes(&config, &["max_turns".into()], &["-1".into()]).is_err());
+        assert!(validated_changes(&config, &["max_turns".into()], &["50".into()]).is_ok());
         assert!(validated_changes(&config, &["approval".into()], &["invented".into()]).is_err());
     }
 }

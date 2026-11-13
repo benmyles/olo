@@ -3,7 +3,7 @@
 use crate::model::*;
 use anyhow::{Context, Result, bail};
 
-pub const HELP: &str = "Messages go to the agent. Enter sends; Escape stops.\n\n/new [workspace] · /sessions · /open ID · /status · /stop · /resume\n/model MODEL [EFFORT] · /provider codex|openai · /models · /endpoint JSON\n/goal OBJECTIVE · /todos JSON · /memory TEXT · /attach PATH\n/spec on|off · /spec TEXT · /accept [REVISION]\n/keep on|off · /approval ask|auto|allow · /guidance TEXT\n/profiles [ACTION JSON] · /supervisor [on|off|JSON] · /integrations [ACTION JSON]\n/agents on|off · /agent JSON · /readonly on|off · /compact\n/transcript [ID] · /transcript-search TEXT · /compactions [ID] · /restore-context ID\n/config [JSON] · /defaults [JSON] · /set KEY JSON · /fork [TITLE] · /history [QUERY] · /undo EDIT · /checkpoints · /event SEQUENCE\n/git OP [JSON] · /github OP JSON · /tool NAME JSON\n/pin [on|off] · /rename TITLE · /tags WORDS · /archive · /restore\n/interrupt TEXT · /after-tool TEXT · /queue TEXT · /inbox\n/cancel-message ID · /retry-message ID\n/message [PEER/]SESSION TEXT · /peers · /connect NAME STORE · /disconnect NAME · /peer-sessions NAME\n/api JSON (every command) · /help · /quit\n\nChanges to model and configuration require a stopped turn.\nApproval: /approve CALL_ID or /deny CALL_ID.\nFull configuration includes budgets, timeouts, model provider fields,\nMCP servers, hooks, subagent limits and review model.\nAn execute or MCP tool has host access when approved.";
+pub const HELP: &str = "Messages go to the agent. Enter sends; Escape stops.\n\n/new [workspace] · /sessions · /open ID · /status · /stop · /resume\n/model MODEL [EFFORT] · /provider codex|fireworks|openai · /models · /endpoint JSON\n/goal OBJECTIVE · /todos JSON · /memory TEXT · /attach PATH\n/spec on|off · /spec TEXT · /accept [REVISION]\n/keep on|off · /approval ask|auto|allow · /guidance TEXT\n/profiles [ACTION JSON] · /supervisor [on|off|JSON] · /integrations [ACTION JSON]\n/agents on|off · /agent JSON · /readonly on|off · /compact\n/transcript [ID] · /transcript-search TEXT · /compactions [ID] · /restore-context ID\n/config [JSON] · /defaults [JSON] · /set KEY JSON · /fork [TITLE] · /history [QUERY] · /undo EDIT · /checkpoints · /event SEQUENCE\n/git OP [JSON] · /github OP JSON · /tool NAME JSON\n/pin [on|off] · /rename TITLE · /tags WORDS · /archive · /restore\n/interrupt TEXT · /after-tool TEXT · /queue TEXT · /inbox\n/cancel-message ID · /retry-message ID\n/message [PEER/]SESSION TEXT · /peers · /connect NAME STORE · /disconnect NAME · /peer-sessions NAME\n/api JSON (every command) · /help · /quit\n\nChanges to model and configuration require a stopped turn.\nApproval: /approve CALL_ID or /deny CALL_ID.\nFull configuration includes budgets, timeouts, model provider fields,\nMCP servers, hooks, subagent limits and review model.\nAn execute or MCP tool has host access when approved.";
 pub enum Input {
     Command(Command),
     Open(String),
@@ -168,18 +168,27 @@ pub fn parse(text: &str, s: &Session) -> Result<Input> {
                 "/model" => {
                     let mut p = arg.split_whitespace();
                     config.model.model = p.next().context("expected model id")?.into();
+                    if let Some(known) = crate::providers::of(&config.model) {
+                        known.fit(&mut config.model);
+                    }
                     if let Some(e) = p.next() {
                         config.model.effort = e.into();
                     }
                 }
                 "/provider" => {
-                    let provider = match arg {
-                        "codex" => Provider::Codex,
-                        "openai" => Provider::Openai,
-                        _ => bail!("expected codex or openai"),
-                    };
-                    if config.model.provider != provider {
-                        config.model = ModelConfig::for_provider(provider);
+                    if let Some(known) = crate::providers::by_id(arg) {
+                        if crate::providers::of(&config.model).map(|k| k.id) != Some(known.id) {
+                            config.model = known.config(None);
+                        }
+                    } else {
+                        let provider = match arg {
+                            "codex" => Provider::Codex,
+                            "openai" => Provider::Openai,
+                            _ => bail!("expected codex, openai or {}", crate::providers::KNOWN.iter().map(|k| k.id).collect::<Vec<_>>().join(", ")),
+                        };
+                        if config.model.provider != provider || crate::providers::of(&config.model).is_some() {
+                            config.model = ModelConfig::for_provider(provider);
+                        }
                     }
                 }
                 "/keep" => config.keep_going = on(arg)?,

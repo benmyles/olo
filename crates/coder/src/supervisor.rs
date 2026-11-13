@@ -22,7 +22,7 @@ pub struct Config {
 }
 impl Default for Config {
     fn default() -> Self {
-        Self { enabled:false, guidance:"Keep the primary agent aligned with the person's objective and accepted specification. Look for abandoned work, repeated failures, unsupported completion claims and drift. Give a concrete next step when useful. Respect explicit pauses, blocked work requiring the person, approvals, budgets and all existing policy. Do not manufacture new scope.".into(), model:None, every_turns:8, max_reviews:20, max_interventions:3, token_budget:40000, stall_seconds:300, recover_errors:true }
+        Self { enabled:false, guidance:"Keep the primary agent aligned with the person's objective and accepted specification. Look for abandoned work, repeated failures, unsupported completion claims and drift. Give a concrete next step when useful. Respect explicit pauses, blocked work requiring the person, approvals, budgets and all existing policy. Do not manufacture new scope.".into(), model:None, every_turns:8, max_reviews:20, max_interventions:3, token_budget:400_000, stall_seconds:300, recover_errors:true }
     }
 }
 impl Config {

@@ -25,3 +25,4 @@ pub mod oauth;
 pub mod supervisor;
 
 pub mod profiles;
+pub mod providers;

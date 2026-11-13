@@ -142,8 +142,11 @@ fn interrupted_effect_is_preserved_and_not_automatically_replayed() {
 fn defaults_and_shared_command_language() {
     let s = Session::new("/".into(), Config::default());
     assert!(!s.config.subagents);
-    assert_eq!(s.config.approval, ApprovalMode::Ask);
+    assert_eq!(s.config.approval, ApprovalMode::Allow);
     assert_eq!(s.config.sandbox, SandboxMode::Unrestricted);
+    assert_eq!((s.config.max_turns, s.config.token_budget), (0, 0), "no run limits by default");
+    assert!(s.config.within_turns(u32::MAX - 1) && s.config.within_tokens(u64::MAX - 1));
+    assert_eq!((s.config.model.compact_at, s.config.model.max_output_tokens), (500_000, 128_000));
     for text in [
         "hello",
         "/stop",
@@ -168,6 +171,13 @@ fn defaults_and_shared_command_language() {
     assert!(commands::parse("/approval nonsense", &s).is_err());
     let mut c = s.config;
     c.max_turns = 0;
+    c.validate().unwrap();
+    c.max_turns = 3;
+    assert!(c.within_turns(2) && !c.within_turns(3));
+    c.token_budget = 10;
+    assert!(c.within_tokens(9) && !c.within_tokens(10));
+    assert_eq!((c.tokens_left(4), c.tokens_left(99)), (6, 1));
+    c.compaction.summary_tokens = 1_000_000;
     assert!(c.validate().is_err());
 }
 #[tokio::test]
@@ -257,7 +267,7 @@ async fn full_loop_approval_compaction_specs_and_budget() {
     let dir = Scratch::new();
     let (fake, base, server) = server().await;
     let e = Engine::open_at(dir.0.join("state"), Some(base.clone())).unwrap();
-    let created = e.command(Command::Create { workspace: dir.0.clone(), config: None }).await.unwrap();
+    let created = e.command(Command::Create { workspace: dir.0.clone(), config: Some(Config { approval: ApprovalMode::Ask, ..Default::default() }) }).await.unwrap();
     let sid = created["id"].as_str().unwrap().to_string();
     fake.replies
         .lock()
@@ -732,7 +742,7 @@ async fn upgrade_drains_approved_work_and_rejects_new_turns_without_cancelling()
         }
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     }
-    let sid = request(&path, json!({"op":"create","workspace":dir.0})).await["result"]["id"].as_str().unwrap().to_owned();
+    let sid = request(&path, json!({"op":"create","workspace":dir.0,"config":{"approval":"ask"}})).await["result"]["id"].as_str().unwrap().to_owned();
     request(&path, json!({"op":"tool","session":sid,"name":"write_file","arguments":{"path":"survived","content":"exactly once"}})).await;
     let call = tokio::time::timeout(std::time::Duration::from_secs(5), async {
         loop {
@@ -1033,7 +1043,7 @@ async fn interrupt_replaces_unapproved_calls_without_executing_them() {
     let dir = Scratch::new();
     let (fake, base, server) = server().await;
     let e = Engine::open_at(dir.0.join("state"), Some(base)).unwrap();
-    let sid = e.command(Command::Create { workspace: dir.0.clone(), config: None }).await.unwrap()["id"].as_str().unwrap().to_owned();
+    let sid = e.command(Command::Create { workspace: dir.0.clone(), config: Some(Config { approval: ApprovalMode::Ask, ..Default::default() }) }).await.unwrap()["id"].as_str().unwrap().to_owned();
     fake.replies.lock().unwrap().push_back(response(vec![tool("write_file", json!({"path":"must-not-exist","content":"stale"}))]));
     let mut events = e.events.subscribe();
     e.command(Command::Send { session: sid.clone(), text: "Initial".into() }).await.unwrap();
@@ -1504,7 +1514,7 @@ async fn approval_checkpoint_failure_can_be_retried_without_restarting_work() {
         let dir = Scratch::new();
         let (_, base, server) = server().await;
         let e = Engine::open_at(dir.0.join("state"), Some(base)).unwrap();
-        let sid = e.command(Command::Create { workspace: dir.0.clone(), config: None }).await.unwrap()["id"].as_str().unwrap().to_owned();
+        let sid = e.command(Command::Create { workspace: dir.0.clone(), config: Some(Config { approval: ApprovalMode::Ask, ..Default::default() }) }).await.unwrap()["id"].as_str().unwrap().to_owned();
         let mut events = e.events.subscribe();
         e.command(Command::Tool { session: sid.clone(), name: "write_file".into(), arguments: json!({"path":"approved.txt","content":"one effect"}) }).await.unwrap();
         let call_id = loop {
@@ -1984,8 +1994,11 @@ async fn supervisor_recovers_early_completion_and_preserves_policy_and_audit() {
     let dir = Scratch::new();
     let (fake, base, server) = server().await;
     let e = Engine::open_at(dir.0.join("state"), Some(base)).unwrap();
-    let config =
-        Config { supervisor: supervisor::Config { enabled: true, model: Some(ModelConfig { model: "supervisor-fixture".into(), ..Default::default() }), ..Default::default() }, ..Default::default() };
+    let config = Config {
+        supervisor: supervisor::Config { enabled: true, model: Some(ModelConfig { model: "supervisor-fixture".into(), ..Default::default() }), ..Default::default() },
+        approval: ApprovalMode::Ask,
+        ..Default::default()
+    };
     let s: Session = serde_json::from_value(e.command(Command::Create { workspace: dir.0.clone(), config: Some(config) }).await.unwrap()).unwrap();
     fake.replies.lock().unwrap().extend([
         assistant_text("I will stop before checking the result."),
@@ -2161,7 +2174,7 @@ async fn field_settings_preserve_other_edits_and_reject_invalid_changes_atomical
     e.command(edit(vec![("instructions", json!("Keep this edit"))])).await.unwrap();
     e.command(edit(vec![("supervisor.enabled", json!(true))])).await.unwrap();
     assert_eq!(e.get(&s.id).unwrap().config.instructions, "Keep this edit");
-    assert!(e.command(edit(vec![("instructions", json!("discard")), ("max_turns", json!(0))])).await.is_err());
+    assert!(e.command(edit(vec![("instructions", json!("discard")), ("max_turns", json!(-1))])).await.is_err());
     assert!(e.command(edit(vec![("unknown", json!(true))])).await.is_err());
     let s = e.get(&s.id).unwrap();
     assert_eq!(s.config.instructions, "Keep this edit");

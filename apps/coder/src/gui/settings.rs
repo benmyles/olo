@@ -112,7 +112,7 @@ pub fn open(cx: &mut WindowCx, dir: PathBuf, client: Handle, view: &Shown, owner
         };
         let model = s.config.model.clone();
         let endpoint = field(cx, "API root", model.endpoint.as_ref().map(|e| e.base_url.clone()).unwrap_or_default());
-        let key = field(cx, "Key variable", model.endpoint.as_ref().and_then(|e| e.api_key_env.clone()).unwrap_or_default());
+        let key = field(cx, "Key", crate::models::key_text(&model));
         let window = field(cx, "Context window", model.context_window.to_string());
         let output = field(cx, "Output tokens", model.max_output_tokens.to_string());
         let name = field(cx, "Saved as", String::new());
@@ -284,37 +284,59 @@ impl Settings {
         model.context_window = self.window.read(cx).text().trim().parse().map_err(|_| "The context window is a number of tokens.".to_owned())?;
         model.max_output_tokens = self.output.read(cx).text().trim().parse().map_err(|_| "Output tokens is a number.".to_owned())?;
         if model.provider == Provider::Openai {
+            let known = olo_coder_core::providers::of(&model).is_some();
             let e = model.endpoint.get_or_insert_with(Default::default);
-            e.base_url = self.endpoint.read(cx).text().trim().to_owned();
-            let key = self.key.read(cx).text().trim();
-            e.api_key_env = (!key.is_empty()).then(|| key.to_owned());
+            if !known {
+                e.base_url = self.endpoint.read(cx).text().trim().to_owned();
+            }
+            crate::models::set_key(&mut model, self.key.read(cx).text());
         }
         model.validate().map_err(|e| friendly(&e.to_string()))?;
         Ok(model)
     }
 
-    fn model_section(&self, cx: &mut Cx<Self>) -> Element {
-        let custom = self.model.provider == Provider::Openai;
-        let editable = !self.busy;
-        let divider = 140.0;
-        let mut ids = self.ids.clone();
+    /// The models to choose from: those fetched, else those the service is
+    /// known to have, with the one chosen always among them.
+    fn model_ids(&self) -> Vec<String> {
+        let mut ids = if self.ids.is_empty() { crate::models::known_ids(&self.model) } else { self.ids.clone() };
         if !ids.contains(&self.model.model) {
             ids.insert(0, self.model.model.clone());
         }
+        ids
+    }
+
+    /// The model's context window and output allowance, in their fields.
+    fn show_limits(&mut self, cx: &mut Cx<Self>) {
+        let window = self.model.context_window.to_string();
+        let output = self.model.max_output_tokens.to_string();
+        self.window.update(cx, |f, cx| f.set_text(window, cx));
+        self.output.update(cx, |f, cx| f.set_text(output, cx));
+    }
+
+    fn model_section(&self, cx: &mut Cx<Self>) -> Element {
+        let known = olo_coder_core::providers::of(&self.model);
+        let custom = self.model.provider == Provider::Openai && known.is_none();
+        let editable = !self.busy;
+        let divider = 140.0;
+        let ids = self.model_ids();
         let at = ids.iter().position(|i| *i == self.model.model).unwrap_or(0);
+        let services = crate::models::services("Codex, through Token Pool", "An OpenAI-compatible endpoint");
         let mut col = div().flex().flex_col().gap(px(m::SPACING)).child(
-            MenuField::new("provider", vec!["Codex, through Token Pool".into(), "An OpenAI-compatible endpoint".into()], usize::from(custom))
+            MenuField::new("provider", services.into_iter().map(Into::into).collect(), crate::models::service(&self.model))
                 .label("Runs on:")
                 .divider(divider)
                 .enabled(editable)
                 .on_change(cx.msg_with(|i: &usize| Msg::Provider(*i))),
         );
         if custom {
-            col = col.child(TextControl::new(cx, &self.endpoint).label("API root:").divider(divider)).child(TextControl::new(cx, &self.key).label("Key variable:").divider(divider)).child(
-                div()
-                    .pl(px(divider))
-                    .child(StringView::new("The name of the environment variable that holds the key (the service reads it), e.g. FIREWORKS_API_KEY.").wrap(true).dim(true).small(true)),
-            );
+            col = col.child(TextControl::new(cx, &self.endpoint).label("API root:").divider(divider));
+        }
+        if self.model.provider == Provider::Openai {
+            let hint = match known {
+                Some(k) => format!("Your {} key: its field in Passwords (op://vault/item/field), or the environment variable the service reads it from. Make one at {}.", k.name, k.keys_page),
+                None => "The key’s field in Passwords (op://vault/item/field), or the environment variable the service reads it from. Empty for none.".into(),
+            };
+            col = col.child(TextControl::new(cx, &self.key).label("Key:").divider(divider)).child(div().pl(px(divider)).child(StringView::new(hint).wrap(true).dim(true).small(true)));
         }
         col = col
             .child(
@@ -322,9 +344,15 @@ impl Settings {
                     .flex()
                     .items_center()
                     .gap(px(m::TIGHT))
-                    .child(div().flex_1().min_w_0().child(
-                        MenuField::new("model", ids.into_iter().map(Into::into).collect(), at).label("Model:").divider(divider).enabled(editable).on_change(cx.msg_with(|i: &usize| Msg::Model(*i))),
-                    ))
+                    .child(
+                        div().flex_1().min_w_0().child(
+                            MenuField::new("model", ids.iter().map(|id| crate::models::model_name(&self.model, id).into()).collect(), at)
+                                .label("Model:")
+                                .divider(divider)
+                                .enabled(editable)
+                                .on_change(cx.msg_with(|i: &usize| Msg::Model(*i))),
+                        ),
+                    )
                     .child(Button::new("Fetch List").enabled(editable).on_click(cx.msg(Msg::Fetch))),
             )
             .child(
@@ -500,23 +528,20 @@ impl View for Settings {
             }
             Msg::Revert => self.load_section(cx),
             Msg::Provider(i) => {
-                let provider = if i == 0 { Provider::Codex } else { Provider::Openai };
-                if provider != self.model.provider {
-                    self.model = ModelConfig::for_provider(provider);
+                if i != crate::models::service(&self.model) {
+                    self.model = crate::models::service_model(i);
                     self.ids.clear();
-                    let window = self.model.context_window.to_string();
-                    let output = self.model.max_output_tokens.to_string();
-                    self.window.update(cx, |f, cx| f.set_text(window, cx));
-                    self.output.update(cx, |f, cx| f.set_text(output, cx));
+                    let key = crate::models::key_text(&self.model);
+                    let root = self.model.endpoint.as_ref().map(|e| e.base_url.clone()).unwrap_or_default();
+                    self.key.update(cx, |f, cx| f.set_text(key, cx));
+                    self.endpoint.update(cx, |f, cx| f.set_text(root, cx));
+                    self.show_limits(cx);
                 }
             }
             Msg::Model(i) => {
-                let mut ids = self.ids.clone();
-                if !ids.contains(&self.model.model) {
-                    ids.insert(0, self.model.model.clone());
-                }
-                if let Some(id) = ids.get(i) {
-                    self.model.model = id.clone();
+                if let Some(id) = self.model_ids().get(i) {
+                    crate::models::choose(&mut self.model, id);
+                    self.show_limits(cx);
                 }
             }
             Msg::Effort(i) => self.model.effort = crate::models::effort_value(i),
@@ -548,7 +573,8 @@ impl View for Settings {
                         self.said = Some((format!("{} models.", ids.len()), false));
                         if !ids.contains(&self.model.model) {
                             if let Some(first) = ids.first() {
-                                self.model.model = first.clone();
+                                crate::models::choose(&mut self.model, first);
+                                self.show_limits(cx);
                             }
                         }
                         self.ids = ids;
@@ -564,7 +590,7 @@ impl View for Settings {
                         p.model.context_window.to_string(),
                         p.model.max_output_tokens.to_string(),
                         p.model.endpoint.as_ref().map(|e| e.base_url.clone()).unwrap_or_default(),
-                        p.model.endpoint.as_ref().and_then(|e| e.api_key_env.clone()).unwrap_or_default(),
+                        crate::models::key_text(&p.model),
                         p.name.clone(),
                     );
                     self.window.update(cx, |f, cx| f.set_text(window, cx));

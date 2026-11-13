@@ -762,8 +762,8 @@ impl Engine {
                 self.perform(id, call, cancel, &client, &mut mcps).await?;
                 continue;
             }
-            ensure!(turns < s.config.max_turns, "turn budget reached; raise max_turns or resume for a new run");
-            ensure!(s.usage.input + s.usage.output - start_tokens < s.config.token_budget, "token budget reached; resume explicitly for a new run");
+            ensure!(s.config.within_turns(turns), "turn budget reached; raise max_turns or resume for a new run");
+            ensure!(s.config.within_tokens((s.usage.input + s.usage.output).saturating_sub(start_tokens)), "token budget reached; resume explicitly for a new run");
             if s.config.supervisor.enabled && s.turns.saturating_sub(s.supervisor.last_turn) >= s.config.supervisor.every_turns {
                 self.supervise(id, &client, cancel, "progress").await;
                 s = self.get(id)?;
@@ -781,7 +781,7 @@ impl Engine {
                 let prepare = required || (s.config.model.auto_compact && s.config.compaction.background && tokens >= soft && tokens >= retry_compaction_at);
                 if compaction.is_none() && prepare && crate::compaction::cut(&s).is_some() {
                     let mut snapshot = s.clone();
-                    snapshot.config.token_budget = s.config.token_budget.saturating_sub((s.usage.input + s.usage.output).saturating_sub(start_tokens));
+                    snapshot.config.token_budget = s.config.tokens_left((s.usage.input + s.usage.output).saturating_sub(start_tokens));
                     compaction = Some(crate::compaction::Job::start(self.clone(), snapshot, client.clone(), cancel));
                 }
                 if compaction.as_ref().is_some_and(|job| required || job.handle.is_finished()) {
@@ -850,7 +850,7 @@ impl Engine {
                 // Compaction can spend the remaining budget after the loop's
                 // first check. Read current usage under the journal lock before
                 // admitting another request, including background usage charges.
-                ensure!(current.usage.input.saturating_add(current.usage.output).saturating_sub(start_tokens) < current.config.token_budget, "token budget reached; resume explicitly for a new run");
+                ensure!(current.config.within_tokens(current.usage.input.saturating_add(current.usage.output).saturating_sub(start_tokens)), "token budget reached; resume explicitly for a new run");
                 Ok(json!({"run":run_id,"context_refs":s.context_refs,"goal":s.goal,"spec":s.spec,"todos":s.todos,"memory":s.memory,"spec_mode":s.spec_mode,"read_only":s.config.read_only}))
             })?;
             let e = self.clone();

@@ -16238,8 +16238,14 @@ endpoints use their configured API root directly.
 * `provider` preserves native Responses reasoning/compaction and custom Chat
   Completions assistant messages, including `reasoning_content`, as JSON values.
   Codex uses Token Pool and a final `compaction_trigger`. Custom endpoints use
-  HTTPS (loopback HTTP allowed), environment-referenced credentials, and the
-  `chat` stream accumulator: tools require a complete finish reason and `[DONE]`.
+  HTTPS (loopback HTTP allowed), credentials named by an environment variable
+  or a Passwords field (read once by the service, kept in memory, dropped on a
+  401/403), and the `chat` stream accumulator: tools require a complete finish
+  reason and `[DONE]`.
+* `providers` is the catalog of known services (Fireworks AI first): address,
+  usual key variable, affinity header and each model's window, output and
+  efforts. A known service is an ordinary custom endpoint recognised by its
+  address; add one there and both interfaces offer it under Runs on.
   The SSE decoder scans newly appended bytes only; its ignored release
   `provider_stream_batch_benchmark` measures a fixed 4,096-event batch.
 * `compaction` prepares evidence-linked checkpoints for custom endpoints in the

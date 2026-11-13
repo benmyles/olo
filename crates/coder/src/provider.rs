@@ -11,6 +11,9 @@ use tokio_util::sync::CancellationToken;
 pub struct Client {
     http: reqwest::Client,
     base: String,
+    /// Keys read from Passwords, by reference: read once, kept in memory
+    /// only, forgotten when the service refuses them.
+    keys: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, zeroize::Zeroizing<String>>>>,
 }
 #[derive(Debug)]
 pub struct Reply {
@@ -57,6 +60,7 @@ impl Client {
                 .user_agent(concat!("olo-coder/", env!("CARGO_PKG_VERSION")))
                 .build()?,
             base: base.trim_end_matches('/').into(),
+            keys: Default::default(),
         })
     }
     fn endpoint(&self, model: &ModelConfig, path: &str) -> Result<String> {
@@ -66,13 +70,36 @@ impl Client {
             Provider::Openai => format!("{}/{path}", model.endpoint.as_ref().context("custom endpoint is missing")?.base_url.trim_end_matches('/')),
         })
     }
-    fn authorize(&self, mut request: reqwest::RequestBuilder, model: &ModelConfig) -> Result<reqwest::RequestBuilder> {
+    async fn key(&self, endpoint: &EndpointConfig) -> Result<Option<zeroize::Zeroizing<String>>> {
+        if let Some(variable) = &endpoint.api_key_env {
+            let known = crate::providers::KNOWN.iter().find(|k| k.base_url == endpoint.base_url.trim_end_matches('/'));
+            let key = std::env::var(variable).with_context(|| match known {
+                Some(k) => format!("{} needs a key: choose its field in Passwords (Settings ▸ Model ▸ Key), or set {variable} in the Coder service environment. Keys: {}", k.name, k.keys_page),
+                None => format!("set {variable} in the Coder service environment"),
+            })?;
+            ensure!(!key.trim().is_empty(), "{variable} is empty");
+            return Ok(Some(key.into()));
+        }
+        let Some(reference) = &endpoint.api_key_password else { return Ok(None) };
+        if let Some(key) = self.keys.lock().unwrap().get(reference) {
+            return Ok(Some(key.clone()));
+        }
+        let key = zeroize::Zeroizing::new(crate::integrations::resolve(reference).await.context("reading the endpoint's key from Passwords")?);
+        ensure!(!key.trim().is_empty(), "the key's field in Passwords is empty");
+        self.keys.lock().unwrap().insert(reference.clone(), key.clone());
+        Ok(Some(key))
+    }
+    /// Forgets a Passwords key the service refused, so the next request reads it again.
+    fn refused(&self, model: &ModelConfig) {
+        if let Some(reference) = model.endpoint.as_ref().and_then(|e| e.api_key_password.as_ref()) {
+            self.keys.lock().unwrap().remove(reference);
+        }
+    }
+    async fn authorize(&self, mut request: reqwest::RequestBuilder, model: &ModelConfig) -> Result<reqwest::RequestBuilder> {
         if model.provider == Provider::Openai {
             let endpoint = model.endpoint.as_ref().context("custom endpoint is missing")?;
-            if let Some(variable) = &endpoint.api_key_env {
-                let key = std::env::var(variable).with_context(|| format!("set {variable} in the Coder service environment"))?;
-                ensure!(!key.trim().is_empty(), "{variable} is empty");
-                let mut value = reqwest::header::HeaderValue::from_str(&format!("Bearer {key}")).context("invalid API key header")?;
+            if let Some(key) = self.key(endpoint).await? {
+                let mut value = reqwest::header::HeaderValue::from_str(&format!("Bearer {}", key.as_str())).context("invalid API key header")?;
                 value.set_sensitive(true);
                 request = request.header(reqwest::header::AUTHORIZATION, value);
             }
@@ -90,8 +117,11 @@ impl Client {
         if model.provider == Provider::Codex {
             request = request.query(&[("client_version", "0.166.0")]);
         }
-        let response = self.authorize(request, model)?.send().await?;
+        let response = self.authorize(request, model).await?.send().await?;
         let status = response.status();
+        if matches!(status.as_u16(), 401 | 403) {
+            self.refused(model);
+        }
         ensure!(status.is_success(), "models: {status}");
         Ok(serde_json::from_slice(&bounded_response(response, 4 * 1024 * 1024).await?)?)
     }
@@ -135,8 +165,11 @@ impl Client {
         ensure!(!cancel.is_cancelled(), "cancelled before provider request dispatch");
         let request = async {
             for attempt in 0..=s.config.retries {
-                let request = self.http.post(self.endpoint(&s.config.model, path)?).json(body);
-                let response = self.authorize(request, &s.config.model)?.send().await;
+                let mut request = self.http.post(self.endpoint(&s.config.model, path)?).json(body);
+                if let Some(header) = crate::providers::of(&s.config.model).and_then(|k| k.affinity_header) {
+                    request = request.header(header, &s.id);
+                }
+                let response = self.authorize(request, &s.config.model).await?.send().await;
                 let response = match response {
                     Ok(r) => r,
                     Err(e) if attempt < s.config.retries => {
@@ -154,6 +187,9 @@ impl Client {
                 }
                 let status = response.status();
                 if !status.is_success() {
+                    if matches!(status.as_u16(), 401 | 403) {
+                        self.refused(&s.config.model);
+                    }
                     if s.config.model.provider == Provider::Openai {
                         // Custom gateways may echo authentication in error bodies.
                         bail!("custom endpoint returned HTTP {status}; check endpoint, model, credentials and quota");

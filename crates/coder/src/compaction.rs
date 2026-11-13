@@ -177,7 +177,7 @@ async fn ask(engine: &Arc<Engine>, s: &Session, client: &provider::Client, syste
         model.extra.remove(key);
     }
     let latest = engine.get(&s.id)?;
-    ensure!(latest.usage.input.saturating_add(latest.usage.output).saturating_sub(s.usage.input.saturating_add(s.usage.output)) < s.config.token_budget, "compaction token budget reached");
+    ensure!(s.config.within_tokens(latest.usage.input.saturating_add(latest.usage.output).saturating_sub(s.usage.input.saturating_add(s.usage.output))), "compaction token budget reached");
     let mut request = Session::new(s.workspace.clone(), Config { model, ..Config::default() });
     request.config.retries = s.config.retries.min(2);
     request.config.request_timeout_secs = s.config.request_timeout_secs;
@@ -503,7 +503,7 @@ mod tests {
                         engine
                             .change(&s.id, "model_request", |current| {
                                 if checked {
-                                    ensure!(current.usage.input.saturating_add(current.usage.output) < current.config.token_budget, "budget reached");
+                                    ensure!(current.config.within_tokens(current.usage.input.saturating_add(current.usage.output)), "budget reached");
                                 }
                                 Ok(json!({"context_refs":s.context_refs,"goal":s.goal,"spec":s.spec,"todos":s.todos,"memory":s.memory}))
                             })
