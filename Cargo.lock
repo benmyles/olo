@@ -7663,13 +7663,11 @@ name = "olo-lock"
 version = "0.1.0"
 dependencies = [
  "olo-crash",
- "olo-fido",
  "olo-kit",
  "olo-system",
  "olo-theme",
  "olo-xdg",
  "tracing",
- "zeroize",
 ]
 
 [[package]]

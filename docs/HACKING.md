@@ -7363,9 +7363,13 @@ fprintd alone.
 ## Security keys (olo-fido; Preferences ▸ Security ▸ Sign In; app_server security_key.rs)
 
 A security key set up (a YubiKey: any FIDO2 key with `hmac-secret`) is
-touched instead of typing the account password: Terminal's sudo window,
-Passwords' unlock, the polkit agent (for the person's own identity) and
-the lock screen. Natively, as the person, no root: `olo_fido` speaks
+touched instead of typing the account password once the person is
+signed in: Terminal's sudo window, Passwords' unlock and the polkit agent
+(for the person's own identity). Never the lock screen or the login
+screen: those are the doors to the computer, and a key is usually left
+in it (Ben: "if someone found the laptop and got the login screen we
+can't have them just pressing the yubikey to get access"); a face, a
+finger or the password open them. Natively, as the person, no root: `olo_fido` speaks
 CTAPHID to the key's FIDO interface (its hidraw node, found by usage page
 0xF1D0 under /sys, open to the person at their seat by systemd's
 uaccess) and CTAP2 itself (GetInfo, ClientPIN's key agreement in PIN
@@ -7403,13 +7407,13 @@ protocol 2 or 1, MakeCredential, GetAssertion with `hmac-secret`).
   plugged in it says `olo_fido::TOUCH_OR_TYPE` ("Touch your security key,
   or type your password.") beside the field, and the password the touch
   unseals goes where a typed one would (sudo's prompt, the polkit
-  helper's, PAM through `olo_system::auth::check_password` for Passwords
-  and the lock screen, so a password changed since setting up fails as a
-  wrong one would). The wait is dropped with the window (CTAPHID_CANCEL),
-  and Passwords and the lock screen wait only while their window has the
-  keyboard. The key gives up on a touch after about 30 seconds; the lock
-  screen asks again three times, then not till someone is there (a key,
-  the pointer), so a locked computer's key doesn't blink all night.
+  helper's, PAM through `olo_system::auth::check_password` for Passwords,
+  so a password changed since setting up fails as a wrong one would). The
+  wait is dropped with the window (CTAPHID_CANCEL), and Passwords waits
+  only while its window has the keyboard. The lock screen (olo-lock) and
+  the login screen (olo-greeter, its PAM services `data/pam/olo-login*`)
+  have no key code at all, and nothing in the system's PAM stack (no
+  `pam_u2f`) gives them one.
 * **Stray touches** (app_server `security_key.rs`): a touch with nothing
   waiting types the key's one-time code through its own USB keyboard.
   app_server knows that keyboard by the device as it's added
@@ -14806,7 +14810,9 @@ one takes it if that window goes with its display. The Interface Kit
 takes app_server's `WAYLAND_SOCKET` as a Wayland connection, and a lock
 surface makes no commit before its first configure and checks the password with `olo_system::auth` (PAM via
 libpam, on a thread) while listening for Touch ID with
-`olo_system::fingerprint`. Debug builds take `OLO_PAM_CONFDIR` +
+`olo_system::fingerprint` and looking for the person's face
+(`olo_system::face`). A security key doesn't unlock it (see "Security
+keys": a key left plugged in mustn't open a computer someone found). Debug builds take `OLO_PAM_CONFDIR` +
 `OLO_PAM_SERVICE` (passed through by tsession), so tests use a private
 pam_exec service and never a real password; then (or with
 `OLO_NO_FINGERPRINT=1`) it leaves the fingerprint reader alone, which is

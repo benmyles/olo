@@ -71,7 +71,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
 
 /// Every way in besides the password, side by side.
 fn sign_in(ui: &mut Ui, st: &mut State) {
-    ui.note("Each of these set up stands for your password wherever it's asked (the lock screen, Passwords, sudo in Terminal, administrator requests), all at once: whichever you use first.");
+    ui.note("Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.");
     let left = ui.collect(|ui| {
         touchid::ui(ui, &mut st.touchid);
         crate::face_unlock::ui(ui, &mut st.keys.face);

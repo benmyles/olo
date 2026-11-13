@@ -318,7 +318,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     let link = st.link;
 
     ui.bbox("Security Keys", |ui| {
-        ui.note("A touch of a security key (a YubiKey) can stand for your password: sudo in Terminal, Passwords, administrator requests and the lock screen.");
+        ui.note("A touch of a security key (a YubiKey) can stand for your password once you're signed in: sudo in Terminal, Passwords and administrator requests. Not to unlock the computer or sign in: someone who found it with the key plugged in could.");
         // The keys set up: each with whether it's plugged in, and Remove.
         for key in &set_up {
             let here = plugged.as_ref().is_some_and(|p| p.iter().any(|p| p.set_up && p.device.name == key.name));

@@ -2,8 +2,9 @@
 //! the key's hidraw node (`hid`, `ctap`), the CTAP2 Olo uses (`cred`,
 //! `pin`), and the account password sealed by a key's `hmac-secret`
 //! (`seal`), so a touch of the key can stand for typing it: Terminal's
-//! sudo window, Passwords, the polkit agent and the lock screen ask
-//! [`unlock`] beside their password field.
+//! sudo window, Passwords and the polkit agent ask [`unlock`] beside
+//! their password field. Never the lock screen or the login screen: a
+//! key left in a computer someone finds mustn't let them in.
 //!
 //! Setting a key up ([`set_up`]) takes the password once (checked by the
 //! caller, through PAM) and two touches: a credential made for Olo on the

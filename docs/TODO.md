@@ -1234,20 +1234,6 @@ something nobody here has is in "Blocked", with what it waits for.
     the page opens past them where the browser allows.
   - Agents read it too: the network's portal state and its address in
     the tray's and Preferences' trees.
-- **A security key doesn't unlock a locked or logged-out computer**
-  (Ben, 2026-11-13: "the yubikey should not work at the login screen
-  (but face recognition and fingerprint should, as well as password).
-  once logged in then the yubikey should work for elevated permission
-  requests etc. it's just that if someone found the laptop and got the
-  login screen we can't have them just pressing the yubikey to get
-  access"). A YubiKey Nano stays in its port: a touch is no proof of
-  anything on a found laptop. The lock screen took a touch for the
-  password (HACKING, "Security keys", Unlocking); the login screen
-  (`olo-greeter`) never did. From now: neither does, both keep the
-  password, the fingerprint and the face; the key still approves what
-  asks once someone is in (Terminal's sudo, the polkit agent,
-  Passwords' unlock, Approve Without Asking). Preferences ▸ Security ▸
-  Sign In says where the key works and where it doesn't.
 - **The computer starts with Olo's start-up screen and chime, not
   Lenovo's and Fedora's logos** (Ben, 2026-11-13: "when the os starts
   it still shows the lenovo + fedora logos on bootup. i want that
@@ -1277,6 +1263,47 @@ something nobody here has is in "Blocked", with what it waits for.
     the volume last set, silent when muted or chosen off), once a boot,
     so the session's start-up screen doesn't play it again; measured
     from power-on to the chime on the ThinkPad.
+
+- **Olo Doctor offers to install the start-up screen and chime**
+  (Ben, 2026-11-13: "olo doctor should offer to install the boot
+  stuff"). A check that the boot splash (Olo's Plymouth theme, in the
+  initramfs) and the early chime unit are installed and current, and
+  if not, Install, through Doctor's helper (`pkexec olo-doctor
+  --helper`: one administrator request), with live progress (making
+  the initramfs again takes a while) and a way back (Revert). Not the
+  firmware's logo (above).
+- **One Olo Doctor: Suggestions folded into it** (Ben, 2026-11-13:
+  "combine the olo suggestions app into olo doctor: just have it be one
+  unified olo doctor app where each item has a type showing whether
+  it's e.g. a suggestion or something critical and any of them can be
+  put on the ignored list"). Every finding of either app in one list,
+  each with its kind (critical, a problem, a suggestion, …) shown, and
+  any of them ignorable (Ignore, and an Ignored list to bring one
+  back); Suggestions' app, its Deskbar entry and its notifications go
+  to Doctor's; agents read and act on the same items.
+- **Olo Doctor looked over and tidied** (Ben, 2026-11-13: "also spruce
+  up olo doctor it's a bit of a mess right now"): its window laid out
+  again around the one list (grouped by kind, what's wrong first, each
+  item's fix at hand), at every scale and theme.
+- **Every app's menus the same where they can be, and its settings a
+  menu away** (Ben, 2026-11-13: "also in all the olo apps make it so
+  that if there is one or more recommended settings apps/panels that
+  are related then those should also be launchable from that app's
+  menus. also standardize the olo apps menus (and patterns in the olo
+  book) so that kb shortcuts are consistent and always available and
+  the menu locations/options where applicable are consistent").
+  - *Related settings in the menus:* an app whose behaviour some
+    Preferences panel (or another app) sets has a menu item opening it
+    straight at that panel (Mail: Accounts; Terminal: its Profiles and
+    Keyboard; Deskbar: its own; …), where the app's own settings are.
+  - *One menu layout:* the app menu, File, Edit, View, then the app's
+    own, Window and Help, each with the same items in the same places
+    and the same shortcuts (⌘N, ⌘O, ⌘W, ⌘Q, ⌘Z, ⌘F, ⌘G, ⌘, …), a
+    shortcut always shown beside its item and always working, even
+    with the menu bar hidden; checked by a lint over every app's menus.
+  - *The Olo Book* says the layout and the shortcuts, as a pattern for
+    apps to follow, with the kit building the shared menus so an app
+    adds only its own.
 
 ## Done, waiting for Ben to try or confirm
 
@@ -1336,6 +1363,23 @@ accessibility tree test on an agent screen (GTK's Text Editor, 30
 nodes). What's left needs Ben: in Blocked, "The ignored tests that
 need Ben".)
 
+- **A security key doesn't unlock a locked or logged-out computer**
+  (Ben, 2026-11-13: "the yubikey should not work at the login screen
+  (but face recognition and fingerprint should, as well as password).
+  once logged in then the yubikey should work for elevated permission
+  requests etc. it's just that if someone found the laptop and got the
+  login screen we can't have them just pressing the yubikey to get
+  access"). Done: the lock screen (olo-lock) has no key code any more
+  (`olo-fido` gone from it), and the login screen never had any (nor is
+  there `pam_u2f` in the system's PAM stack); both keep the password,
+  the fingerprint and the face. The key still approves what asks once
+  someone is in: Terminal's sudo, the polkit agent, Passwords' unlock
+  and Approve Without Asking. Preferences ▸ Security ▸ Sign In says so.
+  Checked in a test session (a stand-in PAM service, a made-up
+  password): no key prompt on the lock, a wrong password refused, the
+  right one unlocking. For Ben, after the upgrade: lock with the
+  YubiKey in and touch it (nothing happens), then `sudo -v` in
+  Terminal (a touch approves it).
 - **The pointer never stops under load** (Ben, 2026-11-12: "under
   load the mouse still gets unresponsive for a few seconds every now
   and then. i've got LAVD off b/c that made it even worse, as did the
