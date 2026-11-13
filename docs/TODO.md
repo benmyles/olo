@@ -46,12 +46,13 @@ something nobody here has is in "Blocked", with what it waits for.
      the display thread (the wheel and touchpad scroll there, elastic
      ends; `ScrollHandle`), rows made as they come near (`uniform_rows`),
      element state, window keys, held commits, window state, upgrade
-     hooks. *Still to do:* drag and drop (within a window, between
-     windows, files from outside); pictures as elements (`img`) and
-     animated ones; animations stepped on the stage; several damage
-     rectangles a frame (typing in DeskCalc draws the union of its field
-     and a key); a frame drawn straight from the kept drawings (no copy
-     into a scene: ~50 µs of a ~200 µs frame); a scroll bar's knob moved
+     hooks; several damage rectangles a frame, a drawing made again
+     damaged only where it differs (2026-11-13). *Still to do:* drag
+     and drop (within a window, between windows, files from outside);
+     pictures as elements (`img`) and animated ones; animations
+     stepped on the stage; a frame drawn straight from the kept
+     drawings (no copy into a scene: ~50 µs of a ~200 µs frame); a
+     scroll bar's knob moved
      by the stage; rows of differing heights (GPUI's `list`); a headless
      window for the layout lint; nothing worked out or drawn for a
      window before app_server has given it its size (a layer or lock
@@ -1019,7 +1020,12 @@ something nobody here has is in "Blocked", with what it waits for.
      scroll among them.
      - A window's making blocks its opener's looper while the display
        thread makes the surface and renderer (2 to 3 ms of a menu's
-       4): the looper could build the view meanwhile.
+       4): the looper could build the view meanwhile. Measured
+       2026-11-13 on Tracker's menus (`window made in`, median 1.88
+       ms, 1.5 to 3.1): the Vulkan surface and its swapchain are 1.4 to
+       2.3 ms of it, everything else 0.1 ms, and the opener's own work
+       on the popup 0.3 ms; making the swapchain later would save only
+       that 0.3 ms, so it wasn't done.
      Also left:
      *Done 2026-11-12:* the vendored Smithay asked winit for its
      "x11" feature, which built winit-x11, x11rb and x11-dl into

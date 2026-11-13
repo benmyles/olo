@@ -929,16 +929,17 @@ impl Stage {
             }
             return false;
         }
-        // What changed, as one rectangle (None: all of it), and how much
-        // of the image the renderer hands out has to be drawn for it: an
+        // What changed, as rectangles (none: all of it), and how much of
+        // the image the renderer hands out has to be drawn for it: an
         // image keeps what it last held, so most frames draw a small
-        // part of the window, and tell app_server only that changed.
-        let changed = showing.damage.iter().copied().reduce(|a, b| a.union(&b));
+        // part of the window, or a few apart (a line typed in and the
+        // status line under it), and tell app_server only those.
+        let changed = (!showing.damage.is_empty()).then(|| std::mem::take(&mut showing.damage));
         let work = std::mem::take(&mut showing.work);
         {
             let window = self.window.borrow();
             let Some(window) = window.as_ref() else { return false };
-            let part = match window.begin_frame(changed) {
+            let part = match window.begin_frame(changed.as_deref()) {
                 FrameRegion::None => return false,
                 FrameRegion::All => None,
                 FrameRegion::Part(part) => Some(part),
@@ -946,7 +947,7 @@ impl Stage {
             let begun = started.elapsed();
             let scene = &mut showing.scene;
             scene.clear();
-            assemble(commit, &showing.scrollers, scene, part);
+            assemble(commit, &showing.scrollers, scene, part.as_deref());
             scene.finish();
             let assembled = started.elapsed();
             window.draw(scene);
@@ -954,8 +955,9 @@ impl Stage {
             window.completed_frame();
             if crate::stats::frame_phases() {
                 let ms = |d: Duration| d.as_secs_f64() * 1000.0;
-                let part = match part {
-                    Some(p) => format!("{}×{} at {},{}", p.size.width.0, p.size.height.0, p.origin.x.0, p.origin.y.0),
+                let part = match &part {
+                    Some(parts) if parts.is_empty() => "nothing".to_owned(),
+                    Some(parts) => parts.iter().map(|p| format!("{}×{} at {},{}", p.size.width.0, p.size.height.0, p.origin.x.0, p.origin.y.0)).collect::<Vec<_>>().join(" + "),
                     None => "all".to_owned(),
                 };
                 // (How many draws it was: things of a kind at one order
@@ -1058,15 +1060,21 @@ fn layer_places(layers: &[Layer], scrollers: &FxHashMap<u64, Scroller>, scale: f
 }
 
 /// Puts a frame together from what's committed: all of it, or only
-/// what shows in `part`.
-fn assemble(commit: &Commit, scrollers: &FxHashMap<u64, Scroller>, scene: &mut Scene, part: Option<Bounds<ScaledPixels>>) {
+/// what shows in `parts` (each drawn under a scissor of its own): a
+/// drawing in none is left out, and one in some is cut to those (a text
+/// area typed in gives the frame its line, not all its glyphs).
+fn assemble(commit: &Commit, scrollers: &FxHashMap<u64, Scroller>, scene: &mut Scene, parts: Option<&[Bounds<ScaledPixels>]>) {
     let places = layer_places(&commit.layers, scrollers, commit.scale);
     for item in &commit.items {
         let (shift, layer_clip) = places.get(item.layer as usize).copied().unwrap_or(places[0]);
         let by = item.by + shift;
         let mut clip = Bounds { origin: item.clip.origin + shift, size: item.clip.size }.intersect(&layer_clip);
-        if let Some(part) = &part {
-            clip = clip.intersect(part);
+        if let Some(parts) = parts {
+            let reach = Bounds { origin: item.list.bounds.origin + by, size: item.list.bounds.size }.intersect(&clip);
+            match parts.iter().filter(|p| !reach.intersect(p).is_empty()).copied().reduce(|a, b| a.union(&b)) {
+                Some(hit) => clip = clip.intersect(&hit),
+                None => continue,
+            }
         }
         if clip.is_empty() {
             continue;
@@ -1116,27 +1124,57 @@ fn damage(before: &Commit, now: &Commit, scrollers: &FxHashMap<u64, Scroller>, i
     if a.is_empty() && b.is_empty() {
         return;
     }
-    let mut add = |item: &Item| {
+    // Part `r` of an item's drawing (where it was painted), where it
+    // shows in the window.
+    let place = |item: &Item, r: Bounds<ScaledPixels>| {
         let (shift, clip) = places.get(item.layer as usize).copied().unwrap_or(places[0]);
-        let shown = item.shown();
-        let shown = Bounds { origin: shown.origin + shift, size: shown.size }.intersect(&clip);
-        if !shown.is_empty() {
-            into.push(shown);
+        let shown = Bounds { origin: r.origin + item.by, size: r.size }.intersect(&item.clip);
+        Bounds { origin: shown.origin + shift, size: shown.size }.intersect(&clip)
+    };
+    let mut add = |r: Bounds<ScaledPixels>| {
+        if !r.is_empty() {
+            into.push(r);
         }
+    };
+    // A drawing worth comparing thing by thing with the one it replaces
+    // (smaller ones are drawn again whole: cheaper than looking).
+    let big = |item: &Item| {
+        let shown = item.shown();
+        shown.size.width.0 * shown.size.height.0 * 16.0 >= whole.size.width.0 * whole.size.height.0
     };
     // In between, what's in both in the same place and the same order
     // didn't change; the rest did, where it was and where it is.
     let mut j = 0;
-    for item in a {
+    let mut differ = Vec::new();
+    for (i, item) in a.iter().enumerate() {
         match b[j..].iter().position(|other| other.same_place(item)) {
             Some(at) => {
-                b[j..j + at].iter().for_each(&mut add);
+                b[j..j + at].iter().for_each(|x| add(place(x, x.list.bounds)));
                 j += at + 1;
             }
-            None => add(item),
+            None => {
+                // Painted again where it was (a text area typed in: a
+                // line and the caret changed, not all of it), and not
+                // what a later one is: only where the two differ.
+                if let Some(next) = b.get(j)
+                    && next.by == item.by
+                    && next.clip == item.clip
+                    && next.layer == item.layer
+                    && big(item)
+                    && !a[i + 1..].iter().any(|later| later.same_place(next))
+                {
+                    differ.clear();
+                    if next.list.scene.changed_since(&item.list.scene, &mut differ) {
+                        differ.iter().for_each(|r| add(place(item, *r)));
+                        j += 1;
+                        continue;
+                    }
+                }
+                add(place(item, item.list.bounds));
+            }
         }
     }
-    b[j..].iter().for_each(&mut add);
+    b[j..].iter().for_each(|x| add(place(x, x.list.bounds)));
     // (Many small pieces cost more to draw apart than together.)
     const MOST: usize = 16;
     if into.len() > MOST {

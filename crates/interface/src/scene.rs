@@ -93,6 +93,49 @@ impl Scene {
         Scene { recording: true, ..Default::default() }
     }
 
+    /// Olo: where this recording differs from `was`, the one it replaces
+    /// in the same place (a text area typed in: its line and its caret,
+    /// not all of it): of each kind of thing, around what isn't the same
+    /// at either end of that kind's list, where it was and where it is
+    /// (what each shows: its bounds in its clip). Into `out`, in the
+    /// coordinates they were painted in; false (and `out` as it was) when
+    /// it can't tell, holding things it doesn't compare (paths, sectors,
+    /// pictures' triangles, videos, shadows).
+    pub(crate) fn changed_since(&self, was: &Scene, out: &mut Vec<Bounds<ScaledPixels>>) -> bool {
+        let compared = |s: &Scene| s.paths.is_empty() && s.sectors.is_empty() && s.image_triangles.is_empty() && s.surfaces.is_empty() && s.shadows.is_empty();
+        if !compared(self) || !compared(was) {
+            return false;
+        }
+        fn kind<T: PartialEq>(a: &[T], b: &[T], shows: impl Fn(&T) -> Bounds<ScaledPixels>, out: &mut Vec<Bounds<ScaledPixels>>) {
+            let mut start = 0;
+            while start < a.len() && start < b.len() && a[start] == b[start] {
+                start += 1;
+            }
+            let (mut end_a, mut end_b) = (a.len(), b.len());
+            while end_a > start && end_b > start && a[end_a - 1] == b[end_b - 1] {
+                end_a -= 1;
+                end_b -= 1;
+            }
+            let around = a[start..end_a].iter().chain(&b[start..end_b]).map(shows).filter(|r| !r.is_empty()).reduce(|r, s| r.union(&s));
+            out.extend(around);
+        }
+        let len = out.len();
+        kind(&was.quads, &self.quads, |q| q.bounds.intersect(&q.content_mask.bounds), out);
+        kind(&was.underlines, &self.underlines, |u| u.bounds.intersect(&u.content_mask.bounds), out);
+        kind(&was.segments, &self.segments, |g| g.bounds.intersect(&g.content_mask.bounds), out);
+        // (One turned or moved by its matrix shows anywhere in its clip.)
+        let mono = |m: &MonochromeSprite| if m.transformation == TransformationMatrix::unit() { m.bounds.intersect(&m.content_mask.bounds) } else { m.content_mask.bounds };
+        kind(&was.mono_staging, &self.mono_staging, mono, out);
+        kind(&was.monochrome_sprites, &self.monochrome_sprites, mono, out);
+        kind(&was.polychrome_sprites, &self.polychrome_sprites, |p| p.bounds.intersect(&p.content_mask.bounds), out);
+        // (A picture let go and another in its tile: not the same.)
+        if was.images.len() != self.images.len() || was.images.iter().zip(&self.images).any(|(a, b)| !std::sync::Arc::ptr_eq(a, b)) {
+            out.truncate(len);
+            return false;
+        }
+        true
+    }
+
     /// Room for what `last` held, in a scene about to record the same
     /// view again: its lists are made once, the size they were, where
     /// they'd be grown from nothing as it paints (a row of text's
@@ -224,7 +267,7 @@ impl Scene {
 
     pub fn insert_primitive(&mut self, primitive: impl Into<Primitive>) {
         let primitive = primitive.into();
-        let clipped_bounds = primitive.bounds().intersect(&primitive.content_mask().bounds);
+        let clipped_bounds = primitive.reach().intersect(&primitive.content_mask().bounds);
 
         if clipped_bounds.is_empty() {
             self.culled += 1;
@@ -424,12 +467,17 @@ impl Scene {
         let base = self.primitive_bounds.insert_run(reach, recorded.depth());
         // Each thing moved, its clip with it and cut by `clip`; what's
         // clipped away whole is left out.
+        // (`$reach`: what of it can show, a shadow's blur past its bounds
+        // too, `Primitive::reach`.)
         macro_rules! take {
-            ($x:ident) => {{
+            ($x:ident) => {
+                take!($x, $x.bounds)
+            };
+            ($x:ident, $reach:expr) => {{
                 $x.bounds = mv($x.bounds);
                 $x.content_mask.bounds = mv($x.content_mask.bounds).intersect(clip);
                 $x.order += base;
-                !$x.bounds.intersect(&$x.content_mask.bounds).is_empty()
+                !$reach.intersect(&$x.content_mask.bounds).is_empty()
             }};
         }
         // All of it shows: `clip` cuts nothing of the drawing, so nothing
@@ -451,6 +499,9 @@ impl Scene {
         // those still there. `$moved`: what else of it moves.)
         macro_rules! put {
             ($list:ident, |$x:ident| $moved:block) => {
+                put!($list, |$x| $moved, $x.bounds)
+            };
+            ($list:ident, |$x:ident| $moved:block, $reach:expr) => {
                 if whole {
                     self.$list.extend(recorded.$list.iter().cloned().map(|mut $x| {
                         $moved
@@ -460,13 +511,13 @@ impl Scene {
                 } else {
                     self.$list.extend(recorded.$list.iter().cloned().filter_map(|mut $x| {
                         $moved
-                        take!($x).then_some($x)
+                        take!($x, $reach).then_some($x)
                     }));
                 }
             };
         }
         let before = self.shadows.len() + self.quads.len() + self.underlines.len() + self.segments.len() + self.sectors.len() + self.polychrome_sprites.len() + self.surfaces.len();
-        put!(shadows, |x| {});
+        put!(shadows, |x| {}, x.reach());
         put!(quads, |x| {});
         put!(underlines, |x| {});
         put!(polychrome_sprites, |x| {});
@@ -755,6 +806,17 @@ impl Primitive {
         }
     }
 
+    /// What drawing it can touch: its bounds, and a shadow's blur past
+    /// them ([`Shadow::reach`]). A frame drawing only a part of the
+    /// window goes by it, so a shadow falling past what casts it is
+    /// drawn again with what it falls on.
+    pub fn reach(&self) -> Bounds<ScaledPixels> {
+        match self {
+            Primitive::Shadow(shadow) => shadow.reach(),
+            _ => *self.bounds(),
+        }
+    }
+
     pub fn content_mask(&self) -> &ContentMask<ScaledPixels> {
         match self {
             Primitive::Shadow(shadow) => &shadow.content_mask,
@@ -954,7 +1016,7 @@ pub(crate) enum PrimitiveBatch<'a> {
     Surfaces(&'a [PaintSurface]),
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, PartialEq)]
 #[repr(C)]
 pub(crate) struct Quad {
     pub order: DrawOrder,
@@ -973,7 +1035,7 @@ impl From<Quad> for Primitive {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[repr(C)]
 pub(crate) struct Underline {
     pub order: DrawOrder,
@@ -993,7 +1055,7 @@ impl From<Underline> for Primitive {
 
 /// Olo: a straight line of any angle and width, antialiased by each
 /// pixel's distance to it (`Window::paint_segment`).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[repr(C)]
 pub(crate) struct Segment {
     pub order: DrawOrder,
@@ -1054,6 +1116,14 @@ pub(crate) struct Shadow {
     pub corner_radii: Corners<ScaledPixels>,
     pub content_mask: ContentMask<ScaledPixels>,
     pub color: Hsla,
+}
+
+impl Shadow {
+    /// What it can touch: its bounds and its blur past them (the shader
+    /// draws three blur radii out).
+    pub fn reach(&self) -> Bounds<ScaledPixels> {
+        self.bounds.dilate(ScaledPixels(3.0 * self.blur_radius.0))
+    }
 }
 
 impl From<Shadow> for Primitive {
@@ -1153,7 +1223,7 @@ impl Default for TransformationMatrix {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 #[repr(C)]
 pub(crate) struct MonochromeSprite {
     pub order: DrawOrder,
@@ -1174,7 +1244,7 @@ impl From<MonochromeSprite> for Primitive {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 #[repr(C)]
 pub(crate) struct PolychromeSprite {
     pub order: DrawOrder,
@@ -1893,5 +1963,69 @@ mod tests {
             assert_eq!(got, left, "cut, moved by {by:?}");
             assert_eq!(frame.len(), 3);
         }
+    }
+
+    /// A drawing made again with one thing changed (a key typed in a
+    /// text area: a glyph and the caret) differs from the last only
+    /// there; one holding things it doesn't compare (a shadow) says it
+    /// can't tell.
+    #[test]
+    fn a_drawing_made_again_differs_only_where_it_changed() {
+        let paint = |caret: f32, last: u32| {
+            let mut kept = Scene::recording();
+            kept.insert_primitive(quad(0.0, 0.0, 400.0, 300.0));
+            for row in 0..10 {
+                let mut line: Vec<_> = (0..8).map(|i| sprite(i as f32 * 8.0, 0, row * 10 + if row == 3 && i == 7 { last } else { i })).collect();
+                for glyph in &mut line {
+                    glyph.bounds.origin.y = ScaledPixels(row as f32 * 20.0);
+                }
+                kept.insert_sprites(line);
+            }
+            kept.insert_primitive(quad(caret, 60.0, 2.0, 16.0));
+            kept
+        };
+        let was = paint(64.0, 7);
+        let mut out = Vec::new();
+        assert!(paint(64.0, 7).changed_since(&was, &mut out));
+        assert!(out.is_empty(), "{out:?}");
+        // A glyph typed at the end of row 3, the caret a glyph along.
+        let now = paint(72.0, 99);
+        assert!(now.changed_since(&was, &mut out));
+        let around = out.iter().copied().reduce(|a, b| a.union(&b)).unwrap();
+        assert!(around.contains(&point(ScaledPixels(57.0), ScaledPixels(61.0))) && around.contains(&point(ScaledPixels(73.0), ScaledPixels(75.0))), "{out:?}");
+        assert!(out.iter().all(|r| r.origin.y.0 >= 59.0 && r.origin.y.0 + r.size.height.0 <= 77.0), "only row 3: {out:?}");
+        // With a shadow: it can't tell (and says nothing).
+        let mut shadowed = paint(72.0, 99);
+        shadowed.insert_primitive(Shadow {
+            order: 0,
+            blur_radius: ScaledPixels(4.0),
+            bounds: mask(10.0, 10.0, 50.0, 20.0).bounds,
+            corner_radii: Corners::default(),
+            content_mask: mask(-1e4, -1e4, 2e4, 2e4),
+            color: Hsla::default(),
+        });
+        out.clear();
+        assert!(!shadowed.changed_since(&was, &mut out));
+        assert!(out.is_empty());
+    }
+
+    /// A shadow reaches three blur radii past its bounds: a recording
+    /// holding one reaches that far, and a frame drawing only a part
+    /// below what casts it (where the blur falls) keeps the shadow.
+    #[test]
+    fn a_shadow_is_drawn_where_its_blur_falls() {
+        let mut kept = Scene::recording();
+        let cast = mask(100.0, 100.0, 200.0, 40.0).bounds;
+        kept.insert_primitive(Shadow { order: 0, blur_radius: ScaledPixels(6.0), bounds: cast, corner_radii: Corners::default(), content_mask: mask(-1e4, -1e4, 2e4, 2e4), color: Hsla::default() });
+        let extent = kept.extent();
+        assert_eq!(extent, cast.dilate(ScaledPixels(18.0)));
+        // Just under it, within the blur.
+        let mut frame = Scene::default();
+        frame.append(&kept, point(ScaledPixels(0.0), ScaledPixels(0.0)), &mask(0.0, 145.0, 400.0, 10.0).bounds);
+        assert_eq!(frame.shadows.len(), 1);
+        // Past the blur: nothing.
+        let mut frame = Scene::default();
+        frame.append(&kept, point(ScaledPixels(0.0), ScaledPixels(0.0)), &mask(0.0, 160.0, 400.0, 10.0).bounds);
+        assert!(frame.shadows.is_empty());
     }
 }

@@ -649,7 +649,9 @@ draws a frame. A burst of messages is one flush.
 - The stage draws a frame for a commit, for a scroller that moved, for
   an end springing back, and for a drawing that asked
   (`paint_again_within`), and for nothing else. It draws only the
-  part of the window that changed.
+  parts of the window that changed (a few rectangles apart: a line
+  typed in and the status line under it), and of a drawing made again
+  in the same place only what differs from the last.
 - `invalidate_at_frame()` holds a view's change for the next frame
   the compositor asks for, so a flood (a shell printing megabytes) is
   laid out and painted once a frame, as it is then.

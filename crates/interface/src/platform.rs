@@ -319,9 +319,9 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     /// What an input method does is handed to `callback`.
     fn on_ime(&self, _callback: Box<dyn FnMut(ImeInput)>) {}
     /// Begins a frame that shows `damage` (what changed since the last,
-    /// in device pixels; None: everything): how much of it is to be
-    /// drawn. The scene then drawn need hold no more.
-    fn begin_frame(&self, _damage: Option<Bounds<crate::ScaledPixels>>) -> FrameRegion {
+    /// as rectangles in device pixels; None: everything): how much of it
+    /// is to be drawn. The scene then drawn need hold no more.
+    fn begin_frame(&self, _damage: Option<&[Bounds<crate::ScaledPixels>]>) -> FrameRegion {
         FrameRegion::All
     }
     fn draw(&self, scene: &Scene);

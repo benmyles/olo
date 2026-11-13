@@ -429,7 +429,20 @@ How Olo keeps it (do the same):
   rather than hashing what you'd draw: finding out what changed must
   cost far less than drawing it.
 * **Only what shows, only what changed**: virtualised lists, per-row
-  and per-item caches, damage.
+  and per-item caches, damage. A kit window's frame draws only the
+  rectangles that changed, up to six apart (`MOST_APART`: each a
+  scissor every draw is made again under, and what app_server is
+  told), not their union: a key typed in StyledEdit draws its line and
+  the status line, not the window between them. Where a drawing was
+  made again in the same place (a text area painted again for a key),
+  the stage compares it with the one it replaces thing by thing
+  (`Scene::changed_since`, for drawings of a sixteenth of the window
+  or more) and damages only what differs; a frame then takes from each
+  drawing only what falls in a rectangle (`stage::assemble`). What a
+  thing can touch is its reach, not its bounds (`Shadow::reach`: a
+  blur three radii past them), so a shadow falling past what casts it
+  is drawn again with what it falls on. `OLO_DAMAGE=0` draws every
+  frame whole, the reference to compare shots against.
 * **Once a frame, at the last moment** (olo-kit), for a view fed faster
   than frames are shown: a shell printing, a meter on a stream. A
   window's looper lays out and paints what changed as soon as its queue
