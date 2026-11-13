@@ -836,9 +836,24 @@ something nobody here has is in "Blocked", with what it waits for.
          (`history.rs`: `card`, `lay_out`). To do: a card's face made
          once an entry and kept, shared strings in `look::Face`,
          `CardLaid` behind an `Rc`.
-       - Tracker's list view (the above is its column view) formats
-         each cell's string at every paint (sizes, dates): kept with
-         the entry they're of. Not measured since the change above.
+       - *Tracker's list view, done 2026-11-13.* (The above is its
+         column view.) Its rows had no key, so every row showing was
+         painted again whenever the window said anything (a step of
+         the selection, a file changing in the folder, Find's results
+         coming in, a key typed in Go To), each cell's text formatted
+         again (sizes, dates, a name copied). Now the list, Find and Go
+         To key their rows by what each shows (`folder::row_key`) and
+         an entry keeps its texts once drawn (`Entry::shown`). A step
+         of the selection in a folder of 3,050 items, 47 rows showing
+         (release, perf stat of the app, three runs each in turn,
+         medians): 4.91 → 1.91 M instructions, 5.70 → 3.41 M cycles;
+         a live resize paints every row either way, and what the
+         texts save it (some 0.1 M a step) is under the runs' spread
+         (3.1 to 6.0 M for the same build at a load of 8). Found on
+         the way: renaming in the list view showed no field at all
+         (the name went blank and typing went nowhere), in the build
+         before this too; the field is now over the Name cell
+         (`ColumnListView::over_cell`, the kit's).
        - Logs makes a shared string of a `String` for 490 cells a
          step.
        - An element is 800 bytes (its style, 632 of them) and is
@@ -885,7 +900,25 @@ something nobody here has is in "Blocked", with what it waits for.
        from the looper where nothing under the pointer hears it (as
        it does the wheel), which needs the commit to say where
        something does (hover, a cursor, a tip, a window's own
-       listeners while a button is down).
+       listeners while a button is down). *Looked at 2026-11-13:* the
+       stage has what it needs from the wheel's pattern (a commit's
+       regions in its layers' coordinates, `WheelRegion`), and a press
+       finds what's under it at its own place, so skipped motion can't
+       send a click astray; but every kit window's `Frame` hears
+       motion window-wide (`on_window_mouse_move`, for cut text's tips),
+       as do 22 more listeners in 20 files (scroll bars, sliders, list
+       dividers, the ruler, slim scroll bars, text fields), most of them
+       for drags only. So first: a window-wide listener that hears only
+       what the window gets (while a button is held, over what notes
+       motion matters, leaving it) for the drags and the tips (their
+       regions from the painter's `cuts`), each listener sorted into
+       that or "everywhere"; then the commit's motion regions (hover and
+       active styles, hover and motion listeners, `paints_by_state`, a
+       cursor of its own or noted), the stage forwarding motion in
+       them, the motion that leaves one, all of it while a button is
+       held and the first after the pointer comes in; and the latest
+       place kept where the looper reads it when it looks again under
+       a still pointer (`hover_stale`: something moved or scrolled).
      - Scrolling fails the benchmark's evenness now and then in both
        builds (a frame skipped in a drag or a glide), and the
        Viewer's live resize its budget in both. Looked into

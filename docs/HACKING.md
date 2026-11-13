@@ -2312,7 +2312,20 @@ it.
   what a search marks in it): such a row whose key and look are as last
   frame's is kept, moved if scrolled, rather than painted again
   (Log Viewer's screen of 22,000 glyphs). Give it
-  for any list of many rows. `no_header()` shows the rows
+  for any list of many rows, and for any list whose view says what it
+  shows often (a selection moved, a folder changing, results coming
+  in): without it every row near what shows is painted again each
+  time (Tracker's list view, a step of the selection with 47 rows
+  showing: 4.9 → 1.9 M instructions with a key). Keep a row's texts
+  with what it shows (Tracker's `Entry::shown`, made the first time
+  it's drawn) rather than formatting them at every paint.
+  `over_cell(row, column, element)` puts something over a cell, in the
+  rows (it scrolls with them), in a box where the cell is and as big
+  (`ListModel::cell_bounds(columns, row, column)`, as the person
+  arranged the columns: keep it inside, a longer name scrolling in its
+  field): a name edited in place. A press anywhere on that cell is its,
+  not the list's (a click in the field puts the caret there and the
+  keyboard stays in it). `no_header()` shows the rows
   alone (a list of things, not of columns: Passwords' items), its
   frame's line along their top; a cell drawn by hand (an icon and two
   lines) says its text to agents with `cell.say(text)`.
@@ -13381,7 +13394,15 @@ deferred so the Tracker can update the window back):
   columns side by side, scrolled across, with a preview of a selected
   file (thumbs.rs: pictures made small on a thread of their own).
   Editing a name is a `TextField` over the label (items.rs `Rename`);
-  Return or a click elsewhere renames, Escape doesn't.
+  Return or a click elsewhere renames, Escape doesn't. In the list view
+  it's over the Name cell (`ColumnListView::over_cell`), no wider than
+  the column (`Rename::element_within`): a name longer than the column
+  scrolls in it. The list view, Find's results and Go To's names key
+  their rows by what each shows (`folder::row_key`: the path, size,
+  date, kind, icon and backup mark), and an entry's texts in a list
+  (`Entry::shown`: name, size, date, kind) are made the first time it's
+  drawn and kept with it (an item changed on disk comes as a new
+  entry).
 - `Desktop` (desktop.rs): a background layer anchored to every edge;
   icons placed by hand kept in `desktop.json`, the rest on the grid.
 - Drops come through the kit's (`View::takes_drops`, `drop_over`,

@@ -26,7 +26,7 @@ use olo_kit_base::metrics as m;
 
 use crate::{
     FIND_FOLLOWS, ToHub, WinInfo, find,
-    folder::name_cell,
+    folder::{self, name_cell},
     fs::{self, Entry},
     items, ops, to_hub, watch,
 };
@@ -478,10 +478,13 @@ impl View for FindWin {
                 (1, _) => cell.text(g, e.path.parent().map(fs::display_path).unwrap_or_default()),
                 (2, true) => cell.text(g, h.line.as_ref().map(|(n, _)| n.to_string()).unwrap_or_default()),
                 (_, true) => cell.text(g, h.line.as_ref().map(|(_, t)| t.clone()).unwrap_or_default()),
-                (2, false) => cell.text(g, e.size_text()),
-                _ => cell.text(g, fs::format_time(e.modified)),
+                (2, false) => cell.text(g, e.shown().size.clone()),
+                _ => cell.text(g, e.shown().modified.clone()),
             }
         })
+        // (Results come in while it's drawn: a row already found isn't
+        // drawn again for them.)
+        .row_key(move |f: &FindWin, row| f.results.get(row).map_or(0, |h| style::key((folder::row_key(&h.entry), &h.line, contents))))
         .type_select(|f: &FindWin, i| f.results.get(i).map(|h| SharedString::from(h.entry.name.clone())).unwrap_or_default())
         .on_select(cx.listener(|_: &mut FindWin, _: &(), cx| cx.invalidate()))
         .on_open(cx.listener(|f: &mut FindWin, _: &usize, cx| f.run("open", cx)))

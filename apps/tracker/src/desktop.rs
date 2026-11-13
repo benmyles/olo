@@ -906,6 +906,7 @@ fn trash_item() -> Item {
         kind: fs::Kind::Folder,
         app_icon: None,
         downloading: None,
+        shown: Default::default(),
     });
     Item { entry, label: "Trash".into(), icon }
 }

@@ -95,6 +95,9 @@ struct Model {
     /// How many rows it had and how tall each was, as last shown.
     rows: usize,
     row_height: f32,
+    /// The cell something is over (`ColumnListView::over_cell`), in the
+    /// content: a press on it is that thing's.
+    over: Option<Bounds<Pixels>>,
 }
 
 /// A list's state, kept by the app's view from one `body` to the next
@@ -116,7 +119,25 @@ impl ListModel {
             drag: None,
             rows: 0,
             row_height: m::LIST_ROW,
+            over: None,
         })))
+    }
+
+    /// Where cell (`row`, `column`: the column's own index of `columns`)
+    /// is in the rows, from the first row's top left (as the list was
+    /// last laid out, the columns as the person arranged them): what an
+    /// element put over it (`ColumnListView::over_cell`) has to fit in.
+    pub fn cell_bounds(&self, columns: &[Column], row: usize, column: usize) -> Bounds<Pixels> {
+        let m = self.0.borrow();
+        let order = order(&m, columns);
+        let widths = shown_widths(&m, columns);
+        let total: f32 = widths.iter().sum();
+        let view = m.scroll.bounds().size.width;
+        let sideways = view > px(0.0) && total > f32::from(view) + 0.5;
+        let right = if sideways { px(total) } else { view };
+        let at = order.iter().position(|&c| c == column).unwrap_or(0);
+        let (x0, x1) = spans(&widths, px(0.0), right, sideways).get(at).copied().unwrap_or_default();
+        Bounds::from_corners(point(x0, px(row as f32 * m.row_height)), point(x1, px((row + 1) as f32 * m.row_height)))
     }
 
     /// What's selected, and how it's sorted.
@@ -355,6 +376,8 @@ pub struct ColumnListView<V> {
     header: bool,
     handlers: Handlers,
     row_key: Option<Rc<dyn Fn(&V, usize) -> u64>>,
+    /// Something over a cell: its row and column, and it.
+    over: Option<(usize, usize, Element)>,
     /// The list has the keyboard (as its view's `body` found it).
     focused: bool,
 }
@@ -375,6 +398,7 @@ impl<V: View> ColumnListView<V> {
             header: true,
             handlers: Handlers::default(),
             row_key: None,
+            over: None,
             focused: model.is_focused(cx),
         }
     }
@@ -454,6 +478,16 @@ impl<V: View> ColumnListView<V> {
     /// again.
     pub fn on_sort(mut self, f: impl Fn(&(), &mut WindowCx) + 'static) -> Self {
         self.handlers.sort = Some(Rc::new(f));
+        self
+    }
+
+    /// `element` over cell (`row`, `column`: the column's own index), in
+    /// the rows (it scrolls with them): a name edited in place (Tracker's
+    /// Edit Name, a `TextField`). It's laid out in a box where the cell
+    /// is, as big ([`ListModel::cell_bounds`]: keep it inside), and a
+    /// press on the cell is its, not the list's.
+    pub fn over_cell(mut self, row: usize, column: usize, element: impl IntoElement) -> Self {
+        self.over = Some((row, column, element.into_element()));
         self
     }
 }
@@ -643,6 +677,15 @@ impl<V: View> IntoElement for ColumnListView<V> {
         }
         let mut list = div().absolute().inset_0().track_scroll(&scroll);
         list = if sideways { list.overflow_scroll() } else { list.overflow_y_scroll() };
+        // Something over a cell, where the cell is in the rows. The whole
+        // cell is its: a press on it beside the thing (above a field
+        // shorter than the row) reaches nothing behind (it would give the
+        // list the keyboard), and the rows' own handler leaves it alone.
+        let over = self.over.map(|(row, column, element)| {
+            let b = model.cell_bounds(&columns, row, column);
+            (b, div().absolute().left(b.left()).top(b.top()).w(b.size.width).h(b.size.height).occlude().child(element))
+        });
+        model.0.borrow_mut().over = over.as_ref().map(|(b, _)| *b);
         // Sideways or not as the view's width changes: the view that
         // holds the list says what it shows again.
         let (near_scroll, near_columns, near_model) = (scroll.clone(), columns.clone(), model.clone());
@@ -709,7 +752,7 @@ impl<V: View> IntoElement for ColumnListView<V> {
         .tab_stop()
         // (A selected row shows whether the list has the keyboard.)
         .on_focus_changed(|_, cx| cx.invalidate_owner())
-        .child(div().absolute().left(px(edge)).top(px(parts.head)).right(px(parts.bar)).bottom(px(hbar)).child(ground).child(list.child(content)).child(pointer));
+        .child(div().absolute().left(px(edge)).top(px(parts.head)).right(px(parts.bar)).bottom(px(hbar)).child(ground).child(list.child(content).children(over.map(|(_, e)| e))).child(pointer));
         if self.header {
             root = root.child(div().absolute().left(px(edge)).top(px(edge)).right(px(edge)).h(px(parts.head - edge)).child(header(&self.id, &model, &columns, &handlers, parts, sideways)));
         }
@@ -834,6 +877,12 @@ fn paint_row<V>(
 /// A button went down over the rows.
 fn rows_pressed(model: &ListModel, h: &Handlers, e: &MouseDownEvent, cx: &mut WindowCx) {
     let body = cx.listener_bounds();
+    // A press on the cell something's over is that thing's (a name being
+    // edited: the caret put where it was clicked).
+    let at = model.content(e.position, body);
+    if model.0.borrow().over.is_some_and(|b| b.contains(&at)) {
+        return;
+    }
     model.focus(cx);
     let mods = Mods { command: e.modifiers.control || e.modifiers.platform, shift: e.modifiers.shift };
     let row = model.row_at(e.position, body);
@@ -1157,4 +1206,27 @@ fn header(id: &SharedString, model: &ListModel, columns: &Rc<[Column]>, handlers
 /// Where the divider at `x` in a header `b` takes the pointer.
 fn divider_at(x: Pixels, b: Bounds<Pixels>) -> Bounds<Pixels> {
     Bounds { origin: point(x - px(3.0), b.top()), size: size(px(6.0), b.size.height) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_cell_is_where_its_column_is_shown() {
+        let model = ListModel::new(false);
+        let columns = [Column::new("Name", 220.0), Column::new("Size", 80.0), Column::new("Kind", 120.0)];
+        let row = m::LIST_ROW;
+        // As given: Size is the second, on the third row.
+        let b = model.cell_bounds(&columns, 2, 1);
+        assert_eq!((b.left(), b.top(), b.size.width, b.size.height), (px(220.0), px(2.0 * row), px(80.0), px(row)));
+        // Moved first and widened by the person: Name follows it.
+        {
+            let mut m = model.0.borrow_mut();
+            m.order = vec!["Size".into(), "Name".into(), "Kind".into()];
+            m.widths.insert("Size".into(), 100.0);
+        }
+        let b = model.cell_bounds(&columns, 0, 0);
+        assert_eq!((b.left(), b.top(), b.size.width), (px(100.0), px(0.0), px(220.0)));
+    }
 }

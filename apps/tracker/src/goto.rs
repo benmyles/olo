@@ -271,6 +271,9 @@ impl View for GoToWin {
             let Some(e) = g.matches.get(cell.row) else { return };
             name_cell(cell, painter, e, true);
         })
+        // (Each key typed says what the window shows: a name still
+        // matching isn't drawn again.)
+        .row_key(|g: &GoToWin, row| g.matches.get(row).map_or(0, crate::folder::row_key))
         .no_header()
         .empty_text(SharedString::from(""))
         .on_select(cx.listener(|_: &mut GoToWin, _: &(), cx| cx.invalidate()))
@@ -362,6 +365,7 @@ mod tests {
             kind: if is_dir { fs::Kind::Folder } else { fs::Kind::Document },
             app_icon: None,
             downloading: None,
+            shown: Default::default(),
         };
         let all = vec![e("Documents", true), e("Downloads", true), e("dotfile", false), e(".config", true), e("Music", true)];
         let names = |v: Vec<Entry>| v.into_iter().map(|e| e.name).collect::<Vec<_>>();
