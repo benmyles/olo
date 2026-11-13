@@ -607,6 +607,38 @@ something nobody here has is in "Blocked", with what it waits for.
        ▸ a receiver", with Stop where it was started and in the
        tray. The command stays the way under all of it (and for
        agents).
+     - *Low latency, 2026-11-12* (Ben: "see if there's a way to get
+       low latency airplay working … i want video and audio";
+       HACKING, "AirPlay"): not HLS but AirPlay's own mirroring, as
+       doubletake (LGPL, Go) has found it works with today's Apple
+       TVs: over a HomeKit pair-verified connection the picture and
+       sound are keyed from the pairing, so **no FairPlay** is
+       needed (the objevovat FairPlay-SAP code Ben pointed at is
+       Apple-derived tables under the LGPL, and its README says both
+       Apple TVs it was tried on refused it; Olo is MIT, so bringing
+       any of it in is Ben's to decide, and nothing needs it now).
+       `olo-airplay show` sends a window, a display or an agent
+       screen with the computer's sound, 8 ms from capture to sent,
+       a lead of 40 ms wired (75 on Wi-Fi) at the receiver.
+     - *The desktop's way to it, 2026-11-12* (HACKING, "AirPlay" and
+       "Show on AirPlay and Play On"): Preferences ▸ AirPlay (the
+       receivers, Pair… with the code typed, Check, Forget, Show
+       Display, Stop); Play On ▸ in Viewer and Tracker for a film;
+       Show on AirPlay ▸ in a window's tab menu, Deskbar's app rows,
+       Agent Screens' Screen menu and Deskbar's agent screens item;
+       the tray says a showing, with Pause and Stop. All tried on a
+       headless session against the test receivers.
+     - *Next:* (1) a workspace that isn't the one showing: a capture
+       source of app_server's own for a display's workspace (its
+       windows parked as they are, drawn at the display's size), then
+       Show Workspace on AirPlay ▸ on Deskbar's workspace headings;
+       (2) the frames kept on the GPU (lent dmabufs scaled to the
+       receiver's size and encoded H.264 by VA-API on the Intel GPU,
+       as the recorder does for AV1): today a busy screen costs 30%
+       of a core, most of it the resize and the copy; (3) a window's
+       own sound rather than the computer's (moving its stream to a
+       sink of its own), and keeping the sound off this computer's
+       speakers while it plays on the television.
      - *Ben's to say:* (1) which receiver it's for (an Apple TV and
        its tvOS, a television with AirPlay built in, something else):
        it has to be tried against the real one, paired by him at the

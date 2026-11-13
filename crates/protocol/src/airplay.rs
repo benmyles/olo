@@ -1,5 +1,7 @@
-//! A film playing on an AirPlay receiver (`olo-airplay play`): each
-//! play is a process, and says how it goes in a file of its own,
+//! A film playing on an AirPlay receiver (`olo-airplay play`), or a
+//! window, a display, a workspace or an agent screen shown live on one
+//! (`olo-airplay show`, [`Shown`]): each is a process, and says how it
+//! goes in a file of its own,
 //! `$XDG_RUNTIME_DIR/olo-airplay/<pid>.json`, there while it plays and
 //! written again when what it's doing changes: for Deskbar's tray (which
 //! follows the folder), `olo-airplay playing|stop|pause|resume`, and
@@ -20,7 +22,8 @@ pub struct Playing {
     /// The file, where it is one on this computer.
     #[serde(default)]
     pub path: Option<PathBuf>,
-    /// "loading", "playing" or "paused".
+    /// "loading", "playing" or "paused"; a screen shown live, "showing"
+    /// or "paused" ([`Playing::live`]).
     pub state: String,
     /// Where in the film it was, in seconds, when `as_of` (milliseconds
     /// since the epoch) was: a receiver says where it is when that
@@ -36,6 +39,10 @@ pub struct Playing {
     pub as_of: u64,
     /// When it was asked for, in seconds since the epoch.
     pub started: u64,
+    /// A screen shown live (`olo-airplay show`), not a film: no place in
+    /// it, nothing to seek.
+    #[serde(default)]
+    pub live: bool,
 }
 
 impl Playing {
@@ -159,6 +166,80 @@ pub fn play_on(receiver: &str, what: &str) -> std::io::Result<()> {
     olo_xdg::spawn_detached(&play_command(receiver, what))
 }
 
+/// What is shown live on a receiver (`olo-airplay show`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum Shown {
+    /// A window, by its id (`WindowInfo::id`), named by its title.
+    Window { id: u64, title: String },
+    /// A display, by its connector (None: the first), as it shows.
+    Display { name: Option<String>, title: String },
+    /// One of a display's workspaces (by its index from 0), whether it's
+    /// the one showing there or not.
+    Workspace { display: Option<String>, index: u32, title: String },
+    /// An agent screen, by its name.
+    Screen { name: String },
+}
+
+/// The command that shows `what` on `receiver` ([`Paired::key`], or a
+/// name), with the computer's sound, and tells the person if it
+/// couldn't: what "Show on AirPlay" runs.
+pub fn show_command(receiver: &str, what: &Shown) -> String {
+    let mut c = format!("olo-airplay show --notify --on {}", quoted(receiver));
+    let titled = |c: &mut String, title: &str| {
+        if !title.is_empty() {
+            c.push_str(&format!(" --title {}", quoted(title)));
+        }
+    };
+    match what {
+        Shown::Window { id, title } => {
+            c.push_str(&format!(" --window {id}"));
+            titled(&mut c, title);
+        }
+        Shown::Display { name, title } => {
+            if let Some(name) = name {
+                c.push_str(&format!(" --display {}", quoted(name)));
+            }
+            titled(&mut c, title);
+        }
+        Shown::Workspace { display, index, title } => {
+            c.push_str(&format!(" --workspace {index}"));
+            if let Some(name) = display {
+                c.push_str(&format!(" --display {}", quoted(name)));
+            }
+            titled(&mut c, title);
+        }
+        Shown::Screen { name } => c.push_str(&format!(" --screen {}", quoted(name))),
+    }
+    c
+}
+
+/// Start showing `what` on `receiver`: a process of its own, in Deskbar's
+/// tray while it shows (Pause, Stop), which tells the person in a
+/// notification if it couldn't.
+pub fn show_on(receiver: &str, what: &Shown) -> std::io::Result<()> {
+    olo_xdg::spawn_detached(&show_command(receiver, what))
+}
+
+/// A menu item's command for a receiver (its [`Paired::key`] after it),
+/// and for AirPlay's preferences (pairing one): what `Menu::airplay`
+/// gives its items.
+pub const MENU_COMMAND: &str = "airplay-on:";
+pub const SETTINGS_COMMAND: &str = "airplay-settings";
+
+/// The receiver a menu's command names: Some(Some(KEY)), Some(None) for
+/// AirPlay's preferences; None if it isn't one of these.
+pub fn menu_command(command: &str) -> Option<Option<&str>> {
+    if command == SETTINGS_COMMAND {
+        return Some(None);
+    }
+    command.strip_prefix(MENU_COMMAND).filter(|k| !k.is_empty()).map(Some)
+}
+
+/// Open Preferences ▸ AirPlay (to pair with a receiver).
+pub fn open_settings() -> std::io::Result<()> {
+    olo_xdg::spawn_detached("olo-preferences airplay")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -175,6 +256,25 @@ mod tests {
     }
 
     #[test]
+    fn a_showing_asked_for_in_words_and_menus() {
+        let on = "AA:BB:CC:DD:EE:FF";
+        assert_eq!(show_command(on, &Shown::Window { id: 42, title: "Ben's notes".into() }), r"olo-airplay show --notify --on 'AA:BB:CC:DD:EE:FF' --window 42 --title 'Ben'\''s notes'");
+        assert_eq!(show_command(on, &Shown::Display { name: None, title: String::new() }), "olo-airplay show --notify --on 'AA:BB:CC:DD:EE:FF'");
+        assert_eq!(
+            show_command(on, &Shown::Display { name: Some("eDP-1".into()), title: "Display 1".into() }),
+            "olo-airplay show --notify --on 'AA:BB:CC:DD:EE:FF' --display 'eDP-1' --title 'Display 1'"
+        );
+        assert_eq!(
+            show_command(on, &Shown::Workspace { display: Some("HDMI-A-1".into()), index: 2, title: "Workspace 3".into() }),
+            "olo-airplay show --notify --on 'AA:BB:CC:DD:EE:FF' --workspace 2 --display 'HDMI-A-1' --title 'Workspace 3'"
+        );
+        assert_eq!(show_command("Den", &Shown::Screen { name: "agent".into() }), "olo-airplay show --notify --on 'Den' --screen 'agent'");
+        assert_eq!(menu_command("airplay-on:AA:BB"), Some(Some("AA:BB")));
+        assert_eq!(menu_command(SETTINGS_COMMAND), Some(None));
+        assert_eq!((menu_command("airplay-on:"), menu_command("airplay:stop:7")), (None, None));
+    }
+
+    #[test]
     fn where_it_is_by_now() {
         let mut p = Playing {
             pid: 1,
@@ -187,6 +287,7 @@ mod tests {
             rate: 1.0,
             as_of: now_ms() - 5000,
             started: 0,
+            live: false,
         };
         let at = p.position_now().unwrap();
         assert!((15.0..16.0).contains(&at), "{at}");

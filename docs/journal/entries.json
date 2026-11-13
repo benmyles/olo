@@ -3946,5 +3946,29 @@
   "title": "Deskbar: a film playing on an AirPlay receiver",
   "caption": "While olo-airplay plays a film on a receiver, Deskbar's tray has a screen with a play mark on it (two bars while paused, a count when there are several). Its menu says what plays where, with Pause (or Resume) and Stop for each, and Stop All. The mark is placed in device pixels inside the screen's frame: centred at 1\u00d7, 1.25\u00d7, 1.5\u00d7, 1.75\u00d7 and 2\u00d7. Tried against a receiver of the test's own, on the loopback.",
   "image": "2026-11-12/154356-deskbar-a-film-playing-on-an-airplay-receiver.png"
+ },
+ {
+  "time": "2026-11-12T18:03:42",
+  "title": "Preferences \u25b8 AirPlay: pairing with a receiver",
+  "caption": "A new panel: the AirPlay receivers on the network and those paired with, each with its kind and how it is; Pair\u2026 asks one to show its code and the field takes the keyboard. Check, Forget, Show Display and Stop for one paired with. Test receivers on the loopback.",
+  "image": "2026-11-12/180342-preferences-airplay-pairing-with-a-receiver.png"
+ },
+ {
+  "time": "2026-11-12T18:03:43",
+  "title": "Show on AirPlay in a window's tab menu",
+  "caption": "Right-click a window's tab: Show on AirPlay \u25b8 lists the receivers paired with (the kit's Menu::airplay); the same is in Deskbar's app rows, Agent Screens and Deskbar's agent screens item.",
+  "image": "2026-11-12/180343-show-on-airplay-in-a-window-s-tab-menu.png"
+ },
+ {
+  "time": "2026-11-12T18:03:43",
+  "title": "Play On in Viewer's File menu",
+  "caption": "A film in Viewer (and in Tracker's menu) has Play On \u25b8: the receiver fetches and plays the file itself.",
+  "image": "2026-11-12/180343-play-on-in-viewer-s-file-menu.png"
+ },
+ {
+  "time": "2026-11-12T18:03:43",
+  "title": "Deskbar's tray says a screen shown on AirPlay",
+  "caption": "A window shown live on a receiver: its title, the receiver, Pause and Stop, and AirPlay Preferences\u2026",
+  "image": "2026-11-12/180343-deskbar-s-tray-says-a-screen-shown-on-airplay.png"
  }
 ]

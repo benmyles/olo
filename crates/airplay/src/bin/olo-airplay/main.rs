@@ -419,6 +419,7 @@ fn play_asked(args: &[String]) -> Result<(), String> {
             rate: now.rate,
             as_of: airplay::now_ms(),
             started,
+            live: false,
         };
         let same = written.as_ref().is_some_and(|old| {
             let near = match (old.position_now(), new.position) {
@@ -560,6 +561,7 @@ mod tests {
             rate: 0.0,
             as_of: 1,
             started: 0,
+            live: false,
         };
         assert_eq!(in_a_line(&p), "A film.mp4 on Front Room: paused, 2:03 of 1:32:10");
         p.duration = None;

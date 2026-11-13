@@ -234,6 +234,7 @@ fn shown(args: &[String]) -> Result<(), String> {
             rate: if paused { 0.0 } else { 1.0 },
             as_of: airplay::now_ms(),
             started,
+            live: true,
         };
         let _ = p.write();
     };

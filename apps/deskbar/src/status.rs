@@ -76,8 +76,11 @@ pub struct Status {
     pub sharing: Vec<olo_protocol::sharing::Share>,
     /// A recording of this display going (olo-screenshot's recorder).
     pub recording: Option<olo_protocol::recording::Going>,
-    /// Films playing on AirPlay receivers (`olo-airplay play`'s).
+    /// Films playing on AirPlay receivers, and screens shown live on
+    /// them (`olo-airplay play`'s and `show`'s).
     pub airplay: Vec<olo_protocol::airplay::Playing>,
+    /// The AirPlay receivers paired with: the menus' Show on AirPlay.
+    pub airplay_paired: Vec<olo_protocol::airplay::Paired>,
     /// The supervisor (Preferences ▸ Performance), if it is installed.
     pub supervisor: Option<Supervisor>,
     /// AirPods connected (olo-airpods' state).
@@ -328,11 +331,12 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
     let display = olo_protocol::recording::this_display();
     let recording = olo_protocol::recording::path_for(&display);
     let airplay = olo_protocol::airplay::dir();
+    let paired = olo_protocol::airplay::pairings_path();
     let installed = olo_xdg::find_program("olo-supervisor").is_some();
     let read = {
         let (notes, screens, upgrades, sharing, shared) = (notes.clone(), screens.clone(), upgrades.clone(), sharing.clone(), shared.clone());
         let (perf, supervising, pods, voice, doctor) = (perf.clone(), supervising.clone(), pods.clone(), voice.clone(), doctor.clone());
-        let (recording, display, airplay) = (recording.clone(), display.clone(), airplay.clone());
+        let (recording, display, airplay, paired) = (recording.clone(), display.clone(), airplay.clone(), paired.clone());
         let (backup_state, backup_settings) = (backup_state.clone(), backup_settings.clone());
         move |changed: &[PathBuf]| {
             let all = changed.is_empty();
@@ -348,6 +352,7 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
             let recorded = (all || changed.contains(&recording)).then(|| olo_protocol::recording::going_on(&display));
             // (Each play says how it goes in a file of its own in the folder.)
             let plays = (all || changed.iter().any(|p| p.starts_with(&airplay))).then(olo_protocol::airplay::all);
+            let receivers = (all || changed.contains(&paired)).then(olo_protocol::airplay::paired);
             let backed_up = (all || changed.contains(&backup_state) || changed.contains(&backup_settings)).then(backup);
             let supervisor =
                 (installed && (all || changed.contains(&perf) || changed.contains(&supervising))).then(|| Supervisor { on: PerformanceSettings::load().enabled, state: SupervisorState::load() });
@@ -357,6 +362,9 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
                 }
                 if let Some(p) = plays {
                     s.airplay = p;
+                }
+                if let Some(r) = receivers {
+                    s.airplay_paired = r;
                 }
                 if let Some(b) = backed_up {
                     s.backup = b;
@@ -393,7 +401,7 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
     let read = Arc::new(read);
     let on_change = read.clone();
     if let Some(w) =
-        olo_kit::watch::watch([notes, screens, upgrades, sharing, perf, supervising, pods, voice, doctor, recording, backup_state, backup_settings, airplay], move |changed| on_change(changed))
+        olo_kit::watch::watch([notes, screens, upgrades, sharing, perf, supervising, pods, voice, doctor, recording, backup_state, backup_settings, airplay, paired], move |changed| on_change(changed))
     {
         // Deskbar's for as long as it runs.
         std::mem::forget(w);

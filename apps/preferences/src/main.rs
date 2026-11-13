@@ -16,6 +16,7 @@
 
 mod about;
 mod ai;
+mod airplay;
 mod airpods;
 mod appearance;
 mod backup;

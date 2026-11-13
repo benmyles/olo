@@ -860,7 +860,14 @@ impl Doc {
             let dirty = editor.is_some_and(|e| e.dirty() && !e.saving);
             file = file.item("Save", "save").key("s").enabled(dirty).item("Save As…", "save-as").shift_key("s").item("Revert to Saved", "revert").enabled(dirty).separator();
         }
-        file = file.item(olo_kit::tracker::LABEL, olo_kit::tracker::COMMAND).separator().item("Close", "close").key("w").item("Quit", "quit").key("q");
+        file = file.item(olo_kit::tracker::LABEL, olo_kit::tracker::COMMAND);
+        // A film, on a television (Ben, 2026-11-12: "integrated airplay
+        // from relevant app menus"): the receiver fetches and plays the
+        // file itself (`olo-airplay play`).
+        if matches!(&self.content, Content::Other(prev) if prev.read(cx).is_video()) {
+            file = file.submenu(Menu::airplay("Play On", &olo_kit::airplay::paired(), ""));
+        }
+        file = file.separator().item("Close", "close").key("w").item("Quit", "quit").key("q");
         let mut menus = vec![file];
         // A video: Trim… (and while trimming, Cancel and Trim there too).
         if let Content::Other(prev) = &self.content
@@ -1130,6 +1137,9 @@ impl Doc {
     }
 
     fn run(&mut self, command: &str, cx: &mut Cx<Self>) {
+        if olo_kit::airplay::play_from_menu(command, &self.path.to_string_lossy()) {
+            return;
+        }
         match command {
             "open" => return self.ask_panel(Purpose::Open, cx),
             "save" => return self.save(After::Nothing, cx),

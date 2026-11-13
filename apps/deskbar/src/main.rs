@@ -966,6 +966,20 @@ impl Deskbar {
         if olo_kit::moving::menus_offer() && team.windows.iter().any(|w| w.kept) {
             m = m.submenu(Menu::agent_screens(if several { "Move All to Agent Screen" } else { "Move to Agent Screen" }, &self.status.agent_screens, ""));
         }
+        // Live on a television (Ben, 2026-11-12: "integrated airplay … by
+        // right clicking the … deskbar row"): its window, or one of them.
+        let paired = &self.status.airplay_paired;
+        m = match &team.windows[..] {
+            [_] => m.submenu(Menu::airplay("Show on AirPlay", paired, "")),
+            windows => {
+                let mut each = Menu::new("Show on AirPlay");
+                for w in windows {
+                    let title = if w.title.is_empty() { team.name.clone() } else { w.title.chars().take(60).collect() };
+                    each = each.submenu(Menu::airplay(&title, paired, &format!("airplay-win:{}:", w.id)));
+                }
+                m.submenu(each)
+            }
+        };
         // Said as it is (Ben, 2026-11-08: "no checks/ticks just the option
         // changes based on the state"): grouped, Ungroup All; else Group All.
         let grouped = self.all_grouped(&team.windows, !self.tiling.ungrouped_apps.contains(&app));
@@ -1099,6 +1113,13 @@ impl Deskbar {
             }
             Some(("run", bin)) => spawn(bin),
             Some(("pref", panel)) => spawn(&format!("olo-preferences {panel}")),
+            // An agent screen shown on an AirPlay receiver (its tray item's
+            // menu).
+            Some(("screen-airplay", rest)) => {
+                if let Some((name, chosen)) = rest.split_once(':') {
+                    olo_kit::airplay::show_from_menu(chosen, &olo_protocol::airplay::Shown::Screen { name: name.to_owned() });
+                }
+            }
             Some(("appimage", path)) => {
                 if let Err(e) = appimages::launch(std::path::Path::new(path)) {
                     tracing::warn!("appimages: {path}: {e}");
@@ -1373,6 +1394,27 @@ impl Deskbar {
                 olo_kit::moving::take_to_screen(screen, ids);
             }
             return;
+        }
+        // Show on AirPlay: the team's one window, or the one chosen.
+        let (window, airplay) = match cmd.strip_prefix("airplay-win:").and_then(|r| r.split_once(':')) {
+            Some((id, rest)) => (id.parse::<u64>().ok(), olo_protocol::airplay::menu_command(rest)),
+            None => (ids.first().copied().filter(|_| ids.len() == 1), olo_protocol::airplay::menu_command(cmd)),
+        };
+        match airplay {
+            Some(Some(receiver)) => {
+                if let Some(w) = window.and_then(|id| self.windows.iter().find(|w| w.id == id)) {
+                    let what = olo_protocol::airplay::Shown::Window { id: w.id, title: w.title.clone() };
+                    if let Err(e) = olo_protocol::airplay::show_on(receiver, &what) {
+                        tracing::warn!("couldn't show the window on AirPlay: {e}");
+                    }
+                }
+                return;
+            }
+            Some(None) => {
+                let _ = olo_protocol::airplay::open_settings();
+                return;
+            }
+            None => {}
         }
         if let Some((index, output)) = cmd.strip_prefix("move:").and_then(|r| r.split_once(':')) {
             let Ok(index) = index.parse::<u32>() else { return };
@@ -1669,6 +1711,12 @@ fn play_said(p: &olo_protocol::airplay::Playing) -> String {
     format!("{} on {}{doing}", p.title, p.receiver)
 }
 
+/// Whether a play is going on (a film playing, a screen showing), and
+/// can be paused.
+fn play_going(p: &olo_protocol::airplay::Playing) -> bool {
+    p.state == "playing" || p.state == "showing"
+}
+
 /// The films playing on AirPlay receivers: each with Pause (or Resume)
 /// and Stop.
 fn airplay_menu(plays: &[olo_protocol::airplay::Playing]) -> Menu {
@@ -1678,13 +1726,29 @@ fn airplay_menu(plays: &[olo_protocol::airplay::Playing]) -> Menu {
             m = m.separator();
         }
         m = m.item(play_said(p), "").enabled(false);
-        m = if p.paused() { m.item("Resume", format!("airplay:resume:{}", p.pid)) } else { m.item("Pause", format!("airplay:pause:{}", p.pid)).enabled(p.state == "playing") };
+        m = if p.paused() { m.item("Resume", format!("airplay:resume:{}", p.pid)) } else { m.item("Pause", format!("airplay:pause:{}", p.pid)).enabled(play_going(p)) };
         m = m.item("Stop", format!("airplay:stop:{}", p.pid));
     }
     if plays.len() > 1 {
         m = m.separator().item("Stop All", "airplay:stop:all");
     }
-    m
+    m.separator().item("AirPlay Preferences…", "pref:airplay")
+}
+
+/// The agent screens' menu (right click): watch them, or show one on an
+/// AirPlay receiver.
+fn screens_menu(screens: &[olo_kit::moving::RunningScreen], paired: &[olo_protocol::airplay::Paired]) -> Menu {
+    let m = Menu::new("Agent Screens").item(if screens.len() == 1 { "Watch Agent Screen" } else { "Watch Agent Screens" }, "run:olo-screen watch").separator();
+    match screens {
+        [one] => m.submenu(Menu::airplay("Show on AirPlay", paired, &format!("screen-airplay:{}:", one.name))),
+        many => {
+            let mut each = Menu::new("Show on AirPlay");
+            for s in many {
+                each = each.submenu(Menu::airplay(&s.label, paired, &format!("screen-airplay:{}:", s.name)));
+            }
+            m.submenu(each)
+        }
+    }
 }
 
 fn sharing_menu(shares: &[olo_protocol::sharing::Share]) -> Menu {
@@ -2662,12 +2726,14 @@ impl Deskbar {
                 }
             }));
         }
-        // A film playing on an AirPlay receiver: what, where, and Pause
-        // and Stop.
+        // A film playing on an AirPlay receiver, or a screen shown on
+        // one: what, where, and Pause and Stop.
         if !st.airplay.is_empty() {
             let tip_text = match st.airplay.as_slice() {
                 [one] if one.paused() => format!("{}. Click to resume or stop.", play_said(one)),
                 [one] => format!("{}. Click to pause or stop.", play_said(one)),
+                many if many.iter().all(|p| p.live) => format!("{} screens shown on AirPlay receivers. Click to pause or stop them.", many.len()),
+                many if many.iter().any(|p| p.live) => format!("{} playing and shown on AirPlay receivers. Click to pause or stop them.", many.len()),
                 many => format!("{} films playing on AirPlay receivers. Click to pause or stop them.", many.len()),
             };
             let (paused, count) = (st.airplay.iter().all(|p| p.paused()), st.airplay.len());
@@ -2697,16 +2763,20 @@ impl Deskbar {
                 }
             }));
         }
-        // Agents at work on screens of their own: click to watch them.
+        // Agents at work on screens of their own: click to watch them;
+        // the right button, a menu with each shown on AirPlay too.
         if !st.agent_screens.is_empty() {
             let n = st.agent_screens.len();
             let tip_text = if n == 1 { "An agent screen is running. Click to watch it.".to_string() } else { format!("{n} agent screens are running. Click to watch them.") };
-            let (_, h) = tray_item(&mut d, "agent-screens", tip_text, Box::new(move |g, r| status::draw_screens(g, r, &theme::palette(), n)));
-            let m = model.clone();
-            d.hits.push(h.on_any_button(move |e, cx| {
-                if matches!(button(e), MouseButton::Left | MouseButton::Right) {
-                    run(&m, "run:olo-screen watch", cx);
+            let (r, h) = tray_item(&mut d, "agent-screens", tip_text, Box::new(move |g, r| status::draw_screens(g, r, &theme::palette(), n)));
+            let (m, v, menu) = (model.clone(), view.clone(), screens_menu(&st.agent_screens, &st.airplay_paired));
+            d.hits.push(h.on_any_button(move |e, cx| match button(e) {
+                MouseButton::Left => run(&m, "run:olo-screen watch", cx),
+                MouseButton::Right => {
+                    let mm = m.clone();
+                    open_menu(cx, &v, "tray:agent-screens", r, menu.clone(), move |cmd, cx| run(&mm, cmd, cx));
                 }
+                _ => {}
             }));
         }
         // The supervisor: a click opens its menu (on or off, what it

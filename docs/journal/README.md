@@ -5,6 +5,30 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-12
 
+### Deskbar's tray says a screen shown on AirPlay
+
+*18:03* — A window shown live on a receiver: its title, the receiver, Pause and Stop, and AirPlay Preferences…
+
+![Deskbar's tray says a screen shown on AirPlay](2026-11-12/180343-deskbar-s-tray-says-a-screen-shown-on-airplay.png)
+
+### Play On in Viewer's File menu
+
+*18:03* — A film in Viewer (and in Tracker's menu) has Play On ▸: the receiver fetches and plays the file itself.
+
+![Play On in Viewer's File menu](2026-11-12/180343-play-on-in-viewer-s-file-menu.png)
+
+### Show on AirPlay in a window's tab menu
+
+*18:03* — Right-click a window's tab: Show on AirPlay ▸ lists the receivers paired with (the kit's Menu::airplay); the same is in Deskbar's app rows, Agent Screens and Deskbar's agent screens item.
+
+![Show on AirPlay in a window's tab menu](2026-11-12/180343-show-on-airplay-in-a-window-s-tab-menu.png)
+
+### Preferences ▸ AirPlay: pairing with a receiver
+
+*18:03* — A new panel: the AirPlay receivers on the network and those paired with, each with its kind and how it is; Pair… asks one to show its code and the field takes the keyboard. Check, Forget, Show Display and Stop for one paired with. Test receivers on the loopback.
+
+![Preferences ▸ AirPlay: pairing with a receiver](2026-11-12/180342-preferences-airplay-pairing-with-a-receiver.png)
+
 ### Deskbar: a film playing on an AirPlay receiver
 
 *15:43* — While olo-airplay plays a film on a receiver, Deskbar's tray has a screen with a play mark on it (two bars while paused, a count when there are several). Its menu says what plays where, with Pause (or Resume) and Stop for each, and Stop All. The mark is placed in device pixels inside the screen's frame: centred at 1×, 1.25×, 1.5×, 1.75× and 2×. Tried against a receiver of the test's own, on the loopback.

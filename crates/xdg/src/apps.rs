@@ -59,6 +59,7 @@ pub fn app_id_of(bin: &str) -> Option<String> {
 /// Deskbar's Preferences menu lists exactly these.
 pub const PREFERENCE_PANELS: &[(&str, &str, &str)] = &[
     ("ai", "AI", "ai"),
+    ("airplay", "AirPlay", "airplay"),
     ("appearance", "Appearance", "appearance"),
     ("backgrounds", "Backgrounds", "backgrounds"),
     ("backup", "Backup", "backup"),

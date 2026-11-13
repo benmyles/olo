@@ -463,6 +463,7 @@ impl Desktop {
                 }
             }
             c if olo_kit::open_with::is_command(c) => crate::open_with(c, &self.selected_entries()),
+            c if crate::folder::play_on(c, &self.selected_entries()) => {}
             "new-folder" => {
                 let dir = desktop_dir();
                 let _ = std::fs::create_dir_all(&dir);
@@ -509,6 +510,9 @@ impl Desktop {
                 }
                 if let Some(open_with) = crate::folder::open_with_menu(&self.selected_entries()) {
                     m = m.submenu(open_with);
+                }
+                if let Some(play) = crate::folder::play_on_menu(&self.selected_entries()) {
+                    m = m.submenu(play);
                 }
                 m = m.item("Get Info", "info").key("i");
                 if crate::backups::on() {

@@ -22,6 +22,9 @@ olo-protocol.workspace = true
 olo-color.workspace = true
 olo-screensavers = { workspace = true, features = ["kit"] }
 olo-system.workspace = true
+# AirPlay: finding receivers, pairing with one, checking, forgetting (not
+# the showing of a screen, which `olo-airplay show` does).
+olo-airplay = { workspace = true, default-features = false }
 # What the GPUs' VA-API drivers encode (Screen Recordings).
 olo-vaapi.workspace = true
 olo-fido.workspace = true

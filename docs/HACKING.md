@@ -1219,6 +1219,33 @@ group where it shows, `GroupWindow`; a grouped window's whole group
 too) use it. An app with tabs of its own uses it on its tabs' and
 groups' menus.
 
+### Show on AirPlay and Play On (`Menu::airplay`, `olo_kit::airplay`)
+
+Wherever something can go to a television, its menu has it (Ben,
+2026-11-12: "integrated airplay from relevant app menus and by right
+clicking the window title / deskbar row / workspace etc."): Play On ▸
+where a film is at hand, Show on AirPlay ▸ where a window or a screen
+is. `Menu::airplay(title, paired, prefix)` builds it: each AirPlay
+receiver paired with, by name, then AirPlay Settings… (Preferences ▸
+AirPlay, to pair with another), with a greyed "No Receivers Paired"
+above it when there are none. `olo_kit::airplay::paired()` is the list
+to give it, read once and then followed (inotify), so a menu built
+each time a window draws costs nothing more and a pairing made in
+Preferences shows at the next draw; it never asks the network. The
+items' commands are `prefix` and `airplay-on:KEY` (the receiver's id,
+or its name if it announced none) or `airplay-settings`
+(`olo_protocol::airplay::menu_command` reads them), and
+`olo_kit::airplay::play_from_menu(command, file)` or
+`show_from_menu(command, &Shown::…)` does what one says: a process of
+its own (`olo-airplay play` or `show`, with `--notify`, so a receiver
+that won't is said in a notification), shown in Deskbar's tray while
+it goes, outliving the window that asked. Where it is now: Viewer's
+File menu for a film, Tracker's menu for a film (its windows and the
+desktop), a window's tab menu, Deskbar's app rows (one window: the
+receivers; several: each window's own), the Agent Screens app's Screen
+menu (one running screen chosen) and Deskbar's agent screens item
+(right button). An app with something to send uses the same.
+
 ### Ad-hoc popup menus (`menu::context_menu`, `menu::popup`)
 
 A context menu is `menu::context_menu(cx, menu, position,
@@ -9519,8 +9546,13 @@ gauge menu use it; with a copy running, both are handed to it).
 Sending to an AirPlay receiver (Ben, 2026-11-12: a window, a
 workspace, an agent screen or a video file, "high quality video and
 audio"). docs/TODO.md has the plan and what a sender that isn't
-Apple's may and may not do. So far, the first three parts: **finding
-the receivers**, **pairing with one** and **playing a film on one**.
+Apple's may and may not do. So far: **finding the receivers**,
+**pairing with one**, **playing a film on one**, **showing a window, a
+display or an agent screen on one live**, with its sound, and **the
+way to all of it from the desktop** (Preferences ▸ AirPlay, Show on
+AirPlay and Play On in the menus, Deskbar's tray). A workspace that
+isn't the one showing is still to come (app_server can capture a
+display or a window, not yet a workspace).
 
 - `olo_airplay::receivers(wait)` asks the networks the computer is on
   who offers `_airplay._tcp`, by mDNS, itself (`dns`: a question
@@ -9632,6 +9664,88 @@ the receivers**, **pairing with one** and **playing a film on one**.
   session): Deskbar 0.0% of a core and no frames, as with none; the
   play itself 0.0% of a core, one wakeup a second (its keep-alive).
 
+**Showing a screen live** (`mirror`, `olo-airplay show`) is AirPlay's
+mirroring as Apple's senders do it today, as doubletake (an LGPL
+sender for Linux that works with today's Apple TVs) has found the
+wire; written from what it says, none of its code. On a connection
+proved by pair-verify everything is keyed from that connection's
+secret, so there is **no FairPlay** (whose code is Apple's, or taken
+from Apple's, and LGPL where it's open).
+
+- `Mirror::begin(at, credentials, features, version, options)`: GET
+  /info (the receiver's screen: `Screen`, its size and rate), SETUP of
+  the session alone (the older form, the session with its sound, where
+  that's refused), the event channel at once, a sound stream (type 96:
+  ALAC, a key of ours in `shk`), a picture stream (110: H.264), RECORD,
+  the volume. Time is told one of two ways (`clock`): NTP answers on
+  our timing port, or, on receivers that keep a PTP clock of their own
+  (feature 41, AirPlay 354.54.6 and later), stamps on that clock's
+  timeline, laid against ours from each answer's
+  `X-Apple-RequestReceivedTimestamp` (never moving back).
+- Pictures (`video`) go on the data connection: a 128-byte header each,
+  the decoder's configuration (avcC) plain when the parameter sets
+  change, each access unit's slices length-prefixed and sealed with
+  ChaCha20-Poly1305 (a key from the pairing's secret,
+  `DataStream-Salt<id>`), stamped with its capture's moment plus a
+  lead (`lead()`: 40 ms wired, 75 on Wi-Fi; `--lead MS`); a heartbeat
+  a second. `show(annex_b, size, captured)` sends one.
+- Sound (`sound`): 352-sample ALAC frames stored as they are (nothing
+  to compress, nothing lost), RTP over UDP sealed with our key, its RTP
+  time following the samples as they come (a slow average of how far
+  the captured sound runs from the clock), a sync with the first
+  packet and every second, packets the receiver missed sent again when
+  asked (the last 512 kept). `sound(samples, captured)` sends them.
+- `/feedback` every two seconds keeps it; it ends when the receiver
+  closes the data connection or the event channel (`ended()`).
+- `olo-airplay show RECEIVER [--window ID | --display NAME | --screen
+  AGENT-SCREEN] [--title TITLE] [--no-sound] [--fps N] [--encoder
+  auto|nvidia|cpu] [--lead MS] [--json] [--trace] [--notify]`: frames
+  come from app_server's capture (`olo_capture`, as the recorder's
+  do), asked for at most at the rate the receiver takes and given only
+  when something changed, so a still screen sends nothing but
+  heartbeats. The newest waits for the encoder's worker (one that
+  comes while the last is encoded takes its place, its buffer used
+  again), which makes it the receiver's size (`Screen::fit`, its shape
+  kept: a 2× display shrunk on the processor, `fast_image_resize`,
+  the fourth byte not weighed as alpha), encodes it (NVENC at up to
+  60 a second where it opens, else OpenH264 at 30; a picture out for
+  each in, no B-frames) and sends it. The sound is the computer's
+  (`recording::Capture::start_as`, the default output's monitor, 10 ms
+  at a time); while paused, silence, and the last picture stays.
+  SIGUSR1 pauses, SIGUSR2 goes on, SIGTERM stops, as for a play; it is
+  said in the same folder (`Playing { live: true }`, "showing" or
+  "paused"), so Deskbar's tray, `olo-airplay playing|pause|resume|stop`
+  and agents see it as they see a play. `--trace` also says each
+  120 frames how long the resize, the encoding and capture-to-sent took.
+- Measured (release, a headless 1920 × 1200 session at 2× shown on the
+  test receiver, `tools/dev/cost`): a still screen 1.2% of a core
+  (2.0% with the sound's 10 ms chunks), paused 1.2%; a Terminal
+  printing nonstop, 57 frames a second of 1728 × 1080, 30% (the resize
+  3.3 ms a frame on the processor, NVENC 3.0 ms mostly waiting on the
+  GPU, the capture's copy 7.6%), 8.2 ms from capture to sent (9.2 at
+  the 95th percentile). The resize and the copy are the waste: frames
+  kept on the GPU (lent dmabufs scaled and encoded by VA-API, as the
+  recorder does for AV1) are next.
+
+**From the desktop.** Preferences ▸ AirPlay (`apps/preferences/src/
+airplay.rs`) lists the receivers that answer (asked when the panel
+shows and by Search, on a thread, never on a timer) and those paired
+with that didn't ("Not found"), each with its kind and how it is
+(Paired, Not paired, Showing its code, Showing, Playing, Paused). Pair…
+asks the receiver to show its code and opens a Pairing box whose field
+has the keyboard: the code typed, Return (or Pair) pairs. A paired one
+has Show Display (this computer's display on it, `Shown::Display`),
+Check (pair-verify: "Den knows this computer.") and Forget; one
+showing or playing has Stop. The pairings file and the plays' folder
+are followed, so a pairing made by `olo-airplay pair` or a showing
+started from a menu shows at once. Show on AirPlay and Play On are in
+the menus (the kit's `Menu::airplay`, above), each running
+`olo_protocol::airplay::show_on` or `play_on`
+(`show_command`: `olo-airplay show --notify --on KEY --window ID
+--title TITLE`, and the others); Deskbar's tray says a showing as it
+says a play (its title, "on" the receiver, Pause, Stop) with AirPlay
+Preferences… under them.
+
 **Tests answer their own questions**: a responder of the test's own on
 the loopback (`Via { to, from }` says where a question goes; `Via::lan`
 is mDNS's group from every network), and a receiver of the test's own
@@ -9644,20 +9758,30 @@ session, asks the time, speaks on the event channel, fetches the film
 from the address it's given, a part and then the whole, and "plays"
 it for as long as the test says, in the newer way or only the older;
 it can refuse, never come for the film, or leave; it keeps what it
-was asked and what it fetched). To look at what shows while a film
-plays, `cargo run --release -p olo-airplay --example fake-receiver`
-is that receiver run by hand (the loopback only; it prints where to
-pair with it and where to play to it), with `OLO_AIRPLAY_DIR` (where
-plays are said, in place of the runtime folder's, which is the
-person's too) and `XDG_STATE_HOME` (the pairings) set to folders of
-the test's own for the commands and for the Deskbar looked at. No
+was asked and what it fetched; a screen mirrored on it is opened with
+the pairing's key and the sound with ours, and kept: `mirror::fake`).
+To look at what shows while a film plays, `cargo run --release -p
+olo-airplay --example fake-receiver [SECONDS [NAME…]]` is that
+receiver run by hand (the loopback only; it prints where to pair with
+it and where to play to it; `OLO_AIRPLAY_KEEP=DIR` writes each showing
+it was sent as an MP4 and a WAV, with how many pictures and how far
+apart), with `OLO_AIRPLAY_DIR` (where plays are said, in place of the
+runtime folder's, which is the person's too), `XDG_STATE_HOME` (the
+pairings) and `PULSE_SERVER` (`olo-fakesound`'s, whose monitor is a
+660 Hz tone) set to the test's own. `tsession start` hands its
+environment to the whole session, so a session started with them has
+its Deskbar, its window menus and what they start keep to the test's
+receivers and folders; `tsession run` gives a program only what's
+said on its line. No
 test asks the network it happens to be on, and nothing is ever sent to a real receiver by a test:
 pairing with one and playing to one are the person's to do, at the
-receiver. **So neither the pairing nor the play has yet met a real
-receiver**: the pairing follows HomeKit's published protocol and the
-paths and headers pyatv uses with Apple TVs, the play follows pyatv's
-two ways, and the first `olo-airplay pair` and `olo-airplay play
---trace` at a real screen are their real test (a receiver that
+receiver. **So neither the pairing, the play nor the showing has yet
+met a real receiver**: the pairing follows HomeKit's published
+protocol and the paths and headers pyatv uses with Apple TVs, the play
+follows pyatv's two ways, the showing doubletake's account of the
+wire, and the first `olo-airplay pair` (or Preferences ▸ AirPlay's
+Pair…), `olo-airplay play --trace` and `olo-airplay show --trace` at a
+real screen are their real test (a receiver that
 doesn't sign its key as HomeKit says is paired with all the same, and
 said: `Paired::signed`).
 
