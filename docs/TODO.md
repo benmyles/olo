@@ -1148,9 +1148,48 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-(Nothing: what was here on 2026-11-12 is done, or done and waiting
-for Ben below; the leftovers the 2026-11-08 audit found in
-finished entries are all done, and are in Done, newest first.)
+- **Deskbar widgets for the Token Pool: what's left of each quota**
+  (Ben, 2026-11-13: "deskbar widget support for showing token pool
+  usage / quotas etc. i want to be able to have it show the aggregate
+  availability for each provider x quota type and any other
+  options/views you think might be useful and make sense"). A kind of
+  live widget (HACKING, "Live widgets"), set up in Preferences ▸
+  Deskbar like the others, placed and drawn with the looks they have.
+  - *What it reads:* the pool's accounts' meters (`model::Window`:
+    provider, label, percent used, reset, the models it's for), each
+    account's cooldowns (whole, or a model family's), whether it's
+    on, signed out or paused, its reset credits, and what it served
+    (`Usage`, recent requests). From the running pool, without
+    sign-ins (`/pool/status`'s state, or the same over the pool's own
+    socket), told when it changes rather than asked on a timer:
+    meters move with each answer's headers and each account's report
+    (every 5 minutes), so a widget is drawn again only then and as a
+    reset comes due. Nothing read with the displays asleep or locked
+    (`Live::pause`); a dimmed "Token Pool off" when it isn't running.
+  - *Provider × quota, together* (the main one): for each provider and
+    each kind of meter its accounts have (Claude 5-hour, Weekly,
+    Weekly Fable and other models' weeks; Codex 5-hour, Weekly, a
+    model's own, code review), what's left across every account that
+    can serve: "2.4 of 3 accounts' worth", or as a percent of the
+    whole, as a meter, bars or a number; the soonest reset, and when
+    the next account out comes back. A quota for one model counts
+    only toward requests for that model, as the pool's order does.
+  - *Other views worth having:* each account as a cell (a heatmap or
+    bars of what each has left, one out or signed out marked); which
+    account is serving now and its meters; how fast it's going
+    (tokens or requests a minute, a graph) and so how long what's left
+    lasts against the next reset ("runs out in 1 h 40, resets in
+    3 h"); left or used, as the person likes; paused and turned-off
+    accounts counted or not.
+  - *Warnings, if asked for:* the widget's colour as what's left falls
+    past a level, and a notification when a provider's quota is out on
+    every account (and when it comes back).
+  - *Around it:* a tip with every account's meters in full and when
+    each resets; a click opens Token Pool; the other button, Token
+    Pool and Deskbar Preferences…. Agents read each as a `Meter` with
+    its value and resets. Preferences lists what can be shown from the
+    accounts the pool has (`sources`), with a ready-made row: Claude
+    5-hour and Weekly beside Codex's.
 
 ## Done, waiting for Ben to try or confirm
 
