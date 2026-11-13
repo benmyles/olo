@@ -900,15 +900,41 @@ something nobody here has is in "Blocked", with what it waits for.
          prose at 1.5×, Markdown at 1×, page view; the top, the end,
          pages up, after a resize, after typing). On pages the tops
          are still added up in order.
-         *Left, typing in a long document* (each a pass over all of
-         it, at every key; profile of typing in 100,000 lines):
-         StyledEdit's menus ask `Doc::is_plain` at every body, which
-         compares every paragraph's settings (22% of it); its undo
-         copies every paragraph's settings at each edit (most of the
-         25% memmove, with the text's own insertion); the editor
-         shifts each later paragraph's start (`replaced`, 12%: starts
-         kept in the tree as lengths would make it log n); code's
-         tree-sitter reparse, on a worker, is most of a key in code.
+       - *Typing in a long document, done 2026-11-13.* Each key went
+         over all of it several times: StyledEdit's Language menu asked
+         `Doc::is_plain` at every body (every paragraph's settings
+         compared), its undo copied every paragraph's settings and
+         every run at each step (two a word: typing 24 words into
+         100,000 lines grew the app by 348 MB, 3.6 GB at the 500 steps
+         it keeps), the editor moved every later paragraph's start
+         along through 8 MB of paragraphs, copied the whole text twice
+         for the agents' value, and menus made a `String` for every
+         item's keys looked up (`keys::known`, 566 a key). Now a step
+         keeps only the runs and paragraphs it changed (`doc::Window`),
+         `is_plain` remembers, the starts are a vector of their own,
+         the agents' text is copied once, and keys are looked up as
+         given. Words typed into 100,000 lines (release, perf stat,
+         three runs each in turn, medians): on line 30, 21.7 → 12.3 M
+         instructions and 25.1 → 12.4 M cycles a key; at the end, 18.1
+         → 8.7 M and 22.4 → 12.9 M; the app grew by 4 to 10 MB where
+         it grew 348. memhist, a key at the end: 11,202 → 7,020 KB
+         copied, 4,367 → 3,882 allocations (12,478 → 5,871 KB). The
+         same to the pixel (code at 2×, prose at 1.5×, Markdown at 1×:
+         the top, the end, pages up, resized, typed, undone, home);
+         undone and done again to the byte, styles and paragraphs too
+         (`undo_keeps_just_the_styles_and_paragraphs_a_step_changed`).
+         *Left of it*, each still a pass over the text at a key: the
+         text is one `String`, so a key moves what follows it (4 MB on
+         line 30; a rope or gap would mean the editor reading text in
+         pieces); the agents' value is the whole text copied once a
+         change (to make it when an agent asks: the tree's question
+         flushes each window first, `agent::trees`, but what holds the
+         text, the app's document, isn't reachable from there: the
+         editor would need a source the app gives it, or the view to
+         draw again for the question); menus are made again at every
+         body (`Menu::item`, some 600 small allocations a key);
+         code's tree-sitter reparse, on a worker, is most of a key in
+         code.
        (app_server sending each size of a live resize twice wasn't
        seen again: 38 configures for 36 steps, DeskCalc, 2026-11-12.
        The app commits twice a step, once to acknowledge the size

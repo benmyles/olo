@@ -1836,8 +1836,16 @@ each change (about 9 ms a megabyte); a bigger one on a worker
 following each edit meanwhile (`Look::shift`: a typed byte styled as
 the one before it), and only the lines the parse sets otherwise are
 laid out again. Source code over `code::BIG` is parsed once typing
-pauses too, and an undo step of text alone (code, Markdown) doesn't
-copy every paragraph's settings. Return on a list item types the next one's
+pauses too. A step to undo keeps only what it changed: the text it
+replaced, and the runs and paragraph settings over it (`doc::Window`:
+from a place to a count before the end, which finds the part again
+however long it became; a step joined by typing takes in what each
+key reaches). It had kept every paragraph's settings and every run, so
+typing 24 words into 100,000 lines grew the app by 348 MB (and up to
+3.6 GB at the 500 steps it keeps); now by 4 to 10. `Doc::is_plain`,
+which the Language menu asks at every body, remembers whether every
+paragraph is plain, kept through an edit where it can be told
+(paragraphs that came were plain, or none went). Return on a list item types the next one's
 marker (a number one more, a task unchecked), in an empty one ends the
 list; in a quotation, `> ` again. Font ▸ Bold, Italic, Strikeout, Code
 (⌘E) and Link (⌘K) put the marks around the selection (or take them
@@ -2964,7 +2972,12 @@ it.
   where something is that wide. (Each was a pass over every paragraph:
   on 100,000 lines of code a live resize spent two fifths of its time
   there.) On pages the tops are still worked out in order, a paragraph
-  that doesn't fit at a page's foot moved to the next. The
+  that doesn't fit at a page's foot moved to the next. Where each
+  paragraph starts is kept apart from the rest of what's known of it
+  (`starts`), so an edit moving every later one along is a pass over
+  those alone (it went through 8 MB on 100,000 lines, every key). The
+  text agents read (its node's value) is copied once at a change,
+  into what it's shared as. The
   view is kept on the paragraph at its top through edits above it and
   relayouts; at the very top it stays there (on pages, the first
   sheet's top). On a dark document the text's own colours are made
