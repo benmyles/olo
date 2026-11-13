@@ -44,6 +44,7 @@
 //! moves there; taken out of the window, it goes as text to wherever it's
 //! dropped (and is cut, if that moved it).
 
+mod heights;
 mod layout;
 
 use std::{
@@ -527,8 +528,19 @@ pub struct Editor {
     /// What the clipboard held, read for a Paste (`run`), to put in.
     pasted: Option<ClipboardItem>,
     paras: Vec<Para>,
-    /// Where each paragraph starts down the text (and the total, last).
+    /// The paragraphs' heights added up, and the widest (`heights.rs`):
+    /// where each starts down the text, unless set on pages.
+    heights: heights::Heights,
+    /// The paragraphs came and went: `heights` is made again.
+    heights_stale: bool,
+    /// The paragraphs a new wrap width may wrap differently (kept for its
+    /// room).
+    wider: Vec<usize>,
+    /// Set on pages, where each paragraph starts down the text (and the
+    /// total, last): one that doesn't fit at a page's foot goes to the
+    /// next, so they're worked out in order.
     tops: Vec<f32>,
+    /// A paragraph's height changed since `ensure_tops`.
     tops_dirty: bool,
     /// The widest paragraph, unwrapped.
     widest: f32,
@@ -704,6 +716,9 @@ impl Editor {
             scroll: ScrollHandle::new(),
             pasted: None,
             paras: Vec::new(),
+            heights: heights::Heights::new(),
+            heights_stale: true,
+            wider: Vec::new(),
             tops: Vec::new(),
             tops_dirty: true,
             widest: 0.0,
@@ -781,6 +796,7 @@ impl Editor {
     /// again. The selection goes to the start.
     pub fn reset(&mut self, text: &str) {
         self.paras = split(text, 0, text.len()).map(|(start, len)| self.guess(start, len)).collect();
+        self.heights_stale = true;
         self.tops_dirty = true;
         self.anchor = 0;
         self.caret = 0;
@@ -825,6 +841,15 @@ impl Editor {
         self.paras.splice(p0..=p1, new);
         for p in &mut self.paras[p0 + n..] {
             p.start = (p.start as isize + delta) as usize;
+        }
+        // As many paragraphs as there were (typing in one): theirs set in
+        // place; else made again.
+        if n == p1 - p0 + 1 && !self.heights_stale && self.heights.len() == self.paras.len() {
+            for i in p0..p0 + n {
+                self.heights.set(i, self.paras[i].height, self.paras[i].natural);
+            }
+        } else {
+            self.heights_stale = true;
         }
         self.tops_dirty = true;
         self.anchor = shift(self.anchor).min(text.len());
@@ -926,7 +951,21 @@ impl Editor {
         rows * p.row_h + p.set.above + p.set.below
     }
 
+    /// The paragraphs' tops up to date: the tree over their heights made
+    /// again if they came and went (else it's kept as each changes), and
+    /// on pages, the tops worked out in order.
     fn ensure_tops(&mut self) {
+        let rebuilt = self.ensure_heights();
+        if self.pages.is_none() {
+            // (The widest as a pass over them found it: when a height had
+            // changed. Read at every frame, it would lay out what shows
+            // again, unwrapped, at every paragraph measured ahead.)
+            if rebuilt || self.tops_dirty {
+                self.widest = self.heights.widest();
+            }
+            self.tops_dirty = false;
+            return;
+        }
         if !self.tops_dirty && self.tops.len() == self.paras.len() + 1 {
             return;
         }
@@ -962,25 +1001,71 @@ impl Editor {
         }
     }
 
-    /// The paragraph at `y` down the text (clamped to the first and last).
-    fn para_at_y(&self, y: f32) -> usize {
-        self.tops[1..].partition_point(|&t| t <= y).min(self.paras.len() - 1)
+    /// The tree over the paragraphs' heights made again if they came and
+    /// went; whether it was. (Whatever makes it stale moves the tops too:
+    /// `tops_dirty` is set with it.)
+    fn ensure_heights(&mut self) -> bool {
+        let rebuild = self.heights_stale || self.heights.len() != self.paras.len();
+        if rebuild {
+            self.heights.build(self.paras.iter().map(|p| (p.height, p.natural)));
+            self.heights_stale = false;
+        }
+        rebuild
     }
 
-    /// New layout parameters: every paragraph's size is a guess until it
-    /// is measured again (from what it measured before).
+    /// The paragraph at `y` down the text (clamped to the first and last).
+    fn para_at_y(&self, y: f32) -> usize {
+        match self.pages {
+            Some(_) => self.tops[1..].partition_point(|&t| t <= y).min(self.paras.len() - 1),
+            None => self.heights.at(y as f64),
+        }
+    }
+
+    /// Where paragraph `i` starts down the text (`paras.len()`: where the
+    /// text ends), as of the last `ensure_tops`.
+    fn top(&self, i: usize) -> f32 {
+        match self.pages {
+            Some(_) => self.tops[i],
+            None => self.heights.top(i) as f32,
+        }
+    }
+
+    /// New layout parameters: a paragraph that may wrap differently is a
+    /// guess until it is measured again (from what it measured before).
+    /// Only one wider than the narrower of the two wrap widths can: one
+    /// narrower is a row either way, its height as it was, measured or
+    /// guessed, and its layout made again when it next shows (its key
+    /// holds the width). (Every paragraph's was a pass over all of them at
+    /// each step of a live resize: on 100,000 lines of code, a fifth of
+    /// its time, and the tops added up again after it another fifth.)
     fn set_look(&mut self, look: Look) {
         if self.look == Some(look) {
             return;
         }
+        let before = self.look.and_then(|l| l.0);
         self.look = Some(look);
         self.key += 1;
-        for i in 0..self.paras.len() {
+        let narrower = match (before, look.0) {
+            (Some(a), Some(b)) => a.min(b),
+            (Some(w), None) | (None, Some(w)) => w,
+            // Unwrapped then and now: every paragraph a row as it was.
+            (None, None) => return,
+        };
+        self.ensure_heights();
+        let mut wider = std::mem::take(&mut self.wider);
+        wider.clear();
+        self.heights.wider(narrower, &mut wider);
+        for &i in &wider {
             let h = self.estimate(&self.paras[i]);
-            self.paras[i].height = h;
-            self.paras[i].key = self.paras[i].key.min(STALE);
+            let p = &mut self.paras[i];
+            p.height = h;
+            p.key = p.key.min(STALE);
+            self.heights.set(i, h, p.natural);
         }
-        self.tops_dirty = true;
+        if !wider.is_empty() {
+            self.tops_dirty = true;
+        }
+        self.wider = wider;
     }
 
     /// On a dark document, `spans`' own colours as they read on it: no
@@ -1160,6 +1245,9 @@ impl Editor {
             None if wrapped => laid.natural,
             None => laid.width() + p.set.left + p.set.right,
         };
+        if !self.heights_stale && i < self.heights.len() {
+            self.heights.set(i, h, p.natural);
+        }
         p.row_h = if placed.row.is_some() { body } else { laid.rows.iter().map(|r| r.height).sum::<f32>().max(1.0) / rows };
         p.key = placed.key.max(2);
         let p = *p;
@@ -1179,6 +1267,7 @@ impl Editor {
                         self.paras[k].height = self.estimate(&self.paras[k]);
                     }
                 }
+                self.heights_stale = true;
                 self.tops_dirty = true;
             } else {
                 self.char_w += (w - self.char_w) * 0.05;
@@ -1189,7 +1278,7 @@ impl Editor {
 
     /// Paragraph `i`'s origin in content coordinates.
     fn origin(&self, i: usize, o: &Options) -> (f32, f32) {
-        (o.margin.0 + self.paras[i].set.left, o.margin.1 + self.tops[i] + self.paras[i].set.above)
+        (o.margin.0 + self.paras[i].set.left, o.margin.1 + self.top(i) + self.paras[i].set.above)
     }
 
     /// The byte at content point `(x, y)` (and whether it is at the start
@@ -1434,7 +1523,7 @@ impl Editor {
 
         let content_h = |e: &Editor| match o.pages {
             Some(pg) => e.page_count() as f32 * pg.pitch() + pg.gap,
-            None => e.tops[e.paras.len()] + 2.0 * o.margin.1,
+            None => e.top(e.paras.len()) + 2.0 * o.margin.1,
         };
         let content_w = |e: &Editor| match o.pages {
             Some(pg) => vw.max(pg.paper.0 + 2.0 * pg.gap),
@@ -1447,7 +1536,7 @@ impl Editor {
             self.offset = (-f32::from(bar.x), -f32::from(bar.y));
             self.set_top = None;
             let t = self.para_at_y(self.offset.1 - o.margin.1);
-            self.top = (self.paras[t].start, self.offset.1 - (o.margin.1 + self.tops[t]));
+            self.top = (self.paras[t].start, self.offset.1 - (o.margin.1 + self.top(t)));
         }
         let mut offset = self.offset;
         // The paragraph at the top of the view, where it stays.
@@ -1465,7 +1554,7 @@ impl Editor {
             offset.0 = (offset.0 + by.0).clamp(0.0, (content_w(self) - vw).max(0.0));
             self.reveal = false;
             let t = self.para_at_y(offset.1 - o.margin.1);
-            self.top = (self.paras[t].start, offset.1 - (o.margin.1 + self.tops[t]));
+            self.top = (self.paras[t].start, offset.1 - (o.margin.1 + self.top(t)));
         }
         // Lay out what shows, measuring it (which may move what follows,
         // or the caret being revealed): again until it settles.
@@ -1491,14 +1580,14 @@ impl Editor {
                 self.ensure_tops();
                 offset.1 = offset.1.clamp(0.0, (content_h(self) - vh).max(0.0));
                 let t = self.para_at_y(offset.1 - o.margin.1);
-                self.top = (self.paras[t].start, offset.1 - (o.margin.1 + self.tops[t]));
+                self.top = (self.paras[t].start, offset.1 - (o.margin.1 + self.top(t)));
             }
             if pass == 0 {
                 // Paragraphs about to show, measured while this frame has
                 // time.
                 self.ensure_tops();
                 let a = self.para_of(self.top.0);
-                let top = self.tops[a] + self.top.1;
+                let top = self.top(a) + self.top.1;
                 self.more = self.measure_ahead(doc, sh, top, top + vh);
             }
             self.ensure_tops();
@@ -1506,12 +1595,12 @@ impl Editor {
             // (Kept within its paragraph, which may have shrunk: up to
             // the next one's top, past a page's foot included; the last
             // one's to the end.)
-            let within = if a + 1 < self.paras.len() { self.top.1.min(self.tops[a + 1] - self.tops[a]) } else { self.top.1 };
-            offset.1 = (o.margin.1 + self.tops[a] + within).clamp(0.0, (content_h(self) - vh).max(0.0));
+            let within = if a + 1 < self.paras.len() { self.top.1.min(self.top(a + 1) - self.top(a)) } else { self.top.1 };
+            offset.1 = (o.margin.1 + self.top(a) + within).clamp(0.0, (content_h(self) - vh).max(0.0));
             let first = self.para_at_y(offset.1 - o.margin.1);
             shown.clear();
             let mut i = first;
-            while i < self.paras.len() && o.margin.1 + self.tops[i] < offset.1 + vh {
+            while i < self.paras.len() && o.margin.1 + self.top(i) < offset.1 + vh {
                 let placed = self.placed(doc, sh, i);
                 shown.push((i, placed));
                 i += 1;
@@ -1931,8 +2020,8 @@ impl Editor {
                     continue;
                 }
                 let set = self.paras[*i].set;
-                let y0 = f32::from(origin.y) + o.margin.1 + self.tops[*i];
-                let y1 = f32::from(origin.y) + o.margin.1 + self.tops.get(*i + 1).copied().unwrap_or(self.tops[*i]);
+                let y0 = f32::from(origin.y) + o.margin.1 + self.top(*i);
+                let y1 = f32::from(origin.y) + o.margin.1 + self.top(*i + 1);
                 let left = f32::from(origin.x) + o.margin.0 + set.left;
                 let right = f32::from(origin.x) + o.margin.0 + text_w - set.right;
                 let mut add = |x0: f32, x1: f32, c: Hsla| match fills.iter_mut().find(|f| f.0 == x0 && f.1 == x1 && f.4 == c && (f.3 - y0).abs() < 0.01) {
@@ -1958,8 +2047,8 @@ impl Editor {
                 // Its rule across (its shade and bar went first).
                 let (_, _, rule_c) = placed.deco;
                 if rule_c.is_some() {
-                    let y0 = f32::from(origin.y) + o.margin.1 + self.tops[*i];
-                    let y1 = f32::from(origin.y) + o.margin.1 + self.tops.get(*i + 1).copied().unwrap_or(self.tops[*i]);
+                    let y0 = f32::from(origin.y) + o.margin.1 + self.top(*i);
+                    let y1 = f32::from(origin.y) + o.margin.1 + self.top(*i + 1);
                     let left = f32::from(origin.x) + o.margin.0 + para.set.left;
                     let right = f32::from(origin.x) + o.margin.0 + text_w - para.set.right;
                     if let Some(c) = rule_c {
@@ -1973,7 +2062,7 @@ impl Editor {
                 if let Some((h, header)) = placed.row {
                     // From the rows' tops before snapping, so a row's bottom
                     // rule and the next's top fall on the same pixel.
-                    let y0 = f32::from(origin.y) + o.margin.1 + self.tops[*i];
+                    let y0 = f32::from(origin.y) + o.margin.1 + self.top(*i);
                     let (top, bottom) = (line(y0), line(y0 + h));
                     let mut segs = Vec::new();
                     for q in &placed.parts {

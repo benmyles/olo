@@ -2955,7 +2955,16 @@ it.
   a frame; laid-out paragraphs are kept by their text, styles and
   width, and shaped ones by their text and styles alone, so a new
   width (a window being resized) places them again without shaping;
-  each row's glyphs are painted from a `GlyphRun`. The
+  each row's glyphs are painted from a `GlyphRun`. The paragraphs'
+  heights are added up in a tree (`editor/heights.rs`: each node the sum
+  below it and the widest), so one changing costs log n and so do a
+  paragraph's top and the paragraph at a place; a new wrap width
+  guesses again only the paragraphs wider than the narrower of the two
+  widths (the rest are a row either way), found by going down the tree
+  where something is that wide. (Each was a pass over every paragraph:
+  on 100,000 lines of code a live resize spent two fifths of its time
+  there.) On pages the tops are still worked out in order, a paragraph
+  that doesn't fit at a page's foot moved to the next. The
   view is kept on the paragraph at its top through edits above it and
   relayouts; at the very top it stays there (on pages, the first
   sheet's top). On a dark document the text's own colours are made

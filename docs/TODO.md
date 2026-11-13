@@ -884,14 +884,31 @@ something nobody here has is in "Blocked", with what it waits for.
          allocation an element: about even, not done.
        - taffy makes a list a block container a layout (260 a step
          in Logs): the vendored taffy's, left.
-       - **The editor walks every paragraph of the document when the
-         width it wraps to changes** (`set_look`, in `prepare`,
-         estimates each one's height again and `ensure_tops` adds
-         them up: those two functions are 43% of the cycles of a
-         resize on 100,000 lines of code, which wraps by default),
-         and `ensure_tops` again whenever one paragraph's height
-         changes (typing). Both builds alike. To do: heights in a tree that sums
-         (a change costs log n), estimates made lazily.
+       - *The editor's heights, done 2026-11-13.* It walked every
+         paragraph when the width it wraps to changed (`set_look`
+         estimated each one's height again, `ensure_tops` added them
+         up: 41% of a resize's samples on 100,000 lines of code) and
+         added them all up again whenever one changed (every key
+         typed). Now they're in a tree that sums (`editor/heights.rs`:
+         a change, a top, the paragraph at a place, each log n), and a
+         new wrap width guesses again only the paragraphs wider than
+         the narrower width. A live resize of long.rs (release, perf
+         stat, in turn): 10.8–12.3 → 4.9 M instructions, 8.0–12.5 →
+         4.8–6.6 M cycles a step; typing in 100,000 lines of plain
+         text, medians of three: 23.1 → 18.4 M instructions, 31.1 →
+         26.6 M cycles a key. The same to the pixel (code at 2×,
+         prose at 1.5×, Markdown at 1×, page view; the top, the end,
+         pages up, after a resize, after typing). On pages the tops
+         are still added up in order.
+         *Left, typing in a long document* (each a pass over all of
+         it, at every key; profile of typing in 100,000 lines):
+         StyledEdit's menus ask `Doc::is_plain` at every body, which
+         compares every paragraph's settings (22% of it); its undo
+         copies every paragraph's settings at each edit (most of the
+         25% memmove, with the text's own insertion); the editor
+         shifts each later paragraph's start (`replaced`, 12%: starts
+         kept in the tree as lengths would make it log n); code's
+         tree-sitter reparse, on a worker, is most of a key in code.
        (app_server sending each size of a live resize twice wasn't
        seen again: 38 configures for 36 steps, DeskCalc, 2026-11-12.
        The app commits twice a step, once to acknowledge the size
