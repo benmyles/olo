@@ -12790,7 +12790,15 @@ or fitted whole), kept, and the windows drawn again as each comes.
   over it; a change to the notes, the view, the selection or the search
   (the app entity notifying), a command, a key or a click, another width,
   scale or palette lays it out again. Laid out every frame, 200 notes
-  cost a scroll frame 2–4 ms; kept, 1.3–1.8.
+  cost a scroll frame 2–4 ms; kept, 1.3–1.8. Laid out again, nothing is
+  copied that needn't be: the history's notes are shared
+  (`History::entries`, an `Arc`, copied only when changed while the
+  window holds them: `entries_mut`), a row's or card's key is compared
+  with the note as it is (another width keeps the note already in the
+  key), a laid row or card is shared (`Rc<RowLaid>`, `Rc<CardLaid>`), and
+  look.rs lays out text it's given shared (`lay_runs` takes a
+  `SharedString`): a step of a live resize of 200 cards allocates 5,476
+  times where it did 9,128.
 - Pin and Snooze (`note_menu`: Edit ▸ Pin/Unpin and Snooze ▸ for the
   selected note, and the menu of a right click on a banner, row or
   card). A pinned note (`Entry::pinned`) stays put: it never fades

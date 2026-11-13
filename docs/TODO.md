@@ -828,14 +828,23 @@ something nobody here has is in "Blocked", with what it waits for.
          uncovers; the menus made again at every body (33 strings).
        - Disk Usage is still 35 draws for 520 things (its chart's
          sectors and labels, over one another).
-       - Notifications' cards are laid out anew for every width with
-         everything made again: 9,200 allocations a step (ten
-         strings copied a card, six made shared, its spans cloned)
-         and 3.6 MB copied, a megabyte of it `CardLaid` (400 to 800
-         bytes) moved by value eleven times a card
-         (`history.rs`: `card`, `lay_out`). To do: a card's face made
-         once an entry and kept, shared strings in `look::Face`,
-         `CardLaid` behind an `Rc`.
+       - *Notifications' cards, done 2026-11-13.* They were laid out
+         anew for every width with everything made again: every note
+         copied out of the model at each step (`lay_out`), again for
+         each card's key, the laid card (824 bytes) moved and copied
+         by value, each text copied five times on its way to be
+         shaped. Now the notes are shared (`History::entries` an
+         `Arc`, copied on write), keys compared in place, laid rows
+         and cards behind an `Rc`, look.rs's text shared as given. A
+         live resize of 200 cards (memhist, exact, a step): 9,128 →
+         5,476 allocations, 3,586 → 2,348 KB copied; the list view
+         10,344 → 6,660. Release, perf stat, three runs each in turn,
+         medians: cards 19.52 → 17.73 M instructions, 16.19 → 13.24 M
+         cycles a step; the list view no change above its spread (six
+         runs each, 18 to 24 M for both builds). The same to the pixel
+         in both views at 1×, 1.5× and 2×, light and dark. Left: what
+         a resize must do, each text wrapped again for the new width
+         (450 shapings a step).
        - *Tracker's list view, done 2026-11-13.* (The above is its
          column view.) Its rows had no key, so every row showing was
          painted again whenever the window said anything (a step of
