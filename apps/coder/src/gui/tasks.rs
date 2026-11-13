@@ -142,7 +142,7 @@ pub fn now_card(report: &StatusReport, running: bool) -> Element {
         .w(px(MARK + 2.0))
         .h(px(style::line_row(style::PLAIN_SIZE)))
         .flex_shrink_0();
-        let mut list = div().flex_1().min_w_0().flex().flex_col();
+        let mut list = div().flex_1().min_w_0().flex().flex_col().gap(px(2.0));
         list = list.child(StringView::new(title.to_owned()).bold(true).small(true).dim(kind != 1));
         for item in items {
             let view = StringView::new(item.clone()).wrap(true);

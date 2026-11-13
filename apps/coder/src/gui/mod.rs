@@ -212,7 +212,10 @@ impl Coder {
         }
     }
 
-    fn menus(&self) -> Vec<Menu> {
+    fn menus(&self, cx: &Cx<Self>) -> Vec<Menu> {
+        // Edit's commands go to the message being written when it has
+        // the focus, else to the conversation.
+        let composing = self.composer.read(cx).is_focused();
         let s = self.session();
         let running = self.running();
         let idle = s.is_some() && !running;
@@ -231,6 +234,7 @@ impl Coder {
         vec![
             Menu::new("Session")
                 .item("New Session", "new")
+                .key("n")
                 .item("New Window", "new_window")
                 .item("New Session in Folder…", "new_in")
                 .separator()
@@ -249,8 +253,31 @@ impl Coder {
                 .item("Whole Transcript", "transcript")
                 .separator()
                 .item("Close Window", "close")
-                .item("Quit", "quit"),
-            Menu::new("Edit").item("Copy", "copy").item("Select All", "select-all").separator().item("Settings…", "settings"),
+                .key("w")
+                .item("Quit", "quit")
+                .key("q"),
+            Menu::new("Edit")
+                .item("Undo", "undo")
+                .key("z")
+                .enabled(composing && self.composer.read(cx).can_undo())
+                .item("Redo", "redo")
+                .shift_key("z")
+                .enabled(composing && self.composer.read(cx).can_redo())
+                .separator()
+                .item("Cut", "cut")
+                .key("x")
+                .enabled(composing)
+                .item("Copy", "copy")
+                .key("c")
+                .item("Paste", "paste")
+                .key("v")
+                .item("Select All", "select-all")
+                .key("a")
+                .separator()
+                .item("Find Session", "find")
+                .key("f")
+                .separator()
+                .item("Settings…", "settings"),
             Menu::new("Agent")
                 .item("Send", "send")
                 .item("Stop", "stop")
@@ -315,13 +342,17 @@ impl Coder {
                 .item("Stop Sharing a Password…", "revoke_password"),
             Menu::new("View")
                 .item("Sessions", "sidebar")
+                .key("s")
                 .checked(self.show_sessions)
                 .item("Work", "toggle_work")
                 .checked(self.show_work)
                 .separator()
-                .item("Plan", "tab_plan")
+                .item("Tasks", "tab_plan")
                 .item("Changes", "tab_changes")
                 .item("Context", "tab_context")
+                .separator()
+                .item("Previous Session", "prev_session")
+                .item("Next Session", "next_session")
                 .separator()
                 .item("Open All Actions", "open_all")
                 .item("Close All Actions", "close_all")
@@ -357,8 +388,41 @@ impl Coder {
             "new_window" => open(self.dir.clone(), self.workspace.clone(), None, Value::Null),
             "close" => cx.close_window(),
             "quit" => olo_kit::quit(),
+            "undo" => self.composer.update(cx, |f, cx| f.undo_step(cx)),
+            "redo" => self.composer.update(cx, |f, cx| f.redo_step(cx)),
+            "cut" | "copy" if self.composer.read(cx).is_focused() => {
+                let range = self.composer.read(cx).selection();
+                let text = self.composer.read(cx).text().get(range.clone()).unwrap_or("").to_owned();
+                if !text.is_empty() {
+                    olo_kit::clipboard::write(olo_kit::ClipboardItem::new_string(text));
+                    if cmd == "cut" {
+                        self.composer.update(cx, |f, cx| f.insert("", cx));
+                    }
+                }
+            }
             "copy" => self.transcript.update(cx, |t, cx| t.copy(cx)),
+            "paste" => {
+                self.composer.focus(cx);
+                self.composer.update(cx, |f, cx| f.paste_from_clipboard(cx));
+            }
+            "select-all" if self.composer.read(cx).is_focused() => self.composer.update(cx, |f, cx| f.select_all_text(cx)),
             "select-all" => self.transcript.update(cx, |t, cx| t.select_all(cx)),
+            "find" => {
+                self.show_sessions = true;
+                self.search.update(cx, |s, cx| s.focus(cx));
+            }
+            "prev_session" | "next_session" => {
+                let ids: Vec<String> = self.session_rows.iter().flatten().cloned().collect();
+                let at = ids.iter().position(|i| *i == self.view.id);
+                let to = match (at, cmd == "next_session") {
+                    (Some(i), true) => ids.get(i + 1),
+                    (Some(i), false) => i.checked_sub(1).and_then(|i| ids.get(i)),
+                    (None, _) => ids.first(),
+                };
+                if let Some(id) = to.cloned() {
+                    self.submit(format!("/open {id}"));
+                }
+            }
             "settings" => settings::open(cx, self.dir.clone(), self.client.clone(), &self.view, &self.key, 0),
             "send" => self.send(cx),
             "stop" => {
@@ -695,8 +759,23 @@ impl Coder {
             .px(px(m::WINDOW_INSET))
             .py(px(m::TIGHT))
             .flex_shrink_0()
-            .child(div().flex_1().min_w_0().flex().flex_col().child(StringView::new(title).bold(true).cut(true)).child(StringView::new(place).dim(true).small(true).cut(true)))
-            .child(div().flex().items_center().gap(px(m::TIGHT)).flex_shrink_0().child(mark).child(StringView::new(activity).dim(!running)))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    // The title and what it's doing on one line; where, under them.
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(m::SPACING))
+                            .child(div().flex_1().min_w_0().child(StringView::new(title).bold(true).cut(true)))
+                            .child(div().flex().items_center().gap(px(m::TIGHT)).flex_shrink_0().child(mark).child(StringView::new(activity).dim(!running))),
+                    )
+                    .child(StringView::new(place).dim(true).small(true).cut(true)),
+            )
             .children(button)
             .into_any_element()
     }
@@ -842,7 +921,7 @@ impl Coder {
     /// The work: the goal and plan, the repository's changes, the context.
     fn work(&mut self, cx: &mut Cx<Self>) -> Element {
         let (open, total) = self.session().map_or((0, 0), |s| (s.todos.iter().filter(|t| t.status != "done").count(), s.todos.len()));
-        let tasks = if total == 0 { "Tasks".to_owned() } else { format!("Tasks ({open})") };
+        let tasks = if total == 0 || open == 0 { "Tasks".to_owned() } else { format!("Tasks ({open})") };
         let changes = if self.changes.is_empty() { "Changes".to_owned() } else { format!("Changes ({})", self.changes.len()) };
         let tabs: Vec<olo_kit::SharedString> = vec![tasks.into(), changes.into(), "Context".into()];
         let content = match self.tab {
@@ -861,7 +940,7 @@ impl Coder {
     fn changes_pane(&mut self, cx: &mut Cx<Self>) -> Element {
         let error = self.view.repository.as_ref().and_then(|r| r["error"].as_str()).is_some();
         let rows = self.changes.clone();
-        let list = ColumnListView::new(cx, "changes", &self.files, vec![Column::new("File", 200.0), Column::new("", 70.0)], rows.len(), move |_: &Coder, cell, g| {
+        let list = ColumnListView::new(cx, "changes", &self.files, vec![Column::new("File", tasks::WORK_LIST_WIDTH - 78.0), Column::new("State", 78.0)], rows.len(), move |_: &Coder, cell, g| {
             if let Some((path, staged, state)) = rows.get(cell.row) {
                 if cell.column == 0 {
                     cell.icon_text(g, "document", "document", path.clone());
@@ -870,6 +949,7 @@ impl Coder {
                 }
             }
         })
+        .no_header()
         .empty_text(if error { "Not a Git repository." } else { "Nothing changed." })
         .on_open(cx.msg_with(|row: &usize| Msg::OpenChange(*row)));
         let selected: Vec<String> = self.files.state().selected.iter().filter_map(|i| self.changes.get(*i).map(|r| r.0.clone())).collect();
@@ -1065,7 +1145,8 @@ impl View for Coder {
         let sessions = self.show_sessions && width >= 760.0;
         let work = self.show_work && width >= if sessions { 1040.0 } else { 820.0 };
         let center = width - if sessions { SESSIONS_WIDTH + 1.0 } else { 0.0 } - if work { WORK_WIDTH + 1.0 } else { 0.0 };
-        let bar = MenuBar::new(cx, self.menus());
+        let menus = self.menus(cx);
+        let bar = MenuBar::new(cx, menus);
         let scale = cx.scale_factor();
         let (rule, vrule) = (|| rule(scale), || vrule(scale));
         let mut middle = div().flex_1().min_w_0().h_full().flex().flex_col().child(self.header(cx)).child(rule()).child(div().flex_1().min_h_0().child(&self.transcript));
@@ -1089,7 +1170,7 @@ impl View for Coder {
         if work {
             panes = panes.child(vrule()).child(self.work(cx));
         }
-        let status = self.said.clone().unwrap_or_else(|| self.view.status());
+        let status = self.said.clone().unwrap_or_else(|| self.view.usage_line());
         div()
             .size_full()
             .flex()

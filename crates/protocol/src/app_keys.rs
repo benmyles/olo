@@ -288,7 +288,8 @@ pub const APP_KEYS: &[AppKey] = &[
     k("telegram.prev", TELEGRAM, "prev", "Previous Chat", &["Cmd+Up"], &["Alt+Up"], &["Alt+Up"]),
     k("telegram.next", TELEGRAM, "next", "Next Chat", &["Cmd+Down"], &["Alt+Down"], &["Alt+Down"]),
     // Olo Coder: Send as a chat's ⌘↩, Stop as Disk Usage's ⌘., the
-    // approval's Allow and Deny on ⇧⌘Y and ⇧⌘D, Settings on ⌘, as a Mac's.
+    // approval's Allow and Deny on ⇧⌘Y and ⇧⌘D, Settings on ⌘, as a Mac's;
+    // sessions as Telegram's chats (⌘↑ ⌘↓), the work's tabs on ⌘1–3.
     k("coder.new-window", CODER, "new_window", "New Window", &["Shift+Cmd+N"], &["Ctrl+Shift+N"], &["Alt+Shift+N"]),
     k("coder.send", CODER, "send", "Send", &["Cmd+Return"], &["Ctrl+Return"], &["Alt+Return"]),
     k("coder.stop", CODER, "stop", "Stop", &["Cmd+Period"], &["Ctrl+Period"], &["Alt+Period"]),
@@ -296,6 +297,18 @@ pub const APP_KEYS: &[AppKey] = &[
     k("coder.deny", CODER, "deny", "Deny the action", &["Shift+Cmd+D"], &["Ctrl+Shift+D"], &["Alt+Shift+D"]),
     k("coder.settings", CODER, "settings", "Settings", &["Cmd+Comma"], &["Ctrl+Comma"], &["Alt+Comma"]),
     k("coder.work", CODER, "toggle_work", "Show or hide the work", &["Alt+Cmd+I"], &["Ctrl+Alt+I"], &["Alt+Shift+I"]),
+    k("coder.new-in", CODER, "new_in", "New Session in a Folder", &["Cmd+O"], &["Ctrl+O"], &["Alt+O"]),
+    k("coder.fork", CODER, "fork", "Fork the session", &["Cmd+D"], &["Ctrl+D"], &["Alt+D"]),
+    k("coder.resume", CODER, "resume", "Resume", &["Cmd+R"], &["Ctrl+R"], &["Alt+R"]),
+    k("coder.goal", CODER, "goal", "Set Goal", &["Shift+Cmd+G"], &["Ctrl+Shift+G"], &["Alt+Shift+G"]),
+    k("coder.tasks", CODER, "tab_plan", "Tasks", &["Cmd+1"], &["Ctrl+1"], &["Alt+1"]),
+    k("coder.changes", CODER, "tab_changes", "Changes", &["Cmd+2"], &["Ctrl+2"], &["Alt+2"]),
+    k("coder.context", CODER, "tab_context", "Context", &["Cmd+3"], &["Ctrl+3"], &["Alt+3"]),
+    k("coder.prev", CODER, "prev_session", "Previous Session", &["Cmd+Up"], &["Alt+Up"], &["Alt+Up"]),
+    k("coder.next", CODER, "next_session", "Next Session", &["Cmd+Down"], &["Alt+Down"], &["Alt+Down"]),
+    k("coder.open-all", CODER, "open_all", "Open All Actions", &["Alt+Cmd+Down"], &["Ctrl+Alt+Down"], &["Alt+Shift+Down"]),
+    k("coder.close-all", CODER, "close_all", "Close All Actions", &["Alt+Cmd+Up"], &["Ctrl+Alt+Up"], &["Alt+Shift+Up"]),
+    k("coder.commands", CODER, "help", "Commands", &["Cmd+Slash"], &["Ctrl+Slash"], &["Alt+Slash"]),
     // Chrome's own, each platform's as Chrome has them there (BeOS's as a
     // Mac's, Alt its command key); sent as Linux Chrome's (CHROME_NATIVE).
     k("chrome.new-tab", CHROME, "new-tab", "New Tab", &["Cmd+T"], &["Ctrl+T"], &["Alt+T"]),

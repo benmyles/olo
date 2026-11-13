@@ -236,6 +236,16 @@ with a `filter` streams catalog snapshots after changes, without idle polling.
 An inbox accepts at most 128 messages and 4 MB of pending text; each message is
 limited to 1 MB. These bounds protect other sessions from an unattended sender.
 
+## Keys
+
+The window's menus have the keys a person expects and Coder's own (Preferences
+▸ Keyboard can change them; `olo_protocol::app_keys`): ⌘N New Session, ⇧⌘N New
+Window, ⌘O New Session in Folder, ⌘D Fork, ⌘W, ⌘Q; ⌘Z/⇧⌘Z, ⌘X, ⌘C, ⌘V, ⌘A (the
+message being written when it has the focus, else the conversation), ⌘F Find
+Session, ⌘, Settings; ⌘↩ Send, ⌘. Stop, ⌘R Resume, ⇧⌘Y Allow, ⇧⌘D Deny, ⇧⌘G
+Set Goal; ⌥⌘S Sessions, ⌥⌘I Work, ⌘1–3 Tasks, Changes and Context, ⌘↑ ⌘↓ the
+previous and next session, ⌥⌘↓ ⌥⌘↑ open and close every action, ⌘/ Commands.
+
 ## Tasks and status
 
 The task list beside the conversation (the window's Tasks tab; Alt+T in the
@@ -246,7 +256,10 @@ needs evidence. Coder reminds it, with the session state of each request,
 when it has worked 8 actions without updating the list, or 3 without
 making one, and when 5 have gone by without a `report_status`: what it has
 recently done, what it is doing now and what is next, shown on the Now card
-(and the terminal's Now/Next line).
+(and the terminal's Now/Next line). Its first report names the session (`title`, 2–6
+words); until then a session is called by its first message's first line,
+cut at a word. Once the person renames it (`organize`), the agent's names no
+longer replace theirs (`named`).
 
 The person edits the list as freely: click a task's mark to move it on
 (to do, in progress, done), or use its menu (any status, Add Subtask,

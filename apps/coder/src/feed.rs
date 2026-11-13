@@ -19,8 +19,11 @@ use std::{
 const KEEP: usize = 1200;
 /// An action's output, as shown when it's opened.
 const OUTPUT_BYTES: usize = 48 * 1024;
-/// Diffs up to this many lines open by themselves.
-const SHORT_DIFF: usize = 40;
+/// Diffs up to this many lines open by themselves (a small edit; a new
+/// file waits to be asked for).
+const SHORT_DIFF: usize = 12;
+/// An action's line is one line: what it ran is cut to this many characters.
+const TITLE_CHARS: usize = 64;
 /// The live tail of a running action's output.
 const LIVE_LINES: usize = 12;
 
@@ -491,6 +494,7 @@ fn markdown(id: u64, item: &Item, flipped: &HashSet<u64>) -> (String, Block) {
         Item::Tool(t) => {
             let open = t.output.is_some() && (t.open != flipped.contains(&id));
             let mark = match (t.output.is_some(), open) {
+                (false, _) if t.state == ToolState::Failed => "✕",
                 (false, _) => "•",
                 (true, false) => "▸",
                 (true, true) => "▾",
@@ -525,7 +529,7 @@ fn tool(call: &Value, time: u64) -> Tool {
                 line.push(' ');
                 if arg.contains(' ') { line.push_str(&format!("'{arg}'")) } else { line.push_str(arg) }
             }
-            format!("Ran {}", code(&line))
+            format!("Ran {}", code(&ellipsis(&line, TITLE_CHARS)))
         }
         "read_file" => format!("Read {}", code(s("path"))),
         "write_file" => format!("Wrote {}", code(s("path"))),
@@ -577,7 +581,9 @@ fn outcome(o: &Value, failed: bool) -> (String, Option<(String, String)>, bool) 
         let first = reason.lines().next().unwrap_or(reason);
         let summary = olo_coder_core::tools::clip(first, 140);
         let body = (reason.len() > first.len() || first.len() > 140).then(|| (String::new(), reason.to_owned()));
-        return (format!("failed: {summary}"), body, true);
+        // The agent sees why and goes on: a mark says so, the reason
+        // waits to be asked for.
+        return (format!("failed: {summary}"), body, false);
     }
     if let Some(diff) = o["diff"].as_str() {
         let (add, del) = diff.lines().fold((0, 0), |(a, d), l| {
@@ -591,8 +597,13 @@ fn outcome(o: &Value, failed: bool) -> (String, Option<(String, String)>, bool) 
                 (a, d)
             }
         });
-        let lines = diff.lines().count();
-        return (format!("+{add} −{del}"), Some(("diff".into(), diff.into())), lines <= SHORT_DIFF);
+        // The row names the file: the diff starts at its first hunk.
+        let shown = match diff.find("\n@@") {
+            Some(at) if !diff.starts_with("@@") && diff[..at].lines().all(|l| l.starts_with("---") || l.starts_with("+++") || l.starts_with("diff ") || l.starts_with("index ")) => &diff[at + 1..],
+            _ => diff,
+        };
+        let lines = shown.lines().count();
+        return (format!("+{add} −{del}"), Some(("diff".into(), shown.into())), lines <= SHORT_DIFF);
     }
     if o.get("stdout").is_some() {
         let out = o["stdout"].as_str().unwrap_or("");
@@ -711,8 +722,27 @@ pub fn code(s: &str) -> String {
     if s.is_empty() { String::new() } else { format!("{fence}{pad}{s}{pad}{fence}") }
 }
 
+/// `s` on one line, cut to `n` characters with an ellipsis.
+fn ellipsis(s: &str, n: usize) -> String {
+    let s = one_line(s);
+    match s.char_indices().nth(n) {
+        Some((at, _)) => format!("{}…", s[..at].trim_end()),
+        None => s,
+    }
+}
+
 fn one_line(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// A count of tokens as it's read at a glance: 950, 8.2K, 872K, 1.2M.
+pub fn short(n: u64) -> String {
+    let (value, unit) = match n {
+        0..1_000 => return n.to_string(),
+        1_000..1_000_000 => (n as f64 / 1e3, "K"),
+        _ => (n as f64 / 1e6, "M"),
+    };
+    if value < 10.0 { format!("{:.1}{unit}", value).replace(".0", "") } else { format!("{}{unit}", value.round() as u64) }
 }
 
 pub fn thousands(n: u64) -> String {
@@ -852,6 +882,11 @@ mod tests {
         assert!(doc.text.contains("Task list · 1 of 2 done"), "{}", doc.text);
         assert!(!doc.text.contains("Testing"), "status reports are shown beside the conversation");
         assert!(!doc.paragraphs.iter().any(|p| matches!(p.block, Block::Tool(_))));
+    }
+    #[test]
+    fn counts_read_at_a_glance() {
+        assert_eq!([short(950), short(8231), short(872_000), short(1_000_000), short(124_578), short(2_000)], ["950", "8.2K", "872K", "1M", "125K", "2K"]);
+        assert_eq!(ellipsis("python -c 'a very long line'", 10), "python -c…");
     }
     #[test]
     fn inline_code_survives_backticks() {

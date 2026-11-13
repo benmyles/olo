@@ -801,18 +801,28 @@ impl View {
             Status::Idle => "Ready".into(),
         }
     }
+    /// The status line under the window, which has the model in its own
+    /// menu: what's in context, what's been spent.
+    pub fn usage_line(&self) -> String {
+        let line = self.status();
+        match self.session.as_ref() {
+            Some(s) => line.split_once(" · ").filter(|(model, _)| model.starts_with(s.config.model.model.as_str())).map_or(line.clone(), |(_, rest)| rest.to_owned()),
+            None => line,
+        }
+    }
     pub fn status(&self) -> String {
         self.session.as_ref().map_or_else(
             || "Connecting…".into(),
             |s| {
                 let window = s.config.model.context_window;
-                let context = if window > 0 { format!("context {}%", (s.usage.context * 100 / window).min(100)) } else { format!("context {}", crate::feed::thousands(s.usage.context)) };
+                let short = crate::feed::short;
+                let context = if window > 0 { format!("{} of {} in context", short(s.usage.context), short(window)) } else { format!("{} in context", short(s.usage.context)) };
                 format!(
                     "{}{} · {} · {} tokens used{}{}",
                     s.config.model.model,
                     if s.config.model.effort.is_empty() { String::new() } else { format!(" ({})", s.config.model.effort) },
                     context,
-                    crate::feed::thousands(s.usage.input + s.usage.output),
+                    short(s.usage.input + s.usage.output),
                     if s.compactions > 0 { format!(" · {} checkpoints", s.compactions) } else { String::new() },
                     if s.spec_mode { " · Spec mode" } else { "" },
                 )

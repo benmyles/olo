@@ -214,7 +214,7 @@ pub fn definitions() -> Vec<ToolDef> {
         def(
             "report_status",
             "Tell the person where things stand, shown prominently as you work: what you've recently done, what you're doing now and what's up next. A few plain words per item (no file dumps), most important first, at most 6 each. Send one whenever that changes: after each step, before a long action, and when you finish.",
-            json!({"done":{"type":"array","items":{"type":"string"}},"doing":{"type":"array","items":{"type":"string"}},"next":{"type":"array","items":{"type":"string"}}}),
+            json!({"done":{"type":"array","items":{"type":"string"}},"doing":{"type":"array","items":{"type":"string"}},"next":{"type":"array","items":{"type":"string"}},"title":{"type":"string","description":"The session's name, 2–6 words naming the work. Give one with your first report, and again only if the work becomes something else. Ignored once the person has named it."}}),
             &["done", "doing", "next"],
         ),
         def(

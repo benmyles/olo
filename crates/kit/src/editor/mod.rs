@@ -542,6 +542,10 @@ pub struct Editor {
     /// The text's width in the view (a table's, when rows don't wrap).
     width: f32,
     look: Option<Look>,
+    /// Device pixels to a point, as last drawn: a shaded paragraph (a code
+    /// block's line, a diff's) is a whole number of them tall, so a run of
+    /// them are bands of one height at any scale.
+    scale: f32,
     /// Bumped whenever every layout changes.
     key: u64,
     /// Estimates are from a measured paragraph (else from guesses).
@@ -708,6 +712,7 @@ impl Editor {
             paras: Vec::new(),
             tops: Vec::new(),
             tops_dirty: true,
+            scale: 0.0,
             widest: 0.0,
             gutter: None,
             digit: None,
@@ -1151,7 +1156,10 @@ impl Editor {
         let p = &mut self.paras[i];
         let first = p.key == NEVER;
         let body = placed.height();
-        let h = body + p.set.above + p.set.below;
+        let mut h = body + p.set.above + p.set.below;
+        if (placed.deco.0.is_some() || placed.deco.1.is_some()) && self.scale > 0.0 {
+            h = (h * self.scale).round().max(1.0) / self.scale;
+        }
         if p.height != h {
             self.tops_dirty = true;
         }
@@ -1386,6 +1394,14 @@ impl Editor {
     #[allow(clippy::too_many_arguments)]
     fn prepare(&mut self, doc: &mut dyn Document, sh: &dyn Shaper, o: &Options, view: Bounds<Pixels>, scale: f32, cx: &mut WindowCx) -> Option<f32> {
         let (vw, vh) = (f32::from(view.size.width), f32::from(view.size.height));
+        if self.scale != scale {
+            // Shaded paragraphs' heights are in this scale's pixels.
+            self.scale = scale;
+            for p in &mut self.paras {
+                p.key = p.key.min(STALE);
+            }
+            self.tops_dirty = true;
+        }
         // On pages: the text as wide as a page's, the sheets in the
         // middle (else at the left, the view scrolling sideways), the
         // first page's text a gap and a margin down.

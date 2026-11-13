@@ -1722,6 +1722,9 @@ top to bottom with its space above and below, so paragraphs one after
 another make one box: a code block's ground), a `bar` down its left in
 the room `left` leaves (a quotation's), a `rule` across its middle (a
 Markdown `---`), and be `verbatim` (code: not checked for spelling).
+A shaded or barred paragraph is a whole number of device pixels tall
+(measured again when the scale changes), so a run of differently shaded
+lines (a diff's) are bands of one height at 1×, 1.25×, 1.5× and 1.75× too.
 Shades and bars of paragraphs one after another, alike, are painted as
 one fill, under everything (a code block's ground is one box, whatever
 its lines' heights at a scale).
@@ -16349,6 +16352,12 @@ conversation). The window shows the report on a card over the work pane
 (`gui/tasks.rs`) and the list as an outline in its Tasks tab (a click on a
 mark moves a task on, its menu does the rest); the terminal has the same
 in Alt+T (`tui_tasks.rs`) and a Now/Next line under its status.
+The agent names the session in its first `report_status` (`title`) unless
+the person has (`Session::named`). An action is one line (a command cut at
+64 characters); a failed one is quiet but for its red ✕ (the agent goes on
+from it); a diff opens by itself only up to 12 lines, from its first hunk.
+Every menu item has keys: the every-app ones by `.key()` (the profile's
+win), Coder's own listed in `olo_protocol::app_keys` (CODER.md, Keys).
 
 Olo Coder's Ratatui and native kit clients share `crates/coder` and one durable
 Unix-socket service. Its commands, provider-native reasoning and compaction,

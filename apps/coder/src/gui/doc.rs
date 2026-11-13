@@ -161,10 +161,35 @@ impl editor::Document for Doc<'_> {
             _ => None,
         };
         let in_code = matches!(kind, Kind::Code(_));
+        // A failed or waiting action says so with its mark alone (the
+        // line's first character), in its colour; the line stays quiet.
+        let mut mark = match block {
+            Block::Tool(state) => state_color(self.p, state).and_then(|c| self.content.text[range.clone()].chars().next().map(|ch| (range.start + ch.len_utf8(), c))),
+            _ => None,
+        };
         for r in self.content.runs(range.clone()) {
             let len = r.range.end.min(range.end) - r.range.start.max(range.start);
             if len == 0 {
                 continue;
+            }
+            if let Some((end, color)) = mark.take() {
+                let start = r.range.start.max(range.start);
+                if start < end {
+                    let marked = (end - start).min(len);
+                    let mut span = Span::new(marked, style::ui_font(FontWeight::BOLD), style::PLAIN_SIZE);
+                    span.color = Some(color);
+                    out.push(span);
+                    if marked == len {
+                        continue;
+                    }
+                    let rest = len - marked;
+                    let mono = r.style.code || in_code;
+                    let font = if mono { style::mono_font(FontWeight::NORMAL) } else { style::ui_font(FontWeight::NORMAL) };
+                    let mut span = Span::new(rest, font, if mono { style::MONO_SIZE - 0.5 } else { style::PLAIN_SIZE });
+                    span.color = Some(if mono { style::c(self.p.document_text) } else { look.quiet });
+                    out.push(span);
+                    continue;
+                }
             }
             let bold = r.style.bold;
             let weight = if bold { FontWeight::BOLD } else { FontWeight::NORMAL };
@@ -190,10 +215,8 @@ impl editor::Document for Doc<'_> {
             let toggle = r.style.link.as_deref().is_some_and(|l| l.starts_with("olo-coder:toggle/"));
             span.underline = r.style.link.is_some() && !toggle;
             span.color = match block {
-                Block::Tool(state) => match r.style.class {
-                    _ if mono => state_color(self.p, state).or(Some(style::c(self.p.document_text))),
-                    _ => state_color(self.p, state).or(Some(look.quiet)),
-                },
+                Block::Tool(_) if mono => Some(style::c(self.p.document_text)),
+                Block::Tool(_) => Some(look.quiet),
                 Block::Quiet => Some(look.quiet),
                 _ => r.style.class.or_else(|| (r.style.link.is_some() && !toggle).then_some(Class::Link)).map(|c| style::c(self.p.syntax(c))),
             };
@@ -203,7 +226,9 @@ impl editor::Document for Doc<'_> {
             out.push(span);
         }
         if out.is_empty() {
-            out.push(Span::new(0, style::ui_font(FontWeight::NORMAL), BODY));
+            // An empty line is as tall as the lines around it: a code
+            // block's in its font.
+            out.push(if in_code { Span::new(0, style::mono_font(FontWeight::NORMAL), style::MONO_SIZE) } else { Span::new(0, style::ui_font(FontWeight::NORMAL), BODY) });
         }
     }
 

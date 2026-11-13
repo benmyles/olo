@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-12
 
+### Olo Coder: named sessions, quiet steps, every shortcut
+
+*23:14* — A session is named by the agent (Calculator power function) in the tab, header and list; each step is one line, a failed one only a red ✕; small diffs open from their first hunk; the status sits on the title's line; context reads 6.7K of 872K; Changes fits its pane. Every menu item has its keys (⌘N, ⌘W, ⌘Q, ⌘C, ⌘F, ⌘,, ⌘1–3, ⌘↑ ⌘↓).
+
+![Olo Coder: named sessions, quiet steps, every shortcut](2026-11-12/231428-olo-coder-named-sessions-quiet-steps-every-short.png)
+
 ### AirPlay's sound on the television only
 
 *21:56* — A showing makes an output of its own (Den (AirPlay)), listed with the others while it's shown, and moves to it the sound that goes with what's shown: a window's app's, an agent screen's programs', a display's the computer's. It plays on the television and not on the speakers; back where it was when paused or stopped.

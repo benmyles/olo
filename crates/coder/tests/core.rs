@@ -2198,3 +2198,11 @@ async fn model_discovery_normalizes_catalog_without_saving_drafts() {
     assert!(!saved["profiles"].as_array().unwrap().iter().any(|p| p["name"] == "Draft"));
     server.abort();
 }
+#[test]
+fn a_session_is_named_in_a_few_words_until_the_agent_names_it() {
+    assert_eq!(
+        olo_coder_core::model::provisional_title("In calc.py: fix add and mul, add sub and div (div raises ZeroDivisionError with a clear message)"),
+        "In calc.py: fix add and mul, add sub and div…"
+    );
+    assert_eq!(olo_coder_core::model::provisional_title("\n  Fix the build \nand more"), "Fix the build");
+}

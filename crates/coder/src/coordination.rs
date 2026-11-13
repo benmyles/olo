@@ -21,6 +21,7 @@ impl Engine {
             if let Some(title) = title {
                 ensure!(!title.trim().is_empty() && title.len() <= 256, "title must be 1..256 bytes");
                 s.title = title.trim().into();
+                s.named = true;
             }
             if let Some(pinned) = pinned {
                 s.pinned = pinned;
@@ -61,7 +62,7 @@ impl Engine {
         ensure!(message.from.is_none() || s.config.accept_messages, "recipient is not accepting collaborator messages");
         ensure!(s.inbox.len() < 128 && s.inbox.iter().map(|p| p.message.text.len()).sum::<usize>() + message.text.len() <= 4_000_000, "recipient inbox is full");
         if s.title == "New session" && message.from.is_none() {
-            s.title = message.text.chars().take(72).collect();
+            s.title = crate::model::provisional_title(&message.text);
         }
         let wake = message.wake && (message.from.is_none() || s.config.wake_on_message);
         // Manual effects are not model turns. Only a new, authorized wake

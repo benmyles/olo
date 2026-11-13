@@ -5,6 +5,22 @@ use std::path::PathBuf;
 pub fn id() -> String {
     uuid::Uuid::new_v4().to_string()
 }
+/// A session's name until the agent gives it one: the message's first line,
+/// cut at a word with an ellipsis.
+pub fn provisional_title(text: &str) -> String {
+    const MOST: usize = 48;
+    let line = text.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("New session");
+    let line = line.split_whitespace().collect::<Vec<_>>().join(" ");
+    if line.chars().count() <= MOST {
+        return line;
+    }
+    let cut: String = line.chars().take(MOST).collect();
+    let cut = match cut.rfind(' ') {
+        Some(at) if at > MOST / 2 => &cut[..at],
+        _ => &cut,
+    };
+    format!("{}…", cut.trim_end_matches(|c: char| c.is_ascii_punctuation() || c.is_whitespace()))
+}
 pub fn now() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs()
 }
@@ -596,6 +612,9 @@ pub struct Session {
     /// to the task list), said once and then part of the conversation.
     #[serde(default)]
     pub notices: Vec<String>,
+    /// The person named the session; the agent's names no longer replace it.
+    #[serde(default)]
+    pub named: bool,
 }
 impl Session {
     pub fn new(workspace: PathBuf, config: Config) -> Self {
@@ -638,6 +657,7 @@ impl Session {
             report: None,
             todos_sequence: 0,
             notices: vec![],
+            named: false,
         }
     }
     pub fn flush_images(&mut self) {
