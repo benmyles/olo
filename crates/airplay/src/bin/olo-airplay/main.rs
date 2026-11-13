@@ -82,7 +82,7 @@ const USAGE: &str = "usage: olo-airplay list [--json] [--wait SECONDS]
   pair     pair with one: the code it shows on its screen is typed here, once
   check    whether one paired with still knows this computer
   play     play a film on one: a file here or an address on the web; Ctrl-C stops it
-  show     show a display, a window or an agent screen on one, live, with sound; Ctrl-C stops it
+  show     show a display, a workspace, a window or an agent screen on one, live, with sound; Ctrl-C stops it
   playing  the films playing and screens shown; stop, pause and resume act on them
   paired   the receivers paired with
   unpair   forget a pairing here";

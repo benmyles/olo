@@ -18,8 +18,11 @@
 //! 10 ms at a time), sent as it comes; while paused, silence, and the
 //! last picture stays.
 //!
-//! Signals as `play` takes them: Ctrl-C or SIGTERM stops (`olo-airplay
-//! stop`), SIGUSR1 pauses, SIGUSR2 goes on. Where Deskbar's tray finds
+//! When app_server goes (a reload, an upgrade), the showing waits for it
+//! and captures again what `Capture::again` says (`reconnect`); the
+//! receiver keeps the last picture meanwhile. Signals as `play` takes
+//! them: Ctrl-C or SIGTERM stops (`olo-airplay stop`), SIGUSR1 pauses,
+//! SIGUSR2 goes on. Where Deskbar's tray finds
 //! it: `$XDG_RUNTIME_DIR/olo-airplay/PID.json` (`olo_protocol::airplay`),
 //! its state "showing" or "paused".
 
@@ -125,6 +128,38 @@ fn wait(conn: RawFd, wake: RawFd, at_most: Option<Duration>) {
     let ms = at_most.map_or(-1, |d| d.as_millis().clamp(1, i32::MAX as u128) as i32);
     // SAFETY: poll on two pollfds of ours.
     unsafe { libc::poll(fds.as_mut_ptr(), 2, ms) };
+}
+
+/// How long after app_server ends a capture the connection is waited on
+/// to say whether app_server is going (a reload: shown again once it's
+/// back) or only what was shown went (a window closed: the end).
+const GONE_AFTER: Duration = Duration::from_secs(2);
+
+/// The capture again once app_server is back (a reload takes a second or
+/// two; windows come back a little later): tried every quarter second
+/// for half a minute, or until stopped. Fitted to the receiver's screen
+/// again.
+fn reconnect(old: &Capture, display: Option<&str>, screen: Screen, wake: &Wake) -> Result<Capture, String> {
+    let source = old.again();
+    let until = Instant::now() + Duration::from_secs(30);
+    let mut why = String::from("stopped");
+    while Instant::now() < until && !STOP.load(SeqCst) {
+        wait(-1, wake.read.as_raw_fd(), Some(Duration::from_millis(250)));
+        wake.drain();
+        // (This display's by its direct socket, as at first.)
+        let opened = match display {
+            Some(display) => Capture::on(Some(display), &source, true),
+            None => Capture::new(&source, true),
+        };
+        match opened {
+            Ok(mut c) => {
+                let _ = c.fit(screen.width, screen.height);
+                return Ok(c);
+            }
+            Err(e) => why = e,
+        }
+    }
+    Err(why)
 }
 
 /// A frame waiting for the encoder: its rows, and when it was captured.
@@ -295,9 +330,14 @@ fn shown(args: &[String]) -> Result<(), String> {
     };
 
     // Frames, as they come.
-    let conn = capture.fd()?;
+    let mut conn = capture.fd()?;
     let mut asked_at: Option<Instant> = None;
     let mut paused = false;
+    // app_server went (a reload, an upgrade: it comes back), and when it
+    // ended the capture (what was shown went, or app_server is going,
+    // which the connection soon says).
+    let mut lost = false;
+    let mut stopped_at: Option<Instant> = None;
     let result: Result<Option<String>, String> = (|| {
         loop {
             wake.drain();
@@ -307,8 +347,31 @@ fn shown(args: &[String]) -> Result<(), String> {
             if let Some(why) = mirror.ended() {
                 return Ok(Some(why));
             }
+            if lost {
+                // The receiver keeps the last picture meanwhile.
+                eprintln!("olo-airplay: app_server went away; showing again once it's back");
+                let again = match reconnect(&capture, what.display.as_deref(), screen, &wake) {
+                    Ok(again) => again,
+                    Err(_) if STOP.load(SeqCst) => return Ok(None),
+                    Err(why) => return Ok(Some(format!("app_server didn't come back ({why})"))),
+                };
+                capture = again;
+                conn = capture.fd()?;
+                (lost, stopped_at, asked_at) = (false, None, None);
+                if trace {
+                    eprintln!("  capturing {} again", capture.name());
+                }
+                continue;
+            }
             if capture.stopped() {
-                return Ok(Some("what was shown went away".into()));
+                let since = *stopped_at.get_or_insert_with(Instant::now);
+                let left = GONE_AFTER.saturating_sub(since.elapsed());
+                if left.is_zero() {
+                    return Ok(Some("what was shown went away".into()));
+                }
+                wait(conn.as_raw_fd(), wake.read.as_raw_fd(), Some(left));
+                lost = capture.poll().is_err();
+                continue;
             }
             let now_paused = PAUSED.load(SeqCst);
             if now_paused != paused {
@@ -320,7 +383,7 @@ fn shown(args: &[String]) -> Result<(), String> {
             }
             if paused {
                 wait(conn.as_raw_fd(), wake.read.as_raw_fd(), None);
-                let _ = capture.poll()?;
+                lost = capture.poll().is_err();
                 continue;
             }
             // Ask for the next once its time has come, then wait for it.
@@ -331,22 +394,29 @@ fn shown(args: &[String]) -> Result<(), String> {
                     wait(conn.as_raw_fd(), wake.read.as_raw_fd(), Some(due));
                     continue;
                 }
-                capture.request()?;
+                if capture.request().is_err() {
+                    lost = true;
+                    continue;
+                }
                 asked_at = Some(Instant::now());
             }
             wait(conn.as_raw_fd(), wake.read.as_raw_fd(), None);
-            if let Some(Ok(())) = capture.poll()? {
-                let at = Instant::now();
-                let Some((w, h)) = capture.frame_size() else { continue };
-                let (m, cv) = &*slot;
-                let mut held = m.lock().unwrap_or_else(|e| e.into_inner());
-                // (A buffer used again: one the encoder didn't get to, or
-                // one it's done with.)
-                let mut data = held.waiting.take().map(|w| w.data).or_else(|| held.spare.take()).unwrap_or_default();
-                data.resize(w as usize * h as usize * 4, 0);
-                capture.copy_into(&mut data, w as usize * 4)?;
-                held.waiting = Some(Waiting { data, width: w, height: h, at });
-                cv.notify_one();
+            match capture.poll() {
+                Err(_) => lost = true,
+                Ok(Some(Ok(()))) => {
+                    let at = Instant::now();
+                    let Some((w, h)) = capture.frame_size() else { continue };
+                    let (m, cv) = &*slot;
+                    let mut held = m.lock().unwrap_or_else(|e| e.into_inner());
+                    // (A buffer used again: one the encoder didn't get to,
+                    // or one it's done with.)
+                    let mut data = held.waiting.take().map(|w| w.data).or_else(|| held.spare.take()).unwrap_or_default();
+                    data.resize(w as usize * h as usize * 4, 0);
+                    capture.copy_into(&mut data, w as usize * 4)?;
+                    held.waiting = Some(Waiting { data, width: w, height: h, at });
+                    cv.notify_one();
+                }
+                Ok(_) => {}
             }
         }
     })();

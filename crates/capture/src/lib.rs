@@ -232,6 +232,8 @@ pub struct Capture {
     /// fitted source frames come from (`fit`).
     olo_sources: Option<OloImageCaptureSourceManagerV1>,
     fitted: Option<ext_image_capture_source_v1::ExtImageCaptureSourceV1>,
+    /// What it was asked to capture (`again`).
+    asked: Source,
     seat: Option<wl_seat::WlSeat>,
     /// The pointer followed apart (`follow_cursor`).
     following: Option<Following>,
@@ -269,7 +271,9 @@ impl Capture {
     /// Screen's `wayland-9`; None: `WAYLAND_DISPLAY`'s).
     pub fn on(display: Option<&str>, source: &Source, cursor: bool) -> Result<Capture, String> {
         if let Source::Display(other) = source {
-            return Self::on(Some(other), &Source::Output(None), cursor);
+            let mut c = Self::on(Some(other), &Source::Output(None), cursor)?;
+            c.asked = source.clone();
+            return Ok(c);
         }
         let conn = connect(display).map_err(|e| format!("can't reach app_server: {e}"))?;
         let (globals, mut queue) = registry_queue_init::<State>(&conn).map_err(|e| e.to_string())?;
@@ -321,8 +325,14 @@ impl Capture {
                     .or_else(|| state.toplevels.iter().find(|t| t.app_id == *app_id && t.title == *title))
                     .ok_or_else(|| format!("no window {id}"))?;
                 let made = sources.create_source(&found.handle, &qh, ());
-                let name = found.identifier.clone();
+                let (name, chosen) = (found.identifier.clone(), found.handle.clone());
                 list.stop();
+                // Its handle kept, to follow its title (`again`); the
+                // others' let go, their changes nothing to this.
+                for t in state.toplevels.iter().filter(|t| t.handle != chosen) {
+                    t.handle.destroy();
+                }
+                state.toplevels.retain(|t| t.handle == chosen);
                 (made, name)
             }
         };
@@ -368,9 +378,27 @@ impl Capture {
             paint_cursors: cursor,
             olo_sources,
             fitted: None,
+            asked: source.clone(),
             seat,
             following: None,
         })
+    }
+
+    /// What to capture again once app_server is back (it went: a reload,
+    /// an upgrade): the display or workspace by its display's name; a
+    /// window by its app and its title as it is now (it comes back with
+    /// another id, and its old one may be another window's then).
+    pub fn again(&self) -> Source {
+        match &self.asked {
+            Source::Output(_) => Source::Output(Some(self.name.clone())),
+            Source::Workspace { index, .. } => Source::Workspace { output: Some(self.name.clone()), index: *index },
+            Source::Window { app_id, title, .. } => {
+                let (app_id, title) = self.state.toplevels.first().map_or((app_id.clone(), title.clone()), |t| (t.app_id.clone(), t.title.clone()));
+                // (No window is numbered 0: found by its app and title.)
+                Source::Window { id: 0, app_id, title }
+            }
+            display => display.clone(),
+        }
     }
 
     /// Frames made smaller by app_server as it draws them, to fit at most

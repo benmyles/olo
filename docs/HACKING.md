@@ -8705,8 +8705,10 @@ its request, for the app's Cancel and for holding an upgrade off.
   carries on, its dmabufs made known to the new connection. While
   the screen is locked a window's share pauses on its last frame. Both
   protocols are kept from outside programs (wlproxy's list doesn't have
-  them). A window share reconnects after a reload by its id, or one with
-  the same app id and title (windows come back with new ids).
+  them). A share reconnects after a reload as `Capture::again` says: a
+  screen or workspace by its display's name, a window by its app id and
+  its title as it last was (windows come back with new ids, numbered
+  from 1 again, so its old id may be another window's).
 - **Olo's own sources**: Olo's own protocol, its first
   (`crates/capture/protocols/olo-image-capture-source-v1.xml`, bound
   with `wayland-scanner` on both sides: `capture::protocol`,
@@ -9773,7 +9775,13 @@ from Apple's, and LGPL where it's open).
   SIGUSR1 pauses, SIGUSR2 goes on, SIGTERM stops, as for a play; it is
   said in the same folder (`Playing { live: true }`, "showing" or
   "paused"), so Deskbar's tray, `olo-airplay playing|pause|resume|stop`
-  and agents see it as they see a play. `--trace` also says each
+  and agents see it as they see a play. It outlives app_server's
+  reload or upgrade: a capture app_server ends is the showing's end
+  only if the connection outlives it two seconds (what was shown went,
+  a window closed); else it waits for app_server, trying every quarter
+  second for half a minute, and captures again what `Capture::again`
+  says (fitted again), the receiver keeping the last picture meanwhile.
+  `--trace` also says each
   120 frames how long the resize, the encoding and capture-to-sent took.
 - Measured (release, a headless 1920 × 1200 session at 2× shown on the
   test receiver, `tools/dev/cost`): a still screen 1.2% of a core
