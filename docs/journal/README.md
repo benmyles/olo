@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-12
 
+### AirPlay's sound on the television only
+
+*21:56* — A showing makes an output of its own (Den (AirPlay)), listed with the others while it's shown, and moves to it the sound that goes with what's shown: a window's app's, an agent screen's programs', a display's the computer's. It plays on the television and not on the speakers; back where it was when paused or stopped.
+
+![AirPlay's sound on the television only](2026-11-12/215603-airplay-s-sound-on-the-television-only.png)
+
 ### Recordings and AirPlay in H.264 on the Intel GPU
 
 *21:06* — Preferences ▸ Power ▸ Graphics: where the Intel GPU's driver encodes H.264 (RPM Fusion's iHD, as here), Encode on says Intel Graphics (VA-API), not "AV1 only", and offers H.264 or AV1, measured: a 2560 × 1600 screen in about 8 ms a frame as H.264, 9 as AV1, about the same size. The same encoder shows a screen on AirPlay from frames lent by app_server, never copied: 5.0% of a core for a busy 1728 × 1080 Terminal at 60 a second, where NVENC with copies took 11.9%.

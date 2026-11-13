@@ -17,10 +17,14 @@
 //! it stamped with its capture's moment. Frames for an encoder on the GPU
 //! that draws them are lent to it as they are (`Capture::lend_frames`:
 //! dmabufs made NV12 by its video processor), never copied through the
-//! processor; the rest are copied out. The sound is the computer's
-//! (`olo_system::recording`, the default output's monitor at 44.1 kHz,
-//! 10 ms at a time), sent as it comes; while paused, silence, and the
-//! last picture stays.
+//! processor; the rest are copied out. The sound is what's shown's, on
+//! the receiver only (`sound`: an output of the showing's own, the
+//! window's app's sound, or the computer's, moved to it), sent as it
+//! comes; while paused, it plays here again, the receiver keeps the last
+//! picture and hears silence. Where that output can't be made (no
+//! PipeWire, a window whose process app_server doesn't know), the
+//! computer's sound as it plays here (`olo_system::recording`, the
+//! default output's monitor).
 //!
 //! When app_server goes (a reload, an upgrade), the showing waits for it
 //! and captures again what `Capture::again` says (`reconnect`); the
@@ -47,7 +51,7 @@ use olo_airplay::{
 use olo_capture::{Capture, Source};
 use olo_protocol::airplay::{self, Playing};
 
-use super::{find, option, tell, words_in};
+use super::{find, option, sound, tell, words_in};
 
 static STOP: AtomicBool = AtomicBool::new(false);
 static PAUSED: AtomicBool = AtomicBool::new(false);
@@ -58,9 +62,11 @@ pub(crate) struct What {
     display: Option<String>,
     pub(crate) source: Source,
     pub(crate) title: String,
-    /// Whether the computer's sound goes with it (an agent screen without
-    /// sound has none).
+    /// Whether sound goes with it (an agent screen without sound has
+    /// none).
     sound: bool,
+    /// The agent screen's name, for one.
+    screen: Option<String>,
 }
 
 /// An agent screen's Wayland display and whether it has sound, by its
@@ -76,20 +82,67 @@ pub(crate) fn what_of(args: &[String]) -> Result<What, String> {
     let titled = option(args, "--title").map(str::to_owned);
     if let Some(id) = option(args, "--window") {
         let id = id.parse::<u64>().map_err(|_| format!("{id} isn't a window's number"))?;
-        return Ok(What { display: None, source: Source::Window { id, app_id: String::new(), title: String::new() }, title: titled.unwrap_or_else(|| format!("Window {id}")), sound: true });
+        return Ok(What {
+            display: None,
+            source: Source::Window { id, app_id: String::new(), title: String::new() },
+            title: titled.unwrap_or_else(|| format!("Window {id}")),
+            sound: true,
+            screen: None,
+        });
     }
     if let Some(name) = option(args, "--screen") {
         let (display, sound) = agent_screen(name).ok_or_else(|| format!("no agent screen {name} is running (olo-screen list says which are)"))?;
-        return Ok(What { display: Some(display), source: Source::Output(None), title: titled.unwrap_or_else(|| format!("Agent screen {name}")), sound });
+        return Ok(What { display: Some(display), source: Source::Output(None), title: titled.unwrap_or_else(|| format!("Agent screen {name}")), sound, screen: Some(name.to_owned()) });
     }
     let display = option(args, "--display").map(str::to_owned);
     if let Some(n) = option(args, "--workspace") {
         let n = n.parse::<u32>().ok().filter(|n| *n >= 1).ok_or("--workspace is a number from 1")?;
         let title = titled.unwrap_or_else(|| format!("Workspace {n}"));
-        return Ok(What { display: None, source: Source::Workspace { output: display, index: n - 1 }, title, sound: true });
+        return Ok(What { display: None, source: Source::Workspace { output: display, index: n - 1 }, title, sound: true, screen: None });
     }
     let title = titled.unwrap_or_else(|| display.as_ref().map_or_else(|| "The screen".to_owned(), |d| format!("Display {d}")));
-    Ok(What { display: None, source: Source::Output(display), title, sound: true })
+    Ok(What { display: None, source: Source::Output(display), title, sound: true, screen: None })
+}
+
+/// Whose sound goes with what's shown: a window's app's, an agent
+/// screen's programs', else the computer's. None: a window app_server
+/// doesn't know the process of.
+fn whose(what: &What, capture: &Capture) -> Option<sound::Whose> {
+    if let Some(name) = &what.screen {
+        return Some(sound::Whose::Screen(name.clone()));
+    }
+    match what.source {
+        // (By the window captured: after a reload it has another number.)
+        Source::Window { .. } => window_pid(capture.name().strip_prefix("olo-")?.parse().ok()?).map(sound::Whose::Process),
+        _ => Some(sound::Whose::Computer),
+    }
+}
+
+/// The process window `id` is of, as app_server knows it.
+fn window_pid(id: u64) -> Option<u32> {
+    let mut c = olo_protocol::Client::connect().ok()?;
+    let Ok(olo_protocol::Reply::Windows { windows }) = c.request(&olo_protocol::Request::ListWindows) else { return None };
+    windows.iter().find(|w| w.id == id)?.pid.and_then(|p| u32::try_from(p).ok())
+}
+
+/// The sound shown with a picture: moved to the TV's output of its own
+/// (`sound`), or, where that can't be (no PipeWire; a window whose
+/// process isn't known), the computer's as it plays, recorded from the
+/// default output's monitor (heard here and on the TV).
+enum Heard {
+    Tv(sound::TvSound),
+    Both(#[allow(dead_code)] olo_system::recording::Capture),
+}
+
+/// Samples as the receiver takes them, sent (silence while paused).
+fn feed(mirror: Arc<Mirror>) -> impl FnMut(&[f32], Instant) + Send + 'static {
+    let mut pcm: Vec<i16> = Vec::with_capacity(1024);
+    move |samples: &[f32], at: Instant| {
+        pcm.clear();
+        let paused = PAUSED.load(SeqCst);
+        pcm.extend(samples.iter().map(|s| if paused { 0 } else { (s.clamp(-1.0, 1.0) * 32767.0) as i16 }));
+        mirror.sound(&pcm, at);
+    }
 }
 
 /// A pipe signals and the receiver's end write to, waking the capture's
@@ -269,7 +322,17 @@ fn shown(args: &[String]) -> Result<(), String> {
             println!("{}", serde_json::json!({ "state": state, "receiver": name, "what": what.title, "screen": screen, "lead_ms": lead_ms, "sound": sounds, "why": why }));
         } else {
             match state {
-                "showing" => println!("Showing {} on {name}{}.", what.title, if sounds { ", with the computer's sound" } else { "" }),
+                "showing" => println!(
+                    "Showing {} on {name}{}.",
+                    what.title,
+                    if !sounds {
+                        ""
+                    } else if matches!(what.source, Source::Output(_) | Source::Workspace { .. }) && what.screen.is_none() {
+                        ", with the computer's sound"
+                    } else {
+                        ", with its sound"
+                    }
+                ),
                 "paused" => println!("Paused: {name} shows the last picture."),
                 "stopped" => println!("Stopped."),
                 _ => println!("{name} stopped showing it{}.", why.map(|w| format!(": {w}")).unwrap_or_default()),
@@ -317,21 +380,25 @@ fn shown(args: &[String]) -> Result<(), String> {
             .map_err(|e| e.to_string())?
     };
 
-    // The computer's sound, as it comes (silence while paused).
+    // The sound, as it comes: on the TV only, else the computer's as it
+    // plays (silence while paused).
     let sound = if mirror.sounds() {
-        let mirror = mirror.clone();
-        let mut pcm: Vec<i16> = Vec::with_capacity(1024);
-        match olo_system::recording::Capture::start_as(Some(olo_system::recording::COMPUTER), 2, 44_100, 10, "AirPlay", move |samples: &[f32]| {
-            let at = Instant::now() - Duration::from_secs_f64(samples.len() as f64 / 2.0 / 44_100.0);
-            pcm.clear();
-            let paused = PAUSED.load(SeqCst);
-            pcm.extend(samples.iter().map(|s| if paused { 0 } else { (s.clamp(-1.0, 1.0) * 32767.0) as i16 }));
-            mirror.sound(&pcm, at);
-        }) {
-            Ok(c) => Some(c),
-            Err(e) => {
-                eprintln!("olo-airplay: showing without sound: {e}");
-                None
+        let tv = match whose(&what, &capture) {
+            Some(w) => sound::TvSound::start(&name, w, trace, feed(mirror.clone())).map_err(|e| eprintln!("olo-airplay: the computer's sound as it plays, here and on the TV: {e}")).ok(),
+            None => None,
+        };
+        match tv {
+            Some(tv) => Some(Heard::Tv(tv)),
+            None => {
+                let mut fed = feed(mirror.clone());
+                let got = move |samples: &[f32]| fed(samples, Instant::now() - Duration::from_secs_f64(samples.len() as f64 / 2.0 / f64::from(sound::RATE)));
+                match olo_system::recording::Capture::start_as(Some(olo_system::recording::COMPUTER), 2, sound::RATE, 10, "AirPlay", got) {
+                    Ok(c) => Some(Heard::Both(c)),
+                    Err(e) => {
+                        eprintln!("olo-airplay: showing without sound: {e}");
+                        None
+                    }
+                }
             }
         }
     } else {
@@ -368,6 +435,10 @@ fn shown(args: &[String]) -> Result<(), String> {
                 };
                 capture = again;
                 conn = capture.fd()?;
+                // (A window's app may be another process now.)
+                if let (Some(Heard::Tv(tv)), Some(w)) = (&sound, whose(&what, &capture)) {
+                    tv.follow(w);
+                }
                 (lost, stopped_at, asked_at, lending) = (false, None, None, false);
                 if trace {
                     eprintln!("  capturing {} again", capture.name());
@@ -387,6 +458,9 @@ fn shown(args: &[String]) -> Result<(), String> {
             let now_paused = PAUSED.load(SeqCst);
             if now_paused != paused {
                 paused = now_paused;
+                if let Some(Heard::Tv(tv)) = &sound {
+                    tv.pause(paused);
+                }
                 publish(paused);
                 say(if paused { "paused" } else { "showing" }, None);
                 // (The screen as it is now, at once.)

@@ -181,7 +181,7 @@ pub enum Shown {
 }
 
 /// The command that shows `what` on `receiver` ([`Paired::key`], or a
-/// name), with the computer's sound, and tells the person if it
+/// name), with its sound (there and not here), and tells the person if it
 /// couldn't: what "Show on AirPlay" runs.
 pub fn show_command(receiver: &str, what: &Shown) -> String {
     let mut c = format!("olo-airplay show --notify --on {}", quoted(receiver));

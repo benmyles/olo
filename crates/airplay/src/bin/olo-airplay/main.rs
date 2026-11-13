@@ -23,7 +23,7 @@
 //!       played (what an app's "Play On" asks for); --on names the
 //!       receiver apart from the film (a name of several words)
 //!   olo-airplay show NAME [--window ID | --display NAME | --workspace N [--display NAME] | --screen NAME] [--title TEXT]
-//!                   [--no-sound] [--fps N] [--encoder auto|nvidia|cpu] [--lead MS]
+//!                   [--no-sound] [--fps N] [--encoder auto|vaapi|nvidia|cpu] [--lead MS]
 //!                   [--json] [--trace] [--notify] [--at HOST:PORT]
 //!   olo-airplay show --on NAME …
 //!       show a screen on a receiver paired with, live, a few dozen
@@ -31,7 +31,9 @@
 //!       a window (--window ID, as Olo numbers windows), a workspace
 //!       (--workspace N, from 1, of the first display or --display's:
 //!       its windows as they are, though the display shows another) or
-//!       an agent screen (--screen NAME), with the computer's sound
+//!       an agent screen (--screen NAME), with its sound, which plays
+//!       on the receiver and not here: a window's app's, an agent
+//!       screen's programs', a display's or a workspace's the computer's
 //!       (--no-sound: without). --title names it where Deskbar and the
 //!       person see it; --lead how far behind the receiver shows it.
 //!       Ctrl-C stops it
@@ -68,6 +70,7 @@ use olo_airplay::{
 use olo_protocol::airplay::{self, Playing};
 
 mod show;
+mod sound;
 
 const USAGE: &str = "usage: olo-airplay list [--json] [--wait SECONDS]
        olo-airplay pair NAME [--code CODE] [--at HOST:PORT]

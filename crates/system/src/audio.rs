@@ -756,6 +756,104 @@ pub fn watch_listening(mut changed: impl FnMut(Option<Vec<String>>)) -> ! {
     }
 }
 
+/// An app's sound on its way to an output (a sink input), as the sound
+/// server has it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Stream {
+    /// The server's number for it (what [`Streams::move_to`] takes).
+    pub index: u32,
+    /// The output it plays to, by its number ([`Streams::output`]).
+    pub output: u32,
+    /// The process playing it, as it says.
+    pub pid: Option<u32>,
+    /// What it says it is ("Firefox", "Music").
+    pub app: String,
+}
+
+/// The streams playing, followed as they come and go, and moved from one
+/// output to another (a window shown on AirPlay: its sound only on the
+/// TV). Two connections: one waits for changes, one asks and moves.
+pub struct Streams {
+    query: Conn,
+    events: Conn,
+}
+
+impl Streams {
+    pub fn open() -> Result<Streams> {
+        let query = Conn::connect()?;
+        let mut events = Conn::connect()?;
+        events.sock.get_ref().set_read_timeout(None)?;
+        // (Outputs and the default too: the one moved to may come later,
+        // the default change.)
+        events.ack(&Command::Subscribe(SubscriptionMask::SINK_INPUT | SubscriptionMask::SINK | SubscriptionMask::SERVER))?;
+        Ok(Streams { query, events })
+    }
+
+    /// The streams now.
+    pub fn list(&mut self) -> Result<Vec<Stream>> {
+        let list: protocol::SinkInputInfoList = self.query.request(&Command::GetSinkInputInfoList)?;
+        Ok(list
+            .iter()
+            .map(|s| Stream {
+                index: s.index,
+                output: s.sink_index,
+                pid: prop(&s.props, "application.process.id").and_then(|p| p.parse().ok()),
+                app: prop(&s.props, "application.name").or_else(|| prop(&s.props, "application.process.binary")).unwrap_or_default(),
+            })
+            .collect())
+    }
+
+    /// Wait until a stream, an output or the default changes. An error:
+    /// the server went, or [`Streams::closer`]'s was called.
+    pub fn wait(&mut self) -> Result<()> {
+        loop {
+            let (_, cmd) = protocol::read_command_message(&mut self.events.sock, self.events.version)?;
+            if let Command::SubscribeEvent(_) = cmd {
+                return Ok(());
+            }
+        }
+    }
+
+    /// What ends a [`Streams::wait`] on another thread, now and for good.
+    pub fn closer(&self) -> Result<impl Fn() + Send + Sync + 'static> {
+        let sock = self.events.sock.get_ref().try_clone()?;
+        Ok(move || {
+            let _ = sock.shutdown(std::net::Shutdown::Both);
+        })
+    }
+
+    /// Output `name`'s number, while there is one.
+    pub fn output(&mut self, name: &str) -> Result<Option<u32>> {
+        let sinks: protocol::SinkInfoList = self.query.request(&Command::GetSinkInfoList)?;
+        Ok(sinks.iter().find(|s| s.name.as_bytes() == name.as_bytes()).map(|s| s.index))
+    }
+
+    /// The outputs, each its number and name.
+    pub fn outputs(&mut self) -> Result<Vec<(u32, String)>> {
+        let sinks: protocol::SinkInfoList = self.query.request(&Command::GetSinkInfoList)?;
+        Ok(sinks.iter().map(|s| (s.index, s.name.to_string_lossy().into_owned())).collect())
+    }
+
+    /// The default output's volume.
+    pub fn default_volume(&mut self) -> Result<Volume> {
+        self.query.volume()
+    }
+
+    /// Where new sound goes: the default output's name.
+    pub fn default_output(&mut self) -> Result<String> {
+        let server: protocol::ServerInfo = self.query.request(&Command::GetServerInfo)?;
+        Ok(server.default_sink_name.map(|s| s.to_string_lossy().into_owned()).unwrap_or_default())
+    }
+
+    /// Play stream `index` on output `output` (by name). Moved to the
+    /// default output, it follows the default again (PipeWire forgets
+    /// where it was sent).
+    pub fn move_to(&mut self, index: u32, output: &str) -> Result<()> {
+        let name = CString::new(output).map_err(|e| ProtocolError::Invalid(e.to_string()))?;
+        self.query.ack(&Command::MoveSinkInput(protocol::MoveStreamParams { index: Some(index), device_index: None, device_name: Some(name) }))
+    }
+}
+
 /// [`watch_listening`]'s apps, now.
 fn listening(q: &mut Conn) -> Result<Vec<String>> {
     let sources: protocol::SourceInfoList = q.request(&Command::GetSourceInfoList)?;

@@ -16,9 +16,10 @@ required-features = ["show"]
 [features]
 default = ["show"]
 # The program's showing of a screen: capturing it (app_server's capture),
-# encoding it (olo-video) and the computer's sound (olo-system). An app
-# that only finds, pairs and plays leaves it out.
-show = ["dep:olo-capture", "dep:olo-video", "dep:olo-system", "dep:fast_image_resize"]
+# encoding it (olo-video) and its sound (an output of its own, PipeWire's,
+# and the sound server's streams moved to it, olo-system). An app that
+# only finds, pairs and plays leaves it out.
+show = ["dep:olo-capture", "dep:olo-video", "dep:olo-system", "dep:fast_image_resize", "dep:pipewire"]
 
 [dependencies]
 olo-crash.workspace = true
@@ -45,6 +46,8 @@ olo-capture = { workspace = true, optional = true }
 olo-video = { workspace = true, optional = true }
 olo-system = { workspace = true, optional = true }
 fast_image_resize = { version = "5", optional = true }
+# The TV's own output, made in process (its sound only there).
+pipewire = { version = "0.10", features = ["v0_3_49"], optional = true }
 
 [[example]]
 name = "fake-receiver"

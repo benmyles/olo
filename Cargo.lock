@@ -7040,6 +7040,7 @@ dependencies = [
  "olo-system",
  "olo-video",
  "olo-xdg",
+ "pipewire",
  "plist",
  "serde",
  "serde_json",

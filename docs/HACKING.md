@@ -9815,9 +9815,34 @@ from Apple's, and LGPL where it's open).
   processor), when they are the receiver's size (fitted); the encoder
   tells the capture's thread which GPU it's on (`prime`), and one that
   refuses a lent frame sets that back to none, so the rest are copied.
-  After a reload the new capture lends again. The sound is the computer's
-  (`recording::Capture::start_as`, the default output's monitor, 10 ms
-  at a time); while paused, silence, and the last picture stays.
+  After a reload the new capture lends again. The sound plays on the
+  receiver and not here, as macOS does it (`olo-airplay/sound.rs`): the
+  showing makes an output of its own in process ("Den (AirPlay)", a
+  PipeWire stream of class `Audio/Sink`, `olo-airplay.PID`, 44.1 kHz
+  stereo, a cycle every 21 ms at most, `node.always-process` so the
+  receiver's sound has no gaps, the lowest priority so nothing goes to
+  it by itself) and moves to it the sound that goes with what's shown
+  (`olo_system::audio::Streams`: the sound server's streams listed,
+  followed as they come, moved by name): a window's, its app's streams
+  (its process's and its children's, by `/proc`: a browser plays from
+  a helper; app_server says the window's process); an agent screen's,
+  its programs' (`OLO_SCREEN` in their environment); a display's or a
+  workspace's, every stream on the default output (one the person sent
+  elsewhere, a call on headphones, stays). The default output isn't
+  changed (it's the person's, kept across logins). The samples are
+  multiplied by the default output's volume (its cubic level; none
+  muted), so the volume keys still set how loud it is. Paused, or
+  ended, each stream goes back where it was: its output, or the
+  default again for one that followed it (PipeWire then follows the
+  default again). Killed, its output goes with the process and
+  WirePlumber sends what was on it to the default: nothing is left
+  playing nowhere. After a reload the window's process is asked again
+  (`TvSound::follow`); when PipeWire goes, the output is made again.
+  Where it can't be made (no PipeWire; a window whose process isn't
+  known), the computer's sound as it plays here
+  (`recording::Capture::start_as`, the default output's monitor),
+  heard here and on the receiver. While paused, the receiver hears
+  silence and keeps the last picture.
   SIGUSR1 pauses, SIGUSR2 goes on, SIGTERM stops, as for a play; it is
   said in the same folder (`Playing { live: true }`, "showing" or
   "paused"), so Deskbar's tray, `olo-airplay playing|pause|resume|stop`
@@ -9846,6 +9871,13 @@ from Apple's, and LGPL where it's open).
   receiver shows behind. 15.2 Mbit/s for the Terminal printing
   nonstop at 60 a second; a still screen 0.1% of a core, 7 wakeups a
   second (app_server 0.1%, 4). `--encoder nvidia` takes NVENC.
+  The sound on its own output against the old monitor recording, a
+  window of Viewer shown with a tone playing (a private PipeWire,
+  `tools/dev/cost` on olo-airplay, pipewire and pipewire-pulse
+  together): 2.3% of a core and 361 wakeups a second against 4.4% and
+  1062; nothing playing, 0.7% and 97 against 3.0% and 853. (Asking
+  for 10 ms cycles, as the monitor recording did, makes the whole
+  graph run every 5.3 ms: 188 wakeups a second here alone.)
 
 **From the desktop.** Preferences ▸ AirPlay (`apps/preferences/src/
 airplay.rs`) lists the receivers that answer (asked when the panel

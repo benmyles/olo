@@ -618,7 +618,7 @@ something nobody here has is in "Blocked", with what it waits for.
        Apple TVs it was tried on refused it; Olo is MIT, so bringing
        any of it in is Ben's to decide, and nothing needs it now).
        `olo-airplay show` sends a window, a display or an agent
-       screen with the computer's sound, 8 ms from capture to sent,
+       screen with its sound, 8 ms from capture to sent,
        a lead of 40 ms wired (75 on Wi-Fi) at the receiver.
      - *The desktop's way to it, 2026-11-12* (HACKING, "AirPlay" and
        "Show on AirPlay and Play On"): Preferences ▸ AirPlay (the
@@ -646,9 +646,17 @@ something nobody here has is in "Blocked", with what it waits for.
        NVENC's 11.9%, the NVIDIA GPU asleep, for 7.3 ms from capture to
        sent rather than 4.7. Recordings take it too (`--encoder
        vaapi`, Preferences ▸ Graphics' Format).
-     - *Next:* a window's own sound rather than the computer's
-       (moving its stream to a sink of its own), and keeping the sound
-       off this computer's speakers while it plays on the television.
+     - *The sound on the television only, 2026-11-12* (HACKING,
+       "AirPlay", the showing): an output of the showing's own,
+       made in process, and the sound that goes with what's shown
+       moved to it: a window's app's, an agent screen's programs', a
+       display's the computer's; back where it was when paused or
+       ended, by WirePlumber when killed; the default output's volume
+       keys still set how loud. Half the cost of the monitor recording
+       it replaces (2.3% of a core against 4.4% with sound playing).
+     - *Next:* the receiver's own volume (AirPlay's `volume`
+       parameter) from the volume keys, rather than the samples made
+       quieter here, once a real receiver is there to try it on.
      - *Ben's to say:* (1) which receiver it's for (an Apple TV and
        its tvOS, a television with AirPlay built in, something else):
        it has to be tried against the real one, paired by him at the
