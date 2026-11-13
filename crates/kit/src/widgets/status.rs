@@ -52,11 +52,15 @@ impl IntoElement for StatusBar {
             let ink = style::c(p.panel_text);
             let font = style::ui_font(FontWeight::NORMAL);
             let y = b.top() + px(m::LABEL_ROW / 2.0);
+            // The note whole; the label cut short ("…", its whole in a
+            // tip) to the room it leaves: a name that changes as work goes
+            // on never runs into it, nor makes the bar's box wider.
+            let room = match &trailing {
+                Some(t) => style::label(g, b.right(), y, style::Align::Right, t.clone(), style::PLAIN_SIZE, font.clone(), ink).left() - px(m::SPACING),
+                None => b.right(),
+            };
             if let Some(l) = &label {
-                style::label(g, b.left(), y, style::Align::Left, l.clone(), style::PLAIN_SIZE, font.clone(), ink);
-            }
-            if let Some(t) = &trailing {
-                style::label(g, b.right(), y, style::Align::Right, t.clone(), style::PLAIN_SIZE, font.clone(), ink);
+                style::label_fit(g, b.left(), y, style::Align::Left, l.clone(), style::PLAIN_SIZE, font.clone(), ink, room - b.left());
             }
             let bar = Bounds::from_corners(point(b.left(), b.top() + px(top)), b.bottom_right());
             level_bar(g, bar, fraction, color, &p);

@@ -13,7 +13,7 @@ use std::{
 
 use olo_kit::{
     Bounds, Child, ClickEvent, Cx, Element, FontWeight, InteractiveElement as _, IntoElement as _, KeyDownEvent, Menu, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _,
-    Pixels, Point, SharedString, Styled as _, View, canvas, div, icons, menu, point, px, size,
+    Pixels, Point, SharedString, Styled as _, View, WindowOptions, canvas, div, icons, menu, point, px, size,
     style::{self, Align},
     theme,
     widgets::{
@@ -550,27 +550,26 @@ impl View for FindWin {
 
 // ---- Tracker Status ---------------------------------------------------------
 
-/// Tracker Status's width.
-pub const STATUS_WIDTH: f32 = 420.0;
-/// A job's row: its bar (label above, bar, the detail below) and Stop.
-const STATUS_ROW: f32 = m::LABEL_ROW + 10.0 + m::TIGHT + m::LABEL_ROW;
+/// Tracker Status's width: fixed (as BeOS's), so what changes as a job
+/// runs (the item's name, the counts) never moves Stop or the window.
+/// Room beside Stop for the longest counts ("109,369 of 109,369 items ·
+/// about 59 min left") and a name's first twenty letters or so.
+pub const STATUS_WIDTH: f32 = 540.0;
 
-/// The window's height for `jobs` rows.
-pub fn status_height(jobs: usize) -> f32 {
-    2.0 * m::WINDOW_INSET + jobs.max(1) as f32 * STATUS_ROW + jobs.saturating_sub(1) as f32 * (2.0 * m::SPACING + 2.0)
+/// Tracker Status's options: as tall as its rows (`fits_content`), at
+/// its width.
+pub fn status_options() -> WindowOptions {
+    WindowOptions { fixed: true, ..WindowOptions::new("Tracker Status", STATUS_WIDTH, 60.0).fits_content().floating() }
 }
 
 /// "Tracker Status": the file operations running (the app's, read as
 /// it's shown), as tall as its rows; it goes when the last is done.
-pub struct StatusWin {
-    /// The rows it was last sized for.
-    rows: usize,
-}
+pub struct StatusWin;
 
 impl StatusWin {
     pub fn new(cx: &mut Cx<Self>) -> StatusWin {
         Self::poll(cx);
-        StatusWin { rows: crate::jobs().len() }
+        StatusWin
     }
 
     /// Progress lives in the workers' counters: shown again a few times
@@ -589,25 +588,35 @@ impl StatusWin {
 impl View for StatusWin {
     type Message = ();
 
-    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
-        let jobs: Vec<(u64, String, String, String, f32)> = crate::jobs().iter().map(|j| (j.id, j.title.clone(), ops::amount(j), ops::detail(j), j.progress.fraction())).collect();
-        // As tall as its rows.
-        if jobs.len() != self.rows && !jobs.is_empty() {
-            self.rows = jobs.len();
-            cx.resize_window(size(px(STATUS_WIDTH), px(status_height(jobs.len()))));
-        }
-        let mut col = div().size_full().p(px(m::WINDOW_INSET)).flex().flex_col();
-        for (k, (id, title, amount, detail, fraction)) in jobs.into_iter().enumerate() {
+    fn body(&mut self, _cx: &mut Cx<Self>) -> Element {
+        let jobs: Vec<(u64, String, String, (String, String), f32)> = crate::jobs().iter().map(|j| (j.id, j.title.clone(), ops::amount(j), ops::detail(j), j.progress.fraction())).collect();
+        // (As tall as its rows: `status_options`.)
+        let mut col = div().w_full().p(px(m::WINDOW_INSET)).flex().flex_col();
+        for (k, (id, title, amount, (item, counts), fraction)) in jobs.into_iter().enumerate() {
             if k > 0 {
                 col = col.child(div().h(px(m::SPACING))).child(olo_kit::widgets::separator()).child(div().h(px(m::SPACING)));
+            }
+            // The item's name, cut short to the room the counts leave;
+            // the counts whole, at the right, under the amount.
+            let mut under = div().flex().flex_row().justify_end().gap(px(m::SPACING));
+            if !item.is_empty() {
+                under = under.child(StringView::new(item).dim(true).cut(true).height(m::LABEL_ROW));
+            }
+            if !counts.is_empty() {
+                under = under.child(StringView::new(counts).dim(true).height(m::LABEL_ROW));
             }
             col = col.child(
                 div()
                     .flex()
                     .flex_row()
                     .gap(px(m::SPACING))
-                    .child(div().flex_1().flex().flex_col().gap(px(m::TIGHT)).child(StatusBar::new(fraction).label(title).trailing(amount)).child(StringView::new(detail).dim(true)))
-                    .child(div().pt(px(m::LABEL_ROW + m::TIGHT - (m::CONTROL_HEIGHT - 14.0) / 2.0)).child(Button::new("Stop").min_width(64.0).on_click(move |_, _| to_hub(ToHub::StopJob(id))))),
+                    .child(div().flex_1().min_w_0().flex().flex_col().gap(px(m::TIGHT)).child(StatusBar::new(fraction).label(title).trailing(amount)).child(under))
+                    .child(
+                        div()
+                            .flex_shrink_0()
+                            .pt(px(m::LABEL_ROW + m::TIGHT - (m::CONTROL_HEIGHT - 14.0) / 2.0))
+                            .child(Button::new("Stop").min_width(64.0).on_click(move |_, _| to_hub(ToHub::StopJob(id)))),
+                    ),
             );
         }
         col.into_any_element()

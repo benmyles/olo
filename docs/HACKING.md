@@ -2251,7 +2251,10 @@ it.
   `baseline_at` and `label_on_baseline` (things of different sizes on
   one baseline), `card_ink`/`card_paper` (cards on a gutter).
 - `widgets::StatusBar::new(fraction).label(..).trailing(..)` and
-  `level_bar` (the bar alone).
+  `level_bar` (the bar alone). The trailing note is drawn whole and the
+  label cut short ("…", its whole in a tip) to the room it leaves, so a
+  label that changes as work goes on never runs into the note nor
+  widens the bar's box.
 - `copy::secret(text, clear_after)`: a password or one-time code on
   the clipboard, marked for clipboard managers to leave alone
   (`x-kde-passwordManagerHint`), and taken off after `clear_after` if
@@ -13321,7 +13324,12 @@ kept as a step (`record_location`), Back and Forward opening the columns
 down to it again with nothing selected in its own, as Finder's columns
 do: Ben, 2026-11-07, "in column mode and go between columns/files the
 back/forward navigation doesn't seem to work", none were kept), Get Info, Find,
-the file operations (ops.rs, on workers; Tracker Status after 400 ms),
+the file operations (ops.rs, on workers; Tracker Status after 400 ms:
+fixed at 540 points wide, as BeOS's, and as tall as its jobs
+(`fits_content`); under each bar the current item's name, cut short,
+and the counts and time left whole at the right, so nothing that
+changes as a job runs moves Stop or the window; Ben, 2026-11-13: "it
+doesn't fit in the space when the names etc are changing"),
 drops, pastes, Quick Look, the watcher's changes and an upgrade's saved
 state (the egui Tracker's, unchanged). Each window's view does the
 rest itself and hands the Tracker what it can't (`folder::Action`,
