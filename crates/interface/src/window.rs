@@ -1606,7 +1606,7 @@ impl<'a> WindowCx<'a> {
             let ms = |d: Duration| d.as_secs_f64() * 1000.0;
             let work = crate::stats::FRAME_WORK.take();
             eprintln!(
-                "flush {:.3} ms: bodies {:.3} ({turns}), layout {:.3}, paint {:.3} ({drew} of {} nodes), items {:.3} ({}); shaped {} lines in {:.2} ms, drew {} glyphs in {:.2} ms",
+                "flush {:.3} ms: bodies {:.3} ({turns}), layout {:.3}, paint {:.3} ({drew} of {} nodes), items {:.3} ({}); shaped {} lines in {:.2} ms, drew {} glyphs in {:.2} ms, found {} lines' glyphs in {:.2} ms",
                 ms(flushing.elapsed()),
                 ms(bodies_done),
                 ms(layout_done - bodies_done),
@@ -1618,6 +1618,8 @@ impl<'a> WindowCx<'a> {
                 work[0].1,
                 work[1].0,
                 work[1].1,
+                work[2].0,
+                work[2].1,
             );
         }
         let scale = core.gfx.scale_factor;

@@ -320,7 +320,9 @@ message):
   quads it has, how many draws it was ("batches": things of a kind at
   one order are one; ten is usual, a hundred means a drawing whose
   orders pile up), and how long the looper worked on what it shows;
-  and the lines it shaped and glyphs it drew afresh.
+  and the lines it shaped, glyphs it drew and lines whose glyphs it
+  looked up afresh (the rest painted from what each line found last
+  time, moved).
   A frame much slower than the same work warm may have run on a slow
   core (rule 9: compare `OLO_UTIL_MIN=0`). Where its time goes inside: sample its window's
   looper with `eu-stack -1 -i -p PID` a few hundred times while the bench's
