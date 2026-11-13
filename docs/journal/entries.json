@@ -3970,5 +3970,17 @@
   "title": "Deskbar's tray says a screen shown on AirPlay",
   "caption": "A window shown live on a receiver: its title, the receiver, Pause and Stop, and AirPlay Preferences\u2026",
   "image": "2026-11-12/180343-deskbar-s-tray-says-a-screen-shown-on-airplay.png"
+ },
+ {
+  "time": "2026-11-12T18:48:23",
+  "title": "Show a workspace on AirPlay from its Deskbar heading",
+  "caption": "A workspace heading's menu in Deskbar has Show on AirPlay \u25b8 (the receivers paired with, then AirPlay Settings\u2026): that workspace is shown live on the television though its display shows another, its windows where they were left, drawing on (Olo's own workspace capture source).",
+  "image": "2026-11-12/184823-show-a-workspace-on-airplay-from-its-deskbar-hea.png"
+ },
+ {
+  "time": "2026-11-12T18:48:25",
+  "title": "A workspace not shown, as AirPlay gets it",
+  "caption": "What a share of workspace 2 is while the display shows workspace 1 (the desktop alone): its Terminal where it was left, under Deskbar, over the desktop and the wallpaper, drawing on (a clock printing ten lines a second kept going in the frames that followed).",
+  "image": "2026-11-12/184825-a-workspace-not-shown-as-airplay-gets-it.png"
  }
 ]

@@ -1,4 +1,5 @@
-//! `olo-airplay show`: a window, a display or an agent screen shown live
+//! `olo-airplay show`: a window, a display, a workspace or an agent
+//! screen shown live
 //! on a receiver, with what the computer plays ([`olo_airplay::mirror`]).
 //!
 //! Frames come from app_server's capture (`olo_capture`, as the screen
@@ -43,11 +44,11 @@ static STOP: AtomicBool = AtomicBool::new(false);
 static PAUSED: AtomicBool = AtomicBool::new(false);
 
 /// What is shown, and how it's named to the person.
-struct What {
+pub(crate) struct What {
     /// The app_server to capture from (None: this one's).
     display: Option<String>,
-    source: Source,
-    title: String,
+    pub(crate) source: Source,
+    pub(crate) title: String,
     /// Whether the computer's sound goes with it (an agent screen without
     /// sound has none).
     sound: bool,
@@ -62,7 +63,7 @@ fn agent_screen(name: &str) -> Option<(String, bool)> {
     Some((said.get("wayland_display")?.as_str()?.to_owned(), said.get("sound").and_then(serde_json::Value::as_bool).unwrap_or(false)))
 }
 
-fn what_of(args: &[String]) -> Result<What, String> {
+pub(crate) fn what_of(args: &[String]) -> Result<What, String> {
     let titled = option(args, "--title").map(str::to_owned);
     if let Some(id) = option(args, "--window") {
         let id = id.parse::<u64>().map_err(|_| format!("{id} isn't a window's number"))?;
@@ -73,6 +74,11 @@ fn what_of(args: &[String]) -> Result<What, String> {
         return Ok(What { display: Some(display), source: Source::Output(None), title: titled.unwrap_or_else(|| format!("Agent screen {name}")), sound });
     }
     let display = option(args, "--display").map(str::to_owned);
+    if let Some(n) = option(args, "--workspace") {
+        let n = n.parse::<u32>().ok().filter(|n| *n >= 1).ok_or("--workspace is a number from 1")?;
+        let title = titled.unwrap_or_else(|| format!("Workspace {n}"));
+        return Ok(What { display: None, source: Source::Workspace { output: display, index: n - 1 }, title, sound: true });
+    }
     let title = titled.unwrap_or_else(|| display.as_ref().map_or_else(|| "The screen".to_owned(), |d| format!("Display {d}")));
     Ok(What { display: None, source: Source::Output(display), title, sound: true })
 }

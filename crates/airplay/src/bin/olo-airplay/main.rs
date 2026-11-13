@@ -22,16 +22,19 @@
 //!       --notify tells the person in a notification if it couldn't be
 //!       played (what an app's "Play On" asks for); --on names the
 //!       receiver apart from the film (a name of several words)
-//!   olo-airplay show NAME [--window ID | --display NAME | --screen NAME] [--title TEXT]
+//!   olo-airplay show NAME [--window ID | --display NAME | --workspace N [--display NAME] | --screen NAME] [--title TEXT]
 //!                   [--no-sound] [--fps N] [--encoder auto|nvidia|cpu] [--lead MS]
 //!                   [--json] [--trace] [--notify] [--at HOST:PORT]
 //!   olo-airplay show --on NAME …
 //!       show a screen on a receiver paired with, live, a few dozen
 //!       milliseconds behind: a display (the first, or --display NAME),
-//!       a window (--window ID, as Olo numbers windows) or an agent
-//!       screen (--screen NAME), with the computer's sound (--no-sound:
-//!       without). --title names it where Deskbar and the person see it;
-//!       --lead how far behind the receiver shows it. Ctrl-C stops it
+//!       a window (--window ID, as Olo numbers windows), a workspace
+//!       (--workspace N, from 1, of the first display or --display's:
+//!       its windows as they are, though the display shows another) or
+//!       an agent screen (--screen NAME), with the computer's sound
+//!       (--no-sound: without). --title names it where Deskbar and the
+//!       person see it; --lead how far behind the receiver shows it.
+//!       Ctrl-C stops it
 //!   olo-airplay playing [--json]
 //!       the films playing and the screens shown: what, where, and how
 //!       far along
@@ -70,7 +73,7 @@ const USAGE: &str = "usage: olo-airplay list [--json] [--wait SECONDS]
        olo-airplay pair NAME [--code CODE] [--at HOST:PORT]
        olo-airplay check NAME [--at HOST:PORT]
        olo-airplay play NAME FILE|ADDRESS [--from TIME] [--json] [--trace] [--notify] [--at HOST:PORT]
-       olo-airplay show NAME [--window ID | --display NAME | --screen NAME] [--title TEXT] [--no-sound] [--fps N] [--encoder auto|nvidia|cpu] [--lead MS] [--json] [--trace] [--notify] [--at HOST:PORT]
+       olo-airplay show NAME [--window ID | --display NAME | --workspace N [--display NAME] | --screen NAME] [--title TEXT] [--no-sound] [--fps N] [--encoder auto|nvidia|cpu] [--lead MS] [--json] [--trace] [--notify] [--at HOST:PORT]
        olo-airplay playing [--json]
        olo-airplay stop [NAME] | pause [NAME] | resume [NAME]
        olo-airplay paired
@@ -149,7 +152,8 @@ fn words_in(args: &[String]) -> Vec<&str> {
             continue;
         }
         if a.starts_with("--") {
-            skip = matches!(a.as_str(), "--code" | "--at" | "--wait" | "--from" | "--pid" | "--on" | "--window" | "--display" | "--screen" | "--title" | "--fps" | "--encoder" | "--lead");
+            skip =
+                matches!(a.as_str(), "--code" | "--at" | "--wait" | "--from" | "--pid" | "--on" | "--window" | "--display" | "--workspace" | "--screen" | "--title" | "--fps" | "--encoder" | "--lead");
         } else {
             words.push(a.as_str());
         }
@@ -588,5 +592,21 @@ mod tests {
         assert_eq!(option(&args, "--from"), Some("1:30"));
         assert_eq!(name_in(&args[..2]).as_deref(), Some("Front Room"));
         assert_eq!(name_in(&args[5..]), None);
+    }
+
+    #[test]
+    fn a_workspace_by_its_number_from_one() {
+        let args: Vec<String> = ["Den", "--workspace", "3", "--display", "HDMI-A-1"].map(String::from).to_vec();
+        assert_eq!(words_in(&args), ["Den"]);
+        let what = show::what_of(&args).unwrap();
+        assert_eq!(what.source, olo_capture::Source::Workspace { output: Some("HDMI-A-1".into()), index: 2 });
+        assert_eq!(what.title, "Workspace 3");
+        for not in ["0", "two", "-1"] {
+            assert!(show::what_of(&["Den".into(), "--workspace".into(), not.into()]).is_err(), "{not}");
+        }
+        // What the menus run comes back as what they asked for.
+        let line = olo_protocol::airplay::show_command("Den", &olo_protocol::airplay::Shown::Workspace { display: None, index: 0, title: "Workspace 1".into() });
+        let args: Vec<String> = line.split(' ').skip(2).map(|a| a.trim_matches('\'').to_owned()).collect();
+        assert_eq!(show::what_of(&args).unwrap().source, olo_capture::Source::Workspace { output: None, index: 0 });
     }
 }

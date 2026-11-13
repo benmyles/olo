@@ -983,6 +983,10 @@ impl<BackendData: Backend> ImageCopyCaptureHandler for AnvilState<BackendData> {
             let size = window.content_size().to_f64().to_physical(scale).to_i32_round();
             return Some(crate::capture::constraints_of(size, self.captures.dma.clone()));
         }
+        // A workspace's picture is its display's size.
+        if let Some(output) = crate::capture::workspace_output(source) {
+            return crate::capture::constraints(&output, self.captures.dma.clone());
+        }
         let output = source.user_data().get::<smithay::output::WeakOutput>()?.upgrade()?;
         crate::capture::constraints(&output, self.captures.dma.clone())
     }
@@ -1156,6 +1160,8 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         let output_capture_source_state = OutputCaptureSourceState::new::<Self>(&dh);
         let image_copy_capture_state = ImageCopyCaptureState::new::<Self>(&dh);
         let toplevel_capture_source_state = ToplevelCaptureSourceState::new::<Self>(&dh);
+        // A workspace as a source (Olo's own: Show on AirPlay).
+        crate::capture::WorkspaceSources::new::<Self>(&dh);
         let foreign_toplevel_list_state = ForeignToplevelListState::new::<Self>(&dh);
 
         // init input
@@ -1514,6 +1520,13 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             smithay::desktop::utils::send_frames_surface_tree(surface, output, time, throttle, |_, _| Some(output.clone()));
         }
         self.overview_frames(output, time);
+        // Windows parked on it that a share shows live (a workspace shown
+        // while it shows another, a window on one): drawing as if shown.
+        if self.captures.live() {
+            for w in self.followed_parked(output) {
+                w.send_frame(output, time, None, |_, _| Some(output.clone()));
+            }
+        }
     }
 
     pub fn post_repaint(&mut self, output: &Output, dmabuf_feedback: Option<SurfaceDmabufFeedback>, render_element_states: &RenderElementStates) {

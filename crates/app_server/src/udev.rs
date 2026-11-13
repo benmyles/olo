@@ -2681,6 +2681,7 @@ impl AnvilState<UdevData> {
         let output_size = output_geo.size;
         // The windows whose shares this frame draws (only while one waits).
         let here = if self.captures.pending() { self.capture_windows_on(&output, self.lock.locked()) } else { Vec::new() };
+        let desk = if self.captures.workspace_pending() { self.capture_desk(&output) } else { Default::default() };
 
         let device = if let Some(device) = self.backend_data.backends.get_mut(&node) {
             device
@@ -2751,8 +2752,9 @@ impl AnvilState<UdevData> {
             let (space, overview, lock) = (&self.space, self.overview.as_ref(), &self.lock);
             let parked = self.parked.0.borrow();
             self.captures.take(&mut renderer, &output, now, on_output, |renderer, what, cursor| {
-                let overlays = if locked && what == crate::capture::Target::Output { crate::lock::elements(lock, renderer, &output) } else { Vec::new() };
-                crate::capture::picture(renderer, &output, space, &parked, what, locked, || (overlays, overview, desktop_color, cursor.then_some((pointer.0, &pointer.1))))
+                // (Locked, a workspace's picture is the display's: the lock.)
+                let overlays = if locked && !matches!(what, crate::capture::Target::Window(_)) { crate::lock::elements(lock, renderer, &output) } else { Vec::new() };
+                crate::capture::picture(renderer, &output, space, &parked, &desk, what, locked, || (overlays, overview, desktop_color, cursor.then_some((pointer.0, &pointer.1))))
             });
         }
         // The cursor, apart, for those following it.

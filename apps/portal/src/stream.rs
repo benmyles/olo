@@ -518,6 +518,7 @@ fn stream(source: Source, cursor: Cursor, stop: Arc<AtomicBool>, tx: &mpsc::Send
     // A screen by its name from now on (the first, if none was named).
     let source = match source {
         Source::Output(_) => Source::Output(Some(capture.name().to_owned())),
+        Source::Workspace { index, .. } => Source::Workspace { output: Some(capture.name().to_owned()), index },
         window => window,
     };
     let size = capture.size().ok_or("app_server gave no size")?;

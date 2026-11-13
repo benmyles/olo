@@ -895,12 +895,23 @@ impl Deskbar {
         if olo_kit::moving::menus_offer() && self.windows_on(display).any(|w| w.workspace == ws && w.kept) {
             m = m.submenu(Menu::agent_screens("Move All Windows to Agent Screen", &self.status.agent_screens, &format!("ws-screen:{ws}:")));
         }
+        // Live on a television, though the display shows another (Ben,
+        // 2026-11-12: "a specific workspace … by right clicking the …
+        // workspace").
+        m = m.separator().submenu(Menu::airplay("Show on AirPlay", &self.status.airplay_paired, &format!("ws-airplay:{ws}:")));
         m.separator().item("Workspaces Preferences…", "pref:workspaces")
     }
 
     /// A command from `display`'s workspace heading's menu
     /// (`heading_menu`); false if it isn't one.
     fn heading_command(&mut self, display: Option<&str>, cmd: &str) -> bool {
+        if let Some((ws, chosen)) = cmd.strip_prefix("ws-airplay:").and_then(|r| r.split_once(':')) {
+            if let Ok(index) = ws.parse::<u32>() {
+                let what = olo_protocol::airplay::Shown::Workspace { display: display.map(str::to_owned), index, title: self.workspace_name(display, index) };
+                olo_kit::airplay::show_from_menu(chosen, &what);
+            }
+            return true;
+        }
         let Some((what, rest)) = cmd.split_once(':') else { return false };
         let mut parts = rest.splitn(3, ':');
         let Some(ws) = parts.next().and_then(|n| n.parse::<u32>().ok()) else { return false };

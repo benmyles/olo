@@ -311,6 +311,7 @@ dependencies = [
  "tracing-subscriber",
  "wayland-client",
  "wayland-protocols 0.32.13",
+ "wayland-scanner",
  "xkbcommon 0.8.0",
  "zeroize",
 ]
@@ -7138,6 +7139,7 @@ dependencies = [
  "tracing",
  "wayland-client",
  "wayland-protocols 0.32.13",
+ "wayland-scanner",
 ]
 
 [[package]]

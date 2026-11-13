@@ -628,26 +628,25 @@ something nobody here has is in "Blocked", with what it waits for.
        Agent Screens' Screen menu and Deskbar's agent screens item;
        the tray says a showing, with Pause and Stop. All tried on a
        headless session against the test receivers.
-     - *Next:* (1) a workspace that isn't the one showing: a capture
-       source of app_server's own for a display's workspace (its
-       windows parked as they are, drawn at the display's size), then
-       Show Workspace on AirPlay ▸ on Deskbar's workspace headings;
-       (2) the frames kept on the GPU (lent dmabufs scaled to the
-       receiver's size and encoded H.264 by VA-API on the Intel GPU,
-       as the recorder does for AV1): today a busy screen costs 30%
-       of a core, most of it the resize and the copy; (3) a window's
-       own sound rather than the computer's (moving its stream to a
-       sink of its own), and keeping the sound off this computer's
-       speakers while it plays on the television.
+     - *A workspace, 2026-11-12* (HACKING, "Screen sharing" ▸
+       Workspaces): Olo's own Wayland protocol makes a capture source
+       of one of a display's workspaces, live though the display
+       shows another (its windows where they were left, drawing on);
+       `olo-airplay show --workspace N`, and Show on AirPlay ▸ on
+       Deskbar's workspace headings.
+     - *Next:* (1) the frames kept on the GPU (lent dmabufs scaled to
+       the receiver's size and encoded H.264 by VA-API on the Intel
+       GPU, as the recorder does for AV1): today a busy screen costs
+       30% of a core, most of it the resize and the copy; (2) a
+       window's own sound rather than the computer's (moving its
+       stream to a sink of its own), and keeping the sound off this
+       computer's speakers while it plays on the television.
      - *Ben's to say:* (1) which receiver it's for (an Apple TV and
        its tvOS, a television with AirPlay built in, something else):
        it has to be tried against the real one, paired by him at the
        television, since no test can stand in for Apple's end; (2)
-       whether seconds behind is acceptable for windows and screens,
-       or whether only files are wanted that way and live screens
-       should go another road (Miracast, or a receiver of Olo's own
-       on a small computer by the television, which could be as
-       quick as the network).
+       only if a real receiver refuses the mirroring without it,
+       whether FairPlay is wanted (LGPL, Apple-derived).
   7. **The installer, as BeOS's Installer** (Ben, 2026-11-11: "also can
      you redo the installer to be reminiscent of the beos installer
      instead of windows 95"). Done 2026-11-12 (HACKING, "The

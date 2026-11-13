@@ -35,6 +35,23 @@ use wayland_protocols::{
     wp::linux_dmabuf::zv1::client::{zwp_linux_buffer_params_v1, zwp_linux_dmabuf_v1},
 };
 
+/// Olo's own Wayland protocol (protocols/): a workspace as a capture
+/// source.
+#[allow(non_upper_case_globals, non_camel_case_types, unused_imports, dead_code, missing_docs, clippy::all)]
+pub mod protocol {
+    use wayland_client::{self, protocol::*};
+    use wayland_protocols::ext::image_capture_source::v1::client::*;
+    pub mod __interfaces {
+        use wayland_client::{backend as wayland_backend, protocol::__interfaces::*};
+        use wayland_protocols::ext::image_capture_source::v1::client::__interfaces::*;
+        wayland_scanner::generate_interfaces!("protocols/olo-workspace-capture-v1.xml");
+    }
+    use self::__interfaces::*;
+    wayland_scanner::generate_client_code!("protocols/olo-workspace-capture-v1.xml");
+}
+
+use protocol::olo_workspace_image_capture_source_manager_v1::OloWorkspaceImageCaptureSourceManagerV1;
+
 /// One frame: its size and its rows (BGRx or BGRA, as app_server gave).
 pub struct Picture {
     pub width: u32,
@@ -225,6 +242,10 @@ pub enum Source {
     /// display (an agent screen's `wayland-9`): shared into a call from
     /// the person's display.
     Display(String),
+    /// Workspace `index` (from 0) of the output with this name (the
+    /// first if None): what it shows while it shows there, and that
+    /// workspace's windows as they are while it shows another.
+    Workspace { output: Option<String>, index: u32 },
 }
 
 impl Capture {
@@ -249,21 +270,32 @@ impl Capture {
         let dmabuf: Option<zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1> = globals.bind(&qh, 3..=3, ()).ok();
         let seat: Option<wl_seat::WlSeat> = globals.bind(&qh, 1..=7, ()).ok();
         let copier: ext_image_copy_capture_manager_v1::ExtImageCopyCaptureManagerV1 = globals.bind(&qh, 1..=1, ()).map_err(|_| "app_server offers no ext-image-copy-capture".to_owned())?;
+        // The output named (the first if None), its names come with its
+        // first events.
+        let output_named = |state: &mut State, queue: &mut EventQueue<State>, name: &Option<String>| -> Result<(wl_output::WlOutput, String), String> {
+            for g in globals.contents().clone_list().iter().filter(|g| g.interface == "wl_output") {
+                let o: wl_output::WlOutput = globals.registry().bind(g.name, g.version.min(4), &qh, ());
+                state.outputs.push((o, String::new()));
+            }
+            queue.roundtrip(state).map_err(|e| e.to_string())?;
+            match name {
+                Some(n) => state.outputs.iter().find(|(_, o)| o == n).cloned().ok_or_else(|| format!("no output {n}")),
+                None => state.outputs.first().cloned().ok_or_else(|| "no outputs".to_owned()),
+            }
+        };
         let (image_source, name) = match source {
             Source::Output(name) => {
                 let sources: ext_output_image_capture_source_manager_v1::ExtOutputImageCaptureSourceManagerV1 =
                     globals.bind(&qh, 1..=1, ()).map_err(|_| "app_server offers no output capture (ext-image-capture-source)".to_owned())?;
-                for g in globals.contents().clone_list().iter().filter(|g| g.interface == "wl_output") {
-                    let o: wl_output::WlOutput = globals.registry().bind(g.name, g.version.min(4), &qh, ());
-                    state.outputs.push((o, String::new()));
-                }
-                // The outputs' names come with their first events.
-                queue.roundtrip(&mut state).map_err(|e| e.to_string())?;
-                let (output, name) = match name {
-                    Some(n) => state.outputs.iter().find(|(_, o)| o == n).cloned().ok_or_else(|| format!("no output {n}"))?,
-                    None => state.outputs.first().cloned().ok_or("no outputs")?,
-                };
+                let (output, name) = output_named(&mut state, &mut queue, name)?;
                 (sources.create_source(&output, &qh, ()), name)
+            }
+            Source::Workspace { output, index } => {
+                let sources: OloWorkspaceImageCaptureSourceManagerV1 = globals.bind(&qh, 1..=1, ()).map_err(|_| "app_server offers no workspace capture (olo-workspace-capture)".to_owned())?;
+                let (output, name) = output_named(&mut state, &mut queue, output)?;
+                let made = sources.create_source(&output, *index, &qh, ());
+                sources.destroy();
+                (made, name)
             }
             Source::Display(_) => unreachable!("taken above"),
             Source::Window { id, app_id, title } => {
@@ -976,6 +1008,7 @@ ignore!(
     zwp_linux_buffer_params_v1::ZwpLinuxBufferParamsV1,
     ext_output_image_capture_source_manager_v1::ExtOutputImageCaptureSourceManagerV1,
     ext_foreign_toplevel_image_capture_source_manager_v1::ExtForeignToplevelImageCaptureSourceManagerV1,
+    OloWorkspaceImageCaptureSourceManagerV1,
     ext_image_capture_source_v1::ExtImageCaptureSourceV1,
     ext_image_copy_capture_manager_v1::ExtImageCopyCaptureManagerV1,
     wl_seat::WlSeat,

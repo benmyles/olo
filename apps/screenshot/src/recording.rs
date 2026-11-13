@@ -666,6 +666,7 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
         Source::Window { id, .. } => format!("window {id}"),
         Source::Output(_) if crop.is_some() => "region".into(),
         Source::Output(_) | Source::Display(_) => "display".into(),
+        Source::Workspace { index, .. } => format!("workspace {}", index + 1),
     };
     let now_secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
     let g = Going {

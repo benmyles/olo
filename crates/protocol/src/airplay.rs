@@ -202,7 +202,8 @@ pub fn show_command(receiver: &str, what: &Shown) -> String {
             titled(&mut c, title);
         }
         Shown::Workspace { display, index, title } => {
-            c.push_str(&format!(" --workspace {index}"));
+            // (On the command line from 1, as `olo-screen give` has it.)
+            c.push_str(&format!(" --workspace {}", index + 1));
             if let Some(name) = display {
                 c.push_str(&format!(" --display {}", quoted(name)));
             }
@@ -266,7 +267,7 @@ mod tests {
         );
         assert_eq!(
             show_command(on, &Shown::Workspace { display: Some("HDMI-A-1".into()), index: 2, title: "Workspace 3".into() }),
-            "olo-airplay show --notify --on 'AA:BB:CC:DD:EE:FF' --workspace 2 --display 'HDMI-A-1' --title 'Workspace 3'"
+            "olo-airplay show --notify --on 'AA:BB:CC:DD:EE:FF' --workspace 3 --display 'HDMI-A-1' --title 'Workspace 3'"
         );
         assert_eq!(show_command("Den", &Shown::Screen { name: "agent".into() }), "olo-airplay show --notify --on 'Den' --screen 'agent'");
         assert_eq!(menu_command("airplay-on:AA:BB"), Some(Some("AA:BB")));

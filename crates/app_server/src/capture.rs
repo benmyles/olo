@@ -9,7 +9,9 @@
 //! (only where it changed) and read back as BGRA rows, copied as they are:
 //! the fallback, as it waits on the GPU and copies on the loop. Outside
 //! programs never see the protocol (wlproxy hides it); Olo's portal reaches
-//! it on the direct socket.
+//! it on the direct socket. A source is a screen, a window, or (Olo's own
+//! protocol, `protocol`) one of a screen's workspaces, live though the
+//! screen shows another.
 
 use std::{collections::HashMap, time::Duration};
 
@@ -28,16 +30,152 @@ use smithay::{
     },
 };
 
-/// What a capture source shows: a screen, or one window (by its id; the
-/// source was made from its handle in the foreign-toplevel list).
+/// What a capture source shows: a screen, one window (by its id; the
+/// source was made from its handle in the foreign-toplevel list), or one
+/// of a screen's workspaces (by its number, as asked: Olo's own
+/// protocol, `protocol`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Target {
     Output,
     Window(u64),
+    Workspace(u32),
 }
 
 /// In a window source's user data: which window.
 pub struct WindowSource(pub u64);
+
+/// In a workspace source's user data: which display's, and which of its
+/// workspaces.
+pub struct WorkspaceSource {
+    pub output: WeakOutput,
+    pub index: u32,
+}
+
+/// What a workspace's picture needs of the desktop, for one display's
+/// frame (`AnvilState::capture_desk`).
+#[derive(Default)]
+pub struct Desk {
+    /// The workspace it shows, and its last.
+    pub showing: u32,
+    pub last: u32,
+    /// Every workspace is the one it shows (in Rescue: of nothing).
+    pub rescue: bool,
+    /// Each workspace's colour.
+    pub colors: Vec<Color32F>,
+    /// The windows parked on it, bottom first, each with the workspace
+    /// it's on (not hidden ones).
+    pub parked: Vec<(crate::shell::WindowElement, u32)>,
+    /// Those on each of its workspaces (picture in picture), front
+    /// first, where they are.
+    pub everywhere: Vec<(crate::shell::WindowElement, smithay::utils::Point<i32, smithay::utils::Logical>)>,
+}
+
+impl Desk {
+    /// Workspace `index` as asked (one past the last is the last).
+    pub fn index(&self, index: u32) -> u32 {
+        index.min(self.last)
+    }
+
+    /// Whether workspace `index` is the one the display shows: its
+    /// picture is the display's.
+    pub fn shows(&self, index: u32) -> bool {
+        self.rescue || self.index(index) == self.showing
+    }
+
+    /// The windows on workspace `index` while it doesn't show, front
+    /// first, each where it was left.
+    pub fn windows(&self, index: u32) -> Vec<(crate::shell::WindowElement, smithay::utils::Point<i32, smithay::utils::Logical>)> {
+        let index = self.index(index);
+        let parked = self.parked.iter().rev().filter(|(_, ws)| *ws == index).map(|(w, _)| (w.clone(), w.meta().saved_location.get()));
+        self.everywhere.iter().cloned().chain(parked).collect()
+    }
+}
+
+/// Olo's own Wayland protocol (crates/capture/protocols): a workspace as
+/// a capture source.
+#[allow(non_upper_case_globals, non_camel_case_types, unused_imports, dead_code, missing_docs, clippy::all)]
+pub mod protocol {
+    use smithay::reexports::{
+        wayland_protocols::ext::image_capture_source::v1::server::*,
+        wayland_server::{self, protocol::*},
+    };
+    pub mod __interfaces {
+        use smithay::reexports::{
+            wayland_protocols::ext::image_capture_source::v1::server::__interfaces::*,
+            wayland_server::{backend as wayland_backend, protocol::__interfaces::*},
+        };
+        wayland_scanner::generate_interfaces!("../capture/protocols/olo-workspace-capture-v1.xml");
+    }
+    use self::__interfaces::*;
+    wayland_scanner::generate_server_code!("../capture/protocols/olo-workspace-capture-v1.xml");
+}
+
+use protocol::olo_workspace_image_capture_source_manager_v1::{self as workspace_sources, OloWorkspaceImageCaptureSourceManagerV1};
+
+/// The global for workspace sources, offered to Olo's own programs only
+/// (those on app_server's direct socket, as the other capture globals
+/// are: wlproxy passes on only globals it knows).
+pub struct WorkspaceSources;
+
+impl WorkspaceSources {
+    pub fn new<D>(display: &smithay::reexports::wayland_server::DisplayHandle) -> smithay::reexports::wayland_server::backend::GlobalId
+    where
+        D: smithay::reexports::wayland_server::GlobalDispatch<OloWorkspaceImageCaptureSourceManagerV1, WorkspaceSources>
+            + smithay::reexports::wayland_server::Dispatch<OloWorkspaceImageCaptureSourceManagerV1, WorkspaceSourcesBound>
+            + 'static,
+    {
+        display.create_global::<D, OloWorkspaceImageCaptureSourceManagerV1, _>(1, WorkspaceSources)
+    }
+}
+
+/// A client's binding of it.
+pub struct WorkspaceSourcesBound;
+
+impl<D> smithay::wayland::GlobalDispatch2<OloWorkspaceImageCaptureSourceManagerV1, D> for WorkspaceSources
+where
+    D: smithay::reexports::wayland_server::Dispatch<OloWorkspaceImageCaptureSourceManagerV1, WorkspaceSourcesBound> + 'static,
+{
+    fn bind(
+        &self,
+        _state: &mut D,
+        _dh: &smithay::reexports::wayland_server::DisplayHandle,
+        _client: &smithay::reexports::wayland_server::Client,
+        resource: smithay::reexports::wayland_server::New<OloWorkspaceImageCaptureSourceManagerV1>,
+        data_init: &mut smithay::reexports::wayland_server::DataInit<'_, D>,
+    ) {
+        data_init.init(resource, WorkspaceSourcesBound);
+    }
+}
+
+impl<D> smithay::wayland::Dispatch2<OloWorkspaceImageCaptureSourceManagerV1, D> for WorkspaceSourcesBound
+where
+    D: smithay::wayland::image_capture_source::ImageCaptureSourceHandler,
+{
+    fn request(
+        &self,
+        _state: &mut D,
+        _client: &smithay::reexports::wayland_server::Client,
+        _resource: &OloWorkspaceImageCaptureSourceManagerV1,
+        request: workspace_sources::Request,
+        _dh: &smithay::reexports::wayland_server::DisplayHandle,
+        data_init: &mut smithay::reexports::wayland_server::DataInit<'_, D>,
+    ) {
+        use smithay::wayland::image_capture_source::{ImageCaptureSource, ImageCaptureSourceData};
+        match request {
+            workspace_sources::Request::CreateSource { source, output, workspace } => {
+                let made = ImageCaptureSource::new();
+                let resource = data_init.init(source, ImageCaptureSourceData { source: made.clone() });
+                made.add_instance(&resource);
+                // (A display gone already: a source of nothing, whose
+                // sessions stop.)
+                if let Some(output) = Output::from_resource(&output) {
+                    made.user_data().insert_if_missing(|| WorkspaceSource { output: output.downgrade(), index: workspace });
+                }
+            }
+            workspace_sources::Request::Destroy => {}
+        }
+    }
+}
 
 /// The windows mostly on `output`, whose frames are taken with its frame;
 /// none while the screen is locked (a window's share pauses on its last
@@ -50,13 +188,16 @@ pub fn windows_on(space: &smithay::desktop::Space<crate::shell::WindowElement>, 
 }
 
 /// What a session shows this frame: the screen (its own elements, made by
-/// `screen`: the overlays, overview, background and pointer) or a window
-/// alone (None: it went).
+/// `screen`: the overlays, overview, background and pointer), a window
+/// alone (None: it went) or a workspace (the screen's picture while it
+/// shows there, or locked; else its windows as they are, `desk`'s).
+#[allow(clippy::too_many_arguments)]
 pub fn picture<'a, R>(
     renderer: &mut R,
     output: &Output,
     space: &smithay::desktop::Space<crate::shell::WindowElement>,
     parked: &[crate::shell::WindowElement],
+    desk: &Desk,
     what: Target,
     locked: bool,
     screen: impl FnOnce() -> (
@@ -71,7 +212,12 @@ where
     R::TextureId: Texture + Clone + Send + 'static,
 {
     match what {
-        Target::Output => {
+        Target::Workspace(index) if !locked && !desk.shows(index) => {
+            let elements = crate::render::workspace_picture(renderer, output, space, &desk.windows(index));
+            let clear = desk.colors.get(desk.index(index) as usize).copied().unwrap_or(Color32F::BLACK);
+            Some(Picture { elements, clear, size: size(output)?, scale: output.current_scale().fractional_scale() })
+        }
+        Target::Output | Target::Workspace(_) => {
             let (overlays, overview, color, pointer) = screen();
             let (elements, clear) = crate::render::capture_elements(renderer, output, space, overlays, overview, color, locked, pointer, true);
             Some(Picture { elements, clear, size: size(output)?, scale: output.current_scale().fractional_scale() })
@@ -101,8 +247,16 @@ pub fn target(session: &SessionRef) -> Option<(Target, Option<Output>)> {
     if let Some(WindowSource(id)) = source.user_data().get::<WindowSource>() {
         return Some((Target::Window(*id), None));
     }
+    if let Some(WorkspaceSource { output, index }) = source.user_data().get::<WorkspaceSource>() {
+        return Some((Target::Workspace(*index), Some(output.upgrade()?)));
+    }
     let output = source.user_data().get::<WeakOutput>()?.upgrade()?;
     Some((Target::Output, Some(output)))
+}
+
+/// The display a workspace source's workspace is of.
+pub fn workspace_output(source: &smithay::wayland::image_capture_source::ImageCaptureSource) -> Option<Output> {
+    source.user_data().get::<WorkspaceSource>()?.output.upgrade()
 }
 
 /// The identifier window `id` has in the foreign-toplevel list (how the
@@ -367,6 +521,32 @@ impl Captures {
         }
     }
 
+    /// Whether a frame of a workspace waits (only then is the desk
+    /// gathered for it, `AnvilState::capture_desk`).
+    pub fn workspace_pending(&self) -> bool {
+        self.pending.iter().any(|(s, _)| matches!(target(s), Some((Target::Workspace(_), _))))
+    }
+
+    /// Whether any client keeps a session open.
+    pub fn live(&self) -> bool {
+        !self.casts.is_empty()
+    }
+
+    /// What the sessions open show that `output`'s frames must keep
+    /// live: its workspaces shown (as asked), and the windows shown (by
+    /// id; any display's).
+    pub fn followed(&self, output: &Output) -> (Vec<u32>, Vec<u64>) {
+        let (mut workspaces, mut windows) = (Vec::new(), Vec::new());
+        for c in &self.casts {
+            match target(&c.session.as_ref()) {
+                Some((Target::Workspace(i), Some(o))) if o == *output => workspaces.push(i),
+                Some((Target::Window(id), _)) => windows.push(id),
+                _ => {}
+            }
+        }
+        (workspaces, windows)
+    }
+
     /// Stop the sessions of window `id` (it went).
     pub fn window_gone(&mut self, id: u64) {
         let gone = |s: &SessionRef| matches!(target(s), Some((Target::Window(w), _)) if w == id);
@@ -392,7 +572,7 @@ impl Captures {
     /// says is mostly on it.
     pub fn wanted(&self, output: &Output, on_output: impl Fn(u64) -> bool) -> bool {
         self.pending.iter().any(|(s, _)| match target(s) {
-            Some((Target::Output, o)) => o.is_none_or(|o| o == *output),
+            Some((Target::Output | Target::Workspace(_), o)) => o.is_none_or(|o| o == *output),
             Some((Target::Window(id), _)) => on_output(id),
             None => true,
         })
@@ -422,12 +602,12 @@ impl Captures {
                     frame.fail(CaptureFailureReason::Unknown);
                     continue;
                 }
-                Some((Target::Output, o)) => match o {
+                Some((what @ (Target::Output | Target::Workspace(_)), o)) => match o {
                     None => {
                         frame.fail(CaptureFailureReason::Unknown);
                         continue;
                     }
-                    Some(o) if o == *output => Some(Target::Output),
+                    Some(o) if o == *output => Some(what),
                     Some(_) => None,
                 },
                 Some((Target::Window(id), _)) => on_output(id).then_some(Target::Window(id)),
@@ -616,5 +796,19 @@ mod tests {
         assert_eq!(c.formats[0].0, Fourcc::Xrgb8888);
         assert_eq!(c.formats[0].1.len(), 2);
         assert!(super::dma_constraints(node, &FormatSet::from_iter([Format { code: Fourcc::Abgr8888, modifier: Modifier::Linear }])).is_none());
+    }
+
+    #[test]
+    fn a_workspace_shown_is_the_displays_picture() {
+        let desk = super::Desk { showing: 1, last: 2, ..Default::default() };
+        assert!(desk.shows(1) && !desk.shows(0) && !desk.shows(2));
+        // (One past the last is the last; so is one further.)
+        assert_eq!((desk.index(3), desk.index(9)), (2, 2));
+        let shows_last = super::Desk { showing: 2, last: 2, ..Default::default() };
+        assert!(shows_last.shows(3));
+        // In Rescue every display shows its workspace of nothing.
+        let rescue = super::Desk { rescue: true, ..desk };
+        assert!(rescue.shows(0) && rescue.shows(2));
+        assert!(super::Desk::default().windows(0).is_empty());
     }
 }

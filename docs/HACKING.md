@@ -1242,9 +1242,11 @@ that won't is said in a notification), shown in Deskbar's tray while
 it goes, outliving the window that asked. Where it is now: Viewer's
 File menu for a film, Tracker's menu for a film (its windows and the
 desktop), a window's tab menu, Deskbar's app rows (one window: the
-receivers; several: each window's own), the Agent Screens app's Screen
-menu (one running screen chosen) and Deskbar's agent screens item
-(right button). An app with something to send uses the same.
+receivers; several: each window's own), Deskbar's workspace headings
+(right button: that workspace, live though its display shows
+another), the Agent Screens app's Screen menu (one running screen
+chosen) and Deskbar's agent screens item (right button). An app with
+something to send uses the same.
 
 ### Ad-hoc popup menus (`menu::context_menu`, `menu::popup`)
 
@@ -8690,9 +8692,11 @@ its request, for the app's Cancel and for holding an upgrade off.
   whole even behind another tab of its group, at that screen's scale;
   its size is the client's, and the stream is offered again when it
   resizes. One on another workspace, or hidden, is drawn with the frame
-  of the display it's parked on, from what it showed last (it draws
-  nothing new while unseen), so the share picker's thumbnail shows it
-  and a share of it starts (`capture_windows_on`, `capture_window`).
+  of the display it's parked on, from what it last drew, so the share
+  picker's thumbnail shows it and a share of it starts
+  (`capture_windows_on`, `capture_window`); while a session on it is
+  open it's sent its frame callbacks with that display's frames, as if
+  shown (`followed_parked`, `send_frames`), so it goes on drawing.
   Nothing about shares is looked at in a frame unless one waits for a
   frame (`Captures::pending`). Closing it stops its sessions, and the share ends two
   seconds later (`Capture::stopped`): app_server stops every session as
@@ -8703,6 +8707,38 @@ its request, for the app's Cancel and for holding an upgrade off.
   protocols are kept from outside programs (wlproxy's list doesn't have
   them). A window share reconnects after a reload by its id, or one with
   the same app id and title (windows come back with new ids).
+- **Workspaces** (`capture::Target::Workspace`; Show on AirPlay's
+  workspace): Olo's own protocol, its first
+  (`crates/capture/protocols/olo-workspace-capture-v1.xml`, bound with
+  `wayland-scanner` on both sides: `capture::protocol`,
+  `olo_capture::protocol`), whose
+  `olo_workspace_image_capture_source_manager_v1.create_source(source,
+  wl_output, workspace)` makes an `ext_image_capture_source_v1` of one
+  of a display's workspaces (from 0; one past the last is the last),
+  captured as an output is (`olo_capture::Source::Workspace`), at the
+  display's size. While the display shows that workspace (or in Rescue,
+  or locked) its picture is the display's, as a capture of the display
+  is; while it shows another, it's that workspace's windows, front
+  first, each where it was left, drawn from what it last drew
+  (`render::workspace_picture`): under the display's upper layer
+  surfaces (Deskbar, banners; never a recording's controls, no menus),
+  over its lower ones (the desktop), over the wallpaper and the
+  workspace's colour, with the picture-in-picture windows (on every
+  workspace) in front; no pointer (it isn't there). The desk is gathered
+  only when a frame waits (`AnvilState::capture_desk`), and the parked
+  windows are sent their frames with the display's while the session
+  is open, so a film playing on a workspace not shown plays on as it
+  shows. Only Olo's own programs see the global (on the direct socket,
+  where wlproxy, passing on only the globals it knows, never shows it).
+  To look at what a source gives, `tsession run NAME …/examples/grab
+  [--display NAME] [--window ID | --workspace N] [--frames K] OUT`
+  (`cargo build --release -p olo-capture --example grab`) writes its
+  frames as OUT-1.ppm, OUT-2.ppm, … (each after the first once what's
+  captured changed). Measured (release, a headless 1920 × 1200 session
+  at 2×, a Terminal printing ten lines a second on workspace 2 shown on
+  the test receiver): app_server 1.4% of a core, 72 wakeups a second
+  while the display shows workspace 1, 2.2% (93) with workspace 2 shown
+  there, as it then draws the display too; nothing shown, 0.0% and 4.
 
 - **Zoom**: its own app offers Wayland sharing only when its
   `XDG_CURRENT_DESKTOP` is GNOME, so Olo starts it so
@@ -9697,11 +9733,13 @@ from Apple's, and LGPL where it's open).
   asked (the last 512 kept). `sound(samples, captured)` sends them.
 - `/feedback` every two seconds keeps it; it ends when the receiver
   closes the data connection or the event channel (`ended()`).
-- `olo-airplay show RECEIVER [--window ID | --display NAME | --screen
-  AGENT-SCREEN] [--title TITLE] [--no-sound] [--fps N] [--encoder
-  auto|nvidia|cpu] [--lead MS] [--json] [--trace] [--notify]`: frames
-  come from app_server's capture (`olo_capture`, as the recorder's
-  do), asked for at most at the rate the receiver takes and given only
+- `olo-airplay show RECEIVER [--window ID | --display NAME |
+  --workspace N [--display NAME] | --screen AGENT-SCREEN] [--title
+  TITLE] [--no-sound] [--fps N] [--encoder auto|nvidia|cpu] [--lead MS]
+  [--json] [--trace] [--notify]`: frames come from app_server's capture
+  (`olo_capture`, as the recorder's do; a workspace, from 1, through
+  Olo's workspace source, "Screen sharing" ▸ Workspaces, so it shows
+  live though its display shows another), asked for at most at the rate the receiver takes and given only
   when something changed, so a still screen sends nothing but
   heartbeats. The newest waits for the encoder's worker (one that
   comes while the last is encoded takes its place, its buffer used
@@ -9742,7 +9780,9 @@ started from a menu shows at once. Show on AirPlay and Play On are in
 the menus (the kit's `Menu::airplay`, above), each running
 `olo_protocol::airplay::show_on` or `play_on`
 (`show_command`: `olo-airplay show --notify --on KEY --window ID
---title TITLE`, and the others); Deskbar's tray says a showing as it
+--title TITLE`, and the others; a workspace heading's menu in Deskbar
+has Show on AirPlay ▸ for that workspace, `Shown::Workspace`, run as
+`--workspace N --display NAME`); Deskbar's tray says a showing as it
 says a play (its title, "on" the receiver, Pause, Stop) with AirPlay
 Preferences… under them.
 

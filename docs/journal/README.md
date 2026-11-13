@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-12
 
+### A workspace not shown, as AirPlay gets it
+
+*18:48* — What a share of workspace 2 is while the display shows workspace 1 (the desktop alone): its Terminal where it was left, under Deskbar, over the desktop and the wallpaper, drawing on (a clock printing ten lines a second kept going in the frames that followed).
+
+![A workspace not shown, as AirPlay gets it](2026-11-12/184825-a-workspace-not-shown-as-airplay-gets-it.png)
+
+### Show a workspace on AirPlay from its Deskbar heading
+
+*18:48* — A workspace heading's menu in Deskbar has Show on AirPlay ▸ (the receivers paired with, then AirPlay Settings…): that workspace is shown live on the television though its display shows another, its windows where they were left, drawing on (Olo's own workspace capture source).
+
+![Show a workspace on AirPlay from its Deskbar heading](2026-11-12/184823-show-a-workspace-on-airplay-from-its-deskbar-hea.png)
+
 ### Deskbar's tray says a screen shown on AirPlay
 
 *18:03* — A window shown live on a receiver: its title, the receiver, Pause and Stop, and AirPlay Preferences…

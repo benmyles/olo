@@ -9,6 +9,8 @@ license.workspace = true
 olo-xdg.workspace = true
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+# Olo's own protocol: a workspace as a capture source (protocols/).
+wayland-scanner = "0.31"
 memmap2 = "0.9"
 libc = "0.2"
 gbm = { version = "0.18", default-features = false }
