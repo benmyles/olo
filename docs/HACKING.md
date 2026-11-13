@@ -1099,7 +1099,16 @@ the Book: a worker with progress, a child view, a drawing, a menu.)
   running remainder.
 * The menu bar opens a menu on press, as on BeOS; pressing the open
   menu's title again closes it, but a menu that slid open as the pointer
-  crossed the bar stays open for that press.
+  crossed the bar stays open for that press. In a bar's menu, ← and →
+  go to the menu beside it (round the ends, past menus with nothing
+  on), its first item chosen: → where it opens no submenu, ← in the
+  bar's menu itself (in a submenu it closes the submenu). Sliding opens
+  a menu as the pointer comes onto its title, not at any motion over
+  one, so a menu reached by the keyboard stays open under a resting
+  pointer. app_server sets a menu's keyboard grab after its pointer
+  grab (`grab_inner`): smithay ends the old menu's pointer grab as it's
+  replaced, and with it any keyboard grab of the same press, which a
+  menu opened from the keyboard (or a submenu) asks with.
 * Session lock (the lock screen only): `olo_kit::lock_session` and
   `unlock_session`. See "The lock screen".
 

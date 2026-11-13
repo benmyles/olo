@@ -20,7 +20,7 @@
 //! own view takes it in `View::command` ([`on_command`]).
 
 use std::{
-    cell::Cell,
+    cell::{Cell, RefCell},
     rc::Rc,
     time::{Duration, Instant},
 };
@@ -645,7 +645,22 @@ fn open(cx: &mut WindowCx, menu: Menu, place: Place, on_choose: OnChoose, parent
     cx.open_window_here(spec, move |cx| {
         // (A menu isn't a window's layout: the review leaves it out.)
         cx.window_state::<crate::review::NotReviewed>().0 = true;
-        MenuPopup { menu, selected, on_choose, origin, parent_menu, sub: None, pressed_inside: false, scroll, content, view_h: h - 2.0 * POPUP_PAD, scrolling: None, pointer: None, on_close }
+        MenuPopup {
+            menu,
+            selected,
+            on_choose,
+            origin,
+            parent_menu,
+            sub: None,
+            pressed_inside: false,
+            scroll,
+            content,
+            view_h: h - 2.0 * POPUP_PAD,
+            scrolling: None,
+            pointer: None,
+            on_close,
+            in_bar: false,
+        }
     })
 }
 
@@ -675,6 +690,9 @@ pub struct MenuPopup {
     pointer: Option<Point<Pixels>>,
     /// Told, in the window it opened over, once it has gone.
     on_close: Option<OnClose>,
+    /// A menu bar's menu, or a submenu of one: ← and → (where they open or
+    /// close no submenu) go to the bar's menus beside it.
+    in_bar: bool,
 }
 
 /// What a menu is told: a moment has passed with the pointer resting on
@@ -827,6 +845,8 @@ impl MenuPopup {
         let anchor = Bounds { origin: point(row.left(), row.top() - px(POPUP_PAD - 1.0)), size: size(row.size.width - px(2.0), row.size.height) };
         let place = Place { anchor, corner: Corner::TopRight, ..Place::default() };
         if let Some(handle) = open(cx, menu, place, self.on_choose.clone(), Some(me), self.origin, None) {
+            let in_bar = self.in_bar;
+            handle.update(cx, |m, _| m.in_bar = in_bar);
             self.sub = Some((i, handle));
         }
         cx.invalidate();
@@ -854,6 +874,16 @@ impl MenuPopup {
         }
     }
 
+    /// The bar's menu `dir` along from the one this is (or is a submenu
+    /// of), as on BeOS and every desktop since: opened by the bar, in the
+    /// window, once this key is done with (it closes this menu).
+    fn beside(&mut self, dir: isize, cx: &mut Cx<Self>) {
+        let origin = self.origin;
+        cx.looper().defer(move |looper| {
+            olo_interface::with_window_on(looper, origin, |cx| step_bar_menu(cx, dir));
+        });
+    }
+
     fn key_down(&mut self, e: &KeyDownEvent, cx: &mut Cx<Self>) {
         match e.keystroke.key.as_str() {
             "down" => {
@@ -869,7 +899,15 @@ impl MenuPopup {
                     && matches!(self.menu.items[i], MenuItem::Submenu(_))
                 {
                     self.open_sub(i, cx);
+                } else if self.in_bar {
+                    self.beside(1, cx);
+                    return;
                 }
+            }
+            // A bar's menu (not a submenu, which ← closes): the one before.
+            "left" if self.in_bar && self.parent_menu.is_none() => {
+                self.beside(-1, cx);
+                return;
             }
             "left" | "escape" => {
                 self.close(cx);
@@ -1115,6 +1153,10 @@ const BAR_PAD: f32 = 8.0;
 #[derive(Default)]
 struct BarShared {
     open: Cell<Option<usize>>,
+    /// Where its titles are (in the window), as of the press that opened
+    /// a menu, for a menu opened from the keyboard (← →) to sit under
+    /// its title. (Not kept as drawn: its drawing is kept by size.)
+    titles: RefCell<Vec<Bounds<Pixels>>>,
 }
 
 /// A window's menu bar, as the kit keeps it with the window: its menus
@@ -1131,6 +1173,12 @@ struct Bar {
     /// The menu the press now under way put away (`press_in`), so a
     /// press on its own title doesn't open it again.
     closed: Option<usize>,
+    /// The title the pointer is over (None off the bar): sliding opens a
+    /// menu as the pointer comes onto its title, not at any motion over
+    /// one, so a menu opened from the keyboard (← →) stays open with the
+    /// pointer resting on another title (app_server moves it where it is
+    /// as a menu goes, to end the menu's grab).
+    over: Option<usize>,
     shared: Rc<BarShared>,
     /// The bar's element, to draw again when the open menu changes.
     node: Option<NodeRef>,
@@ -1140,7 +1188,7 @@ struct Bar {
 
 impl Default for Bar {
     fn default() -> Bar {
-        Bar { menus: Vec::new(), on_command: Rc::new(on_command), open: None, pressed: false, closed: None, shared: Rc::default(), node: None, raw: false }
+        Bar { menus: Vec::new(), on_command: Rc::new(on_command), open: None, pressed: false, closed: None, over: None, shared: Rc::default(), node: None, raw: false }
     }
 }
 
@@ -1279,12 +1327,34 @@ fn open_bar_menu(cx: &mut WindowCx, i: usize, title: Bounds<Pixels>, pressed: bo
     let place = Place { anchor: title, corner: Corner::BottomLeft, ..Place::default() };
     let origin = cx.window_id();
     let handle = open(cx, menu, place, on_command, None, origin, Some(on_close));
+    if let Some(h) = handle {
+        h.update(cx, |m, _| m.in_bar = true);
+    }
     mine.set(handle.map(|h| h.id()));
     let bar = cx.window_state::<Bar>();
     bar.open = handle.map(|h| (i, h, title));
     bar.pressed = pressed;
     bar.shared.open.set(handle.map(|_| i));
     repaint_bar(cx);
+}
+
+/// Opens the bar's menu `dir` along from the open one (round the ends),
+/// its first item chosen: ← and → in a bar's menu.
+fn step_bar_menu(cx: &mut WindowCx, dir: isize) {
+    let bar = cx.window_state::<Bar>();
+    let Some((i, ..)) = bar.open else { return };
+    let n = bar.menus.len() as isize;
+    let titles = bar.shared.titles.borrow().clone();
+    // (Each menu with nothing on is passed over, as an item that's off.)
+    let Some(j) = (1..n).map(|k| (i as isize + dir * k).rem_euclid(n) as usize).find(|&j| bar.menus[j].any_enabled()) else { return };
+    let Some(title) = titles.get(j).copied() else { return };
+    open_bar_menu(cx, j, title, false);
+    if let Some((_, handle, _)) = cx.window_state::<Bar>().open {
+        handle.update(cx, |m, cx| {
+            m.selected = m.step(1);
+            cx.invalidate();
+        });
+    }
 }
 
 /// Puts the bar's open menu away.
@@ -1345,7 +1415,11 @@ impl IntoElement for MenuBar {
             let node = cx.listener_node();
             cx.window_state::<Bar>().node = node;
             let rects = title_rects(&down, b);
-            let Some(i) = rects.iter().position(|r| r.contains(&e.position)) else { return };
+            let i = rects.iter().position(|r| r.contains(&e.position));
+            let bar = cx.window_state::<Bar>();
+            *bar.shared.titles.borrow_mut() = rects.clone();
+            bar.over = i;
+            let Some(i) = i else { return };
             // Its menu was open: the press put it away (`press_in`), and
             // away it stays; or it slid open, and stays for this press.
             let bar = cx.window_state::<Bar>();
@@ -1361,12 +1435,22 @@ impl IntoElement for MenuBar {
             let node = cx.listener_node();
             let bar = cx.window_state::<Bar>();
             bar.node = node;
-            let Some((open, ..)) = bar.open else { return };
             let rects = title_rects(&slide, b);
-            if let Some(i) = rects.iter().position(|r| r.contains(&e.position))
+            let over = rects.iter().position(|r| r.contains(&e.position));
+            if over == bar.over {
+                return;
+            }
+            bar.over = over;
+            let Some((open, ..)) = bar.open else { return };
+            if let Some(i) = over
                 && i != open
             {
                 open_bar_menu(cx, i, rects[i], false);
+            }
+        })
+        .on_hover(|on, cx| {
+            if !*on {
+                cx.window_state::<Bar>().over = None;
             }
         })
         .w_full()

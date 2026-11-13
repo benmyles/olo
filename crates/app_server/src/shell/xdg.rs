@@ -427,29 +427,42 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             // away with Escape, taking the next click (Deskbar's). It takes
             // the pointer from that press instead.
             let window_menu = matches!(&root, crate::focus::KeyboardFocusTarget::LayerSurface(l) if l.namespace() == "window-menu");
-            let ret = self.popups.grab_popup(root, kind, &seat, serial);
-
-            if let Ok(mut grab) = ret {
-                if let Some(keyboard) = seat.get_keyboard() {
-                    if keyboard.is_grabbed() && !window_menu && !(keyboard.has_grab(serial) || keyboard.has_grab(grab.previous_serial().unwrap_or(serial))) {
-                        grab.ungrab(PopupUngrabStrategy::All);
-                        return;
-                    }
-                    // A menu's first popup (not a submenu): what has the
-                    // keyboard now gets it back when the menu goes.
-                    if !keyboard.with_grab(|_, g| g.is::<PopupKeyboardGrab<Self>>()).unwrap_or(false) {
-                        self.keyboard_before_popup = keyboard.current_focus();
-                    }
-                    keyboard.set_focus(self, grab.current_grab(), serial);
-                    keyboard.set_grab(self, PopupKeyboardGrab::new(&grab), serial);
+            let Ok(mut grab) = self.popups.grab_popup(root, kind, &seat, serial) else { return };
+            let (keyboard, pointer) = (seat.get_keyboard(), seat.get_pointer());
+            // Asked with a press the seat's grabs don't know: refused, both
+            // (before either is taken).
+            let previous = grab.previous_serial();
+            let refused = keyboard.as_ref().is_some_and(|k| k.is_grabbed() && !(k.has_grab(serial) || k.has_grab(previous.unwrap_or(serial))))
+                || pointer.as_ref().is_some_and(|p| p.is_grabbed() && !(p.has_grab(serial) || p.has_grab(previous.unwrap_or_else(|| grab.serial()))));
+            if refused && !window_menu {
+                grab.ungrab(PopupUngrabStrategy::All);
+                return;
+            }
+            if let Some(keyboard) = &keyboard {
+                let menu_open = keyboard.with_grab(|_, g| g.is::<PopupKeyboardGrab<Self>>()).unwrap_or(false);
+                // A menu's first popup (not a submenu): what has the
+                // keyboard now gets it back when the menu goes.
+                if !menu_open {
+                    self.keyboard_before_popup = keyboard.current_focus();
                 }
-                if let Some(pointer) = seat.get_pointer() {
-                    if pointer.is_grabbed() && !window_menu && !(pointer.has_grab(serial) || pointer.has_grab(grab.previous_serial().unwrap_or_else(|| grab.serial()))) {
-                        grab.ungrab(PopupUngrabStrategy::All);
-                        return;
-                    }
-                    pointer.set_grab(self, PopupPointerGrab::new(&grab), serial, Focus::Keep);
+                // The menu open (the one this replaces, or opens from)
+                // has the keyboard by a grab that its pointer grab ends
+                // as it's replaced below, and with it any keyboard grab of
+                // the same press: this one's, when it was set first. A
+                // menu opened from the keyboard (← → along a menu bar, a
+                // submenu by →) asks with the press that opened the first,
+                // so it showed and took no keys. Its grab ends here, and
+                // this one's is set after the pointer's.
+                if menu_open {
+                    keyboard.unset_grab(self);
                 }
+            }
+            if let Some(pointer) = &pointer {
+                pointer.set_grab(self, PopupPointerGrab::new(&grab), serial, Focus::Keep);
+            }
+            if let Some(keyboard) = &keyboard {
+                keyboard.set_focus(self, grab.current_grab(), serial);
+                keyboard.set_grab(self, PopupKeyboardGrab::new(&grab), serial);
             }
         }
     }
