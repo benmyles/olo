@@ -138,7 +138,9 @@ impl LinuxCommon {
 /// priority): their work isn't a frame's.
 pub(crate) fn util_floor() {
     let min = env::var("OLO_UTIL_MIN").ok().and_then(|v| v.parse().ok()).unwrap_or(olo_protocol::performance::UI_UTIL_MIN);
-    if min == 0 {
+    // (Not on an agent's screen: background work beside the person's
+    // desktop, `olo_system::priority::not_the_persons`.)
+    if min == 0 || env::var_os("OLO_SCREEN").is_some() {
         return;
     }
     #[repr(C)]

@@ -1806,9 +1806,16 @@ impl AnvilState<UdevData> {
             InputEvent::DeviceAdded { .. } | InputEvent::DeviceRemoved { .. } => "device",
             _ => "gesture or touch",
         };
+        // How long after the kernel stamped it (libinput's clock is the
+        // monotonic one): the pointer stood still that long.
+        let stamped = event_time(&event);
         self.handle_input_event(dh, event);
         if pointing {
             self.wake_under_pointer(before);
+        }
+        if let Some(stamped) = stamped {
+            let now = std::time::Duration::from(self.clock.now()).as_micros() as u64;
+            self.timings.input(kind, std::time::Duration::from_micros(now.saturating_sub(stamped)));
         }
         self.timings.handled(|| format!("input {kind}"), start);
         self.timings.phase("input", start);
@@ -2186,6 +2193,20 @@ impl AnvilState<UdevData> {
         let screens: Vec<smithay::utils::Rectangle<i32, Logical>> = self.space.outputs().filter_map(|o| self.space.output_geometry(o)).collect();
         clamp_to_screens(&screens, pos)
     }
+}
+
+/// When the kernel stamped an input event, in microseconds of the
+/// monotonic clock (libinput's): for the ones whose lateness is felt.
+fn event_time<B: InputBackend>(event: &InputEvent<B>) -> Option<u64> {
+    use smithay::backend::input::Event as _;
+    Some(match event {
+        InputEvent::Keyboard { event } => event.time().micros(),
+        InputEvent::PointerMotion { event } => event.time().micros(),
+        InputEvent::PointerMotionAbsolute { event } => event.time().micros(),
+        InputEvent::PointerButton { event } => event.time().micros(),
+        InputEvent::PointerAxis { event } => event.time().micros(),
+        _ => return None,
+    })
 }
 
 /// `pos` if it is on one of `screens`, else the nearest point that is.

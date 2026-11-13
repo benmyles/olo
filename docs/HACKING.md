@@ -278,6 +278,21 @@ message):
   apart: each display's looks, their total and slowest. Asking starts a
   4 ms heartbeat for a minute, so measure its CPU before asking or a
   minute after.
+* The pointer standing still: app_server says, always, any key,
+  click, scroll or pointer motion it handles 100 ms or more after the
+  kernel stamped it (libinput's monotonic stamp; a stall's queued events
+  said once), with the longest single thing its loop did since the
+  event before (`Timings::input`: a request, clients' requests, a
+  frame's part, drawing a display, kept when 20 ms or more): "input
+  (pointer motion) came 1840 ms late: the loop was held by drawing
+  eDP-1 (1832 ms)", or that nothing in the loop was that long (app_server
+  wasn't given a processor, or the event came late to it). It costs no
+  more than the clock reading it already made. To see what a thread is
+  doing while it's held, sample `/proc/PID/task/TID/wchan` and `syscall`
+  (readable by the same user): 2026-11-12, under a build, app_server's
+  main thread waited up to 142 ms in the GPU driver
+  (`drm_exec_lock_contended`: waiting for a buffer's lock, held by
+  something else using the GPU).
 * `tools/dev/bench` (every app's frames against the budget; `--env
   K=V` gives every app a switch, to compare without a rebuild, as
   `--env OLO_EXACT_PATHS=0`),
@@ -11148,7 +11163,12 @@ it looks at the person's own processes in /proc (`sample.rs`) and:
   what keeps the desktop responsive runs above everything else, always,
   supervisor or not: app_server's main thread (every input event and
   frame) at nice −10, olo-session, Deskbar and olo-wlproxy at −5, each
-  asking rtkit for itself as it starts (`olo_system::priority::raise_self`:
+  asking rtkit for itself as it starts, in the person's own session only
+  (on an agent's screen, `OLO_SCREEN`, and in a headless app_server they
+  stay at their nice and leave cores to the scheduler: three agent
+  screens' compositors at app_server's own −10, on fast cores at full
+  clock, had competed with the person's desktop)
+  (`olo_system::priority::raise_self`:
   `org.freedesktop.RealtimeKit1`'s `MakeThreadHighPriorityWithPID`, the
   one way an unprivileged process gets a negative nice, down to its
   `MinNiceLevel`, −15 here), and each frame's thread on a fast core

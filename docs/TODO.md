@@ -13,6 +13,27 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
+- **The pointer never stops under load** (Ben, 2026-11-12: "under
+  load the mouse still gets unresponsive for a few seconds every now
+  and then. i've got LAVD off b/c that made it even worse, as did the
+  supervisor. how else can we improve desktop responsiveness even
+  under load?", then "wouldn't it be better to give the cursor its own
+  thread anyway?"). Looked at first, read-only, on his session: during
+  a build (load 15–23) app_server's main thread waited at most 33 ms
+  to run, but twice sat 78 and 142 ms inside an ioctl in the xe GPU
+  driver's buffer lock (`drm_exec_lock_contended`), with the pointer
+  stopped meanwhile; a from-scratch build here for 4 minutes (load up
+  to 20) found nothing over 40 ms; the freezes of seconds weren't
+  caught. *Done:* app_server says in its log when input reaches it
+  late and what held its loop (HACKING, "{"type":"timings"}"), so the
+  next freeze names its cause; agent screens and test sessions no
+  longer raise their app_server above everything (three of them sat at
+  nice −10 beside his). *Next:* the cursor on a thread of its own:
+  libinput read on an input thread that moves the hardware cursor
+  itself when the main thread hasn't taken input for ~12 ms, the main
+  thread catching up from the same events (as mutter's input and KMS
+  threads). Off until tried on a real seat (vkms on a seat of its own).
+
 - **From GPUI to Olo's own kits: retained, message passing, a looper a
   window** (Ben, 2026-11-10: "scrapping gpui in olo and replacing with
   our own beos inspired retained mode, smp first, message passing

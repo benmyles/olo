@@ -20,6 +20,11 @@ use crate::state::{AnvilState, Backend};
 const BEAT: Duration = Duration::from_millis(4);
 /// How long it keeps beating after an ask.
 const WATCH: Duration = Duration::from_secs(60);
+/// A part of the loop this long is noted always (`held`), to say what
+/// made input late.
+const HELD: Duration = Duration::from_millis(20);
+/// Input this late is said in the log, with what held the loop.
+const LATE: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Default)]
 pub struct Timings {
@@ -36,6 +41,13 @@ pub struct Timings {
     /// each kind took in all and how many there were (which requests of
     /// a dispatch of clients' requests held the loop).
     inner: BTreeMap<String, (Duration, u32)>,
+    /// The longest part of the loop since the last input event, of
+    /// `HELD` or more, counted whether watched or not: what held the
+    /// loop when input comes late (`input`).
+    held: Option<(String, Duration)>,
+    /// When late input was last said (a stall's queued events are all
+    /// late: the first says it).
+    late_said: Option<Instant>,
 }
 
 impl Timings {
@@ -45,6 +57,7 @@ impl Timings {
 
     /// One frame of `output` drawn, in `took`.
     pub fn frame(&mut self, output: &str, took: Duration) {
+        self.note_held(took, || format!("drawing {output}"));
         if !self.watching() {
             return;
         }
@@ -62,6 +75,7 @@ impl Timings {
 
     /// Part `name` of the loop done, in `took`.
     pub fn add(&mut self, name: &'static str, took: Duration) {
+        self.note_held(took, || name.to_owned());
         if !self.watching() {
             return;
         }
@@ -75,12 +89,52 @@ impl Timings {
     /// Something done (a request, an input event, clients' requests, the
     /// tick), `what` it was, since `start`.
     pub fn handled(&mut self, what: impl FnOnce() -> String, start: Instant) {
-        if !self.watching() {
+        // (One reading of the clock, as before: it says both.)
+        let now = Instant::now();
+        let took = now.saturating_duration_since(start);
+        let held = took >= HELD && self.held.as_ref().is_none_or(|(_, t)| took > *t);
+        let slowest = self.watched_until.is_some_and(|t| now < t) && self.slowest.as_ref().is_none_or(|(_, t)| took > *t);
+        if held || slowest {
+            let what = what();
+            if held {
+                self.held = Some((what.clone(), took));
+            }
+            if slowest {
+                self.slowest = Some((what, took));
+            }
+        }
+    }
+
+    /// `took` of the loop, `what` it was: kept if it's the longest since
+    /// the last input event.
+    fn note_held(&mut self, took: Duration, what: impl FnOnce() -> String) {
+        if took >= HELD && self.held.as_ref().is_none_or(|(_, t)| took > *t) {
+            self.held = Some((what(), took));
+        }
+    }
+
+    /// An input event (`kind`) handled, `late` after the kernel stamped
+    /// it: said in the log when it's late enough to be felt (the pointer
+    /// stood still meanwhile), with the longest thing the loop did since
+    /// the last event, or that it did nothing long (then app_server
+    /// wasn't given a processor, or the event came late to it).
+    pub fn input(&mut self, kind: &str, late: Duration) {
+        let held = self.held.take();
+        if late < LATE || late > Duration::from_secs(60) {
             return;
         }
-        let took = start.elapsed();
-        if self.slowest.as_ref().is_none_or(|(_, t)| took > *t) {
-            self.slowest = Some((what(), took));
+        let now = Instant::now();
+        if self.late_said.is_some_and(|t| now.duration_since(t) < Duration::from_secs(2)) {
+            return;
+        }
+        self.late_said = Some(now);
+        let ms = |d: Duration| d.as_secs_f64() * 1000.0;
+        match held {
+            Some((what, took)) if took * 2 >= late => tracing::warn!("input ({kind}) came {:.0} ms late: the loop was held by {what} ({:.0} ms)", ms(late), ms(took)),
+            Some((what, took)) => {
+                tracing::warn!("input ({kind}) came {:.0} ms late; the loop's longest part meanwhile was {what} ({:.0} ms): app_server wasn't run, or the event came late to it", ms(late), ms(took))
+            }
+            None => tracing::warn!("input ({kind}) came {:.0} ms late, with nothing in the loop as long as {} ms: app_server wasn't run, or the event came late to it", ms(late), HELD.as_millis()),
         }
     }
 

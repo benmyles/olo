@@ -48,18 +48,25 @@ fn main() {
     tracing_subscriber::fmt().compact().with_env_filter(env_filter).finish().with(tracing_subscriber::filter::filter_fn(|m| !bogus_error(m))).init();
 
     // Every input event and every frame go through this thread: above
-    // everything else (olo_protocol::performance::tier).
-    match olo_system::priority::raise_self(olo_protocol::performance::CORE_NICE) {
-        Ok(nice) => tracing::info!(nice, "the main thread's priority (rtkit)"),
-        Err(e) => tracing::info!("the main thread stays at its nice: {e}"),
-    }
-    // ...and on a fast core at a high clock, not where the scheduler puts
-    // a mostly idle thread.
-    let util_min = std::env::var("OLO_UTIL_MIN").ok().and_then(|v| v.parse().ok()).unwrap_or(olo_protocol::performance::CORE_UTIL_MIN);
-    if util_min > 0
-        && let Err(e) = olo_system::priority::util_min_self(util_min)
-    {
-        tracing::info!("the main thread keeps the scheduler's choice of core: {e}");
+    // everything else (olo_protocol::performance::tier). Only the
+    // person's own: a headless one (an agent's screen, a test session) is
+    // background work beside it, and stays at its nice.
+    let headless = ::std::env::args().nth(1).as_deref() == Some("--headless");
+    if headless {
+        tracing::info!("the main thread stays at its nice: headless, beside the person's desktop");
+    } else {
+        match olo_system::priority::raise_self(olo_protocol::performance::CORE_NICE) {
+            Ok(nice) => tracing::info!(nice, "the main thread's priority (rtkit)"),
+            Err(e) => tracing::info!("the main thread stays at its nice: {e}"),
+        }
+        // ...and on a fast core at a high clock, not where the scheduler
+        // puts a mostly idle thread.
+        let util_min = std::env::var("OLO_UTIL_MIN").ok().and_then(|v| v.parse().ok()).unwrap_or(olo_protocol::performance::CORE_UTIL_MIN);
+        if util_min > 0
+            && let Err(e) = olo_system::priority::util_min_self(util_min)
+        {
+            tracing::info!("the main thread keeps the scheduler's choice of core: {e}");
+        }
     }
 
     profiling::register_thread!("Main Thread");
