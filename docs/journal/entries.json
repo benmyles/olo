@@ -4024,5 +4024,11 @@
   "title": "Olo Coder: tasks and where the work stands",
   "caption": "Coder's window on the Olo kits: the conversation with quiet action rows, the agent's Now card (done, doing now, up next) and the task list as an outline both the agent and the person edit (marks, folding, a menu per task).",
   "image": "2026-11-12/172411-olo-coder-tasks-and-where-the-work-stands.png"
+ },
+ {
+  "time": "2026-11-12T17:35:05",
+  "title": "Olo Coder: forms survive an upgrade",
+  "caption": "After app_server restarts in place, Settings comes back at its section and a dialog with what was typed in it; the chosen task shows in full under the outline, and an in-progress task's mark is half filled on the right.",
+  "image": "2026-11-12/173505-olo-coder-forms-survive-an-upgrade.png"
  }
 ]

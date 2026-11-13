@@ -27,6 +27,8 @@ pub struct Row {
     pub parent: Option<String>,
     pub text: String,
     pub status: String,
+    /// What shows it's done (the agent's).
+    pub evidence: String,
     pub depth: usize,
     /// Whether it has subtasks, and whether they show.
     pub children: Option<bool>,
@@ -58,7 +60,7 @@ pub fn rows(todos: &[Todo], folded: &std::collections::HashSet<String>) -> Vec<R
         if has && !open {
             hidden_under = Some(depth);
         }
-        out.push(Row { id: t.id.clone(), parent: t.parent.clone(), text: t.text.clone(), status: t.status.clone(), depth, children: has.then_some(open) });
+        out.push(Row { id: t.id.clone(), parent: t.parent.clone(), text: t.text.clone(), status: t.status.clone(), evidence: t.evidence.clone(), depth, children: has.then_some(open) });
     }
     out
 }
@@ -85,7 +87,8 @@ pub fn mark(g: &mut olo_kit::Painter, r: Bounds<Pixels>, status: &str, p: &Palet
         "in_progress" => {
             let blue = style::c(p.keyboard_navigation);
             g.paint_sector(c, radius - ring, radius, 0.0, tau, blue);
-            g.paint_sector(c, px(0.0), radius - ring - px(1.0), -tau / 4.0, tau / 2.0, blue);
+            // Its right half filled (from twelve o'clock round to six): half way.
+            g.paint_sector(c, px(0.0), radius - ring - px(1.0), 0.0, tau / 2.0, blue);
         }
         _ => {
             let ink = style::c(olo_theme::mix(p.document_text, p.document_background, 0.55));
@@ -257,9 +260,22 @@ impl Coder {
             }
             false
         }))
+        .on_select(cx.listener(|_: &mut Coder, _: &(), cx| cx.invalidate()))
         .on_open(cx.msg_with(|row: &usize| Msg::TaskRename(*row)))
         .on_context(cx.msg_with(|&(row, at): &(usize, Point<Pixels>)| Msg::TaskMenu(row, at)));
         col = col.child(div().flex_1().min_h_0().child(list));
+        // The chosen task in full (a row cuts a long one short), and what
+        // shows it's done.
+        let chosen = self.tasks.state().selected.first().and_then(|i| rows.get(*i)).cloned();
+        if let Some(r) = chosen {
+            let mut detail = div().flex().flex_col().child(StringView::new(r.text.clone()).wrap(true));
+            let mut said = status_name(&r.status).to_owned();
+            if !r.evidence.trim().is_empty() {
+                said = format!("{said} · {}", r.evidence.trim());
+            }
+            detail = detail.child(StringView::new(said).wrap(true).dim(true).small(true));
+            col = col.child(detail);
+        }
         col = col.child(olo_kit::widgets::TextControl::new(cx, &self.task_field));
         col.into_any_element()
     }

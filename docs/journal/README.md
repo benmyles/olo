@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-12
 
+### Olo Coder: forms survive an upgrade
+
+*17:35* — After app_server restarts in place, Settings comes back at its section and a dialog with what was typed in it; the chosen task shows in full under the outline, and an in-progress task's mark is half filled on the right.
+
+![Olo Coder: forms survive an upgrade](2026-11-12/173505-olo-coder-forms-survive-an-upgrade.png)
+
 ### Olo Coder: tasks and where the work stands
 
 *17:24* — Coder's window on the Olo kits: the conversation with quiet action rows, the agent's Now card (done, doing now, up next) and the task list as an outline both the agent and the person edit (marks, folding, a menu per task).

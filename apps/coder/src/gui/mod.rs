@@ -99,6 +99,9 @@ pub struct Coder {
     task_field: Child<TextField>,
     /// Where the Context tab is scrolled to.
     context_scroll: olo_kit::ScrollHandle,
+    /// Forms (Settings, a dialog) open over it before an upgrade, to open
+    /// again once the session is back.
+    forms: Vec<Value>,
 }
 
 impl Coder {
@@ -150,6 +153,7 @@ impl Coder {
                 }
                 let next = self.drafts.remove(id).unwrap_or_default();
                 self.composer.update(cx, |f, cx| f.set_text(next, cx));
+                self.tasks.state_mut().selected.clear();
             }
             Update::InputResult { session, text, error: Some(error) } => {
                 // Not sent: back in the composer (or the draft of the
@@ -192,6 +196,17 @@ impl Coder {
             _ => {}
         }
         self.view.apply(u);
+        // Forms an upgrade closed, back over this window once its session
+        // is here (they need it).
+        if !self.forms.is_empty() && self.view.session.is_some() {
+            for form in std::mem::take(&mut self.forms) {
+                match form["form"].as_str() {
+                    Some("settings") => settings::open(cx, self.dir.clone(), self.client.clone(), &self.view, &self.key, form["section"].as_u64().unwrap_or(0) as usize),
+                    Some("dialog") => dialog::reopen(cx, &form, self.client.clone()),
+                    _ => {}
+                }
+            }
+        }
         if redraw {
             cx.invalidate();
         }
@@ -323,7 +338,7 @@ impl Coder {
     }
 
     fn open_dialog(&mut self, title: &str, description: &str, action: &str, fields: Vec<Field>, submission: Submission, cx: &mut Cx<Self>) {
-        dialog::open(cx, title, description, action, fields, self.client.clone(), submission);
+        dialog::open(cx, &self.key, title, description, action, fields, self.client.clone(), submission);
     }
 
     fn run_command(&mut self, cmd: &str, cx: &mut Cx<Self>) -> bool {
@@ -344,7 +359,7 @@ impl Coder {
             "quit" => olo_kit::quit(),
             "copy" => self.transcript.update(cx, |t, cx| t.copy(cx)),
             "select-all" => self.transcript.update(cx, |t, cx| t.select_all(cx)),
-            "settings" => settings::open(cx, self.dir.clone(), self.client.clone(), &self.view),
+            "settings" => settings::open(cx, self.dir.clone(), self.client.clone(), &self.view, &self.key, 0),
             "send" => self.send(cx),
             "stop" => {
                 let _ = self.client.tx.send(Action::Stop);
@@ -1213,6 +1228,7 @@ pub fn open(dir: PathBuf, workspace: PathBuf, session: Option<String>, restore: 
             task_hits: Default::default(),
             task_field,
             context_scroll: olo_kit::ScrollHandle::new(),
+            forms: restore["forms"].as_array().cloned().unwrap_or_default(),
         }
     });
 }
@@ -1262,7 +1278,14 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) {
             _ if restored.is_object() => vec![restored],
             _ => vec![Value::Null],
         };
-        for state in windows {
+        // Forms go back over the window they were over.
+        let (forms, windows): (Vec<Value>, Vec<Value>) = windows.into_iter().partition(|w| w.get("form").is_some());
+        for mut state in windows {
+            let key = state["window_key"].as_str().unwrap_or("").to_owned();
+            let mine: Vec<&Value> = forms.iter().filter(|f| f["owner"].as_str() == Some(key.as_str())).collect();
+            if !mine.is_empty() {
+                state["forms"] = json!(mine);
+            }
             open(dir.clone(), workspace.clone(), session.clone(), state);
         }
     });

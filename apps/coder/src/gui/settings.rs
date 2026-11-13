@@ -67,6 +67,8 @@ struct Option_ {
 
 pub struct Settings {
     dir: PathBuf,
+    /// The window it's over (its `window_key`).
+    owner: String,
     session: String,
     client: Handle,
     section: usize,
@@ -88,8 +90,10 @@ pub struct Settings {
     name: Child<TextField>,
 }
 
-/// Opens Settings for the session `view` shows, over the window `cx` is in.
-pub fn open(cx: &mut WindowCx, dir: PathBuf, client: Handle, view: &Shown) {
+/// Opens Settings for the session `view` shows, over the window `cx` is in
+/// (known as `owner`, so an upgrade brings it back over it), at `section`.
+pub fn open(cx: &mut WindowCx, dir: PathBuf, client: Handle, view: &Shown, owner: &str, section: usize) {
+    let owner = owner.to_owned();
     let Some(s) = view.session.clone() else { return };
     let ids = view.models.clone();
     let profiles = view.profiles.clone();
@@ -114,9 +118,10 @@ pub fn open(cx: &mut WindowCx, dir: PathBuf, client: Handle, view: &Shown) {
         let name = field(cx, "Saved as", String::new());
         let mut me = Settings {
             dir,
+            owner,
             session: s.id.clone(),
             client,
-            section: 0,
+            section: section.min(SECTIONS.len() - 1),
             config: serde_json::to_value(&s.config).ok(),
             options: vec![],
             said: None,
@@ -438,6 +443,13 @@ fn friendly(e: &str) -> String {
 
 impl View for Settings {
     type Message = Msg;
+
+    /// Back over its window after an upgrade, at the same section (what
+    /// was being edited and not applied is let go: the session's settings
+    /// are read again).
+    fn save_state(&mut self, _: &mut Cx<Self>) -> Option<String> {
+        Some(json!({"form":"settings","owner":self.owner,"section":self.section}).to_string())
+    }
 
     fn message(&mut self, message: Msg, cx: &mut Cx<Self>) {
         match message {

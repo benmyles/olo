@@ -31,6 +31,9 @@ struct Input {
 }
 
 pub struct Dialog {
+    /// The window it's over (its `window_key`), and its own title.
+    owner: String,
+    title: String,
     description: String,
     action: String,
     inputs: Vec<Input>,
@@ -41,17 +44,25 @@ pub struct Dialog {
     asked: u64,
 }
 
-/// Opens the form over the window `cx` is in.
-pub fn open(cx: &mut WindowCx, title: &str, description: &str, action: &str, fields: Vec<Field>, client: Handle, submission: Submission) {
-    let (description, action) = (description.to_owned(), action.to_owned());
+/// Opens the form over the window `cx` is in (known as `owner`).
+pub fn open(cx: &mut WindowCx, owner: &str, title: &str, description: &str, action: &str, fields: Vec<Field>, client: Handle, submission: Submission) {
+    let (owner, title_, description, action) = (owner.to_owned(), title.to_owned(), description.to_owned(), action.to_owned());
     let options = WindowOptions { fixed: true, ..WindowOptions::new(title.to_owned(), 500.0, 120.0).dialog() };
     olo_kit::open_window_here(cx, options, move |cx| {
         let inputs = inputs(cx, fields);
         if let Some(first) = inputs.iter().find(|i| i.field.choices.is_empty() && !i.field.select) {
             first.text.focus(cx);
         }
-        Dialog { description, action, inputs, submission, client, said: None, busy: false, asked: 0 }
+        Dialog { owner, title: title_, description, action, inputs, submission, client, said: None, busy: false, asked: 0 }
     });
+}
+
+/// Opens again, over the window `cx` is in, a form an upgrade closed (what
+/// `save_state` kept: its fields as they were filled in).
+pub fn reopen(cx: &mut WindowCx, state: &serde_json::Value, client: Handle) {
+    let (Ok(fields), Ok(submission)) = (serde_json::from_value::<Vec<Field>>(state["fields"].clone()), serde_json::from_value::<Submission>(state["submission"].clone())) else { return };
+    let s = |k: &str| state[k].as_str().unwrap_or("").to_owned();
+    open(cx, &s("owner"), &s("title"), &s("description"), &s("action"), fields, client, submission);
 }
 
 fn inputs(cx: &mut Cx<Dialog>, fields: Vec<Field>) -> Vec<Input> {
@@ -151,6 +162,13 @@ impl Dialog {
 
 impl View for Dialog {
     type Message = Msg;
+
+    /// Its fields as filled in, to come back as they were after an upgrade.
+    fn save_state(&mut self, cx: &mut Cx<Self>) -> Option<String> {
+        let values = self.values(cx);
+        let fields: Vec<Field> = self.inputs.iter().zip(values).map(|(i, value)| Field { value, ..i.field.clone() }).collect();
+        Some(serde_json::json!({"form":"dialog","owner":self.owner,"title":self.title,"description":self.description,"action":self.action,"fields":fields,"submission":self.submission}).to_string())
+    }
 
     fn message(&mut self, message: Msg, cx: &mut Cx<Self>) {
         match message {
