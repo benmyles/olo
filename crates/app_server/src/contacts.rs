@@ -37,17 +37,59 @@ pub enum Pad {
 /// loop of each filtered pad.
 #[cfg(feature = "udev")]
 pub struct Interface {
-    session: LibSeatSession,
+    opener: Opener,
     pads: smithay::reexports::calloop::channel::Sender<Pad>,
     /// libinput's descriptors of the pads, by number, to know which one
     /// closes.
     open: HashMap<RawFd, PathBuf>,
 }
 
+/// Who opens a device: the session itself (libinput on app_server's
+/// loop), or the loop asked (libinput on the input thread: the session
+/// is the loop's alone).
+#[cfg(feature = "udev")]
+enum Opener {
+    Session(LibSeatSession),
+    Asking(smithay::reexports::calloop::channel::Sender<Request>),
+}
+
+/// The input thread's asks of the loop: a device opened (the answer to
+/// wait for) or closed; and that it has stopped, after closing every
+/// device (so the loop opens them only once the thread has let go:
+/// logind gives a session each device once).
+#[cfg(feature = "udev")]
+pub enum Request {
+    Open(PathBuf, i32, std::sync::mpsc::SyncSender<Result<OwnedFd, i32>>),
+    Close(OwnedFd),
+    Stopped,
+}
+
+#[cfg(feature = "udev")]
+impl Request {
+    /// The loop's side: done with the session.
+    pub fn answer(self, session: &mut LibSeatSession) {
+        use rustix::fs::OFlags;
+        match self {
+            Request::Open(path, flags, answer) => {
+                let _ = answer.send(session.open(&path, OFlags::from_bits_truncate(flags as u32)).map_err(|e| e.as_errno().unwrap_or(1)));
+            }
+            Request::Close(fd) => {
+                let _ = session.close(fd);
+            }
+            Request::Stopped => {}
+        }
+    }
+}
+
 #[cfg(feature = "udev")]
 impl Interface {
     pub fn new(session: LibSeatSession, pads: smithay::reexports::calloop::channel::Sender<Pad>) -> Interface {
-        Interface { session, pads, open: HashMap::new() }
+        Interface { opener: Opener::Session(session), pads, open: HashMap::new() }
+    }
+
+    /// For the input thread: each device opened by asking the loop.
+    pub fn asking(requests: smithay::reexports::calloop::channel::Sender<Request>, pads: smithay::reexports::calloop::channel::Sender<Pad>) -> Interface {
+        Interface { opener: Opener::Asking(requests), pads, open: HashMap::new() }
     }
 }
 
@@ -55,7 +97,14 @@ impl Interface {
 impl smithay::reexports::input::LibinputInterface for Interface {
     fn open_restricted(&mut self, path: &Path, flags: i32) -> Result<OwnedFd, i32> {
         use rustix::fs::OFlags;
-        let fd = self.session.open(path, OFlags::from_bits_truncate(flags as u32)).map_err(|e| e.as_errno().unwrap_or(1))?;
+        let fd = match &mut self.opener {
+            Opener::Session(session) => session.open(path, OFlags::from_bits_truncate(flags as u32)).map_err(|e| e.as_errno().unwrap_or(1))?,
+            Opener::Asking(requests) => {
+                let (answer, answered) = std::sync::mpsc::sync_channel(1);
+                requests.send(Request::Open(path.to_owned(), flags, answer)).map_err(|_| libc::ENODEV)?;
+                answered.recv().map_err(|_| libc::ENODEV)??
+            }
+        };
         if (name(&fd).is_some_and(|n| crate::touch_filter::DEVICES.iter().any(|d| n.contains(d))) || is_touchpad(&fd))
             && let Ok(copy) = fd.try_clone()
         {
@@ -69,7 +118,14 @@ impl smithay::reexports::input::LibinputInterface for Interface {
         if let Some(path) = self.open.remove(&fd.as_raw_fd()) {
             let _ = self.pads.send(Pad::Closed(path));
         }
-        let _ = self.session.close(fd);
+        match &mut self.opener {
+            Opener::Session(session) => {
+                let _ = session.close(fd);
+            }
+            Opener::Asking(requests) => {
+                let _ = requests.send(Request::Close(fd));
+            }
+        }
     }
 }
 

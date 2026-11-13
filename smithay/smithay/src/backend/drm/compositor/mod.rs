@@ -2685,6 +2685,26 @@ where
         self.surface.plane()
     }
 
+    /// (Olo) The cursor plane and where it is on the CRTC (its own
+    /// coordinates, after the output's transform) in the newest frame:
+    /// the one rendered and not yet queued, else the queued one, the one
+    /// being flipped to, the one shown. None when no cursor plane holds
+    /// an element in it. For moving the plane from another thread while
+    /// this one is busy (app_server's input thread).
+    pub fn cursor_plane(&self) -> Option<(plane::Handle, Rectangle<i32, Physical>)> {
+        let newest = self
+            .next_frame
+            .as_ref()
+            .map(|f| &f.frame)
+            .or(self.queued_frame.as_ref().map(|q| &q.prepared_frame.frame))
+            .or(self.pending_frame.as_ref().map(|p| &p.frame))
+            .unwrap_or(&self.current_frame);
+        self.planes
+            .cursor
+            .iter()
+            .find_map(|info| Some((info.handle, newest.plane_properties(info.handle)?.dst)))
+    }
+
     /// Currently used [`connector`]s of this `Surface`
     pub fn current_connectors(&self) -> impl IntoIterator<Item = connector::Handle> {
         self.surface.current_connectors()

@@ -1993,6 +1993,8 @@ impl AnvilState<UdevData> {
             });
         }
 
+        // (The input thread leaves a held or fenced pointer alone.)
+        self.pointer_constrained = pointer_locked || pointer_confined;
         pointer.relative_motion(self, under.clone(), &RelativeMotionEvent { delta: evt.delta(), delta_unaccel: evt.delta_unaccel(), time: evt.time() });
 
         // If pointer is locked, only emit relative motion
@@ -2198,11 +2200,17 @@ impl AnvilState<UdevData> {
 /// When the kernel stamped an input event, in microseconds of the
 /// monotonic clock (libinput's): for the ones whose lateness is felt.
 fn event_time<B: InputBackend>(event: &InputEvent<B>) -> Option<u64> {
-    use smithay::backend::input::Event as _;
+    use smithay::backend::input::{Device as _, DeviceCapability, Event as _};
     Some(match event {
         InputEvent::Keyboard { event } => event.time().micros(),
         InputEvent::PointerMotion { event } => event.time().micros(),
         InputEvent::PointerMotionAbsolute { event } => event.time().micros(),
+        // Not a touchpad's (one with gestures): libinput sends a tap's
+        // click as the finger lifts, stamped when it touched (and with
+        // tap-and-drag on, only after its tap timeout): "late" by the tap
+        // itself. (Ben's log, 2026-11-13: 18 "pointer button came 104 to
+        // 160 ms late", nothing else late, the loop idle.)
+        InputEvent::PointerButton { event } if event.device().has_capability(DeviceCapability::Gesture) => return None,
         InputEvent::PointerButton { event } => event.time().micros(),
         InputEvent::PointerAxis { event } => event.time().micros(),
         _ => return None,
@@ -2210,7 +2218,7 @@ fn event_time<B: InputBackend>(event: &InputEvent<B>) -> Option<u64> {
 }
 
 /// `pos` if it is on one of `screens`, else the nearest point that is.
-fn clamp_to_screens(screens: &[smithay::utils::Rectangle<i32, Logical>], pos: Point<f64, Logical>) -> Point<f64, Logical> {
+pub(crate) fn clamp_to_screens(screens: &[smithay::utils::Rectangle<i32, Logical>], pos: Point<f64, Logical>) -> Point<f64, Logical> {
     screens
         .iter()
         .map(|g| {

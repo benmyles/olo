@@ -264,6 +264,10 @@ pub const SHELL_NICE: i32 = -5;
 /// the compositor's even, as it's what's left when something has taken
 /// the computer. It sleeps until the person does something.
 pub const RESCUE_NICE: i32 = -15;
+/// app_server's input thread's (`OLO_INPUT_THREAD=1`): libinput read and
+/// the cursor moved while the compositor's loop is held. As high as rtkit
+/// gives; it sleeps until an event comes.
+pub const INPUT_NICE: i32 = -15;
 
 /// How busy the scheduler takes a frame's thread to be, at least, while
 /// it runs (its `uclamp.min`, of 1024): app_server's main thread (every

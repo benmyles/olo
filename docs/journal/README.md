@@ -3,6 +3,14 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-11-13
+
+### Preferences ▸ Performance: the pointer on a thread of its own
+
+*00:12* — A Pointer box on the Scheduler tab: 'Move the pointer on a thread of its own' reads libinput on a thread of app_server's own that moves the hardware cursor while the desktop is busy, so the pointer never stops or loses motion. Off until tried; takes effect at once.
+
+![Preferences ▸ Performance: the pointer on a thread of its own](2026-11-13/001256-preferences-performance-the-pointer-on-a-thread-.png)
+
 ## 2026-11-12
 
 ### AirPlay's sound on the television only

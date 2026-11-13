@@ -95,7 +95,7 @@ impl Panel {
             "air-play" | "mirroring" | "screen-mirroring" | "apple-tv" | "tv" => Some(Panel::AirPlay),
             "wifi" | "wi-fi" | "networks" => Some(Panel::Network),
             "notification" | "dnd" | "do-not-disturb" => Some(Panel::Notifications),
-            "supervisor" | "responsiveness" | "watchdog" => Some(Panel::Performance),
+            "supervisor" | "responsiveness" | "watchdog" | "pointer-thread" | "input-thread" => Some(Panel::Performance),
             "time" | "date" | "clock" | "date-time" => Some(Panel::DateTime),
             "open-with" | "file-types" | "filetypes" | "default-applications" => Some(Panel::DefaultApps),
             "passwords" | "privacy" => Some(Panel::Security),

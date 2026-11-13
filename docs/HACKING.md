@@ -286,13 +286,18 @@ message):
   frame's part, drawing a display, kept when 20 ms or more): "input
   (pointer motion) came 1840 ms late: the loop was held by drawing
   eDP-1 (1832 ms)", or that nothing in the loop was that long (app_server
-  wasn't given a processor, or the event came late to it). It costs no
-  more than the clock reading it already made. To see what a thread is
+  wasn't given a processor, or the event came late to it). A touchpad's
+  clicks aren't judged: libinput sends a tap's click as the finger
+  lifts, stamped when it touched, so every tap longer than 100 ms read
+  as late (Ben's log, 2026-11-13: 18 of them, nothing else late). It
+  costs no more than the clock reading it already made. To see what a thread is
   doing while it's held, sample `/proc/PID/task/TID/wchan` and `syscall`
   (readable by the same user): 2026-11-12, under a build, app_server's
   main thread waited up to 142 ms in the GPU driver
   (`drm_exec_lock_contended`: waiting for a buffer's lock, held by
-  something else using the GPU).
+  something else using the GPU). With libinput on its own thread
+  (Preferences ▸ Performance ▸ Scheduler ▸ Pointer) the pointer keeps moving meanwhile ("The pointer
+  on a thread of its own").
 * `tools/dev/bench` (every app's frames against the budget; `--env
   K=V` gives every app a switch, to compare without a rebuild, as
   `--env OLO_EXACT_PATHS=0`),
@@ -7028,6 +7033,87 @@ When the displays sleep for idleness, `Backend::set_displays_on(false)`
 clears every CRTC on DRM (DPMS off) and rendering stops, since any frame
 would turn them back on; input, waking from sleep or a returning session
 calls it with `true` and renders again.
+
+### The pointer on a thread of its own (app_server input_thread.rs)
+
+Preferences ▸ Performance ▸ Scheduler ▸ Pointer, "Move the pointer on a
+thread of its own" (`Settings::input_thread`, off until tried on Ben's
+ThinkPad; `OLO_INPUT_THREAD=1` or `0` overrides it): libinput is read on
+a thread of its own, `olo-input`, at nice −15 (the most rtkit gives; not
+realtime, as rtkit's limit on a realtime thread that spins would end
+app_server and the whole desktop with it), and while app_server's loop
+is held, that thread moves the cursor itself. Why: the loop does
+everything (clients' requests, every display's frames), and under load
+it was seen held 78 and 142 ms in the GPU driver waiting for a buffer's
+lock (2026-11-12); with libinput on the loop the pointer stood still
+that long, and worse, the kernel keeps only 64 events of a device
+unread (about 30 ms of a 1000 Hz mouse) and drops the rest, so the
+pointer also ended up short of where the hand took it.
+
+- libinput's context and devices live on the thread (they aren't
+  `Send`). Its events are made owned (`input_thread::Threaded`, smithay's
+  `InputBackend`: every event kind, with its device's snapshot `Dev`)
+  and sent to the loop a batch a read, numbered; the loop handles them
+  exactly as libinput's own (the handling is generic), then says which
+  it handled and where the pointer is (`View`). Settings, the keyboards'
+  lights, a restart for the touch filter and the session pausing go the
+  other way as `Command`s. Devices are opened by the session, the loop's
+  alone: the thread asks (`contacts::Request`) and waits; the loop never
+  waits on the thread.
+- After each frame the loop says where the cursor plane is (smithay's
+  `DrmCompositor::cursor_plane`) with the pointer where that frame drew
+  it, on the CRTC's own cursor plane only (not an overlay standing in for
+  one), and not while a window locks or confines the pointer, a finger is
+  the pointer, a drag shows its icon, a mirror shows the display, the
+  displays are off or the session is another's.
+- A motion the loop hasn't handled after 12 ms (`TAKE_OVER`): the thread
+  moves the plane to where the loop will put the pointer (its last place
+  and the motion since, kept on the screens as the loop keeps it, on the
+  display it's on, turned as the display is) with the kernel's legacy
+  cursor move, which keeps the plane's buffer and takes the CRTC's locks
+  and none of the GPU's; at most every 4 ms (it shows at a vblank). The
+  loop catches up from the same events and draws it there; when it has,
+  it wakes the thread, which lets go ("the loop caught up: the input
+  thread had moved the pointer while it was held ms=388 moves=60").
+- The switch takes effect at once, both ways (`start_libinput`): on,
+  the loop's libinput is dropped (closing its devices) and the thread
+  started; off, the thread is told to quit and libinput starts on the
+  loop again only once the thread says it has closed every device
+  (`contacts::Request::Stopped`, on the same channel as its closes), so
+  no device is ever open twice. Either way the devices come back as
+  new, with their settings.
+- What it costs (vkms, a 1000 Hz mouse, each thread's time on a CPU from
+  its schedstat, six runs of each, 2026-11-13): idle, nothing (0 wakeups:
+  the thread sleeps in its poll, with no timer unless a motion is
+  waiting on the loop); moving, one more wakeup a report and about 3% of
+  a core more: the loop 4.6% and the thread 3.8%, against 5.4% on the
+  loop alone (about 30 µs a report, so 0.4% for a 125 Hz mouse or
+  touchpad). Most of it is the second wakeup itself; calloop's own
+  calls (5 of the thread's 9 a report: its timerfd and notifier, re-armed
+  each wait) are under 0.2% and were left.
+
+`tools/dev/cursor-thread-check` tries it on a real seat of its own:
+asks sudo once for a virtual display with a cursor plane (vkms) and a
+virtual mouse (uinput) on "seat-olotest", which the person's session
+never sees (`tools/dev/cursor-thread-seat`: a udev rule, checked before
+anything moves, all undone at the end), runs a test app_server there
+(`OLO_TEST_SEAT`, libseat's noop session, a sandbox home, drawing in
+software) with libinput on the loop, then turns the switch on as
+Preferences does (`set_settings`) and again off, and each way reads
+the kernel's cursor plane every 5 ms while the loop is held 400 ms
+(`{"type":"hold_loop","ms":400}`, which only a test app_server
+honours). vkms shows its 512 px cursor plane only while all of it is on
+its 1024 × 768 display, so the check starts the pointer near the top
+left each time. 2026-11-13: on the loop, the plane stood still 260 ms
+(all the motion there was) and the loop, catching up, put the pointer at
+162 px of the 302 the mouse had moved it to; on the thread, it never
+stood still more than 20 ms (12 to take over, 4 between moves, 5
+between reads) and the loop put it exactly where the thread had; turned
+off again, the plane followed the mouse on the loop.
+Left: the first frame after a hold may have been drawn before it, so
+the pointer can step back to there for a frame (seen once, 1 px); and Ben's Intel panel
+(PSR2) may take the kernel's slow path for a legacy cursor move, a
+commit a move, which only his machine shows.
 
 ## Every frame on time (app_server frames.rs; Activity Monitor ▸ Displays)
 

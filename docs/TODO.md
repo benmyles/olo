@@ -13,27 +13,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-- **The pointer never stops under load** (Ben, 2026-11-12: "under
-  load the mouse still gets unresponsive for a few seconds every now
-  and then. i've got LAVD off b/c that made it even worse, as did the
-  supervisor. how else can we improve desktop responsiveness even
-  under load?", then "wouldn't it be better to give the cursor its own
-  thread anyway?"). Looked at first, read-only, on his session: during
-  a build (load 15–23) app_server's main thread waited at most 33 ms
-  to run, but twice sat 78 and 142 ms inside an ioctl in the xe GPU
-  driver's buffer lock (`drm_exec_lock_contended`), with the pointer
-  stopped meanwhile; a from-scratch build here for 4 minutes (load up
-  to 20) found nothing over 40 ms; the freezes of seconds weren't
-  caught. *Done:* app_server says in its log when input reaches it
-  late and what held its loop (HACKING, "{"type":"timings"}"), so the
-  next freeze names its cause; agent screens and test sessions no
-  longer raise their app_server above everything (three of them sat at
-  nice −10 beside his). *Next:* the cursor on a thread of its own:
-  libinput read on an input thread that moves the hardware cursor
-  itself when the main thread hasn't taken input for ~12 ms, the main
-  thread catching up from the same events (as mutter's input and KMS
-  threads). Off until tried on a real seat (vkms on a seat of its own).
-
 - **From GPUI to Olo's own kits: retained, message passing, a looper a
   window** (Ben, 2026-11-10: "scrapping gpui in olo and replacing with
   our own beos inspired retained mode, smp first, message passing
@@ -1100,6 +1079,42 @@ AirPods' config, f8e63000: 82.6 dB SNR, 50 wanted) and the
 accessibility tree test on an agent screen (GTK's Text Editor, 30
 nodes). What's left needs Ben: in Blocked, "The ignored tests that
 need Ben".)
+
+- **The pointer never stops under load** (Ben, 2026-11-12: "under
+  load the mouse still gets unresponsive for a few seconds every now
+  and then. i've got LAVD off b/c that made it even worse, as did the
+  supervisor. how else can we improve desktop responsiveness even
+  under load?", then "wouldn't it be better to give the cursor its own
+  thread anyway?"). Looked at first, read-only, on his session: during
+  a build (load 15–23) app_server's main thread waited at most 33 ms
+  to run, but twice sat 78 and 142 ms inside an ioctl in the xe GPU
+  driver's buffer lock (`drm_exec_lock_contended`), with the pointer
+  stopped meanwhile; the freezes of seconds weren't caught. *Done
+  2026-11-12:* app_server says in its log when input reaches it late
+  and what held its loop (HACKING, "{"type":"timings"}"), so the next
+  freeze names its cause; agent screens and test sessions no longer
+  raise their app_server above everything. *Done 2026-11-13:* the
+  pointer on a thread of its own (HACKING, "The pointer on a thread of
+  its own"): Preferences ▸ Performance ▸ Scheduler ▸ Pointer, "Move the
+  pointer on a thread of its own", off until Ben has tried it. libinput
+  is read on a thread at nice −15, which moves the hardware cursor
+  itself when the loop hasn't taken a motion for 12 ms; the loop
+  catches up from the same events. Tried on a real seat of the check's
+  own (`tools/dev/cursor-thread-check`: vkms and a virtual mouse on
+  "seat-olotest", his session never sees them): with the loop held
+  400 ms, on the loop the pointer stood still 260 ms and ended at 162
+  of 302 px (the kernel drops a device's unread events past 64); on the
+  thread it never stood still more than 20 ms and ended where it
+  should; switched on and off live, both ways. Costs nothing idle, and
+  about 3% of a core more while a 1000 Hz mouse moves. *Ben's to try:*
+  after upgrading, turn the switch on and use the machine under load
+  as when it froze: the pointer should keep moving even when windows
+  stop drawing. **Not tried on his machine**: his Intel panel (PSR2)
+  may take the kernel's slow path for a legacy cursor move, which only
+  it shows; if the pointer is worse with it on, turn it off and say so.
+  (LAVD is running again: an Authenticate dialog on his session, for
+  `olo-doctor --helper`, started `olo-scheduler.service` on 2026-11-12
+  at 22:44.)
 
 - **A window on the HDMI display was scrambled** (Ben, 2026-11-12:
   "when i plugged in an hdmi cable earlier to try show a video on the

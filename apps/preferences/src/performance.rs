@@ -11,6 +11,9 @@
 //! setting of the person's but the computer's: choosing one has Olo
 //! Doctor set it (`olo-doctor --scheduler`, as root through polkit), and
 //! what's shown is read from the system (`olo_system::scheduler`).
+//!
+//! Beside it, the pointer on a thread of its own: app_server's setting
+//! (`Settings::input_thread`, through the form like any other).
 
 use std::{
     sync::{
@@ -189,6 +192,16 @@ fn scheduler_tab(ui: &mut Ui, shared: &Arc<Mutex<Scheduler>>) {
     });
 }
 
+/// The pointer on a thread of its own (app_server's `input_thread`):
+/// moved while app_server is busy, every motion kept.
+fn pointer_box(ui: &mut Ui) {
+    ui.bbox("Pointer", |ui| {
+        let on = ui.s.input_thread;
+        ui.check("Move the pointer on a thread of its own", on, |s, v| s.input_thread = v);
+        ui.note("The pointer keeps moving, and none of its motion is lost, while the desktop is busy: a slow frame, or a wait in the graphics driver under load. New, and being tried: if the mouse, touchpad or keyboard misbehaves with it on, turn it off.");
+    });
+}
+
 fn state_of(v: &mut PanelView) -> Option<&mut State> {
     match &mut v.state {
         panel::State::Performance(st) => Some(st),
@@ -270,7 +283,8 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     let scheduler = st.scheduler.clone();
     let items = ui.collect(|ui| {
         if tab == 2 {
-            return scheduler_tab(ui, &scheduler);
+            scheduler_tab(ui, &scheduler);
+            return pointer_box(ui);
         }
         if tab == 0 {
             // The power mode is Power's; found from here too.

@@ -3994,5 +3994,11 @@
   "title": "AirPlay's sound on the television only",
   "caption": "A showing makes an output of its own (Den (AirPlay)), listed with the others while it's shown, and moves to it the sound that goes with what's shown: a window's app's, an agent screen's programs', a display's the computer's. It plays on the television and not on the speakers; back where it was when paused or stopped.",
   "image": "2026-11-12/215603-airplay-s-sound-on-the-television-only.png"
+ },
+ {
+  "time": "2026-11-13T00:12:56",
+  "title": "Preferences \u25b8 Performance: the pointer on a thread of its own",
+  "caption": "A Pointer box on the Scheduler tab: 'Move the pointer on a thread of its own' reads libinput on a thread of app_server's own that moves the hardware cursor while the desktop is busy, so the pointer never stops or loses motion. Off until tried; takes effect at once.",
+  "image": "2026-11-13/001256-preferences-performance-the-pointer-on-a-thread-.png"
  }
 ]

@@ -45,6 +45,9 @@ What Olo changed, so far (see "Every frame on time" in
   all when the pointer is wholly off the display. apple-drm's overlay
   plane standing in for a cursor plane refused one hanging off the
   display with EINVAL.
+- `DrmCompositor::cursor_plane`: the cursor plane and where it is in
+  the newest frame (rendered, queued, flipping or shown), so
+  app_server's input thread can move it while the loop is held.
 - Locks in one order (found by lockbud and olo-sync's tracing-mutex in
   debug builds): the popup manager's tree lock is a leaf, nothing else
   locked under it and it never under a surface's (`PopupManager`

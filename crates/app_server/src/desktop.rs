@@ -2031,7 +2031,11 @@ impl<B: Backend + 'static> AnvilState<B> {
         // The mice's speed and acceleration too: left out, the mouse speed
         // slider was saved and did nothing until app_server's next start
         // (Ben, 2026-11-01).
-        let pointer_changed = settings.touchpad != self.settings.touchpad || settings.mouse_speed != self.settings.mouse_speed || settings.mice != self.settings.mice;
+        // (And where libinput runs: on the loop or its own thread.)
+        let pointer_changed = settings.touchpad != self.settings.touchpad
+            || settings.mouse_speed != self.settings.mouse_speed
+            || settings.mice != self.settings.mice
+            || settings.input_thread != self.settings.input_thread;
         if settings.security.passwords.op_cli != self.settings.security.passwords.op_cli {
             olo_xdg::link_op_here(settings.security.passwords.op_cli);
         }
