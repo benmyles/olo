@@ -27,7 +27,7 @@ use std::io::{Read, Write};
 use olo_system::{
     battery, cpu_tuning,
     gpu_tuning::{self, Tuning},
-    gpus, power_profile, systemd,
+    gpus, nvme_power, power_profile, systemd,
 };
 
 use gpu_tuning::{
@@ -141,21 +141,62 @@ fn set() -> i32 {
 /// (and what was done said in `/run/olo-gpu-follow.json`, for Olo Doctor
 /// and Preferences).
 fn follow_now(mode: power_profile::Mode, on_battery: bool) -> Vec<(String, gpu_tuning::Applied)> {
-    let out = follow_plan(mode, on_battery);
+    let mut out = follow_plan(mode, on_battery);
     let kept = Tuning::load();
+    let before = gpu_tuning::Followed::load(std::path::Path::new("/")).unwrap_or_default();
+    let (done, drives, limited) = follow_drives(&kept.plan, mode, on_battery, &before.limited);
+    out.extend(done);
     let followed = gpu_tuning::Followed {
         version: gpu_tuning::FOLLOWER_VERSION,
         mode: mode.id().into(),
         on_battery,
         cpu: kept.plan.cpu_now(mode, on_battery).id().into(),
         top: kept.plan.cpu_top_now(mode, on_battery),
-        failed: out.iter().flat_map(|(what, done)| done.iter().filter_map(move |d| d.as_ref().err().map(|e| format!("{what}: {e}")))).collect(),
+        failed: failures(&out),
         cpu_after: cpu_tuning::caps(),
+        drives,
+        limited,
     };
     if let Err(e) = followed.save() {
         eprintln!("olo-gpu-tune: couldn't say what was done: {e}");
     }
     out
+}
+
+/// What failed in `out`, each as "what: why".
+fn failures(out: &[(String, gpu_tuning::Applied)]) -> Vec<String> {
+    out.iter().flat_map(|(what, done)| done.iter().filter_map(move |d| d.as_ref().err().map(|e| format!("{what}: {e}")))).collect()
+}
+
+/// Each NVMe drive on the plan's preset for `mode` and the supply: a
+/// lower working state set, or, As It Is, put back on PS0 only if the
+/// follower had lowered it (`limited`, by serial: else it's left quite
+/// alone). What was done, each drive as it is now, and those lowered.
+fn follow_drives(plan: &gpu_tuning::Plan, mode: power_profile::Mode, on_battery: bool, limited: &[String]) -> (Vec<(String, gpu_tuning::Applied)>, Vec<nvme_power::DriveState>, Vec<String>) {
+    let (mut out, mut drives, mut lowered) = (Vec::new(), Vec::new(), Vec::new());
+    for d in nvme_power::drives() {
+        let what = format!("{} ({})", d.label(), d.name);
+        let states = match nvme_power::power_states(&d.name) {
+            Ok(s) => s,
+            Err(e) => {
+                out.push((what, vec![Err(format!("its power states couldn't be read: {e}"))]));
+                drives.push(nvme_power::DriveState { serial: d.serial, model: d.model, name: d.name, ..Default::default() });
+                continue;
+            }
+        };
+        let preset = plan.nvme_now(mode, on_battery, &d.serial);
+        let target = preset.state(&states).or_else(|| limited.contains(&d.serial).then_some(0));
+        if let Some(ps) = target {
+            let watts = states.iter().find(|s| s.index == ps).map_or(0.0, |s| s.max_watts);
+            out.push((what, vec![nvme_power::set(&d.name, ps).map(|()| format!("power state {ps} ({watts:.1} W at most)")).map_err(|e| e.to_string())]));
+        }
+        if preset.state(&states).is_some() {
+            lowered.push(d.serial.clone());
+        }
+        let now = nvme_power::current(&d.name).ok();
+        drives.push(nvme_power::DriveState { serial: d.serial, model: d.model, name: d.name, states, now });
+    }
+    (out, drives, lowered)
 }
 
 fn follow_plan(mode: power_profile::Mode, on_battery: bool) -> Vec<(String, gpu_tuning::Applied)> {
@@ -235,12 +276,21 @@ fn follow() -> i32 {
     enum Change {
         Mode(Option<power_profile::Mode>),
         Supply,
+        /// Back from sleep: a drive's controller reset on the way puts it
+        /// back on its highest state.
+        Woke,
     }
     let (tx, rx) = std::sync::mpsc::channel();
     let modes = tx.clone();
     power_profile::watch(move |m| {
         let _ = modes.send(Change::Mode(m.map(|m| m.active)));
     });
+    let woke = tx.clone();
+    if let Err(e) = olo_system::power::watch_wake(move || {
+        let _ = woke.send(Change::Woke);
+    }) {
+        eprintln!("olo-gpu-tune: not told of resumes: {e}");
+    }
     battery::watch(move |_| {
         let _ = tx.send(Change::Supply);
     });
@@ -253,6 +303,23 @@ fn follow() -> i32 {
             Change::Mode(Some(m)) => mode = Some(m),
             Change::Mode(None) => continue,
             Change::Supply => on_battery = !battery::on_ac(),
+            Change::Woke => {
+                // Only the drives: the rest keeps across a sleep (and
+                // NVIDIA's GPU isn't woken for it).
+                if let Some(m) = mode {
+                    let mut followed = gpu_tuning::Followed::load(std::path::Path::new("/")).unwrap_or_default();
+                    let (done, drives, limited) = follow_drives(&Tuning::load().plan, m, on_battery, &followed.limited);
+                    if !done.is_empty() {
+                        println!("woke: the drives set again");
+                        followed.failed.retain(|f| !f.contains("(nvme"));
+                        followed.failed.extend(failures(&done));
+                        (followed.drives, followed.limited) = (drives, limited);
+                        let _ = followed.save();
+                        report(done);
+                    }
+                }
+                continue;
+            }
         }
         let Some(m) = mode else { continue };
         if last == Some((m, on_battery)) && matches!(change, Change::Supply) {

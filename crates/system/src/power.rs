@@ -123,6 +123,23 @@ pub fn watch_login(on: impl Fn(LoginEvent) + Send + Sync + 'static) -> Result<()
     Ok(())
 }
 
+/// `woke` called each time the computer is back from sleep (logind's
+/// `PrepareForSleep(false)`), on a thread of its own; nothing is held
+/// back meanwhile (no inhibitor).
+pub fn watch_wake(woke: impl Fn() + Send + 'static) -> Result<()> {
+    let conn = bus::system()?;
+    let manager = zbus::blocking::Proxy::new(conn, DEST, PATH, MANAGER)?;
+    let mut sleeps = manager.receive_signal("PrepareForSleep")?;
+    std::thread::Builder::new().name("logind-wake".into()).spawn(move || {
+        for msg in sleeps.by_ref() {
+            if msg.body().deserialize::<bool>().is_ok_and(|start| !start) {
+                woke();
+            }
+        }
+    })?;
+    Ok(())
+}
+
 /// End every login of user `uid` (logind's `TerminateUser`): Olo's login
 /// screen ends what an earlier run of it left of its own user's sessions
 /// (a greeter still drawing on the screen when it starts again).

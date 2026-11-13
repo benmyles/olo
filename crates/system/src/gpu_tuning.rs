@@ -54,8 +54,9 @@ pub const FOLLOWER_RULE: &str =
 /// What the follower does, as a number raised whenever that changes
 /// (not with every build): a follower that says an older one is out of
 /// date (Olo Doctor, Preferences ▸ Power). 2: the processors' top speed
-/// (Balanced's 75%) and Balanced leaning to saving on battery.
-pub const FOLLOWER_VERSION: u32 = 2;
+/// (Balanced's 75%) and Balanced leaning to saving on battery. 3: NVMe
+/// drives' power states, and set again after a resume.
+pub const FOLLOWER_VERSION: u32 = 3;
 
 /// What the follower last did, written by it after each change to
 /// `/run/olo-gpu-follow.json` (readable by all): which version it is,
@@ -75,6 +76,11 @@ pub struct Followed {
     /// What couldn't be set, as each write said.
     pub failed: Vec<String>,
     pub cpu_after: Option<crate::cpu_tuning::CpuCaps>,
+    /// Each NVMe drive: its power states and the one it's on.
+    pub drives: Vec<crate::nvme_power::DriveState>,
+    /// The drives the follower put on a lower state (by serial): back on
+    /// PS0 when the plan says As It Is again.
+    pub limited: Vec<String>,
 }
 
 impl Followed {
@@ -277,6 +283,34 @@ impl Plan {
     /// The processors' top speed in force in `mode`, on battery or not.
     pub fn cpu_top_now(&self, mode: crate::power_profile::Mode, on_battery: bool) -> u8 {
         on_battery.then(|| self.cpu_top(When::Battery)).flatten().or_else(|| self.cpu_top(When::Mode(mode))).unwrap_or_else(|| cpu_for_mode(mode).top())
+    }
+
+    /// NVMe drive `serial`'s preset `when` (on battery, None: the
+    /// mode's). Unless chosen, As It Is: the drive left alone.
+    pub fn nvme(&self, when: When, serial: &str) -> Option<crate::nvme_power::NvmePreset> {
+        match self.chosen.get(&format!("{}/nvme:{serial}", when.key())) {
+            Some(id) => crate::nvme_power::NvmePreset::parse(id),
+            None => match when {
+                When::Mode(_) => Some(crate::nvme_power::NvmePreset::AsIs),
+                When::Battery => None,
+            },
+        }
+    }
+
+    /// NVMe drive `serial`'s preset chosen `when` (None on battery: the
+    /// mode's).
+    pub fn set_nvme(&mut self, when: When, serial: &str, preset: Option<crate::nvme_power::NvmePreset>) {
+        let key = format!("{}/nvme:{serial}", when.key());
+        let default = match when {
+            When::Mode(_) => Some(crate::nvme_power::NvmePreset::AsIs),
+            When::Battery => None,
+        };
+        self.choose(key, preset == default, preset.map_or("mode", |p| p.id()));
+    }
+
+    /// NVMe drive `serial`'s preset in force in `mode`, on battery or not.
+    pub fn nvme_now(&self, mode: crate::power_profile::Mode, on_battery: bool, serial: &str) -> crate::nvme_power::NvmePreset {
+        on_battery.then(|| self.nvme(When::Battery, serial)).flatten().or_else(|| self.nvme(When::Mode(mode), serial)).unwrap_or_default()
     }
 
     /// The processors' preset chosen `when` (None on battery: the mode's).
@@ -791,6 +825,24 @@ mod tests {
         plan.set_cpu(When::Battery, None);
         // Back on the defaults: nothing kept.
         plan.set_cpu_top(When::Mode(Mode::Balanced), Some(75));
+        assert!(plan.chosen.is_empty(), "{plan:?}");
+    }
+
+    /// NVMe drives: left as they are unless chosen; on battery the
+    /// mode's; a choice back on As It Is leaves nothing kept.
+    #[test]
+    fn the_plan_s_drives() {
+        use crate::{nvme_power::NvmePreset, power_profile::Mode};
+        let mut plan = Plan::default();
+        assert_eq!(plan.nvme_now(Mode::Performance, true, "S1"), NvmePreset::AsIs);
+        plan.set_nvme(When::Mode(Mode::PowerSaver), "S1", Some(NvmePreset::Coolest));
+        plan.set_nvme(When::Battery, "S1", Some(NvmePreset::Cooler));
+        assert_eq!(
+            (plan.nvme_now(Mode::PowerSaver, false, "S1"), plan.nvme_now(Mode::Performance, true, "S1"), plan.nvme_now(Mode::PowerSaver, false, "S2")),
+            (NvmePreset::Coolest, NvmePreset::Cooler, NvmePreset::AsIs)
+        );
+        plan.set_nvme(When::Mode(Mode::PowerSaver), "S1", Some(NvmePreset::AsIs));
+        plan.set_nvme(When::Battery, "S1", None);
         assert!(plan.chosen.is_empty(), "{plan:?}");
     }
 

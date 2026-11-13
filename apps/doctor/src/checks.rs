@@ -1974,7 +1974,7 @@ fn power_now(roots: &Roots, r: &mut Report) {
 
 /// What Olo's power mode follower does (`olo-gpu-tune follow`), said in
 /// each finding about it.
-const FOLLOWER_DOES: &str = "Olo's power mode follower puts the processors and each GPU on what Preferences ▸ Power ▸ Power Modes plans for the mode and the power supply, after the power profiles daemon has set its own: in Balanced the processors at up to 75% of their top speed (their hottest quarter left out, most of their speed kept), leaning to saving power on battery; NVIDIA's GPU saving power on battery.";
+const FOLLOWER_DOES: &str = "Olo's power mode follower puts the processors and each GPU on what Preferences ▸ Power ▸ Power Modes plans for the mode and the power supply, after the power profiles daemon has set its own: in Balanced the processors at up to 75% of their top speed (their hottest quarter left out, most of their speed kept), leaning to saving power on battery; NVIDIA's GPU saving power on battery; NVMe drives kept cooler where chosen (and set again after a resume).";
 
 /// The power modes as Olo plans them (Preferences ▸ Power ▸ Power
 /// Modes; Ben, 2026-11-13: "olo doctor should make sure those profiles
@@ -2924,6 +2924,7 @@ mod tests {
             top: 75,
             failed: vec!["turbo: Permission denied".into()],
             cpu_after: sys.caps(),
+            ..Default::default()
         };
         let save = |f: &Followed, ago: u64| {
             let path = Followed::path(&fs);

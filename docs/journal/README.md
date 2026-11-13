@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-13
 
+### Power Modes: an SSD row
+
+*12:53* — Each NVMe drive gets a row in Preferences ▸ Power ▸ Power Modes: As It Is by default (untouched), or Cooler and Coolest, its own lower working power states, with their watts once the follower has read the drive (Ben: "add the ability to adjust/customize nvme power for each profile").
+
+![Power Modes: an SSD row](2026-11-13/125307-power-modes-an-ssd-row.png)
+
 ### Power Modes: the processors' top speed
 
 *12:38* — Preferences ▸ Power ▸ Power Modes gets a Top speed row: how fast the processors may go in each mode and on battery, Balanced 75% by default (Ben: Balanced ran too hot, Power Saver too slow). On the ThinkPad a loaded P-core now tops out at 3.6 GHz of its 4.7 in Balanced.

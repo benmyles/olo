@@ -1363,6 +1363,20 @@ accessibility tree test on an agent screen (GTK's Text Editor, 30
 nodes). What's left needs Ben: in Blocked, "The ignored tests that
 need Ben".)
 
+- **An NVMe drive kept cooler, chosen for each power mode** (Ben,
+  2026-11-13: "also add the ability to adjust/customize nvme power for
+  each profile for when a user wants to get their nvme drive to run a
+  bit cooler (but default should be whatever it is now / by
+  default)"). Done: an SSD row in Preferences ▸ Power ▸ Power Modes, As
+  It Is unless chosen (the drive untouched), Cooler and Coolest its own
+  lower working power states (NVMe Set Features, natively through the
+  kernel's admin passthrough), set by the follower on each mode and
+  supply change and again after a resume. Tested on made-up Identify
+  data and in Preferences at every scale; the passthrough itself is
+  root's, so it first runs on the real drive in Ben's follower. For
+  Ben: after the upgrade, Apply in Preferences ▸ Power (or Olo Doctor's
+  Update It); the SSD menus then show each state's watts, and choosing
+  Cooler logs "power state 1 (… W at most)" in olo-gpu-follow's journal.
 - **Balanced keeps the processors out of their hottest top speed, and
   Olo Doctor sees that the modes are set as planned** (Ben, 2026-11-13:
   "right now the cpu on it ends up still being too high, but on power

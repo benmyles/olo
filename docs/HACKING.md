@@ -7723,7 +7723,26 @@ configurable with reasonable defaults"), in three tabs:
   balanced instead?"). The last quarter of a processor's clock is where
   it spends most (its voltage climbs with it), so the cap takes away the
   hottest bursts and keeps most of the speed; Power Saver, without
-  turbo, holds the ThinkPad's P-cores at 1.9 GHz of their 4.7. A GPU's are Cooler and Quieter,
+  turbo, holds the ThinkPad's P-cores at 1.9 GHz of their 4.7. Then a
+  row for each NVMe drive (`olo_system::nvme_power`; Ben, 2026-11-13:
+  "add the ability to adjust/customize nvme power for each profile for
+  when a user wants to get their nvme drive to run a bit cooler (but
+  default should be whatever it is now / by default)"): As It Is (the
+  default: the drive untouched), Cooler (its second working power
+  state) or Coolest (its lowest), each with the most it draws in it
+  ("Cooler (6.3 W)") once the follower has read the drive's own table,
+  which is root's (Identify Controller's power state descriptors,
+  through the kernel's admin passthrough, `NVME_IOCTL_ADMIN_CMD` on
+  /dev/nvmeN, natively); a drive with one working state offers only As
+  It Is. The follower sets the state with Set Features (Power
+  Management, not saved on the drive); APST's resting states are the
+  drive's own and it comes back to the state set. As It Is touches a
+  drive only to put back PS0 on one the follower had lowered
+  (`Followed::limited`). A controller reset (some resumes) puts a drive
+  back on PS0, so the follower sets the drives again as logind says the
+  computer woke (`power::watch_wake`), the drives alone. Drives are
+  known in the plan by serial ("balanced/nvme:SERIAL"), as names can
+  change between starts. A GPU's are Cooler and Quieter,
   Balanced, Fastest (`gpu_tuning::preset`) or Custom (its own knobs, on
   Graphics). The On Battery column is "As the Mode" or a preset that
   holds whatever the mode. The defaults: each mode's own, and on battery
@@ -7828,9 +7847,10 @@ follower says what it did in `/run/olo-gpu-follow.json`
 (`gpu_tuning::Followed`, readable by all): its version
 (`FOLLOWER_VERSION`, raised whenever what the follower does changes, not
 with every build: a new build of the same follower isn't worth an
-administrator's password), the mode and supply, the processors' preset
-and top speed, what was refused, and the processors as they were just
-after. One password, at the first Apply; Power Modes offers Apply while
+administrator's password; 3 has the drives), the mode and supply, the
+processors' preset and top speed, what was refused, the processors as
+they were just after, and each NVMe drive's power states and the one
+it's on. One password, at the first Apply; Power Modes offers Apply while
 the service isn't there, or says an older version (or nothing), and
 otherwise says what's in force now. Olo Doctor checks the same
 (`power_modes`, with a power profiles daemon and processors that can be
