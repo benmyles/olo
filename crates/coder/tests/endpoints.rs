@@ -559,7 +559,12 @@ async fn agent_retrieves_exact_transcript_and_large_checkpoint_with_a_small_tool
         let captured = captured.clone();
         let checkpoint = checkpoint.clone();
         async move {
-            let messages = body["messages"].as_array().unwrap();
+            // The conversation, less the session state (and its reminders)
+            // Coder adds after it.
+            let mut messages = body["messages"].as_array().unwrap().clone();
+            if messages.last().and_then(|m| m["content"].as_str()).is_some_and(|c| c.starts_with("[Current Olo Coder session state")) {
+                messages.pop();
+            }
             let last = messages.last().unwrap();
             let mut memory = captured.lock().unwrap();
             let (name, args) = if last["role"] != "tool" {

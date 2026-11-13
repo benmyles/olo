@@ -1,5 +1,12 @@
 //! SQLite WAL: snapshots and their audit event commit atomically. History is paged,
 //! never loaded wholesale on reconnect. Each effect is journaled before dispatch.
+//!
+//! A session's snapshot doesn't hold its context: each context item is a
+//! `transcript` row, written once, and the snapshot keeps their ids
+//! (`context_refs`); reading a session rebuilds its context from them,
+//! only the rows added since it was last read (`contexts`, a few recent
+//! sessions' contexts kept). So saving a session after each event writes
+//! the little that changed, not its whole conversation again.
 use crate::model::*;
 use anyhow::{Context, Result};
 use rusqlite::{Connection, OptionalExtension, params};
@@ -11,7 +18,13 @@ use std::{
 
 pub struct Store {
     db: Connection,
+    /// The contexts of the sessions read most recently (last: latest),
+    /// with the transcript ids they were built from.
+    contexts: std::cell::RefCell<std::collections::VecDeque<(String, Vec<i64>, Vec<Value>)>>,
 }
+
+/// How many sessions' contexts are kept built.
+const CONTEXTS_KEPT: usize = 8;
 impl Store {
     pub fn open(dir: &Path) -> Result<Self> {
         std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
@@ -21,7 +34,7 @@ impl Store {
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
         db.busy_timeout(std::time::Duration::from_secs(5))?;
         let version: i64 = db.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-        anyhow::ensure!(version <= 6, "session database was written by a newer Olo Coder");
+        anyhow::ensure!(version <= 7, "session database was written by a newer Olo Coder");
         db.execute_batch(
             "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;
           CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY, updated INTEGER NOT NULL, body TEXT NOT NULL);
@@ -99,15 +112,51 @@ impl Store {
                 CREATE TABLE IF NOT EXISTS inherited_compactions(session TEXT NOT NULL, id TEXT NOT NULL, cursor INTEGER NOT NULL, created INTEGER NOT NULL, body TEXT NOT NULL, PRIMARY KEY(session,id));
                 PRAGMA user_version=6; COMMIT;")?;
         }
-        Ok(Self { db })
+        if version < 7 {
+            // From here snapshots are saved without their context (rebuilt
+            // from the transcript); an older Coder would read them as
+            // empty, so it must refuse this database.
+            db.execute_batch("PRAGMA user_version=7;")?;
+        }
+        Ok(Self { db, contexts: Default::default() })
     }
     pub fn interrupt_compactions(&self, session: Option<&str>) -> Result<()> {
         self.db.execute("UPDATE compactions SET status='interrupted',body=json_set(body,'$.status','interrupted') WHERE status='preparing' AND (? IS NULL OR session=?)", params![session, session])?;
         Ok(())
     }
     pub fn get(&self, id: &str) -> Result<Session> {
+        let mut s = self.get_without_context(id)?;
+        if s.context.len() != s.context_refs.len() {
+            s.context = self.context_of(id, &s.context_refs)?;
+        }
+        Ok(s)
+    }
+    /// The session as saved, its context left out (empty) unless the
+    /// snapshot predates saving without it: for showing, not for running.
+    pub fn get_without_context(&self, id: &str) -> Result<Session> {
         let body: String = self.db.query_row("SELECT body FROM sessions WHERE id=?", [id], |r| r.get(0)).context("session not found")?;
         Ok(serde_json::from_str(&body)?)
+    }
+    /// Session `id`'s context from its transcript `refs`: what was built
+    /// for it before, as far as its refs still agree (rows never change),
+    /// and the rest read.
+    fn context_of(&self, id: &str, refs: &[i64]) -> Result<Vec<Value>> {
+        let mut kept = self.contexts.borrow_mut();
+        let (mut known, mut items) = match kept.iter().position(|(s, ..)| s == id) {
+            Some(i) => kept.remove(i).map(|(_, r, v)| (r, v)).unwrap_or_default(),
+            None => Default::default(),
+        };
+        let same = known.iter().zip(refs).take_while(|(a, b)| a == b).count();
+        known.truncate(same);
+        items.truncate(same);
+        items.extend(self.transcript_items(id, &refs[same..])?);
+        known.extend_from_slice(&refs[same..]);
+        let out = items.clone();
+        kept.push_back((id.to_owned(), known, items));
+        while kept.len() > CONTEXTS_KEPT {
+            kept.pop_front();
+        }
+        Ok(out)
     }
     pub(crate) fn active_children<'a>(&self, parent: &str, parent_depth: usize, active: impl Iterator<Item = &'a str>) -> Result<usize> {
         // Query only supervisor reservations, independent of historical session count.
@@ -186,7 +235,7 @@ impl Store {
     }
     pub fn list(&self) -> Result<Vec<Value>> {
         let mut q = self.db.prepare("SELECT json_object('id',id,'title',json_extract(body,'$.title'),'workspace',json_extract(body,'$.workspace'),'status',json_extract(body,'$.status'),'updated',updated,'parent',json_extract(body,'$.parent'),'model',json_extract(body,'$.config.model.model'),'usage',json_extract(body,'$.usage'),
-          'fresh',json(CASE WHEN coalesce(json_extract(body,'$.turns'),0)=0 AND coalesce(json_array_length(body,'$.context'),0)=0 AND json_type(body,'$.goal') IS NOT 'object'
+          'fresh',json(CASE WHEN coalesce(json_extract(body,'$.turns'),0)=0 AND coalesce(json_array_length(body,'$.context_refs'),0)=0 AND json_type(body,'$.goal') IS NOT 'object'
             AND coalesce(json_array_length(body,'$.inbox'),0)=0 AND coalesce(json_array_length(body,'$.queued'),0)=0 AND json_extract(body,'$.parent') IS NULL
             AND NOT coalesce(json_extract(body,'$.archived'),0) THEN 'true' ELSE 'false' END)) FROM sessions ORDER BY updated DESC")?;
         let rows = q.query_map([], |r| r.get::<_, String>(0))?;
@@ -263,7 +312,11 @@ impl Store {
             tx.execute("UPDATE compactions SET status='restored',body=json_set(body,'$.status','restored') WHERE id=? AND session=?", params![data["checkpoint_id"].as_str(), s.id])?;
             tx.execute("UPDATE inherited_compactions SET body=json_set(body,'$.status','restored') WHERE id=? AND session=?", params![data["checkpoint_id"].as_str(), s.id])?;
         }
-        tx.execute("INSERT INTO sessions VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET updated=excluded.updated,body=excluded.body", params![s.id, s.updated as i64, serde_json::to_string(s)?])?;
+        // Without its context: every item is a transcript row by now.
+        let context = std::mem::take(&mut s.context);
+        let body = serde_json::to_string(s);
+        s.context = context;
+        tx.execute("INSERT INTO sessions VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET updated=excluded.updated,body=excluded.body", params![s.id, s.updated as i64, body?])?;
         match kind {
             "message_queued" | "message_outgoing" => {
                 let message: Message = serde_json::from_value(data["message"].clone())?;
@@ -302,6 +355,14 @@ impl Store {
         tx.execute("INSERT INTO events(session,time,kind,data) VALUES(?,?,?,?)", params![s.id, now() as i64, kind, data.to_string()])?;
         let seq = tx.last_insert_rowid();
         tx.commit()?;
+        // The context kept for it follows (only what's new is copied).
+        if let Some((_, known, items)) = self.contexts.borrow_mut().iter_mut().find(|(id, ..)| *id == s.id) {
+            let same = known.iter().zip(&s.context_refs).take_while(|(a, b)| a == b).count();
+            known.truncate(same);
+            items.truncate(same);
+            known.extend_from_slice(&s.context_refs[same..]);
+            items.extend_from_slice(&s.context[same..]);
+        }
         Ok(Event { seq, session: s.id.clone(), time: now(), kind: kind.into(), data })
     }
     pub fn events(&self, session: &str, after: i64, limit: usize) -> Result<Vec<Event>> {
@@ -391,4 +452,53 @@ pub(crate) fn transcript_text(item: &Value) -> String {
     let mut text = String::new();
     walk(item, &mut text);
     text
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("olo-coder-store-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        dir
+    }
+
+    #[test]
+    fn snapshots_leave_context_to_the_transcript_and_reads_rebuild_it() {
+        let dir = scratch("context");
+        let mut db = Store::open(&dir).unwrap();
+        let mut s = Session::new("/var/tmp".into(), Config::default());
+        for i in 0..5 {
+            s.context.push(json!({"role":"user","content":format!("message {i} \0 🌿")}));
+        }
+        db.save(&mut s, "created", json!({})).unwrap();
+        let body: String = db.db.query_row("SELECT body FROM sessions WHERE id=?", [&s.id], |r| r.get(0)).unwrap();
+        assert!(!body.contains("message 0"), "the snapshot holds no context: {body}");
+        // Read fresh (from the transcript), then as kept, after an append.
+        let read = Store::open(&dir).unwrap().get(&s.id).unwrap();
+        assert_eq!(read.context, s.context);
+        assert_eq!(db.get(&s.id).unwrap().context, s.context);
+        let mut more = db.get(&s.id).unwrap();
+        more.context.push(json!({"role":"assistant","content":"reply"}));
+        db.save(&mut more, "assistant", json!({})).unwrap();
+        assert_eq!(db.get(&s.id).unwrap().context, more.context);
+        assert_eq!(Store::open(&dir).unwrap().get(&s.id).unwrap().context, more.context);
+        // A summary replacing the front (refs no longer agree from the start).
+        let mut compacted = db.get(&s.id).unwrap();
+        compacted.context.splice(..3, [json!({"role":"user","content":"summary"})]);
+        compacted.context_refs.splice(..3, [0]);
+        db.save(&mut compacted, "compaction_applied", json!({})).unwrap();
+        assert_eq!(db.get(&s.id).unwrap().context, compacted.context);
+        assert_eq!(Store::open(&dir).unwrap().get(&s.id).unwrap().context, compacted.context);
+        assert!(db.get_without_context(&s.id).unwrap().context.is_empty());
+        // A snapshot from before (its context in it) still reads as it was.
+        let mut legacy: Value = serde_json::from_str(&body).unwrap();
+        legacy["context"] = json!([{"role":"user","content":"kept in the body"}]);
+        legacy["context_refs"] = json!([1]);
+        db.db.execute("UPDATE sessions SET body=? WHERE id=?", params![legacy.to_string(), s.id]).unwrap();
+        assert_eq!(Store::open(&dir).unwrap().get(&s.id).unwrap().context, vec![json!({"role":"user","content":"kept in the body"})]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

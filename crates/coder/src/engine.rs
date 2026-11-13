@@ -132,6 +132,12 @@ impl Engine {
     pub fn get(&self, id: &str) -> Result<Session> {
         self.store.lock().unwrap().get(id)
     }
+    /// The session without its context (for showing it, not running it).
+    pub fn get_without_context(&self, id: &str) -> Result<Session> {
+        let mut s = self.store.lock().unwrap().get_without_context(id)?;
+        s.context.clear();
+        Ok(s)
+    }
     fn save(&self, s: &mut Session, kind: &str, data: Value) -> Result<()> {
         self.checkpoint(&mut self.store.lock().unwrap(), s, kind, data)
     }
@@ -248,8 +254,7 @@ impl Engine {
             }
             Command::List => Ok(self.store.lock().unwrap().list()?.into()),
             Command::Get { session } => {
-                let mut s = self.get(&session)?;
-                s.context.clear();
+                let mut s = self.get_without_context(&session)?;
                 s.pending_images.clear();
                 Ok(serde_json::to_value(s)?)
             }
@@ -1280,8 +1285,7 @@ impl Engine {
             "wait_agent" => {
                 let child = tools::string(a, "session")?;
                 let mut events = self.events.subscribe();
-                let mut c = self.get(child)?;
-                c.context.clear();
+                let mut c = self.get_without_context(child)?;
                 c.pending_images.clear();
                 ensure!(c.parent.as_deref() == Some(sid), "not this session's child");
                 let wait = async {
@@ -1311,15 +1315,13 @@ impl Engine {
                         if let Ok(result) = result { result?; }
                     }
                 }
-                let mut c = self.get(child)?;
-                c.context.clear();
+                let mut c = self.get_without_context(child)?;
                 c.pending_images.clear();
                 Ok(json!({"session":c}))
             }
             "agent_status" | "message_agent" | "stop_agent" => {
                 let child = tools::string(a, "session")?;
-                let mut c = self.get(child)?;
-                c.context.clear();
+                let mut c = self.get_without_context(child)?;
                 c.pending_images.clear();
                 ensure!(c.parent.as_deref() == Some(sid), "not this session's child");
                 match call.name.as_str() {

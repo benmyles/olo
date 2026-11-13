@@ -404,6 +404,15 @@ Custom streams must supply a valid completion reason and `[DONE]` before
 admission. Tool calls require unique, nonempty IDs and object arguments, so an
 unfinished argument stream cannot become a call with placeholder arguments.
 
+A snapshot doesn't repeat the conversation: each context item is a transcript
+record written once, and the snapshot keeps their IDs (`context_refs`). Reading
+a session rebuilds its context from them, reading only records added since it
+was last read (the service keeps the last eight sessions' contexts built). A
+730 KB session's per-event save costs 1.7 ms and writes 150 KB, not 6.3 ms and
+1.2 MB (`tests/store_cost.rs`). `get` doesn't build the context at all. The
+database is version 7 from this change; an older Coder refuses it rather
+than read snapshots as having no context.
+
 The full audit history is paged and searchable through a persistent SQLite FTS5
 trigram index, independently of the active context. Views retain at most 256 KB / 2,000 recent lines; reconnect initially
 replays 500 events and then follows new ones. Events have monotonic sequence
