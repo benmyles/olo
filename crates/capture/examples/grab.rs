@@ -1,11 +1,12 @@
 //! Frames of a capture source to files, for a test to look at:
 //!
-//!   grab [--display NAME] [--window ID | --workspace N] [--frames K] OUT
+//!   grab [--display NAME] [--window ID | --workspace N] [--fit WxH] [--frames K] OUT
 //!
 //! takes K frames (1 if not said; each after the first once what's
 //! captured has changed) of a display (the first, or NAME), a window
-//! (as Olo numbers them) or one of a display's workspaces (from 1), and
-//! writes them as OUT-1.ppm, OUT-2.ppm, … Run it on a test session
+//! (as Olo numbers them) or one of a display's workspaces (from 1),
+//! drawn smaller by app_server to fit W × H if said (`Capture::fit`),
+//! and writes them as OUT-1.ppm, OUT-2.ppm, … Run it on a test session
 //! (`tools/dev/tsession run NAME`), never the person's.
 
 use olo_capture::{Capture, Source};
@@ -16,7 +17,7 @@ fn option<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
 
 fn main() -> Result<(), String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let out = args.last().filter(|a| !a.starts_with("--")).ok_or("grab [--display NAME] [--window ID | --workspace N] [--frames K] OUT")?;
+    let out = args.last().filter(|a| !a.starts_with("--")).ok_or("grab [--display NAME] [--window ID | --workspace N] [--fit WxH] [--frames K] OUT")?;
     let display = option(&args, "--display").map(str::to_owned);
     let source = if let Some(id) = option(&args, "--window") {
         Source::Window { id: id.parse().map_err(|_| "--window takes a window's number")?, app_id: String::new(), title: String::new() }
@@ -28,6 +29,12 @@ fn main() -> Result<(), String> {
     };
     let frames: u32 = option(&args, "--frames").map_or(Ok(1), str::parse).map_err(|_| "--frames takes a number")?;
     let mut capture = Capture::new(&source, false)?;
+    if let Some(fit) = option(&args, "--fit") {
+        let (w, h) = fit.split_once('x').and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?))).ok_or("--fit takes WxH")?;
+        if !capture.fit(w, h)? {
+            return Err("app_server can't fit frames".into());
+        }
+    }
     for k in 1..=frames {
         let start = std::time::Instant::now();
         let p = capture.frame()?;

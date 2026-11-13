@@ -8707,14 +8707,16 @@ its request, for the app's Cancel and for holding an upgrade off.
   protocols are kept from outside programs (wlproxy's list doesn't have
   them). A window share reconnects after a reload by its id, or one with
   the same app id and title (windows come back with new ids).
+- **Olo's own sources**: Olo's own protocol, its first
+  (`crates/capture/protocols/olo-image-capture-source-v1.xml`, bound
+  with `wayland-scanner` on both sides: `capture::protocol`,
+  `olo_capture::protocol`), whose `olo_image_capture_source_manager_v1`
+  makes two kinds of `ext_image_capture_source_v1` that the standard
+  managers don't (`capture::OloSources`).
 - **Workspaces** (`capture::Target::Workspace`; Show on AirPlay's
-  workspace): Olo's own protocol, its first
-  (`crates/capture/protocols/olo-workspace-capture-v1.xml`, bound with
-  `wayland-scanner` on both sides: `capture::protocol`,
-  `olo_capture::protocol`), whose
-  `olo_workspace_image_capture_source_manager_v1.create_source(source,
-  wl_output, workspace)` makes an `ext_image_capture_source_v1` of one
-  of a display's workspaces (from 0; one past the last is the last),
+  workspace): `create_workspace_source(source, wl_output, workspace)`
+  is one of a display's workspaces (from 0; one past the last is the
+  last),
   captured as an output is (`olo_capture::Source::Workspace`), at the
   display's size. While the display shows that workspace (or in Rescue,
   or locked) its picture is the display's, as a capture of the display
@@ -8731,14 +8733,29 @@ its request, for the app's Cancel and for holding an upgrade off.
   shows. Only Olo's own programs see the global (on the direct socket,
   where wlproxy, passing on only the globals it knows, never shows it).
   To look at what a source gives, `tsession run NAME …/examples/grab
-  [--display NAME] [--window ID | --workspace N] [--frames K] OUT`
-  (`cargo build --release -p olo-capture --example grab`) writes its
-  frames as OUT-1.ppm, OUT-2.ppm, … (each after the first once what's
-  captured changed). Measured (release, a headless 1920 × 1200 session
+  [--display NAME] [--window ID | --workspace N] [--fit WxH] [--frames
+  K] OUT` (`cargo build --release -p olo-capture --example grab`)
+  writes its frames (fitted, with --fit) as OUT-1.ppm, OUT-2.ppm, …
+  (each after the first once what's captured changed). Measured
+  (release, a headless 1920 × 1200 session
   at 2×, a Terminal printing ten lines a second on workspace 2 shown on
   the test receiver): app_server 1.4% of a core, 72 wakeups a second
   while the display shows workspace 1, 2.2% (93) with workspace 2 shown
   there, as it then draws the display too; nothing shown, 0.0% and 4.
+- **Fitted** (`capture::FittedSource`; every AirPlay showing):
+  `create_fitted_source(source, of, width, height)` is what source `of`
+  shows, drawn smaller where it's larger than width × height, its shape
+  kept and each side even (`capture::fit_within`), never larger: the
+  picture's elements wrapped to be drawn scaled by the GPU as the
+  session's frame is (`capture::Fitting`, as a mirror's frame is,
+  `fit_picture`), so a video sender gets frames at the size it encodes
+  and shrinks nothing itself. The client asks with `Capture::fit(w, h)`
+  before its first frame (false from an app_server without it). Shown
+  on the test receiver, a Terminal printing nonstop on a 1920 × 1200 2×
+  display at 57 frames a second (release, `tools/dev/cost`): olo-airplay
+  32.4% of a core before (its encoder thread 23.8%, the resize 3.3 ms a
+  frame), 13.7% fitted (6.0%), app_server 6.3% then 6.8%; capture to
+  sent 8.1 ms then 4.7 ms (95th percentile 10.5 then 6.6).
 
 - **Zoom**: its own app offers Wayland sharing only when its
   `XDG_CURRENT_DESKTOP` is GNOME, so Olo starts it so
@@ -9743,9 +9760,12 @@ from Apple's, and LGPL where it's open).
   when something changed, so a still screen sends nothing but
   heartbeats. The newest waits for the encoder's worker (one that
   comes while the last is encoded takes its place, its buffer used
-  again), which makes it the receiver's size (`Screen::fit`, its shape
-  kept: a 2× display shrunk on the processor, `fast_image_resize`,
-  the fourth byte not weighed as alpha), encodes it (NVENC at up to
+  again). Frames come the receiver's size (`Screen::fit`, its shape
+  kept: a 2× display made smaller), drawn so by app_server on the GPU
+  (a fitted source, `Capture::fit`, "Screen sharing" ▸ Fitted; from an
+  older app_server, shrunk by the worker on the processor,
+  `fast_image_resize`, the fourth byte not weighed as alpha); the
+  worker encodes each (NVENC at up to
   60 a second where it opens, else OpenH264 at 30; a picture out for
   each in, no B-frames) and sends it. The sound is the computer's
   (`recording::Capture::start_as`, the default output's monitor, 10 ms
@@ -9758,12 +9778,13 @@ from Apple's, and LGPL where it's open).
 - Measured (release, a headless 1920 × 1200 session at 2× shown on the
   test receiver, `tools/dev/cost`): a still screen 1.2% of a core
   (2.0% with the sound's 10 ms chunks), paused 1.2%; a Terminal
-  printing nonstop, 57 frames a second of 1728 × 1080, 30% (the resize
-  3.3 ms a frame on the processor, NVENC 3.0 ms mostly waiting on the
-  GPU, the capture's copy 7.6%), 8.2 ms from capture to sent (9.2 at
-  the 95th percentile). The resize and the copy are the waste: frames
-  kept on the GPU (lent dmabufs scaled and encoded by VA-API, as the
-  recorder does for AV1) are next.
+  printing nonstop, 57 frames a second of 1728 × 1080, 13.7% with
+  frames fitted by app_server (32.4% shrinking them here: 3.3 ms a
+  frame), NVENC 3.3 ms mostly waiting on the GPU, the capture's copy
+  about 6%; 4.7 ms from capture to sent (6.6 at the 95th percentile).
+  What's left is the copy out of the GPU and into NVENC: frames kept
+  on the GPU (lent dmabufs encoded by VA-API, as the recorder does for
+  AV1, where the driver encodes H.264) would take that too.
 
 **From the desktop.** Preferences ▸ AirPlay (`apps/preferences/src/
 airplay.rs`) lists the receivers that answer (asked when the panel

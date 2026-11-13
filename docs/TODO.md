@@ -634,10 +634,14 @@ something nobody here has is in "Blocked", with what it waits for.
        shows another (its windows where they were left, drawing on);
        `olo-airplay show --workspace N`, and Show on AirPlay ▸ on
        Deskbar's workspace headings.
-     - *Next:* (1) the frames kept on the GPU (lent dmabufs scaled to
-       the receiver's size and encoded H.264 by VA-API on the Intel
-       GPU, as the recorder does for AV1): today a busy screen costs
-       30% of a core, most of it the resize and the copy; (2) a
+     - *Frames fitted by app_server, 2026-11-12* (HACKING, "Screen
+       sharing" ▸ Fitted): a busy screen shown costs olo-airplay 13.7%
+       of a core, not 32.4%, and 4.7 ms from capture to sent, not 8.1.
+     - *Next:* (1) the frames kept on the GPU (lent dmabufs encoded
+       H.264 by VA-API on the Intel GPU, as the recorder does for AV1,
+       where the driver encodes H.264: RPM Fusion's iHD, which this
+       computer has; Fedora's own doesn't): what's left of a busy
+       screen's cost is the copy out of the GPU and into NVENC; (2) a
        window's own sound rather than the computer's (moving its
        stream to a sink of its own), and keeping the sound off this
        computer's speakers while it plays on the television.

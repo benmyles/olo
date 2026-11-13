@@ -18,7 +18,9 @@ use std::{collections::HashMap, time::Duration};
 use smithay::{
     backend::{
         allocator::{Buffer as _, Fourcc, dmabuf::Dmabuf},
-        renderer::{Bind, Color32F, ExportMem, Offscreen, Renderer, Texture, TextureMapping as _, damage::OutputDamageTracker, element::RenderElement, gles::GlesTexture, sync::SyncPoint},
+        renderer::{
+            Bind, Color32F, ExportMem, ImportAll, ImportMem, Offscreen, Renderer, Texture, TextureMapping as _, damage::OutputDamageTracker, element::RenderElement, gles::GlesTexture, sync::SyncPoint,
+        },
     },
     output::{Output, WeakOutput},
     reexports::wayland_server::protocol::wl_shm,
@@ -92,7 +94,7 @@ impl Desk {
 }
 
 /// Olo's own Wayland protocol (crates/capture/protocols): a workspace as
-/// a capture source.
+/// a capture source, and a source fitted to a size.
 #[allow(non_upper_case_globals, non_camel_case_types, unused_imports, dead_code, missing_docs, clippy::all)]
 pub mod protocol {
     use smithay::reexports::{
@@ -104,50 +106,71 @@ pub mod protocol {
             wayland_protocols::ext::image_capture_source::v1::server::__interfaces::*,
             wayland_server::{backend as wayland_backend, protocol::__interfaces::*},
         };
-        wayland_scanner::generate_interfaces!("../capture/protocols/olo-workspace-capture-v1.xml");
+        wayland_scanner::generate_interfaces!("../capture/protocols/olo-image-capture-source-v1.xml");
     }
     use self::__interfaces::*;
-    wayland_scanner::generate_server_code!("../capture/protocols/olo-workspace-capture-v1.xml");
+    wayland_scanner::generate_server_code!("../capture/protocols/olo-image-capture-source-v1.xml");
 }
 
-use protocol::olo_workspace_image_capture_source_manager_v1::{self as workspace_sources, OloWorkspaceImageCaptureSourceManagerV1};
+use protocol::olo_image_capture_source_manager_v1::{self as olo_sources, OloImageCaptureSourceManagerV1};
+use smithay::wayland::image_capture_source::ImageCaptureSource;
 
-/// The global for workspace sources, offered to Olo's own programs only
+/// In a fitted source's user data: the source it draws, and the most it
+/// may be (`fit_within`).
+pub struct FittedSource {
+    pub of: ImageCaptureSource,
+    pub most: (u32, u32),
+}
+
+/// What a picture of `size` is drawn at in a source fitted to at most
+/// `most`: as it is if it fits, else smaller, its shape kept, each side
+/// even (what video encoders take).
+pub fn fit_within(size: Size<i32, Physical>, most: (u32, u32)) -> Size<i32, Physical> {
+    let (w, h) = (f64::from(size.w.max(1)), f64::from(size.h.max(1)));
+    let k = (f64::from(most.0.max(2)) / w).min(f64::from(most.1.max(2)) / h);
+    if k >= 1.0 {
+        return size;
+    }
+    let even = |v: f64| ((v.round() as i32) & !1).max(2);
+    (even(w * k), even(h * k)).into()
+}
+
+/// The global for Olo's own sources, offered to Olo's own programs only
 /// (those on app_server's direct socket, as the other capture globals
 /// are: wlproxy passes on only globals it knows).
-pub struct WorkspaceSources;
+pub struct OloSources;
 
-impl WorkspaceSources {
-    pub fn new<D>(display: &smithay::reexports::wayland_server::DisplayHandle) -> smithay::reexports::wayland_server::backend::GlobalId
+impl OloSources {
+    pub fn offer<D>(display: &smithay::reexports::wayland_server::DisplayHandle) -> smithay::reexports::wayland_server::backend::GlobalId
     where
-        D: smithay::reexports::wayland_server::GlobalDispatch<OloWorkspaceImageCaptureSourceManagerV1, WorkspaceSources>
-            + smithay::reexports::wayland_server::Dispatch<OloWorkspaceImageCaptureSourceManagerV1, WorkspaceSourcesBound>
+        D: smithay::reexports::wayland_server::GlobalDispatch<OloImageCaptureSourceManagerV1, OloSources>
+            + smithay::reexports::wayland_server::Dispatch<OloImageCaptureSourceManagerV1, OloSourcesBound>
             + 'static,
     {
-        display.create_global::<D, OloWorkspaceImageCaptureSourceManagerV1, _>(1, WorkspaceSources)
+        display.create_global::<D, OloImageCaptureSourceManagerV1, _>(1, OloSources)
     }
 }
 
 /// A client's binding of it.
-pub struct WorkspaceSourcesBound;
+pub struct OloSourcesBound;
 
-impl<D> smithay::wayland::GlobalDispatch2<OloWorkspaceImageCaptureSourceManagerV1, D> for WorkspaceSources
+impl<D> smithay::wayland::GlobalDispatch2<OloImageCaptureSourceManagerV1, D> for OloSources
 where
-    D: smithay::reexports::wayland_server::Dispatch<OloWorkspaceImageCaptureSourceManagerV1, WorkspaceSourcesBound> + 'static,
+    D: smithay::reexports::wayland_server::Dispatch<OloImageCaptureSourceManagerV1, OloSourcesBound> + 'static,
 {
     fn bind(
         &self,
         _state: &mut D,
         _dh: &smithay::reexports::wayland_server::DisplayHandle,
         _client: &smithay::reexports::wayland_server::Client,
-        resource: smithay::reexports::wayland_server::New<OloWorkspaceImageCaptureSourceManagerV1>,
+        resource: smithay::reexports::wayland_server::New<OloImageCaptureSourceManagerV1>,
         data_init: &mut smithay::reexports::wayland_server::DataInit<'_, D>,
     ) {
-        data_init.init(resource, WorkspaceSourcesBound);
+        data_init.init(resource, OloSourcesBound);
     }
 }
 
-impl<D> smithay::wayland::Dispatch2<OloWorkspaceImageCaptureSourceManagerV1, D> for WorkspaceSourcesBound
+impl<D> smithay::wayland::Dispatch2<OloImageCaptureSourceManagerV1, D> for OloSourcesBound
 where
     D: smithay::wayland::image_capture_source::ImageCaptureSourceHandler,
 {
@@ -155,24 +178,34 @@ where
         &self,
         _state: &mut D,
         _client: &smithay::reexports::wayland_server::Client,
-        _resource: &OloWorkspaceImageCaptureSourceManagerV1,
-        request: workspace_sources::Request,
+        _resource: &OloImageCaptureSourceManagerV1,
+        request: olo_sources::Request,
         _dh: &smithay::reexports::wayland_server::DisplayHandle,
         data_init: &mut smithay::reexports::wayland_server::DataInit<'_, D>,
     ) {
-        use smithay::wayland::image_capture_source::{ImageCaptureSource, ImageCaptureSourceData};
+        use smithay::wayland::image_capture_source::ImageCaptureSourceData;
+        let mut made = |source| {
+            let made = ImageCaptureSource::new();
+            let resource = data_init.init(source, ImageCaptureSourceData { source: made.clone() });
+            made.add_instance(&resource);
+            made
+        };
         match request {
-            workspace_sources::Request::CreateSource { source, output, workspace } => {
-                let made = ImageCaptureSource::new();
-                let resource = data_init.init(source, ImageCaptureSourceData { source: made.clone() });
-                made.add_instance(&resource);
+            olo_sources::Request::CreateWorkspaceSource { source, output, workspace } => {
+                let made = made(source);
                 // (A display gone already: a source of nothing, whose
                 // sessions stop.)
                 if let Some(output) = Output::from_resource(&output) {
                     made.user_data().insert_if_missing(|| WorkspaceSource { output: output.downgrade(), index: workspace });
                 }
             }
-            workspace_sources::Request::Destroy => {}
+            olo_sources::Request::CreateFittedSource { source, of, width, height } => {
+                let made = made(source);
+                if let Some(of) = ImageCaptureSource::from_resource(&of) {
+                    made.user_data().insert_if_missing(|| FittedSource { of, most: (width, height) });
+                }
+            }
+            olo_sources::Request::Destroy => {}
         }
     }
 }
@@ -243,7 +276,19 @@ where
 
 /// What a session's source shows.
 pub fn target(session: &SessionRef) -> Option<(Target, Option<Output>)> {
-    let source = session.source();
+    target_of(&session.source())
+}
+
+/// The most a session's frames may be, if its source is a fitted one.
+pub fn fitted(session: &SessionRef) -> Option<(u32, u32)> {
+    session.source().user_data().get::<FittedSource>().map(|f| f.most)
+}
+
+/// What `source` shows (a fitted one: what the source it draws shows).
+pub fn target_of(source: &ImageCaptureSource) -> Option<(Target, Option<Output>)> {
+    if let Some(FittedSource { of, .. }) = source.user_data().get::<FittedSource>() {
+        return target_of(of);
+    }
     if let Some(WindowSource(id)) = source.user_data().get::<WindowSource>() {
         return Some((Target::Window(*id), None));
     }
@@ -255,8 +300,16 @@ pub fn target(session: &SessionRef) -> Option<(Target, Option<Output>)> {
 }
 
 /// The display a workspace source's workspace is of.
-pub fn workspace_output(source: &smithay::wayland::image_capture_source::ImageCaptureSource) -> Option<Output> {
+pub fn workspace_output(source: &ImageCaptureSource) -> Option<Output> {
     source.user_data().get::<WorkspaceSource>()?.output.upgrade()
+}
+
+smithay::backend::renderer::element::render_elements! {
+    /// A session's picture: as it is, or drawn smaller to fit (a fitted
+    /// source's).
+    pub Fitting<R, E> where R: ImportAll + ImportMem;
+    Whole=smithay::backend::renderer::element::Wrap<E>,
+    Smaller=smithay::backend::renderer::element::utils::RelocateRenderElement<smithay::backend::renderer::element::utils::RescaleRenderElement<E>>,
 }
 
 /// The identifier window `id` has in the foreign-toplevel list (how the
@@ -443,7 +496,7 @@ impl Captures {
         at: smithay::utils::Point<f64, smithay::utils::Logical>,
         status: &smithay::input::pointer::CursorImageStatus,
     ) where
-        R: Renderer + Bind<Dmabuf> + Offscreen<GlesTexture> + ExportMem + smithay::backend::renderer::ImportAll + smithay::backend::renderer::ImportMem,
+        R: Renderer + Bind<Dmabuf> + Offscreen<GlesTexture> + ExportMem + ImportAll + ImportMem,
         R::Error: std::fmt::Debug,
         R::TextureId: Texture + Clone + Send + 'static,
     {
@@ -584,16 +637,19 @@ impl Captures {
     /// shows (with the pointer if `cursor`); None: it's gone.
     pub fn take<R, E>(&mut self, renderer: &mut R, output: &Output, presented: Duration, on_output: impl Fn(u64) -> bool, mut picture: impl FnMut(&mut R, Target, bool) -> Option<Picture<E>>)
     where
-        R: Renderer + Bind<Dmabuf> + Offscreen<GlesTexture> + ExportMem,
+        R: Renderer + Bind<Dmabuf> + Offscreen<GlesTexture> + ExportMem + ImportAll + ImportMem,
         R::Error: std::fmt::Debug,
-        R::TextureId: Texture,
+        R::TextureId: Texture + 'static,
         E: RenderElement<R>,
     {
         self.finish();
         if !self.wanted(output, &on_output) {
             return;
         }
-        let mut built: HashMap<(Target, bool), Option<Picture<E>>> = HashMap::new();
+        // (By what's shown, with the pointer or not, and the most a
+        // fitted source's frames may be.)
+        type Key = (Target, bool, Option<(u32, u32)>);
+        let mut built: HashMap<Key, Option<Picture<Fitting<R, E>>>> = HashMap::new();
         let mut gone = Vec::new();
         let pending = std::mem::take(&mut self.pending);
         for (session, frame) in pending {
@@ -623,8 +679,8 @@ impl Captures {
                 frame.fail(CaptureFailureReason::Stopped);
                 continue;
             };
-            let cursor = session.draw_cursor();
-            let Some(pic) = built.entry((what, cursor)).or_insert_with(|| picture(renderer, what, cursor)) else {
+            let (cursor, most) = (session.draw_cursor(), fitted(&session));
+            let Some(pic) = built.entry((what, cursor, most)).or_insert_with(|| picture(renderer, what, cursor).map(|p| fit_picture(p, most))) else {
                 if let Target::Window(id) = what {
                     gone.push(id);
                 }
@@ -670,6 +726,31 @@ impl Captures {
             self.window_gone(id);
         }
     }
+}
+
+/// `pic` as a session's frames are drawn: smaller to fit at most `most`
+/// (a fitted source's), drawn so by the GPU as the frame is, its shape
+/// kept and centred; else as it is.
+fn fit_picture<R, E>(pic: Picture<E>, most: Option<(u32, u32)>) -> Picture<Fitting<R, E>>
+where
+    R: Renderer + ImportAll + ImportMem,
+    R::TextureId: Texture + 'static,
+    E: RenderElement<R>,
+{
+    use smithay::backend::renderer::element::{
+        Wrap,
+        utils::{Relocate, RelocateRenderElement, RescaleRenderElement},
+    };
+    let Picture { elements, clear, size: whole, scale } = pic;
+    let size = most.map_or(whole, |m| fit_within(whole, m));
+    if size == whole {
+        return Picture { elements: elements.into_iter().map(|e| Fitting::Whole(Wrap::from(e))).collect(), clear, size, scale };
+    }
+    let k = (f64::from(size.w) / f64::from(whole.w)).min(f64::from(size.h) / f64::from(whole.h));
+    let drawn = |side: i32| (f64::from(side) * k).round() as i32;
+    let offset = smithay::utils::Point::<i32, Physical>::from(((size.w - drawn(whole.w)) / 2, (size.h - drawn(whole.h)) / 2));
+    let elements = elements.into_iter().map(|e| Fitting::Smaller(RelocateRenderElement::from_element(RescaleRenderElement::from_element(e, (0, 0).into(), k), offset, Relocate::Relative))).collect();
+    Picture { elements, clear, size, scale }
 }
 
 enum DrawError {
@@ -796,6 +877,19 @@ mod tests {
         assert_eq!(c.formats[0].0, Fourcc::Xrgb8888);
         assert_eq!(c.formats[0].1.len(), 2);
         assert!(super::dma_constraints(node, &FormatSet::from_iter([Format { code: Fourcc::Abgr8888, modifier: Modifier::Linear }])).is_none());
+    }
+
+    #[test]
+    fn fitted_smaller_never_larger() {
+        use super::fit_within;
+        let size = |w, h| smithay::utils::Size::<i32, smithay::utils::Physical>::from((w, h));
+        // A 2× laptop display on a 1080p television: its shape kept.
+        assert_eq!(fit_within(size(1920, 1200), (1920, 1080)), size(1728, 1080));
+        // 5K made 4K's height, even each way.
+        assert_eq!(fit_within(size(5120, 2880), (1920, 1080)), size(1920, 1080));
+        assert_eq!(fit_within(size(1001, 999), (500, 500)), size(500, 498));
+        // What fits is left as it is (an odd window too).
+        assert_eq!(fit_within(size(801, 501), (1920, 1080)), size(801, 501));
     }
 
     #[test]

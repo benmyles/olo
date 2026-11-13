@@ -7,11 +7,13 @@
 //! only once what's captured has changed, so a still screen costs
 //! nothing here and sends nothing but the receiver's heartbeat. The
 //! newest frame waits for the encoder's worker (one that comes while the
-//! last is being encoded takes its place), which makes it the size the
+//! last is being encoded takes its place). Frames come at the size the
 //! receiver takes (`Screen::fit`: a 2× display made smaller, its shape
-//! kept), encodes it (`olo_video::Encoder`: NVIDIA's GPU where it opens,
-//! else the processor; a picture out for each in, no B-frames) and sends
-//! it stamped with its capture's moment. The sound is the computer's
+//! kept), drawn so by app_server on the GPU (`Capture::fit`; an older
+//! app_server's are made smaller by the worker); the worker encodes
+//! each (`olo_video::Encoder`: NVIDIA's GPU where it opens, else the
+//! processor; a picture out for each in, no B-frames) and sends it
+//! stamped with its capture's moment. The sound is the computer's
 //! (`olo_system::recording`, the default output's monitor at 44.1 kHz,
 //! 10 ms at a time), sent as it comes; while paused, silence, and the
 //! last picture stays.
@@ -214,6 +216,13 @@ fn shown(args: &[String]) -> Result<(), String> {
     let options = Options { name: our_name(), sound: with_sound, lead, ended: Some(ended), trace: tracer, ..Options::default() };
     let mirror = Arc::new(Mirror::begin(found.at, &credentials, found.features, &found.version, &options).map_err(|e| e.to_string())?);
     let (screen, lead_ms, sounds) = (mirror.screen(), mirror.lead().as_millis() as u64, mirror.sounds());
+    // Frames the receiver's size, made so by app_server as it draws them
+    // (on the GPU), not shrunk here each frame (an older app_server: here).
+    match capture.fit(screen.width, screen.height) {
+        Ok(true) if trace => eprintln!("  frames fitted to {}×{} by app_server", screen.width, screen.height),
+        Ok(_) => {}
+        Err(e) => eprintln!("olo-airplay: frames made smaller here: {e}"),
+    }
     let say = |state: &str, why: Option<&str>| {
         if json {
             println!("{}", serde_json::json!({ "state": state, "receiver": name, "what": what.title, "screen": screen, "lead_ms": lead_ms, "sound": sounds, "why": why }));

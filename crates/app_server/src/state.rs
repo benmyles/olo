@@ -971,24 +971,35 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 }
 
+impl<BackendData: Backend> AnvilState<BackendData> {
+    /// The size `source`'s frames are, in pixels.
+    fn capture_size(&self, source: &ImageCaptureSource) -> Option<smithay::utils::Size<i32, smithay::utils::Physical>> {
+        // Smaller, to fit (the source it draws, at most so big).
+        if let Some(crate::capture::FittedSource { of, most }) = source.user_data().get::<crate::capture::FittedSource>() {
+            return Some(crate::capture::fit_within(self.capture_size(of)?, *most));
+        }
+        if let Some(crate::capture::WindowSource(id)) = source.user_data().get::<crate::capture::WindowSource>() {
+            // (On another workspace too: shown as it was last.)
+            let (window, scale) = self.capture_window(*id)?;
+            return Some(window.content_size().to_f64().to_physical(scale).to_i32_round());
+        }
+        // A workspace's picture is its display's size.
+        if let Some(output) = crate::capture::workspace_output(source) {
+            return crate::capture::size(&output);
+        }
+        let output = source.user_data().get::<smithay::output::WeakOutput>()?.upgrade()?;
+        crate::capture::size(&output)
+    }
+}
+
 impl<BackendData: Backend> ImageCopyCaptureHandler for AnvilState<BackendData> {
     fn image_copy_capture_state(&mut self) -> &mut ImageCopyCaptureState {
         &mut self.image_copy_capture_state
     }
 
     fn capture_constraints(&mut self, source: &ImageCaptureSource) -> Option<BufferConstraints> {
-        if let Some(crate::capture::WindowSource(id)) = source.user_data().get::<crate::capture::WindowSource>() {
-            // (On another workspace too: shown as it was last.)
-            let (window, scale) = self.capture_window(*id)?;
-            let size = window.content_size().to_f64().to_physical(scale).to_i32_round();
-            return Some(crate::capture::constraints_of(size, self.captures.dma.clone()));
-        }
-        // A workspace's picture is its display's size.
-        if let Some(output) = crate::capture::workspace_output(source) {
-            return crate::capture::constraints(&output, self.captures.dma.clone());
-        }
-        let output = source.user_data().get::<smithay::output::WeakOutput>()?.upgrade()?;
-        crate::capture::constraints(&output, self.captures.dma.clone())
+        let size = self.capture_size(source)?;
+        Some(crate::capture::constraints_of(size, self.captures.dma.clone()))
     }
 
     fn new_session(&mut self, session: Session) {
@@ -1160,8 +1171,9 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         let output_capture_source_state = OutputCaptureSourceState::new::<Self>(&dh);
         let image_copy_capture_state = ImageCopyCaptureState::new::<Self>(&dh);
         let toplevel_capture_source_state = ToplevelCaptureSourceState::new::<Self>(&dh);
-        // A workspace as a source (Olo's own: Show on AirPlay).
-        crate::capture::WorkspaceSources::new::<Self>(&dh);
+        // Olo's own sources: a workspace, and a source fitted to a size
+        // (Show on AirPlay).
+        crate::capture::OloSources::offer::<Self>(&dh);
         let foreign_toplevel_list_state = ForeignToplevelListState::new::<Self>(&dh);
 
         // init input
