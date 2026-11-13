@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-13
 
+### Tracker Status: names cut, Stop always in place
+
+*01:04* — Fixed at 540 points and as tall as its jobs. Under the bar, the current item's name is cut short with '…' and the counts and time left show whole at the right, so a long or changing name never pushes Stop out of the window (Ben: 'it doesn't fit in the space when the names etc are changing').
+
+![Tracker Status: names cut, Stop always in place](2026-11-13/010413-tracker-status-names-cut-stop-always-in-place.png)
+
 ### Preferences ▸ Performance: the pointer on a thread of its own
 
 *00:12* — A Pointer box on the Scheduler tab: 'Move the pointer on a thread of its own' reads libinput on a thread of app_server's own that moves the hardware cursor while the desktop is busy, so the pointer never stops or loses motion. Off until tried; takes effect at once.
