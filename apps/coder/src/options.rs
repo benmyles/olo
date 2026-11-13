@@ -35,7 +35,7 @@ pub fn section(name: &str) -> Vec<OptionSpec> {
         "subagents" => vec![toggle("subagents", "Enable subagents:"), field("max_subagents", "Concurrent agents:"), field("max_depth", "Delegation depth:")],
         "safety" => vec![
             OptionSpec { path: "approval", label: "Approval policy:", choices: vec!["ask", "auto", "allow"], rows: 1 },
-            OptionSpec { path: "sandbox", label: "Sandbox:", choices: vec!["workspace", "unrestricted"], rows: 1 },
+            OptionSpec { path: "sandbox", label: "Sandbox:", choices: vec!["unrestricted", "workspace"], rows: 1 },
             toggle("read_only", "Read-only:"),
             toggle("accept_messages", "Accept messages:"),
             toggle("wake_on_message", "Allow message wake:"),

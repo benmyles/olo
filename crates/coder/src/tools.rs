@@ -195,7 +195,7 @@ pub fn definitions() -> Vec<ToolDef> {
         ),
         def(
             "execute",
-            "Execute a developer program with argv in the workspace. All process executions require the session's approval policy; the workspace sandbox confines writes; host reads and network remain available. For shell syntax explicitly use olo-brush with -c. Output streams; timeout and cancellation kill the whole process group.",
+            "Execute a developer program with argv in the workspace. All process executions require the session's approval policy; when the session uses the workspace sandbox, writes outside the workspace fail; host reads and network remain available. For shell syntax explicitly use olo-brush with -c. Output streams; timeout and cancellation kill the whole process group.",
             json!({"program":{"type":"string"},"args":{"type":"array","items":{"type":"string"}},"cwd":{"type":"string"},"timeout_secs":{"type":"integer"}}),
             &["program"],
         ),

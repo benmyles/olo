@@ -15938,7 +15938,7 @@ endpoints use their configured API root directly.
   `collect_output` must short-circuit on a pipe or artifact error rather than
   wait for a blocked child. Streaming retains at most three incomplete UTF-8
   bytes between batches; raw artifacts remain byte-exact within their limit.
-  `sandbox` prepares Landlock write confinement before fork and
+  `sandbox` (opt-in; the default is unrestricted) prepares Landlock write confinement before fork and
   applies it using syscalls only in `pre_exec`. `mcp` speaks stdio and Streamable HTTP JSON-RPC; its
   tool effects follow the same approval path. Configured hooks and skills are
   explicit user extensions. MCP HTTP cancellation cleanup is bounded and runs

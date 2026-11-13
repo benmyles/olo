@@ -152,7 +152,7 @@ fn specs(id: &str) -> Vec<crate::options::OptionSpec> {
             let mut v = vec![
                 OptionSpec { path: "approval", label: "Actions:", choices: vec!["ask", "auto", "allow"], rows: 1 },
                 OptionSpec { path: "approval_guidance", label: "Reviewer’s guidance:", choices: vec![], rows: 5 },
-                OptionSpec { path: "sandbox", label: "Files:", choices: vec!["workspace", "unrestricted"], rows: 1 },
+                OptionSpec { path: "sandbox", label: "Files:", choices: vec!["unrestricted", "workspace"], rows: 1 },
                 toggle("read_only", "Only read, never change"),
             ];
             v.retain(|_| true);

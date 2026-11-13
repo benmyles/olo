@@ -293,12 +293,13 @@ requests are audited and charged to cumulative usage even when their verdict
 is malformed. A review's context size never replaces the coding model's active
 context count.
 
-The default `sandbox: "workspace"` uses Linux Landlock ABI 3 to confine **process
-writes** to the workspace and Coder's artifact directory, plus `/dev/null`.
-It fails closed if the kernel cannot enforce it. Host reads and networking are
-available; this is not a container or a credential-isolation boundary.
-`sandbox: "unrestricted"` must be selected explicitly to allow process writes
-elsewhere. Native file tools reject parent and symlink escapes and direct `.git`
+By default (`sandbox: "unrestricted"`) programs the agent runs may write
+anywhere, as builds with shared caches need; the approval policy is what guards
+them. `sandbox: "workspace"` (Settings → Safety → Files: Only the workspace
+folder) uses Linux Landlock ABI 3 to confine **process writes** to the
+workspace and Coder's artifact directory, plus `/dev/null`, and fails closed if
+the kernel cannot enforce it. Either way host reads and networking are
+available; neither is a container or a credential-isolation boundary. Native file tools reject parent and symlink escapes and direct `.git`
 access. External programs are explicit developer commands with argv, never
 implementations of native file/search tools. They run without the person's GUI
 display variables; graphical work should launch an Agent Screen deliberately.

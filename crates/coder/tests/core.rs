@@ -143,7 +143,7 @@ fn defaults_and_shared_command_language() {
     let s = Session::new("/".into(), Config::default());
     assert!(!s.config.subagents);
     assert_eq!(s.config.approval, ApprovalMode::Ask);
-    assert_eq!(s.config.sandbox, SandboxMode::Workspace);
+    assert_eq!(s.config.sandbox, SandboxMode::Unrestricted);
     for text in [
         "hello",
         "/stop",
@@ -193,7 +193,7 @@ async fn processes_stream_and_cancel_immediately() {
 async fn workspace_sandbox_denies_outside_writes() {
     let dir = Scratch::new();
     let outside = Scratch::new();
-    let s = Session::new(dir.0.clone(), Config::default());
+    let s = Session::new(dir.0.clone(), Config { sandbox: SandboxMode::Workspace, ..Default::default() });
     let r = tools::execute(&s, &call("execute", json!({"program":"/usr/bin/touch","args":[outside.0.join("should-not-exist")]})), &dir.0, &CancellationToken::new(), Arc::new(|_, _| {})).await;
     match r {
         Ok(r) => assert_eq!(r["success"], false),

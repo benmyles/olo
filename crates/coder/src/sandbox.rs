@@ -21,7 +21,7 @@ pub struct Sandbox(OwnedFd);
 impl Sandbox {
     pub fn workspace(root: &Path, scratch: &Path) -> Result<Self> {
         let version = unsafe { libc::syscall(libc::SYS_landlock_create_ruleset, std::ptr::null::<u8>(), 0, 1) };
-        ensure!(version >= 3, "workspace sandbox requires Landlock ABI 3; choose unrestricted explicitly on an unsupported kernel");
+        ensure!(version >= 3, "workspace sandbox requires Landlock ABI 3; choose unrestricted on an unsupported kernel");
         let attr = Ruleset { fs: ALL };
         let fd = unsafe { libc::syscall(libc::SYS_landlock_create_ruleset, &attr, std::mem::size_of::<Ruleset>(), 0) };
         if fd < 0 {
