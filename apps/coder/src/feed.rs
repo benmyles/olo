@@ -602,8 +602,11 @@ fn outcome(o: &Value, failed: bool) -> (String, Option<(String, String)>, bool) 
             Some(at) if !diff.starts_with("@@") && diff[..at].lines().all(|l| l.starts_with("---") || l.starts_with("+++") || l.starts_with("diff ") || l.starts_with("index ")) => &diff[at + 1..],
             _ => diff,
         };
+        let shown = shown.trim_end_matches('\n');
         let lines = shown.lines().count();
-        return (format!("+{add} −{del}"), Some(("diff".into(), shown.into())), lines <= SHORT_DIFF);
+        // A new file is all additions: it waits to be asked for.
+        let new_file = shown.starts_with("@@ -0,0 ");
+        return (format!("+{add} −{del}"), Some(("diff".into(), shown.into())), lines <= SHORT_DIFF && !new_file);
     }
     if o.get("stdout").is_some() {
         let out = o["stdout"].as_str().unwrap_or("");
@@ -761,7 +764,7 @@ pub fn fenced(language: &str, text: &str) -> String {
     let width = text.lines().map(|l| l.trim_start().chars().take_while(|c| *c == '`').count() + 1).max().unwrap_or(3).max(3);
     let language: String = language.chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '+' | '#' | '.')).take(64).collect();
     let fence = "`".repeat(width);
-    format!("\n{fence}{language}\n{text}\n{fence}\n")
+    format!("\n{fence}{language}\n{}\n{fence}\n", text.trim_end_matches('\n'))
 }
 
 pub fn component(v: &Value) -> String {
@@ -882,6 +885,21 @@ mod tests {
         assert!(doc.text.contains("Task list · 1 of 2 done"), "{}", doc.text);
         assert!(!doc.text.contains("Testing"), "status reports are shown beside the conversation");
         assert!(!doc.paragraphs.iter().any(|p| matches!(p.block, Block::Tool(_))));
+    }
+    #[test]
+    fn a_new_file_waits_and_a_diff_starts_at_its_hunk() {
+        let mut f = Feed::default();
+        let mut r = rich::Renderer::default();
+        f.event(&ev(1, "tool_started", json!({"call":{"id":"w","name":"write_file","arguments":{"path":"README.md"}}})));
+        f.event(&ev(2, "tool_result", json!({"call_id":"w","name":"write_file","error":false,"output":{"diff":"--- /abs/README.md\n+++ /abs/README.md\n@@ -0,0 +1,2 @@\n+# Hi\n+there\n"}})));
+        f.event(&ev(3, "tool_started", json!({"call":{"id":"e","name":"edit_file","arguments":{"path":"a.py"}}})));
+        f.event(&ev(4, "tool_result", json!({"call_id":"e","name":"edit_file","error":false,"output":{"diff":"--- /abs/a.py\n+++ /abs/a.py\n@@ -1 +1 @@\n-old\n+new\n"}})));
+        let doc = f.document(&mut r);
+        assert!(doc.text.contains("▸ Wrote README.md · +2 −0"), "{}", doc.text);
+        assert!(!doc.text.contains("# Hi"));
+        assert!(doc.text.contains("@@ -1 +1 @@\n-old\n+new\n"), "{}", doc.text);
+        assert!(!doc.text.contains("/abs/"));
+        assert!(!doc.text.contains("+new\n\n"), "no empty line closes a diff");
     }
     #[test]
     fn counts_read_at_a_glance() {

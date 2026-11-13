@@ -107,6 +107,8 @@ async fn connection(stream: UnixStream, e: Arc<Engine>) -> Result<()> {
                     event=live.recv()=>match event {
                         Ok(event) if event.kind=="peers_changed"=>{send(&mut write,&json!({"peers":event.data["peers"]})).await?;},
                         Ok(event) if event.kind=="model_profiles_changed"=>{send(&mut write,&json!({"profiles":event.data["profiles"]})).await?;},
+                        // (A status report that renamed the session: its row.)
+                        Ok(event) if event.seq>0 && event.kind=="status_report" && event.data["retitled"]==true => break,
                         Ok(event) if event.seq>0 && matches!(event.kind.as_str(),"created"|"forked"|"organized"|"running"|"idle"|"approval"|"paused"|"error"|"stop"|"message_queued"|"message_cancelled"|"message_edited"|"message_moved"|"messages_delivered"|"configured") => break,
                         Err(_)=>break, _=>{}
                     }

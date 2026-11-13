@@ -1192,10 +1192,11 @@ impl Engine {
                 ensure!(title.as_ref().is_none_or(|t| t.chars().count() <= 60), "title: a few words, at most 60 characters");
                 self.change(sid, "status_report", |s| {
                     s.report = Some(StatusReport { done, doing, next, time: crate::model::now(), sequence: s.tool_sequence });
-                    if let Some(title) = title.filter(|_| !s.named) {
-                        s.title = title;
+                    let retitled = title.as_ref().is_some_and(|t| !s.named && *t != s.title);
+                    if retitled {
+                        s.title = title.unwrap_or_default();
                     }
-                    Ok(json!({"report":s.report,"title":s.title}))
+                    Ok(json!({"report":s.report,"title":s.title,"retitled":retitled}))
                 })
             }
             "remember" => self.change(sid, "memory", |s| {

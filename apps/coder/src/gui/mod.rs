@@ -885,29 +885,35 @@ impl Coder {
         }
         let effort = s.map(|s| crate::models::effort(&s.config.model.effort)).unwrap_or(0);
         let approval = s.map(|s| APPROVALS.iter().position(|(a, _)| *a == s.config.approval).unwrap_or(0)).unwrap_or(0);
-        let mut controls = div()
-            .flex()
-            .items_center()
-            .gap(px(m::TIGHT))
-            .child(MenuField::new("model", model_labels, model_at).name("Model").width(190.0).enabled(settable).on_change(cx.msg_with(|i: &usize| Msg::Model(*i))))
-            .child(
-                MenuField::new("effort", crate::models::EFFORTS.iter().map(|e| (if *e == "Provider default" { "Reasoning: default" } else { e }).to_owned().into()).collect(), effort)
-                    .name("Reasoning")
-                    .width(140.0)
-                    .enabled(settable)
-                    .on_change(cx.msg_with(|i: &usize| Msg::Effort(*i))),
-            )
-            .child(
-                MenuField::new("approvals", APPROVALS.iter().map(|(_, l)| (*l).into()).collect(), approval)
-                    .name("Approvals")
-                    .width(170.0)
-                    .enabled(settable)
-                    .on_change(cx.msg_with(|i: &usize| Msg::Approvals(*i))),
-            );
+        let mut controls = div().flex().items_center().gap(px(m::TIGHT));
+        // While it works they can't change: the row is for steering it.
+        if !running {
+            controls = controls
+                .child(MenuField::new("model", model_labels, model_at).name("Model").width(190.0).enabled(settable).on_change(cx.msg_with(|i: &usize| Msg::Model(*i))))
+                .child(
+                    MenuField::new("effort", crate::models::EFFORTS.iter().map(|e| (if *e == "Provider default" { "Reasoning: default" } else { e }).to_owned().into()).collect(), effort)
+                        .name("Reasoning")
+                        .width(140.0)
+                        .enabled(settable)
+                        .on_change(cx.msg_with(|i: &usize| Msg::Effort(*i))),
+                )
+                .child(
+                    MenuField::new("approvals", APPROVALS.iter().map(|(_, l)| (*l).into()).collect(), approval)
+                        .name("Approvals")
+                        .width(170.0)
+                        .enabled(settable)
+                        .on_change(cx.msg_with(|i: &usize| Msg::Approvals(*i))),
+                );
+        }
         if running {
             let at = DELIVERIES.iter().position(|(d, _)| *d == self.delivery).unwrap_or(0);
-            controls = controls
-                .child(MenuField::new("delivery", DELIVERIES.iter().map(|(_, l)| (*l).into()).collect(), at).name("Deliver").width(150.0).on_change(cx.msg_with(|i: &usize| Msg::Delivery(*i))));
+            controls = controls.child(
+                MenuField::new("delivery", DELIVERIES.iter().map(|(_, l)| (*l).into()).collect(), at)
+                    .name("Deliver")
+                    .label("Steer it:")
+                    .width(170.0)
+                    .on_change(cx.msg_with(|i: &usize| Msg::Delivery(*i))),
+            );
         }
         controls = controls.child(div().flex_1());
         if running {
