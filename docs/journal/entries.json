@@ -4030,5 +4030,17 @@
   "title": "Power Modes: an SSD row",
   "caption": "Each NVMe drive gets a row in Preferences \u25b8 Power \u25b8 Power Modes: As It Is by default (untouched), or Cooler and Coolest, its own lower working power states, with their watts once the follower has read the drive (Ben: \"add the ability to adjust/customize nvme power for each profile\").",
   "image": "2026-11-13/125307-power-modes-an-ssd-row.png"
+ },
+ {
+  "time": "2026-11-13T20:37:21",
+  "title": "Token Pool widgets: several quotas, a heatmap coloured by use",
+  "caption": "A Token Pool widget takes any of a provider's quotas (5-hour, Weekly): a heatmap cell for each account's each, green unused to red used up; its value each quota's, shortened with its short label ('Claude 5h/Wk 24% \u00b7 45%') where the column is narrow. Made-up meters in a headless session.",
+  "image": "2026-11-13/203721-token-pool-widgets-several-quotas-a-heatmap-colo.png"
+ },
+ {
+  "time": "2026-11-13T20:37:23",
+  "title": "Preferences \u25b8 Deskbar: a Token Pool widget's quotas as check boxes",
+  "caption": "Quotas: each of the provider's, checked to show (none: whichever holds each account back). For a heatmap, Colour and 'Orange, then red' are dimmed: its cells are coloured by use.",
+  "image": "2026-11-13/203723-preferences-deskbar-a-token-pool-widget-s-quotas.png"
  }
 ]

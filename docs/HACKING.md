@@ -2387,7 +2387,10 @@ it.
   `paint_well` (small graphs painted in a canvas: Deskbar's widgets; a
   trace is timed points scrolled to `now`, its frames asked for with
   `charts::tick_within`, the window's one clock below; a heatmap is a
-  cell a level, `heatmap_grid` laying them out as big as they go),
+  cell a level, `heatmap_grid` laying them out as big as they go;
+  `paint_heatmap_by` colours each cell from its level, as
+  `usage_colour` does where full is what to watch: green at none,
+  yellow at half, red at all),
   `widgets::legend`/`legend_height` (swatches, names and values in
   wrapping rows, each name and value on one baseline; laid out by their
   lengths, the review keeps them on a grid of their own, as it does a
@@ -14856,6 +14859,43 @@ ProcessController put their bars in its tray.
   computer, a widget measuring a GPU, disk, interface, sensor or volume
   this one hasn't measures its default instead, said
   (`backup::widgets_here`).
+* **Token Pool** (`Measure::Pool`; Ben, 2026-11-13: "a deskbar widget
+  for showing the token pool usage / quotas … aggregate availability
+  for each provider x quota type and any other options/views", then
+  "make the quota type a multi-select and then in e.g. heatmap show
+  each selected quota type as a different color with the color
+  representing usage where red is 100% used and green is 0% used"):
+  a provider's quotas across its accounts, from the meters the pool
+  writes (`olo_protocol::pool`: `$XDG_RUNTIME_DIR/olo-pool-meters-
+  DISPLAY.json`, by the copy serving, half a second after a burst of
+  changes and only when what it says differs; `crates/pool/src/
+  meters.rs`). Its options: the provider; any of its quotas (`quotas`,
+  each a series; none: whichever holds each account back now; a single
+  `quota` as first written is read too); All accounts together (what's
+  left of the accounts' worth, `availability`, accounts turned off or
+  signed out counted as having none if asked), Each account, or The
+  account answering now; used rather than left; orange under a quarter
+  left and red under a tenth (`warn`, on the least left of its
+  quotas); and a notification when a quota is out on every account
+  and when it's back (`notify`: as Token Pool's, Open Token Pool on
+  click; one a widget, updated in place). It's read a minute apart and
+  again as the file changes (`olo_kit::watch`, only while a Pool
+  widget is shown); its tip says each quota's share left, its
+  accounts, the next reset and the pace over the last hour. In a
+  heatmap each quota (each account's, in Each account) is a cell
+  coloured by how used it is, the palette's green at none through
+  yellow to red at all (`charts::usage_colour`,
+  `charts::paint_heatmap_by`), so its own colour and "Orange, then
+  red" are dimmed in Preferences ("Coloured by use"). Of several
+  quotas its value is each one's ("24% · 46% left"), and where that
+  doesn't fit beside its label, shorter ("24% · 46%", then the least,
+  "24%", `Shown::shorter`); a row tries its label with each, then its
+  short label ("Claude 5h/Wk") with each, then the shortest alone. A
+  click opens Token Pool. Tested on made-up meters
+  (`meters::tests::a_pool_reading`, `pool::tests`) and in a headless
+  session with a made-up meters file for its display (two Claude
+  accounts and a Codex one, two quotas each: a heatmap of four cells,
+  "Claude 5h/Wk 24% · 45%", at 1×, 1.5× and 2×, light and dark).
 
 Preferences ▸ Deskbar (`deskbar.rs`) lists the widgets in order (Add
 one of a kind after the chosen one, Remove, Move Up, Move Down) beside

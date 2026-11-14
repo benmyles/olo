@@ -8406,6 +8406,7 @@ dependencies = [
  "hyper-util",
  "libc",
  "olo-net",
+ "olo-protocol",
  "olo-sync",
  "olo-system",
  "olo-xdg",

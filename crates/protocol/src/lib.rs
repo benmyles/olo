@@ -25,6 +25,7 @@ pub mod mice;
 pub mod notifications;
 pub mod panels;
 pub mod performance;
+pub mod pool;
 pub mod power_button;
 pub mod recording;
 pub mod rescue;

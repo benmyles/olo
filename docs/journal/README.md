@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-13
 
+### Preferences ▸ Deskbar: a Token Pool widget's quotas as check boxes
+
+*20:37* — Quotas: each of the provider's, checked to show (none: whichever holds each account back). For a heatmap, Colour and 'Orange, then red' are dimmed: its cells are coloured by use.
+
+![Preferences ▸ Deskbar: a Token Pool widget's quotas as check boxes](2026-11-13/203723-preferences-deskbar-a-token-pool-widget-s-quotas.png)
+
+### Token Pool widgets: several quotas, a heatmap coloured by use
+
+*20:37* — A Token Pool widget takes any of a provider's quotas (5-hour, Weekly): a heatmap cell for each account's each, green unused to red used up; its value each quota's, shortened with its short label ('Claude 5h/Wk 24% · 45%') where the column is narrow. Made-up meters in a headless session.
+
+![Token Pool widgets: several quotas, a heatmap coloured by use](2026-11-13/203721-token-pool-widgets-several-quotas-a-heatmap-colo.png)
+
 ### Power Modes: an SSD row
 
 *12:53* — Each NVMe drive gets a row in Preferences ▸ Power ▸ Power Modes: As It Is by default (untouched), or Cooler and Coolest, its own lower working power states, with their watts once the follower has read the drive (Ben: "add the ability to adjust/customize nvme power for each profile").

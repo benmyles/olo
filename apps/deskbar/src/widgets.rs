@@ -25,6 +25,7 @@ use std::{
     time::Instant,
 };
 
+use olo_kit::palette::Rgba;
 use olo_kit::{
     Bounds, Cx, Element, FontWeight, Hsla, Painter, Pixels, Styled as _, View, agent, canvas, metrics as m,
     palette::Palette,
@@ -72,9 +73,10 @@ pub struct Shown {
     /// When the latest reading was made (`clock`); None, nothing read.
     at: Option<f64>,
     pub value: String,
-    /// Shorter, for a row whose value and label don't both fit: "↓4.1K
-    /// ↑674".
-    compact: String,
+    /// Shorter, each shorter than the one before, for a row whose
+    /// value and label don't both fit: "↓4.1K ↑674"; a Token Pool
+    /// widget's of several quotas "24% · 46%", then the least "24%".
+    shorter: Vec<String>,
     short: String,
     latest: Option<Reading>,
 }
@@ -91,13 +93,27 @@ impl Shown {
         let series = (0..n).map(|i| readings.iter().map(|(t, r)| (*t, (if cores { Some(mean(r)) } else { r.values.get(i).copied() }).map_or(f32::NAN, |v| r.level(v, top)))).collect()).collect();
         let now = latest.as_ref().map(|r| r.values.iter().map(|v| r.level(*v, top)).collect()).unwrap_or_default();
         let value = latest.as_ref().map_or_else(|| "–".into(), |r| meters::value_text(&w.measure, r));
-        let short = latest.as_ref().map_or_else(|| "–".into(), |r| short_value(r, if cores { Some(mean(r)) } else { r.values.first().copied() }));
-        let compact = match (&w.measure, latest.as_ref()) {
-            (Measure::Network { .. }, Some(r)) if r.values.len() == 2 => format!("↓{} ↑{}", short_value(r, Some(r.values[0])), short_value(r, Some(r.values[1]))),
-            (Measure::Disk { .. }, Some(r)) if r.values.len() == 2 => format!("R{} W{}", short_value(r, Some(r.values[0])), short_value(r, Some(r.values[1]))),
-            _ => value.clone(),
+        // (A quota's: what's left of it all, or used, in figures.)
+        let pool = match (&w.measure, latest.as_ref().and_then(|r| r.left)) {
+            (Measure::Pool { used, .. }, Some(left)) => Some(if *used { 100.0 - left * 100.0 } else { left * 100.0 }),
+            _ => None,
         };
-        Shown { widget: w.clone(), series, now, was, at, value, compact, short, latest }
+        let short = match pool {
+            Some(v) => format!("{v:.0}"),
+            None => latest.as_ref().map_or_else(|| "–".into(), |r| short_value(r, if cores { Some(mean(r)) } else { r.values.first().copied() })),
+        };
+        let shorter = match (&w.measure, latest.as_ref()) {
+            (_, Some(r)) if pool.is_some() => {
+                let least = format!("{:.0}%", pool.unwrap_or(0.0));
+                // (Several quotas' words, "24% · 46% left": their figures.)
+                let each = r.words.as_deref().filter(|w| w.contains(" · ")).map(|w| w.trim_end_matches(" left").trim_end_matches(" used").to_owned());
+                each.into_iter().chain([least]).collect()
+            }
+            (Measure::Network { .. }, Some(r)) if r.values.len() == 2 => vec![format!("↓{} ↑{}", short_value(r, Some(r.values[0])), short_value(r, Some(r.values[1])))],
+            (Measure::Disk { .. }, Some(r)) if r.values.len() == 2 => vec![format!("R{} W{}", short_value(r, Some(r.values[0])), short_value(r, Some(r.values[1])))],
+            _ => Vec::new(),
+        };
+        Shown { widget: w.clone(), series, now, was, at, value, shorter, short, latest }
     }
 
     /// Seconds between its readings.
@@ -186,6 +202,14 @@ impl Shown {
         let w = &self.widget;
         let mut out = meters::describe(&w.measure, sources);
         let Some(r) = &self.latest else { return out };
+        // (Said in full by what read it: a quota's accounts.)
+        if !r.detail.is_empty() {
+            for line in &r.detail {
+                out.push('\n');
+                out.push_str(line);
+            }
+            return out;
+        }
         if r.values.len() > 1 && !matches!(w.measure, Measure::Cpu { cores: true }) {
             for (name, v) in r.names.iter().zip(&r.values) {
                 out.push_str(&format!("\n{name}: {}", meters::unit_text(r.unit, *v)));
@@ -213,11 +237,17 @@ pub struct Live {
     /// what it measures (None until known).
     hovered: Option<u32>,
     top: Option<Vec<(String, f64)>>,
+    /// Token Pool's meters followed while a widget shows them: the
+    /// worker reads those widgets again as the pool writes.
+    pool_watch: Option<olo_kit::watch::Watch>,
+    /// Each Token Pool widget's quota: out on every account as last read
+    /// (for a notification as that changes).
+    out: HashMap<u32, bool>,
 }
 
 impl Live {
     pub fn new() -> Live {
-        Live { widgets: Vec::new(), readings: HashMap::new(), shown: HashMap::new(), worker: None, paused: false, hovered: None, top: None }
+        Live { widgets: Vec::new(), readings: HashMap::new(), shown: HashMap::new(), worker: None, paused: false, hovered: None, top: None, pool_watch: None, out: HashMap::new() }
     }
 
     /// What widget `w` shows (nothing read yet: nothing).
@@ -255,6 +285,9 @@ impl Live {
 
     fn tell(&mut self, proxy: &olo_kit::Proxy) {
         let wanted = if self.paused { Vec::new() } else { self.widgets.clone() };
+        if !wanted.iter().any(|w| matches!(w.measure, Measure::Pool { .. })) {
+            self.pool_watch = None;
+        }
         if wanted.is_empty() {
             // (Its sender gone, the worker ends.)
             self.worker = None;
@@ -268,6 +301,12 @@ impl Live {
             }
             tx
         });
+        if self.pool_watch.is_none() && wanted.iter().any(|w| matches!(w.measure, Measure::Pool { .. })) {
+            let tx = std::sync::Mutex::new(worker.clone());
+            self.pool_watch = olo_kit::watch::watch([olo_protocol::pool::PoolMeters::path()], move |_| {
+                let _ = tx.lock().unwrap_or_else(|e| e.into_inner()).send(Tell::Pool);
+            });
+        }
         let _ = worker.send(Tell::Widgets(wanted));
     }
 
@@ -303,11 +342,23 @@ impl Live {
     }
 
     /// Readings come in, each with when it was made: each widget's
-    /// drawing made again, moving on from where it's drawn now.
-    pub fn add(&mut self, batch: Vec<(u32, f64, Reading)>) {
+    /// drawing made again, moving on from where it's drawn now. What to
+    /// tell the person: a Token Pool widget's quota (one asking to say
+    /// so) out on every account, or back.
+    pub fn add(&mut self, batch: Vec<(u32, f64, Reading)>) -> Vec<PoolNews> {
         let t = clock();
+        let mut news = Vec::new();
         for (id, at, r) in batch {
             let Some(w) = self.widgets.iter().find(|w| w.id == id) else { continue };
+            if let Measure::Pool { notify: true, .. } = &w.measure
+                && let Some(left) = r.left
+            {
+                let out = left <= 0.0005;
+                // (Not as it's first read: only a change.)
+                if self.out.insert(id, out).is_some_and(|was| was != out) {
+                    news.push(PoolNews { measure: w.measure.clone(), out, back: r.note.clone() });
+                }
+            }
             let was = self.shown.get(&id).filter(|s| s.widget == *w).map(|s| s.levels_at(t)).unwrap_or_default();
             let (readings, _) = self.readings.entry(id).or_insert_with(|| (VecDeque::new(), (w.measure.clone(), w.every_ms)));
             readings.push_back((at, r));
@@ -315,6 +366,40 @@ impl Live {
                 readings.pop_front();
             }
             self.shown.insert(id, Arc::new(Shown::of(w, readings, was)));
+        }
+        news
+    }
+}
+
+/// A Token Pool quota out on every account, or back: told as a
+/// notification (`Measure::Pool`'s `notify`).
+pub struct PoolNews {
+    pub measure: Measure,
+    pub out: bool,
+    /// When the first account comes back ("Work back in 2 h").
+    pub back: Option<String>,
+}
+
+impl PoolNews {
+    /// Its notification's words: summary and body.
+    pub fn said(&self) -> (String, String) {
+        let Measure::Pool { provider, quotas, .. } = &self.measure else { return (String::new(), String::new()) };
+        let name = olo_protocol::pool::provider_name(provider);
+        let what = match quotas.as_slice() {
+            [q] => format!("{name}'s {q} quota"),
+            [] => format!("{name}'s quota"),
+            _ => format!("One of {name}'s quotas"),
+        };
+        if self.out {
+            (
+                format!("{what} is used up on every account"),
+                match &self.back {
+                    Some(b) => format!("{b}. Until then Token Pool asks {} to wait.", olo_protocol::pool::client_name(provider)),
+                    None => format!("Token Pool asks {} to wait until one resets.", olo_protocol::pool::client_name(provider)),
+                },
+            )
+        } else {
+            (format!("{what} is back"), "An account can answer again.".into())
         }
     }
 }
@@ -354,6 +439,8 @@ pub fn rank(w: &Widget) -> Option<Rank> {
 pub enum Tell {
     Widgets(Vec<Widget>),
     Hover(Option<(u32, Rank)>),
+    /// Token Pool wrote its meters: its widgets are read again now.
+    Pool,
 }
 
 /// How many processes a tip lists.
@@ -391,6 +478,15 @@ fn read_widgets(rx: mpsc::Receiver<Tell>, proxy: olo_kit::Proxy) {
         match got {
             Ok(Tell::Hover(on)) => {
                 hover = on.map(|(id, rank)| (id, rank, Sampler::new(), Instant::now()));
+                continue;
+            }
+            Ok(Tell::Pool) => {
+                let now = Instant::now();
+                for w in widgets.iter().filter(|w| matches!(w.measure, Measure::Pool { .. })) {
+                    if let Some((_, at)) = due.get_mut(&w.id) {
+                        *at = now;
+                    }
+                }
                 continue;
             }
             Ok(Tell::Widgets(list)) => {
@@ -483,37 +579,76 @@ pub fn cells(r: Bounds<Pixels>, n: usize, inset: f32) -> Vec<Bounds<Pixels>> {
     (0..n).map(|i| Bounds::from_corners(point(px(left + i as f32 * (w + m::TIGHT)), r.top()), point(px(left + i as f32 * (w + m::TIGHT) + w), r.bottom()))).collect()
 }
 
-/// A widget's colours: its hue (the accent with none), and a second
-/// series' (up after down, writes after reads, swap after memory).
-fn colors(w: &Widget, p: &Palette) -> (Hsla, Hsla) {
+/// A widget's colours: its hue (the accent with none; a quota running
+/// low, orange under a quarter left and red under a tenth, if it
+/// warns), and a second series' (up after down, writes after reads,
+/// swap after memory).
+fn colors(s: &Shown, p: &Palette) -> (Hsla, Hsla) {
     use olo_kit::palette::Hue;
-    let first = w.hue.map_or(p.control_highlight, |h| p.hue(h));
+    let w = &s.widget;
     let second = match w.hue {
         Some(Hue::Orange) => p.hue(Hue::Purple),
         _ => p.hue(Hue::Orange),
     };
-    (c(first), c(second))
+    (c(base(s, p)), c(second))
 }
 
-/// Its label in a row ("CPU", "Network").
-pub fn label(w: &Widget) -> &'static str {
-    match w.measure {
-        Measure::Temperature { .. } => "Temp",
-        _ => w.measure.kind_name(),
+/// What a quota left under is drawn in, as it runs low.
+const LOW: f64 = 0.25;
+const VERY_LOW: f64 = 0.10;
+
+/// A widget's own colour as it is now (see `colors`).
+fn base(s: &Shown, p: &Palette) -> Rgba {
+    use olo_kit::palette::Hue;
+    let w = &s.widget;
+    if let Measure::Pool { warn: true, .. } = w.measure
+        && let Some(left) = s.latest.as_ref().and_then(|r| r.left)
+    {
+        if left < VERY_LOW {
+            return p.hue(Hue::Red);
+        }
+        if left < LOW {
+            return p.hue(Hue::Orange);
+        }
+    }
+    w.hue.map_or(p.control_highlight, |h| p.hue(h))
+}
+
+/// Its label in a row ("CPU", "Network", "Claude 5-hour").
+pub fn label(w: &Widget) -> String {
+    match &w.measure {
+        Measure::Temperature { .. } => "Temp".into(),
+        Measure::Pool { provider, quotas, .. } if quotas.is_empty() => olo_protocol::pool::provider_name(provider),
+        Measure::Pool { provider, quotas, .. } => format!("{} {}", olo_protocol::pool::provider_name(provider), quotas.join(", ")),
+        m => m.kind_name().into(),
     }
 }
 
-/// Its label where there's less room, beside others: "Mem", "Net".
-fn short_label(w: &Widget) -> &'static str {
-    match w.measure {
-        Measure::Cpu { .. } => "CPU",
-        Measure::Memory { .. } => "Mem",
-        Measure::Gpu { .. } => "GPU",
-        Measure::Disk { .. } => "I/O",
-        Measure::Space { .. } => "Disk",
-        Measure::Network { .. } => "Net",
-        Measure::Temperature { .. } => "Temp",
-        Measure::Power => "Pwr",
+/// Its label where there's less room, beside others: "Mem", "Net",
+/// "Claude 5h".
+fn short_label(w: &Widget) -> String {
+    match &w.measure {
+        Measure::Cpu { .. } => "CPU".into(),
+        Measure::Memory { .. } => "Mem".into(),
+        Measure::Gpu { .. } => "GPU".into(),
+        Measure::Disk { .. } => "I/O".into(),
+        Measure::Space { .. } => "Disk".into(),
+        Measure::Network { .. } => "Net".into(),
+        Measure::Temperature { .. } => "Temp".into(),
+        Measure::Power => "Pwr".into(),
+        Measure::Pool { provider, quotas, .. } => {
+            let name = olo_protocol::pool::provider_name(provider);
+            if quotas.is_empty() { name } else { format!("{name} {}", quotas.iter().map(|q| short_quota(q)).collect::<Vec<_>>().join("/")) }
+        }
+    }
+}
+
+/// A quota said short: "5h", "Wk", "Wk Fable".
+fn short_quota(q: &str) -> String {
+    let q = q.replace("-hour", "h").replace(" hour", "h").replace("-day", "d");
+    match q.strip_prefix("Weekly") {
+        Some(rest) => format!("Wk{rest}"),
+        None => q,
     }
 }
 
@@ -545,7 +680,7 @@ fn short_value(r: &Reading, v: Option<f64>) -> String {
 fn paint_drawing(g: &mut Painter, r: Bounds<Pixels>, s: &Shown, p: &Palette, t: f64) {
     let inner = charts::paint_well(g, r, p);
     let w = &s.widget;
-    let (first, second) = colors(w, p);
+    let (first, second) = colors(s, p);
     let scale = g.scale_factor();
     let (wide, tall) = (f32::from(inner.size.width) * scale, f32::from(inner.size.height) * scale);
     // How far its levels move from nothing to all: device pixels (a
@@ -566,9 +701,19 @@ fn paint_drawing(g: &mut Painter, r: Bounds<Pixels>, s: &Shown, p: &Palette, t: 
             charts::paint_bars(g, inner, &s.levels_at(t), first);
             tall
         }
-        // (Idle, the well's own ground; busy, the widget's hue.)
+        // (Idle, the well's own ground; busy, the widget's hue. A Token
+        // Pool widget's quotas each by how used it is: green to red; Ben,
+        // 2026-11-13: "show each selected quota type as a different color
+        // with the color representing usage where red is 100% used and
+        // green is 0% used".)
         Look::Heatmap => {
-            charts::paint_heatmap(g, inner, &s.levels_at(t), p.document_background, w.hue.map_or(p.control_highlight, |h| p.hue(h)));
+            match w.measure {
+                Measure::Pool { used, .. } => {
+                    let ground = p.document_background;
+                    charts::paint_heatmap_by(g, inner, &s.levels_at(t), |v| if v.is_finite() { charts::usage_colour(p, if used { v } else { 1.0 - v }) } else { ground });
+                }
+                _ => charts::paint_heatmap(g, inner, &s.levels_at(t), p.document_background, base(s, p)),
+            }
             16.0
         }
         Look::Meter => {
@@ -586,7 +731,7 @@ fn paint_drawing(g: &mut Painter, r: Bounds<Pixels>, s: &Shown, p: &Palette, t: 
 /// value in small figures.
 fn paint_tray(g: &mut Painter, r: Bounds<Pixels>, s: &Shown, p: &Palette, t: f64) {
     if s.widget.look == Look::Number {
-        let (first, _) = colors(&s.widget, p);
+        let (first, _) = colors(s, p);
         style::label(g, r.center().x, r.center().y, Align::Center, s.short.clone(), 9.0, style::ui_font(FontWeight::BOLD), first);
         return;
     }
@@ -611,14 +756,22 @@ fn paint_row(g: &mut Painter, r: Bounds<Pixels>, s: &Shown, p: &Palette, inset: 
     let text_y = if number || w.size == Size::Small || !words { r.center().y } else { r.top() + px(4.0 + m::LABEL_ROW / 2.0) };
     let (bold, plain) = (style::ui_font(FontWeight::BOLD), style::ui_font(FontWeight::NORMAL));
     // Its value in full if it fits beside its label (a small row's
-    // drawing between them too), else shorter, else without the label.
+    // drawing between them too), else shorter; then beside its short
+    // label ("Claude 5h/Wk"), longest first; else the shortest without.
     let room = f32::from(right - left) - if w.size == Size::Small && !number { 24.0 } else { 0.0 };
-    let label_w = if w.label { style::text_width_app(label(w), style::PLAIN_SIZE, &bold) + m::SPACING } else { 0.0 };
-    let value = if !w.label || style::text_width_app(&s.value, size, &plain) + label_w <= room { s.value.clone() } else { s.compact.clone() };
-    let show_label = w.label && style::text_width_app(&value, size, &plain) + label_w <= room;
+    let values: Vec<&String> = std::iter::once(&s.value).chain(&s.shorter).collect();
+    let shown_w = |value: &str| if w.value || number { style::text_width_app(value, size, &plain) + m::SPACING } else { 0.0 };
+    let fits = |value: &str, name: &str| shown_w(value) + style::text_width_app(name, style::PLAIN_SIZE, &bold) <= room;
+    let names = if w.label { vec![label(w), short_label(w)] } else { Vec::new() };
+    let chosen = names.iter().find_map(|name| values.iter().find(|v| fits(v, name)).map(|v| ((*v).clone(), Some(name.clone()))));
+    let (value, name) = chosen.unwrap_or_else(|| {
+        let shortest = if w.label { values.last() } else { values.first() };
+        (shortest.map_or_else(String::new, |v| (*v).clone()), None)
+    });
+    let show_label = name.is_some();
     let mut label_w = px(0.0);
-    if show_label {
-        label_w = style::label(g, left, text_y, Align::Left, label(w), style::PLAIN_SIZE, bold, c(p.panel_text)).size.width;
+    if let Some(name) = name {
+        label_w = style::label(g, left, text_y, Align::Left, name, style::PLAIN_SIZE, bold, c(p.panel_text)).size.width;
     }
     let mut value_w = px(0.0);
     if w.value || number {
@@ -653,11 +806,11 @@ fn paint_cell(g: &mut Painter, r: Bounds<Pixels>, s: &Shown, p: &Palette, t: f64
     let room = f32::from(r.size.width);
     let text_y = r.top() + px(4.0 + CELL_WORDS / 2.0);
     let width = |text: &str, font| style::text_width_app(text, size, font);
-    let name = [label(w), short_label(w)].into_iter().find(|l| width(l, &bold) <= room).unwrap_or(short_label(w));
-    let name_w = if w.label { width(name, &bold) + m::TIGHT } else { 0.0 };
+    let name = [label(w), short_label(w)].into_iter().find(|l| width(l, &bold) <= room).unwrap_or_else(|| short_label(w));
+    let name_w = if w.label { width(&name, &bold) + m::TIGHT } else { 0.0 };
     // (In the words' line unless it's a number, whose value is under;
     // never the tray's figures without their unit, "3" for 3%.)
-    let value = (w.value && !number).then(|| [&s.value, &s.compact].into_iter().find(|v| width(v, &plain) + name_w <= room).cloned()).flatten();
+    let value = (w.value && !number).then(|| std::iter::once(&s.value).chain(&s.shorter).find(|v| width(v, &plain) + name_w <= room).cloned()).flatten();
     g.with_content_mask(Some(olo_kit::ContentMask { bounds: r }), |g| {
         if w.label {
             style::label(g, r.left(), text_y, Align::Left, name, size, bold.clone(), c(p.panel_text));
@@ -669,7 +822,7 @@ fn paint_cell(g: &mut Painter, r: Bounds<Pixels>, s: &Shown, p: &Palette, t: f64
     });
     let body = Bounds::from_corners(point(r.left(), r.top() + px(6.0 + CELL_WORDS)), point(r.right(), r.bottom() - px(4.0)));
     if number {
-        let (first, _) = colors(w, p);
+        let (first, _) = colors(s, p);
         let big = match w.size {
             Size::Small => style::PLAIN_SIZE,
             Size::Medium => 14.0,
@@ -771,7 +924,7 @@ mod tests {
     fn moving(was: f32, now: f32, every_ms: u32) -> Shown {
         let mut widget = Widget::new(1, Measure::Cpu { cores: true });
         widget.every_ms = every_ms;
-        Shown { widget, series: Vec::new(), now: vec![now], was: vec![was], at: Some(10.0), value: String::new(), compact: String::new(), short: String::new(), latest: None }
+        Shown { widget, series: Vec::new(), now: vec![now], was: vec![was], at: Some(10.0), value: String::new(), shorter: Vec::new(), short: String::new(), latest: None }
     }
 
     /// Read every second, a level is on its way all that second: from

@@ -393,6 +393,9 @@ struct Deskbar {
     tray_pictures: HashMap<(String, u64, u32), Option<Arc<RenderImage>>>,
     /// The live widgets, what they've read, and their worker.
     live: widgets::Live,
+    /// Token Pool widgets' notifications (made as the first is shown),
+    /// one a widget's measure, each updated in place.
+    pool_notes: Option<(olo_kit::notify::Notifier, HashMap<String, olo_kit::notify::NoteId>)>,
     /// What there is to measure, for the widgets' tips (read once, off
     /// the UI thread).
     sources: olo_system::meters::Sources,
@@ -1513,7 +1516,9 @@ impl Deskbar {
             // Only the widgets drawn again (and the tip of one the
             // pointer is on): not the bar.
             Msg::Meters(batch) => {
-                self.live.add(batch);
+                for news in self.live.add(batch) {
+                    self.tell_pool(&news);
+                }
                 return Taken::Meters(self.retip());
             }
             Msg::Top(id, top) => {
@@ -1547,6 +1552,28 @@ impl Deskbar {
         let id = self.live.hovered()?;
         let w = self.live.widgets.iter().find(|w| w.id == id)?;
         Some((id, self.live.tip(w, &self.sources)))
+    }
+
+    /// A Token Pool widget's quota ran out on every account, or came
+    /// back: said in a notification (as Token Pool's, opening it when
+    /// clicked), the one before for that quota replaced.
+    fn tell_pool(&mut self, news: &widgets::PoolNews) {
+        use olo_kit::notify::{Note, NoteEvent, NoteKind, Notifier};
+        let (notes, ids) = self.pool_notes.get_or_insert_with(|| {
+            let notes = Notifier::with_events("Token Pool", "olo-pool", |e| {
+                if let NoteEvent::Action { key, .. } = e
+                    && (key == "default" || key == "open")
+                {
+                    let _ = olo_xdg::spawn_detached("olo-pool");
+                }
+            });
+            (notes, HashMap::new())
+        });
+        let (summary, body) = news.said();
+        let note = Note::new(summary).body(body).icon("token-pool").kind(if news.out { NoteKind::Important } else { NoteKind::Information }).action("open", "Open Token Pool");
+        let key = serde_json::to_string(&news.measure).unwrap_or_default();
+        let id = notes.show(ids.get(&key).copied(), note);
+        ids.insert(key, id);
     }
 }
 
@@ -3392,14 +3419,21 @@ impl Deskbar {
     }
 
     /// What a widget does under the pointer: a click opens Activity
-    /// Monitor; the other button, a menu with it and Deskbar's
-    /// preferences.
+    /// Monitor (a Token Pool widget's, Token Pool); the other button, a
+    /// menu with it and Deskbar's preferences.
     fn widget_hit(&self, h: Element, key: &str, r: Bounds<Pixels>, view: &ViewRef<BarView>, model: &Model) -> Element {
         let (m, v, key) = (model.clone(), view.clone(), key.to_owned());
+        let pool = key
+            .strip_prefix("widget:")
+            .or_else(|| key.strip_prefix("tray:widget:"))
+            .and_then(|id| id.parse::<u32>().ok())
+            .and_then(|id| self.live.widgets.iter().find(|w| w.id == id))
+            .is_some_and(|w| matches!(w.measure, olo_protocol::deskbar::Measure::Pool { .. }));
+        let (opens, name) = if pool { ("run:olo-pool", "Token Pool") } else { ("run:olo-activity", "Activity Monitor") };
         h.on_any_button(move |e, cx| match button(e) {
-            MouseButton::Left => run(&m, "run:olo-activity", cx),
+            MouseButton::Left => run(&m, opens, cx),
             MouseButton::Right => {
-                let menu = Menu::new("Widget").item("Activity Monitor", "run:olo-activity").separator().item("Deskbar Preferences…", "pref:deskbar");
+                let menu = Menu::new("Widget").item(name, opens).separator().item("Deskbar Preferences…", "pref:deskbar");
                 let mm = m.clone();
                 open_menu(cx, &v, &key, r, menu, move |cmd, cx| run(&mm, cmd, cx));
             }
@@ -3654,6 +3688,7 @@ fn main() {
             badges: Vec::new(),
             tray_pictures: HashMap::new(),
             live: widgets::Live::new(),
+            pool_notes: None,
             sources: Default::default(),
         }));
         let (seconds, ticking) = mpsc::channel();
