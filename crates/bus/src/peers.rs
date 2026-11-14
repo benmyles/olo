@@ -33,13 +33,20 @@ pub struct Peers {
     peers: RwLock<BTreeMap<OwnedUniqueName, Peer>>,
     monitors: RwLock<BTreeMap<OwnedUniqueName, Monitor>>,
     name_registry: RwLock<NameRegistry>,
+    /// Olo: each call delivered and not yet answered, by who has it, who
+    /// asked and the call's serial: the call itself, to answer for it
+    /// (`NoReply`) if who has it goes without answering, as dbus-daemon
+    /// and dbus-broker do. busd didn't, and a zbus caller (no timeout of
+    /// its own) waited forever: Preferences' NetworkManager worker on a
+    /// test bus whose stand-in NetworkManager was stopped mid-call.
+    pending: std::sync::Mutex<BTreeMap<(OwnedUniqueName, OwnedUniqueName, u32), Message>>,
 }
 
 impl Peers {
     pub fn new() -> Arc<Self> {
         let name_registry = NameRegistry::default();
 
-        Arc::new(Self { peers: RwLock::new(BTreeMap::new()), monitors: RwLock::new(BTreeMap::new()), name_registry: RwLock::new(name_registry) })
+        Arc::new(Self { peers: RwLock::new(BTreeMap::new()), monitors: RwLock::new(BTreeMap::new()), name_registry: RwLock::new(name_registry), pending: std::sync::Mutex::new(BTreeMap::new()) })
     }
 
     pub async fn add(self: &Arc<Self>, guid: &OwnedGuid, id: usize, socket: BoxedSplit, auth_mechanism: AuthMechanism) -> Result<()> {
@@ -173,13 +180,20 @@ impl Peers {
                 message::Type::Signal => self.broadcast_msg(msg).await,
                 _ => match msg.header().destination() {
                     Some(dest) => {
-                        if let Err(e) = self.send_msg(msg.clone(), dest.clone()).await {
-                            debug!("{}", e);
-                            // Olo: a call to a name nobody has is answered
-                            // at once, as other brokers answer it (busd left
-                            // the caller waiting out its own timeout: GLib's
-                            // is 25 s, a GTK app's start held up that long).
-                            self.answer_unknown(&msg, dest).await;
+                        // Olo: an answer settles the call it answers.
+                        if let (message::Type::MethodReturn | message::Type::Error, Some(serial), BusName::Unique(caller)) = (msg.message_type(), msg.header().reply_serial(), dest) {
+                            self.pending.lock().unwrap().remove(&(unique_name.clone(), caller.to_owned().into(), serial.get()));
+                        }
+                        match self.send_msg(msg.clone(), dest.clone()).await {
+                            Ok(to) => self.expect_answer(&msg, to, &unique_name),
+                            Err(e) => {
+                                debug!("{}", e);
+                                // Olo: a call to a name nobody has is answered
+                                // at once, as other brokers answer it (busd left
+                                // the caller waiting out its own timeout: GLib's
+                                // is 25 s, a GTK app's start held up that long).
+                                self.answer_unknown(&msg, dest).await;
+                            }
                         }
                     }
                     // peer::Stream ensures a valid destination so this isn't exactly needed.
@@ -187,6 +201,10 @@ impl Peers {
                 },
             };
         }
+
+        // Olo: the calls it had and never answered are answered for it, and
+        // its own calls need no answer now.
+        self.answer_for(&unique_name).await;
 
         // Stream is done means the peer disconnected or it became a monitor. Remove it from the
         // list of peers.
@@ -224,18 +242,55 @@ impl Peers {
         }
     }
 
-    async fn send_msg(&self, msg: Message, destination: BusName<'_>) -> Result<()> {
-        trace!("Forwarding message: {:?}, destination: {}", msg, destination);
-        match destination {
-            BusName::Unique(dest) => self.send_msg_to_unique_name(msg, dest.clone()).await,
-            BusName::WellKnown(name) => {
-                let dest = match self.name_registry().await.lookup(name.clone()) {
-                    Some(dest) => dest,
-                    None => bail!("unknown destination: {}", name),
-                };
-                self.send_msg_to_unique_name(msg, (&*dest).into()).await
+    /// A call `msg` from `caller`, delivered to `to`, kept until it's
+    /// answered, unless no answer is wanted.
+    fn expect_answer(&self, msg: &Message, to: OwnedUniqueName, caller: &OwnedUniqueName) {
+        if msg.message_type() != message::Type::MethodCall || msg.primary_header().flags().contains(message::Flags::NoReplyExpected) {
+            return;
+        }
+        self.pending.lock().unwrap().insert((to, caller.clone(), msg.primary_header().serial_num().get()), msg.clone());
+    }
+
+    /// `gone` went: each call it had and never answered gets the bus's
+    /// `NoReply`, as dbus-daemon and dbus-broker answer it, and the calls
+    /// it made are forgotten.
+    async fn answer_for(&self, gone: &OwnedUniqueName) {
+        let mut unanswered: Vec<Message> = Vec::new();
+        self.pending.lock().unwrap().retain(|(to, caller, _), call| {
+            if to == gone && caller != gone {
+                unanswered.push(call.clone());
+            }
+            to != gone && caller != gone
+        });
+        for call in unanswered {
+            let header = call.header();
+            let Some(caller) = header.sender().map(|s| s.to_owned()) else { continue };
+            let reply = Message::error(&header, "org.freedesktop.DBus.Error.NoReply")
+                .and_then(|b| b.sender("org.freedesktop.DBus"))
+                .and_then(|b| b.build(&("Message recipient disconnected from message bus without replying",)));
+            match reply {
+                Ok(reply) => {
+                    if let Err(e) = self.send_msg_to_unique_name(reply, caller.as_ref()).await {
+                        debug!("couldn't tell {caller} that {gone} went without answering: {e}");
+                    }
+                }
+                Err(e) => warn!("couldn't make an error reply: {e}"),
             }
         }
+    }
+
+    /// Sends `msg` on to `destination`; who it went to.
+    async fn send_msg(&self, msg: Message, destination: BusName<'_>) -> Result<OwnedUniqueName> {
+        trace!("Forwarding message: {:?}, destination: {}", msg, destination);
+        let to: OwnedUniqueName = match destination {
+            BusName::Unique(dest) => dest.to_owned().into(),
+            BusName::WellKnown(name) => match self.name_registry().await.lookup(name.clone()) {
+                Some(dest) => dest,
+                None => bail!("unknown destination: {}", name),
+            },
+        };
+        self.send_msg_to_unique_name(msg, to.as_ref()).await?;
+        Ok(to)
     }
 
     async fn send_msg_to_unique_name(&self, msg: Message, destination: UniqueName<'_>) -> Result<()> {

@@ -14095,6 +14095,17 @@ are (spaces, `eavesdrop`: Chrome's, `fdo::dbus::lenient_rule`), and it
 answers a call to a name nobody has at once (`ServiceUnknown`;
 `Peers::answer_unknown`), where busd left the caller waiting out its own
 timeout (GLib's 25 s: GTK programs on test buses took that long to show).
+And a call whose recipient goes without answering it is answered by the
+bus, `org.freedesktop.DBus.Error.NoReply`, as dbus-daemon and
+dbus-broker answer it (`Peers::answer_for`: each call delivered is kept
+until its answer passes, by who has it, who asked and its serial), where
+busd answered nothing: a zbus caller has no timeout of its own and
+waited for good (Preferences ▸ Network's worker, its stand-in
+NetworkManager stopped mid-call; `crates/bus/tests/no_reply.rs`). It
+costs nothing measurable: `cargo run --release -p olo-bus --example
+calls -- ADDRESS` times calls through a running bus (about 110 µs to
+the bus and 140 µs to a peer here, before and after, 20,000 each), and
+the bus stays at 7.5 MB through 400,000.
 tsession's sessions use it too, when built.
 
 An Electron app (Slack, VS Code, Discord) finds its running copy through
