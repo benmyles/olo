@@ -11760,8 +11760,12 @@ the real session's services (`REAL_SHELL`): it waits, following
 until turned on in Preferences ▸ Performance, by Deskbar's gauge (a
 click; its menu has the findings, Show in Activity Monitor and
 Performance Settings…) or `olo-supervisor --on`. Then every two seconds
-(about 6 ms on its own thread; each command line read once a process)
-it looks at the person's own processes in /proc (`sample.rs`) and:
+(about 4 ms on its own thread; each command line read once a process)
+it looks at the person's own processes in /proc (`sample.rs`: told
+apart by their folders' owner, a `stat`, not each one's `status`, ten
+times the cost; a folder is its process's effective user's, so root's
+are read once, in case one is the person's running as root, and kept by
+the folder's change time, `Owners`; each file in one read) and:
 
 - **Tiers first** (`olo_protocol::performance::tier`, Ben, 2026-11-01):
   what keeps the desktop responsive runs above everything else, always,

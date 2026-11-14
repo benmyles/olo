@@ -111,6 +111,8 @@ struct Supervisor {
     /// Tests: only this process and what it started are looked at
     /// (`OLO_SUPERVISOR_ONLY_UNDER`), never the person's own.
     only_under: Option<i32>,
+    /// Whose root's processes are (`sample::Owners`).
+    owners: sample::Owners,
 }
 
 impl Supervisor {
@@ -165,7 +167,7 @@ impl Supervisor {
             self.note("Turned on".into());
         }
         let t = self.clock.elapsed().as_secs_f64();
-        let mut procs = sample::processes(self.uid, t);
+        let mut procs = sample::processes(self.uid, t, &mut self.owners);
         if let Some(root) = self.only_under {
             let parents: HashMap<i32, i32> = procs.iter().map(|p| (p.pid, p.ppid)).collect();
             let under = |mut pid: i32| {
@@ -325,12 +327,14 @@ impl Supervisor {
         if settings.priorities {
             let background: HashSet<&str> = settings.background.iter().map(String::as_str).collect();
             for p in &procs {
-                if self.lowered.contains_key(&p.pid) || favoured.contains(&p.pid) || self.olo(p) || p.state == 'Z' {
+                if self.lowered.contains_key(&p.pid) || favoured.contains(&p.pid) || p.state == 'Z' {
                     continue;
                 }
                 let by_name = background.contains(p.name.as_str());
                 let busy = !by_name && self.followed.get(&p.pid).is_some_and(|f| busy_job(f, t));
-                if !(by_name || busy) {
+                // (Whether it's Olo's own asks where its program is: only
+                // of one that would be lowered, not each one every pass.)
+                if !(by_name || busy) || self.olo(p) {
                     continue;
                 }
                 let nice = settings.background_nice.clamp(1, 19);
@@ -693,6 +697,7 @@ fn main() -> std::process::ExitCode {
             running: false,
             ours: std::env::current_exe().ok().and_then(|e| e.parent().map(std::path::Path::to_path_buf)),
             only_under: std::env::var("OLO_SUPERVISOR_ONLY_UNDER").ok().and_then(|p| p.parse().ok()),
+            owners: sample::Owners::default(),
         };
         sup.adopt();
         sup.publish(None);

@@ -19,8 +19,8 @@ fn read(path: impl AsRef<Path>) -> String {
 /// of 32 bytes and grows, five or six reads for a `stat`. (procfs gives
 /// such a file's one record whole to a read with room for it: a read
 /// short of the room is all of it.) None if it can't be opened or read
-/// (another user's `io`).
-fn read_record(path: &Path, buf: &mut Vec<u8>) -> Option<usize> {
+/// (another user's `io`). (The supervisor reads its looks so too.)
+pub fn read_record(path: &Path, buf: &mut Vec<u8>) -> Option<usize> {
     use std::io::Read;
     let mut f = std::fs::File::open(path).ok()?;
     let mut len = 0;

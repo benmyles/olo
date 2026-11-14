@@ -876,6 +876,20 @@ something nobody here has is in "Blocked", with what it waits for.
          rounds) 25.4–27.5 → 22.3–22.4 M instructions (cycles too noisy
          to tell, 67–84 M for both). `OLO_FRAME_PHASES=batches` lists
          a frame's draws in order, which is how it showed.
+       - *The supervisor's look, done 2026-11-14.* At rest in Ben's
+         session it was 0.67% of a core, ~13 ms every two seconds: it
+         read every process's `status` (~750, a text the kernel writes)
+         to find the person's ~185, and asked where each one's program
+         is (`/proc/PID/exe`) every pass to tell Olo's own. Now a
+         process's folder's owner (a `stat`, a tenth the cost) tells
+         them apart, root's folders have their `status` read once (one
+         may be the person's, running as root) and kept by the folder's
+         change time, each file is one read, and only a process about to
+         be lowered is asked where its program is. Release, a look
+         (`sample::tests::a_looks_cost`, builds in turn, three rounds):
+         8.3–9.1 → 3.7–3.8 ms of CPU, the same 188 processes. Headless,
+         `OLO_SUPERVISOR_ONLY_UNDER` on a tree with a `make`: lowered by
+         its name, as before.
        - *Following many folders, done 2026-11-14.* The command palette
          at rest was 3.9% of a core in Ben's session, all of it the
          kit's watch thread (2.9%) and the palette's index (1.5%): it
