@@ -1458,6 +1458,21 @@ accessibility tree test on an agent screen (GTK's Text Editor, 30
 nodes). What's left needs Ben: in Blocked, "The ignored tests that
 need Ben".)
 
+- **What's opened from a display opens there** (Ben, 2026-11-14: "if i
+  e.g. right click on the deskbar on d0w1 and choose deskbar settings
+  it's opening the settings on a different screen (d1w1) instead of
+  the same screen i clicked from"). A new window went to the display
+  of the window with the keyboard, and a press on Deskbar or the
+  desktop doesn't take the keyboard from it. Now the display last
+  pressed on is the active one until another window has the keyboard
+  or a key is typed for the one that has it (`pressed_display`;
+  HACKING, workspaces). Headless, two displays, DeskCalc on the second
+  with the keyboard, Deskbar's heading menu ▸ Workspaces Settings… on
+  the first: the build before opened it on the second, this one on
+  the first; the menu put away with Esc and a key typed into DeskCalc,
+  the next panel opened on the second again. app_server's tests pass.
+  *Left for Ben:* upgrade, then try it from his Deskbar.
+
 - **One Olo Doctor, tidied: Suggestions folded into it** (Ben,
   2026-11-13: "combine the olo suggestions app into olo doctor: just
   have it be one unified olo doctor app where each item has a type

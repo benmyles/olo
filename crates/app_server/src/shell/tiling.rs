@@ -619,6 +619,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// workspace was last switched on or the pointer last pressed on,
     /// else the pointer's.
     pub fn active_output(&self) -> Option<Output> {
+        // Pressed on since the focused window was chosen or typed in (its
+        // Deskbar, its desktop): that display.
+        if let Some(o) = self.pressed_display.as_ref().and_then(|name| self.space.outputs().find(|o| o.name() == *name)) {
+            return Some(o.clone());
+        }
         if let Some(w) = self.focused_window() {
             return self.window_output(&w);
         }

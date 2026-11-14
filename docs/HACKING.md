@@ -6037,7 +6037,14 @@ which `display_of` reads; a display gone, the main one's).
 `switch_workspace_on(output, n)` parks that display's windows and brings
 back the ones left on its workspace `n`, the keyboard going to the front
 one there (none if it has none, not another display's); the shortcuts,
-`switch_workspace`, act on the active display (`active_output`).
+`switch_workspace`, act on the active display (`active_output`). The
+active display is the one last pressed on (`pressed_display`: its
+Deskbar, its desktop, a menu there) until another window has the
+keyboard or a key is typed for the one that has it; then the focused
+window's; else the one a workspace was last switched on. A window
+opened goes there (`new_window_near`), its own app's too: Deskbar ▸
+Deskbar Settings… chosen on one display while a window on another kept
+the keyboard opened Preferences on the other (Ben, 2026-11-14).
 `move_to_workspace` keeps a window on its display;
 `move_to_display_workspace(w, to, n)` (`Request::MoveToWorkspace` with an
 `output`: the window menu's and Deskbar's app menus' moves to another

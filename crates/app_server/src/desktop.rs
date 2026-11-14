@@ -945,7 +945,12 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// shows here, would open another window for it, here.)
     pub fn new_window_near(&self, client: Option<smithay::reexports::wayland_server::backend::ClientId>) -> Point<f64, Logical> {
         let pointer = self.pointer.current_location();
-        if let (Some(client), Some(w)) = (client, self.focused_window())
+        // Pressed on another display than the focused window's since
+        // (Deskbar's menu there, its desktop): a window opened from there
+        // opens there, its own app's too.
+        let pressed_elsewhere = self.pressed_display.as_ref().is_some_and(|p| self.focused_window().and_then(|w| self.window_output(&w)).is_some_and(|o| o.name() != *p));
+        if !pressed_elsewhere
+            && let (Some(client), Some(w)) = (client, self.focused_window())
             && w.wl_surface().and_then(|s| s.client()).map(|c| c.id()) == Some(client)
             && let Some(geo) = self.space.element_geometry(&w)
         {
@@ -980,6 +985,9 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
         let Some(id) = self.focused_window().map(|w| w.id()) else { return };
         if self.recent.first() != Some(&id) {
+            // Another window has the keyboard: the display pressed on
+            // before is no longer the active one for it.
+            self.pressed_display = None;
             self.recent.retain(|r| *r != id);
             self.recent.insert(0, id);
             let alive: Vec<u64> = self.recent.iter().copied().filter(|r| self.window_by_id(*r).is_some()).collect();

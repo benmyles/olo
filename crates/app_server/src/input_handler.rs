@@ -258,7 +258,13 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             return KeyAction::None;
         }
         let opts = crate::keymap::Options::from(&self.settings.keyboard);
-        let focus = self.focused_window().map_or(crate::keymap::Focus::Olo, |w| crate::keymap::Focus::of(&w.app_id(), &self.settings.keyboard.terminal_apps, &self.settings.keyboard.browser_apps));
+        let focused = self.focused_window();
+        // A key for the window with the keyboard (typed, or a shortcut):
+        // its display is the active one again, not one pressed on since.
+        if pressed && focused.is_some() && self.pressed_display.is_some() && !olo_protocol::shortcuts::MODIFIER_KEYS.contains(&key) {
+            self.pressed_display = None;
+        }
+        let focus = focused.map_or(crate::keymap::Focus::Olo, |w| crate::keymap::Focus::of(&w.app_id(), &self.settings.keyboard.terminal_apps, &self.settings.keyboard.browser_apps));
         let outs = self.keymap.feed(key, pressed, std::time::Instant::now(), opts, focus);
         // ⌘ on a tab's cut title: its tip at once (`tabtip`).
         if pressed && self.keymap.command_held() {
@@ -746,7 +752,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         // A press on a display makes it the active one (while no window
         // has the keyboard: a workspace switched from there).
         if let Some(o) = self.space.output_under(location).next() {
-            self.last_display = Some(o.name());
+            let name = o.name();
+            self.last_display = Some(name.clone());
+            self.pressed_display = Some(name);
         }
         if self.lock.locked() {
             self.lock_guard_focus();

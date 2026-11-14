@@ -317,6 +317,12 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// The display a workspace was last switched on (its connector): the
     /// active one while no window has the focus.
     pub last_display: Option<String>,
+    /// The display last pressed on, until another window has the
+    /// keyboard or a key is typed into the one that has it: a press on
+    /// Deskbar or the desktop of one display, while a window on another
+    /// keeps the keyboard, makes that display the active one (what it
+    /// opens opens there).
+    pub pressed_display: Option<String>,
     /// The active display subscribers were last told of.
     pub told_active: Option<String>,
     /// Clipboard tools' windows, out of sight while they set the
@@ -1309,6 +1315,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             security_key_taps: Default::default(),
             globe: Default::default(),
             last_display: None,
+            pressed_display: None,
             told_active: None,
             clipboard_helpers: Vec::new(),
             twitch_buttons: Vec::new(),
