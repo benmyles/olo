@@ -394,6 +394,19 @@ impl Cx {
     }
 }
 
+/// A shell window `id` draws printed: its screens are drawn again, at
+/// its next frame (from the thread that took the output in). False if
+/// there's no such window.
+pub fn screens_changed(id: WindowId) -> bool {
+    match wins().map.get(&id) {
+        Some(h) => {
+            h.window.messenger().send(ShellMsg::Screens);
+            true
+        }
+        None => false,
+    }
+}
+
 /// Window `id`'s content size as last drawn.
 pub fn window_size(id: WindowId) -> Option<(u32, u32)> {
     wins().map.get(&id).map(|h| h.size)
@@ -1320,9 +1333,15 @@ impl Terminal {
         let side = self.settings.side_tabs;
         let Some(layout) = self.lay_out(id, vs, scale, &metrics) else { return div() };
         let Some(Win::Term(t)) = self.windows.get(&id) else { return div() };
-        // (Every pane drawn has taken its wake-up, the tiles too.)
-        for &(i, _, _) in &layout.panes {
-            t.tabs[i].session.woke();
+        // Every pane drawn has taken its wake-up, the tiles too; and each
+        // tab knows whether this window draws it, so that its output tells
+        // the window itself (`Session::drawn_in`).
+        for (i, tab) in t.tabs.iter().enumerate() {
+            let drawn = layout.panes.iter().any(|&(j, _, _)| j == i);
+            tab.session.drawn_in(drawn.then_some(id));
+            if drawn {
+                tab.session.woke();
+            }
         }
         let several = layout.panes.len() > 1;
         let group_chips: Vec<(SharedString, Hsla)> = t.groups.iter().map(|g| (SharedString::from(g.name.clone()), groups::color(g.color, &self.look))).collect();

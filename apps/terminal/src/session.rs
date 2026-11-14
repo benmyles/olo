@@ -6,7 +6,7 @@ use std::{
     path::PathBuf,
     sync::{
         Arc, OnceLock,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc,
     },
     time::{Duration, Instant},
@@ -27,8 +27,12 @@ use crate::{
 
 /// What the emulator reports to the app (via the kit's message channel).
 pub enum TermEvent {
-    /// New output to draw (at most one in flight per shell).
+    /// New output to draw (at most one in flight per shell), of a shell
+    /// whose window isn't known to be drawing it.
     Wakeup,
+    /// A shell being drawn printed: the tabs' titles are looked at
+    /// again soon (its window was told to draw it, `Session::drawn_in`).
+    Printed,
     Title(Option<String>),
     Bell,
     Clipboard(String),
@@ -37,6 +41,11 @@ pub enum TermEvent {
 
 /// An event from shell `.0` (its id: tabs move between windows).
 pub struct Message(pub u64, pub TermEvent);
+
+/// Terminal looks at the tabs' titles again soon (`retitle_soon`): a
+/// shell printing needn't ask (12 times a second for an agent's spinner,
+/// each a wake of Terminal's own thread for nothing).
+pub static TITLES_DUE: AtomicBool = AtomicBool::new(false);
 
 /// A thread's wake-up call, coalesced: poked as often as anything
 /// happens, it wakes once. What watches the tabs (agents, repositories)
@@ -178,6 +187,10 @@ pub struct Session {
     pub term: Arc<FairMutex<Term<Listener>>>,
     link: Link,
     pending: Arc<AtomicBool>,
+    /// The window drawing it, as its screens were last drawn (its id
+    /// and one; 0: none): its output tells that window itself, not
+    /// Terminal's thread to tell it.
+    drawn_in: Arc<AtomicU64>,
     proxy: Proxy,
     reflow: Arc<Reflow>,
     pub shared: Arc<io::Shared>,
@@ -216,11 +229,24 @@ impl Session {
         let config = Config { scrolling_history: wire::SCROLLBACK, kitty_keyboard: true, ..Config::default() };
         let term = Arc::new(FairMutex::new(Term::new(config, &size, listener)));
         let pending = Arc::new(AtomicBool::new(false));
+        let drawn_in = Arc::new(AtomicU64::new(0));
         let wake = {
-            let (pending, proxy) = (pending.clone(), proxy.clone());
+            let (pending, proxy, drawn_in) = (pending.clone(), proxy.clone(), drawn_in.clone());
             move || {
-                if !pending.swap(true, Ordering::AcqRel) {
-                    proxy.send(Message(id, TermEvent::Wakeup));
+                if pending.swap(true, Ordering::AcqRel) {
+                    return;
+                }
+                match drawn_in.load(Ordering::Acquire) {
+                    // Its window draws it again (from here: going through
+                    // Terminal's thread was a wake of that thread an
+                    // update, a twelfth of an agent's spinner's cost)...
+                    w @ 1.. if crate::ui::screens_changed(crate::ui::WindowId(w - 1)) => {
+                        // ...and the titles are looked at again soon.
+                        if !TITLES_DUE.load(Ordering::Acquire) {
+                            proxy.send(Message(id, TermEvent::Printed));
+                        }
+                    }
+                    _ => proxy.send(Message(id, TermEvent::Wakeup)),
                 }
             }
         };
@@ -244,7 +270,7 @@ impl Session {
                 });
             }
         }
-        Session { id, term, link: link.clone(), pending, proxy, reflow: Arc::default(), shared, size, cell, title: None, exited: None }
+        Session { id, term, link: link.clone(), pending, drawn_in, proxy, reflow: Arc::default(), shared, size, cell, title: None, exited: None }
     }
 
     /// What drawing the screen takes, to keep in a frame's paint.
@@ -255,6 +281,12 @@ impl Session {
     /// Call when handling a Wakeup, before drawing.
     pub fn woke(&self) {
         self.pending.store(false, Ordering::Release);
+    }
+
+    /// Which window draws its screen now (None: none does, a tab not
+    /// shown), as that window's screens are drawn.
+    pub fn drawn_in(&self, window: Option<crate::ui::WindowId>) {
+        self.drawn_in.store(window.map_or(0, |w| w.0 + 1), Ordering::Release);
     }
 
     pub fn write(&self, bytes: impl Into<Vec<u8>>) {

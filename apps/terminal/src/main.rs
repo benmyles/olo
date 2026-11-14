@@ -2960,6 +2960,9 @@ impl Terminal {
                 }
                 self.retitle_soon(cx);
             }
+            // (Its window was told to draw it by the thread that took the
+            // output in.)
+            TermEvent::Printed => self.retitle_soon(cx),
             TermEvent::Title(title) => {
                 tab.session.title = title;
                 // At once, not at its next frame: a window not shown (behind
@@ -3211,8 +3214,10 @@ impl Terminal {
         if std::mem::replace(&mut self.retitling, true) {
             return;
         }
+        session::TITLES_DUE.store(true, std::sync::atomic::Ordering::Release);
         cx.later(RETITLE_AFTER, |t, cx| {
             t.retitling = false;
+            session::TITLES_DUE.store(false, std::sync::atomic::Ordering::Release);
             let ids: Vec<WindowId> = t.windows.keys().copied().collect();
             for id in ids {
                 if let Some(Win::Term(w)) = t.windows.get_mut(&id) {

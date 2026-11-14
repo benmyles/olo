@@ -1086,10 +1086,23 @@ something nobody here has is in "Blocked", with what it waits for.
        thread wakes three times an update: the commit; app_server's
        release of the last buffer, as it takes the new one; and the
        frame callback, a moment later. The release could come with the
-       callback, one wake fewer for every app's every frame. And
+       callback, one wake fewer for every app's every frame, but at
+       about 10 µs a wake (1.5% of the spinner's cost) it isn't worth
+       holding every client's buffers longer (Chrome's, games',
+       double-buffered programs' that would wait for one). And
        Terminal's screens' view says what it shows again for each
        output (0.03 ms: its elements, listeners and scroll bar made
        again), where its drawing alone is new.
+       *Done after, 2026-11-14:* each update went through Terminal's
+       own thread (the shell's output thread told it, it told the
+       window): now the output thread tells the window drawing the tab
+       itself (`Session::drawn_in`, set as screens are drawn), and
+       Terminal's thread only hears that titles are due a look, at
+       most every 400 ms. The spinner, three rounds each in turn, 25 s:
+       that thread 381 → 146 wakes and 24 → 8 ms; all of Terminal's
+       threads 2,256 → 2,029 wakes; instructions the same (218 M).
+       Tested: a tab printing while hidden, shown again (current, and
+       going on), tiled beside the active tab, moved to a new window.
      - Scrolling fails the benchmark's evenness now and then in both
        builds (a frame skipped in a drag or a glide), and the
        Viewer's live resize its budget in both. Looked into

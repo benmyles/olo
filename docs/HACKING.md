@@ -12005,8 +12005,14 @@ daemon window's). Terminal's timers are the app looper's (`Cx::later`,
 `Cx::repeating`, which hands back a `Timer` that stops when dropped:
 Keep It Going's, Auto Approve's). A terminal window's screens are a
 view of their own (`ui::Panes`, `Terminal::render_panes`): a shell's
-output (`Cx::redraw_screens`) says them again and nothing else of the
-window, not its menus nor its strip, and once a frame however much it
+output (`ui::screens_changed`) says them again and nothing else of the
+window, not its menus nor its strip. The thread that takes the output
+in tells the window itself: each tab knows the window drawing it, set
+as its screens are drawn (`Session::drawn_in`), and Terminal's own
+thread hears only that titles are due a look (`TermEvent::Printed`, at
+most every 400 ms, `session::TITLES_DUE`), or the `Wakeup` of a tab no
+window draws (an agent's spinner: that thread woke 15 times a second,
+now 5, 24 → 8 ms of a 25 s run). And once a frame however much it
 prints (`Cx::invalidate_at_frame`, "Fast and light": a flood's frames
 went from 15 ms of laying out each to 0.2, and a window out of sight
 lays out nothing); a key pressed draws nothing
