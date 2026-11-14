@@ -12,6 +12,7 @@ pub mod drain;
 pub mod gateway;
 pub mod import;
 pub mod intercept;
+pub mod meters;
 pub mod model;
 pub mod peer;
 pub mod running;

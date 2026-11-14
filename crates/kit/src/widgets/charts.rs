@@ -869,6 +869,21 @@ pub fn paint_well(g: &mut Painter, bounds: Bounds<Pixels>, p: &olo_theme::Palett
 /// processor's cores, idle to busy), laid out in as many rows as makes
 /// the cells biggest, a device pixel apart.
 pub fn paint_heatmap(g: &mut Painter, bounds: Bounds<Pixels>, levels: &[f32], ground: olo_theme::Rgba, hot: olo_theme::Rgba) {
+    paint_heatmap_by(g, bounds, levels, |v| olo_theme::mix(ground, hot, 0.12 + 0.88 * if v.is_finite() { v.clamp(0.0, 1.0) } else { 0.0 }));
+}
+
+/// A level of use as a colour: the palette's green at none, its yellow
+/// at half, its red at all (where full is what to watch: a Token Pool
+/// quota used up).
+pub fn usage_colour(p: &olo_theme::Palette, used: f32) -> olo_theme::Rgba {
+    use olo_theme::Hue;
+    let u = used.clamp(0.0, 1.0);
+    if u < 0.5 { olo_theme::mix(p.hue(Hue::Green), p.hue(Hue::Yellow), u * 2.0) } else { olo_theme::mix(p.hue(Hue::Yellow), p.hue(Hue::Red), (u - 0.5) * 2.0) }
+}
+
+/// A heatmap whose cells are coloured by `colour` from their level (as
+/// given: NaN for none), laid out as `paint_heatmap`'s.
+pub fn paint_heatmap_by(g: &mut Painter, bounds: Bounds<Pixels>, levels: &[f32], colour: impl Fn(f32) -> olo_theme::Rgba) {
     let n = levels.len();
     if n == 0 {
         return;
@@ -878,12 +893,11 @@ pub fn paint_heatmap(g: &mut Painter, bounds: Bounds<Pixels>, levels: &[f32], gr
     let gap = 1.0 / g.scale_factor();
     let (cw, ch) = ((w - gap * (cols - 1) as f32) / cols as f32, (h - gap * (rows - 1) as f32) / rows as f32);
     for (i, v) in levels.iter().enumerate() {
-        let v = if v.is_finite() { v.clamp(0.0, 1.0) } else { 0.0 };
         let (r, c) = (i / cols, i % cols);
         let x = f32::from(bounds.left()) + c as f32 * (cw + gap);
         let y = f32::from(bounds.top()) + r as f32 * (ch + gap);
         let cell = style::snap(g, Bounds::from_corners(point(px(x), px(y)), point(px(x + cw), px(y + ch))));
-        style::fill_rect(g, cell, style::c(olo_theme::mix(ground, hot, 0.12 + 0.88 * v)));
+        style::fill_rect(g, cell, style::c(colour(*v)));
     }
 }
 

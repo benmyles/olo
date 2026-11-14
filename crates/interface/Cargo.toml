@@ -78,7 +78,6 @@ calloop = "0.13.0"
 calloop-wayland-source = { version = "0.3.0" }
 filedescriptor = { version = "0.8.2" }
 flume = "0.11"
-pathfinder_geometry = "0.5"
 wayland-backend = { version = "0.3.3", features = ["client_system", "dlopen"] }
 wayland-client = { version = "0.31.2" }
 wayland-cursor = { version = "0.31.1" }

@@ -11,7 +11,10 @@ use std::{
     time::Instant,
 };
 
-use olo_protocol::deskbar::Measure;
+use olo_protocol::{
+    deskbar::{Measure, PoolView},
+    pool::{self, PoolMeters},
+};
 
 use crate::gpu_load::{self, Kind, Probe};
 
@@ -38,6 +41,9 @@ pub struct Sources {
     pub sensors: Vec<(String, String)>,
     /// Whether it has a battery.
     pub battery: bool,
+    /// Token Pool's providers and the quotas their accounts have, as it
+    /// last said (none while it isn't running).
+    pub pool: Vec<(String, Vec<String>)>,
 }
 
 /// What there is to measure here (a few milliseconds: sysfs and procfs
@@ -51,6 +57,7 @@ pub fn sources() -> Sources {
         interfaces: interfaces(),
         sensors: sensors().into_iter().map(|s| (s.key, s.name)).collect(),
         battery: battery_dir().is_some(),
+        pool: PoolMeters::load().map(|m| pool::PROVIDERS.iter().map(|p| (p.to_string(), m.quotas(p))).filter(|(_, q)| !q.is_empty()).collect()).unwrap_or_default(),
     }
 }
 
@@ -78,15 +85,23 @@ pub struct Reading {
     /// Said instead of, or beside, the value: "asleep", "not found",
     /// "11.2 of 62 GB".
     pub note: Option<String>,
+    /// Its value in words, where the unit's own won't do ("62% left").
+    pub words: Option<String>,
+    /// Its tip's lines after what it measures (a Token Pool widget's
+    /// accounts), instead of each series' value.
+    pub detail: Vec<String>,
+    /// What's left of what it measures, 0 to 1, for a widget that warns
+    /// as it runs low (a quota).
+    pub left: Option<f64>,
 }
 
 impl Reading {
     fn of(values: Vec<f64>, names: Vec<String>, unit: Unit) -> Reading {
-        Reading { values, names, unit, note: None }
+        Reading { values, names, unit, note: None, words: None, detail: Vec::new(), left: None }
     }
 
     fn missing(unit: Unit, why: &str) -> Reading {
-        Reading { values: Vec::new(), names: Vec::new(), unit, note: Some(why.to_owned()) }
+        Reading { values: Vec::new(), names: Vec::new(), unit, note: Some(why.to_owned()), words: None, detail: Vec::new(), left: None }
     }
 
     /// The level a series is drawn at, 0 to 1, against `top` (the
@@ -128,6 +143,9 @@ pub fn unit_text(unit: Unit, v: f64) -> String {
 /// A reading's value in words, for a widget's row and tip: "23%",
 /// "2.1 MB/s", "↓ 1.2 MB/s ↑ 40 KB/s", "54 °C", "8.4 W", or its note.
 pub fn value_text(measure: &Measure, r: &Reading) -> String {
+    if let Some(words) = &r.words {
+        return words.clone();
+    }
     if r.values.is_empty() {
         return r.note.clone().unwrap_or_default();
     }
@@ -174,7 +192,115 @@ pub fn describe(measure: &Measure, sources: &Sources) -> String {
         Measure::Temperature { sensor: None } => "Temperature: the processor".into(),
         Measure::Temperature { sensor: Some(s) } => format!("Temperature: {}", named(&sources.sensors, s)),
         Measure::Power => "Power from the battery".into(),
+        Measure::Pool { provider, quotas, view, .. } => {
+            let what = match quotas.as_slice() {
+                [] => format!("{}, what holds each account back", pool::provider_name(provider)),
+                [q] => format!("{}, {q}", pool::provider_name(provider)),
+                [first @ .., last] => format!("{}, {} and {last}", pool::provider_name(provider), first.join(", ")),
+            };
+            let how = match view {
+                PoolView::Together => "",
+                PoolView::Each => ", each account",
+                PoolView::Serving => ", the account answering now",
+            };
+            format!("Token Pool: {what}{how}")
+        }
     }
+}
+
+/// What a Token Pool widget shows at `now` (seconds since the epoch):
+/// from the meters the pool last wrote (`olo_protocol::pool`). A series
+/// for each quota chosen (each account's in Each, as "Work 5-hour" when
+/// there are several quotas); `left` is the least left of them, what
+/// warns and tells.
+pub fn pool_reading(m: Option<&PoolMeters>, measure: &Measure, now: i64) -> Reading {
+    let Measure::Pool { provider, quotas, view, used, count_off, .. } = measure else { return Reading::missing(Unit::Percent, "not the pool") };
+    let Some(m) = m else { return Reading::missing(Unit::Percent, "Token Pool isn't running") };
+    if !m.loaded {
+        return Reading::missing(Unit::Percent, "Token Pool is opening its accounts");
+    }
+    let shown = |left: f64| if *used { 100.0 - left } else { left };
+    let word = if *used { "used" } else { "left" };
+    let chosen = |label: &str| quotas.is_empty() || quotas.iter().any(|q| q == label);
+    if *view == PoolView::Serving {
+        let Some(a) = m.serving(provider) else { return Reading::missing(Unit::Percent, "no account has answered yet") };
+        let windows: Vec<&olo_protocol::pool::PoolWindow> = a.windows.iter().filter(|w| chosen(&w.label)).collect();
+        if windows.is_empty() {
+            return Reading::missing(Unit::Percent, "its quotas aren't known yet");
+        }
+        let left = |w: &olo_protocol::pool::PoolWindow| (100.0 - w.used_at(now)).clamp(0.0, 100.0);
+        // (Its least of those for every request: what holds it back.)
+        let least = windows.iter().filter(|w| w.models.is_empty() || !quotas.is_empty()).map(|w| left(w)).fold(100.0, f64::min);
+        let mut r = Reading::of(windows.iter().map(|w| shown(left(w))).collect(), windows.iter().map(|w| w.label.clone()).collect(), Unit::Percent);
+        r.words = Some(format!("{}: {:.0}% {word}", a.name, shown(least)));
+        r.detail = std::iter::once(format!("{}{}", a.name, if a.in_flight > 0 { ", answering now" } else { ", answered last" }))
+            .chain(windows.iter().map(|w| match w.resets_at.filter(|t| *t > now) {
+                Some(t) => format!("{}: {:.0}% {word}, resets in {}", w.label, shown(left(w)), pool::duration_text(t - now)),
+                None => format!("{}: {:.0}% {word}", w.label, shown(left(w))),
+            }))
+            .collect();
+        r.left = Some(least / 100.0);
+        return r;
+    }
+    // Each quota chosen across the accounts (none chosen: what holds
+    // each back).
+    let asked: Vec<Option<&str>> = if quotas.is_empty() { vec![None] } else { quotas.iter().map(|q| Some(q.as_str())).collect() };
+    let found: Vec<(Option<&str>, pool::Availability)> = asked.iter().filter_map(|q| Some((*q, pool::availability(m, provider, *q, *count_off, now)?))).collect();
+    if found.is_empty() {
+        let name = pool::provider_name(provider);
+        return Reading::missing(
+            Unit::Percent,
+            &match quotas.as_slice() {
+                [] => format!("no {name} accounts"),
+                [q] => format!("no {name} account has a {q} quota"),
+                _ => format!("no {name} account has those quotas"),
+            },
+        );
+    }
+    let several = found.len() > 1;
+    let (mut values, mut names) = (Vec::new(), Vec::new());
+    for (q, a) in &found {
+        match view {
+            PoolView::Each => {
+                for c in a.accounts.iter().filter(|c| c.counted) {
+                    values.push(shown(c.left.unwrap_or(0.0)));
+                    names.push(match q {
+                        Some(q) if several => format!("{} {q}", c.name),
+                        _ => c.name.clone(),
+                    });
+                }
+            }
+            _ => {
+                values.push(shown(a.fraction() * 100.0));
+                names.push(if several { q.unwrap_or_default().to_owned() } else { a.title() });
+            }
+        }
+    }
+    let mut r = Reading::of(values, names, Unit::Percent);
+    let least = found.iter().map(|(_, a)| a.fraction()).fold(1.0, f64::min);
+    r.words = Some(if several {
+        format!("{} {word}", found.iter().map(|(_, a)| format!("{:.0}%", shown(a.fraction() * 100.0))).collect::<Vec<_>>().join(" · "))
+    } else {
+        format!("{:.0}% {word}", shown(least * 100.0))
+    });
+    for (q, a) in &found {
+        let mut lines = a.detail(now);
+        if several && let (Some(q), Some(first)) = (q, lines.first_mut()) {
+            *first = format!("{q}: {first}");
+        }
+        r.detail.extend(lines);
+    }
+    // Out on every account: when it's back (which quota, of several).
+    if let Some((q, a)) = found.iter().find(|(_, a)| a.exhausted())
+        && let Some((at, who)) = &a.back
+    {
+        r.note = Some(match q {
+            Some(q) if several => format!("{q}: {who} back in {}", pool::duration_text(at - now)),
+            _ => format!("{who} back in {}", pool::duration_text(at - now)),
+        });
+    }
+    r.left = Some(least);
+    r
 }
 
 /// What a widget remembers between readings, to make rates of the
@@ -327,6 +453,10 @@ impl Reader {
                 }
                 Some(Reading::of(vec![milli / 1000.0], vec![s.name.clone()], Unit::Celsius))
             }
+            Measure::Pool { .. } => {
+                let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
+                Some(pool_reading(PoolMeters::load().as_ref(), measure, now))
+            }
             Measure::Power => {
                 let Some(bat) = battery_dir() else { return Some(Reading::missing(Unit::Watts, "no battery")) };
                 let status = read(bat.join("status"));
@@ -365,7 +495,7 @@ impl Reader {
         let busy = |v: f64| Some(Reading::of(vec![v.clamp(0.0, 100.0)], vec![g.name.clone()], Unit::Percent));
         match &g.kind {
             // (Asleep: never asked, which would wake it.)
-            _ if gpu_load::asleep(&g.device) => Some(Reading { values: vec![0.0], names: vec![g.name.clone()], unit: Unit::Percent, note: Some("asleep".into()) }),
+            _ if gpu_load::asleep(&g.device) => Some(Reading { note: Some("asleep".into()), ..Reading::of(vec![0.0], vec![g.name.clone()], Unit::Percent) }),
             Kind::Xe { gts } => {
                 // Each GT's idle time against the time gone by (a GT
                 // asleep counts as idle): the render one's and the media
@@ -553,6 +683,57 @@ fn statvfs(path: &str) -> Option<(u64, u64)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A Token Pool widget's reading: two Claude accounts' 5-hour quota
+    /// together, each, used rather than left, the one answering, out on
+    /// both (when one's back), and nothing while the pool isn't running.
+    #[test]
+    fn a_pool_reading() {
+        use olo_protocol::pool::{PoolAccount, PoolWindow};
+        let now = 10_000;
+        let account = |name: &str, used: f64, resets: i64, in_flight: u32| PoolAccount {
+            id: name.to_lowercase(),
+            name: name.into(),
+            provider: "claude".into(),
+            enabled: true,
+            in_flight,
+            last_used: Some(now - 60),
+            windows: vec![PoolWindow { name: "five_hour".into(), label: "5-hour".into(), used, resets_at: Some(now + resets), ..Default::default() }],
+            ..Default::default()
+        };
+        let mut m = PoolMeters { pid: 1, loaded: true, accounts: vec![account("Work", 30.0, 3_600, 1), account("Home", 100.0, 7_200, 0)], paused: Vec::new() };
+        let mut measure = Measure::pool("claude", &["5-hour"]);
+        let r = pool_reading(Some(&m), &measure, now);
+        assert_eq!((r.values.len(), r.words.as_deref(), r.left.map(|l| (l * 100.0).round())), (1, Some("35% left"), Some(35.0)));
+        assert!(!r.detail.is_empty() && r.note.is_none(), "{r:?}");
+        if let Measure::Pool { view, used, .. } = &mut measure {
+            (*view, *used) = (PoolView::Each, true);
+        }
+        let r = pool_reading(Some(&m), &measure, now);
+        assert_eq!((r.names.clone(), r.values.clone(), r.words.as_deref()), (vec!["Work".to_owned(), "Home".to_owned()], vec![30.0, 100.0], Some("65% used")));
+        if let Measure::Pool { view, used, .. } = &mut measure {
+            (*view, *used) = (PoolView::Serving, false);
+        }
+        assert_eq!(pool_reading(Some(&m), &measure, now).words.as_deref(), Some("Work: 70% left"));
+        // Out on both: when the first is back.
+        m.accounts[0].windows[0].used = 100.0;
+        measure = Measure::pool("claude", &["5-hour"]);
+        let r = pool_reading(Some(&m), &measure, now);
+        assert_eq!((r.left, r.note.as_deref()), (Some(0.0), Some("Work back in 1 h")));
+        // Two quotas: a series each, the least left warning.
+        m.accounts[0].windows[0].used = 30.0;
+        for (a, used) in m.accounts.iter_mut().zip([40.0, 60.0]) {
+            a.windows.push(PoolWindow { name: "seven_day".into(), label: "Weekly".into(), used, resets_at: Some(now + 100_000), ..Default::default() });
+        }
+        let measure = Measure::pool("claude", &["5-hour", "Weekly"]);
+        let r = pool_reading(Some(&m), &measure, now);
+        assert_eq!((r.names.clone(), r.values.clone(), r.words.as_deref()), (vec!["5-hour".to_owned(), "Weekly".to_owned()], vec![35.0, 50.0], Some("35% · 50% left")));
+        assert_eq!(r.left.map(|l| (l * 100.0).round()), Some(35.0));
+        assert!(r.detail[0].starts_with("5-hour: 35% left"), "{:?}", r.detail);
+        // Not running.
+        let r = pool_reading(None, &measure, now);
+        assert!(r.values.is_empty() && r.note.as_deref() == Some("Token Pool isn't running"));
+    }
 
     #[test]
     fn processor_lines() {

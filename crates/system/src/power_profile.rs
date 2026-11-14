@@ -57,7 +57,7 @@ impl Mode {
     pub fn about(self) -> &'static str {
         match self {
             Mode::Performance => "As fast as the computer goes: the processors kept quick and the firmware's power limits raised, the fans as needed. The battery runs down sooner.",
-            Mode::Balanced => "Fast when there is work, frugal when there isn't. The usual choice.",
+            Mode::Balanced => "Fast when there is work, frugal when there isn't, the processors kept out of their hottest top speed. The usual choice.",
             Mode::PowerSaver => "Slower, cooler and quieter: the processors favour saving energy and the firmware lowers its power limits. The battery lasts longest.",
         }
     }

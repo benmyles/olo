@@ -1,7 +1,13 @@
 //! The lock screen. app_server starts it (on a socket of its own, so only
 //! this process can lock and unlock) when the screen locks; it covers every
-//! output, shows the time, and asks for the password or a fingerprint.
-//! Unlocking ends the session lock and the process.
+//! output, shows the time, and asks for the password, a fingerprint or
+//! the person's face. Unlocking ends the session lock and the process.
+//!
+//! Not a security key (Ben, 2026-11-13: "if someone found the laptop and
+//! got the login screen we can't have them just pressing the yubikey to
+//! get access"): a YubiKey Nano never leaves its port, so a touch proves
+//! nothing of who holds the computer. The key approves what asks once
+//! someone is in (sudo, polkit, Passwords), not the way in.
 //!
 //! Both checks run on worker threads: PAM for the password (which sleeps on
 //! a failure) and fprintd for Touch ID, listening the whole time.
@@ -35,10 +41,6 @@ enum Msg {
     Finger(fingerprint::Event),
     /// The sensor isn't there or has no prints for this user.
     NoFinger,
-    /// A security key set up is plugged in and waits for a touch.
-    KeyWaiting,
-    /// The key's password (checked as one typed), or why not.
-    Key(olo_fido::Result<zeroize::Zeroizing<String>>),
     /// How a look at the camera went (face unlock).
     Face(olo_system::face::Look),
     /// A screen says: a password was entered.
@@ -54,11 +56,6 @@ enum Msg {
 /// A look at the camera at most this often (someone being there, again
 /// and again, doesn't keep its light on).
 const FACE_EVERY: Duration = Duration::from_secs(5);
-
-/// Waits for a key that end with nobody touching it, in a row, before
-/// the lock screen stops asking it till someone is there (a key pressed,
-/// the pointer moved): a key waiting all night blinks all night.
-const KEY_TRIES: u32 = 3;
 
 /// A screen says someone is there at most this often while the pointer
 /// moves over it.
@@ -78,11 +75,8 @@ struct Lock {
     /// What the fingerprint sensor last said (None: not offered).
     finger: Option<String>,
     finger_stop: fingerprint::Stop,
-    /// A touch of a security key waited for, what to say of it, and the
-    /// waits in a row that ended untouched.
-    key: Option<olo_fido::Touch>,
-    key_note: Option<String>,
-    key_tries: u32,
+    /// What the camera said, when it didn't know the face.
+    face_note: Option<String>,
     /// A look going, and when the last began.
     face_looking: bool,
     face_last: Option<Instant>,
@@ -127,20 +121,9 @@ impl Lock {
             .expect("thread");
     }
 
-    /// Wait for a touch of a security key set up, unless already waiting.
-    fn wait_for_key(&mut self) {
-        if self.key.is_some() || self.unlocking || !olo_system::env::key_here() {
-            return;
-        }
-        let (p, proxy) = (olo_kit::proxy(), olo_kit::proxy());
-        self.key = Some(olo_fido::touch(self.user.clone(), move || p.send(Msg::KeyWaiting), move |r| proxy.send(Msg::Key(r))));
-    }
-
-    /// Someone is there (a key, the pointer): the key is asked again,
-    /// and the camera looks (not more often than `FACE_EVERY`).
+    /// Someone is there (a key, the pointer): the camera looks (not more
+    /// often than `FACE_EVERY`).
     fn activity(&mut self) {
-        self.key_tries = 0;
-        self.wait_for_key();
         self.look();
     }
 
@@ -177,7 +160,6 @@ impl Lock {
         }
         self.unlocking = true;
         self.finger_stop.stop();
-        self.key = None;
         // (app_server has heard by the time this returns.)
         olo_kit::unlock_session();
         olo_kit::quit();
@@ -210,30 +192,11 @@ impl Lock {
                 self.shake();
             }
             Msg::Finger(fingerprint::Event::Failed(_)) | Msg::NoFinger => self.finger = None,
-            Msg::KeyWaiting => self.key_note = Some("Touch your security key or enter your password".into()),
-            Msg::Key(Ok(password)) => {
-                self.key = None;
-                self.key_note = None;
-                if self.status != Status::Checking {
-                    self.check(password.to_string());
-                }
-            }
-            Msg::Key(Err(e)) => {
-                self.key = None;
-                self.key_note = None;
-                let untouched = matches!(e, olo_fido::Error::Timeout | olo_fido::Error::Ctap(olo_fido::ctap::ERR_USER_ACTION_TIMEOUT));
-                if untouched && self.key_tries + 1 < KEY_TRIES {
-                    self.key_tries += 1;
-                    self.wait_for_key();
-                } else if !untouched {
-                    tracing::info!("security key: {e}");
-                }
-            }
             Msg::Face(look) => {
                 self.face_looking = false;
                 match look {
                     olo_system::face::Look::Match => self.unlock(),
-                    olo_system::face::Look::NotYou => self.key_note = Some("Your face wasn’t recognised.".into()),
+                    olo_system::face::Look::NotYou => self.face_note = Some("Your face wasn’t recognised.".into()),
                     _ => {}
                 }
             }
@@ -253,11 +216,7 @@ impl Lock {
                     self.status = Status::Idle;
                 }
             }
-            Msg::Activity => {
-                if self.key.is_none() {
-                    self.activity();
-                }
-            }
+            Msg::Activity => self.activity(),
             Msg::Displays => {}
         }
         self.tell_screens();
@@ -269,8 +228,7 @@ impl Lock {
             Status::Checking => ("Checking…".to_owned(), false),
             Status::Error(e) => (e.clone(), true),
             Status::Idle => (
-                match (&self.finger, &self.key_note) {
-                    (Some(f), Some(_)) if f == "Touch ID or enter your password" => "Touch ID, your security key, or your password".to_owned(),
+                match (&self.finger, &self.face_note) {
                     (Some(f), _) => f.clone(),
                     (None, Some(k)) => k.clone(),
                     (None, None) => "Enter your password".to_owned(),
@@ -403,7 +361,7 @@ impl View for Screen {
         .paint_key(style::key((&time, &date, self.desktop)))
         .absolute()
         .inset_0();
-        // Someone there: the key is asked again, if it stopped waiting.
+        // Someone there: the camera looks again.
         let mut root = div().relative().size_full().child(backdrop).on_mouse_move(cx.listener(|screen: &mut Screen, _, _| {
             if screen.told.get().is_none_or(|at| at.elapsed() >= ACTIVITY_EVERY) {
                 screen.told.set(Some(Instant::now()));
@@ -484,9 +442,7 @@ fn main() {
             status: Status::Idle,
             finger: None,
             finger_stop: fingerprint::Stop::default(),
-            key: None,
-            key_note: None,
-            key_tries: 0,
+            face_note: None,
             face_looking: false,
             face_last: None,
             unlocking: false,
@@ -513,7 +469,6 @@ fn main() {
                     lock.tell_screens();
                     if event == SessionLockEvent::Locked {
                         lock.start_fingerprint();
-                        lock.wait_for_key();
                     }
                 }
                 // Refused (another lock screen?) or ended: nothing to do.

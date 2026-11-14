@@ -303,6 +303,9 @@ struct Session {
     /// end only while still ours, and made again if they vanish.
     files: Vec<(PathBuf, Option<(u64, u64)>)>,
     watchdog: watchdog::Watchdog,
+    /// When to check that Deskbar is on the app_server started last
+    /// (`check_shell`).
+    shell_check_at: Option<Instant>,
     /// The direct and proxied listeners and the proxy, once started.
     proxy: Option<(UnixListener, UnixListener, Child)>,
     /// The program the proxy was started from: when it's another, the
@@ -370,6 +373,7 @@ impl Session {
 
         let mut s = Session {
             watchdog: watchdog::Watchdog::start(ipc_path.clone()),
+            shell_check_at: None,
             display,
             wayland,
             ipc,
@@ -502,6 +506,7 @@ impl Session {
         let greeter = r.greeter;
         let mut s = Session {
             watchdog: watchdog::Watchdog::start(ipc_path.clone()),
+            shell_check_at: None,
             display: r.display,
             wayland,
             ipc,
@@ -645,6 +650,37 @@ impl Session {
             set_cloexec(fd, true);
         }
         log(format!("app_server started (pid {})", self.server.pid));
+        self.shell_check_at = Some(Instant::now() + watchdog::SHELL_GRACE);
+    }
+
+    /// The shell's programs that show something (Deskbar, the desktop's
+    /// Tracker: `SHELL`, each a layer surface) on the app_server started
+    /// last: one running `SHELL_GRACE` without a surface on it is stuck,
+    /// and is ended (and so started again, as any crash). Once for each
+    /// app_server; one younger than that is looked at again when it
+    /// isn't.
+    fn check_shell(&mut self) {
+        let Some(at) = self.shell_check_at else { return };
+        if Instant::now() < at {
+            return;
+        }
+        let shown: Vec<(i32, &str)> =
+            self.shell.iter().filter(|c| c.pid > 0 && SHELL.iter().any(|s| c.argv.iter().map(String::as_str).eq(s.iter().copied()))).map(|c| (c.pid, c.argv[0].as_str())).collect();
+        let young = shown.iter().filter_map(|&(pid, _)| watchdog::age(pid)).filter(|a| *a < watchdog::SHELL_GRACE).max();
+        if let Some(age) = young {
+            self.shell_check_at = Some(Instant::now() + (watchdog::SHELL_GRACE - age));
+            return;
+        }
+        // (Not answering: the watchdog's to see to.)
+        let Some(clients) = watchdog::layer_clients(&self.ipc_path) else { return };
+        self.shell_check_at = None;
+        for (pid, name) in shown {
+            if !clients.iter().any(|(p, _)| *p == pid) {
+                log(format!("{name} {pid} has no surface {} s after app_server started: it's stuck; ending it (it will be restarted)", watchdog::SHELL_GRACE.as_secs()));
+                // SAFETY: signalling our own child.
+                unsafe { libc::kill(pid, libc::SIGKILL) };
+            }
+        }
     }
 
     /// Where Olo's own apps connect, and where the proxy does.
@@ -753,6 +789,7 @@ impl Session {
             self.reap();
             if !self.stopping {
                 self.watchdog.check(self.server.pid);
+                self.check_shell();
                 self.follow_install();
                 self.check_stale();
                 if self.nudge_at.is_some_and(|t| Instant::now() >= t) {

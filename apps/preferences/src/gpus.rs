@@ -20,7 +20,7 @@ use olo_kit::{
 };
 use olo_sync::Mutex;
 use olo_system::{
-    cpu_tuning::CpuPreset,
+    cpu_tuning::{CpuPreset, TOPS},
     gpu_tuning::{self, Caps, GpuTune, Preset, Tuning, When},
     gpus::{self, Gpu},
 };
@@ -42,10 +42,8 @@ impl State {
 }
 
 /// The root service that puts the GPUs on the power mode's preset
-/// (`olo-gpu-tune follow`, installed by `olo-gpu-tune set`), and the
-/// program it runs.
-const FOLLOWER: &str = "/etc/systemd/system/olo-gpu-follow.service";
-const INSTALLED: &str = "/usr/local/libexec/olo-gpu-tune";
+/// (`olo-gpu-tune follow`, installed by `olo-gpu-tune set`).
+const FOLLOWER: &str = olo_system::gpu_tuning::FOLLOWER_UNIT_PATH;
 
 /// Whether the power mode's follower is installed, and from this build.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -57,20 +55,17 @@ enum Follower {
     Current,
 }
 
-/// The follower as installed, against the `olo-gpu-tune` beside this
-/// program (on the reading thread: the two compared byte for byte only
-/// when they're one size).
+/// The follower as installed: out of date when what it last did says an
+/// older version of what it does (`gpu_tuning::FOLLOWER_VERSION`, raised
+/// as that changes, not with every build: a new build of the same
+/// follower isn't worth an administrator's password), or says nothing.
 fn follower() -> Follower {
+    use olo_system::gpu_tuning::{FOLLOWER_VERSION, Followed};
     if !std::path::Path::new(FOLLOWER).exists() {
         return Follower::Missing;
     }
-    let Ok(exe) = std::env::current_exe() else { return Follower::Current };
-    let ours = std::path::PathBuf::from(exe.to_string_lossy().trim_end_matches(" (deleted)")).with_file_name("olo-gpu-tune");
-    let len = |p: &std::path::Path| std::fs::metadata(p).map(|m| m.len()).ok();
-    match (len(std::path::Path::new(INSTALLED)), len(&ours)) {
-        // (Ours not here to compare: as it is.)
-        (_, None) => Follower::Current,
-        (Some(a), Some(b)) if a == b && std::fs::read(INSTALLED).ok() == std::fs::read(&ours).ok() => Follower::Current,
+    match Followed::load(std::path::Path::new("/")) {
+        Some(f) if f.version >= FOLLOWER_VERSION => Follower::Current,
         _ => Follower::Old,
     }
 }
@@ -101,6 +96,9 @@ struct Shared {
     /// The GPU that decodes video through VA-API (its name), and whether
     /// its driver has H.264 and HEVC (Fedora's has only AV1 and VP9).
     decodes: Option<(String, bool)>,
+    /// Each NVMe drive, and its power states as the follower found them
+    /// (none until it has: reading them is root's).
+    drives: Vec<(olo_system::nvme_power::Drive, Vec<olo_system::nvme_power::PowerState>)>,
 }
 
 #[derive(Clone)]
@@ -142,6 +140,14 @@ fn read(shared: Arc<Mutex<Shared>>, proxy: olo_kit::Proxy, wake: Option<String>,
         s.av1 = vec!["Intel Graphics".into()];
         s.h264 = vec!["Intel Graphics".into()];
         s.decodes = Some(("Intel Graphics".into(), false));
+        {
+            use olo_system::nvme_power::{Drive, PowerState};
+            let state = |index: u8, max_watts: f32, operational: bool| PowerState { index, max_watts, operational };
+            s.drives = vec![(
+                Drive { name: "nvme0".into(), model: "SKHynix_HFS002TFM9X179N".into(), serial: "SJ0001".into() },
+                vec![state(0, 8.25, true), state(1, 6.3, true), state(2, 5.4, true), state(3, 0.05, false)],
+            )];
+        }
         s.gpus = Some(vec![
             Entry { gpu: gpu("0000:00:02.0", "Intel Graphics", "xe", true, &["eDP-1", "DP-1", "HDMI-A-1"]), caps: Some(xe), asleep: false, unanswered: None, power_failed: false },
             Entry {
@@ -167,6 +173,16 @@ fn read(shared: Arc<Mutex<Shared>>, proxy: olo_kit::Proxy, wake: Option<String>,
                 .collect();
             let kept = Tuning::load();
             let follower = follower();
+            // The drives here, each with the power states the follower
+            // last found it has.
+            let found = olo_system::gpu_tuning::Followed::load(std::path::Path::new("/")).unwrap_or_default();
+            let drives = olo_system::nvme_power::drives()
+                .into_iter()
+                .map(|d| {
+                    let states = found.drives.iter().find(|f| f.serial == d.serial).map(|f| f.states.clone()).unwrap_or_default();
+                    (d, states)
+                })
+                .collect::<Vec<_>>();
             let mode = olo_system::power_profile::modes().ok().flatten().map(|m| m.active);
             let on_battery = !olo_system::battery::on_ac();
             // (Each driver asked, NVIDIA's left asleep: about 15 ms.)
@@ -185,6 +201,7 @@ fn read(shared: Arc<Mutex<Shared>>, proxy: olo_kit::Proxy, wake: Option<String>,
                 s.av1 = av1;
                 s.h264 = h264;
                 s.decodes = decodes;
+                s.drives = drives;
                 // (What's being edited stays; a first read starts it.)
                 if s.gpus.is_none() || s.edited == s.kept {
                     s.edited = kept.clone();
@@ -400,9 +417,9 @@ fn when_name(w: When) -> &'static str {
 /// running on battery, puts the processors and each GPU on.
 pub fn modes(ui: &mut Ui, st: &mut State) {
     ensure_read(ui, st);
-    let (gpus, kept, edited, follower, mode, on_battery) = {
+    let (gpus, kept, edited, follower, mode, on_battery, drives) = {
         let s = st.shared.lock().unwrap();
-        (s.gpus.clone(), s.kept.clone(), s.edited.clone(), s.follower, s.mode, s.on_battery)
+        (s.gpus.clone(), s.kept.clone(), s.edited.clone(), s.follower, s.mode, s.on_battery, s.drives.clone())
     };
     let Some(gpus) = gpus else {
         ui.note("Reading…");
@@ -461,6 +478,21 @@ pub fn modes(ui: &mut Ui, st: &mut State) {
             })
             .collect();
         row(ui, "cpu", "Processors".into(), cells);
+        // Their top speed.
+        let top_names = |battery: bool| -> Vec<SharedString> { battery.then(|| SharedString::from("As the Mode")).into_iter().chain(TOPS.iter().map(|t| SharedString::from(format!("{t}%")))).collect() };
+        let cells = When::ALL
+            .into_iter()
+            .map(|w| {
+                let battery = w == When::Battery;
+                let chosen = edited.plan.cpu_top(w).and_then(|t| TOPS.iter().position(|q| *q == t)).map_or(0, |i| i + usize::from(battery));
+                let set: Box<dyn Fn(&mut Tuning, usize)> = Box::new(move |t: &mut Tuning, i: usize| {
+                    let top = if battery { i.checked_sub(1).map(|i| TOPS[i]) } else { Some(TOPS[i]) };
+                    t.plan.set_cpu_top(w, top);
+                });
+                (top_names(battery), chosen, set)
+            })
+            .collect();
+        row(ui, "cpu-top", "Top speed".into(), cells);
         // Each GPU that can be tuned.
         for e in gpus.iter().filter(|e| !matches!(e.caps, Some(Caps::None))) {
             let (pci, nvidia) = (e.gpu.pci.clone(), e.gpu.vendor == 0x10de);
@@ -480,14 +512,43 @@ pub fn modes(ui: &mut Ui, st: &mut State) {
                 .collect();
             row(ui, &e.gpu.pci, short_name(&e.gpu), cells);
         }
-        ui.note("Processors: Saving Power slows them and turns turbo off, Fastest keeps them quick; a GPU's Cooler and Quieter caps its clocks, Fastest lifts them, Custom is its own settings (Graphics). On battery, whatever the mode, a row set to something other than As the Mode is on that: NVIDIA's GPU saves power then, as video wakes it on battery too.");
+        // Each NVMe drive: As It Is unless chosen; with the watts each
+        // choice allows once the follower has read them.
+        for (k, (d, states)) in drives.iter().enumerate() {
+            use olo_system::nvme_power::{NvmePreset, choice_name};
+            // (A drive with one working state has nothing cooler.)
+            let offered: Vec<NvmePreset> = NvmePreset::ALL.into_iter().filter(|p| states.is_empty() || *p == NvmePreset::AsIs || p.state(states).is_some()).collect();
+            let names = |battery: bool| -> Vec<SharedString> { battery.then(|| SharedString::from("As the Mode")).into_iter().chain(offered.iter().map(|p| SharedString::from(choice_name(*p, states)))).collect() };
+            let cells = When::ALL
+                .into_iter()
+                .map(|w| {
+                    let battery = w == When::Battery;
+                    let chosen = edited.plan.nvme(w, &d.serial).and_then(|p| offered.iter().position(|q| *q == p)).map_or(0, |i| i + usize::from(battery));
+                    let (serial, offered) = (d.serial.clone(), offered.clone());
+                    let set: Box<dyn Fn(&mut Tuning, usize)> = Box::new(move |t: &mut Tuning, i: usize| {
+                        let preset = if battery { i.checked_sub(1).map(|i| offered[i]) } else { Some(offered[i]) };
+                        t.plan.set_nvme(w, &serial, preset);
+                    });
+                    (names(battery), chosen, set)
+                })
+                .collect();
+            let name = if drives.len() == 1 { "SSD".to_owned() } else { format!("SSD {}", k + 1) };
+            row(ui, &format!("nvme-{}", d.serial), name, cells);
+        }
+        ui.note("Saving Power slows the processors and turns turbo off, Balanced speeds them up for work (leaning to saving on battery), Fastest keeps them quick; Top speed caps them (Balanced's 75% leaves out their hottest quarter). A GPU's Cooler and Quieter caps its clocks (Custom: its own, on Graphics), an SSD's Cooler and Coolest the power it may draw. On battery, a row not As the Mode holds whatever the mode.");
         match (mode, follower) {
             (_, Follower::Missing) => ui.note("Apply once to let Olo follow the mode and the power supply: an administrator's password is asked, this once."),
             (_, Follower::Old) => ui.note("What follows them is from an older Olo: Apply to bring it up to date (an administrator's password is asked)."),
             (Some(m), Follower::Current) => {
                 let gpus_now: Vec<String> = gpus.iter().filter(|e| !matches!(e.caps, Some(Caps::None))).map(|e| format!("{} {}", short_name(&e.gpu), kept.plan.gpu_now(m, on_battery, &e.gpu.pci, e.gpu.vendor == 0x10de).name())).collect();
                 let cpu = kept.plan.cpu_now(m, on_battery).name();
-                ui.note(format!("Now {}{}: the processors {cpu}, {}.", m.label(), if on_battery { ", on battery" } else { "" }, gpus_now.join(", ")));
+                let top = kept.plan.cpu_top_now(m, on_battery);
+                let mut now: Vec<String> = gpus_now;
+                for (k, (d, _)) in drives.iter().enumerate() {
+                    let name = if drives.len() == 1 { "the SSD".to_owned() } else { format!("SSD {}", k + 1) };
+                    now.push(format!("{name} {}", kept.plan.nvme_now(m, on_battery, &d.serial).name()));
+                }
+                ui.note(format!("Now {}{}: the processors {cpu} at up to {top}%, {}.", m.label(), if on_battery { ", on battery" } else { "" }, now.join(", ")));
             }
             (None, Follower::Current) => ui.note("No power profiles daemon is running, so there's no power mode to follow."),
         }

@@ -17,6 +17,30 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Coder: Settings ▸ Model, around a pasted key](2026-11-13/205445-coder-settings-model-around-a-pasted-key.png)
 
+### Preferences ▸ Deskbar: a Token Pool widget's quotas as check boxes
+
+*20:37* — Quotas: each of the provider's, checked to show (none: whichever holds each account back). For a heatmap, Colour and 'Orange, then red' are dimmed: its cells are coloured by use.
+
+![Preferences ▸ Deskbar: a Token Pool widget's quotas as check boxes](2026-11-13/203723-preferences-deskbar-a-token-pool-widget-s-quotas.png)
+
+### Token Pool widgets: several quotas, a heatmap coloured by use
+
+*20:37* — A Token Pool widget takes any of a provider's quotas (5-hour, Weekly): a heatmap cell for each account's each, green unused to red used up; its value each quota's, shortened with its short label ('Claude 5h/Wk 24% · 45%') where the column is narrow. Made-up meters in a headless session.
+
+![Token Pool widgets: several quotas, a heatmap coloured by use](2026-11-13/203721-token-pool-widgets-several-quotas-a-heatmap-colo.png)
+
+### Power Modes: an SSD row
+
+*12:53* — Each NVMe drive gets a row in Preferences ▸ Power ▸ Power Modes: As It Is by default (untouched), or Cooler and Coolest, its own lower working power states, with their watts once the follower has read the drive (Ben: "add the ability to adjust/customize nvme power for each profile").
+
+![Power Modes: an SSD row](2026-11-13/125307-power-modes-an-ssd-row.png)
+
+### Power Modes: the processors' top speed
+
+*12:38* — Preferences ▸ Power ▸ Power Modes gets a Top speed row: how fast the processors may go in each mode and on battery, Balanced 75% by default (Ben: Balanced ran too hot, Power Saver too slow). On the ThinkPad a loaded P-core now tops out at 3.6 GHz of its 4.7 in Balanced.
+
+![Power Modes: the processors' top speed](2026-11-13/123845-power-modes-the-processors-top-speed.png)
+
 ### Tracker list view: Edit Name shows its field
 
 *02:43* — Before (top): F2 in the list view blanked the name and showed no field, so typing went nowhere. After: the rename field sits over the Name cell, inside the column (a longer name scrolls in it); clicks in it place the caret. The kit's ColumnListView::over_cell.

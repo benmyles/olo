@@ -2400,7 +2400,10 @@ it.
   `paint_well` (small graphs painted in a canvas: Deskbar's widgets; a
   trace is timed points scrolled to `now`, its frames asked for with
   `charts::tick_within`, the window's one clock below; a heatmap is a
-  cell a level, `heatmap_grid` laying them out as big as they go),
+  cell a level, `heatmap_grid` laying them out as big as they go;
+  `paint_heatmap_by` colours each cell from its level, as
+  `usage_colour` does where full is what to watch: green at none,
+  yellow at half, red at all),
   `widgets::legend`/`legend_height` (swatches, names and values in
   wrapping rows, each name and value on one baseline; laid out by their
   lengths, the review keeps them on a grid of their own, as it does a
@@ -3509,6 +3512,44 @@ for a 3-second `sleep`.
   SIGABRT (so `coredumpctl debug` has the stack that hung), then SIGKILL
   10 s later, and restarts it like a crash: apps reconnect and a locked
   screen comes back locked.
+* **Silence around a sleep isn't a hang.** The graphics driver holds
+  every GPU submission from when a sleep is being prepared until the
+  computer has woken (xe's `xe_pm_block_on_suspend`), and app_server's
+  frame with it: on 2026-11-13 that time before the lid closed and
+  after it opened added up to 10 s, and the watchdog ended a healthy
+  app_server 20 ms after the lid opened (and an Agent Screen's with
+  it). So the silence counts from the last wake (`asleep`:
+  CLOCK_BOOTTIME less CLOCK_MONOTONIC, which grows by each sleep; it's
+  logged, "the computer slept"), and an app_server whose main thread
+  the kernel holds for a sleep (`held_for_sleep`: its wchan names a
+  suspend, `pm_block` or the freezer) is waited for (logged once,
+  "held by the kernel for a sleep"), never ended: another would be
+  held the same.
+* **A shell program that didn't come back is ended, and so
+  restarted.** 20 s (`watchdog::SHELL_GRACE`) after each app_server
+  starts, olo-session asks it which processes have layer surfaces
+  (`Request::LayerClients`: pid and namespace of each, on every output
+  and none); Deskbar or the desktop's Tracker (`SHELL`) running at
+  least that long without one is stuck, and gets SIGKILL (logged, "has
+  no surface"), which the crash restart then sees to. One younger than
+  that is looked at again once it's old enough. Once per app_server;
+  one not answering is the watchdog's. (That day, Deskbar and Tracker,
+  mid-frame as app_server was ended, waited for good for swapchain
+  images it would never give back; nothing restarted them, as they
+  hadn't exited. Tested headless: a stopped Deskbar, its app_server
+  killed, is ended 20 s after the new one starts and comes back.)
+* **No window waits for good on its compositor.** The renderer acquires
+  each frame's image with a 1 s timeout (`ACQUIRE_TIMEOUT_NS`, vendored
+  blade-graphics' `acquire_frame`), not forever: a timeout is a lost
+  frame (`Frame::is_lost`), skipped, and the surface is made again
+  (`remake_surface`), so the window's drawing thread is free to see its
+  connection gone and reconnect (the kit re-executes, its state saved).
+  A kept image is free at once and one still being shown within a
+  frame or two, so a compositor that answers never hits it. (Tested
+  headless: Activity Monitor drawing as its app_server stopped timed
+  out once, "Acquire timed out", and re-executed onto the next
+  app_server; the old code waits there for good, as Activity Monitor,
+  Tracker and olo-screen did on 2026-11-13.)
 * Never replace an installed binary by writing over it (install to a temporary
   name and rename, as `tools/install-session.sh` does).
 
@@ -7378,9 +7419,13 @@ fprintd alone.
 ## Security keys (olo-fido; Preferences ▸ Security ▸ Sign In; app_server security_key.rs)
 
 A security key set up (a YubiKey: any FIDO2 key with `hmac-secret`) is
-touched instead of typing the account password: Terminal's sudo window,
-Passwords' unlock, the polkit agent (for the person's own identity) and
-the lock screen. Natively, as the person, no root: `olo_fido` speaks
+touched instead of typing the account password once the person is
+signed in: Terminal's sudo window, Passwords' unlock and the polkit agent
+(for the person's own identity). Never the lock screen or the login
+screen: those are the doors to the computer, and a key is usually left
+in it (Ben: "if someone found the laptop and got the login screen we
+can't have them just pressing the yubikey to get access"); a face, a
+finger or the password open them. Natively, as the person, no root: `olo_fido` speaks
 CTAPHID to the key's FIDO interface (its hidraw node, found by usage page
 0xF1D0 under /sys, open to the person at their seat by systemd's
 uaccess) and CTAP2 itself (GetInfo, ClientPIN's key agreement in PIN
@@ -7418,13 +7463,13 @@ protocol 2 or 1, MakeCredential, GetAssertion with `hmac-secret`).
   plugged in it says `olo_fido::TOUCH_OR_TYPE` ("Touch your security key,
   or type your password.") beside the field, and the password the touch
   unseals goes where a typed one would (sudo's prompt, the polkit
-  helper's, PAM through `olo_system::auth::check_password` for Passwords
-  and the lock screen, so a password changed since setting up fails as a
-  wrong one would). The wait is dropped with the window (CTAPHID_CANCEL),
-  and Passwords and the lock screen wait only while their window has the
-  keyboard. The key gives up on a touch after about 30 seconds; the lock
-  screen asks again three times, then not till someone is there (a key,
-  the pointer), so a locked computer's key doesn't blink all night.
+  helper's, PAM through `olo_system::auth::check_password` for Passwords,
+  so a password changed since setting up fails as a wrong one would). The
+  wait is dropped with the window (CTAPHID_CANCEL), and Passwords waits
+  only while its window has the keyboard. The lock screen (olo-lock) and
+  the login screen (olo-greeter, its PAM services `data/pam/olo-login*`)
+  have no key code at all, and nothing in the system's PAM stack (no
+  `pam_u2f`) gives them one.
 * **Stray touches** (app_server `security_key.rs`): a touch with nothing
   waiting types the key's one-time code through its own USB keyboard.
   app_server knows that keyboard by the device as it's added
@@ -7722,8 +7767,38 @@ configurable with reasonable defaults"), in three tabs:
   profiles daemon sets for its modes, so each can be chosen anywhere:
   Saving Power (the powersave governor, the "power" energy preference,
   turbo off, the firmware's low-power profile), Balanced
-  (balance_performance, turbo, balanced) and Fastest (the performance
-  governor, turbo, performance). A GPU's are Cooler and Quieter,
+  (balance_performance, on battery balance_power as tuned's
+  balanced-battery has it, turbo, balanced) and Fastest (the performance
+  governor, turbo, performance). Below them, the processors' Top speed
+  (`Plan::cpu_top`: 100, 90, 80, 75, 60 or 50% of the fastest they go;
+  intel_pstate's `max_perf_pct`, else each processor's
+  `scaling_max_freq`), by default its preset's own: Balanced's 75%,
+  the others' 100% (Ben, 2026-11-13: "right now the cpu on it ends up
+  still being too high, but on power saving it's too low. can we make
+  it so that the cpu is limited to like 75% of what it gets now on
+  balanced instead?"). The last quarter of a processor's clock is where
+  it spends most (its voltage climbs with it), so the cap takes away the
+  hottest bursts and keeps most of the speed; Power Saver, without
+  turbo, holds the ThinkPad's P-cores at 1.9 GHz of their 4.7. Then a
+  row for each NVMe drive (`olo_system::nvme_power`; Ben, 2026-11-13:
+  "add the ability to adjust/customize nvme power for each profile for
+  when a user wants to get their nvme drive to run a bit cooler (but
+  default should be whatever it is now / by default)"): As It Is (the
+  default: the drive untouched), Cooler (its second working power
+  state) or Coolest (its lowest), each with the most it draws in it
+  ("Cooler (6.3 W)") once the follower has read the drive's own table,
+  which is root's (Identify Controller's power state descriptors,
+  through the kernel's admin passthrough, `NVME_IOCTL_ADMIN_CMD` on
+  /dev/nvmeN, natively); a drive with one working state offers only As
+  It Is. The follower sets the state with Set Features (Power
+  Management, not saved on the drive); APST's resting states are the
+  drive's own and it comes back to the state set. As It Is touches a
+  drive only to put back PS0 on one the follower had lowered
+  (`Followed::limited`). A controller reset (some resumes) puts a drive
+  back on PS0, so the follower sets the drives again as logind says the
+  computer woke (`power::watch_wake`), the drives alone. Drives are
+  known in the plan by serial ("balanced/nvme:SERIAL"), as names can
+  change between starts. A GPU's are Cooler and Quieter,
   Balanced, Fastest (`gpu_tuning::preset`) or Custom (its own knobs, on
   Graphics). The On Battery column is "As the Mode" or a preset that
   holds whatever the mode. The defaults: each mode's own, and on battery
@@ -7731,8 +7806,8 @@ configurable with reasonable defaults"), in three tabs:
   wakes it on battery too). Only choices that differ from the defaults
   are kept (`Plan::chosen`), so a GPU added later takes its defaults.
   Below: what's in force now ("Now Performance, on battery: the
-  processors Fastest, Intel Graphics Fastest, NVIDIA RTX PRO 2000 Cooler
-  and Quieter").
+  processors Fastest at up to 100%, Intel Graphics Fastest, NVIDIA RTX
+  PRO 2000 Cooler and Quieter").
 - Graphics: a box for each GPU (`olo_system::gpus`: what it drives,
   whether it's awake, the preset it's on now and what that has it on in
   numbers (`gpus::in_force`: xe's clocks as its driver says now,
@@ -7823,11 +7898,26 @@ the power mode in prefs -> power doesn't change the clock setting of
 the nvidia gpu?"). Held, the GPU still sleeps: on the ThinkPad (driver
 615, fine-grained runtime D3) it suspended 25 s after its last use with
 NVML open, video memory off; closing NVML is what woke it. `set` keeps the whole tuning (the plan, each GPU's Custom
-knobs) and applies what's in force now. One password, at the first
-Apply; Power Modes offers Apply while the service isn't there, or is
-from an older build (the installed program compared with the
-`olo-gpu-tune` beside Preferences, on its reading thread), and
-otherwise says what's in force now. The panel follows
+knobs) and applies what's in force now. After each change the
+follower says what it did in `/run/olo-gpu-follow.json`
+(`gpu_tuning::Followed`, readable by all): its version
+(`FOLLOWER_VERSION`, raised whenever what the follower does changes, not
+with every build: a new build of the same follower isn't worth an
+administrator's password; 3 has the drives), the mode and supply, the
+processors' preset and top speed, what was refused, the processors as
+they were just after, and each NVMe drive's power states and the one
+it's on. One password, at the first Apply; Power Modes offers Apply while
+the service isn't there, or says an older version (or nothing), and
+otherwise says what's in force now. Olo Doctor checks the same
+(`power_modes`, with a power profiles daemon and processors that can be
+set; Ben, 2026-11-13: "olo doctor should make sure those profiles get
+set/customized properly"): the follower not installed (Install It: the
+program copied where only root can change it, the unit and rule,
+systemd told, started), stopped (Start It), out of date (Update It),
+refused something (Try Again), or the processors changed since it set
+them by something else, ten seconds after it wrote (Set Them Again:
+it's started again, which sets everything for the mode now); else
+fine, saying what's in force. The panel follows
 `/etc/olo/gpus.json` (inotify) so what's shown changes with the mode
 and the supply. On the ThinkPad
 (2026-11-04): Power Saver put the Intel GPU on 650–1600 MHz with its
@@ -14784,6 +14874,43 @@ ProcessController put their bars in its tray.
   computer, a widget measuring a GPU, disk, interface, sensor or volume
   this one hasn't measures its default instead, said
   (`backup::widgets_here`).
+* **Token Pool** (`Measure::Pool`; Ben, 2026-11-13: "a deskbar widget
+  for showing the token pool usage / quotas … aggregate availability
+  for each provider x quota type and any other options/views", then
+  "make the quota type a multi-select and then in e.g. heatmap show
+  each selected quota type as a different color with the color
+  representing usage where red is 100% used and green is 0% used"):
+  a provider's quotas across its accounts, from the meters the pool
+  writes (`olo_protocol::pool`: `$XDG_RUNTIME_DIR/olo-pool-meters-
+  DISPLAY.json`, by the copy serving, half a second after a burst of
+  changes and only when what it says differs; `crates/pool/src/
+  meters.rs`). Its options: the provider; any of its quotas (`quotas`,
+  each a series; none: whichever holds each account back now; a single
+  `quota` as first written is read too); All accounts together (what's
+  left of the accounts' worth, `availability`, accounts turned off or
+  signed out counted as having none if asked), Each account, or The
+  account answering now; used rather than left; orange under a quarter
+  left and red under a tenth (`warn`, on the least left of its
+  quotas); and a notification when a quota is out on every account
+  and when it's back (`notify`: as Token Pool's, Open Token Pool on
+  click; one a widget, updated in place). It's read a minute apart and
+  again as the file changes (`olo_kit::watch`, only while a Pool
+  widget is shown); its tip says each quota's share left, its
+  accounts, the next reset and the pace over the last hour. In a
+  heatmap each quota (each account's, in Each account) is a cell
+  coloured by how used it is, the palette's green at none through
+  yellow to red at all (`charts::usage_colour`,
+  `charts::paint_heatmap_by`), so its own colour and "Orange, then
+  red" are dimmed in Preferences ("Coloured by use"). Of several
+  quotas its value is each one's ("24% · 46% left"), and where that
+  doesn't fit beside its label, shorter ("24% · 46%", then the least,
+  "24%", `Shown::shorter`); a row tries its label with each, then its
+  short label ("Claude 5h/Wk") with each, then the shortest alone. A
+  click opens Token Pool. Tested on made-up meters
+  (`meters::tests::a_pool_reading`, `pool::tests`) and in a headless
+  session with a made-up meters file for its display (two Claude
+  accounts and a Codex one, two quotas each: a heatmap of four cells,
+  "Claude 5h/Wk 24% · 45%", at 1×, 1.5× and 2×, light and dark).
 
 Preferences ▸ Deskbar (`deskbar.rs`) lists the widgets in order (Add
 one of a kind after the chosen one, Remove, Move Up, Move Down) beside
@@ -14821,7 +14948,9 @@ one takes it if that window goes with its display. The Interface Kit
 takes app_server's `WAYLAND_SOCKET` as a Wayland connection, and a lock
 surface makes no commit before its first configure and checks the password with `olo_system::auth` (PAM via
 libpam, on a thread) while listening for Touch ID with
-`olo_system::fingerprint`. Debug builds take `OLO_PAM_CONFDIR` +
+`olo_system::fingerprint` and looking for the person's face
+(`olo_system::face`). A security key doesn't unlock it (see "Security
+keys": a key left plugged in mustn't open a computer someone found). Debug builds take `OLO_PAM_CONFDIR` +
 `OLO_PAM_SERVICE` (passed through by tsession), so tests use a private
 pam_exec service and never a real password; then (or with
 `OLO_NO_FINGERPRINT=1`) it leaves the fingerprint reader alone, which is

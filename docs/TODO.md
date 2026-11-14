@@ -1148,48 +1148,120 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Deskbar widgets for the Token Pool: what's left of each quota**
-  (Ben, 2026-11-13: "deskbar widget support for showing token pool
-  usage / quotas etc. i want to be able to have it show the aggregate
-  availability for each provider x quota type and any other
-  options/views you think might be useful and make sense"). A kind of
-  live widget (HACKING, "Live widgets"), set up in Preferences ▸
-  Deskbar like the others, placed and drawn with the looks they have.
-  - *What it reads:* the pool's accounts' meters (`model::Window`:
-    provider, label, percent used, reset, the models it's for), each
-    account's cooldowns (whole, or a model family's), whether it's
-    on, signed out or paused, its reset credits, and what it served
-    (`Usage`, recent requests). From the running pool, without
-    sign-ins (`/pool/status`'s state, or the same over the pool's own
-    socket), told when it changes rather than asked on a timer:
-    meters move with each answer's headers and each account's report
-    (every 5 minutes), so a widget is drawn again only then and as a
-    reset comes due. Nothing read with the displays asleep or locked
-    (`Live::pause`); a dimmed "Token Pool off" when it isn't running.
-  - *Provider × quota, together* (the main one): for each provider and
-    each kind of meter its accounts have (Claude 5-hour, Weekly,
-    Weekly Fable and other models' weeks; Codex 5-hour, Weekly, a
-    model's own, code review), what's left across every account that
-    can serve: "2.4 of 3 accounts' worth", or as a percent of the
-    whole, as a meter, bars or a number; the soonest reset, and when
-    the next account out comes back. A quota for one model counts
-    only toward requests for that model, as the pool's order does.
-  - *Other views worth having:* each account as a cell (a heatmap or
-    bars of what each has left, one out or signed out marked); which
-    account is serving now and its meters; how fast it's going
-    (tokens or requests a minute, a graph) and so how long what's left
-    lasts against the next reset ("runs out in 1 h 40, resets in
-    3 h"); left or used, as the person likes; paused and turned-off
-    accounts counted or not.
-  - *Warnings, if asked for:* the widget's colour as what's left falls
-    past a level, and a notification when a provider's quota is out on
-    every account (and when it comes back).
-  - *Around it:* a tip with every account's meters in full and when
-    each resets; a click opens Token Pool; the other button, Token
-    Pool and Deskbar Preferences…. Agents read each as a `Meter` with
-    its value and resets. Preferences lists what can be shown from the
-    accounts the pool has (`sources`), with a ready-made row: Claude
-    5-hour and Weekly beside Codex's.
+- **A rolled-up window ends at its tab** (Ben, 2026-11-13, with a
+  screenshot of "Network" rolled up: "when a window is rolled up it
+  looks weird b/c it doesn't have the bottom bar that it should have").
+  Rolled up, only the tab is drawn (app_server's decorator,
+  `shell/deco.rs`, "Rolled up: only the tab shows"), so it reads as a
+  tab cut loose rather than a window folded away: under the tab there
+  should be the window's frame closed off, a bar as wide as the window
+  with its border, bevel and shadow, as the window's top edge is
+  drawn. Measured at 1×, 1.25×, 1.5×, 1.75× and 2×, light, dark and
+  night, active and not, a lone window and one in a group of tabs, and
+  fanned out in a tile (`tiling.rs`, rolled-up windows sharing a cell);
+  what takes the pointer follows what's drawn.
+- **Captive portals: seen, said and opened** (Ben, 2026-11-13: "add
+  captive portal recognition in network settings so that when a
+  connection requires portal signin the link is available to click in
+  the network settings and also a tray icon + notification should
+  appear about it and clicking the tray icon or link in notification
+  should open the portal page"). Olo's network code
+  (`olo_system::network`, Preferences ▸ Network) says nothing of one
+  today.
+  - *Knowing:* NetworkManager's own connectivity check (its
+    `Connectivity` going to `portal`, per device and overall, as its
+    signals say: nothing polled), and the portal's address: where the
+    check's request was sent on to (its redirect, or the address the
+    network names in its DHCP option 114 / RFC 8910 Captive Portal
+    API, `user-portal-url`, which is better when given). Asked again
+    after the person signs in, so the warning goes as soon as the
+    network lets traffic through.
+  - *Preferences ▸ Network:* the connection's row says "Sign-in
+    needed" with a link to the portal page (and Open Sign-In Page).
+  - *The tray:* an icon while a portal waits (the Wi-Fi glyph with a
+    mark, or a small sign of its own), its tip naming the network; a
+    click opens the portal page.
+  - *A notification* as it's first seen on a network ("Sign in to
+    Airport Wi-Fi"), with Open Sign-In Page; clicking it opens the
+    page too. Not again for the same network until it's been signed
+    in to and needs it again.
+  - *Opening the page:* in the default browser, as a page of its own
+    (a portal page is often plain HTTP and expects no proxy): a
+    browser set to a proxy (the Token Pool's isn't one for web
+    pages, but a VPN's may be) or DNS over HTTPS can't reach it, so
+    the page opens past them where the browser allows.
+  - Agents read it too: the network's portal state and its address in
+    the tray's and Preferences' trees.
+- **The computer starts with Olo's start-up screen and chime, not
+  Lenovo's and Fedora's logos** (Ben, 2026-11-13: "when the os starts
+  it still shows the lenovo + fedora logos on bootup. i want that
+  changed to the beos-inspired olo startup screen with the olo sound
+  played like how a mac plays the apple sound"). Olo's boot splash is
+  built (HACKING, "The login screen and boot splash": the start-up
+  screen's picture as a Plymouth theme, checked in a VM at every scale)
+  but not installed on the ThinkPad: it boots Fedora's theme, which
+  draws the firmware's logo (the BGRT image, Lenovo's) with Fedora's
+  under it.
+  - *Installing it* takes root (`tools/install-login.sh --plymouth`:
+    the theme, and the initramfs made again so it's there from the
+    start): Ben's say and his sudo, with `--revert-plymouth` as the
+    way back. Checked after: the theme draws no BGRT image; a LUKS
+    passphrase (if any) is asked in Olo's field; the hand-over to the
+    login screen without a flash, on the panel and the external
+    displays.
+  - *The firmware's own logo* (Lenovo's, before the bootloader) isn't
+    the OS's to draw over: what's possible on this ThinkPad is to be
+    found out (its setup's "Boot Logo" and the custom logo Lenovo's
+    BIOS update tool can write), said to Ben, and done only if he
+    says so (it writes the firmware).
+  - *The chime at power-on, as a Mac's*: today it plays as the
+    session's start-up screen shows (Preferences ▸ Sound ▸ Starting
+    Up). Played as early as the sound card can (a small unit of Olo's
+    own early in boot, ALSA straight to the card before PipeWire, at
+    the volume last set, silent when muted or chosen off), once a boot,
+    so the session's start-up screen doesn't play it again; measured
+    from power-on to the chime on the ThinkPad.
+
+- **Olo Doctor offers to install the start-up screen and chime**
+  (Ben, 2026-11-13: "olo doctor should offer to install the boot
+  stuff"). A check that the boot splash (Olo's Plymouth theme, in the
+  initramfs) and the early chime unit are installed and current, and
+  if not, Install, through Doctor's helper (`pkexec olo-doctor
+  --helper`: one administrator request), with live progress (making
+  the initramfs again takes a while) and a way back (Revert). Not the
+  firmware's logo (above).
+- **One Olo Doctor: Suggestions folded into it** (Ben, 2026-11-13:
+  "combine the olo suggestions app into olo doctor: just have it be one
+  unified olo doctor app where each item has a type showing whether
+  it's e.g. a suggestion or something critical and any of them can be
+  put on the ignored list"). Every finding of either app in one list,
+  each with its kind (critical, a problem, a suggestion, …) shown, and
+  any of them ignorable (Ignore, and an Ignored list to bring one
+  back); Suggestions' app, its Deskbar entry and its notifications go
+  to Doctor's; agents read and act on the same items.
+- **Olo Doctor looked over and tidied** (Ben, 2026-11-13: "also spruce
+  up olo doctor it's a bit of a mess right now"): its window laid out
+  again around the one list (grouped by kind, what's wrong first, each
+  item's fix at hand), at every scale and theme.
+- **Every app's menus the same where they can be, and its settings a
+  menu away** (Ben, 2026-11-13: "also in all the olo apps make it so
+  that if there is one or more recommended settings apps/panels that
+  are related then those should also be launchable from that app's
+  menus. also standardize the olo apps menus (and patterns in the olo
+  book) so that kb shortcuts are consistent and always available and
+  the menu locations/options where applicable are consistent").
+  - *Related settings in the menus:* an app whose behaviour some
+    Preferences panel (or another app) sets has a menu item opening it
+    straight at that panel (Mail: Accounts; Terminal: its Profiles and
+    Keyboard; Deskbar: its own; …), where the app's own settings are.
+  - *One menu layout:* the app menu, File, Edit, View, then the app's
+    own, Window and Help, each with the same items in the same places
+    and the same shortcuts (⌘N, ⌘O, ⌘W, ⌘Q, ⌘Z, ⌘F, ⌘G, ⌘, …), a
+    shortcut always shown beside its item and always working, even
+    with the menu bar hidden; checked by a lint over every app's menus.
+  - *The Olo Book* says the layout and the shortcuts, as a pattern for
+    apps to follow, with the kit building the shared menus so an app
+    adds only its own.
 
 ## Done, waiting for Ben to try or confirm
 
@@ -1249,6 +1321,70 @@ accessibility tree test on an agent screen (GTK's Text Editor, 30
 nodes). What's left needs Ben: in Blocked, "The ignored tests that
 need Ben".)
 
+- **Deskbar widgets for the Token Pool** (Ben, 2026-11-13: "deskbar
+  widget support for showing token pool usage / quotas etc. i want to
+  be able to have it show the aggregate availability for each provider
+  x quota type and any other options/views you think might be useful
+  and make sense", then "make the quota type a multi-select and then in
+  e.g. heatmap show each selected quota type as a different color with
+  the color representing usage where red is 100% used and green is 0%
+  used"). Done (HACKING, "Live widgets", Token Pool): a Token Pool kind
+  in Preferences ▸ Deskbar, any of a provider's quotas, all accounts
+  together, each account or the one answering; left or used; orange
+  then red as it runs low; a notification when a quota is out on every
+  account and when it's back; a tip with every account, the next reset
+  and the pace; a click opens Token Pool. The pool writes its meters
+  only when they change, and the widget reads them as the file
+  changes. A heatmap's quotas are green to red by use. Not done: a
+  ready-made row button in Preferences (adding the widgets by hand
+  does it). For Ben: add one in Preferences ▸ Deskbar (Add, Token Pool).
+- **An NVMe drive kept cooler, chosen for each power mode** (Ben,
+  2026-11-13: "also add the ability to adjust/customize nvme power for
+  each profile for when a user wants to get their nvme drive to run a
+  bit cooler (but default should be whatever it is now / by
+  default)"). Done: an SSD row in Preferences ▸ Power ▸ Power Modes, As
+  It Is unless chosen (the drive untouched), Cooler and Coolest its own
+  lower working power states (NVMe Set Features, natively through the
+  kernel's admin passthrough), set by the follower on each mode and
+  supply change and again after a resume. Tested on made-up Identify
+  data and in Preferences at every scale; the passthrough itself is
+  root's, so it first runs on the real drive in Ben's follower. For
+  Ben: after the upgrade, Apply in Preferences ▸ Power (or Olo Doctor's
+  Update It); the SSD menus then show each state's watts, and choosing
+  Cooler logs "power state 1 (… W at most)" in olo-gpu-follow's journal.
+- **Balanced keeps the processors out of their hottest top speed, and
+  Olo Doctor sees that the modes are set as planned** (Ben, 2026-11-13:
+  "right now the cpu on it ends up still being too high, but on power
+  saving it's too low. can we make it so that the cpu is limited to
+  like 75% of what it gets now on balanced instead?", then "olo doctor
+  should make sure those profiles get set/customized properly"). Done:
+  a Top speed per mode and on battery in Preferences ▸ Power ▸ Power
+  Modes (intel_pstate's `max_perf_pct`), Balanced's 75% by default;
+  Balanced on battery leans to saving (balance_power, as tuned's
+  balanced-battery; Olo's follower had set balance_performance over it).
+  The follower says what it did in `/run/olo-gpu-follow.json`, and Olo
+  Doctor checks it's installed, current, running, refused nothing and
+  that nothing changed the processors since, each with its fix. On the
+  ThinkPad, after Ben's upgrade at 12:36: Balanced set "top speed 75%",
+  and a loaded P-core held 3.6 GHz of its 4.7. For Ben: whether
+  Balanced now runs as cool as he wants (60% and 50% are there too).
+- **A security key doesn't unlock a locked or logged-out computer**
+  (Ben, 2026-11-13: "the yubikey should not work at the login screen
+  (but face recognition and fingerprint should, as well as password).
+  once logged in then the yubikey should work for elevated permission
+  requests etc. it's just that if someone found the laptop and got the
+  login screen we can't have them just pressing the yubikey to get
+  access"). Done: the lock screen (olo-lock) has no key code any more
+  (`olo-fido` gone from it), and the login screen never had any (nor is
+  there `pam_u2f` in the system's PAM stack); both keep the password,
+  the fingerprint and the face. The key still approves what asks once
+  someone is in: Terminal's sudo, the polkit agent, Passwords' unlock
+  and Approve Without Asking. Preferences ▸ Security ▸ Sign In says so.
+  Checked in a test session (a stand-in PAM service, a made-up
+  password): no key prompt on the lock, a wrong password refused, the
+  right one unlocking. For Ben, after the upgrade: lock with the
+  YubiKey in and touch it (nothing happens), then `sudo -v` in
+  Terminal (a touch approves it).
 - **The pointer never stops under load** (Ben, 2026-11-12: "under
   load the mouse still gets unresponsive for a few seconds every now
   and then. i've got LAVD off b/c that made it even worse, as did the

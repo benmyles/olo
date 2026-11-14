@@ -114,7 +114,7 @@ pub const WAYS_IN: [&str; 5] = [
     "Touch the fingerprint sensor or your security key, or wait to type your password.",
     "Touch the fingerprint sensor, or type your password.",
     "Touch the fingerprint sensor, or wait to type your password.",
-    // (olo_fido::TOUCH_OR_TYPE, as Passwords and the lock screen say it.)
+    // (olo_fido::TOUCH_OR_TYPE, as Passwords says it.)
     "Touch your security key, or type your password.",
 ];
 

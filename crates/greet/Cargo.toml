@@ -9,4 +9,6 @@ license.workspace = true
 libc = "0.2"
 libloading = "0.8"
 serde.workspace = true
+
+[dev-dependencies]
 serde_json.workspace = true

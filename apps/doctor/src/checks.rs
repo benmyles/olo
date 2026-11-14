@@ -599,6 +599,7 @@ pub fn scan(roots: &Roots) -> Report {
     secrets_store(roots, &procs, &mut r);
     presence_rule(roots, &mut r);
     power_now(roots, &mut r);
+    power_modes(roots, &mut r);
     security_keys(roots, &mut r);
     panel_hdr(roots, &mut r);
     stale(roots, &procs, &mut r);
@@ -1971,6 +1972,145 @@ fn power_now(roots: &Roots, r: &mut Report) {
     });
 }
 
+/// What Olo's power mode follower does (`olo-gpu-tune follow`), said in
+/// each finding about it.
+const FOLLOWER_DOES: &str = "Olo's power mode follower puts the processors and each GPU on what Preferences ▸ Power ▸ Power Modes plans for the mode and the power supply, after the power profiles daemon has set its own: in Balanced the processors at up to 75% of their top speed (their hottest quarter left out, most of their speed kept), leaning to saving power on battery; NVIDIA's GPU saving power on battery; NVMe drives kept cooler where chosen (and set again after a resume).";
+
+/// The power modes as Olo plans them (Preferences ▸ Power ▸ Power
+/// Modes; Ben, 2026-11-13: "olo doctor should make sure those profiles
+/// get set/customized properly"): the follower (`olo-gpu-tune follow`,
+/// root) installed, of this version (`gpu_tuning::FOLLOWER_VERSION`, as
+/// what it last did says: not every build, which would ask for an
+/// administrator's password at every upgrade), running, everything it
+/// set set, and the processors still as it set them. Only with a power
+/// profiles daemon (tuned-ppd, power-profiles-daemon) and processors
+/// that can be set.
+fn power_modes(roots: &Roots, r: &mut Report) {
+    use olo_system::{
+        cpu_tuning::{CpuCaps, CpuPreset, Sys},
+        gpu_tuning::{self as g, Followed},
+        power_profile::Mode,
+    };
+    let cpu = roots.fs.join("sys/devices/system/cpu");
+    if !cpu.join("cpufreq").is_dir() {
+        return;
+    }
+    if !["tuned-ppd.service", "power-profiles-daemon.service"].iter().any(|u| (roots.units)(u).is_ok_and(|s| s.active)) {
+        return;
+    }
+    // (A build tree's: nothing to install from.)
+    let from = roots.bin.join("olo-gpu-tune");
+    if !from.is_file() {
+        return;
+    }
+    let at = |p: &str| roots.fs.join(p.trim_start_matches('/'));
+    let installed = at(g::FOLLOWER_UNIT_PATH).is_file() && at(g::FOLLOWER_PROGRAM).is_file();
+    let running = (roots.units)(g::FOLLOWER_SERVICE).is_ok_and(|s| s.active);
+    let followed = Followed::load(&roots.fs);
+    let current = followed.as_ref().is_some_and(|f| f.version >= g::FOLLOWER_VERSION);
+    let same_program = std::fs::read(&from).ok().is_some_and(|a| std::fs::read(at(g::FOLLOWER_PROGRAM)).ok().is_some_and(|b| a == b));
+    // Installing or updating: the program (where only root can change it),
+    // the unit and rule where they differ, then systemd told and the
+    // follower started on it (which sets everything for the mode now).
+    let install = || {
+        let mut steps = Vec::new();
+        if !same_program {
+            steps.push(Step::CopyFile { from: from.clone(), to: PathBuf::from(g::FOLLOWER_PROGRAM), mode: 0o755 });
+            steps.push(Step::SelinuxLabels { rules: Vec::new(), restore: vec![PathBuf::from(g::FOLLOWER_PROGRAM)] });
+        }
+        if std::fs::read_to_string(at(g::FOLLOWER_UNIT_PATH)).ok().as_deref() != Some(g::FOLLOWER_UNIT) {
+            steps.push(Step::WriteFile { path: PathBuf::from(g::FOLLOWER_UNIT_PATH), content: g::FOLLOWER_UNIT.into(), mode: 0o644 });
+        }
+        if std::fs::read_to_string(at(g::FOLLOWER_RULE_PATH)).ok().as_deref() != Some(g::FOLLOWER_RULE) {
+            steps.push(Step::WriteFile { path: PathBuf::from(g::FOLLOWER_RULE_PATH), content: g::FOLLOWER_RULE.into(), mode: 0o644 });
+        }
+        for action in [UnitAction::Reload, UnitAction::Enable, UnitAction::Restart] {
+            steps.push(Step::Unit { name: g::FOLLOWER_SERVICE.into(), action });
+        }
+        steps
+    };
+    let again = || vec![Step::Unit { name: g::FOLLOWER_SERVICE.into(), action: UnitAction::Restart }];
+    let fix = |label: &str, steps: Vec<Step>| Some(Fix { label: label.into(), root: true, steps });
+    if !installed {
+        r.findings.push(Finding {
+            id: "power-modes:missing".into(),
+            severity: Severity::Advice,
+            title: "The power modes aren't set as Olo plans them".into(),
+            detail: format!("{FOLLOWER_DOES} It isn't installed, so only the daemon's own settings are in force (Balanced lets the processors run at their top speed). The fix installs it: olo-gpu-follow.service, running {} as root.", g::FOLLOWER_PROGRAM),
+            fix: fix("Install It", install()),
+        });
+        return;
+    }
+    if !running {
+        r.findings.push(Finding {
+            id: "power-modes:stopped".into(),
+            severity: Severity::Problem,
+            title: "Olo's power mode follower isn't running".into(),
+            detail: format!(
+                "{FOLLOWER_DOES} It's installed but not running, so the mode's settings are the daemon's own. The fix starts it{}.",
+                if same_program { "" } else { ", from the installed version of Olo" }
+            ),
+            fix: fix("Start It", if same_program { again() } else { install() }),
+        });
+        return;
+    }
+    let Some(f) = followed.filter(|_| current) else {
+        r.findings.push(Finding {
+            id: "power-modes:older".into(),
+            severity: Severity::Advice,
+            title: "Olo's power mode follower is out of date".into(),
+            detail: format!(
+                "{FOLLOWER_DOES} The one running is from an older Olo, without some of that (the processors' top speed came with this version). The fix brings it up to date and starts it again."
+            ),
+            fix: fix("Update It", install()),
+        });
+        return;
+    };
+    let mode = Mode::from_id(&f.mode).map_or(f.mode.clone(), |m| m.label().to_owned());
+    let when = format!("{mode}{}", if f.on_battery { " on battery" } else { "" });
+    if !f.failed.is_empty() {
+        r.findings.push(Finding {
+            id: "power-modes:failed".into(),
+            severity: Severity::Advice,
+            title: "Some of the power mode's settings couldn't be set".into(),
+            detail: format!("Setting what {when} plans, Olo's power mode follower was refused: {}. The fix tries again.", f.failed.join("; ")),
+            fix: fix("Try Again", again()),
+        });
+        return;
+    }
+    // The processors as they are against as it left them (a moment after
+    // a change, the follower may still be on its way).
+    let settled = std::fs::metadata(Followed::path(&roots.fs)).and_then(|m| m.modified()).is_ok_and(|t| t.elapsed().is_ok_and(|e| e.as_secs() >= 10));
+    let now = Sys { cpu, firmware: roots.fs.join("sys/firmware/acpi") }.caps();
+    if settled && let (Some(was), Some(now)) = (&f.cpu_after, &now) {
+        let said = |c: &CpuCaps| {
+            [
+                ("governor", c.governor.clone()),
+                ("energy preference", c.preference.clone()),
+                ("turbo", if c.turbo { "on" } else { "off" }.to_owned()),
+                ("platform profile", c.platform.clone()),
+                ("top speed", c.top.map(|t| format!("{t}%")).unwrap_or_default()),
+            ]
+        };
+        let changed: Vec<String> = said(now).into_iter().zip(said(was)).filter(|(n, w)| n.1 != w.1).map(|((what, n), (_, w))| format!("the {what} {n} (Olo set {w})")).collect();
+        if !changed.is_empty() {
+            r.findings.push(Finding {
+                id: "power-modes:changed".into(),
+                severity: Severity::Advice,
+                title: "Something changed the processors' settings since Olo set them".into(),
+                detail: format!(
+                    "For {when}, the processors now have {}: another program (a tuning tool, a script) changed them, so they aren't as Preferences ▸ Power plans. The fix sets them again.",
+                    changed.join(", ")
+                ),
+                fix: fix("Set Them Again", again()),
+            });
+            return;
+        }
+    }
+    let preset = CpuPreset::parse(&f.cpu).map_or(f.cpu.clone(), |p| p.name().to_owned());
+    r.fine.push(Fine { title: "The power modes are set as Olo plans them".into(), detail: format!("Now {when}: the processors {preset}, at up to {}% of their top speed (olo-gpu-follow).", f.top) });
+}
+
 fn presence_rule(roots: &Roots, r: &mut Report) {
     let iio = roots.fs.join("sys/bus/iio/devices");
     let Some(sensor) = std::fs::read_dir(&iio).into_iter().flatten().flatten().map(|e| e.path()).find(|p| read(&p.join("name")).is_some_and(|n| n.trim() == "prox")) else { return };
@@ -2711,6 +2851,105 @@ mod tests {
             pool_port: POOL_PORT,
         };
         (fs, roots)
+    }
+
+    /// The power modes as planned: nothing said without a power profiles
+    /// daemon; the follower installed, started, brought up to date, tried
+    /// again, its settings set again when something changed them; else
+    /// fine, saying what's in force.
+    #[test]
+    fn power_modes_as_planned() {
+        use olo_system::{
+            cpu_tuning::{CpuPreset, Sys},
+            gpu_tuning::{self as g, Followed},
+        };
+        let (fs, mut roots) = machine("power-modes");
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p.trim_start_matches('/'));
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        for k in 0..2 {
+            let d = format!("sys/devices/system/cpu/cpufreq/policy{k}");
+            w(&format!("{d}/scaling_driver"), "intel_pstate\n");
+            w(&format!("{d}/scaling_governor"), "powersave\n");
+            w(&format!("{d}/scaling_available_governors"), "performance powersave\n");
+            w(&format!("{d}/energy_performance_preference"), "balance_performance\n");
+            w(&format!("{d}/energy_performance_available_preferences"), "default performance balance_performance balance_power power\n");
+        }
+        w("sys/devices/system/cpu/intel_pstate/no_turbo", "0\n");
+        w("sys/devices/system/cpu/intel_pstate/max_perf_pct", "75\n");
+        w("sys/firmware/acpi/platform_profile", "balanced\n");
+        w("sys/firmware/acpi/platform_profile_choices", "low-power balanced performance\n");
+        std::fs::write(roots.bin.join("olo-gpu-tune"), "the follower").unwrap();
+        let units = |daemon: bool, follower: bool| -> Box<dyn Fn(&str) -> Result<UnitState, String> + Send + Sync> {
+            Box::new(move |name: &str| {
+                let active = match name {
+                    "tuned-ppd.service" => daemon,
+                    g::FOLLOWER_SERVICE => follower,
+                    _ => false,
+                };
+                Ok(UnitState { loaded: active, active, enabled: active, path: None })
+            })
+        };
+        // No daemon: nothing to follow.
+        roots.units = units(false, false);
+        let r = scan(&roots);
+        assert!(r.findings.iter().all(|f| !f.id.starts_with("power-modes")) && r.fine.iter().all(|f| !f.title.starts_with("The power modes")));
+        // Not installed: Install It, everything.
+        roots.units = units(true, false);
+        let f = scan(&roots).find("power-modes:missing").cloned().expect("not installed");
+        let steps = f.fix.unwrap().steps;
+        assert_eq!(steps[0], Step::CopyFile { from: roots.bin.join("olo-gpu-tune"), to: g::FOLLOWER_PROGRAM.into(), mode: 0o755 });
+        assert!(steps.contains(&Step::WriteFile { path: g::FOLLOWER_UNIT_PATH.into(), content: g::FOLLOWER_UNIT.into(), mode: 0o644 }));
+        assert_eq!(steps.last(), Some(&Step::Unit { name: g::FOLLOWER_SERVICE.into(), action: UnitAction::Restart }));
+        // Installed, this version's program, stopped: Start It.
+        w(g::FOLLOWER_PROGRAM, "the follower");
+        w(g::FOLLOWER_UNIT_PATH, g::FOLLOWER_UNIT);
+        w(g::FOLLOWER_RULE_PATH, g::FOLLOWER_RULE);
+        let f = scan(&roots).find("power-modes:stopped").cloned().expect("stopped");
+        assert_eq!(f.fix.unwrap().steps, [Step::Unit { name: g::FOLLOWER_SERVICE.into(), action: UnitAction::Restart }]);
+        // Running, saying nothing (an older one): Update It, which
+        // restarts it on the program installed.
+        roots.units = units(true, true);
+        let f = scan(&roots).find("power-modes:older").cloned().expect("older");
+        assert_eq!(f.fix.unwrap().steps.last(), Some(&Step::Unit { name: g::FOLLOWER_SERVICE.into(), action: UnitAction::Restart }));
+        // Refused something: Try Again.
+        let sys = Sys { cpu: fs.join("sys/devices/system/cpu"), firmware: fs.join("sys/firmware/acpi") };
+        let mut followed = Followed {
+            version: g::FOLLOWER_VERSION,
+            mode: "balanced".into(),
+            on_battery: true,
+            cpu: "balanced".into(),
+            top: 75,
+            failed: vec!["turbo: Permission denied".into()],
+            cpu_after: sys.caps(),
+            ..Default::default()
+        };
+        let save = |f: &Followed, ago: u64| {
+            let path = Followed::path(&fs);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, serde_json::to_vec(f).unwrap()).unwrap();
+            std::fs::File::options().write(true).open(&path).unwrap().set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(ago)).unwrap();
+        };
+        save(&followed, 60);
+        let f = scan(&roots).find("power-modes:failed").cloned().expect("refused");
+        assert!(f.detail.contains("Balanced on battery") && f.detail.contains("turbo: Permission denied"), "{}", f.detail);
+        // As set: fine, saying so.
+        followed.failed.clear();
+        save(&followed, 60);
+        let r = scan(&roots);
+        let fine = r.fine.iter().find(|f| f.title == "The power modes are set as Olo plans them").expect("fine");
+        assert_eq!(fine.detail, format!("Now Balanced on battery: the processors {}, at up to 75% of their top speed (olo-gpu-follow).", CpuPreset::Balanced.name()));
+        // Changed since (the top speed lifted, the preference raised): set
+        // them again; but not a moment after the follower wrote.
+        w("sys/devices/system/cpu/intel_pstate/max_perf_pct", "100\n");
+        w("sys/devices/system/cpu/cpufreq/policy0/energy_performance_preference", "performance\n");
+        let f = scan(&roots).find("power-modes:changed").cloned().expect("changed");
+        assert!(f.detail.contains("the energy preference performance (Olo set balance_performance), the top speed 100% (Olo set 75%)"), "{}", f.detail);
+        assert_eq!(f.fix.unwrap().label, "Set Them Again");
+        save(&followed, 1);
+        assert!(scan(&roots).find("power-modes:changed").is_none(), "just written: the follower may be on its way");
     }
 
     /// Token Pool running twice (Ben, 2026-11-09): the copy serving holds

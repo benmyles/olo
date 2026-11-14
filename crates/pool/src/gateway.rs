@@ -183,7 +183,10 @@ impl Shared {
     /// store on a worker thread (again every 30 s while the keyring
     /// isn't open), the gateway listening on `port`.
     pub fn launch(port: u16, changed: impl Fn() + Send + Sync + 'static) -> Arc<Shared> {
+        // (Its meters written for Deskbar's widgets as they change.)
+        let (changed, meters) = crate::meters::and_written(changed);
         let shared = Shared::make(Saved::default(), None, Upstreams::from_env(), true, changed);
+        crate::meters::start(&shared, meters);
         shared.pool.lock().unwrap().loaded = false;
         // The clients turned off, before the proxy takes a request.
         for p in [Provider::Claude, Provider::Codex] {
